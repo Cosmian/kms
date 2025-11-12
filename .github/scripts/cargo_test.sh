@@ -117,5 +117,5 @@ if [ -f /etc/lsb-release ]; then
 
   # shellcheck disable=SC2086
   sudo -E env "PATH=$PATH" HSM_MODEL="$HSM_MODEL" HSM_USER_PASSWORD="$HSM_USER_PASSWORD" HSM_SLOT_ID="$HSM_SLOT_ID" TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" \
-    cargo test -p cosmian_kms_cli --target "$TARGET" $RELEASE $FEATURES -- --nocapture hsm_google_cse --ignored --skip privileged
+    cargo test -p cosmian_kms_cli --target "$TARGET" $RELEASE $FEATURES -- --nocapture hsm_google_cse --ignored
 fi

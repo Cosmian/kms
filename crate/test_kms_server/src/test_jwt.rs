@@ -16,6 +16,17 @@ pub(crate) fn get_auth0_jwt_config() -> IdpAuthConfig {
     // --jwt-issuer-uri=https://demo-kms.eu.auth0.com/ \
     // --jwks-uri=https://demo-kms.eu.auth0.com/.well-known/jwks.json \
     IdpAuthConfig {
-        jwt_auth_provider: Some(vec![format!("{}", AUTH0_JWT_ISSUER_URI)]),
+        jwt_auth_provider: Some(vec![
+            format!("{AUTH0_JWT_ISSUER_URI},{AUTH0_JWT_ISSUER_URI}.well-known/jwks.json"),
+            format!(
+                "{},{}",
+                "https://accounts.google.com", "https://www.googleapis.com/oauth2/v3/certs"
+            ),
+            format!(
+                "{},{}",
+                "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0",
+                "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
+            ),
+        ]),
     }
 }

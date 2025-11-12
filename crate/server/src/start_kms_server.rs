@@ -24,16 +24,13 @@ use actix_web::{
     web::{self, Data, JsonConfig, PayloadConfig},
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::KeyWrapType,
-        kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-            kmip_operations::Get,
-            kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
-            requests::{create_rsa_key_pair_request, import_object_request},
-        },
+    cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::GetAttributes,
+        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+        requests::{create_rsa_key_pair_request, import_object_request},
     },
     cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
@@ -97,6 +94,24 @@ pub async fn handle_google_cse_rsa_keypair(
     let uid_sk = format!("{GOOGLE_CSE_ID}_rsa");
     let uid_pk = format!("{GOOGLE_CSE_ID}_rsa_pk");
 
+    // Fast path: if the private key already exists, we're done.
+    if let Ok(resp) = kms_server
+        .get_attributes(
+            GetAttributes {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid_sk.clone())),
+                attribute_reference: None,
+            },
+            &server_params.default_username,
+            None,
+        )
+        .await
+    {
+        if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
+            info!("RSA Keypair for Google CSE already exists (pre-check).");
+            return Ok(());
+        }
+    }
+
     let response =
         if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
             info!("Found Google CSE migration key, importing it.");
@@ -129,29 +144,37 @@ pub async fn handle_google_cse_rsa_keypair(
         };
 
     if let Err(e) = response {
-        // We got an error. If this is due to a duplicate key, this is fine; we already have it created
-        let get_request = Get {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
-            key_format_type: Some(KeyFormatType::PKCS1),
-            key_wrap_type: Some(KeyWrapType::NotWrapped),
-            key_compression_type: None,
-            key_wrapping_specification: None,
-        };
-
+        // If the error is due to a UNIQUE constraint, treat it as success (idempotent behavior).
+        let err_str = format!("{e:?}");
+        if err_str.contains("UNIQUE constraint failed") {
+            info!(
+                "RSA Keypair for Google CSE already exists (detected by UNIQUE constraint). Continuing without error."
+            );
+            return Ok(());
+        }
+        // We got an error (likely due to a duplicate). Treat existence as success by checking attributes.
         return match kms_server
-            .get(get_request, &server_params.default_username, None)
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid_sk)),
+                    attribute_reference: None,
+                },
+                &server_params.default_username,
+                None,
+            )
             .await
         {
-            Ok(resp) => match resp.object_type {
-                ObjectType::PrivateKey => {
+            Ok(resp) => {
+                if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
                     info!("RSA Keypair for Google CSE already exists.");
                     Ok(())
+                } else {
+                    Err(KmsError::CryptographicError(format!(
+                        "Unexpected object type for Google CSE RSA keypair: {:?}",
+                        resp.attributes.object_type
+                    )))
                 }
-                _ => Err(KmsError::CryptographicError(format!(
-                    "Unexpected object type for Google CSE RSA keypair: {:?}",
-                    resp.object_type
-                ))),
-            },
+            }
             Err(eg) => {
                 let msg = format!(
                     "RSA Keypair for Google CSE not found from existing DB ({eg:#?}), and there \
