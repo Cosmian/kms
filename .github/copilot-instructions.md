@@ -193,3 +193,4 @@ curl http://localhost:9998/ui
 - **HSM Support**: Utimaco HSM testing is included but only runs on Ubuntu with specific setup
 - **MySQL**: MySQL database tests are currently disabled in CI
 - **Workspace**: Build from workspace root using cargo_build.sh script, not individual crate directories
+- **HashMaps**: Verify that when creating HashMaps, use `HashMap::with_capacity(n)` to avoid unnecessary reallocations instead of `HashMap::new()`.

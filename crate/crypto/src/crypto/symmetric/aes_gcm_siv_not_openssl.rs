@@ -1,7 +1,7 @@
 //! AES GCM SIV implementation using aes-gcm-siv crate.
 //! Openssl does implement AES GCM SIV, but it is not available in the openssl crate.
 
-use aes_gcm_siv::{AeadInPlace, Aes128GcmSiv, Aes256GcmSiv, Key, KeyInit, Nonce, Tag};
+use aes_gcm_siv::{AeadInPlace, Aes128GcmSiv, Aes256GcmSiv, KeyInit};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -28,16 +28,16 @@ pub(super) fn encrypt(
     aad: &[u8],
     plaintext: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
-    let nonce = Nonce::from_slice(nonce);
+    let nonce = nonce.into();
     let mut buffer = plaintext.to_vec();
     let tag = if key.len() == AES_128_GCM_SIV_KEY_LENGTH {
-        Aes128GcmSiv::new(Key::<Aes128GcmSiv>::from_slice(key))
+        Aes128GcmSiv::new(key.into())
             .encrypt_in_place_detached(nonce, aad, &mut buffer)
             .map_err(|e| {
                 CryptoError::Default(format!("Error encrypting data with AES GCM SIV: {e}"))
             })?
     } else if key.len() == AES_256_GCM_SIV_KEY_LENGTH {
-        Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key))
+        Aes256GcmSiv::new(key.into())
             .encrypt_in_place_detached(nonce, aad, &mut buffer)
             .map_err(|e| {
                 CryptoError::Default(format!("Error encrypting data with AES GCM SIV: {e}"))
@@ -70,17 +70,17 @@ pub(super) fn decrypt(
     ciphertext: &[u8],
     tag: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    let nonce = Nonce::from_slice(nonce);
-    let tag = Tag::from_slice(tag);
+    let nonce = nonce.into(); //Nonce::from_slice(nonce);
+    let tag = tag.into();
     let mut buffer = ciphertext.to_vec();
     if key.len() == AES_128_GCM_SIV_KEY_LENGTH {
-        Aes128GcmSiv::new(Key::<Aes128GcmSiv>::from_slice(key))
+        Aes128GcmSiv::new(key.into())
             .decrypt_in_place_detached(nonce, aad, &mut buffer, tag)
             .map_err(|e| {
                 CryptoError::Default(format!("Error decrypting data with AES GCM SIV: {e}"))
             })?;
     } else if key.len() == AES_256_GCM_SIV_KEY_LENGTH {
-        Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key))
+        Aes256GcmSiv::new(key.into())
             .decrypt_in_place_detached(nonce, aad, &mut buffer, tag)
             .map_err(|e| {
                 CryptoError::Default(format!("Error decrypting data with AES GCM SIV: {e}"))

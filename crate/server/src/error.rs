@@ -2,8 +2,6 @@ use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cloudproof_findex::implementations::redis::FindexRedisError;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt;
 use cosmian_kms_server_database::{
     DbError,
@@ -142,13 +140,6 @@ impl From<&X509Error> for KmsError {
 impl From<x509_parser::nom::Err<PEMError>> for KmsError {
     fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
         Self::Certificate(e.to_string())
-    }
-}
-
-#[cfg(feature = "non-fips")]
-impl From<FindexRedisError> for KmsError {
-    fn from(e: FindexRedisError) -> Self {
-        Self::Findex(e.to_string())
     }
 }
 

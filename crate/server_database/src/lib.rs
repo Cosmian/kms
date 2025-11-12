@@ -52,4 +52,6 @@ pub mod reexport {
     pub use cosmian_kmip;
     pub use cosmian_kms_crypto;
     pub use cosmian_kms_interfaces;
+    #[cfg(feature = "non-fips")]
+    pub use redis;
 }

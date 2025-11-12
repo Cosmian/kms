@@ -4,7 +4,6 @@
     clippy::indexing_slicing,
     clippy::unwrap_in_result
 )]
-
 use std::path::Path;
 
 use cosmian_logger::log_init;
@@ -19,11 +18,11 @@ use self::{
     tagging_tests::tags,
 };
 #[cfg(feature = "non-fips")]
+use crate::stores::RedisWithFindex;
+#[cfg(feature = "non-fips")]
 use crate::stores::additional_redis_findex_tests::{
     test_corner_case, test_objects_db, test_permissions_db,
 };
-#[cfg(feature = "non-fips")]
-use crate::stores::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
 use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
@@ -75,16 +74,20 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
         CsRng, Secret, reexport::rand_core::SeedableRng,
     };
+
+    use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
     let mut rng = CsRng::from_entropy();
 
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
-    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label", true).await?;
+    let redis_findex =
+        RedisWithFindex::instantiate(redis_url, master_key, true, Some(b"label")).await?;
     Ok(redis_findex)
 }
 
 #[ignore = "Requires a running Redis instance"]
+#[allow(clippy::large_stack_frames)] // This a test, we can skip this as long as test machines can handle such a stack
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
@@ -132,6 +135,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?, None).await?;
     crud(&get_sqlite(&db_file).await?, None).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
+
     Ok(())
 }
 

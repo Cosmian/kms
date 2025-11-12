@@ -303,21 +303,6 @@ pub(crate) async fn test_revoke_access() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let key_id = gen_key(&ctx.get_owner_client()).await?;
 
-    //    // the user should not be able to export
-    // assert!(
-    // export(
-    // &ctx.user_client_conf_path,
-    // "sym",
-    // &key_id,
-    // "/tmp/output.json",
-    // None,
-    // false,
-    // None,
-    // false,
-    // )
-    // .is_err()
-    // );
-
     // switch back to owner
     // grant encrypt and decrypt access to user
     GrantAccess {
