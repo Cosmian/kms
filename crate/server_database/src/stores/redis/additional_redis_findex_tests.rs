@@ -127,7 +127,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt])
     );
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains_key(&user1));
@@ -187,7 +187,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
         HashSet::from([KmipOperation::Encrypt])
     );
 
-    //find the permission for the object O1
+    // find the permission for the object O1
     let permissions = permissions_db.list_object_permissions(&object1).await?;
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains_key(&user1));

@@ -75,4 +75,4 @@ echo "   Public key ID: $CC_PK_ID"
 # Useful commands for the other test :
 # ./target/debug/cosmian kms sym keys create mt_exists -a shake -t cat
 # ./target/debug/cosmian kms sym keys create mt_should_not_exist -a shake -t cat
-# ./target/debug/cosmian kms access-rights grant mt_owner locate -i mt_exists 
+# ./target/debug/cosmian kms access-rights grant mt_owner locate -i mt_exists

@@ -64,7 +64,7 @@ The schema below use the following legend :
 - permission_triplet = Tuple(user_id, obj_uid, permission)
 - metadata = Object owner, tags, and other attributes
 
-```
+```text
 KEY → VALUE
 ─────────────────────────────────────────────────────────────────────────
 db_version                  → >= 5.12.0
@@ -76,7 +76,8 @@ ENC_Findex v8(o:obj_uid)    → ENC_Findex v8(permission_triplet)
 ENC_Findex v8(u:userid)     → ENC_Findex v8(permission_triplet)
 ENC_Findex v8(object_uid)   → ENC_Findex v8(metadata)
 ```
-A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542 ](github.com/Cosmian/kms/pull/542 ).
+
+A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542](github.com/Cosmian/kms/pull/542).
 
 ### Environment Variables
 

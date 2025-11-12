@@ -203,7 +203,7 @@ impl PermissionsDB {
         let mut additions = HashMap::new();
         additions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
-        //upsert the index
+        // upsert the index
         let new_keywords = self
             .findex
             .upsert(

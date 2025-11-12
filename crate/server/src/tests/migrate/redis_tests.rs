@@ -1,12 +1,5 @@
-use crate::{
-    config::{MainDBConfig, ServerParams},
-    core::KMS,
-    result::KResult,
-    tests::{
-        migrate::utils::{open_file, restore_db_from_dump},
-        test_utils::https_clap_config,
-    },
-};
+use std::sync::Arc;
+
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
@@ -18,7 +11,16 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate;
 use cosmian_logger::{TracingConfig, trace, tracing_init};
 use redis::aio::ConnectionManager;
-use std::sync::Arc;
+
+use crate::{
+    config::{MainDBConfig, ServerParams},
+    core::KMS,
+    result::KResult,
+    tests::{
+        migrate::utils::{open_file, restore_db_from_dump},
+        test_utils::https_clap_config,
+    },
+};
 
 const TEST_DATA_PATH: &str = "src/tests/migrate/data";
 
@@ -31,7 +33,7 @@ fn get_redis_url() -> String {
         .to_owned()
 }
 
-#[allow(deprecated)] // the deprecated label is necessary to test migration from old versions   
+#[allow(deprecated)] // the deprecated label is necessary to test migration from old versions
 async fn init_test_kms(dump_filename: &str) -> KResult<Arc<KMS>> {
     let redis_url = get_redis_url();
     let client = redis::Client::open(redis_url.clone()).unwrap();

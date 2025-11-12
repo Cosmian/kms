@@ -3,8 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use super::permissions::PermissionsDB;
-use crate::stores::redis::migrations::legacy_cloudproof_redis_findex::error::LegacyDbResult;
 use async_trait::async_trait;
 use cloudproof_findex::{
     Location,
@@ -15,6 +13,9 @@ use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{Secret, SymmetricKey, kdf256};
 use cosmian_kms_interfaces::{InterfaceResult, PermissionsStore, SessionParams};
 use redis_for_migrations::aio::ConnectionManager;
+
+use super::permissions::PermissionsDB;
+use crate::stores::redis::migrations::legacy_cloudproof_redis_findex::error::LegacyDbResult;
 
 pub(crate) const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 pub(crate) const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
@@ -154,8 +155,9 @@ impl PermissionsStore for RedisWithFindex {
 
 #[cfg(test)]
 mod tests {
-    use cloudproof_findex::Location;
     use std::collections::HashSet;
+
+    use cloudproof_findex::Location;
 
     fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
         let mut iter = sets.into_iter();

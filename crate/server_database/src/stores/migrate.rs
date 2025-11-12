@@ -49,7 +49,7 @@ pub(crate) trait Migrate {
     /// Used by the migration process to update the database version after a successful migration.
     async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
 }
-///The `SqlMigrate` trait defines the methods required to migrate the database to the latest version.
+/// The `SqlMigrate` trait defines the methods required to migrate the database to the latest version.
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
 #[async_trait(?Send)]
@@ -123,9 +123,10 @@ pub(crate) trait SqlMigrate<DB>: Migrate {
 
 #[cfg(feature = "non-fips")]
 mod redis_migrate {
-    use super::{DbError, DbResult, DbState, Migrate, debug, error, lower};
     use cloudproof_findex::Label;
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
+
+    use super::{DbError, DbResult, DbState, Migrate, debug, error, lower};
     pub(crate) const LOWEST_DB_VERSION_WITH_REDIS_SUPPORT: &str = "5.0.0";
 
     /// Parameters specific to migrating from `cloudproof_findex_v5` to `cosmian_findex_v8`
@@ -155,7 +156,7 @@ mod redis_migrate {
             // In the absence of both, we assume the DB was constructed using a 4.5.0+ version of the KMS, up until 4.24.0
             if db_state.is_none() || current_db_version.is_none() {
                 let msg = "Database state (and/or version) not set - which usually means that it was constructed with
-                    a KMS version below 5.0.0. If that's the case, 
+                    a KMS version below 5.0.0. If that's the case,
                     please export all keys using standard formats such as PKCS#8 or Raw and
                     reimport them in this KMS version.".to_owned();
                 error!("{}", msg);

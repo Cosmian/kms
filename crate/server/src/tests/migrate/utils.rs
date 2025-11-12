@@ -1,10 +1,12 @@
-use crate::{error::KmsError, result::KResult};
-use cosmian_logger::{debug, trace};
-use redis::aio::ConnectionManager;
 use std::{
     fs::File,
     io::{BufReader, Read},
 };
+
+use cosmian_logger::{debug, trace};
+use redis::aio::ConnectionManager;
+
+use crate::{error::KmsError, result::KResult};
 
 pub(crate) fn read_u64_le<R: Read>(reader: &mut R) -> std::io::Result<u64> {
     let mut buf = [0_u8; 8];

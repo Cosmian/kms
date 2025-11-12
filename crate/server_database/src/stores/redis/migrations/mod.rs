@@ -2,11 +2,12 @@
 //! Once support for a certain version is dropped, the KMS should document a double upgrade strategy before aborting.
 pub(crate) mod legacy_cloudproof_redis_findex;
 
+use std::{collections::HashSet, str, sync::Arc};
+
 use async_trait::async_trait;
 use cosmian_findex::IndexADT;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use redis::{Commands, aio::ConnectionManager};
-use std::{collections::HashSet, str, sync::Arc};
 
 use crate::{
     DbError,
