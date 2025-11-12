@@ -148,15 +148,14 @@ pub(crate) async fn callback(
     };
 
     // Exchange code for tokens
-    let issuer_url = match &oidc_config.ui_oidc_issuer_url {
-        Some(url) => match IssuerUrl::new(url.clone()) {
-            Ok(valid_url) => valid_url,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Invalid issuer URL: {e}"));
-            }
-        },
-        None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
+    let Some(url) = &oidc_config.ui_oidc_issuer_url else {
+        return HttpResponse::InternalServerError().body("Issuer URL is missing");
+    };
+    let issuer_url = match IssuerUrl::new(url.clone()) {
+        Ok(valid_url) => valid_url,
+        Err(e) => {
+            return HttpResponse::InternalServerError().body(format!("Invalid issuer URL: {e}"));
+        }
     };
 
     let Ok(redirect_url) = RedirectUrl::new(format!("{}/ui/callback", kms_url.as_str())) else {
@@ -275,15 +274,14 @@ pub(crate) async fn logout(
 ) -> HttpResponse {
     session.purge();
 
-    let mut logout_url = match &oidc_config.ui_oidc_logout_url {
-        Some(url) => match Url::parse(url) {
-            Ok(parsed_url) => parsed_url,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Invalid logout URL: {e}"));
-            }
-        },
-        None => return HttpResponse::InternalServerError().body("Logout URL is missing"),
+    let Some(url) = &oidc_config.ui_oidc_logout_url else {
+        return HttpResponse::InternalServerError().body("Logout URL is missing");
+    };
+    let mut logout_url = match Url::parse(url) {
+        Ok(parsed_url) => parsed_url,
+        Err(e) => {
+            return HttpResponse::InternalServerError().body(format!("Invalid logout URL: {e}"));
+        }
     };
 
     let client_id = match &oidc_config.ui_oidc_client_id {

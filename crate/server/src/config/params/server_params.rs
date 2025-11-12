@@ -294,6 +294,15 @@ impl fmt::Debug for ServerParams {
             debug_struct
                 .field("hsm_admin", &self.hsm_admin)
                 .field("hsm_model", &self.hsm_model);
+            // Display slot passwords: mask actual passwords, show slot index
+            for (slot, password) in &self.slot_passwords {
+                let masked = if password.is_some() {
+                    "***"
+                } else {
+                    "<NO_LOGIN>"
+                };
+                debug_struct.field(&format!("hsm_slot_{slot}"), &masked);
+            }
         } else {
             debug_struct.field("hsm_model", &"no HSM configured");
         }
