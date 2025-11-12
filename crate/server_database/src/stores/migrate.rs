@@ -49,6 +49,7 @@ pub(crate) trait Migrate {
     /// Used by the migration process to update the database version after a successful migration.
     async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
 }
+
 /// The `SqlMigrate` trait defines the methods required to migrate the database to the latest version.
 // Note: <DB> must be present because it makes the database type a formal parameter of the trait itself.
 // This solves the "unconstrained type parameter" error when trying to implement is with an sqlx generic Database
@@ -136,6 +137,7 @@ mod redis_migrate {
         pub master_key: &'a Secret<32>, // lifetime specified to avoid cloning the key
         pub label: Label,
     }
+
     /// Container for all migration parameters
     /// New parameters can be added here as new migrations are introduced
     #[derive(Debug, Default)]
@@ -204,24 +206,14 @@ mod redis_migrate {
 
             if lower(&current_db_version, "5.12.0")? {
                 debug!("  ==> migrating to version 5.12.0");
-                if parameters.migrate_to_5_12_0_parameters.is_none() {
+                let migration_params = parameters.migrate_to_5_12_0_parameters.ok_or_else(|| {
                     let msg = "Missing parameters for migration to version 5.12.0. Aborting. Please \
                            provide the Redis URL, the master key and the label used by the \
                            previous DB instance.";
                     error!("{}", msg);
-                    return Err(DbError::DatabaseError(msg.to_owned()));
-                }
-                self.migrate_to_5_12_0(parameters.migrate_to_5_12_0_parameters.ok_or_else(
-                    || {
-                        DbError::DatabaseError(
-                            "Missing parameters for migration to version 5.12.0. Aborting. Please \
-            provide the Redis URL, the master key and the label used by the \
-            previous DB instance."
-                                .to_owned(),
-                        )
-                    },
-                )?)
-                .await?;
+                    DbError::DatabaseError(msg.to_owned())
+                })?;
+                self.migrate_to_5_12_0(migration_params).await?;
                 self.set_current_db_version("5.12.0").await?;
             }
 
