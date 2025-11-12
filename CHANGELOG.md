@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.11.2] - 2025-11-12
+
+### 🐛 Bug Fixes (#598)
+
+- Fix key wrapping where `wrapping-key` is itself wrapped: unwrap it and then use it
+- Add an automatic key unwrapping for google_cse key at server startup
+- Create a `OnceCell` HSM instance when multiple KMS servers are use - avoiding potential startup error
+- Improved handling of wrapped keys, attribute propagation, and TLS cipher suite configuration
+
+### 🧪 Testing (#598)
+
+- Add CLI-tests on Google CSE endpoints (/wrap, /privatekeydecrypt, etc.) and on Google key pair creation - all with the google_cse key wrapped by HSM
+
+### 📚 Documentation (#598)
+
+- Example of configuration file: replace deprecated [auth] section with [idp_auth]
+
 ## [5.11.1] - 2025-11-04
 
 ### 📚 Documentation
