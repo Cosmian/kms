@@ -21,8 +21,11 @@ non-fips = [
   "cosmian_kms_crypto/non-fips",
   "cosmian_kmip/non-fips",
   "cosmian_findex",
+  "cosmian_sse_memories",
   "cosmian_sse_memories/redis-mem",
   "cloudproof_findex/findex-redis",
+  "redis_for_migrations",
+  "redis",
 ]
 
 [dependencies]
@@ -32,9 +35,7 @@ cosmian_kms_crypto = { path = "../crypto", version = "5.11.2" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.11.2" }
 cosmian_findex = { version = "8.0", optional = true }
 cosmian_logger = { workspace = true }
-cosmian_sse_memories = { version = "8.0", features = [
-  "redis-mem",
-], optional = true }
+cosmian_sse_memories = { version = "8.0", optional = true }
 lru = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -50,7 +51,7 @@ redis = { version = "0.32", features = [
   "script",
   "connection-manager",
   "tokio-comp",
-] }
+], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 sqlx = { version = "0.8", default-features = false, features = [
@@ -75,7 +76,7 @@ redis_for_migrations = { package = "redis", version = "0.23", features = [
   "script",
   "connection-manager",
   "tokio-comp",
-] }
+], optional = true }
 strum = { workspace = true }
 
 [dev-dependencies]

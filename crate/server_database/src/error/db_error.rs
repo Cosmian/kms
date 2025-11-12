@@ -70,6 +70,7 @@ pub enum DbError {
     #[error("Proteccio error: {0}")]
     Proteccio(String),
 
+    #[cfg(feature = "non-fips")]
     #[error("Redis Error: {0}")]
     Redis(#[from] redis::RedisError),
 

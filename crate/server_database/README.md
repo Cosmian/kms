@@ -13,7 +13,7 @@ This crate implements the database layer that handles persistent storage of cryp
 
 ### SQL Databases (SQLite, PostgreSQL, MySQL)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         KMS Database Schema                             │
 ├─────────────────────────────────────────────────────────────────────────┤

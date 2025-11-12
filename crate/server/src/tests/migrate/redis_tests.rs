@@ -8,9 +8,11 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::kmip_operations::Locate,
+    redis::{self, aio::ConnectionManager},
+};
 use cosmian_logger::{TracingConfig, trace, tracing_init};
-use redis::aio::ConnectionManager;
 
 use crate::{
     config::{MainDBConfig, ServerParams},

@@ -3,8 +3,8 @@ use std::{
     io::{BufReader, Read},
 };
 
+use cosmian_kms_server_database::reexport::redis::{self, aio::ConnectionManager};
 use cosmian_logger::{debug, trace};
-use redis::aio::ConnectionManager;
 
 use crate::{error::KmsError, result::KResult};
 
