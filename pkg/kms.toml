@@ -120,27 +120,23 @@ hostname = "0.0.0.0"
 ## proxy_exclusion_list = ["domain1", "domain2"]
 
 # Check the Authenticating Users documentation pages for more information.
-[auth]
-# The issuer URI of the JWT token
-# To handle multiple identity managers, add different parameters
-# under each argument (jwt-issuer-uri, jwks-uri, and optionally jwt-audience),
-# keeping them in the same order in the three lists.
-# For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
-# For Google, this would be `https://accounts.google.com`
-## jwt_issuer_uri = ["<jwt issuer uri>"]
-
-# The JWKS (Json Web Key Set) URI of the JWT token
-# To handle multiple identity managers, add different parameters under each argument
-#  (jwt-issuer-uri, jwks-uri and optionally jwt-audience), keeping them in the same order
-# To set an identity provider configuration element to None, set its value to an empty string.
-# For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-# For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
-# Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
-## jwks_uri = ["<jwks uri>"]
-
-# The audience of the JWT token
-# Optional: the server will validate the JWT `aud` claim against this value if set
-## jwt_audience = ["<jwt audience>"]
+[idp_auth]
+# JWT authentication provider configuration.
+# Each provider configuration should be in the format: "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE" where:
+# - JWT_ISSUER_URI: The issuer URI of the JWT token (required)
+# - JWKS_URI: The JWKS (JSON Web Key Set) URI (optional; defaults to <JWT_ISSUER_URI>/.well-known/jwks.json if empty or omitted)
+# - JWT_AUDIENCE: The audience of the JWT token (optional; can be empty)
+# Examples:
+# - "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"
+# - "https://auth0.example.com,,my-app"  (JWKS URI will default)
+# - "https://keycloak.example.com/auth/realms/myrealm,," (no audience, JWKS URI will default)
+# Multiple providers can be listed. Duplicate entries (same issuer/JWKS/audience) are deduplicated; last wins.
+# Uncomment and adapt:
+# jwt_auth_provider = [
+#   "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience",
+#   "https://auth0.example.com,,my-app",
+#   "https://keycloak.example.com/auth/realms/myrealm,,"
+# ]
 
 [workspace]
 # The root folder where the KMS will store its data
@@ -191,7 +187,7 @@ ui_index_html_folder = "/usr/local/cosmian/ui/dist"
 
 # Configuration for the handling of authentication with OIDC from the KMS UI.
 # This is used to authenticate users when they access the KMS UI.
-# The same Identity Provider must **also** be configured in the [auth] section above.
+# The same Identity Provider must **also** be configured in the [idp_auth] section above.
 [ui_config.ui_oidc_auth]
 ## ui_oidc_client_id = "<client id>"
 ## ui_oidc_client_secret = "<client secret>" (optional)
