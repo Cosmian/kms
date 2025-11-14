@@ -1,3 +1,4 @@
+mod azure_ekm_config;
 mod clap_config;
 mod db;
 mod google_cse_config;
@@ -12,6 +13,7 @@ mod tls_config;
 mod ui_config;
 mod workspace;
 
+pub use azure_ekm_config::AzureEkmConfig;
 pub use clap_config::ClapConfig;
 pub use db::{DEFAULT_SQLITE_PATH, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;

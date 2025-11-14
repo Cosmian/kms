@@ -695,8 +695,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         None
     };
 
-    // Should we enable the MS DKE Service?
+    // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
+
+    // Should we enable the Azure EKM API ?
+    let enable_ms_dke = kms_server.params.azure_ekm.is_some();
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
@@ -766,6 +769,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
+        }
+
+        if enable_azure_ekm {
+            todo!("Azure EKM service is not yet TODO");
         }
 
         let ui_index_folder = kms_server.params.ui_index_html_folder.clone();

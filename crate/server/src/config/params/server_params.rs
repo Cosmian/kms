@@ -110,6 +110,8 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    pub azure_ekm: Option<bool>,
 }
 
 /// Represents the server parameters.
@@ -235,6 +237,7 @@ impl ServerParams {
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            azure_ekm: conf.azure_ekm,
         };
         debug!("{res:#?}");
 
