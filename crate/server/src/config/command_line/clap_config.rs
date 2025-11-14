@@ -11,7 +11,7 @@ use super::{
     logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
-    config::{ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
 };
@@ -59,6 +59,7 @@ impl Default for ClapConfig {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            azure_ekm_config: AzureEkmConfig::default(),
         }
     }
 }
@@ -162,6 +163,9 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub azure_ekm_config: AzureEkmConfig,
 }
 
 impl ClapConfig {
@@ -317,6 +321,35 @@ impl fmt::Debug for ClapConfig {
                 "google_cse_enable",
                 &self.google_cse_config.google_cse_enable,
             )
+        };
+        let x = if self.azure_ekm_config.azure_ekm_enable {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm_config.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm_config.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm_config.azure_ekm_proxy_vendor,
+                )
+                .field(
+                    "azure_ekm_proxy_name",
+                    &self.azure_ekm_config.azure_ekm_proxy_name,
+                )
+                .field(
+                    "azure_ekm_ekm_vendor",
+                    &self.azure_ekm_config.azure_ekm_ekm_vendor,
+                )
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm_config.azure_ekm_ekm_product,
+                )
+        } else {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
         };
         let x = x.field(
             "Microsoft Double Key Encryption URL",

@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+         AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
         params::{OpenTelemetryConfig, proxy_params::ProxyParams},
     },
     error::KmsError,
@@ -116,6 +116,8 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    pub azure_ekm: AzureEkmConfig,
 }
 
 /// Represents the server parameters.
@@ -276,6 +278,7 @@ impl ServerParams {
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            azure_ekm: conf.azure_ekm_config,
         };
         debug!("{res:#?}");
 
