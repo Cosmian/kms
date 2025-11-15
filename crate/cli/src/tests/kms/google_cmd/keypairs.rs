@@ -14,7 +14,7 @@ use test_kms_server::{
 
 use crate::{
     actions::kms::{
-        google::keypairs::create::CreateKeyPairsAction,
+        attributes::GetAttributesAction, google::keypairs::create::CreateKeyPairsAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -93,13 +93,22 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     log_init(None);
     let ctx = start_default_test_kms_server().await;
 
-    // Create the Google CSE key
-    let cse_key_id = CreateKeyAction {
-        key_id: Some("google_cse".to_owned()),
+    // Create the Google CSE key if does not exist
+    let resp = GetAttributesAction {
+        id: Some("google_cse".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
-    .await?;
+    .await;
+
+    if resp.is_err() {
+        let _cse_key_id = CreateKeyAction {
+            key_id: Some("google_cse".to_owned()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await?;
+    }
 
     // import signers
     let (_root_id, _intermediate_id, issuer_private_key_id) =
@@ -108,7 +117,7 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
         user_id: "marta.doe@acme.com".to_owned(),
-        cse_key_id: cse_key_id.to_string(),
+        cse_key_id: "google_cse".to_string(),
         issuer_private_key_id: Some(issuer_private_key_id.to_string()),
         subject_name: "CN=Marta Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
         rsa_private_key_id: None,
@@ -149,7 +158,7 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
         &ctx.get_owner_client(),
         &private_key_id,
         ExportObjectParams {
-            wrapping_key_id: Some(&cse_key_id.to_string()),
+            wrapping_key_id: Some("google_cse"),
             wrapping_cryptographic_parameters: Some(CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCM),

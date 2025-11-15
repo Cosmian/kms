@@ -60,9 +60,14 @@ pub(crate) async fn export_get(
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Export: unique_identifier or tags must be a string")?;
-    let mut owm =
-        retrieve_object_for_operation(uid_or_tags, operation_type, kms, user, params.clone())
-            .await?;
+    let mut owm = Box::pin(retrieve_object_for_operation(
+        uid_or_tags,
+        operation_type,
+        kms,
+        user,
+        params.clone(),
+    ))
+    .await?;
 
     // The object cannot be exported if it is sensitive and is not wrapped on export,
     if owm.attributes().sensitive == Some(true) && request.key_wrapping_specification.is_none() {
@@ -319,7 +324,15 @@ async fn post_process_private_key(
     }
     // in the case of a PKCS#12, the private key must be packaged with the certificate
     if is_pkcs12 {
-        build_pkcs12_for_private_key(kms, operation_type, user, params, request, owm).await?;
+        Box::pin(build_pkcs12_for_private_key(
+            kms,
+            operation_type,
+            user,
+            params,
+            request,
+            owm,
+        ))
+        .await?;
     }
     Ok(())
 }
@@ -337,7 +350,7 @@ async fn post_process_active_private_key(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    trace!("post_process_active_private_key: key_format_type: {key_format_type:?}",);
+    trace!("key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
     unwrap_if_requested(
         object_with_metadata,
@@ -397,7 +410,6 @@ async fn post_process_active_private_key(
         .context("export: unable to parse the private key to openssl")?;
 
     // Wrapping is only available, for KeyFormatType being the default (i.e. None)
-
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
@@ -458,10 +470,7 @@ async fn post_process_active_private_key(
 
     // No wrapping requested: export the private key to the requested format
     if let Some(key_format_type) = key_format_type {
-        debug!(
-            "export: exporting private key with format: {:?}",
-            key_format_type
-        );
+        debug!("exporting private key with format: {:?}", key_format_type);
         #[cfg(feature = "non-fips")]
         let supported_formats = [
             KeyFormatType::PKCS1,
@@ -696,10 +705,7 @@ async fn unwrap_if_requested(
     let mut key_wrap_type = *key_wrap_type;
     if key_wrap_type.is_none() {
         if let Some(defaults) = &kms.params.default_unwrap_types {
-            if defaults
-                .iter()
-                .any(|d| d.eq_ignore_ascii_case(&object_type.to_string()))
-            {
+            if defaults.contains(&object_type) {
                 key_wrap_type = Some(KeyWrapType::NotWrapped);
             }
         }
@@ -1001,13 +1007,13 @@ async fn build_pkcs12_for_private_key(
         }
         trace!("certificate parent id is:  {}", parent_id);
         // retrieve the parent certificate
-        cert_owm = retrieve_object_for_operation(
+        cert_owm = Box::pin(retrieve_object_for_operation(
             &parent_id.to_string(),
             operation_type,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
         let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
         chain.push(certificate)?;
@@ -1089,25 +1095,25 @@ async fn post_process_pkcs7(
         .ok_or_else(|| {
             KmipError::Default("No Public Key found in the leaf certificate".to_owned())
         })?;
-    let public_key_owm = retrieve_object_for_operation(
+    let public_key_owm = Box::pin(retrieve_object_for_operation(
         &public_key_id.to_string(),
         operation_type,
         kms,
         user,
         params.clone(),
-    )
+    ))
     .await?;
     let private_key_id = public_key_owm
         .attributes()
         .get_link(LinkType::PrivateKeyLink);
     if let Some(private_key_id) = private_key_id {
-        let private_key_owm = retrieve_object_for_operation(
+        let private_key_owm = Box::pin(retrieve_object_for_operation(
             &private_key_id.to_string(),
             operation_type,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
         let pkey = kmip_private_key_to_openssl(private_key_owm.object())
             .context("export: unable to parse the private key to openssl")?;
@@ -1122,13 +1128,13 @@ async fn post_process_pkcs7(
                 break;
             }
             // Retrieve the parent certificate
-            cert_owm = retrieve_object_for_operation(
+            cert_owm = Box::pin(retrieve_object_for_operation(
                 &parent_id.to_string(),
                 operation_type,
                 kms,
                 user,
                 params.clone(),
-            )
+            ))
             .await?;
             let certificate = kmip_certificate_to_openssl(cert_owm.object())
                 .context("export: unable to parse the certificate to openssl")?;

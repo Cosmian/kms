@@ -1,6 +1,8 @@
-use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
 
-use cosmian_kms_server_database::MainDbParams;
+use cosmian_kms_server_database::{
+    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+};
 use cosmian_logger::{debug, warn};
 
 use super::TlsParams;
@@ -98,11 +100,11 @@ pub struct ServerParams {
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved
     ///
-    /// Each entry must be the string name of a KMIP `ObjectType`, for example:
-    /// `["SecretData", "SymmetricKey"]`.
+    /// Each entry must be a KMIP `ObjectType`, for example:
+    /// `[ObjectType::SecretData, ObjectType::SymmetricKey]`.
     ///
     /// If `None`, no automatic unwrapping will be performed.
-    pub default_unwrap_types: Option<Vec<String>>,
+    pub default_unwrap_types: Option<Vec<ObjectType>>,
 
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
@@ -230,7 +232,23 @@ impl ServerParams {
             },
             slot_passwords,
             key_wrapping_key: conf.key_encryption_key,
-            default_unwrap_types: conf.default_unwrap_type,
+            default_unwrap_types: conf
+                .default_unwrap_type
+                .map(|types| {
+                    types
+                        .into_iter()
+                        .map(|s| {
+                            ObjectType::from_str(&s).map_err(|e| {
+                                KmsError::ServerError(format!(
+                                    "Invalid ObjectType: '{s}'. Valid values are: Certificate, \
+                                     SymmetricKey, PublicKey, PrivateKey, SplitKey, SecretData, \
+                                     OpaqueObject, PGPKey, CertificateRequest. Error: {e}"
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<ObjectType>, KmsError>>()
+                })
+                .transpose()?,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
@@ -306,6 +324,7 @@ impl fmt::Debug for ServerParams {
         } else {
             debug_struct.field("hsm_model", &"no HSM configured");
         }
+        debug_struct.field("key_wrapping_key", &self.key_wrapping_key);
 
         debug_struct.field(
             "kms_url",

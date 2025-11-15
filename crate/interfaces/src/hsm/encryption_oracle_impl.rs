@@ -142,8 +142,7 @@ fn parse_uid(uid: &str) -> InterfaceResult<(usize, Vec<u8>)> {
         .split_once("::")
         .ok_or_else(|| {
             InterfaceError::InvalidRequest(
-                "An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
-                    .to_owned(),
+                format!("An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'. Got {uid}")
             )
         })?;
     let slot_id = slot_id.parse::<usize>().map_err(|e| {

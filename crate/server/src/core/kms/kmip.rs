@@ -230,7 +230,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "encrypt");
         let _enter = span.enter();
 
-        operations::delete_attribute(self, request, user, params).await
+        Box::pin(operations::delete_attribute(self, request, user, params)).await
     }
 
     /// This request is used to derive a Symmetric Key or Secret Data object from keys or Secret Data objects that are already known to the key management system. The request SHALL only apply to Managed Objects that have the Derive Key bit set in the Cryptographic Usage Mask attribute of the specified Managed Object (i.e., are able to be used for key derivation). If the operation is issued for an object that does not have this bit set, then the server SHALL return an error. For all derivation methods, the client SHALL specify the desired length of the derived key or Secret Data object using the Cryptographic Length attribute. If a key is created, then the client SHALL specify both its Cryptographic Length and Cryptographic Algorithm. If the specified length exceeds the output of the derivation method, then the server SHALL return an error. Clients MAY derive multiple keys and IVs by requesting the creation of a Secret Data object and specifying a Cryptographic Length that is the total length of the derived object. If the specified length exceeds the output of the derivation method, then the server SHALL return an error.
@@ -381,7 +381,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "get_attributes");
         let _enter = span.enter();
 
-        operations::get_attributes(self, request, user, params).await
+        Box::pin(operations::get_attributes(self, request, user, params)).await
     }
 
     /// This operation requests the server to perform a hash operation on the data provided.
@@ -579,7 +579,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "mac");
         let _enter = span.enter();
 
-        operations::mac(self, request, user, params).await
+        Box::pin(operations::mac(self, request, user, params)).await
     }
 
     pub(crate) async fn message(
@@ -691,7 +691,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "set_attribute");
         let _enter = span.enter();
 
-        operations::set_attribute(self, request, user, params).await
+        Box::pin(operations::set_attribute(self, request, user, params)).await
     }
 
     /// This operation requests the server to perform a signature operation on the provided data
@@ -728,7 +728,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "signature_verify");
         let _enter = span.enter();
 
-        operations::signature_verify(self, request, user, params).await
+        Box::pin(operations::signature_verify(self, request, user, params)).await
     }
 
     /// This operation requests the server to validate a certificate chain and return information on its validity. Only a single certificate chain SHALL be included in each request.
@@ -745,7 +745,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "validate");
         let _enter = span.enter();
 
-        operations::validate_operation(self, request, user, params).await
+        Box::pin(operations::validate_operation(self, request, user, params)).await
     }
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -769,6 +769,6 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "revoke");
         let _enter = span.enter();
 
-        operations::revoke_operation(self, request, user, params).await
+        Box::pin(operations::revoke_operation(self, request, user, params)).await
     }
 }

@@ -91,7 +91,13 @@ pub(crate) async fn validate_operation(
             let set: HashSet<_> = unique_identifiers.drain(..).collect(); // dedup
             unique_identifiers.extend(set.into_iter());
             Ok((
-                certificates_by_uid(unique_identifiers.clone(), kms, user, params).await?,
+                Box::pin(certificates_by_uid(
+                    unique_identifiers.clone(),
+                    kms,
+                    user,
+                    params,
+                ))
+                .await?,
                 unique_identifiers.len(),
             ))
         }
@@ -101,7 +107,13 @@ pub(crate) async fn validate_operation(
             Ok((
                 [
                     certificates.clone(),
-                    certificates_by_uid(unique_identifiers.clone(), kms, user, params).await?,
+                    Box::pin(certificates_by_uid(
+                        unique_identifiers.clone(),
+                        kms,
+                        user,
+                        params,
+                    ))
+                    .await?,
                 ]
                 .concat(),
                 certificates.len() + unique_identifiers.len(),
@@ -650,7 +662,13 @@ async fn certificates_by_uid(
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::Certificate("as_str returned None in certificates_by_uid".to_owned())
         })?;
-        let result = certificate_by_uid(unique_identifier, kms, user, params.clone()).await?;
+        let result = Box::pin(certificate_by_uid(
+            unique_identifier,
+            kms,
+            user,
+            params.clone(),
+        ))
+        .await?;
         results.push(result);
     }
     Ok(results)
@@ -663,13 +681,13 @@ async fn certificate_by_uid(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<u8>> {
-    let uid_owm = retrieve_object_for_operation(
+    let uid_owm = Box::pin(retrieve_object_for_operation(
         unique_identifier,
         KmipOperation::Validate,
         kms,
         user,
         params,
-    )
+    ))
     .await?;
 
     if let Object::Certificate(Certificate {

@@ -78,7 +78,14 @@ pub(crate) async fn mac(
     let digest = if let Some(correlation_value) = request.correlation_value {
         compute_hmac(&correlation_value, &data, algorithm)?
     } else {
-        let owm = retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params).await?;
+        let owm = Box::pin(retrieve_object_for_operation(
+            uid,
+            KmipOperation::Get,
+            kms,
+            user,
+            params,
+        ))
+        .await?;
         let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };

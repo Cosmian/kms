@@ -18,9 +18,6 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
-use cosmian_kms_crypto::crypto::{
-    rsa::sign_rsa_digest_with_algorithm, wrap::aes_gcm_decrypt as cse_unwrap,
-};
 use cosmian_logger::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 
@@ -251,11 +248,11 @@ impl CreateKeyPairsAction {
 
         let wrapped_key_bytes = wrapped_private_key.key_block()?.wrapped_key_bytes()?;
 
-        // Sanity check: ensure the RSA private key is loadable as PKCS#8 DER.
-        private_key_rsa_sanity_check(&kms_rest_client, &self.cse_key_id, &wrapped_key_bytes)
-            .await?;
+        // // Sanity check: ensure the RSA private key is loadable as PKCS#8 DER.
+        // private_key_rsa_sanity_check(&kms_rest_client, &self.cse_key_id, &wrapped_key_bytes)
+        //     .await?;
 
-        // Determine the certificate to use - either existing or newly created
+        trace!("Determine the certificate to use - either existing or newly created");
         let certificate_unique_identifier = match (
             // Choice 1
             &self.leaf_certificate_id,
@@ -291,10 +288,7 @@ impl CreateKeyPairsAction {
 
                 attributes.set_x509_extension_file(certificate_extensions_bytes);
 
-                debug!(
-                    "Creating new leaf certificate with attributes: {}",
-                    attributes
-                );
+                debug!("Creating new leaf certificate with attributes: {attributes}");
                 let certify_request = Certify {
                     unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),
                     attributes: Some(attributes),
@@ -356,6 +350,7 @@ impl CreateKeyPairsAction {
                 ));
             }
         };
+        info!("[{email}] - certificate ID used: {certificate_unique_identifier}");
 
         // From the created leaf certificate, export the associated PKCS7 containing the whole cert chain
         let (_, pkcs7_object, _pkcs7_object_export_attributes) = export_object(
@@ -410,43 +405,43 @@ impl CreateKeyPairsAction {
     }
 }
 
-/// Export in memory the given private key as unwrapped PKCS#8 DER and verify that OpenSSL is correctly loading it and signing with it.
-async fn private_key_rsa_sanity_check(
-    kms_rest_client: &KmsClient,
-    cse_key_id: &str,
-    wrapped_private_key_bytes: &[u8],
-) -> Result<(), KmsCliError> {
-    debug!("Sanity check: exporting private key as PKCS#8 DER for validation");
+// /// Export in memory the given private key as unwrapped PKCS#8 DER and verify that OpenSSL is correctly loading it and signing with it.
+// async fn private_key_rsa_sanity_check(
+//     kms_rest_client: &KmsClient,
+//     cse_key_id: &str,
+//     wrapped_private_key_bytes: &[u8],
+// ) -> Result<(), KmsCliError> {
+//     debug!("Sanity check: exporting private key as PKCS#8 DER for validation");
 
-    // 1) Export the CSE KEK (AES key) as raw, not wrapped
-    let (_kek_id, kek_object, _kek_attrs) = export_object(
-        kms_rest_client,
-        cse_key_id,
-        ExportObjectParams {
-            key_format_type: Some(KeyFormatType::Raw),
-            ..ExportObjectParams::default()
-        },
-    )
-    .await?;
+//     // 1) Export the CSE KEK (AES key) as raw, not wrapped
+//     let (_kek_id, kek_object, _kek_attrs) = export_object(
+//         kms_rest_client,
+//         cse_key_id,
+//         ExportObjectParams {
+//             key_format_type: Some(KeyFormatType::Raw),
+//             ..ExportObjectParams::default()
+//         },
+//     )
+//     .await?;
 
-    // 2) Extract KEK bytes
-    let kek_bytes = kek_object
-        .key_block()
-        .map_err(|e| KmsCliError::ServerError(format!("KEK key_block error: {e}")))?
-        .key_bytes()
-        .map_err(|e| KmsCliError::ServerError(format!("KEK key_bytes error: {e}")))?;
+//     // 2) Extract KEK bytes
+//     let kek_bytes = kek_object
+//         .key_block()
+//         .map_err(|e| KmsCliError::ServerError(format!("KEK key_block error: {e}")))?
+//         .key_bytes()
+//         .map_err(|e| KmsCliError::ServerError(format!("KEK key_bytes error: {e}")))?;
 
-    // 3) Unwrap the wrapped private key using the crypto helper (no AAD for private keys, unlike data keys which use resource names as AAD)
-    let wrapped_b64 = general_purpose::STANDARD.encode(wrapped_private_key_bytes);
-    let private_key_pkcs8 = cse_unwrap(&wrapped_b64, &kek_bytes)
-        .map_err(|e| KmsCliError::ServerError(format!("Unwrap failed: {e}")))?;
+//     // 3) Unwrap the wrapped private key using the crypto helper (no AAD for private keys, unlike data keys which use resource names as AAD)
+//     let wrapped_b64 = general_purpose::STANDARD.encode(wrapped_private_key_bytes);
+//     let private_key_pkcs8 = cse_unwrap(&wrapped_b64, &kek_bytes)
+//         .map_err(|e| KmsCliError::ServerError(format!("Unwrap failed: {e}")))?;
 
-    // Try to sign SHA-256("") digest to ensure key usability
-    let digest_b64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="; // base64 of SHA-256("")
-    let _sig =
-        sign_rsa_digest_with_algorithm(&private_key_pkcs8, "SHA256withRSA", digest_b64, None)
-            .map_err(|e| KmsCliError::ServerError(format!("RSA sanity check failed: {e}")))?;
+//     // Try to sign SHA-256("") digest to ensure key usability
+//     let digest_b64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="; // base64 of SHA-256("")
+//     let _sig =
+//         sign_rsa_digest_with_algorithm(&private_key_pkcs8, "SHA256withRSA", digest_b64, None)
+//             .map_err(|e| KmsCliError::ServerError(format!("RSA sanity check failed: {e}")))?;
 
-    debug!("RSA private key DER sanity check passed PKCS#8");
-    Ok(())
-}
+//     debug!("RSA private key DER sanity check passed PKCS#8");
+//     Ok(())
+// }

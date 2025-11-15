@@ -65,9 +65,8 @@ impl ObjectsStore for HsmStore {
         // try converting the rest of the uid into a slot_id
         let uid = uid.as_ref().ok_or_else(|| {
             InterfaceError::InvalidRequest(
-                "An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
-                    .to_owned(),
-            )
+                format!("An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'. Got {uid:?}"
+            ))
         })?;
         let (slot_id, key_id) = parse_uid(uid)?;
         if object.object_type() != ObjectType::SymmetricKey {

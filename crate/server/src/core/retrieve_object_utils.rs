@@ -62,6 +62,16 @@ pub(crate) async fn retrieve_object_for_operation(
                     attributes.state = Some(state);
                 }
             }
+
+            if let Some(defaults) = &kms.params.default_unwrap_types {
+                if defaults.contains(&owm.object().object_type()) {
+                    let unwrapped_object = kms
+                        .get_unwrapped(owm.id(), owm.object(), user, params)
+                        .await?;
+                    owm.set_object(unwrapped_object);
+                }
+            }
+
             return Ok(owm);
         }
     }

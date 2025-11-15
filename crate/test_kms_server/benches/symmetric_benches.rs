@@ -8,7 +8,7 @@
     clippy::unnecessary_wraps,
     clippy::as_conversions
 )]
-use cosmian_kms_client::{
+use cosmian_kms_cli::reexport::cosmian_kms_client::{
     KmsClient, KmsClientError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{

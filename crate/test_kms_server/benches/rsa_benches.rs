@@ -8,7 +8,7 @@
     clippy::as_conversions
 )]
 
-use cosmian_kms_client::{
+use cosmian_kms_cli::reexport::cosmian_kms_client::{
     KmsClient,
     kmip_0::{
         kmip_messages::{

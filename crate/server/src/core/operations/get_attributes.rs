@@ -40,13 +40,13 @@ pub(crate) async fn get_attributes(
         .as_str()
         .context("Get Attributes: the unique identifier must be a string")?;
 
-    let owm = retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::GetAttributes,
         kms,
         user,
         params.clone(),
-    )
+    ))
     .await?;
     trace!(
         "Get Attributes: Retrieved object for get attributes: {}",

@@ -23,19 +23,16 @@ use actix_web::{
     middleware::Condition,
     web::{self, Data, JsonConfig, PayloadConfig},
 };
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject, DbError,
-    reexport::{
-        cosmian_kmip::kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
-            kmip_operations::GetAttributes,
-            kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
-            requests::{create_rsa_key_pair_request, import_object_request},
-        },
-        cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
+        kmip_operations::GetAttributes,
+        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+        requests::{create_rsa_key_pair_request, import_object_request},
     },
+    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
 };
 use cosmian_logger::{debug, error, info, trace};
 use openssl::ssl::SslAcceptorBuilder;
@@ -43,7 +40,7 @@ use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
     config::{JwtAuthConfig, ServerParams, TlsParams},
-    core::{KMS, wrapping::unwrap_object},
+    core::KMS,
     error::KmsError,
     middlewares::{
         ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
@@ -318,94 +315,6 @@ async fn import_cse_migration_key(
         .map(|(resp_sk, resp_pk)| (resp_sk.unique_identifier, resp_pk.unique_identifier))
 }
 
-/// Pre-populates the unwrapped cache with the Google CSE key.
-///
-/// This function retrieves the Google CSE symmetric key from the database and stores
-/// its unwrapped version in the cache. This allows to benefit of the KMS unwrapped keys cleanup
-/// while keeping the key ready to be unwrapped.
-///
-/// **Note**: This function only caches the key if it exists AND is wrapped.
-///
-/// # Errors
-///
-/// * `KmsError::ServerError` if the key cannot be retrieved or cached
-async fn cache_google_cse_key(
-    kms_server: &Arc<KMS>,
-    server_params: &Arc<ServerParams>,
-) -> KResult<()> {
-    let uid = GOOGLE_CSE_ID.to_owned();
-
-    // Retrieve the Google CSE key from the database
-    let owm = match kms_server.database.retrieve_object(&uid, None).await {
-        Ok(Some(owm)) => owm,
-        Ok(None) => {
-            debug!(
-                "Google CSE key '{}' not found in database, skipping cache population",
-                uid
-            );
-            return Ok(());
-        }
-        Err(e) => {
-            return Err(KmsError::ServerError(format!(
-                "Failed to retrieve Google CSE key for caching: {e}"
-            )));
-        }
-    };
-
-    let object = owm.object();
-
-    if !object.is_wrapped() {
-        debug!(
-            "Google CSE key '{}' is not wrapped, skipping cache population",
-            uid
-        );
-        return Ok(());
-    }
-
-    // The key is wrapped, so we need to unwrap it and cache it
-    debug!("Google CSE key '{}' is wrapped, unwrapping for cache", uid);
-
-    // Unwrap the object manually
-    let fingerprint = object.fingerprint().map_err(|e| {
-        KmsError::ServerError(format!(
-            "Failed to compute fingerprint for Google CSE key: {e}"
-        ))
-    })?;
-
-    let mut unwrapped_object = object.clone();
-    let unwrap_result = unwrap_object(
-        &mut unwrapped_object,
-        kms_server,
-        &server_params.default_username,
-        None,
-    )
-    .await;
-
-    // Create the cached unwrapped object based on the unwrap result
-    let cached_unwrapped = match &unwrap_result {
-        Ok(()) => Ok(CachedUnwrappedObject::new(fingerprint, unwrapped_object)),
-        Err(e) => Err(DbError::UnwrappedCache(e.to_string())),
-    };
-
-    // Insert into the cache
-    kms_server
-        .database
-        .unwrapped_cache()
-        .insert(uid.clone(), cached_unwrapped)
-        .await;
-
-    // Return the result based on whether unwrapping succeeded
-    match unwrap_result {
-        Ok(()) => {
-            info!("Google CSE key '{}' unwrapped and cached successfully", uid);
-            Ok(())
-        }
-        Err(e) => Err(KmsError::ServerError(format!(
-            "Failed to unwrap and cache Google CSE key: {e}"
-        ))),
-    }
-}
-
 /// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
 /// The server is started using one of three methods:
@@ -461,11 +370,6 @@ pub async fn start_kms_server(
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .context("start KMS server: failed managing Google CSE RSA Keypair")?;
-
-        // Pre-populate the unwrapped cache with the Google CSE key
-        Box::pin(cache_google_cse_key(&kms_server, &server_params))
-            .await
-            .context("start KMS server: failed caching Google CSE key")?;
     }
 
     // Handle sockets

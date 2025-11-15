@@ -47,7 +47,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
         attribute_link_types: vec![],
         output_file: None,
     }
-    .process(ctx.get_owner_client())
+    .run(ctx.get_owner_client())
     .await?;
 
     debug!("pkcs12_attributes: {pkcs12_attributes:?}");
@@ -68,7 +68,7 @@ async fn test_get_attributes_p12() -> KmsCliResult<()> {
         attribute_link_types: vec![],
         output_file: None,
     }
-    .process(ctx.get_owner_client())
+    .run(ctx.get_owner_client())
     .await?;
 
     debug!("intermediate_attributes: {intermediate_attributes:?}");

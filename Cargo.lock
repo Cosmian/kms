@@ -5244,7 +5244,7 @@ name = "test_kms_server"
 version = "5.11.2"
 dependencies = [
  "actix-server",
- "cosmian_kms_client",
+ "cosmian_kms_cli",
  "cosmian_kms_server",
  "cosmian_logger",
  "criterion",
