@@ -695,9 +695,6 @@ async fn process_pkcs12(
     }
     trace!("Private key linked to leaf certificate");
 
-    // Keep a copy a private key attributes before potential key wrapping
-    let private_key_attributes = private_key.attributes()?.clone();
-
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
@@ -710,6 +707,7 @@ async fn process_pkcs12(
     trace!("Private key wrapped and cached");
 
     // Create an operation to set the private key
+    let private_key_attributes = private_key.attributes()?.clone();
     operations.push(single_operation(
         private_key_attributes.get_tags(),
         replace_existing,
