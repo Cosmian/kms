@@ -235,18 +235,34 @@ impl ServerParams {
             default_unwrap_types: conf
                 .default_unwrap_type
                 .map(|types| {
-                    types
-                        .into_iter()
-                        .map(|s| {
-                            ObjectType::from_str(&s).map_err(|e| {
-                                KmsError::ServerError(format!(
-                                    "Invalid ObjectType: '{s}'. Valid values are: Certificate, \
-                                     SymmetricKey, PublicKey, PrivateKey, SplitKey, SecretData, \
-                                     OpaqueObject, PGPKey, CertificateRequest. Error: {e}"
-                                ))
+                    // Check if "All" is specified
+                    if types.iter().any(|s| s.eq_ignore_ascii_case("All")) {
+                        Ok(vec![
+                            ObjectType::Certificate,
+                            ObjectType::CertificateRequest,
+                            ObjectType::OpaqueObject,
+                            ObjectType::PGPKey,
+                            ObjectType::PrivateKey,
+                            ObjectType::PublicKey,
+                            ObjectType::SecretData,
+                            ObjectType::SplitKey,
+                            ObjectType::SymmetricKey,
+                        ])
+                    } else {
+                        types
+                            .into_iter()
+                            .map(|s| {
+                                ObjectType::from_str(&s).map_err(|e| {
+                                    KmsError::ServerError(format!(
+                                        "Invalid ObjectType: '{s}'. Valid values are: All, \
+                                         Certificate, CertificateRequest, OpaqueObject, PGPKey, \
+                                         PrivateKey, PublicKey, SecretData, SplitKey, \
+                                         SymmetricKey. Error: {e}"
+                                    ))
+                                })
                             })
-                        })
-                        .collect::<Result<Vec<ObjectType>, KmsError>>()
+                            .collect::<Result<Vec<ObjectType>, KmsError>>()
+                    }
                 })
                 .transpose()?,
             non_revocable_key_id: conf.non_revocable_key_id,

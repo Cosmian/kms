@@ -350,6 +350,7 @@ async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
         leaf_certificate_id: None,
         leaf_certificate_pkcs12_file: None,
         leaf_certificate_pkcs12_password: None,
+        number_of_days: 365,
         dry_run: true,
     };
     action.run(ctx.get_owner_client()).await.unwrap_err();
@@ -428,6 +429,7 @@ async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliRes
         leaf_certificate_id: None,
         leaf_certificate_pkcs12_file: None,
         leaf_certificate_pkcs12_password: None,
+        number_of_days: 365,
         dry_run: true,
     };
     action.run(ctx.get_owner_client()).await.unwrap();

@@ -26,7 +26,7 @@ pub enum KeyPairsCommands {
     Enable(EnableKeyPairsAction),
     Disable(DisableKeyPairsAction),
     Obliterate(ObliterateKeyPairsAction),
-    Create(CreateKeyPairsAction),
+    Create(Box<CreateKeyPairsAction>),
 }
 
 impl KeyPairsCommands {

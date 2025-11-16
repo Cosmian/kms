@@ -409,6 +409,15 @@ async fn post_process_active_private_key(
     let openssl_key = kmip_private_key_to_openssl(object)
         .context("export: unable to parse the private key to openssl")?;
 
+    // Sanity check: verify RSA private key integrity if it's an RSA key
+    if openssl_key.id() == openssl::pkey::Id::RSA {
+        openssl_key
+            .rsa()
+            .context("export: failed to extract RSA key for validation")?
+            .check_key()
+            .context("export: RSA private key validation failed - key is mathematically invalid")?;
+    }
+
     // Wrapping is only available, for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {

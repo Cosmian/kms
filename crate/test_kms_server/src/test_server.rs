@@ -766,12 +766,7 @@ pub fn build_server_params_full(
         default_username: "tech@cosmian.com".to_owned(),
         key_encryption_key: opts.key_encryption_key.clone(),
         default_unwrap_type: if opts.key_encryption_key.is_some() {
-            Some(
-                vec!["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-            )
+            Some(vec!["All"].into_iter().map(String::from).collect())
         } else {
             None
         },
