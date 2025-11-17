@@ -1,5 +1,11 @@
 default_username = "admin"
 
+# Specifies which KMIP object types should be automatically unwrapped when retrieved.
+# Repeat this option to specify multiple object types.
+# Allowed values: All, Certificate, CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey
+# Example:
+## default_unwrap_type = ["SecretData", "SymmetricKey"]
+
 [http]
 port = 9998
 hostname = "0.0.0.0"
