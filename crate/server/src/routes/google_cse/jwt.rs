@@ -159,14 +159,17 @@ pub(super) fn decode_jwt_authorization_token(
         })?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
-    trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
-
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
 
     trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
 
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
-        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
+        // Only log JWKS on error
+        KmsError::Unauthorized(format!(
+            "[Google CSE auth] Specified key not found in set. Looking for kid `{kid}` in \
+             JWKS:\n{:?}",
+            jwt_config.jwks
+        ))
     })?;
     trace!("JWK has been found:\n{jwk:?}");
 

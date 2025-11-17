@@ -388,7 +388,15 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("privileged_users", users);
         }
 
-        debug_struct.field("ui_oidc_auth", &self.ui_oidc_auth);
+        // if one of these UI fields is some, add debug information
+        if self.ui_oidc_auth.ui_oidc_client_id.is_some()
+            || self.ui_oidc_auth.ui_oidc_client_secret.is_some()
+            || self.ui_oidc_auth.ui_oidc_issuer_url.is_some()
+            || self.ui_oidc_auth.ui_oidc_logout_url.is_some()
+        {
+            debug_struct.field("ui_oidc_auth", &self.ui_oidc_auth);
+        }
+
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
 
         debug_struct.finish()

@@ -391,7 +391,7 @@ async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[ignore = "Requires an Utimaco HSM setup"]
+#[ignore = "Requires Google OAuth credentials and an Utimaco HSM"]
 #[serial]
 #[tokio::test]
 async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
@@ -439,7 +439,7 @@ async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliRes
 
 #[tokio::test]
 #[serial]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE privileged endpoints and an Utimaco HSM"]
+#[ignore = "Requires Google OAuth credentials and an Utimaco HSM"]
 async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;

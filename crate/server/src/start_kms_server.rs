@@ -592,7 +592,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             authentication: jwt_configurations.clone(),
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
-        trace!("Google CSE JWT Config: {:#?}", google_cse_config);
+        // Only log google_cse_config on error - removed trace statement
         Some(google_cse_config)
     } else {
         None

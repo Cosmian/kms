@@ -68,15 +68,6 @@ pub struct OidcConfig {
 
 impl fmt::Debug for OidcConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // if all fields are None, do not debug, return empty
-        if self.ui_oidc_client_id.is_none()
-            && self.ui_oidc_client_secret.is_none()
-            && self.ui_oidc_issuer_url.is_none()
-            && self.ui_oidc_logout_url.is_none()
-        {
-            return Ok(());
-        }
-
         let mut debug_struct = f.debug_struct("OidcConfig");
 
         if let Some(ui_oidc_client_id) = &self.ui_oidc_client_id {
