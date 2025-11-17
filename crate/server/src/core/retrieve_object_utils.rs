@@ -51,6 +51,10 @@ pub(crate) async fn retrieve_object_for_operation(
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
+            trace!(
+                "User {user} has permission for operation {operation_type:?} on object {}",
+                owm.id()
+            );
             let mut owm = owm.to_owned();
             // Update the state on the object attributes if they are not present.
             if owm.attributes().state.is_none() {
@@ -63,6 +67,7 @@ pub(crate) async fn retrieve_object_for_operation(
                 }
             }
 
+            // Automatic object unwrapping (if object type is not filtered)
             if let Some(defaults) = &kms.params.default_unwrap_types {
                 if defaults.contains(&owm.object().object_type()) {
                     let unwrapped_object = kms

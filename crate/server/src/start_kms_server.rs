@@ -383,9 +383,8 @@ pub async fn start_kms_server(
     };
 
     // Log the server configuration
-    info!("KMS Server configuration: {:#?}", server_params);
+    info!("KMS Server configuration: {server_params:#?}");
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
-    info!("KMS Server started: {:#?}", server_params);
     if let Some(ss_command_tx) = ss_command_tx {
         // Send a shutdown command to the socket server
         ss_command_tx
