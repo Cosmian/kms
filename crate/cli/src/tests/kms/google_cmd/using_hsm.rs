@@ -3,9 +3,7 @@
     clippy::print_stdout,
     clippy::panic_in_result_fn,
     clippy::unwrap_in_result,
-    clippy::expect_used,
-    unused_imports,
-    unused
+    clippy::expect_used
 )]
 
 use std::{
@@ -14,10 +12,7 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose};
-use cosmian_kmip::kmip_2_1::{
-    KmipOperation, kmip_operations::GetAttributes, kmip_types::UniqueIdentifier,
-};
-use cosmian_kms_client::reexport::cosmian_http_client::HttpClientConfig;
+use cosmian_kmip::kmip_2_1::KmipOperation;
 use cosmian_logger::{
     debug, info, log_init,
     reexport::tracing::{self, trace},
@@ -32,9 +27,7 @@ use openssl::{
 use serde::Deserialize;
 use serial_test::serial;
 use test_kms_server::{
-    AuthenticationOptions, BuildServerParamsOptions, ClientAuthOptions, HsmConfig, JwtPolicy,
-    MainDBConfig, ServerJwtAuth, ServerTlsMode, TestsContext, build_server_params,
-    build_server_params_full, init_test_logging,
+    TestsContext,
     reexport::cosmian_kms_server::routes::google_cse::operations::{
         PrivateKeyDecryptRequest, PrivateKeyDecryptResponse, PrivateKeySignRequest,
         PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
@@ -43,14 +36,13 @@ use test_kms_server::{
         WrapResponse,
     },
     start_default_test_kms_server_with_utimaco_and_kek,
-    start_default_test_kms_server_with_utimaco_hsm, start_test_server_with_options,
+    start_default_test_kms_server_with_utimaco_hsm,
 };
 
 use crate::{
     actions::kms::{
-        access::GrantAccess, attributes::GetAttributesAction,
-        google::keypairs::create::CreateKeyPairsAction, shared::ImportSecretDataOrKeyAction,
-        symmetric::keys::create_key::CreateKeyAction,
+        access::GrantAccess, google::key_pairs::create::CreateKeyPairsAction,
+        shared::ImportSecretDataOrKeyAction, symmetric::keys::create_key::CreateKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
     tests::kms::certificates::certify::import_root_and_intermediate,

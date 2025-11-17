@@ -18,7 +18,7 @@ use test_kms_server::{
 
 use crate::{
     actions::kms::{
-        attributes::GetAttributesAction, google::keypairs::create::CreateKeyPairsAction,
+        attributes::GetAttributesAction, google::key_pairs::create::CreateKeyPairsAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,

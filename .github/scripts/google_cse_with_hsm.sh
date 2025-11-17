@@ -9,7 +9,7 @@ TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTPS="https://0.0.0.0:9999"
 EXT_DIR="test_data/certificates/gmail_cse"
 USER="john.doe@acme.com"
-CSE_KEY="kms/documentation/docs/google_cse/original_kms_cse_key.demo.key.json"
+CSE_KEY="documentation/docs/google_cse/original_kms_cse_key.demo.key.json"
 # Cert paths
 CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme.com.p12"
 

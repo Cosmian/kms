@@ -398,7 +398,7 @@ impl CreateKeyPairsAction {
                 Self::post_keypair(
                     &gmail_client.await?,
                     certificate_value,
-                    general_purpose::STANDARD.encode(wrapped_key_bytes.clone()),
+                    general_purpose::STANDARD.encode(wrapped_key_bytes),
                     kacls_url.await?.kacls_url,
                 )
                 .await?;
