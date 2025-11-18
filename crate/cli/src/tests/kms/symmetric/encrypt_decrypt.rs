@@ -11,7 +11,7 @@ use cosmian_kms_client::{
 use cosmian_logger::log_init;
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
-use test_kms_server::start_default_test_kms_server_with_utimaco_and_kek;
+use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     actions::kms::symmetric::{
@@ -98,7 +98,7 @@ pub(crate) async fn run_encrypt_decrypt_test(
 
 #[tokio::test]
 async fn test_aes_gcm_server_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let dek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -119,7 +119,7 @@ async fn test_aes_gcm_server_side() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_aes_cbc_server_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let dek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -140,7 +140,7 @@ async fn test_aes_cbc_server_side() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_aes_xts_server_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let dek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(512),
@@ -162,7 +162,7 @@ async fn test_aes_xts_server_side() -> KmsCliResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_aes_gcm_siv_server_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let dek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -184,7 +184,7 @@ async fn test_aes_gcm_siv_server_side() -> KmsCliResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_chacha20_poly1305_server_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let dek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Chacha20,
         number_of_bits: Some(256),
@@ -210,7 +210,7 @@ async fn test_encrypt_decrypt_with_tags() -> KmsCliResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let key_id = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -280,7 +280,7 @@ async fn test_encrypt_decrypt_with_tags() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_aes_gcm_aes_gcm_client_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let kek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -304,7 +304,7 @@ async fn test_aes_gcm_aes_gcm_client_side() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_aes_gcm_aes_xts_client_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let kek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -328,7 +328,7 @@ async fn test_aes_gcm_aes_xts_client_side() -> KmsCliResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_aes_gcm_chacha20_client_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let kek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -351,7 +351,7 @@ async fn test_aes_gcm_chacha20_client_side() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_rfc5649_aes_gcm_client_side() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let kek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
@@ -375,7 +375,7 @@ async fn test_rfc5649_aes_gcm_client_side() -> KmsCliResult<()> {
 #[tokio::test]
 async fn test_client_side_encryption_with_buffer() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
+    let ctx = start_default_test_kms_server().await;
     let kek = CreateKeyAction {
         algorithm: SymmetricAlgorithm::Aes,
         number_of_bits: Some(256),
