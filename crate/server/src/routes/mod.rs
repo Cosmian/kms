@@ -11,6 +11,7 @@ use cosmian_logger::{error, info, warn};
 use crate::{core::KMS, error::KmsError, result::KResult};
 
 pub mod access;
+pub mod azure_ekm;
 pub mod google_cse;
 pub mod kmip;
 pub mod ms_dke;

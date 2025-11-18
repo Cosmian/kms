@@ -11,7 +11,7 @@ use super::{
     WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
-    config::{ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
 };
@@ -62,6 +62,7 @@ impl Default for ClapConfig {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            azure_ekm_config: AzureEkmConfig::default(),
         }
     }
 }
@@ -174,6 +175,9 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub azure_ekm_config: AzureEkmConfig,
 }
 
 impl ClapConfig {
