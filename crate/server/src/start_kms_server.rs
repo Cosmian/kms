@@ -51,7 +51,7 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, get_version,
+        access, azure_ekm, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip::{self, handle_ttlv_bytes},
         ms_dke,
