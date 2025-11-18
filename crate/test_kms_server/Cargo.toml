@@ -19,7 +19,7 @@ workspace = true
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_server/non-fips"]
+non-fips = ["cosmian_kms_client/non-fips", "cosmian_kms_server/non-fips"]
 
 [[bench]]
 name = "benches"
