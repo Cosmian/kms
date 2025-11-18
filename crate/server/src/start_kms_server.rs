@@ -699,7 +699,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
     // Should we enable the Azure EKM API ?
-    let enable_ms_dke = kms_server.params.azure_ekm.is_some();
+    let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
@@ -772,7 +772,25 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         if enable_azure_ekm {
-            todo!("Azure EKM service is not yet TODO");
+            let base_path = if let Some(prefix) = &kms_server.params.azure_ekm.azure_ekm_path_prefix
+            {
+                format!("/azure_ekm/{}", prefix)
+            } else {
+                // Otherwise, mount directly at /azure_ekm
+                "/azure_ekm".to_string()
+            };
+
+            info!("azure EKM API enabled at {}", base_path);
+
+            let azure_ekm_scope = web::scope(&base_path)
+                .wrap(Cors::permissive())
+                // TODO: add auth middleware ...?
+                .service(azure_ekm::get_proxy_info)
+                .service(azure_ekm::get_key_metadata)
+                .service(azure_ekm::wrap_key)
+                .service(azure_ekm::unwrap_key);
+
+            app = app.service(azure_ekm_scope);
         }
 
         let ui_index_folder = kms_server.params.ui_index_html_folder.clone();

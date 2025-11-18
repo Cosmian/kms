@@ -6,7 +6,8 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig, params::proxy_params::ProxyParams,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        params::proxy_params::ProxyParams,
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -111,7 +112,7 @@ pub struct ServerParams {
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
 
-    pub azure_ekm: Option<bool>,
+    pub azure_ekm: AzureEkmConfig,
 }
 
 /// Represents the server parameters.
@@ -237,7 +238,7 @@ impl ServerParams {
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
-            azure_ekm: conf.azure_ekm,
+            azure_ekm: conf.azure_ekm_config,
         };
         debug!("{res:#?}");
 

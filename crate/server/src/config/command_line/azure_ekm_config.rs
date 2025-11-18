@@ -33,14 +33,12 @@ pub struct AzureEkmConfig {
     )]
     pub azure_ekm_proxy_name: String,
 
-    /// External Key Management system vendor name reported in the /info endpoint.
+    /// EKMS vendor name report in the /info endpoint.
     #[clap(long, env = "KMS_AZURE_EKM_VENDOR", default_value = "Cosmian")]
     pub azure_ekm_ekm_vendor: String, // double "ekm" is intentional
 
-    /// Product Name and Version of the EKMS
+    /// Product Name and Version of the EKMS to report in the /info endpoint.
     /// TODO: refer to page 12 of the specs to assert this is the correct default value
-    ///
-    /// Reported in the /info endpoint.
     #[clap(
         long,
         env = "KMS_AZURE_EKM_PRODUCT",
