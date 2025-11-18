@@ -117,15 +117,9 @@ async fn import_google_cse_demo_key_and_grant(ctx: &TestsContext) -> KmsCliResul
     .await?;
 
     GrantAccess {
-        // user: "tech@cosmian.com".to_string(),
-        // user: "owner.client@acme.com".to_string(),
-        user: "blue@cosmian.com".to_string(),
+        user: "*".to_string(),
         object_uid: Some("google_cse".to_string()),
-        operations: vec![
-            KmipOperation::Get,
-            // KmipOperation::Encrypt,
-            // KmipOperation::Decrypt,
-        ],
+        operations: vec![KmipOperation::Get],
     }
     .run(ctx.get_owner_client())
     .await?;
@@ -139,7 +133,7 @@ async fn import_google_cse_demo_key_and_grant(ctx: &TestsContext) -> KmsCliResul
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints and an Utimaco HSM"]
 async fn hsm_google_cse_status() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
     let status = ctx.get_owner_client().google_cse_status().await?;
     // In the client API, StatusResponse only exposes `kacls_url`
     assert!(!status.kacls_url.is_empty());

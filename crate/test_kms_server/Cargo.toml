@@ -19,7 +19,7 @@ workspace = true
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_cli/non-fips", "cosmian_kms_server/non-fips"]
+non-fips = ["cosmian_kms_server/non-fips"]
 
 [[bench]]
 name = "benches"
@@ -27,7 +27,7 @@ harness = false
 
 [dependencies]
 actix-server = { workspace = true }
-cosmian_kms_cli = { path = "../cli", version = "5.11.2" }
+cosmian_kms_client = { path = "../kms_client", version = "5.11.2" }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], version = "5.11.2" }

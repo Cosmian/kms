@@ -4,7 +4,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use test_kms_server::start_default_test_kms_server;
+use test_kms_server::start_default_test_kms_server_with_utimaco_and_kek;
 
 use crate::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction, error::result::KmsCliResult,
@@ -13,7 +13,7 @@ use crate::{
 #[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0_u8; 32];
 
@@ -136,7 +136,7 @@ pub(crate) async fn test_create_symmetric_key() -> KmsCliResult<()> {
 
 #[tokio::test]
 pub(crate) async fn test_create_wrapped_symmetric_key() -> KmsCliResult<()> {
-    let ctx = start_default_test_kms_server().await;
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
 
     let wrapping_key_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())

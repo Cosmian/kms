@@ -30,7 +30,7 @@ pub(crate) async fn retrieve_object_for_operation(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "key_uid_or_tags: {uid_or_tags:?}, user: {user}, \
+        "uid_or_tags: {uid_or_tags:?}, user: {user}, \
          operation_type: {operation_type:?}"
     );
 

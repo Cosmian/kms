@@ -7,6 +7,8 @@ use cosmian_kms_client::{
 use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
+#[cfg(feature = "non-fips")]
+use test_kms_server::start_default_test_kms_server_with_utimaco_and_kek;
 
 use crate::{
     actions::kms::rsa::{
@@ -18,18 +20,8 @@ use crate::{
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
-    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
-    // log_init(
-    //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
-    //      cosmian_kms_utils=trace,cosmian_kmip=info",
-    // );
-
-    use cosmian_logger::trace;
-
-    use crate::actions::kms::rsa::{
-        decrypt::DecryptAction, encrypt::EncryptAction, keys::create_key_pair::CreateKeyPairAction,
-    };
-    let ctx = start_default_test_kms_server().await;
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
