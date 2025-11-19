@@ -26,6 +26,11 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
+    update-hashes [options]
+                       Update expected hashes for current platform
+      --vendor-only          Only update Cargo vendor hash (after Cargo.lock changes)
+      --binary-only          Only update binary hashes (after code changes)
+      (no options)           Update all hashes (vendor + binaries)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -57,6 +62,9 @@ usage() {
     $0 --variant non-fips package dmg       # non-FIPS variant
     $0 sbom                                 # Generate SBOM for FIPS variant
     $0 --variant non-fips sbom              # Generate SBOM for non-FIPS variant
+    $0 update-hashes                        # Update all hashes for current platform
+    $0 update-hashes --vendor-only          # Update only Cargo vendor hash
+    $0 update-hashes --binary-only          # Update only binary hashes
 EOF
   exit 1
 }
@@ -76,7 +84,7 @@ while [ $# -gt 0 ]; do
     VARIANT="${2:-}"
     shift 2 || true
     ;;
-  build | test | package | sbom)
+  build | test | package | sbom | update-hashes)
     COMMAND="$1"
     shift
     break
@@ -127,6 +135,16 @@ fi
 # Determine repository root
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$REPO_ROOT"
+
+# Compute a SHA-256 for a given file using the best available tool
+compute_sha256() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  else
+    shasum -a 256 "$file" | awk '{print $1}'
+  fi
+}
 
 # Validate command and corresponding script
 case "$COMMAND" in
@@ -283,6 +301,152 @@ sbom)
   bash "$SCRIPT" --variant "$VARIANT" "$@"
   exit $?
   ;;
+update-hashes)
+  # Hash update - runs OUTSIDE nix-shell
+  # Needs direct access to nix-build and cargo commands
+  echo "Updating expected hashes for current platform..."
+
+  # Detect current platform
+  CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"')"
+
+  # Parse update-hashes specific options
+  UPDATE_VENDOR=true
+  UPDATE_BINARY=true
+
+  for arg in "$@"; do
+    case $arg in
+    --vendor-only)
+      UPDATE_BINARY=false
+      ;;
+    --binary-only)
+      UPDATE_VENDOR=false
+      ;;
+    *)
+      echo "Error: Unknown option for update-hashes: $arg" >&2
+      echo "Valid options: --vendor-only, --binary-only" >&2
+      exit 1
+      ;;
+    esac
+  done
+
+  echo "Platform: $CURRENT_SYSTEM"
+  echo "Update vendor hash: $UPDATE_VENDOR"
+  echo "Update binary hashes: $UPDATE_BINARY"
+  echo "Variant: $VARIANT"
+  echo ""
+
+  # Step 1: Update vendor hash (if requested)
+  if [ "$UPDATE_VENDOR" = "true" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Step 1: Updating Cargo vendor hash..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Trigger a Nix build that will fail with the correct hash
+    echo "Building to discover vendor hash..."
+
+    if BUILD_OUTPUT=$(nix-build -A "kms-server-$VARIANT" -o "result-server-$VARIANT" 2>&1); then
+      echo "Build succeeded (vendor hash already correct)"
+    else
+      # Extract the "got:" hash from error message
+      # Use sed instead of grep -P for macOS compatibility
+      NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" | sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' | head -1 || true)
+
+      if [ -n "$NEW_VENDOR_HASH" ]; then
+        echo "Discovered vendor hash: $NEW_VENDOR_HASH"
+
+        # Update kms-server.nix
+        KMS_SERVER_NIX="$REPO_ROOT/nix/kms-server.nix"
+
+        # Platform-specific sed syntax
+        if [ "$(uname)" = "Darwin" ]; then
+          sed -i '' "s/sha256-[A-Za-z0-9+\/=]\{44\}/$NEW_VENDOR_HASH/g" "$KMS_SERVER_NIX"
+        else
+          sed -i "s/sha256-[A-Za-z0-9+\/=]\{44\}/$NEW_VENDOR_HASH/g" "$KMS_SERVER_NIX"
+        fi
+
+        echo "✅ Updated cargoHash in $KMS_SERVER_NIX"
+      else
+        echo "⚠️  Could not extract vendor hash from build output"
+        echo "Vendor hash may already be correct or build failed for another reason"
+      fi
+    fi
+    echo ""
+  fi
+
+  # Step 2: Update binary hashes (if requested)
+  if [ "$UPDATE_BINARY" = "true" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Step 2: Updating binary hashes..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Determine which variants to update based on --variant flag
+    if [ "$VARIANT" = "fips" ]; then
+      VARIANTS_TO_UPDATE="fips"
+    elif [ "$VARIANT" = "non-fips" ]; then
+      VARIANTS_TO_UPDATE="non-fips"
+    else
+      # Default: update both
+      VARIANTS_TO_UPDATE="fips non-fips"
+    fi
+
+    for build_variant in $VARIANTS_TO_UPDATE; do
+      echo ""
+      echo "Building $build_variant variant..."
+
+      # Build using Nix
+      RESULT_LINK="result-server-$build_variant"
+      if ! nix-build -A "kms-server-$build_variant" -o "$RESULT_LINK"; then
+        echo "❌ Nix build failed for $build_variant variant"
+        exit 1
+      fi
+
+      # Compute hash
+      BINARY_PATH="$RESULT_LINK/bin/cosmian_kms"
+      if [ ! -f "$BINARY_PATH" ]; then
+        echo "❌ Binary not found at $BINARY_PATH"
+        exit 1
+      fi
+
+      NEW_HASH=$(compute_sha256 "$BINARY_PATH")
+
+      echo "Computed hash for $build_variant: $NEW_HASH"
+
+      # Update expected hash file
+      HASH_FILE="$REPO_ROOT/nix/expected-hashes/${build_variant}.${CURRENT_SYSTEM}.sha256"
+
+      # Create directory if it doesn't exist
+      mkdir -p "$REPO_ROOT/nix/expected-hashes"
+
+      # Write new hash
+      echo "$NEW_HASH" >"$HASH_FILE"
+
+      echo "✅ Updated $HASH_FILE"
+    done
+    echo ""
+  fi
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "✅ Hash update complete!"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  echo "Summary of changes:"
+  if [ "$UPDATE_VENDOR" = "true" ]; then
+    echo "  ✓ Cargo vendor hash (cargoHash) in nix/kms-server.nix"
+  fi
+  if [ "$UPDATE_BINARY" = "true" ]; then
+    for build_variant in $VARIANTS_TO_UPDATE; do
+      echo "  ✓ Binary hash: nix/expected-hashes/${build_variant}.${CURRENT_SYSTEM}.sha256"
+    done
+  fi
+  echo ""
+  echo "Next steps:"
+  echo "  1. Review changes:   git diff nix/"
+  echo "  2. Test the build:   bash $0 build"
+  echo "  3. Commit changes:   git add nix/ && git commit -m 'Update Nix hashes for $CURRENT_SYSTEM'"
+  echo ""
+
+  exit 0
+  ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2
   usage
@@ -341,16 +505,6 @@ prewarm_nixpkgs_and_tools() {
       nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl.bin' --no-out-link >/dev/null 2>/dev/null ||
         nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl' --no-out-link >/dev/null 2>/dev/null || true
     fi
-  fi
-}
-
-# Compute a SHA-256 for a given file using the best available tool
-compute_sha256() {
-  local file="$1"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" | awk '{print $1}'
-  else
-    shasum -a 256 "$file" | awk '{print $1}'
   fi
 }
 

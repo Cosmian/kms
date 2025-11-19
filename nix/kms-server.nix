@@ -70,10 +70,8 @@ let
     else
       null;
 
-  # Version from repository version file
-  version = lib.strings.removeSuffix "\n" (
-    lib.strings.removePrefix "\"" (lib.strings.removeSuffix "\"" (lib.strings.fileContents ../version))
-  );
+  # KMS version
+  version = "5.12.0";
 
   srcRoot = ../.;
   # Whitelist only files needed to build the Rust workspace to prevent
@@ -89,7 +87,6 @@ let
       && (
         rel == "Cargo.toml"
         || rel == "Cargo.lock"
-        || rel == "version"
         || rel == "LICENSE"
         || rel == "README.md"
         || rel == "CHANGELOG.md"
@@ -119,11 +116,11 @@ rustPlatform.buildRustPackage rec {
   # and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
   cargoHash =
     if pkgs.stdenv.isDarwin then
-      # Updated from build output (got: sha256-mbPm37R7wINtt+kx+OemRYUPan/5044aX5dlcmlqr8g=)
-      "sha256-mbPm37R7wINtt+kx+OemRYUPan/5044aX5dlcmlqr8g="
+      # Updated from build output (got: sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=)
+      "sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs="
     else
-      # Previous Linux vendor hash (may need update separately when building on Linux)
-      "sha256-cZKeBM6mNcB9uCxdllQmFzuswvvuMpy23JUIouWxSAI=";
+      # Linux vendor hash (got: sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=)
+      "sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=";
   cargoSha256 = cargoHash;
 
   # Build only the server package with optional features.

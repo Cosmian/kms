@@ -25,7 +25,8 @@ fips | non-fips) : ;;
   ;;
 esac
 
-VERSION_STR=$(tr -d '"' <version)
+# Get version from Cargo.toml
+VERSION_STR=$("$REPO_ROOT/nix/scripts/get_version.sh")
 
 # Decide if we can reuse an existing built server without triggering a full Nix rebuild.
 ATTR="kms-server-${VARIANT}"
@@ -44,7 +45,7 @@ if [ -z "$force_rebuild" ] && [ -L "$OUT_LINK" ]; then
     else
       echo "$INFO_OUT" | grep -q "OpenSSL default mode" && reuse_server=true || reuse_server=false
     fi
-    # Extra guard: version string must match repository version file.
+    # Extra guard: version string must match repository version from Cargo.toml.
     if ! echo "$INFO_OUT" | grep -q "${VERSION_STR}"; then
       reuse_server=false
     fi
