@@ -39,8 +39,8 @@ All hashes are committed in the repository and verified during builds:
 | --------------------- | ----------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
 | **Cargo vendor**      | Reproducible Rust dependencies      | `nix/kms-server.nix:122`                           | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
 | **OpenSSL source**    | FIPS 140-3 certified crypto library | `nix/openssl-3_1_2.nix:14`                         | `sha256-BPedCZMRpt6FvPc3WDopPx8DAag0Gbu6N6hqdHvomso=`              |
-| **Binary (FIPS)**     | Final KMS server executable         | `nix/expected-hashes/fips.x86_64-linux.sha256`     | `8bedc85a997ec72a8902b546bee01f021dfd7057b519457c7dbfc39b50040253` |
-| **Binary (non-FIPS)** | Non-FIPS KMS server                 | `nix/expected-hashes/non-fips.x86_64-linux.sha256` | `421aec6c262744d69c56a11aad87bef30e7ad26a66a350be460a48a997e3e5c8` |
+| **Binary (FIPS)**     | Final KMS server executable         | `nix/expected-hashes/fips.x86_64-linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
+| **Binary (non-FIPS)** | Non-FIPS KMS server                 | `nix/expected-hashes/non-fips.x86_64-linux.sha256` | `8e4f03b3fd17b4ee86541aebfed623305076693ff443ccfb4cb195e216be68d7` |
 
 Platform-specific binary hashes:
 
