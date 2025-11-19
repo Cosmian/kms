@@ -68,8 +68,12 @@ pub(crate) async fn retrieve_object_for_operation(
             }
 
             // Automatic object unwrapping (if object type is not filtered)
+            // Skip unwrapping for destroyed objects as they have empty key material
             if let Some(defaults) = &kms.params.default_unwrap_types {
-                if defaults.contains(&owm.object().object_type()) {
+                if defaults.contains(&owm.object().object_type())
+                    && state != State::Destroyed
+                    && state != State::Destroyed_Compromised
+                {
                     let unwrapped_object = kms
                         .get_unwrapped(owm.id(), owm.object(), user, params)
                         .await?;

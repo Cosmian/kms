@@ -27,7 +27,7 @@ use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission},
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 // Default constants for key derivation
@@ -85,7 +85,7 @@ pub(crate) async fn derive_key(
     let base_key_id = request.object_unique_identifier.to_string();
 
     // Retrieve the base key from the database
-    let Some(base_key_owm) = kms
+    let Some(mut base_key_owm) = kms
         .database
         .retrieve_object(&base_key_id, params.clone())
         .await?
@@ -110,6 +110,23 @@ pub(crate) async fn derive_key(
             "User {user} does not have DeriveKey permission on object {base_key_id}"
         )));
     }
+
+    // Unwrap the base key if it's wrapped
+    base_key_owm.set_object(
+        kms.get_unwrapped(
+            base_key_owm.id(),
+            base_key_owm.object(),
+            user,
+            params.clone(),
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "DeriveKey: the base key: {}, cannot be unwrapped.",
+                base_key_owm.id()
+            )
+        })?,
+    );
 
     let base_key_object = base_key_owm.object();
     let base_key_attributes = base_key_owm.attributes();
