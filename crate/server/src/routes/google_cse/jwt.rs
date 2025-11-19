@@ -159,14 +159,17 @@ pub(super) fn decode_jwt_authorization_token(
         })?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
-    trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
-
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
 
     trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
 
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
-        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_owned())
+        // Only log JWKS on error
+        KmsError::Unauthorized(format!(
+            "[Google CSE auth] Specified key not found in set. Looking for kid `{kid}` in \
+             JWKS:\n{:?}",
+            jwt_config.jwks
+        ))
     })?;
     trace!("JWK has been found:\n{jwk:?}");
 
@@ -204,7 +207,7 @@ pub async fn validate_cse_authentication_token(
     kms_default_username: &str,
     is_priv_unwrap: Option<String>,
 ) -> KResult<String> {
-    trace!("entering: cse_config: {:?}", cse_config);
+    trace!("entering");
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"

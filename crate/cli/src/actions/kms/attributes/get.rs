@@ -22,18 +22,18 @@ use crate::{
 ///
 /// When using tags to retrieve the object, rather than the object id,
 /// an error is returned if multiple objects matching the tags are found.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[clap(verbatim_doc_comment)]
 pub struct GetAttributesAction {
     /// The unique identifier of the cryptographic object.
     /// If not specified, tags should be specified
     #[clap(long = ATTRIBUTE_ID, short = 'i', group = "id-tags")]
-    pub(crate) id: Option<String>,
+    pub id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "id-tags")]
-    pub(crate) tags: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
 
     /// The KMIP attribute to retrieve.
     /// To specify multiple attributes, use the option multiple times.
@@ -45,7 +45,7 @@ pub struct GetAttributesAction {
         value_name = "ATTRIBUTE",
         verbatim_doc_comment
     )]
-    pub(crate) attribute_tags: Vec<Tag>,
+    pub attribute_tags: Vec<Tag>,
 
     /// Filter on retrieved links. Only if KMIP tag `LinkType` is used in `attribute` parameter.
     /// To specify multiple attributes, use the option multiple times.
@@ -56,12 +56,12 @@ pub struct GetAttributesAction {
         value_name = "LINK_TYPE",
         verbatim_doc_comment
     )]
-    pub(crate) attribute_link_types: Vec<CLinkType>,
+    pub attribute_link_types: Vec<CLinkType>,
 
     /// An optional file where to export the attributes.
     /// The attributes will be in JSON TTLV format.
     #[clap(long = "output-file", short = 'o', verbatim_doc_comment)]
-    pub(crate) output_file: Option<PathBuf>,
+    pub output_file: Option<PathBuf>,
 }
 
 impl GetAttributesAction {
@@ -80,10 +80,7 @@ impl GetAttributesAction {
     /// - There is an error serializing the attributes to JSON.
     /// - There is an error writing the attributes to the output file.
     /// - There is an error writing to the console.
-    pub async fn process(
-        &self,
-        kms_rest_client: KmsClient,
-    ) -> KmsCliResult<HashMap<String, Value>> {
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<HashMap<String, Value>> {
         trace!("{self:?}");
         let id = get_key_uid(self.id.as_ref(), self.tags.as_ref(), ATTRIBUTE_ID)?;
 

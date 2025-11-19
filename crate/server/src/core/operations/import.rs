@@ -525,6 +525,7 @@ async fn process_pkcs12(
     request_attributes: Attributes,
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    trace!("Processing PKCS12 import");
     // recover the PKCS#12 bytes from the object
     let pkcs12_bytes = match object {
         Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs_der_bytes()?,
@@ -548,6 +549,7 @@ async fn process_pkcs12(
             "Unable to parse PKCS12 file: (bad/missing password?). {e:?}"
         ))
     })?;
+    trace!("PKCS12 parsed successfully");
 
     // build the leaf certificate id
     let leaf_certificate_id = match unique_identifier.to_string() {
@@ -589,6 +591,7 @@ async fn process_pkcs12(
         }
         private_key
     };
+    trace!("Private key extracted from PKCS12");
 
     // Extract the X509 certificate once to avoid multiple moves
     let openssl_cert = pkcs12.cert.ok_or_else(|| {
@@ -605,6 +608,7 @@ async fn process_pkcs12(
             openssl_x509_to_certificate_attributes(&openssl_cert),
         )
     };
+    trace!("Leaf certificate extracted from PKCS12");
 
     // Build the public key ID
     let public_key_id = format!("{leaf_certificate_id}_pk");
@@ -646,6 +650,7 @@ async fn process_pkcs12(
 
         public_key
     };
+    trace!("Public key extracted from PKCS12");
 
     // build the chain if any (the chain is optional)
     let mut chain: Vec<(String, Object, CertificateAttributes)> = Vec::new();
@@ -688,6 +693,11 @@ async fn process_pkcs12(
             LinkedObjectIdentifier::TextString(leaf_certificate_id.clone()),
         );
     }
+    trace!("Private key linked to leaf certificate");
+
+    // Keep private key attributes before wrapping/inserting in DB
+    let private_key_attributes = private_key.attributes()?.clone();
+
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
@@ -697,8 +707,9 @@ async fn process_pkcs12(
         &mut private_key,
     ))
     .await?;
+    trace!("Private key wrapped and cached");
+
     // Create an operation to set the private key
-    let private_key_attributes = private_key.attributes()?.clone();
     operations.push(single_operation(
         private_key_attributes.get_tags(),
         replace_existing,
@@ -706,6 +717,7 @@ async fn process_pkcs12(
         private_key_attributes,
         private_key_id.clone(),
     ));
+    trace!("Private key operation created");
 
     // Create an operation to set the public key
     let public_key_attributes = public_key.attributes()?.clone();

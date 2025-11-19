@@ -1,90 +1,83 @@
 # Cosmian KMS Server Database
 
-The **Server Database** crate provides database abstraction and storage implementations for the Cosmian KMS server.
-
-## Overview
-
-This crate implements the database layer that handles persistent storage of cryptographic objects, metadata, access control information, and audit logs. It supports multiple database backends and provides a unified interface for all storage operations.
+This crate implements the database layer that handles persistent storage of cryptographic objects, metadata, access control information, and logs. It supports multiple database backends and provides a unified interface for all storage operations.
 
 ## Supported Database Backends
 
-### SQLite
+- **SQLite**: Development and single-node deployments (`--database-type sqlite`)
+- **PostgreSQL**: Production deployments with replication (`--database-type postgresql`)
+- **MySQL/MariaDB**: Production deployments (`--database-type mysql`)
+- **Redis (with Findex)**: Encrypted searchable storage (`--database-type redis-findex`, **not available in FIPS mode**)
 
-- **Local Storage**: File-based database for development and small deployments
-- **In-Memory**: For testing and temporary storage
-- **Encryption**: Support for SQLCipher encrypted databases
-- **Performance**: Optimized for single-node deployments
+## Database Schema
 
-### PostgreSQL
+### SQL Databases (SQLite, PostgreSQL, MySQL)
 
-- **Production Ready**: Full-featured relational database
-- **High Availability**: Support for replication and clustering
-- **ACID Compliance**: Full transaction support
-- **Scalability**: Suitable for large-scale deployments
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         KMS Database Schema                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ parameters                                                      │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ name  VARCHAR(128) PRIMARY KEY                                  │    │
+│  │ value VARCHAR(256)                                              │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ objects                                                         │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ id         VARCHAR(128) PRIMARY KEY  -- Object UID              │    │
+│  │ object     VARCHAR/LONGTEXT          -- Serialized KMIP object  │    │
+│  │ attributes JSON                      -- KMIP attributes         │    │
+│  │ state      VARCHAR(32)               -- Object state            │    │
+│  │ owner      VARCHAR(255)              -- Owner user ID           │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ read_access                                                     │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ id          VARCHAR(128)             -- Object UID (FK)         │    │
+│  │ userid      VARCHAR(255)             -- User ID                 │    │
+│  │ permissions JSON                     -- Array of operations     │    │
+│  │ UNIQUE (id, userid)                                             │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ tags                                                            │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ id  VARCHAR(128)                     -- Object UID (FK)         │    │
+│  │ tag VARCHAR(255)                     -- Tag value               │    │
+│  │ UNIQUE (id, tag)                                                │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-### MySQL/MariaDB
+### Redis with Findex
 
-- **Compatibility**: Support for MySQL and MariaDB
-- **Performance**: Optimized queries and indexing
-- **Replication**: Master-slave and master-master setups
-- **Cloud Ready**: Compatible with cloud database services
+The schema below use the following legend :
 
-### Redis with Findex (Non-FIPS)
+- ENC_KMS(...) = Data encrypted with KMS
+- ENC_Findex(...) = Data encrypted with Findex
+- permission_triplet = Tuple(user_id, obj_uid, permission)
+- metadata = Object owner, tags, and other attributes
 
-- **Searchable Encryption**: Encrypted search capabilities using Cloudproof Findex
-- **High Performance**: In-memory storage for ultra-fast operations
-- **Distributed**: Support for Redis clusters
-- **Privacy Preserving**: Search without revealing query patterns
+```text
+KEY → VALUE
+─────────────────────────────────────────────────────────────────────────
+db_version                  → >= 5.12.0
+db_state                    → "ready" | "upgrading"
 
-## Features
+do::<object_uid>            → ENC_KMS(object data)
 
-### Core Functionality
+ENC_Findex v8(o:obj_uid)    → ENC_Findex v8(permission_triplet)
+ENC_Findex v8(u:userid)     → ENC_Findex v8(permission_triplet)
+ENC_Findex v8(object_uid)   → ENC_Findex v8(metadata)
+```
 
-- **Object Storage**: Secure storage of keys, certificates, and cryptographic objects
-- **Metadata Management**: Storage of object attributes, tags, and relationships
-- **Access Control**: User permissions and role-based access control data
-- **Audit Logging**: Comprehensive logging of all database operations
-
-### Database Operations
-
-- **CRUD Operations**: Create, Read, Update, Delete for all object types
-- **Batch Operations**: Efficient bulk operations for large datasets
-- **Transactions**: ACID transactions for data consistency
-- **Connection Pooling**: Efficient database connection management
-
-### Security Features
-
-- **Encryption at Rest**: Database-level encryption for sensitive data
-- **Access Control**: Fine-grained permissions and user management
-- **Audit Trail**: Complete logging of all database access and modifications
-- **Data Integrity**: Checksums and validation for stored objects
-
-### Performance Optimizations
-
-- **Caching**: LRU cache for frequently accessed objects
-- **Indexing**: Optimized database indexes for fast queries
-- **Connection Pooling**: Efficient database connection reuse
-- **Async Operations**: Non-blocking database operations
-
-## Architecture
-
-### Database Abstraction Layer
-
-The crate provides a unified interface that abstracts the underlying database implementation:
-
-- **Common API**: Single interface for all database operations
-- **Backend Agnostic**: Switch between database types without code changes
-- **Error Handling**: Unified error types across all backends
-- **Configuration**: Simple configuration for different database types
-
-### Object Serialization
-
-- **KMIP Format**: Native KMIP object serialization
-- **JSON Support**: Human-readable JSON format for debugging
-- **Binary Efficiency**: Compact binary storage for performance
-- **Version Compatibility**: Support for different KMIP versions
-
-## Configuration
+A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542](github.com/Cosmian/kms/pull/542).
 
 ### Environment Variables
 
@@ -109,47 +102,11 @@ KMS_SQLITE_PATH=/path/to/database.db
 KMS_REDIS_URL=redis://host:6379
 ```
 
-## Dependencies
-
-### Core Dependencies
-
-- **sqlx**: SQL database toolkit for async operations
-- **redis**: Redis client for Findex support
-- **cloudproof_findex**: Searchable encryption (optional)
-- **cosmian_kmip**: KMIP protocol types
-- **cosmian_kms_crypto**: Cryptographic operations
-- **cosmian_kms_interfaces**: Interface definitions
-
-### Database Drivers
-
-- **PostgreSQL**: Native async driver via sqlx
-- **MySQL**: Native async driver via sqlx
-- **SQLite**: Native async driver via sqlx
-- **Redis**: Async Redis client
-
-## Usage
-
-This crate is used internally by the KMS server to provide persistent storage. It handles:
-
-- Key and certificate storage
-- User authentication data
-- Access control policies
-- Audit logs and operation history
-- Configuration and metadata
-
-## Performance Considerations
-
-- **Connection Pooling**: Configurable connection pool sizes
-- **Caching**: LRU cache for frequently accessed objects
-- **Indexing**: Optimized database indexes for common queries
-- **Batch Operations**: Efficient bulk insert/update operations
-
 ## Security
 
 - **Encryption**: All sensitive data is encrypted before storage
 - **Access Control**: Database-level and application-level security
-- **Audit Logging**: Complete audit trail of all operations
-- **Data Validation**: Input validation and sanitization
+- **Logging**: Complete audit trail of all operations
 
 ## License
 

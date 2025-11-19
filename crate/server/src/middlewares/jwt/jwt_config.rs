@@ -166,12 +166,13 @@ impl JwtConfig {
             .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
             .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
-        trace!("looking for kid `{kid}` JWKS:\n{:?}", self.jwks);
-
-        let jwk = self
-            .jwks
-            .find(&kid)?
-            .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_owned()))?;
+        let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
+            // Only log JWKS on error
+            KmsError::Unauthorized(format!(
+                "Specified key not found in set. Looking for kid `{kid}` in JWKS:\n{:?}",
+                self.jwks
+            ))
+        })?;
 
         trace!("JWK has been found:\n{jwk:?}");
 

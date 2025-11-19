@@ -46,7 +46,6 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/installation/marketplace_guide.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/fips.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" version
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
 
 bash .github/scripts/build_ui_all.sh
@@ -55,4 +54,7 @@ cargo build
 
 python3 scripts/update_readme_kmip.py
 
-git cliff -u -p CHANGELOG.md -t "$NEW_VERSION"
+git cliff -w "$PWD" -u -p CHANGELOG.md -t "$NEW_VERSION"
+
+# Convert (#XXX) references to full GitHub pull request URLs
+${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com\/Cosmian\/kms\/pull\/\1))/g' CHANGELOG.md

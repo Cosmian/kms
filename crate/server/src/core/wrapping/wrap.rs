@@ -346,7 +346,7 @@ async fn wrap_using_encryption_oracle(
             .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
         {
             return Err(KmsError::NotSupported(format!(
-                "The user {user} does not have the permission to wrap the using the key \
+                "The user {user} does not have the permission to wrap using the key \
                  {wrapping_key_uid}"
             )));
         }

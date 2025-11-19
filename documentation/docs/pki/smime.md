@@ -206,8 +206,6 @@ requirements):
 [ v3_ca ]
 keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
 extendedKeyUsage=emailProtection
-subjectAltName=email:john.doe@acme.com
-crlDistributionPoints=URI:https://acme.com/crl.pem
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 ```

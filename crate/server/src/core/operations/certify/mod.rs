@@ -85,9 +85,16 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = get_subject(kms, &request, user, params.clone(), privileged_users).await?;
+    let subject = Box::pin(get_subject(
+        kms,
+        &request,
+        user,
+        params.clone(),
+        privileged_users,
+    ))
+    .await?;
     trace!("Subject name: {:?}", subject.subject_name());
-    let issuer = get_issuer(&subject, kms, &request, user, params.clone()).await?;
+    let issuer = Box::pin(get_issuer(&subject, kms, &request, user, params.clone())).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
@@ -110,7 +117,7 @@ pub(crate) async fn certify(
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
             trace!(
-                "Certify PublicKeyAndSubjectName:{unique_identifier} : public key: \
+                "Certify PublicKeyAndSubjectName:{unique_identifier}: public key: \
                  {from_public_key}"
             );
             // update the public key attributes with a link to the certificate
@@ -298,13 +305,13 @@ async fn get_subject(
 
     // no CSR provided. Was the reference to an existing certificate or public key provided?
     let public_key = if let Some(request_id) = &request.unique_identifier {
-        if let Ok(owm) = retrieve_object_for_operation(
+        if let Ok(owm) = Box::pin(retrieve_object_for_operation(
             &request_id.to_string(),
             KmipOperation::Certify,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await
         {
             let object_type = owm.object().object_type();
@@ -461,7 +468,10 @@ async fn get_issuer<'a>(
     );
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
-        return issuer_for_self_signed_certificate(subject, kms, user, params).await;
+        return Box::pin(issuer_for_self_signed_certificate(
+            subject, kms, user, params,
+        ))
+        .await;
     }
     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
         issuer_private_key_id.map(|id| id.to_string()),
@@ -486,13 +496,13 @@ async fn fetch_object_from_attributes(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
-        let object = retrieve_object_for_operation(
+        let object = Box::pin(retrieve_object_for_operation(
             &object_id.to_string(),
             KmipOperation::Certify,
             kms,
             user,
             params,
-        )
+        ))
         .await?;
         return Ok(Some(object));
     }

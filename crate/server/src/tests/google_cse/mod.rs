@@ -122,7 +122,7 @@ where
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         object_type: object.object_type(),
-        replace_existing: Some(false),
+        replace_existing: Some(true),
         key_wrap_type: None,
         attributes: object.attributes().cloned().unwrap_or_default(),
         object,

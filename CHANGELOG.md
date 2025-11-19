@@ -2,20 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.12.0] - 2025-11-19
+
+### 🚀 Features
+
+- Azure byok UI ([#597](https://github.com/Cosmian/kms/pull/597))
+- Upgrade Findex from v5 to v8 ([#542](https://github.com/Cosmian/kms/pull/542))
+    - *(redis)*: Created a new data storage schema for Redis, using a double-index instead of the "next Keyword".
+    - *(redis)*: Developed a migration algorithm to update data under KMSes prior to 5.12.x.
+    - *(redis)*: Introduction of strong typing for UserId and ObjectUid to reduce string manipulation errors, and created new types inspired from legacy cloudproof components.
+    - Used new crypto core serializations for storage (when applicable)
+
+### 🐛 Bug Fixes
+
+- Automatic key unwrapping depending on ObjectType ([#600](https://github.com/Cosmian/kms/pull/600)):
+    - Automatically unwrap keys (that are wrapped) when retrieving keys from database. It can be useful when server is configured with a Key Encryption Key that wraps all new keys. The unwrapped keys stay temporarily in expiring cache.
+    - This feature is combined to the parameter default_unwrap_type that filters the ObjectType to unwrap.
+    - Possible filters in server configuration are: All, Certificate, CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey
+
+### 📚 Documentation
+
+- Rework all the databases migration and represent more easy to read schemas ([#542](https://github.com/Cosmian/kms/pull/542))
+- Document migration flows
+- Update KMS configuration TOML file with parameter `default_unwrap_type`.
+
+### ⚙️ Build
+
+- *(deps-dev)*: bump js-yaml from 4.1.0 to 4.1.1 in /ui in the npm_and_yarn group across 1 directory
+
+### 🧪 Testing
+
+- *(redis)*: Add two integration tests that migrate from version 5.1.0 and 5.2.0 to ([#542](https://github.com/Cosmian/kms/pull/542))
+
+### ⚙️ Miscellaneous Tasks
+
+- Refactored migration traits between the SQL databases and the Redis one (while possible)
+- Deleted a lot of dead code
+- Marked the Label parameter as deprecated.
+- Updated the `aes_gcm_siv_not_openssl` functions to avoid using deprecated dependencies.
+
+### ⚠️ WARNING
+
+**Redis users:** Starting version 5.12.0,  the KMS will start operating with a new version of Findex (the SSE used with the Redis DB), and a  data migration is necessary :
+
+**🚨 IMPORTANT: Back up your Redis database before upgrading to version 5.12.0.** 🚨
+
+- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import them after clearing the redis store. Databases created with version 4.x.x are not compatible with the automated migration routine and won't start if the `db_version` key is unset.
+- If you're upgrading from a 5.x DB : A transparent migration process will occur and should typically take less than a minute.
+
 ## [5.11.2] - 2025-11-12
 
-### 🐛 Bug Fixes (#598)
+### 🐛 Bug Fixes ([#598](https://github.com/Cosmian/kms/pull/598))
 
 - Fix key wrapping where `wrapping-key` is itself wrapped: unwrap it and then use it
 - Add an automatic key unwrapping for google_cse key at server startup
 - Create a `OnceCell` HSM instance when multiple KMS servers are use - avoiding potential startup error
 - Improved handling of wrapped keys, attribute propagation, and TLS cipher suite configuration
 
-### 🧪 Testing (#598)
+### 🧪 Testing ([#598](https://github.com/Cosmian/kms/pull/598))
 
 - Add CLI-tests on Google CSE endpoints (/wrap, /privatekeydecrypt, etc.) and on Google key pair creation - all with the google_cse key wrapped by HSM
 
-### 📚 Documentation (#598)
+### 📚 Documentation ([#598](https://github.com/Cosmian/kms/pull/598))
 
 - Example of configuration file: replace deprecated [auth] section with [idp_auth]
 
@@ -23,12 +71,12 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 
-- Rework KMIP support documentation (#595)
+- Rework KMIP support documentation ([#595](https://github.com/Cosmian/kms/pull/595))
 - Remove double entry on KMIP Support
 
 ### 🧪 Testing
 
-- *(windows)*: Enable test on whole workspace(#593)
+- *(windows)*: Enable test on whole workspace([#593](https://github.com/Cosmian/kms/pull/593))
 
 ## [5.11.0] - 2025-10-28
 
@@ -37,11 +85,11 @@ All notable changes to this project will be documented in this file.
 - Add Crypt2pay HSM integration with a dedicated loader crate
 - Generic "other" HSM support using Softhsm2 compatibility
 - Enable empty (null) password/pin HSM login via special handling in slot management
-- Add Windows/macOS installers with cargo packager tool (#585)
+- Add Windows/macOS installers with cargo packager tool ([#585](https://github.com/Cosmian/kms/pull/585))
 
 ### 🐛 Bug Fixes
 
-- *(google_cse)* Load RSA private as PKCS8 or PKCS1 format (#592)
+- *(google_cse)* Load RSA private as PKCS8 or PKCS1 format ([#592](https://github.com/Cosmian/kms/pull/592))
 
 ### ⚠️ WARNING
 
@@ -49,40 +97,40 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 
-- Add KMIP current support (#581)
+- Add KMIP current support ([#581](https://github.com/Cosmian/kms/pull/581))
 
 ### Build
 
-- *(deps)* Bump esbuild (#587)
+- *(deps)* Bump esbuild ([#587](https://github.com/Cosmian/kms/pull/587))
 
 ## [5.10.0] - 2025-10-21
 
 ### 🚀 Features
 
-- Add HSM key search with basic filters (#552)
-- Support wrapping SecretData object in export (#551)
-- Support DeriveKey KMIP operation (#554)
-- Add option to enable automatic unwrapping for Get and Export requests (#579)
+- Add HSM key search with basic filters ([#552](https://github.com/Cosmian/kms/pull/552))
+- Support wrapping SecretData object in export ([#551](https://github.com/Cosmian/kms/pull/551))
+- Support DeriveKey KMIP operation ([#554](https://github.com/Cosmian/kms/pull/554))
+- Add option to enable automatic unwrapping for Get and Export requests ([#579](https://github.com/Cosmian/kms/pull/579))
 
 ### 🐛 Bug Fixes
 
-- Enable workspace clippy lints for all crates (#553)
-- Release HSM tests (#567)
-- Keep error info on DBerror (#516)
-- React CVE deps (#566)
-- Remove min_specialization feature (#569)
-- HSM key search fails after encountering incompatible key (#574)
-- *(windows)* Socket server listen on localhost instead of 0.0.0.0 (#575)
+- Enable workspace clippy lints for all crates ([#553](https://github.com/Cosmian/kms/pull/553))
+- Release HSM tests ([#567](https://github.com/Cosmian/kms/pull/567))
+- Keep error info on DBerror ([#516](https://github.com/Cosmian/kms/pull/516))
+- React CVE deps ([#566](https://github.com/Cosmian/kms/pull/566))
+- Remove min_specialization feature ([#569](https://github.com/Cosmian/kms/pull/569))
+- HSM key search fails after encountering incompatible key ([#574](https://github.com/Cosmian/kms/pull/574))
+- *(windows)* Socket server listen on localhost instead of 0.0.0.0 ([#575](https://github.com/Cosmian/kms/pull/575))
 
 ### 📚 Documentation
 
-- Add SmartCard HSM to README.md (#563)
-- Added documentation for Smart card HSM and SoftHSM2 (#570)
-- Add server configs examples (#568)
+- Add SmartCard HSM to README.md ([#563](https://github.com/Cosmian/kms/pull/563))
+- Added documentation for Smart card HSM and SoftHSM2 ([#570](https://github.com/Cosmian/kms/pull/570))
+- Add server configs examples ([#568](https://github.com/Cosmian/kms/pull/568))
 
 ### 🧪 Testing
 
-- Filter tests with credentials and prerequisites (#571)
+- Filter tests with credentials and prerequisites ([#571](https://github.com/Cosmian/kms/pull/571))
 - Enable Google CSE on workspace
 
 ### ⚙️ Miscellaneous Tasks
@@ -90,7 +138,7 @@ All notable changes to this project will be documented in this file.
 - Add CLA Assistant GitHub Action configuration
 - Create CLA.md and CONTRIBUTING.md
 - About forks, skip Google CSE tests and docker build
-- About dependabot branches, skip Google CSE tests and docker build (#559)
+- About dependabot branches, skip Google CSE tests and docker build ([#559](https://github.com/Cosmian/kms/pull/559))
 - Move CLA assistant workflow to correct path
 - Skip public doc rebuild on forks and dependabot branches
 - Skip CLA assistant on dependabot branches
@@ -98,7 +146,7 @@ All notable changes to this project will be documented in this file.
 - Trigger on issue comment
 - Use an unprotected branch for CLA signing
 - Remove trigger on pull_request_target
-- Upgrade toolchain to nightly 2025-09-15 (#564)
+- Upgrade toolchain to nightly 2025-09-15 ([#564](https://github.com/Cosmian/kms/pull/564))
 
 ### Build
 
@@ -109,76 +157,76 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add Smart card HSM support and bug fixes (#538)
+- Add Smart card HSM support and bug fixes ([#538](https://github.com/Cosmian/kms/pull/538))
 - CLI features:
-    - added support for SHA1 in RSA key wrapping (#541)
-    - add Azure functionality to facilitate BYOK (#541)
-    - `attributes get` added support to retrieve Object tags only (#541)
-- *tracing*: print function names while using tracing macros. Use cosmian_logger instead of tracing crate (#536)
+    - added support for SHA1 in RSA key wrapping ([#541](https://github.com/Cosmian/kms/pull/541))
+    - add Azure functionality to facilitate BYOK ([#541](https://github.com/Cosmian/kms/pull/541))
+    - `attributes get` added support to retrieve Object tags only ([#541](https://github.com/Cosmian/kms/pull/541))
+- *tracing*: print function names while using tracing macros. Use cosmian_logger instead of tracing crate ([#536](https://github.com/Cosmian/kms/pull/536))
 
 ### 🐛 Bug Fixes
 
-- When wrapped with `No Encoding`, the RSA private key bytes and EC private key bytes are now the PKCS#8 DER bytes (#541)
-- CLI: fixed broken `attributes get` (#541)
+- When wrapped with `No Encoding`, the RSA private key bytes and EC private key bytes are now the PKCS#8 DER bytes ([#541](https://github.com/Cosmian/kms/pull/541))
+- CLI: fixed broken `attributes get` ([#541](https://github.com/Cosmian/kms/pull/541))
 
 ### 📚 Documentation
 
-- Added Google CSEK and Google CMEK documentation (#541)
-- Added Azure BYOK documentation (#541)
-- Re-organized documentation (#541)
-- Fixing typo in Encrypt/Decrypt requests examples (#545)
+- Added Google CSEK and Google CMEK documentation ([#541](https://github.com/Cosmian/kms/pull/541))
+- Added Azure BYOK documentation ([#541](https://github.com/Cosmian/kms/pull/541))
+- Re-organized documentation ([#541](https://github.com/Cosmian/kms/pull/541))
+- Fixing typo in Encrypt/Decrypt requests examples ([#545](https://github.com/Cosmian/kms/pull/545))
 
 ### 🧪 Testing
 
-- Enable softhsm2 tests (#539)
+- Enable softhsm2 tests ([#539](https://github.com/Cosmian/kms/pull/539))
 - Fix python installation on pykmip-tests GH workflow
 - Fix race condition on test_privileged_users
-- Add auth test with expired cert (#547)
+- Add auth test with expired cert ([#547](https://github.com/Cosmian/kms/pull/547))
 
 ## [5.8.1] - 2025-09-05
 
 ### 🐛 Bug Fixes
 
-- Server crate publish (#534)
+- Server crate publish ([#534](https://github.com/Cosmian/kms/pull/534))
 
 ## [5.8.0] - 2025-09-05
 
 ### 🚀 Features
 
-- Add KMIP operations `Sign` and `VerifySignature` for digital signature support (#511)
-- Add TLS cipher suites selection (#524)
+- Add KMIP operations `Sign` and `VerifySignature` for digital signature support ([#511](https://github.com/Cosmian/kms/pull/511))
+- Add TLS cipher suites selection ([#524](https://github.com/Cosmian/kms/pull/524))
 
 ### 🐛 Bug Fixes
 
-- *(google_cse)* Further restrict access to CSE privileged unwrap endpoint (#517)
-- Fix potential race condition in Google CSE migration key pair creation when multiple servers start simultaneously (#519)
-- Simplify clap JWT Auth configuration (#531)
-- Add non-fips UI build (#532)
-- Fix Credential parsing in KMIP Request Message (#529)
-- Use crypto core for db crypto (#526)
-- Cloudproof reexports (#528)
+- *(google_cse)* Further restrict access to CSE privileged unwrap endpoint ([#517](https://github.com/Cosmian/kms/pull/517))
+- Fix potential race condition in Google CSE migration key pair creation when multiple servers start simultaneously ([#519](https://github.com/Cosmian/kms/pull/519))
+- Simplify clap JWT Auth configuration ([#531](https://github.com/Cosmian/kms/pull/531))
+- Add non-fips UI build ([#532](https://github.com/Cosmian/kms/pull/532))
+- Fix Credential parsing in KMIP Request Message ([#529](https://github.com/Cosmian/kms/pull/529))
+- Use crypto core for db crypto ([#526](https://github.com/Cosmian/kms/pull/526))
+- Cloudproof reexports ([#528](https://github.com/Cosmian/kms/pull/528))
 
 ### 📚 Documentation
 
-- *(percona)* Add correction to percona doc (#521)
-- *(hsm)* Added KMS-HSM integration workflow graph (#523)
-- Fixes CLI Key Wrapping documentation on export (#530)
-- Clarify Gmail CSE CA authority usage (#533)
+- *(percona)* Add correction to percona doc ([#521](https://github.com/Cosmian/kms/pull/521))
+- *(hsm)* Added KMS-HSM integration workflow graph ([#523](https://github.com/Cosmian/kms/pull/523))
+- Fixes CLI Key Wrapping documentation on export ([#530](https://github.com/Cosmian/kms/pull/530))
+- Clarify Gmail CSE CA authority usage ([#533](https://github.com/Cosmian/kms/pull/533))
 
 ### ⚙️ Miscellaneous Tasks
 
-- Uniformize clippy lints on all crates (#525)
-- Create SECURITY.md with vulnerability tracking and reporting guidelines (#527)
+- Uniformize clippy lints on all crates ([#525](https://github.com/Cosmian/kms/pull/525))
+- Create SECURITY.md with vulnerability tracking and reporting guidelines ([#527](https://github.com/Cosmian/kms/pull/527))
 
 ## [5.7.1] - 2025-08-22
 
 ### 🚀 Features
 
-- Add support HTTP forward proxy (for intermediate CLI crate) (#509)
+- Add support HTTP forward proxy (for intermediate CLI crate) ([#509](https://github.com/Cosmian/kms/pull/509))
 
 ### 📚 Documentation
 
-- PKCS11: move PKCS#11 docs into cli repository (#510)
+- PKCS11: move PKCS#11 docs into cli repository ([#510](https://github.com/Cosmian/kms/pull/510))
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -188,68 +236,68 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- In JWT auth, change `audience` type from `String` to `Vec<String>`  (#491)
-- Support AES-CBC encryption without padding for Oracle TDE support (#493)
-- Add support for existing PKCS12 leaf certificates when creating Google CSE keypairs (#505)
-- Support debian 10 for old glibc compatibility (required for Oracle TDE) (#508)
-- Add GitHub Copilot instructions for KMS development workflow (#504)
+- In JWT auth, change `audience` type from `String` to `Vec<String>`  ([#491](https://github.com/Cosmian/kms/pull/491))
+- Support AES-CBC encryption without padding for Oracle TDE support ([#493](https://github.com/Cosmian/kms/pull/493))
+- Add support for existing PKCS12 leaf certificates when creating Google CSE keypairs ([#505](https://github.com/Cosmian/kms/pull/505))
+- Support debian 10 for old glibc compatibility (required for Oracle TDE) ([#508](https://github.com/Cosmian/kms/pull/508))
+- Add GitHub Copilot instructions for KMS development workflow ([#504](https://github.com/Cosmian/kms/pull/504))
 
 ### 🐛 Bug Fixes
 
-- Test docker container once generated by ci (#481)
+- Test docker container once generated by ci ([#481](https://github.com/Cosmian/kms/pull/481))
 
 ### ⚙️ Miscellaneous Tasks
 
-- Use machete and publish crates on tags (#499)
-- Remove test data folder (#497)
+- Use machete and publish crates on tags ([#499](https://github.com/Cosmian/kms/pull/499))
+- Remove test data folder ([#497](https://github.com/Cosmian/kms/pull/497))
 - Reorder crates in Cargo.toml
-- Fix docker image name in tests (#500)
+- Fix docker image name in tests ([#500](https://github.com/Cosmian/kms/pull/500))
 - Automate CVE resolution (when possible) by mirroring deny.toml in .cargo/audit.toml
 
 ## [5.6.2] - 2025-07-29
 
 ### 🐛 Bug Fixes
 
-- Remove useless and old UI files (#487)
-- Test_kms_server must remain dev-dependency (#486)
-- Enable native TLS support for OpenID Connect authentication (#489)
+- Remove useless and old UI files ([#487](https://github.com/Cosmian/kms/pull/487))
+- Test_kms_server must remain dev-dependency ([#486](https://github.com/Cosmian/kms/pull/486))
+- Enable native TLS support for OpenID Connect authentication ([#489](https://github.com/Cosmian/kms/pull/489))
 
 ## [5.6.1] - 2025-07-25
 
 ### 🚀 Features
 
-- Display CSE information from UI (#478)
+- Display CSE information from UI ([#478](https://github.com/Cosmian/kms/pull/478))
 
 ### 🐛 Bug Fixes
 
 - Fix outdated UI pkg
-- Rocky package must be NON-FIPS (#482)
+- Rocky package must be NON-FIPS ([#482](https://github.com/Cosmian/kms/pull/482))
 
 ### 📚 Documentation
 
-- Add MongoDB documentation (#483)
+- Add MongoDB documentation ([#483](https://github.com/Cosmian/kms/pull/483))
 - Improve User Interface documentation
 
 ## [5.6.0] - 2025-07-23
 
 ### 🐛 Bug Fixes
 
-- Support for TLS 1.3 on the HTTPS port of the KMIP server (#458)
-- Fixed RevocationReasonCode in KMIP 1.x (#460)
+- Support for TLS 1.3 on the HTTPS port of the KMIP server ([#458](https://github.com/Cosmian/kms/pull/458))
+- Fixed RevocationReasonCode in KMIP 1.x ([#460](https://github.com/Cosmian/kms/pull/460))
 
 ### 🚀 Features
 
-- Better support of PyKMIP client (#438)
-- Support for Percona PostgreSQL TDE (Transparent Data Encryption) (#464)
-- Support for Secret Data (#398)
+- Better support of PyKMIP client ([#438](https://github.com/Cosmian/kms/pull/438))
+- Support for Percona PostgreSQL TDE (Transparent Data Encryption) ([#464](https://github.com/Cosmian/kms/pull/464))
+- Support for Secret Data ([#398](https://github.com/Cosmian/kms/pull/398))
 
 ## [5.5.1] - 2025-07-09
 
 ### 🐛 Bug Fixes
 
 - Fixed an issue with Locate failing when an HSM is present
-- Fixed missing attributes when the wrapped object is not in the cache (#462)
-- Added support for SoftHsmV2 (#457)
+- Fixed missing attributes when the wrapped object is not in the cache ([#462](https://github.com/Cosmian/kms/pull/462))
+- Added support for SoftHsmV2 ([#457](https://github.com/Cosmian/kms/pull/457))
 
 ## [5.5.0] - 2025-07-08
 
@@ -293,7 +341,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Invert fips feature (#448)
+- Invert fips feature ([#448](https://github.com/Cosmian/kms/pull/448))
 - Google CSE - Added support for all algorithms in private_key_decrypt
 - Google CSE - Added support for all algorithms in private_key_sign
 
@@ -305,7 +353,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- In UI, fix `IvCounterNonce` (#446)
+- In UI, fix `IvCounterNonce` ([#446](https://github.com/Cosmian/kms/pull/446))
 - *(Linux packages)* Save and restore conf during installation
 - Interoperability fixes with PyKMIP
 
@@ -323,7 +371,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Support for MySQL 8.0.42 and higher (#443)
+- Support for MySQL 8.0.42 and higher ([#443](https://github.com/Cosmian/kms/pull/443))
 
 ## [5.3.1] - 2025-06-04
 
@@ -335,19 +383,19 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Support for outbound proxy to fetch the JWKS (JSON Web Key Set) (#439)
+- Support for outbound proxy to fetch the JWKS (JSON Web Key Set) ([#439](https://github.com/Cosmian/kms/pull/439))
 
 ## [5.2.0] - 2025-05-27
 
 ### 🚀 Features
 
-- Support for JWKS (JSON Web Key Set) that provides JWK not appropriate for OIDC authentication (#433)
+- Support for JWKS (JSON Web Key Set) that provides JWK not appropriate for OIDC authentication ([#433](https://github.com/Cosmian/kms/pull/433))
 
 ## [5.1.1] - 2025-05-23
 
 ### 🐛 Bug Fixes
 
-- Safer handling of Google CSE authorization token decoding (#431)
+- Safer handling of Google CSE authorization token decoding ([#431](https://github.com/Cosmian/kms/pull/431))
 
 ## [5.1.0] - 2025-05-22
 
@@ -994,13 +1042,13 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 
 ### 🐛 Bug Fixes
 
-- KMIP server operations only support DER format for certificates (#89)
+- KMIP server operations only support DER format for certificates ([#89](https://github.com/Cosmian/kms/pull/89))
 
 ## [4.9.0] - 2023-11-10
 
 ### 🐛 Bug Fixes
 
-- fix: migrate to num-bigint-dig for bigint (#85)
+- fix: migrate to num-bigint-dig for bigint ([#85](https://github.com/Cosmian/kms/pull/85))
 
 ### 🧪 CI
 
@@ -1028,7 +1076,7 @@ Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import
 ### 🐛 Bug Fixes
 
 - Fix container build on tags
-- Serialize the header for each chunk for Covercrypt bulk encryption (#59)
+- Serialize the header for each chunk for Covercrypt bulk encryption ([#59](https://github.com/Cosmian/kms/pull/59))
 
 ### 🚀 Features
 

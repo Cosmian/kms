@@ -1,7 +1,7 @@
 use std::{
     clone::Clone,
     fmt,
-    fmt::{Display, Formatter},
+    fmt::{Display, Formatter, Write as _},
 };
 
 use cosmian_logger::{trace, warn};
@@ -451,9 +451,20 @@ impl KeyBlock {
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         let Some(KeyValue::Structure { attributes, .. }) = &self.key_value else {
+            let mut error_msg =
+                "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned();
+            if let Some(wrapping_data) = &self.key_wrapping_data {
+                if let Some(encryption_key_info) = &wrapping_data.encryption_key_information {
+                    let _ = write!(
+                        error_msg,
+                        " (wrapped with key: {})",
+                        encryption_key_info.unique_identifier
+                    );
+                }
+            }
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
-                "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
+                error_msg,
             ));
         };
         attributes.as_ref().ok_or_else(|| {
@@ -466,10 +477,21 @@ impl KeyBlock {
 
     /// Returns the `Attributes` of that key block if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
+        let mut error_msg =
+            "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned();
+        if let Some(wrapping_data) = &self.key_wrapping_data {
+            if let Some(encryption_key_info) = &wrapping_data.encryption_key_information {
+                let _ = write!(
+                    error_msg,
+                    " (wrapped with key: {})",
+                    encryption_key_info.unique_identifier
+                );
+            }
+        }
         let Some(KeyValue::Structure { attributes, .. }) = &mut self.key_value else {
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
-                "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned(),
+                error_msg,
             ));
         };
         attributes.as_mut().ok_or_else(|| {

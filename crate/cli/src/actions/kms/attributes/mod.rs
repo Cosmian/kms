@@ -36,7 +36,7 @@ impl AttributesCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Get(action) => {
-                action.process(kms_rest_client).await?;
+                action.run(kms_rest_client).await?;
                 Ok(())
             }
             Self::Set(action) => action.process(kms_rest_client).await,

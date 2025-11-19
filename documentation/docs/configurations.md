@@ -367,6 +367,28 @@ rust_log = "info,cosmian_kms_server=info"
 
 ---
 
+### [key-wrapping](#key-wrapping) {#key-wrapping}
+
+Automatic key wrapping with a Key Encryption Key (KEK) and selective automatic unwrapping.
+
+```toml
+# Key wrapping configuration
+# Force all newly created and imported keys to be wrapped by the specified KEK
+key_encryption_key = "hsm-kek-id"
+
+# Automatically unwrap specific object types when retrieved
+default_unwrap_type = ["SymmetricKey", "SecretData"]
+
+[logging]
+rust_log = "info,cosmian_kms_server=info"
+```
+
+**Use case:** Ensure all keys in the KMS database are wrapped by an HSM key for enhanced security.
+The server transparently unwraps keys when needed, caching them in memory without storing clear-text keys in the database.
+Commonly used with HSM integration to protect all KMS keys with a master KEK stored in the HSM. The cache expires after a configurable duration (default 15 minutes).
+
+---
+
 ### [development-debug](#development-debug) {#development-debug}
 
 Development configuration with detailed debugging.

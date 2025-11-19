@@ -58,17 +58,20 @@ async fn test_hsm_all() {
     search::test_object_search().await.unwrap();
 
     info!("HSM: wrapped_symmetric_dek");
-    symmetric_dek::test_wrapped_symmetric_dek().await.unwrap();
+    // Box::pin are needed to conform to clippy::large_futures lint
+    Box::pin(symmetric_dek::test_wrapped_symmetric_dek())
+        .await
+        .unwrap();
     info!("HSM: wrapped_secret_data");
     Box::pin(secret_data_dek::test_wrapped_secret_data())
         .await
         .unwrap();
     info!("HSM: wrapped_rsa_dek");
-    rsa_dek::test_wrapped_rsa_dek().await.unwrap();
+    Box::pin(rsa_dek::test_wrapped_rsa_dek()).await.unwrap();
     #[cfg(feature = "non-fips")]
     {
         info!("HSM: wrapped_ec_dek");
-        ec_dek::test_wrapped_ec_dek().await.unwrap();
+        Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
     }
 }
 

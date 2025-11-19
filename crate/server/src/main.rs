@@ -182,6 +182,7 @@ mod tests {
                 #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
                 #[cfg(feature = "non-fips")]
+                #[allow(deprecated)]
                 redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
                 unwrapped_cache_max_age: 15,

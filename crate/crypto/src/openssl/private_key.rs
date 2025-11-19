@@ -59,6 +59,10 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
             let key_bytes = key_block.pkcs_der_bytes()?;
             // parse the RSA private key to make sure it is correct
             let rsa_private_key = Rsa::private_key_from_der(&key_bytes)?;
+            // Sanity check: verify RSA private key integrity
+            rsa_private_key
+                .check_key()
+                .context("RSA private key validation failed - key is mathematically invalid")?;
             PKey::from_rsa(rsa_private_key)?
         }
         // This really is a SPKI as specified by RFC 5480
@@ -147,6 +151,10 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                         }
                     }
                     let rsa_private_key = rsa_private_key_builder.build();
+                    // Sanity check: verify RSA private key integrity
+                    rsa_private_key.check_key().context(
+                        "RSA private key validation failed - key is mathematically invalid",
+                    )?;
                     PKey::from_rsa(rsa_private_key)?
                 }
                 _ => crypto_bail!(
