@@ -82,12 +82,10 @@ pub struct CreateKeyPairsAction {
     /// comply with Google's S/MIME certificate requirements. For example:
     /// ```text
     /// [ v3_ca ]
-    /// keyUsage=critical,nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
+    /// keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
     /// extendedKeyUsage=emailProtection
     /// subjectKeyIdentifier=hash
     /// authorityKeyIdentifier=keyid:always,issuer
-    /// subjectAltName=email:john.doe@acme.com
-    /// crlDistributionPoints=URI:https://acme.com/crl.pem
     /// ```
     /// This parameter is ignored when using an existing leaf certificate.
     #[clap(
