@@ -30,7 +30,7 @@ pub(crate) async fn retrieve_object_for_operation(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "key_uid_or_tags: {uid_or_tags:?}, user: {user}, \
+        "uid_or_tags: {uid_or_tags:?}, user: {user}, \
          operation_type: {operation_type:?}"
     );
 
@@ -51,6 +51,10 @@ pub(crate) async fn retrieve_object_for_operation(
         }
 
         if user_has_permission(user, Some(owm), &operation_type, kms, params.clone()).await? {
+            trace!(
+                "User {user} has permission for operation {operation_type:?} on object {}",
+                owm.id()
+            );
             let mut owm = owm.to_owned();
             // Update the state on the object attributes if they are not present.
             if owm.attributes().state.is_none() {
@@ -62,6 +66,21 @@ pub(crate) async fn retrieve_object_for_operation(
                     attributes.state = Some(state);
                 }
             }
+
+            // Automatic object unwrapping (if object type is not filtered)
+            // Skip unwrapping for destroyed objects as they have empty key material
+            if let Some(defaults) = &kms.params.default_unwrap_types {
+                if defaults.contains(&owm.object().object_type())
+                    && state != State::Destroyed
+                    && state != State::Destroyed_Compromised
+                {
+                    let unwrapped_object = kms
+                        .get_unwrapped(owm.id(), owm.object(), user, params)
+                        .await?;
+                    owm.set_object(unwrapped_object);
+                }
+            }
+
             return Ok(owm);
         }
     }

@@ -171,8 +171,9 @@ async fn parse_jwks(
             .clone()
             .into_iter()
             .filter(|v| match serde_json::from_value::<JWK>(v.clone()) {
-                Ok(jwk) => {
-                    trace!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
+                Ok(_jwk) => {
+                    // Too invasive trace
+                    // trace!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
                     true
                 }
                 Err(e) => {

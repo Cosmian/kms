@@ -36,62 +36,62 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
     );
     if let (Some(private_key_id), Some(certificate_id)) = (&private_key_id, &certificate_id) {
         // Retrieve the certificate
-        let certificate = retrieve_object_for_operation(
+        let certificate = Box::pin(retrieve_object_for_operation(
             certificate_id,
             KmipOperation::Certify,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
-        let private_key = retrieve_object_for_operation(
+        let private_key = Box::pin(retrieve_object_for_operation(
             private_key_id,
             KmipOperation::Certify,
             kms,
             user,
             params,
-        )
+        ))
         .await?;
         return Ok((private_key, certificate));
     }
 
     if let Some(private_key_id) = &private_key_id {
-        let private_key = retrieve_object_for_operation(
+        let private_key = Box::pin(retrieve_object_for_operation(
             private_key_id,
             KmipOperation::Certify,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
-        let certificate = retrieve_certificate_for_private_key(
+        let certificate = Box::pin(retrieve_certificate_for_private_key(
             &private_key,
             KmipOperation::Certify,
             kms,
             user,
             params,
-        )
+        ))
         .await?;
         return Ok((private_key, certificate));
     }
 
     if let Some(certificate_id) = &certificate_id {
         // Retrieve the certificate
-        let certificate = retrieve_object_for_operation(
+        let certificate = Box::pin(retrieve_object_for_operation(
             certificate_id,
             KmipOperation::Certify,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?;
-        let private_key = retrieve_private_key_for_certificate(
+        let private_key = Box::pin(retrieve_private_key_for_certificate(
             certificate_id,
             KmipOperation::Certify,
             kms,
             user,
             params,
-        )
+        ))
         .await?;
         return Ok((private_key, certificate));
     }
@@ -135,25 +135,25 @@ pub(crate) async fn retrieve_certificate_for_private_key(
             "found link to public key: {}. Will get certificate link from there",
             public_key_id
         );
-        find_link_in_public_key(
+        Box::pin(find_link_in_public_key(
             LinkType::CertificateLink,
             &public_key_id,
             operation_type,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?
     };
 
     // retrieve the certificate
-    let cert_owm = retrieve_object_for_operation(
+    let cert_owm = Box::pin(retrieve_object_for_operation(
         &certificate_id.to_string(),
         operation_type,
         kms,
         user,
         params,
-    )
+    ))
     .await
     .with_context(|| {
         format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
@@ -178,13 +178,13 @@ pub(crate) async fn retrieve_private_key_for_certificate(
         "Retrieving private key for certificate: certificate_uid_or_tags: {:?}",
         certificate_uid_or_tags
     );
-    let owm = retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         certificate_uid_or_tags,
         KmipOperation::GetAttributes,
         kms,
         user,
         params.clone(),
-    )
+    ))
     .await?;
 
     let private_key_id = owm.attributes().get_link(LinkType::PrivateKeyLink);
@@ -201,24 +201,24 @@ pub(crate) async fn retrieve_private_key_for_certificate(
                     "No private or public key link found for the certificate".to_owned(),
                 )
             })?;
-        find_link_in_public_key(
+        Box::pin(find_link_in_public_key(
             LinkType::PrivateKeyLink,
             &public_key_id,
             operation_type,
             kms,
             user,
             params.clone(),
-        )
+        ))
         .await?
     };
     // retrieve the private key
-    retrieve_object_for_operation(
+    Box::pin(retrieve_object_for_operation(
         &private_key_id.to_string(),
         operation_type,
         kms,
         user,
         params,
-    )
+    ))
     .await
     .with_context(|| {
         format!("could not retrieve the private key: {private_key_id} for the certificate")
@@ -234,13 +234,13 @@ async fn find_link_in_public_key(
     params: Option<Arc<dyn SessionParams>>,
 ) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
-    let public_key_owm = retrieve_object_for_operation(
+    let public_key_owm = Box::pin(retrieve_object_for_operation(
         &public_key_id.to_string(),
         operation_type,
         kms,
         user,
         params,
-    )
+    ))
     .await?;
     let public_key_attributes = public_key_owm.attributes();
     // retrieve the private key linked to the public key

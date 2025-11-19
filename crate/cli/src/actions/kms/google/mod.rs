@@ -1,12 +1,12 @@
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 
-use self::{identities::IdentitiesCommands, keypairs::KeyPairsCommands};
+use self::{identities::IdentitiesCommands, key_pairs::KeyPairsCommands};
 use crate::error::result::KmsCliResult;
 
 mod gmail_client;
 mod identities;
-pub mod keypairs;
+pub mod key_pairs;
 
 pub use gmail_client::GoogleApiError;
 

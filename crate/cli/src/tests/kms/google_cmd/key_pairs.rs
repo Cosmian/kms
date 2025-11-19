@@ -3,10 +3,14 @@ use std::path::PathBuf;
 use base64::Engine;
 use cosmian_kmip::{
     kmip_0::kmip_types::BlockCipherMode,
-    kmip_2_1::kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+    kmip_2_1::{
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+    },
 };
 use cosmian_kms_client::{ExportObjectParams, export_object};
 use cosmian_logger::{info, log_init};
+use openssl::x509::X509;
 use test_kms_server::{
     reexport::cosmian_kms_server::routes::google_cse::operations::PrivateKeySignRequest,
     start_default_test_kms_server,
@@ -14,7 +18,7 @@ use test_kms_server::{
 
 use crate::{
     actions::kms::{
-        google::keypairs::create::CreateKeyPairsAction,
+        attributes::GetAttributesAction, google::key_pairs::create::CreateKeyPairsAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -48,6 +52,7 @@ async fn create_google_key_pair() -> KmsCliResult<()> {
         leaf_certificate_id: None,
         leaf_certificate_pkcs12_file: None,
         leaf_certificate_pkcs12_password: None,
+        number_of_days: 365,
         dry_run: true,
     };
     action.run(ctx.get_owner_client()).await.unwrap_err();
@@ -93,13 +98,22 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     log_init(None);
     let ctx = start_default_test_kms_server().await;
 
-    // Create the Google CSE key
-    let cse_key_id = CreateKeyAction {
-        key_id: Some("google_cse".to_owned()),
+    // Create the Google CSE key if does not exist
+    let resp = GetAttributesAction {
+        id: Some("google_cse".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
-    .await?;
+    .await;
+
+    if resp.is_err() {
+        let _cse_key_id = CreateKeyAction {
+            key_id: Some("google_cse".to_owned()),
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await?;
+    }
 
     // import signers
     let (_root_id, _intermediate_id, issuer_private_key_id) =
@@ -108,7 +122,7 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
         user_id: "marta.doe@acme.com".to_owned(),
-        cse_key_id: cse_key_id.to_string(),
+        cse_key_id: "google_cse".to_string(),
         issuer_private_key_id: Some(issuer_private_key_id.to_string()),
         subject_name: "CN=Marta Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
         rsa_private_key_id: None,
@@ -120,12 +134,63 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
         leaf_certificate_id: None,
         leaf_certificate_pkcs12_file: None,
         leaf_certificate_pkcs12_password: None,
+        number_of_days: 10,
         dry_run: true,
     };
     let cert_id = action.run(ctx.get_owner_client()).await?;
     info!("Created certificate ID: {cert_id}");
 
-    // Here comes a double check on RSA private key
+    // ========================================================================
+    // Verify that the certificate expiration date matches the requested number_of_days
+    // ========================================================================
+    let owner_client = ctx.get_owner_client();
+    let (_, cert_object, _) = export_object(
+        &owner_client,
+        &cert_id.to_string(),
+        ExportObjectParams {
+            key_format_type: None,
+            ..ExportObjectParams::default()
+        },
+    )
+    .await?;
+
+    // Extract the certificate value from the object and parse it with OpenSSL
+    if let Object::Certificate(certificate) = cert_object {
+        let cert_x509 = X509::from_der(&certificate.certificate_value)
+            .expect("Failed to parse certificate from DER");
+
+        // Get not_before and not_after dates from the X509 certificate
+        let not_before = cert_x509.not_before();
+        let not_after = cert_x509.not_after();
+
+        // Calculate the actual validity period in days
+        let diff = not_before
+            .diff(not_after)
+            .expect("Failed to calculate date difference");
+        let actual_days = diff.days.abs();
+
+        info!(
+            "Certificate validity: {} days (requested: {} days)",
+            actual_days, action.number_of_days
+        );
+        info!("Not Before: {}", not_before);
+        info!("Not After: {}", not_after);
+
+        // Verify that the actual certificate validity period exactly matches the requested number_of_days
+        assert_eq!(
+            actual_days,
+            i32::try_from(action.number_of_days).unwrap(),
+            "Certificate validity ({} days) does not match requested validity ({} days)",
+            actual_days,
+            action.number_of_days
+        );
+    } else {
+        panic!("Expected Certificate object, got something else");
+    }
+
+    // ========================================================================
+    // Double check on RSA private key: export and verify signature capability
+    // ========================================================================
     // Resolve the private key id from the certificate via GetAttributes
     let owner_client = ctx.get_owner_client();
     let attrs = owner_client
@@ -149,7 +214,7 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
         &ctx.get_owner_client(),
         &private_key_id,
         ExportObjectParams {
-            wrapping_key_id: Some(&cse_key_id.to_string()),
+            wrapping_key_id: Some("google_cse"),
             wrapping_cryptographic_parameters: Some(CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::GCM),

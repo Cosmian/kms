@@ -30,7 +30,7 @@ use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
     core::{KMS, wrapping::unwrap_object},
     error::KmsError,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 impl KMS {
@@ -51,12 +51,7 @@ impl KMS {
         params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<Object> {
         // Is this an unwrapped key?
-        if object
-            .key_block()
-            .context("Cannot unwrap non key object")?
-            .key_wrapping_data
-            .is_none()
-        {
+        if !object.is_wrapped() {
             // already an unwrapped key
             trace!("Already an unwrapped key");
             return Ok(object.clone());

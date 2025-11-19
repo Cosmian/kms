@@ -50,7 +50,7 @@ async fn get_and_check_attributes(
         attribute_link_types: get_all_link_types(),
         output_file: None,
     }
-    .process(ctx.get_owner_client())
+    .run(ctx.get_owner_client())
     .await?;
     trace!("{get_attributes:?}");
 
@@ -130,7 +130,7 @@ async fn get_and_check_none_attributes(
         attribute_link_types: get_all_link_types(),
         output_file: None,
     }
-    .process(ctx.get_owner_client())
+    .run(ctx.get_owner_client())
     .await?;
     trace!("{get_attributes:?}");
 

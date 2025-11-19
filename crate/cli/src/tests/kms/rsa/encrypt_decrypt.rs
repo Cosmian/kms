@@ -18,17 +18,7 @@ use crate::{
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> KmsCliResult<()> {
-    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
-    // log_init(
-    //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
-    //      cosmian_kms_utils=trace,cosmian_kmip=info",
-    // );
-
-    use cosmian_logger::trace;
-
-    use crate::actions::kms::rsa::{
-        decrypt::DecryptAction, encrypt::EncryptAction, keys::create_key_pair::CreateKeyPairAction,
-    };
+    log_init(None);
     let ctx = start_default_test_kms_server().await;
 
     // create a temp dir

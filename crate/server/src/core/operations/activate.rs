@@ -34,13 +34,13 @@ pub(crate) async fn activate(
         .as_str()
         .context("Activate: the unique identifier must be a string")?;
 
-    let mut owm: ObjectWithMetadata = retrieve_object_for_operation(
+    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::GetAttributes,
         kms,
         user,
         params.clone(),
-    )
+    ))
     .await?;
     trace!("Retrieved object for: {}", owm.object());
 

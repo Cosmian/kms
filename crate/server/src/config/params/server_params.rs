@@ -1,6 +1,8 @@
-use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
 
-use cosmian_kms_server_database::MainDbParams;
+use cosmian_kms_server_database::{
+    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+};
 use cosmian_logger::{debug, warn};
 
 use super::TlsParams;
@@ -98,11 +100,11 @@ pub struct ServerParams {
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved
     ///
-    /// Each entry must be the string name of a KMIP `ObjectType`, for example:
-    /// `["SecretData", "SymmetricKey"]`.
+    /// Each entry must be a KMIP `ObjectType`, for example:
+    /// `[ObjectType::SecretData, ObjectType::SymmetricKey]`.
     ///
     /// If `None`, no automatic unwrapping will be performed.
-    pub default_unwrap_types: Option<Vec<String>>,
+    pub default_unwrap_types: Option<Vec<ObjectType>>,
 
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
@@ -230,7 +232,39 @@ impl ServerParams {
             },
             slot_passwords,
             key_wrapping_key: conf.key_encryption_key,
-            default_unwrap_types: conf.default_unwrap_type,
+            default_unwrap_types: conf
+                .default_unwrap_type
+                .map(|types| {
+                    // Check if "All" is specified
+                    if types.iter().any(|s| s.eq_ignore_ascii_case("All")) {
+                        Ok(vec![
+                            ObjectType::Certificate,
+                            ObjectType::CertificateRequest,
+                            ObjectType::OpaqueObject,
+                            ObjectType::PGPKey,
+                            ObjectType::PrivateKey,
+                            ObjectType::PublicKey,
+                            ObjectType::SecretData,
+                            ObjectType::SplitKey,
+                            ObjectType::SymmetricKey,
+                        ])
+                    } else {
+                        types
+                            .into_iter()
+                            .map(|s| {
+                                ObjectType::from_str(&s).map_err(|e| {
+                                    KmsError::ServerError(format!(
+                                        "Invalid ObjectType: '{s}'. Valid values are: All, \
+                                         Certificate, CertificateRequest, OpaqueObject, PGPKey, \
+                                         PrivateKey, PublicKey, SecretData, SplitKey, \
+                                         SymmetricKey. Error: {e}"
+                                    ))
+                                })
+                            })
+                            .collect::<Result<Vec<ObjectType>, KmsError>>()
+                    }
+                })
+                .transpose()?,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
@@ -246,19 +280,31 @@ impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
 
-        // Add all fields systematically
+        // Add optional fields only if they are Some
+        if let Some(ref idp_configs) = self.identity_provider_configurations {
+            debug_struct.field("identity_provider_configurations", idp_configs);
+        }
+
+        // Always show these non-optional fields
         debug_struct
-            .field(
-                "identity_provider_configurations",
-                &self.identity_provider_configurations,
-            )
             .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username)
-            .field("main_db_params", &self.main_db_params)
+            .field("force_default_username", &self.force_default_username);
+
+        if let Some(ref db_params) = self.main_db_params {
+            debug_struct.field("main_db_params", db_params);
+        }
+
+        debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
-            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
-            .field("non_revocable_key_id", &self.non_revocable_key_id)
-            .field("default_unwrap_types", &self.default_unwrap_types);
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age);
+
+        if let Some(ref key_id) = self.non_revocable_key_id {
+            debug_struct.field("non_revocable_key_id", key_id);
+        }
+
+        if let Some(ref unwrap_types) = self.default_unwrap_types {
+            debug_struct.field("default_unwrap_types", unwrap_types);
+        }
 
         if self.start_socket_server {
             debug_struct
@@ -268,10 +314,18 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("socket_server", &"disabled");
         }
 
-        debug_struct
-            .field("tls_params", &self.tls_params)
-            .field("api_token_id", &self.api_token_id)
-            .field("ms_dke_service_url", &self.ms_dke_service_url);
+        if let Some(ref tls) = self.tls_params {
+            debug_struct.field("tls_params", tls);
+        }
+
+        if let Some(ref token) = self.api_token_id {
+            debug_struct.field("api_token_id", token);
+        }
+
+        if let Some(ref dke_url) = self.ms_dke_service_url {
+            debug_struct.field("ms_dke_service_url", dke_url);
+        }
+
         if self.google_cse.google_cse_enable {
             debug_struct
                 .field("google_cse_enable", &self.google_cse.google_cse_enable)
@@ -290,6 +344,7 @@ impl fmt::Debug for ServerParams {
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
         }
+
         if self.hsm_model.is_some() {
             debug_struct
                 .field("hsm_admin", &self.hsm_admin)
@@ -307,6 +362,18 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("hsm_model", &"no HSM configured");
         }
 
+        if let Some(ref key) = self.key_wrapping_key {
+            debug_struct.field("key_wrapping_key", key);
+        }
+
+        if let Some(ref proxy) = self.proxy_params {
+            debug_struct.field("proxy_params", proxy);
+        }
+
+        if let Some(ref public_url) = self.kms_public_url {
+            debug_struct.field("kms_public_url", public_url);
+        }
+
         debug_struct.field(
             "kms_url",
             &format!(
@@ -316,9 +383,22 @@ impl fmt::Debug for ServerParams {
                 &self.http_port
             ),
         );
-        debug_struct.field("non_revocable_key_id", &self.non_revocable_key_id);
-        debug_struct.field("privileged_users", &self.privileged_users);
 
-        debug_struct.finish_non_exhaustive()
+        if let Some(ref users) = self.privileged_users {
+            debug_struct.field("privileged_users", users);
+        }
+
+        // if one of these UI fields is some, add debug information
+        if self.ui_oidc_auth.ui_oidc_client_id.is_some()
+            || self.ui_oidc_auth.ui_oidc_client_secret.is_some()
+            || self.ui_oidc_auth.ui_oidc_issuer_url.is_some()
+            || self.ui_oidc_auth.ui_oidc_logout_url.is_some()
+        {
+            debug_struct.field("ui_oidc_auth", &self.ui_oidc_auth);
+        }
+
+        debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
+
+        debug_struct.finish()
     }
 }

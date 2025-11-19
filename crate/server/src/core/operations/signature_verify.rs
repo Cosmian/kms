@@ -80,13 +80,13 @@ pub(crate) async fn signature_verify(
     debug!("Retrieving verification key with UID: {unique_identifier}");
 
     // Retrieve the managed object for verification
-    let uid_owm = retrieve_object_for_operation(
+    let uid_owm = Box::pin(retrieve_object_for_operation(
         &unique_identifier,
         KmipOperation::SignatureVerify,
         kms,
         user,
         params,
-    )
+    ))
     .await?;
 
     let verification_key = extract_verification_key(uid_owm.object())?;

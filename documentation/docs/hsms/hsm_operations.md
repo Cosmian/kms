@@ -1,21 +1,21 @@
 In addition to managing its keys, Cosmian KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
 <!-- TOC -->
-* [HSM keys](#hsm-keys)
-* [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
-    * [Manually using the CLI](#manually-using-the-cli)
-    * [Manually using the Web UI](#manually-using-the-web-ui)
-    * [Automatically using the server configuration](#automatically-using-the-server-configuration)
-* [Using the wrapped KMS key](#using-the-wrapped-kms-key)
-    * [Small data: encrypting server-side](#small-data-encrypting-server-side)
-        * [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
-* [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
-* [HSM KMIP operations](#hsm-kmip-operations)
-    * [Create](#create)
-    * [Destroy](#destroy)
-    * [Get - Export](#get---export)
-    * [Encrypt](#encrypt)
-    * [Decrypt](#decrypt)
+- [HSM keys](#hsm-keys)
+- [Creating a KMS key wrapped by an HSM key](#creating-a-kms-key-wrapped-by-an-hsm-key)
+    - [Manually using the CLI](#manually-using-the-cli)
+    - [Manually using the Web UI](#manually-using-the-web-ui)
+    - [Automatically using the server configuration](#automatically-using-the-server-configuration)
+- [Using the wrapped KMS key](#using-the-wrapped-kms-key)
+    - [Small data: encrypting server-side](#small-data-encrypting-server-side)
+        - [Large data: encrypting client side with key wrapping](#large-data-encrypting-client-side-with-key-wrapping)
+- [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
+- [HSM KMIP operations](#hsm-kmip-operations)
+    - [Create](#create)
+    - [Destroy](#destroy)
+    - [Get - Export](#get---export)
+    - [Encrypt](#encrypt)
+    - [Decrypt](#decrypt)
 <!-- TOC -->
 
 ## HSM keys
@@ -66,6 +66,32 @@ The KMS server can automatically wrap all KMS keys with a specific HSM key.
 This is done by setting the `key_encryption_key` property in the TOML server configuration file
 or using the corresponding command line switch.
 
+When `key_encryption_key` is configured, all newly created and imported keys will be automatically wrapped
+by the specified Key Encryption Key (KEK), typically an HSM key. Keys are stored wrapped in the KMS database,
+ensuring no clear-text key material is persisted.
+
+The server provides **selective automatic unwrapping** through the `default_unwrap_type` configuration parameter.
+This controls which KMIP object types are automatically unwrapped when retrieved via Get or Export operations:
+
+- Valid values: `["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"]`
+- Default: `[]` (no automatic unwrapping)
+- When a `key_encryption_key` is set, it's common to configure `default_unwrap_type = ["SymmetricKey", "SecretData"]`
+
+**Example configuration:**
+
+```toml
+# Force all keys to be wrapped by an HSM key
+key_encryption_key = "hsm::4::master_kek"
+
+# Automatically unwrap symmetric keys and secret data when retrieved
+default_unwrap_type = ["SymmetricKey", "SecretData"]
+```
+
+When an object matching the configured types is retrieved, it is automatically unwrapped and cached
+in the server's memory cache (see [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)).
+This enables transparent encryption/decryption operations without storing clear-text keys in the database
+while minimizing HSM calls through expiring caching.
+
 ## Using the wrapped KMS key
 
 The symmetric key created above can now be used to encrypt and decrypt data, and the KMS will transparently unwrap the
@@ -110,8 +136,8 @@ To decrypt a large file with the KEK `my_sym_key` client side, the following com
 
 ```shell
 > cosmian kms sym decrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
-  --key-encryption-algorithm rfc5649 --output-file /tmp/large.recoverd.bin /tmp/large.enc
-The decrypted file is available at "/tmp/large.recoverd.bin"
+  --key-encryption-algorithm rfc5649 --output-file /tmp/large.recovered.bin /tmp/large.enc
+The decrypted file is available at "/tmp/large.recovered.bin"
 ```
 
 ## The Unwrapped Objects Cache
@@ -235,8 +261,8 @@ used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is f
 
 When using RSA, the maximum message size in bytes is:
 
-* PKCS#1 v1.5: (key size in bits / 8) - 11
-* OAEP: (key size in bits / 8) - 66
+- PKCS#1 v1.5: (key size in bits / 8) - 11
+- OAEP: (key size in bits / 8) - 66
 
 To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, the following
 command can be used:
@@ -276,5 +302,5 @@ To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, 
 ```shell
 > cosmian kms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
-The decrypted file is available at "/tmp/secret.recoverd.txt"
+The decrypted file is available at "/tmp/secret.recovered.txt"
 ```

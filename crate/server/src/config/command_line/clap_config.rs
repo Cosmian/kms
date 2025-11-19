@@ -116,7 +116,7 @@ pub struct ClapConfig {
     /// ```
     #[clap(verbatim_doc_comment,
         long,
-        value_parser(["PrivateKey", "PublicKey", "SymmetricKey", "SecretData"])
+        value_parser(["All", "Certificate", "CertificateRequest", "OpaqueObject", "PGPKey", "PrivateKey", "PublicKey", "SecretData", "SplitKey", "SymmetricKey"])
     )]
     pub default_unwrap_type: Option<Vec<String>>,
 

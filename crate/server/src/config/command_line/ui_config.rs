@@ -1,3 +1,5 @@
+use std::fmt;
+
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +46,7 @@ impl UiConfig {
     }
 }
 
-#[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
+#[derive(Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct OidcConfig {
     /// The client ID of the configured OIDC tenant for UI Auth
@@ -62,4 +64,25 @@ pub struct OidcConfig {
     /// The logout URI of the configured OIDC tenant for UI Auth
     #[clap(long, env = "UI_OIDC_LOGOUT_URL")]
     pub ui_oidc_logout_url: Option<String>,
+}
+
+impl fmt::Debug for OidcConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("OidcConfig");
+
+        if let Some(ui_oidc_client_id) = &self.ui_oidc_client_id {
+            debug_struct.field("ui_oidc_client_id", ui_oidc_client_id);
+        }
+        if self.ui_oidc_client_secret.is_some() {
+            debug_struct.field("ui_oidc_client_secret", &"****");
+        }
+        if let Some(ui_oidc_issuer_url) = &self.ui_oidc_issuer_url {
+            debug_struct.field("ui_oidc_issuer_url", ui_oidc_issuer_url);
+        }
+        if let Some(ui_oidc_logout_url) = &self.ui_oidc_logout_url {
+            debug_struct.field("ui_oidc_logout_url", ui_oidc_logout_url);
+        }
+
+        debug_struct.finish()
+    }
 }

@@ -64,15 +64,15 @@ impl AccessAction {
 pub struct GrantAccess {
     /// The user identifier to allow
     #[clap(required = true)]
-    pub(crate) user: String,
+    pub user: String,
 
     /// The object unique identifier stored in the KMS
     #[clap(long, short = 'i')]
-    pub(crate) object_uid: Option<String>,
+    pub object_uid: Option<String>,
 
     /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
     #[clap(required = true)]
-    pub(crate) operations: Vec<KmipOperation>,
+    pub operations: Vec<KmipOperation>,
 }
 
 impl GrantAccess {
