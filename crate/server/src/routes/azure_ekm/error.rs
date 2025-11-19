@@ -9,7 +9,7 @@ use serde::Serialize;
 // include the following JSON body in its response.
 #[derive(Serialize, Debug)]
 pub(crate) struct AzureEkmErrorReply {
-    // for some reason, the spec wants this to be a string, refer to page 9...
+    // for some reason, the spec wants the code to be a string, refer to page 9...
     // due to likeliness of typos, proper constructors will be provided below
     // please keep the `code` attribute private.
     code: String,
@@ -34,6 +34,28 @@ impl From<AzureEkmErrorReply> for HttpResponse {
     }
 }
 
+impl From<&KmsError> for AzureEkmErrorReply {
+    fn from(e: &KmsError) -> Self {
+        let status_code = e.status_code().as_u16();
+
+        // Mapping non-internal errors status numeric code to an error code string
+        let code = match status_code {
+            400 => "InvalidRequest",
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "KeyNotFound",
+            429 => "TooManyRequests",
+            _ => "InternalError",
+        };
+
+        Self {
+            code: code.to_string(),
+            message: "An Azure EKM request to the Cosmian KMS failed".to_owned(),
+        }
+    }
+}
+
+// bunch of constructors for known error replies
 impl AzureEkmErrorReply {
     /// API version not supported
     pub fn unsupported_api_version(version: &str) -> Self {
@@ -121,25 +143,6 @@ impl AzureEkmErrorReply {
         Self {
             code: "InternalError".to_string(),
             message: message.into(),
-        }
-    }
-
-    pub fn from(e: &KmsError) -> Self {
-        let status_code = e.status_code().as_u16();
-
-        // Mapping non-internal errors status numeric code to an error code string
-        let code = match status_code {
-            400 => "InvalidRequest",
-            401 => "Unauthorized",
-            403 => "Forbidden",
-            404 => "KeyNotFound",
-            429 => "TooManyRequests",
-            _ => "InternalError",
-        };
-
-        Self {
-            code: code.to_string(),
-            message: "An Azure EKM request to the Cosmian KMS failed".to_owned(),
         }
     }
 }
