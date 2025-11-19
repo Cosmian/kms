@@ -110,6 +110,7 @@ sudo -E env "PATH=$PATH" \
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" \
   cargo test -p cosmian_kms_cli \
   ${RELEASE_FLAG:+$RELEASE_FLAG} \
-  $FEATURES -- --nocapture hsm_google_cse --ignored
+  "${FEATURES_FLAG[@]}" \
+  -- --nocapture hsm_google_cse --ignored
 
 echo "Utimaco HSM tests completed successfully."

@@ -119,8 +119,8 @@ rustPlatform.buildRustPackage rec {
       # Updated from build output (got: sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=)
       "sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs="
     else
-      # Linux vendor hash (got: sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=)
-      "sha256-JDBiF5KfCeNy7e4PADbve7qvPByAazqXY7OY3vCvdNs=";
+      # Linux vendor hash (got: sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=)
+      "sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=";
   cargoSha256 = cargoHash;
 
   # Build only the server package with optional features.

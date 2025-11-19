@@ -13,13 +13,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  packages:
-    uses: ./.github/workflows/packaging.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      debug_or_release: ${{ inputs.debug_or_release }}
-    secrets: inherit
-
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
