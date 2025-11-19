@@ -40,7 +40,7 @@ All hashes are committed in the repository and verified during builds:
 | **Cargo vendor**      | Reproducible Rust dependencies      | `nix/kms-server.nix:122`                           | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
 | **OpenSSL source**    | FIPS 140-3 certified crypto library | `nix/openssl-3_1_2.nix:14`                         | `sha256-BPedCZMRpt6FvPc3WDopPx8DAag0Gbu6N6hqdHvomso=`              |
 | **Binary (FIPS)**     | Final KMS server executable         | `nix/expected-hashes/fips.x86_64-linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
-| **Binary (non-FIPS)** | Non-FIPS KMS server                 | `nix/expected-hashes/non-fips.x86_64-linux.sha256` | `564a07b4abc5944a557e94e7816a800968f90b6a442e4982fdb5896f7bf4932b` |
+| **Binary (non-FIPS)** | Non-FIPS KMS server                 | `nix/expected-hashes/non-fips.x86_64-linux.sha256` | `2eb034667cde901bb85b195d58b48a32ff4028f785bd977acdb689ea42268f1b` |
 
 Platform-specific binary hashes:
 
