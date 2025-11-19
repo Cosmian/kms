@@ -42,7 +42,7 @@ jobs:
 
   cargo-publish:
     name: Cargo Publish Workspace
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
+    uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: ${{ inputs.toolchain }}
     secrets:
