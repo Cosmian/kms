@@ -3,8 +3,6 @@ name: CI
 
 on:
   push:
-    branches:
-      - '**'
     tags:
       - '**'
   pull_request:
@@ -16,8 +14,6 @@ on:
 jobs:
   # Determine build type based on trigger
   main:
-    # Skip push events on branches with open PRs to avoid duplicate runs
-    if: github.event_name != 'push' || github.event.pull_request == ''
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
