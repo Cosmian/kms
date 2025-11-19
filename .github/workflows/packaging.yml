@@ -7,9 +7,7 @@ on:
       toolchain:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
+        default: 1.90.0
   workflow_dispatch:
     inputs:
       toolchain:
@@ -17,11 +15,6 @@ on:
         required: true
         type: string
         default: 1.90.0
-      debug_or_release:
-        description: 'Build type: debug or release'
-        required: true
-        type: string
-        default: release
 
 jobs:
   packages:
@@ -54,7 +47,7 @@ jobs:
 
       - name: Package
         run: |
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} package
+          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} package
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -62,7 +55,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.features }}_${{ matrix.runner }}-${{ inputs.debug_or_release }}
+          name: ${{ matrix.features }}_${{ matrix.runner }}-release
           path: result-*-${{ matrix.features }}/*
           retention-days: 1
           if-no-files-found: error
@@ -101,7 +94,7 @@ jobs:
       - name: Download package artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.features }}_${{ matrix.runner }}-${{ inputs.debug_or_release }}
+          name: ${{ matrix.features }}_${{ matrix.runner }}-release
 
       - name: List downloaded artifacts
         if: ${{ matrix.container != 'rockylinux/rockylinux:8' }}
@@ -202,7 +195,7 @@ jobs:
       registry-image: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
       os: ${{ matrix.runner }}
       features: ${{ matrix.features }}
-      debug_or_release: ${{ inputs.debug_or_release }}
+      debug_or_release: release
     secrets: inherit
 
   docker-manifest:
@@ -285,4 +278,4 @@ jobs:
     with:
       project-name: kms
       destination: kms
-      debug_or_release: ${{ inputs.debug_or_release }}
+      debug_or_release: release

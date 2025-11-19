@@ -131,8 +131,6 @@ repos:
       - id: cargo-update
         stages: [manual]
       - id: cargo-machete
-      - id: cargo-build
-      - id: renew-server-cli-doc
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
     rev: 0.18.2
@@ -160,6 +158,12 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      - id: renew-server-doc
+        name: renew server cli doc
+        entry: bash .github/scripts/renew_server_doc.sh
+        language: system
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
