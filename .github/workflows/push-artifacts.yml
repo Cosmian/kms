@@ -59,7 +59,7 @@ jobs:
             DEB_COUNT=$((DEB_COUNT + $(compgen -G "$archive_name/*.deb" | wc -l || true)))
             RPM_COUNT=$((RPM_COUNT + $(compgen -G "$archive_name/*.rpm" | wc -l || true)))
             DMG_COUNT=$((DMG_COUNT + $(compgen -G "$archive_name/*.dmg" | wc -l || true)))
-            EXE_COUNT=$((EXE_COUNT + $(compgen -G "cargo-build-${{ inputs.debug_or_release }}/*setup.exe" | wc -l || true)))
+            EXE_COUNT=$((EXE_COUNT + $(compgen -G "$archive_name/*setup.exe" | wc -l || true)))
           done
 
           if [ "$DEB_COUNT" -lt 4 ] && [ "$RPM_COUNT" -lt 4 ]; then
