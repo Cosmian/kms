@@ -179,7 +179,7 @@ jobs:
           bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
 
   windows-2022:
-    uses: ./.github/workflows/build_windows.yml
+    uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows

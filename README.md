@@ -212,8 +212,8 @@ directory.
 
 Two paths are supported:
 
-- For production use, use deterministic Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
-  reproducible builds, and packaging.
+- For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
+  reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
 ### Features
@@ -224,7 +224,7 @@ Two paths are supported:
 
 ### Linux or macOS
 
-Deterministic (Nix-first):
+Nix-based (reproducible FIPS builds):
 
 ```sh
 # Build (debug by default); add --profile release for optimized builds

@@ -248,19 +248,23 @@ bash .github/scripts/nix.sh package dmg
 
 ## 2. The Role of Nix in Cosmian KMS
 
-Nix underpins reproducibility, determinism, and offline operation:
+Nix underpins reproducibility, build consistency, and offline operation:
 
-| Aspect                               | Nix Contribution                                        | Result                                                 |
-| ------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------ |
-| Pinned nixpkgs (24.05)               | Ensures identical dependency graph across machines & CI | Bit‑for‑bit reproducible builds                        |
-| Pinned Rust toolchain (1.90.0)       | Removes rustup variability                              | Stable compiler + consistent warnings/clippy output    |
-| Static OpenSSL 3.1.2 derivation      | Local tarball vendoring; no runtime dynamic linkage     | Security + portability; smoke tests verify version     |
-| `installCheckPhase` hash enforcement | Compares built binary hash to expected file             | Guards against accidental drift or supply chain change |
-| Prewarm + offline flags              | `prewarm_nixpkgs_and_tools`, Cargo offline cache        | Repeatable offline packaging after first warm run      |
-| Single entrypoint script             | `nix.sh` & derivations unify workflows                  | Lower cognitive load; simpler CI matrix                |
-| Variant matrix (FIPS / non-FIPS)     | Feature flags from build env                            | Controlled cryptographic footprint                     |
+| Aspect                               | Nix Contribution                                        | Result                                                           |
+| ------------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| Pinned nixpkgs (24.05)               | Ensures identical dependency graph across machines & CI | Bit‑for‑bit reproducible FIPS builds (non-FIPS: hash tracking)   |
+| Pinned Rust toolchain (1.90.0)       | Removes rustup variability                              | Stable compiler + consistent warnings/clippy output              |
+| Static OpenSSL 3.1.2 derivation      | Local tarball vendoring; no runtime dynamic linkage     | Security + portability; smoke tests verify version               |
+| `installCheckPhase` hash enforcement | Compares built binary hash to expected file (Linux only)| Guards against accidental drift or supply chain change (FIPS)    |
+| Prewarm + offline flags              | `prewarm_nixpkgs_and_tools`, Cargo offline cache        | Repeatable offline packaging after first warm run                |
+| Single entrypoint script             | `nix.sh` & derivations unify workflows                  | Lower cognitive load; simpler CI matrix                          |
+| Variant matrix (FIPS / non-FIPS)     | Feature flags from build env                            | Controlled cryptographic footprint                               |
 
-Workflow summary: After a single online run (optional), subsequent `package` invocations succeed with network disconnected (given local OpenSSL tarball and Cargo registry cache), validating hermetic packaging.
+**Note**: Only FIPS builds on Linux achieve bit-for-bit deterministic reproducibility. Non-FIPS builds use hash verification
+for consistency tracking but may produce different binaries across build environments.
+
+Workflow summary: After a single online run (optional), subsequent `package` invocations succeed with network disconnected
+(given local OpenSSL tarball and Cargo registry cache), validating hermetic packaging.
 
 ## 3. Script Call Graph Overview
 

@@ -17,6 +17,13 @@ on:
         default: 1.90.0
 
 jobs:
+  windows-2022:
+    uses: ./.github/workflows/build_windows.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: windows
+      debug_or_release: release
+
   packages:
     name: Package ${{ matrix.runner }} - ${{ matrix.features }}
     runs-on: ${{ matrix.runner }}
