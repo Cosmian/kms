@@ -34,8 +34,8 @@ impl From<AzureEkmErrorReply> for HttpResponse {
     }
 }
 
-impl From<&KmsError> for AzureEkmErrorReply {
-    fn from(e: &KmsError) -> Self {
+impl From<KmsError> for AzureEkmErrorReply {
+    fn from(e: KmsError) -> Self {
         let status_code = e.status_code().as_u16();
 
         // Mapping non-internal errors status numeric code to an error code string
