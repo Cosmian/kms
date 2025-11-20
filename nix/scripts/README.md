@@ -21,23 +21,25 @@ Helper scripts for building, packaging, and maintaining Cosmian KMS with Nix.
 
 ### update_all_hashes.sh
 
-**Status**: Standalone script (also integrated into `nix.sh` as `update-hashes` subcommand)
+**Status**: Standalone script (integrated into `nix.sh` as `update-hashes` subcommand)
 
 Automatically updates all expected hashes for the current platform after dependency or code changes.
 
 **Usage:**
 
 ```bash
-# Via nix.sh (recommended)
+# Via nix.sh (recommended - auto-passes variant flag)
 bash .github/scripts/nix.sh update-hashes
 bash .github/scripts/nix.sh update-hashes --vendor-only
 bash .github/scripts/nix.sh update-hashes --binary-only
+bash .github/scripts/nix.sh --variant non-fips update-hashes
 
-# Standalone script (alternative)
+# Direct script call (alternative - requires explicit --variant flag)
 bash nix/scripts/update_all_hashes.sh
 bash nix/scripts/update_all_hashes.sh --vendor-only
 bash nix/scripts/update_all_hashes.sh --binary-only
-bash nix/scripts/update_all_hashes.sh --help
+bash nix/scripts/update_all_hashes.sh --variant fips
+bash nix/scripts/update_all_hashes.sh --binary-only --variant non-fips
 ```
 
 **When to use:**

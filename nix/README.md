@@ -123,7 +123,7 @@ During the build process, Nix enforces all hashes at multiple stages:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Update workflow** (automated with `nix/scripts/update_all_hashes.sh`):
+**Update workflow** (automated with nix.sh update-hashes or standalone script):
 
 ```text
 Code/Dependency Change
@@ -133,7 +133,8 @@ Code/Dependency Change
 │  (hash mismatch)│
 └────────┬────────┘
          ↓
-Run update_all_hashes.sh
+Run: bash .github/scripts/nix.sh update-hashes
+  or: bash nix/scripts/update_all_hashes.sh
          ↓
 ┌────────┴────────────────────┐
 │  Vendor hash?  Binary hash? │

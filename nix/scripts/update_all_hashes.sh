@@ -6,12 +6,13 @@
 # - Binary hashes for FIPS and non-FIPS variants
 #
 # Usage:
-#   bash nix/scripts/update_all_hashes.sh [--vendor-only|--binary-only]
+#   bash nix/scripts/update_all_hashes.sh [OPTIONS]
 #
 # Options:
-#   --vendor-only   Only update the Cargo vendor hash
-#   --binary-only   Only update binary hashes (skip vendor)
-#   --help          Show this help message
+#   --vendor-only          Only update the Cargo vendor hash
+#   --binary-only          Only update binary hashes (skip vendor)
+#   --variant <fips|non-fips>  Update specific variant (default: both)
+#   --help                 Show this help message
 #
 # Requirements:
 #   - Nix package manager installed
@@ -20,309 +21,209 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 # Script directory and repository root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-NIX_DIR="$REPO_ROOT/nix"
 
-# Detect current platform
-CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"')"
-
-log() {
-    echo -e "${BLUE}[INFO]${NC} $*"
+# Helper function to compute SHA256
+compute_sha256() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+    else
+        shasum -a 256 "$file" | awk '{print $1}'
+    fi
 }
 
-success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $*"
-}
-
-error() {
-    echo -e "${RED}[ERROR]${NC} $*" >&2
-}
-
-warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
+# Show usage
 usage() {
-    cat <<'EOF'
-Cosmian KMS - Automated Hash Update Script
+    cat <<EOF
+Usage: $0 [OPTIONS]
 
-Usage:
-  bash nix/scripts/update_all_hashes.sh [OPTIONS]
+Updates expected hashes for Cosmian KMS Nix builds on current platform.
 
 Options:
-  --vendor-only   Only update the Cargo vendor hash (cargoHash)
-  --binary-only   Only update binary hashes (skip vendor update)
-  --help          Show this help message
+  --vendor-only          Only update the Cargo vendor hash (cargoHash)
+  --binary-only          Only update binary hashes (skip vendor)
+  --variant <fips|non-fips>  Update specific variant (default: both)
+  --help                 Show this help message
 
 Examples:
-  # Update all hashes for current platform
-  bash nix/scripts/update_all_hashes.sh
+  $0                           # Update all hashes (vendor + binaries)
+  $0 --vendor-only             # Update only Cargo vendor hash
+  $0 --binary-only             # Update only binary hashes
+  $0 --variant fips            # Update only FIPS variant
+  $0 --binary-only --variant non-fips  # Update only non-FIPS binary hash
 
-  # Update only the Cargo vendor hash after dependency changes
-  bash nix/scripts/update_all_hashes.sh --vendor-only
-
-  # Update only binary hashes after code changes
-  bash nix/scripts/update_all_hashes.sh --binary-only
+When to use:
+  --vendor-only    After updating Cargo.lock (dependency changes)
+  --binary-only    After code changes (keeps vendor hash unchanged)
+  (no flags)       After both dependency and code changes
 
 Platform support:
   - x86_64-linux (Intel/AMD Linux)
   - aarch64-linux (ARM64 Linux)
   - aarch64-darwin (Apple Silicon macOS)
-
-Note: Vendor hash may differ between macOS and Linux due to
-platform-specific dependencies.
 EOF
+    exit 0
 }
 
-# Parse command line arguments
+# Parse command-line arguments
 UPDATE_VENDOR=true
 UPDATE_BINARY=true
+VARIANT=""
 
-for arg in "$@"; do
-    case $arg in
+while [ $# -gt 0 ]; do
+    case "$1" in
     --vendor-only)
         UPDATE_BINARY=false
+        shift
         ;;
     --binary-only)
         UPDATE_VENDOR=false
+        shift
         ;;
-    --help)
+    --variant)
+        VARIANT="${2:-}"
+        if [ -z "$VARIANT" ]; then
+            echo "Error: --variant requires an argument (fips or non-fips)" >&2
+            exit 1
+        fi
+        shift 2
+        ;;
+    --help | -h)
         usage
-        exit 0
         ;;
     *)
-        error "Unknown option: $arg"
-        usage
+        echo "Error: Unknown option: $1" >&2
+        echo "Run '$0 --help' for usage information." >&2
         exit 1
         ;;
     esac
 done
 
-# Change to repository root
-cd "$REPO_ROOT"
+# Detect current platform
+CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"')"
 
-log "Platform: $CURRENT_SYSTEM"
-log "Update vendor hash: $UPDATE_VENDOR"
-log "Update binary hashes: $UPDATE_BINARY"
+echo "Updating expected hashes for current platform..."
+echo "Platform: $CURRENT_SYSTEM"
+echo "Update vendor hash: $UPDATE_VENDOR"
+echo "Update binary hashes: $UPDATE_BINARY"
+if [ -n "$VARIANT" ]; then
+    echo "Variant: $VARIANT"
+else
+    echo "Variant: both (fips and non-fips)"
+fi
 echo ""
 
-# ============================================================================
-# Step 1: Update Cargo vendor hash (cargoHash)
-# ============================================================================
+# Step 1: Update vendor hash (if requested)
+if [ "$UPDATE_VENDOR" = "true" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Step 1: Updating Cargo vendor hash..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-update_vendor_hash() {
-    log "Updating Cargo vendor hash (cargoHash)..."
+    # Use the variant for build, defaulting to fips
+    BUILD_VARIANT="${VARIANT:-fips}"
 
-    # Temporarily set an incorrect hash to trigger the error that reveals the real hash
-    local temp_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    # Trigger a Nix build that will fail with the correct hash
+    echo "Building to discover vendor hash..."
 
-    # Create a temporary Nix file to get the vendor hash
-    local nix_expr
-    nix_expr=$(
-        cat <<'NIXEXPR'
-let
-  pkgs = import <nixpkgs> {};
-  src = pkgs.lib.cleanSourceWith {
-    src = ./.;
-    filter = path: type:
-      let baseName = baseNameOf path;
-      in !(pkgs.lib.hasPrefix "result-" baseName ||
-           pkgs.lib.hasPrefix "SBOM-" baseName ||
-           baseName == "sbom" ||
-           baseName == "sbom-fips" ||
-           baseName == "target");
-  };
-in
-pkgs.rustPlatform.buildRustPackage {
-  pname = "cosmian-kms-server";
-  version = "0.0.0";
-  inherit src;
-  cargoLock = { lockFile = ./Cargo.lock; };
-  cargoDeps = pkgs.rustPlatform.importCargoLock {
-    lockFile = ./Cargo.lock;
-  };
-  dontBuild = true;
-  installPhase = "mkdir -p $out";
-}
-NIXEXPR
-    )
-
-    log "Attempting Nix build to discover vendor hash..."
-
-    # Try to build and capture the hash from the error message
-    local build_output
-    local new_vendor_hash
-
-    if build_output=$(nix-build -E "$nix_expr" 2>&1); then
-        error "Build succeeded unexpectedly. Cannot determine vendor hash."
-        return 1
-    fi
-
-    # Extract the "got:" hash from error message
-    new_vendor_hash=$(echo "$build_output" | grep -oP 'got:\s+\Ksha256-[A-Za-z0-9+/=]+' || true)
-
-    if [[ -z "$new_vendor_hash" ]]; then
-        # Alternative: try using nix-prefetch
-        log "Trying alternative method with nix-prefetch..."
-        new_vendor_hash=$(nix-shell -p nix-prefetch --run "nix-prefetch '{ sha256 }: (import $NIX_DIR/kms-server.nix { }).cargoDeps.overrideAttrs (_: { outputHash = sha256; })'" 2>/dev/null || true)
-    fi
-
-    if [[ -z "$new_vendor_hash" ]]; then
-        error "Could not determine vendor hash automatically."
-        echo ""
-        warn "Manual steps:"
-        echo "1. Edit nix/kms-server.nix and set an incorrect cargoHash"
-        echo "2. Run: nix-build -A kms-server-fips"
-        echo "3. Copy the 'got:' hash from the error message"
-        echo "4. Update nix/kms-server.nix with the correct hash"
-        return 1
-    fi
-
-    log "Discovered vendor hash: $new_vendor_hash"
-
-    # Update kms-server.nix
-    local kms_server_nix="$NIX_DIR/kms-server.nix"
-
-    # Find the current hash and replace it
-    if grep -q "sha256-" "$kms_server_nix"; then
-        # Create a backup
-        cp "$kms_server_nix" "$kms_server_nix.backup"
-
-        # Platform-specific update logic
-        case "$CURRENT_SYSTEM" in
-        x86_64-linux)
-            # Update Linux hash on line ~123
-            sed -i "s/sha256-[A-Za-z0-9+\/=]\{44\}/$new_vendor_hash/g" "$kms_server_nix"
-            ;;
-        aarch64-darwin)
-            # Update macOS hash on line ~115
-            sed -i '' "s/sha256-[A-Za-z0-9+\/=]\{44\}/$new_vendor_hash/g" "$kms_server_nix"
-            ;;
-        *)
-            sed -i "s/sha256-[A-Za-z0-9+\/=]\{44\}/$new_vendor_hash/g" "$kms_server_nix"
-            ;;
-        esac
-
-        success "Updated cargoHash in $kms_server_nix"
-        rm -f "$kms_server_nix.backup"
+    if BUILD_OUTPUT=$(nix-build -A "kms-server-$BUILD_VARIANT" -o "result-server-$BUILD_VARIANT" 2>&1); then
+        echo "Build succeeded (vendor hash already correct)"
     else
-        error "Could not find existing hash in $kms_server_nix"
-        return 1
+        # Extract the "got:" hash from error message
+        # Use sed instead of grep -P for macOS compatibility
+        NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" | sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' | head -1 || true)
+
+        if [ -n "$NEW_VENDOR_HASH" ]; then
+            echo "Discovered vendor hash: $NEW_VENDOR_HASH"
+
+            # Update kms-server.nix
+            KMS_SERVER_NIX="$REPO_ROOT/nix/kms-server.nix"
+
+            # Platform-specific sed syntax
+            if [ "$(uname)" = "Darwin" ]; then
+                sed -i '' "s/sha256-[A-Za-z0-9+\/=]\{44\}/$NEW_VENDOR_HASH/g" "$KMS_SERVER_NIX"
+            else
+                sed -i "s/sha256-[A-Za-z0-9+\/=]\{44\}/$NEW_VENDOR_HASH/g" "$KMS_SERVER_NIX"
+            fi
+
+            echo "✅ Updated cargoHash in $KMS_SERVER_NIX"
+        else
+            echo "⚠️  Could not extract vendor hash from build output"
+            echo "Vendor hash may already be correct or build failed for another reason"
+        fi
     fi
-}
-
-# ============================================================================
-# Step 2: Build binaries and update expected hashes
-# ============================================================================
-
-update_binary_hash() {
-    local variant="$1" # "fips" or "non-fips"
-    local features=""
-
-    if [[ "$variant" == "non-fips" ]]; then
-        features="--features non-fips"
-    fi
-
-    log "Building $variant variant..."
-
-    # Build using Nix
-    local result_link="result-server-$variant"
-    if ! nix-build -A "kms-server-$variant" -o "$result_link"; then
-        error "Nix build failed for $variant variant"
-        return 1
-    fi
-
-    # Compute hash
-    local binary_path="$result_link/bin/cosmian_kms"
-    if [[ ! -f "$binary_path" ]]; then
-        error "Binary not found at $binary_path"
-        return 1
-    fi
-
-    local new_hash
-    new_hash=$(sha256sum "$binary_path" | cut -d' ' -f1)
-
-    log "Computed hash for $variant: $new_hash"
-
-    # Update expected hash file
-    local hash_file="$NIX_DIR/expected-hashes/${variant}.${CURRENT_SYSTEM}.sha256"
-
-    # Create directory if it doesn't exist
-    mkdir -p "$NIX_DIR/expected-hashes"
-
-    # Write new hash
-    echo "$new_hash" >"$hash_file"
-
-    success "Updated $hash_file"
-}
-
-# ============================================================================
-# Main execution
-# ============================================================================
-
-main() {
-    echo "=================================================="
-    echo "  Cosmian KMS - Hash Update Script"
-    echo "  Platform: $CURRENT_SYSTEM"
-    echo "=================================================="
     echo ""
+fi
 
-    # Step 1: Update vendor hash
-    if [[ "$UPDATE_VENDOR" == "true" ]]; then
-        update_vendor_hash || {
-            error "Failed to update vendor hash"
-            exit 1
-        }
+# Step 2: Update binary hashes (if requested)
+if [ "$UPDATE_BINARY" = "true" ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Step 2: Updating binary hashes..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Determine which variants to update based on --variant flag
+    if [ -n "$VARIANT" ]; then
+        VARIANTS_TO_UPDATE="$VARIANT"
+    else
+        # Default: update both
+        VARIANTS_TO_UPDATE="fips non-fips"
+    fi
+
+    for build_variant in $VARIANTS_TO_UPDATE; do
         echo ""
-    fi
+        echo "Building $build_variant variant..."
 
-    # Step 2: Update binary hashes
-    if [[ "$UPDATE_BINARY" == "true" ]]; then
-        for variant in fips non-fips; do
-            update_binary_hash "$variant" || {
-                error "Failed to update $variant binary hash"
-                exit 1
-            }
-            echo ""
-        done
-    fi
+        # Build using Nix with deterministic hash enforcement disabled
+        # This allows the build to succeed even if the hash doesn't match yet
+        RESULT_LINK="result-server-$build_variant"
+        if ! nix-build --arg enforceDeterministicHash false -A "kms-server-$build_variant" -o "$RESULT_LINK"; then
+            echo "❌ Nix build failed for $build_variant variant"
+            exit 1
+        fi
 
-    echo "=================================================="
-    success "All hashes updated successfully!"
-    echo "=================================================="
+        # Compute hash
+        BINARY_PATH="$RESULT_LINK/bin/cosmian_kms"
+        if [ ! -f "$BINARY_PATH" ]; then
+            echo "❌ Binary not found at $BINARY_PATH"
+            exit 1
+        fi
+
+        NEW_HASH=$(compute_sha256 "$BINARY_PATH")
+
+        echo "Computed hash for $build_variant: $NEW_HASH"
+
+        # Update expected hash file
+        HASH_FILE="$REPO_ROOT/nix/expected-hashes/${build_variant}.${CURRENT_SYSTEM}.sha256"
+
+        # Create directory if it doesn't exist
+        mkdir -p "$REPO_ROOT/nix/expected-hashes"
+
+        # Write new hash
+        echo "$NEW_HASH" >"$HASH_FILE"
+
+        echo "✅ Updated $HASH_FILE"
+    done
     echo ""
+fi
 
-    # Show summary
-    log "Summary of changes:"
-    if [[ "$UPDATE_VENDOR" == "true" ]]; then
-        echo "  - Cargo vendor hash (cargoHash) in nix/kms-server.nix"
-    fi
-    if [[ "$UPDATE_BINARY" == "true" ]]; then
-        echo "  - Binary hash: nix/expected-hashes/fips.$CURRENT_SYSTEM.sha256"
-        echo "  - Binary hash: nix/expected-hashes/non-fips.$CURRENT_SYSTEM.sha256"
-    fi
-    echo ""
-
-    log "Verify changes with:"
-    echo "  git diff nix/"
-    echo ""
-
-    log "Test the build:"
-    echo "  bash .github/scripts/nix.sh build"
-    echo ""
-
-    log "Commit changes:"
-    echo "  git add nix/"
-    echo "  git commit -m \"Update Nix hashes for $CURRENT_SYSTEM\""
-}
-
-main "$@"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Hash update complete!"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Summary of changes:"
+if [ "$UPDATE_VENDOR" = "true" ]; then
+    echo "  ✓ Cargo vendor hash (cargoHash) in nix/kms-server.nix"
+fi
+if [ "$UPDATE_BINARY" = "true" ]; then
+    for build_variant in $VARIANTS_TO_UPDATE; do
+        echo "  ✓ Binary hash: nix/expected-hashes/${build_variant}.${CURRENT_SYSTEM}.sha256"
+    done
+fi
+echo ""
+echo "Next steps:"
+echo "  1. Review changes:   git diff nix/"
+echo "  2. Test the build:   bash .github/scripts/nix.sh build"
+echo "  3. Commit changes:   git add nix/ && git commit -m 'Update Nix hashes for $CURRENT_SYSTEM'"
+echo ""

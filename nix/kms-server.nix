@@ -169,14 +169,11 @@ rustPlatform.buildRustPackage rec {
   OPENSSL_NO_VENDOR = 1;
 
   # Deterministic Rust codegen and link flags to stabilize binary hashes across builds.
-  # - Disable DWARF to avoid timestamps/paths in debug info
-  # - Single codegen unit for stable ordering
-  # - Disable linker build-id which otherwise embeds a random-ish identifier
-  # - Keep our dynamic linker override handled in buildPhase (per-arch)
-  # Source path remapping to stabilize embedded file paths across environments
-  # (e.g., Nix sandbox builds in /build vs Docker in /tmp). This affects
-  # panic sites, log locations, and other uses of file!() even without DWARF.
-  # Keep Linux-specific linker flags separate but share remap flags on all OSes.
+  # Core deterministic settings (LTO, strip, codegen-units, etc.) are now centralized
+  # in Cargo.toml [profile.release] section. Here we only set flags that cannot be
+  # configured in Cargo.toml:
+  # - Path remapping: stabilize embedded file paths across build environments
+  # - Linker flags: disable build-id and set hash style for deterministic ELF
   RUSTFLAGS =
     let
       remap = lib.concatStringsSep " " [
@@ -184,18 +181,15 @@ rustPlatform.buildRustPackage rec {
         "/build=/cosmian-src"
         "--remap-path-prefix"
         "/tmp=/cosmian-src"
+        "--remap-path-prefix"
+        "${toString ../.}=/cosmian-src"
       ];
       linuxOnly = lib.concatStringsSep " " [
         "-C link-arg=-Wl,--build-id=none"
-      ];
-      common = lib.concatStringsSep " " [
-        "-Cdebuginfo=0"
-        "-Ccodegen-units=1"
-        "-Cincremental=false"
-        remap
+        "-C link-arg=-Wl,--hash-style=gnu"
       ];
     in
-    if pkgs.stdenv.isLinux then common + " " + linuxOnly else common;
+    if pkgs.stdenv.isLinux then remap + " " + linuxOnly else remap;
 
   # Prevent Nix from injecting RPATHs to /nix/store into the resulting binary.
   # This ensures the packaged binary will not try to load glibc from the store
