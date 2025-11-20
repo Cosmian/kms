@@ -4,13 +4,18 @@ use cosmian_kms_client::KmsClient;
 use self::keys::KeysCommands;
 #[cfg(feature = "non-fips")]
 use self::{decrypt::DecryptAction, encrypt::EncryptAction};
-use crate::error::result::KmsCliResult;
+use crate::{
+    actions::kms::elliptic_curves::{sign::SignAction, signature_verify::SignatureVerifyAction},
+    error::result::KmsCliResult,
+};
 
 #[cfg(feature = "non-fips")]
 pub(crate) mod decrypt;
 #[cfg(feature = "non-fips")]
 pub(crate) mod encrypt;
 pub(crate) mod keys;
+pub(crate) mod sign;
+pub(crate) mod signature_verify;
 
 /// Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
 #[derive(Parser)]
@@ -21,6 +26,8 @@ pub enum EllipticCurveCommands {
     Encrypt(EncryptAction),
     #[cfg(feature = "non-fips")]
     Decrypt(DecryptAction),
+    Sign(SignAction),
+    SignVerify(SignatureVerifyAction),
 }
 
 impl EllipticCurveCommands {
@@ -40,6 +47,8 @@ impl EllipticCurveCommands {
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             #[cfg(feature = "non-fips")]
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
+            Self::Sign(action) => action.run(kms_rest_client).await?,
+            Self::SignVerify(action) => action.run(kms_rest_client).await?,
         }
         Ok(())
     }

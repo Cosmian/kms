@@ -4,7 +4,7 @@ use cosmian_kms_client::KmsClient;
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::{
     actions::kms::rsa::{sign::SignAction, signature_verify::SignatureVerifyAction},
-    error::{KmsCliError, result::KmsCliResult},
+    error::result::KmsCliResult,
 };
 
 pub mod decrypt;

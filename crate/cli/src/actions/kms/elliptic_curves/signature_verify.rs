@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip_2_1::{kmip_types::ValidityIndicator, requests::signature_verify_request};
+use cosmian_kmip::kmip_2_1::requests::signature_verify_request;
 use cosmian_kms_client::{KmsClient, read_bytes_from_file};
 
 use crate::{
@@ -47,7 +47,7 @@ pub struct SignatureVerifyAction {
 }
 
 impl SignatureVerifyAction {
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<ValidityIndicator> {
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         // Read the file to decrypt
         let data = read_bytes_from_file(&self.data_file)
             .with_context(|| "Cannot read bytes from the file to decrypt")?;
@@ -82,6 +82,6 @@ impl SignatureVerifyAction {
         stdout.set_tags(self.tags.as_ref());
         stdout.write()?;
 
-        Ok(validity_indicator)
+        Ok(())
     }
 }

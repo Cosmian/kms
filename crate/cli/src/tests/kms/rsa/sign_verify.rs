@@ -4,9 +4,10 @@ use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
-use crate::error::result::KmsCliResult;
+use crate::{
+    actions::kms::elliptic_curves::sign::CDigitalSignatureAlgorithm, error::result::KmsCliResult,
+};
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_rsa_sign() -> KmsCliResult<()> {
     // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
@@ -16,8 +17,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
     use cosmian_logger::trace;
 
     use crate::actions::kms::rsa::{
-        keys::create_key_pair::CreateKeyPairAction,
-        sign::{CDigitalSignatureAlgorithm, SignAction},
+        keys::create_key_pair::CreateKeyPairAction, sign::SignAction,
         signature_verify::SignatureVerifyAction,
     };
     let ctx = start_default_test_kms_server().await;

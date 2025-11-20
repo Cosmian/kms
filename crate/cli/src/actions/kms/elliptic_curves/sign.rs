@@ -1,14 +1,22 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
-use clap::Parser;
-use cosmian_kmip::kmip_2_1::requests::sign_request;
-use cosmian_kms_client::{KmsClient, read_bytes_from_file};
+use clap::{Parser, ValueEnum};
+use cosmian_kmip::{
+    kmip_0::kmip_types::PaddingMethod,
+    kmip_2_1::{
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        requests::sign_request,
+    },
+};
+use cosmian_kms_client::{
+    KmsClient, read_bytes_from_file,
+    reexport::cosmian_kms_client_utils::{create_utils::Curve, rsa_utils::HashFn},
+};
+use serde::Deserialize;
+use strum::EnumString;
 
 use crate::{
-    actions::kms::{
-        console, elliptic_curves::sign::CDigitalSignatureAlgorithm, labels::KEY_ID,
-        shared::get_key_uid,
-    },
+    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -16,6 +24,10 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SignAction {
+    /// The elliptic curve
+    #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
+    pub(crate) curve: Curve,
+
     /// The file to decrypt
     #[clap(required = true, name = "FILE")]
     pub(crate) input_file: PathBuf,
@@ -90,4 +102,30 @@ impl SignAction {
 
         Ok(())
     }
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
+pub enum CDigitalSignatureAlgorithm {
+    RSASSAPSS,
+}
+
+impl CDigitalSignatureAlgorithm {
+    #[must_use]
+    pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
+        match self {
+            Self::RSASSAPSS => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha1.into()),
+                ..Default::default()
+            },
+        }
+    }
+
+    // #[must_use]
+    // pub const fn as_str(&self) -> &'static str {
+    //     match self {
+    //         Self::RSASSAPSS => "rsassa-pss",
+    //     }
+    // }
 }
