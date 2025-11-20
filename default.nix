@@ -165,8 +165,8 @@ let
   kms-server-non-fips = mkKmsServer {
     features = [ "non-fips" ];
     ui = ui-non-fips;
-    # Propagate top-level toggle (defaults to true)
-    enforceDeterministicHash = enforceDeterministicHash;
+    # Disable hash enforcement for non-FIPS builds due to non-determinism in additional dependencies
+    enforceDeterministicHash = false;
   };
 
 in

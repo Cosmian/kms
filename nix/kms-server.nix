@@ -168,6 +168,13 @@ rustPlatform.buildRustPackage rec {
   OPENSSL_INCLUDE_DIR = "${openssl312}/include";
   OPENSSL_NO_VENDOR = 1;
 
+  # Force deterministic timestamps and build IDs
+  SOURCE_DATE_EPOCH = "1";
+  ZERO_AR_DATE = "1";
+
+  # Disable incremental compilation to ensure clean builds
+  CARGO_INCREMENTAL = "0";
+
   # Deterministic Rust codegen and link flags to stabilize binary hashes across builds.
   # Core deterministic settings (LTO, strip, codegen-units, etc.) are now centralized
   # in Cargo.toml [profile.release] section. Here we only set flags that cannot be
