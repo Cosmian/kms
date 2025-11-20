@@ -276,6 +276,7 @@ jobs:
   push-artifacts:
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     needs:
+      - windows-2022
       - packages
       - docker-manifest
     uses: ./.github/workflows/push-artifacts.yml

@@ -34,7 +34,7 @@ jobs:
         fips_ubuntu-24.04-arm-${{ inputs.debug_or_release }}/result-*
         non-fips_ubuntu-24.04-arm-${{ inputs.debug_or_release }}/result-*
         non-fips_macos-15-${{ inputs.debug_or_release }}/result-*
-        cargo-build-${{ inputs.debug_or_release }}
+        windows-release
 
     steps:
       - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian*
@@ -109,9 +109,9 @@ jobs:
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa fips_ubuntu-24.04-*/result-deb-fips/cosmian-kms-public.asc cosmian@package.cosmian.com:$DESTINATION_DIR/
 
           # Windows EXE packages (kept separate because path differs from ARCHIVE_NAMES patterns)
-          if compgen -G "cargo-build-release/*setup.exe" > /dev/null; then
+          if compgen -G "windows-release/*setup.exe" > /dev/null; then
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              cargo-build-release/*setup.exe \
+              windows-release/*setup.exe \
               cosmian@package.cosmian.com:$DESTINATION_DIR/
           fi
 
@@ -136,7 +136,7 @@ jobs:
             non-fips_macos-15-*/result-*/*.dmg*
 
             # Windows EXE packages
-            cargo-build-release/*.exe
+            windows-release/*.exe
 
             # Include Cosmian public GPG key
             fips_ubuntu-24.04-*/result-deb-fips/cosmian-kms-public.asc
