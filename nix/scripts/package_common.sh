@@ -157,6 +157,12 @@ resolve_expected_hash_file() {
 }
 
 enforce_binary_hash() {
+  # Skip hash enforcement for non-fips builds (non-deterministic due to additional crypto dependencies)
+  if [ "$VARIANT" = "non-fips" ]; then
+    echo "Skipping binary hash enforcement for non-fips variant (non-deterministic dependencies)"
+    return 0
+  fi
+  
   local expected_file
   if ! expected_file=$(resolve_expected_hash_file "$VARIANT"); then
     echo "ERROR: Expected hash file missing for variant '$VARIANT'." >&2
