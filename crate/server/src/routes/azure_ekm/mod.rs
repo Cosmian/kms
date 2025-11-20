@@ -10,9 +10,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
     kmip_operations::Get,
-    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+    kmip_types::{CryptographicAlgorithm, LinkType::PublicKeyLink, UniqueIdentifier},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{info, trace};
 use serde::{Deserialize, Serialize};
 
 use crate::{core::KMS, error::KmsError, routes::azure_ekm::error::AzureEkmErrorReply};
@@ -138,7 +138,6 @@ pub(crate) async fn get_key_metadata(
     req: HttpRequest,
     key_name: Path<String>,
     query: Query<AzureEkmQueryParams>,
-    request: Json<KeyMetadataRequest>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let key_name = key_name.into_inner();
@@ -152,113 +151,197 @@ pub(crate) async fn get_key_metadata(
         return e.into();
     }
 
-    debug!("retrieving key from KMS");
     let get_request = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_name)),
-        key_format_type: None,
-        key_wrap_type: None,
-        key_compression_type: None,
-        key_wrapping_specification: None,
+        unique_identifier: Some(UniqueIdentifier::TextString(key_name.clone())),
+        ..Default::default()
     };
 
     match kms.get(get_request, &user, None).await {
-        Ok(resp) => match resp.object {
-            Object::SymmetricKey(_) | Object::PublicKey(_) | Object::PrivateKey(_) => {
-                let object = resp.object;
+        Ok(resp) => {
+            match resp.object {
+                Object::SymmetricKey(_) | Object::PublicKey(_) | Object::PrivateKey(_) => {
+                    let object = resp.object;
 
-                // Get the key block
-                let key_block = match object.key_block() {
-                    Ok(kb) => kb,
-                    Err(e) => {
-                        return AzureEkmErrorReply::from(&KmsError::from(e)).into();
-                    }
-                };
-
-                // Get the cryptographic algorithm
-                let algorithm = match key_block.cryptographic_algorithm() {
-                    Some(alg) => alg,
-                    None => {
-                        return AzureEkmErrorReply::from(&KmsError::ServerError(
-                            "key has no cryptographic algorithm".to_string(),
-                        ))
-                        .into();
-                    }
-                };
-
-                // Get the cryptographic length
-                let key_length = match key_block.cryptographic_length {
-                    Some(len) => len as u32,
-                    None => {
-                        return AzureEkmErrorReply::from(&KmsError::ServerError(
-                            "key has no cryptographic length".to_string(),
-                        ))
-                        .into();
-                    }
-                };
-
-                // Check algorithm and build response
-                match algorithm {
-                    CryptographicAlgorithm::AES => {
-                        if key_length == 256 {
-                            HttpResponse::Ok().json(KeyMetadataResponse::aes())
-                        } else {
-                            AzureEkmErrorReply::from(&KmsError::ServerError(format!(
-                                "unsupported AES key length: {}. Only 256 is supported",
-                                key_length
-                            )))
-                            .into()
+                    // Get the key block
+                    let key_block = match object.key_block() {
+                        Ok(kb) => kb,
+                        Err(e) => {
+                            return AzureEkmErrorReply::from(&KmsError::from(e)).into();
                         }
-                    }
-                    CryptographicAlgorithm::RSA => {
-                        let key_material = match key_block.key_material() {
-                            Ok(km) => km,
-                            Err(e) => {
-                                return AzureEkmErrorReply::from(&KmsError::from(e)).into();
-                            }
-                        };
+                    };
 
-                        let (modulus, public_exponent) = match key_material {
-                            KeyMaterial::TransparentRSAPublicKey {
-                                modulus,
-                                public_exponent,
-                            } => (modulus, public_exponent),
-                            KeyMaterial::TransparentRSAPrivateKey {
-                                modulus,
-                                public_exponent: Some(public_exponent),
-                                ..
-                            } => (modulus, public_exponent),
-                            _ => {
-                                return AzureEkmErrorReply::from(&KmsError::ServerError(
-                                    "RSA key has missing metadata parameters".to_string(),
-                                ))
+                    // Get the cryptographic algorithm
+                    let algorithm = match key_block.cryptographic_algorithm() {
+                        Some(alg) => alg,
+                        None => {
+                            return AzureEkmErrorReply::from(&KmsError::ServerError(
+                                "key has no cryptographic algorithm".to_string(),
+                            ))
+                            .into();
+                        }
+                    };
+
+                    // Get the cryptographic length
+                    let key_length = match key_block.cryptographic_length {
+                        Some(len) => len as u32,
+                        None => {
+                            return AzureEkmErrorReply::from(&KmsError::ServerError(
+                                "key has no cryptographic length".to_string(),
+                            ))
+                            .into();
+                        }
+                    };
+
+                    // Check algorithm and build response
+                    match algorithm {
+                        CryptographicAlgorithm::AES => {
+                            if key_length == 256 {
+                                HttpResponse::Ok().json(KeyMetadataResponse::aes())
+                            } else {
+                                AzureEkmErrorReply::from(&KmsError::ServerError(format!(
+                                    "unsupported AES key length: {}. Only 256 is supported",
+                                    key_length
+                                )))
+                                .into()
+                            }
+                        }
+                        CryptographicAlgorithm::RSA => {
+                            if ![2048, 3072, 4096].contains(&key_length) {
+                                return AzureEkmErrorReply::from(&KmsError::ServerError(format!(
+                                    "unsupported AES key length: {}. Only 256 is supported",
+                                    key_length
+                                )))
                                 .into();
                             }
-                        };
+                            let key_material = match key_block.key_material() {
+                                Ok(km) => km,
+                                Err(e) => {
+                                    return AzureEkmErrorReply::from(&KmsError::from(e)).into();
+                                }
+                            };
 
-                        let modulus_bytes = modulus.to_bytes_be().1; // Get big-endian bytes, .1 to skip sign
-                        let exponent_bytes = public_exponent.to_bytes_be().1;
+                            let (modulus, public_exponent) = match key_material {
+                                KeyMaterial::TransparentRSAPublicKey {
+                                    modulus,
+                                    public_exponent,
+                                } => (modulus, public_exponent),
+                                KeyMaterial::TransparentRSAPrivateKey {
+                                    modulus,
+                                    public_exponent,
+                                    ..
+                                } => {
+                                    if let Some(pub_exp) = public_exponent {
+                                        (modulus, pub_exp)
+                                    } else {
+                                        // The specs require always getting the public exponent of RSA keys;
+                                        // so for this particular case, we will need to fetch it from the public key.
+                                        let pub_exp = if let Some(exp) = public_exponent {
+                                            exp
+                                        } else {
+                                            // Fetch from linked public key
+                                            let public_key_id = match key_block
+                                                .get_linked_object_id(PublicKeyLink)
+                                            {
+                                                Ok(Some(id)) => id,
+                                                Ok(None) => {
+                                                    return AzureEkmErrorReply::from(&KmsError::ServerError(
+                    "RSA private key has no linked public key".to_string(),
+                ))
+                .into();
+                                                }
+                                                Err(e) => {
+                                                    return AzureEkmErrorReply::from(
+                                                        &KmsError::from(e),
+                                                    )
+                                                    .into();
+                                                }
+                                            };
 
-                        let n_base64url = URL_SAFE_NO_PAD.encode(&modulus_bytes);
-                        let e_base64url = URL_SAFE_NO_PAD.encode(&exponent_bytes);
-                        // TODO: Extract RSA modulus and exponent from key_block
-                        // For now, return an error indicating incomplete implementation
-                        HttpResponse::Ok().json(KeyMetadataResponse::rsa(
-                            key_length,
-                            n_base64url,
-                            e_base64url,
+                                            let public_key_response = match kms
+                                                .get(
+                                                    Get {
+                                                        unique_identifier: Some(
+                                                            UniqueIdentifier::TextString(
+                                                                public_key_id,
+                                                            ),
+                                                        ),
+                                                        ..Default::default()
+                                                    },
+                                                    &user,
+                                                    None,
+                                                )
+                                                .await
+                                            {
+                                                Ok(resp) => resp,
+                                                Err(e) => {
+                                                    return AzureEkmErrorReply::from(
+                                                        &KmsError::from(e),
+                                                    )
+                                                    .into();
+                                                }
+                                            };
+                                            &match public_key_response.object {
+                                                Object::PublicKey(pub_key) => {
+                                                    match pub_key.key_block.key_material().unwrap() // TODO later, ignore for now
+                                                    {
+                                                        KeyMaterial::TransparentRSAPublicKey {
+                                                            public_exponent: pub_exp,
+                                                            ..
+                                                        } => pub_exp,
+                                                        _ => {
+                                                            return AzureEkmErrorReply::from(&KmsError::ServerError(
+                            "Linked public key has invalid key material".to_string(),
                         ))
+                        .into();
+                                                        }
+                                                    }
+                                                }
+                                                _ => {
+                                                    return AzureEkmErrorReply::from(
+                                                        &KmsError::ServerError(
+                                                            "Linked object is not a public key"
+                                                                .to_string(),
+                                                        ),
+                                                    )
+                                                    .into();
+                                                }
+                                            }
+                                        };
+
+                                        (modulus, pub_exp)
+                                    }
+                                }
+                                _ => {
+                                    return AzureEkmErrorReply::from(&KmsError::ServerError(
+                                        "RSA key has missing metadata parameters".to_string(),
+                                    ))
+                                    .into();
+                                }
+                            };
+
+                            let modulus_bytes = modulus.to_bytes_be().1; // .1 to skip sign
+                            let exponent_bytes = public_exponent.to_bytes_be().1;
+
+                            let n_base64url = URL_SAFE_NO_PAD.encode(&modulus_bytes);
+                            let e_base64url = URL_SAFE_NO_PAD.encode(&exponent_bytes);
+                            HttpResponse::Ok().json(KeyMetadataResponse::rsa(
+                                key_length,
+                                n_base64url,
+                                e_base64url,
+                            ))
+                        }
+                        _ => AzureEkmErrorReply::from(&KmsError::ServerError(format!(
+                            "unsupported key algorithm: {:?}. Only AES and RSA are supported",
+                            algorithm
+                        )))
+                        .into(),
                     }
-                    _ => AzureEkmErrorReply::from(&KmsError::ServerError(format!(
-                        "unsupported key algorithm: {:?}. Only AES and RSA are supported",
-                        algorithm
-                    )))
-                    .into(),
+                }
+                _ => {
+                    return AzureEkmErrorReply::operation_not_allowed("metadata", &key_name).into();
                 }
             }
-            _ => {
-                return AzureEkmErrorReply::operation_not_allowed("metadata", &key_name).into();
-            }
-        },
+        }
         Err(e) => {
             if matches!(e, KmsError::ItemNotFound(_)) || e.to_string().contains("not found") {
                 return AzureEkmErrorReply::key_not_found(&key_name).into(); // as required by Azure EKM specs
@@ -269,7 +352,6 @@ pub(crate) async fn get_key_metadata(
         }
     }
 }
-
 // struct WrapKeyRequest {
 //     // TODO: stub
 // }
