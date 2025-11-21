@@ -67,9 +67,9 @@ def perform_certify(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Key pair creation failed: {result.result_reason}"
+            error_msg = f'Key pair creation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {
                 'operation': 'Certify',
@@ -90,7 +90,7 @@ def perform_certify(proxy, verbose=False):
 
         if verbose:
             print(
-                f"Created key pair - Private: {private_key_uid}, Public: {public_key_uid}"
+                f'Created key pair - Private: {private_key_uid}, Public: {public_key_uid}'
             )
 
         # Simulate certification by attempting to sign test data
@@ -126,9 +126,9 @@ def perform_certify(proxy, verbose=False):
                 signature_data = getattr(sign_result, 'signature', None)
 
             if result_status and result_status.value != enums.ResultStatus.SUCCESS:
-                error_msg = f"Signing failed: {result_reason}"
+                error_msg = f'Signing failed: {result_reason}'
                 if result_message:
-                    error_msg += f" - {result_message}"
+                    error_msg += f' - {result_message}'
 
                 # Check if it's an unsupported operation
                 if 'unsupported KMIP 1 operation: Sign' in str(result_message):
@@ -138,7 +138,7 @@ def perform_certify(proxy, verbose=False):
                         'private_key_uid': private_key_uid,
                         'public_key_uid': public_key_uid,
                         'error': 'KMIP Sign operation not supported by server',
-                        'technical_details': f"Cosmian KMS KMIP 1.x mode: {result_message}",
+                        'technical_details': f'Cosmian KMS KMIP 1.x mode: {result_message}',
                         'note': 'Key pair created successfully but Sign operation is not supported in KMIP 1.x',
                         'workaround': 'Use direct REST API or configure server for KMIP 2.x mode',
                     }
@@ -190,7 +190,7 @@ def perform_certify(proxy, verbose=False):
             full_traceback = traceback.format_exc()
 
             if verbose:
-                print(f"Signing error traceback:\n{full_traceback}")
+                print(f'Signing error traceback:\n{full_traceback}')
 
             # Check for known KMIP compatibility issues
             if (
@@ -203,7 +203,7 @@ def perform_certify(proxy, verbose=False):
                     'private_key_uid': private_key_uid,
                     'public_key_uid': public_key_uid,
                     'error': 'KMIP version compatibility issue with signing operation',
-                    'technical_details': f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
+                    'technical_details': f'PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}',
                     'note': 'Key pair creation succeeded, but signing has protocol parsing issues',
                     'workaround': 'Use direct REST API or update PyKMIP for KMIP 2.x compatibility',
                     'full_traceback': full_traceback if verbose else None,
@@ -234,7 +234,7 @@ def perform_certify(proxy, verbose=False):
             AttributeError,
         ) as cleanup_error:
             if verbose:
-                print(f"Note: Could not clean up test keys: {cleanup_error}")
+                print(f'Note: Could not clean up test keys: {cleanup_error}')
 
         return response
 

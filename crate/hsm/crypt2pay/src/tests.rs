@@ -15,13 +15,12 @@ use cosmian_kms_base_hsm::{
 
 use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
 
-const LIB_PATH: &str = CRYPT2PAY_PKCS11_LIB;
 const SLOT_ID: usize = 0x01; // Crypt2pay default slot
 
-fn cfg() -> HResult<shared::HsmTestConfig<'static>> {
+fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     Ok(shared::HsmTestConfig {
-        lib_path: LIB_PATH,
+        lib_path: shared::lib_path("CRYPT2PAY_PKCS11_LIB", CRYPT2PAY_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(
             get_hsm_slot_id().unwrap_or(SLOT_ID),
             Some(user_password),

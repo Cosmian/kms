@@ -9,8 +9,8 @@
 # Exit on error, print commands
 set -ex
 
-bash ./.github/scripts/build_ui.sh
+bash ./.github/scripts/build_ui.sh --variant fips
 git add crate/server/ui
 
-FEATURES=non-fips bash ./.github/scripts/build_ui.sh
+bash ./.github/scripts/build_ui.sh --variant non-fips
 git add crate/server/ui_non_fips

@@ -1,19 +1,31 @@
 ---
-name: CI in debug
+name: CI
 
 on:
   push:
-    branches:
-      - '**'
     tags:
-      - '!**'
+      - '**'
+  pull_request:
+  schedule:
+    # every day at 1 AM
+    - cron: 00 1 * * *
   workflow_dispatch:
 
 jobs:
+  # Determine build type based on trigger
   main:
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
       toolchain: 1.90.0
-      debug_or_release: debug
-      platforms: linux/amd64
+      # Use release for tags and scheduled runs, debug for everything else
+      debug_or_release: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule') && 'release' || 'debug' }}
+
+  # Run packaging on tags, PRs, and scheduled runs
+  packaging:
+    if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name
+      == 'schedule') && github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.90.0
