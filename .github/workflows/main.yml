@@ -23,8 +23,8 @@ jobs:
 
   # Run packaging on tags, PRs, and scheduled runs
   packaging:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name ==
-      'schedule'
+    if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name
+      == 'schedule') && github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:

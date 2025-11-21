@@ -15,6 +15,7 @@ on:
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -84,9 +85,8 @@ jobs:
       matrix:
         type:
           - sqlite
-          # - mysql
+          - mysql
           # - psql
-          # - google_cse
           # - redis
           # - pykmip
         features: [fips, non-fips]
@@ -131,18 +131,13 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           KMS_REDIS_URL: redis://localhost:6379
-
-          # Google variables
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
           set -ex
           bash .github/scripts/test_${{ matrix.type }}.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
