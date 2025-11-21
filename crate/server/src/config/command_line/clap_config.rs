@@ -22,12 +22,10 @@ const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
 fn get_default_config_path() -> String {
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        format!("{}\\Cosmian KMS Server\\kms.toml", localappdata)
-    } else {
-        // Fallback if LOCALAPPDATA is not set (shouldn't happen on Windows)
-        String::from("C:\\ProgramData\\cosmian\\kms.toml")
-    }
+    std::env::var("LOCALAPPDATA").map_or_else(
+        |_| String::from("C:\\ProgramData\\cosmian\\kms.toml"),
+        |localappdata| format!("{localappdata}\\Cosmian KMS Server\\kms.toml"),
+    )
 }
 
 #[cfg(not(target_os = "windows"))]

@@ -18,6 +18,7 @@ use crate::{
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 #[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -112,6 +113,9 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// OTLP endpoint URL for sending metrics (if configured in logging)
+    pub otlp_url: Option<String>,
 }
 
 /// Represents the server parameters.
@@ -267,6 +271,7 @@ impl ServerParams {
                 .transpose()?,
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
+            otlp_url: conf.logging.otlp.clone(),
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -386,6 +391,10 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref users) = self.privileged_users {
             debug_struct.field("privileged_users", users);
+        }
+
+        if let Some(ref otlp) = self.otlp_url {
+            debug_struct.field("otlp_url", otlp);
         }
 
         // if one of these UI fields is some, add debug information

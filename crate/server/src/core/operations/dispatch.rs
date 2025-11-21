@@ -22,7 +22,34 @@ pub(crate) async fn dispatch(
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Operation> {
-    Ok(match ttlv.tag.as_str() {
+    let operation_tag = ttlv.tag.clone();
+    let start_time = std::time::Instant::now();
+
+    let result = dispatch_inner(kms, ttlv, user, database_params, &operation_tag).await;
+
+    // Record metrics if enabled
+    if let Some(ref metrics) = kms.metrics {
+        let duration = start_time.elapsed().as_secs_f64();
+        metrics.record_kmip_operation(&operation_tag, user);
+        metrics.record_kmip_operation_duration(&operation_tag, duration);
+
+        // Record error if operation failed
+        if result.is_err() {
+            metrics.record_error(&operation_tag);
+        }
+    }
+
+    result
+}
+
+async fn dispatch_inner(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    database_params: Option<Arc<dyn SessionParams>>,
+    operation_tag: &str,
+) -> KResult<Operation> {
+    Ok(match operation_tag {
         "Certify" => {
             let req = from_ttlv::<Certify>(ttlv)?;
             let privileged_users = kms.params.privileged_users.clone();

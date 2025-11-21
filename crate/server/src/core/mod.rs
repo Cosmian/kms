@@ -3,8 +3,10 @@ pub(crate) mod certificate;
 pub(crate) mod cover_crypt;
 mod kms;
 pub(crate) mod operations;
+pub(crate) mod otel_metrics;
 pub(crate) mod retrieve_object_utils;
 mod uid_utils;
 pub(crate) mod wrapping;
 
 pub use kms::KMS;
+pub use otel_metrics::OtelMetrics;

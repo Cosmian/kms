@@ -34,7 +34,7 @@ const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
-use crate::{config::ServerParams, error::KmsError, kms_bail, result::KResult};
+use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
 
 /// A Key Management System that partially implements KMIP 2.1
 ///
@@ -56,6 +56,9 @@ pub struct KMS {
     /// A typical use case is delegating encryption/decryption to an HSM.
     /// This is a map of key prefixes to encryption oracles.
     pub(crate) encryption_oracles: RwLock<HashMap<String, Box<dyn EncryptionOracle + Sync + Send>>>,
+
+    /// OTLP metrics collector (if enabled)
+    pub(crate) metrics: Option<Arc<OtelMetrics>>,
 }
 
 impl KMS {
@@ -101,10 +104,45 @@ impl KMS {
         }
 
         Ok(Self {
-            params: server_params,
+            params: server_params.clone(),
             database,
             encryption_oracles: RwLock::new(encryption_oracles),
+            metrics: Self::create_otel_metrics(&server_params)?,
         })
+    }
+
+    /// Create OTLP metrics if OTLP logging is configured
+    fn create_otel_metrics(server_params: &ServerParams) -> KResult<Option<Arc<OtelMetrics>>> {
+        // Only create metrics if OTLP is configured in logging
+        // We reuse the OTLP endpoint from the logging configuration
+        if let Some(otlp_url) = &server_params.otlp_url {
+            use opentelemetry_otlp::WithExportConfig;
+            use opentelemetry_sdk::metrics::PeriodicReader;
+
+            // Create OTLP metrics exporter
+            let exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(otlp_url)
+                .build()
+                .map_err(|e| {
+                    KmsError::ServerError(format!("Failed to create OTLP metrics exporter: {e}"))
+                })?;
+
+            // Create periodic reader that sends metrics every 30 seconds
+            let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio)
+                .with_interval(std::time::Duration::from_secs(30))
+                .with_timeout(std::time::Duration::from_secs(10))
+                .build();
+
+            // Create meter provider
+            let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+                .with_reader(reader)
+                .build();
+
+            Ok(Some(Arc::new(OtelMetrics::new(meter_provider)?)))
+        } else {
+            Ok(None)
+        }
     }
 
     fn instantiate_hsm(
