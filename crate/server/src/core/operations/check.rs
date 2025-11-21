@@ -49,9 +49,14 @@ pub(crate) async fn check(
             ));
         }
     };
-    let owm =
-        Box::pin(retrieve_object_for_operation(uid_str, KmipOperation::Get, kms, owner, params.clone()))
-            .await?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        uid_str,
+        KmipOperation::Get,
+        kms,
+        owner,
+        params.clone(),
+    ))
+    .await?;
     let attributes = owm
         .object()
         .attributes()

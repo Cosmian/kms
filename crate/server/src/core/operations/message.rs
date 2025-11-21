@@ -241,7 +241,15 @@ pub(crate) async fn message(
     // If UNDO mode was triggered, revert side-effects for operations that had already mutated state.
     if undo_triggered.is_some() {
         for uid in undo_activate_uids {
-            drop(Box::pin(revert_activation_to_preactive(kms, &uid, user, params.clone())).await);
+            drop(
+                Box::pin(revert_activation_to_preactive(
+                    kms,
+                    &uid,
+                    user,
+                    params.clone(),
+                ))
+                .await,
+            );
         }
     }
 
@@ -276,9 +284,14 @@ async fn revert_activation_to_preactive(
 
     use crate::core::retrieve_object_utils::retrieve_object_for_operation;
 
-    let mut owm =
-        Box::pin(retrieve_object_for_operation(uid, KmipOperation::GetAttributes, kms, user, params.clone()))
-            .await?;
+    let mut owm = Box::pin(retrieve_object_for_operation(
+        uid,
+        KmipOperation::GetAttributes,
+        kms,
+        user,
+        params.clone(),
+    ))
+    .await?;
 
     // Reset internal attributes
     if let Ok(attrs) = owm.object_mut().attributes_mut() {

@@ -68,8 +68,14 @@ pub(crate) async fn mac(
             .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?
     } else {
         // Retrieve key now (needed for inference)
-        let owm = Box::pin(retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params.clone()))
-            .await?;
+        let owm = Box::pin(retrieve_object_for_operation(
+            uid,
+            KmipOperation::Get,
+            kms,
+            user,
+            params.clone(),
+        ))
+        .await?;
         let key_block = owm.object().key_block()?;
         if let Some(ca) = key_block.cryptographic_algorithm {
             match ca {
@@ -191,7 +197,14 @@ pub(super) async fn mac_verify(
     trace!("MacVerify: Unique identifier: {uid}");
 
     // Retrieve key
-    let owm = Box::pin(retrieve_object_for_operation(uid, KmipOperation::Get, kms, user, params)).await?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        uid,
+        KmipOperation::Get,
+        kms,
+        user,
+        params,
+    ))
+    .await?;
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes().context("mac_verify")?;
 
