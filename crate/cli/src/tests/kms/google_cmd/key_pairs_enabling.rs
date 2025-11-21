@@ -63,7 +63,7 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
         return serde_json::from_str::<ListKeyPairsResponse>(output)
-            .map_err(|e| CosmianError::Default(format!("{e}")))
+            .map_err(|e| CosmianError::Default(format!("{e}")));
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -90,7 +90,7 @@ fn get_keypairs(
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
         return serde_json::from_str::<KeyPairs>(output)
-            .map_err(|e| CosmianError::Default(format!("{e}")))
+            .map_err(|e| CosmianError::Default(format!("{e}")));
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -115,7 +115,7 @@ fn disable_keypairs(
         .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(())
+        return Ok(());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -140,7 +140,7 @@ fn enable_keypairs(
         .args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(())
+        return Ok(());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -190,7 +190,7 @@ pub(crate) async fn test_google_keypairs() -> Result<(), CosmianError> {
         &user_id,
         &enabled_key_pair.keyPairId,
     )?;
-    assert!(fetched_keypair.enablementState == "disabled");
+    assert_eq!(fetched_keypair.enablementState, "disabled");
 
     // Enable keypair
     assert!(
@@ -206,6 +206,6 @@ pub(crate) async fn test_google_keypairs() -> Result<(), CosmianError> {
         &user_id,
         &enabled_key_pair.keyPairId,
     )?;
-    assert!(fetched_keypair.enablementState == "enabled");
+    assert_eq!(fetched_keypair.enablementState, "enabled");
     Ok(())
 }

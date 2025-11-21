@@ -37,6 +37,7 @@ pub(crate) async fn destroy_operation(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DestroyResponse> {
+    trace!("{request}");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
@@ -46,6 +47,7 @@ pub(crate) async fn destroy_operation(
     recursively_destroy_object(
         unique_identifier,
         request.remove,
+        request.cascade,
         kms,
         user,
         params,
@@ -64,12 +66,17 @@ pub(crate) async fn destroy_operation(
 pub(crate) async fn recursively_destroy_object(
     unique_identifier: &UniqueIdentifier,
     remove: bool,
+    cascade: bool,
     kms: &KMS,
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
+    trace!(
+        "uid={} remove={} cascade={}",
+        unique_identifier, remove, cascade
+    );
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("Destroy")?;
@@ -116,26 +123,102 @@ pub(crate) async fn recursively_destroy_object(
             }
         }
 
-        // Check if the object is already destroyed
+        // Determine the effective current state. In some historical paths the DB "state" column
+        // was persisted as Active while the serialized attributes (both in object key_block and in
+        // metadata) still held a PreActive state (KMIP compliant initial state after Create).
+        // We treat such objects as effectively PreActive for lifecycle enforcement so that
+        // Destroy is allowed without a prior Revoke, matching KMIP and mandatory vector expectations.
+        let db_state = owm.state();
+        let attributes_state = owm
+            .object()
+            .attributes()
+            .unwrap_or_else(|_| owm.attributes())
+            .state
+            .unwrap_or(db_state);
+        let effective_state = attributes_state;
+        // Policy evaluation: use the effective state from attributes for KMIP compliance
+        let activation_date = owm
+            .object()
+            .attributes()
+            .unwrap_or_else(|_| owm.attributes())
+            .activation_date;
+        let effective_policy_state = effective_state;
+
+        // Check if the object is already destroyed or of an unsupported type for Destroy
         let object_type = owm.object().object_type();
-        if owm.state() == State::Destroyed
+        if effective_state == State::Destroyed
+            || effective_state == State::Destroyed_Compromised
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
-                && object_type != ObjectType::PublicKey)
+                && object_type != ObjectType::PublicKey
+                && object_type != ObjectType::OpaqueObject)
         {
             continue;
+        }
+
+        // KMIP 2.1 lifecycle enforcement:
+        // - Objects created via Register (start Active) can be destroyed directly
+        // - Objects created via Create then explicitly Activated require revocation before destroy
+        // - PreActive objects can always be destroyed directly
+        // The key distinction is explicit vs implicit activation.
+        trace!(
+            "[destroy] policy-eval uid={} type={:?} db_state={:?} attr_state={:?} effective_state={:?} activation_date={:?} policy_state={:?} remove={}",
+            owm.id(),
+            object_type,
+            db_state,
+            attributes_state,
+            effective_state,
+            activation_date,
+            effective_policy_state,
+            remove
+        );
+
+        // Check if this is an explicitly activated object that requires revocation
+        let requires_revocation = effective_policy_state == State::Active
+            && matches!(
+                object_type,
+                ObjectType::SymmetricKey
+                    | ObjectType::SecretData
+                    | ObjectType::Certificate
+                    | ObjectType::PrivateKey
+                    | ObjectType::PublicKey
+            )
+            // Only objects that were explicitly activated (Create -> Activate flow) require revocation
+            // Objects that were registered (Register -> already Active) can be destroyed directly
+            // We can distinguish by checking if activation_date exists and initial_date exists,
+            // and if activation_date exists (indicating explicit activation)
+            // For Create→Activate flow, activation_date will be set by the Activate operation
+            // For Register flow, objects start Active without needing explicit activation
+            && activation_date.is_some();
+
+        if requires_revocation {
+            trace!(
+                "[destroy] DENY revoke-before-destroy (explicitly activated) uid={} type={:?} state={:?} activation_date={:?} initial_date={:?}",
+                owm.id(),
+                object_type,
+                effective_policy_state,
+                activation_date,
+                owm.attributes().initial_date
+            );
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Wrong_Key_Lifecycle_State,
+                "DENIED".to_owned(),
+            ));
         }
 
         // perform the chain of destroy operations depending on the type of object
         count += 1;
         let object_type = owm.object().object_type();
         match object_type {
-            ObjectType::SymmetricKey | ObjectType::Certificate | ObjectType::SecretData => {
+            ObjectType::SymmetricKey
+            | ObjectType::Certificate
+            | ObjectType::SecretData
+            | ObjectType::OpaqueObject => {
                 // destroy the key
                 let id = owm.id().to_owned();
-                let state = owm.state();
+                let state = effective_state;
                 destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
             }
             ObjectType::PrivateKey => {
@@ -143,10 +226,14 @@ pub(crate) async fn recursively_destroy_object(
                 ids_to_skip.insert(owm.id().to_owned());
                 // for Covercrypt, if that is a master secret key, destroy the user decryption keys
                 #[cfg(feature = "non-fips")]
-                if owm.object().key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
+                if cascade
+                    && owm.object().key_block()?.key_format_type
+                        == KeyFormatType::CoverCryptSecretKey
+                {
                     destroy_user_decryption_keys(
                         owm.id(),
                         remove,
+                        true, // always cascade when destroying a `Covercrypt` master private key
                         kms,
                         user,
                         params.clone(),
@@ -154,59 +241,94 @@ pub(crate) async fn recursively_destroy_object(
                     )
                     .await?;
                 }
-                // destroy any linked public key
-                if let Some(public_key_id) = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes())
-                    .get_link(LinkType::PublicKeyLink)
-                    .map(|l| l.to_string())
-                {
-                    if !ids_to_skip.contains(&public_key_id) {
-                        recursively_destroy_object(
-                            &UniqueIdentifier::TextString(public_key_id),
-                            remove,
-                            kms,
-                            user,
-                            params.clone(),
-                            ids_to_skip.clone(),
-                        )
-                        .await?;
+                // When cascading, destroy any linked public key
+                if cascade {
+                    if let Some(public_key_id) = owm
+                        .object()
+                        .attributes()
+                        .unwrap_or_else(|_| owm.attributes())
+                        .get_link(LinkType::PublicKeyLink)
+                        .map(|l| l.to_string())
+                    {
+                        if !ids_to_skip.contains(&public_key_id) {
+                            recursively_destroy_object(
+                                &UniqueIdentifier::TextString(public_key_id),
+                                remove,
+                                cascade,
+                                kms,
+                                user,
+                                params.clone(),
+                                ids_to_skip.clone(),
+                            )
+                            .await?;
+                        }
                     }
                 }
 
                 // destroy the private key
                 let id = owm.id().to_owned();
-                let state = owm.state();
+                let state = effective_state;
                 destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
             }
             ObjectType::PublicKey => {
-                // add this key to the ids to skip
                 ids_to_skip.insert(owm.id().to_owned());
-                // destroy any linked private key
-                if let Some(private_key_id) = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes())
-                    .get_link(LinkType::PrivateKeyLink)
-                    .map(|l| l.to_string())
-                {
-                    if !ids_to_skip.contains(&private_key_id) {
-                        recursively_destroy_object(
-                            &UniqueIdentifier::TextString(private_key_id),
-                            remove,
-                            kms,
-                            user,
-                            params.clone(),
-                            ids_to_skip.clone(),
-                        )
-                        .await?;
+                // For CoverCrypt, if the linked private key is a master secret key, destroy the user decryption keys
+                if cascade {
+                    if let Some(private_key_id) = owm
+                        .object()
+                        .attributes()
+                        .unwrap_or_else(|_| owm.attributes())
+                        .get_link(LinkType::PrivateKeyLink)
+                        .map(|l| l.to_string())
+                    {
+                        #[cfg(feature = "non-fips")]
+                        if let Ok(Some(private_owm)) = kms
+                            .database
+                            .retrieve_object(&private_key_id, params.clone())
+                            .await
+                        {
+                            if let Ok(kb) = private_owm.object().key_block() {
+                                if kb.key_format_type == KeyFormatType::CoverCryptSecretKey {
+                                    destroy_user_decryption_keys(
+                                        &private_key_id,
+                                        remove,
+                                        true, // always cascade when destroying a `Covercrypt` master private key
+                                        kms,
+                                        user,
+                                        params.clone(),
+                                        ids_to_skip.clone(),
+                                    )
+                                    .await?;
+                                }
+                            }
+                        }
+                        // Try to destroy the linked private key, but don't fail if it's not allowed
+                        // This allows destroying a PreActive public key even if its linked private key is Active
+                        if !ids_to_skip.contains(&private_key_id) {
+                            let private_key_id_clone = private_key_id.clone();
+                            if let Err(e) = recursively_destroy_object(
+                                &UniqueIdentifier::TextString(private_key_id),
+                                remove,
+                                cascade,
+                                kms,
+                                user,
+                                params.clone(),
+                                ids_to_skip.clone(),
+                            )
+                            .await
+                            {
+                                // Log the error but continue with public key destruction
+                                trace!(
+                                    "[destroy] Failed to destroy linked private key {}: {:?}. Continuing with public key destruction.",
+                                    private_key_id_clone, e
+                                );
+                            }
+                        }
                     }
                 }
-
-                // destroy the public key
+                // Destroy the public key
                 let id = owm.id().to_owned();
-                let state = owm.state();
+                let state = effective_state;
                 destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
@@ -274,35 +396,50 @@ async fn update_as_destroyed(
     kms: &KMS,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
-    // map the state to the new state
+    // Determine target destroyed state. Historically Active objects were rejected earlier unless
+    // policy relaxed (e.g. for freshly registered asymmetric keys). We now allow an Active state
+    // to transition directly to Destroyed when the caller passed earlier lifecycle checks.
     let new_state = match state {
-        State::Active => {
-            return Err(KmsError::InvalidRequest(format!(
-                "Object with unique identifier: {unique_identifier} is active. It must be revoked \
-                 first"
-            )));
-        }
-        State::Deactivated | State::PreActive => State::Destroyed,
+        State::Active | State::PreActive | State::Deactivated => State::Destroyed,
         State::Compromised => State::Destroyed_Compromised,
-        // already destroyed, return
         State::Destroyed | State::Destroyed_Compromised => return Ok(()),
     };
 
-    // the KMIP specs mandates that e KeyMaterial be destroyed
-    trace!("object: {object}");
-    let attributes = if let Object::Certificate { .. } = object {
-        trace!("Certificate destroying");
-        Attributes::default()
-    } else {
-        let key_block = object.key_block_mut()?;
-        let attributes = key_block.attributes().cloned().unwrap_or_default();
-        // Empty the Key Material
-        key_block.key_format_type = KeyFormatType::Raw;
-        key_block.key_value = Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes: Some(attributes.clone()),
-        });
-        attributes
+    // The KMIP specs mandates that KeyMaterial be destroyed. For objects lacking a Key Block
+    // (OpaqueObject) we instead zero the opaque_data_value. Certificates are handled by clearing
+    // attributes to defaults.
+    trace!(
+        "[destroy-core] uid={unique_identifier} type={:?} pre-state={:?} object={object}",
+        object.object_type(),
+        state
+    );
+    let attributes = match object {
+        Object::Certificate { .. } => {
+            trace!("[destroy-core] certificate zeroization uid={unique_identifier}");
+            Attributes::default()
+        }
+        Object::OpaqueObject(_) => {
+            if let Object::OpaqueObject(inner) = object {
+                trace!(
+                    "[destroy-core] opaque object zeroization uid={unique_identifier} len={} ",
+                    inner.opaque_data_value.len()
+                );
+                inner.opaque_data_value.clear();
+            }
+            // OpaqueObject has no embedded attributes; use default container
+            Attributes::default()
+        }
+        _ => {
+            let key_block = object.key_block_mut()?;
+            let attributes = key_block.attributes().cloned().unwrap_or_default();
+            // Empty the Key Material
+            key_block.key_format_type = KeyFormatType::Raw;
+            key_block.key_value = Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                attributes: Some(attributes.clone()),
+            });
+            attributes
+        }
     };
 
     kms.database

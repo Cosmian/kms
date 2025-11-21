@@ -39,7 +39,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root certificate");
     let request = Validate {
         certificate: Some([intermediate_cert.clone(), root_cert.clone()].to_vec()),
@@ -47,7 +47,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate certificates");
     let request = Validate {
         certificate: Some(
@@ -77,7 +77,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf certificates - valid");
     let request = Validate {
         certificate: Some(

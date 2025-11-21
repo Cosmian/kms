@@ -7,6 +7,7 @@ mod serialize;
 mod tags;
 mod ttlv_struct;
 mod wire;
+pub mod xml;
 
 pub use error::TtlvError;
 pub(crate) use kmip_big_int::KmipBigInt;

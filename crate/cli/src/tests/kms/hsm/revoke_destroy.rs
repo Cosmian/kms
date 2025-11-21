@@ -60,7 +60,9 @@ pub(super) async fn test_revoke_symmetric_key(ctx: &TestsContext) -> KmsCliResul
     .run(ctx.get_owner_client())
     .await;
 
-    assert!(res.is_err());
-    assert!(res.unwrap_err().to_string().contains("Object not found"));
+    res.as_ref().unwrap_err();
+    if let Err(e) = res {
+        assert!(e.to_string().contains("Object not found"));
+    }
     Ok(())
 }

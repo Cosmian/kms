@@ -111,8 +111,14 @@ async fn get_and_check_attributes(
     if let Some(vendor_attributes) = &requested_attributes.vendor_attributes {
         let vendor_attributes_: Vec<VendorAttribute> =
             serde_json::from_value(get_attributes[&Tag::VendorExtension.to_string()].clone())?;
-        let input_vendor_attributes = vec![VendorAttribute::try_from(vendor_attributes)?];
-        assert_eq!(vendor_attributes_, input_vendor_attributes);
+        let input_vendor_attributes = [VendorAttribute::try_from(vendor_attributes)?];
+        assert_eq!(vendor_attributes_.len(), input_vendor_attributes.len());
+        for (a, b) in vendor_attributes_
+            .iter()
+            .zip(input_vendor_attributes.iter())
+        {
+            assert_eq!(a, b);
+        }
     }
 
     Ok(())

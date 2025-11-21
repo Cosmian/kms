@@ -305,4 +305,28 @@ pub trait HSM: Send + Sync {
         slot_id: usize,
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
+
+    /// Generate cryptographically secure random bytes using the HSM RNG.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM to use for RNG
+    /// * `len` - number of random bytes to generate
+    ///
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - random bytes
+    async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>>;
+
+    /// Seed the HSM RNG with the provided data. Some devices may not support seeding and
+    /// can return an error; callers may choose to ignore such errors.
+    async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
+
+    /// Get a reference to the underlying PKCS#11 library for direct function calls.
+    ///
+    /// This method provides access to the raw PKCS#11 library (`HsmLib`) to enable
+    /// direct calls to PKCS#11 functions. This is primarily used for KMIP PKCS#11
+    /// operations that need to map directly to specific PKCS#11 functions.
+    ///
+    /// # Returns
+    /// * `Option<&dyn std::any::Any>` - A trait object that can be downcast to `Arc<HsmLib>`
+    fn hsm_lib(&self) -> Option<&dyn std::any::Any>;
 }

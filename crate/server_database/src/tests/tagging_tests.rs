@@ -78,7 +78,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     };
     expected_attributes.set_tags(["_kk".to_owned()])?;
     assert_eq!(State::Active, owm.state());
-    assert!(&symmetric_key == owm.object());
+    assert_eq!(&symmetric_key, owm.object());
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert_eq!(tags.len(), 2);

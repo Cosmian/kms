@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             Certificate, Object, OpaqueObject, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey,
             SymmetricKey,
         },
-        kmip_types::Digest,
+        kmip_types::{Digest, KeyFormatType},
     },
     ttlv::KmipFlavor,
 };
@@ -41,10 +41,24 @@ pub(super) fn digest(object: &Object) -> KResult<Option<Digest>> {
                 };
                 // digest  with openSSL SHA256
                 let digest = openssl::sha::sha256(&bytes);
+                // Report the digest KeyFormatType according to KMIP profiles expectations.
+                // - For RSA Transparent formats, advertise PKCS_1 as the digest key format type.
+                // - For Symmetric Keys, KMIP default digest format is Raw.
+                let reported_kft = match key_block.key_format_type {
+                    KeyFormatType::TransparentRSAPrivateKey
+                    | KeyFormatType::TransparentRSAPublicKey => KeyFormatType::PKCS1,
+                    other => {
+                        if matches!(object, Object::SymmetricKey(_)) {
+                            KeyFormatType::Raw
+                        } else {
+                            other
+                        }
+                    }
+                };
                 Ok(Some(Digest {
                     hashing_algorithm: HashingAlgorithm::SHA256,
                     digest_value: Some(digest.to_vec()),
-                    key_format_type: Some(key_block.key_format_type),
+                    key_format_type: Some(reported_kft),
                 }))
             } else {
                 Ok(None)

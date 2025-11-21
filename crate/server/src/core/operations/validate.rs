@@ -656,7 +656,9 @@ async fn certificates_by_uid(
     user: &str,
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<Vec<u8>>> {
-    debug!("entering: {unique_identifiers:?}");
+    for uid in &unique_identifiers {
+        debug!("{} identifiers", uid);
+    }
     let mut results = Vec::new();
     for unique_identifier in unique_identifiers {
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {

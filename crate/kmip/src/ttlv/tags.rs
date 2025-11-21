@@ -1,7 +1,7 @@
 // Centralized set of KMIP tags that represent byte-like fields.
 // Used by normalization to collapse runs or wrappers into ByteString values.
 // Keep this list conservative and informed by protocol fields and observed encodings.
-pub(crate) const BYTE_LIKE_TAGS: &[&str] = &[
+pub(super) const BYTE_LIKE_TAGS: &[&str] = &[
     // Generic
     "ByteString",
     "Key",
@@ -39,6 +39,8 @@ pub(crate) const BYTE_LIKE_TAGS: &[&str] = &[
     "MacData",
     "ClientCorrelationValue",
     "ServerCorrelationValue",
+    // PKCS#11 extension output parameters blob should be treated as opaque bytes
+    "PKCS11OutputParameters",
     // Wrapping/MAC signatures
     "MACSignature",
     // EC public key octet string
@@ -47,4 +49,6 @@ pub(crate) const BYTE_LIKE_TAGS: &[&str] = &[
     "NonceID",
     "NonceId",
     "NonceValue",
+    // OAEP PSource (byte sequence represented as repeated Integer children)
+    "PSource",
 ];

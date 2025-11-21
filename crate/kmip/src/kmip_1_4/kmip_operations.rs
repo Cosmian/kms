@@ -18,7 +18,8 @@ use super::{
     kmip_types::{
         CancellationResult, CertificateRequestType, ClientRegistrationMethod, DerivationMethod,
         KeyCompressionType, KeyFormatType, ObjectGroupMember, ObjectType, OperationEnumeration,
-        QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier, ValidityIndicator,
+        PutFunction, QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier,
+        ValidityIndicator,
     },
 };
 use crate::{
@@ -36,13 +37,19 @@ use crate::{
 /// This operation requests the server to generate a new managed cryptographic object. The request
 /// contains information about the type of object being created, and some of the attributes to be
 /// assigned to the object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created
     pub object_type: ObjectType,
     /// Specifies template attributes to be assigned to a new object
     pub template_attribute: TemplateAttribute,
+}
+
+impl Display for Create {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Create {{ object_type: {:?} }}", self.object_type)
+    }
 }
 
 impl From<Create> for kmip_2_1::kmip_operations::Create {
@@ -56,7 +63,7 @@ impl From<Create> for kmip_2_1::kmip_operations::Create {
 }
 
 /// Response to a Create request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of Object created
@@ -68,11 +75,21 @@ pub struct CreateResponse {
     pub template_attribute: Option<TemplateAttribute>,
 }
 
+impl Display for CreateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CreateResponse {{ object_type: {:?}, unique_identifier: {}, template_attribute: {:?} }}",
+            self.object_type, self.unique_identifier, self.template_attribute
+        )
+    }
+}
+
 impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::CreateResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             object_type: value.object_type.try_into()?,
@@ -85,7 +102,7 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateResponse> for CreateResponse {
 /// 4.2 Create Key Pair
 /// This operation requests the server to generate a new public/private key pair and register
 /// the two corresponding new Managed Cryptographic Objects.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Common template attributes that apply to both public and private key
@@ -117,7 +134,7 @@ impl From<CreateKeyPair> for kmip_2_1::kmip_operations::CreateKeyPair {
 }
 
 /// Response to a Create Key Pair request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// Unique ID of the private key
@@ -138,7 +155,7 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateKeyPairResponse> for CreateKeyPair
     fn try_from(
         value: kmip_2_1::kmip_operations::CreateKeyPairResponse,
     ) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             private_key_unique_identifier: value.private_key_unique_identifier.to_string(),
@@ -149,10 +166,26 @@ impl TryFrom<kmip_2_1::kmip_operations::CreateKeyPairResponse> for CreateKeyPair
     }
 }
 
+impl Display for CreateKeyPairResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CreateKeyPairResponse {{ private_key_unique_identifier: {}, public_key_unique_identifier: {} }}",
+            self.private_key_unique_identifier, self.public_key_unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for CreateKeyPairResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.3 Register
 /// This operation requests the server to register a Managed Object that was created by the client
 /// or obtained by the client through some other means.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Register {
     // Determines the type of object being registered
@@ -175,7 +208,7 @@ impl From<Register> for kmip_2_1::kmip_operations::Register {
 }
 
 /// Response to a Register request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RegisterResponse {
     /// The unique identifier of the registered object
@@ -189,7 +222,7 @@ impl TryFrom<kmip_2_1::kmip_operations::RegisterResponse> for RegisterResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::RegisterResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -198,9 +231,25 @@ impl TryFrom<kmip_2_1::kmip_operations::RegisterResponse> for RegisterResponse {
     }
 }
 
+impl Display for RegisterResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RegisterResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for RegisterResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.4 Re-key
 /// This operation requests the server to generate a replacement key for an existing symmetric key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKey {
     /// Unique identifier of the symmetric key to be rekeyed
@@ -214,7 +263,7 @@ pub struct ReKey {
 }
 
 /// Response to a Re-key request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyResponse {
     /// Unique identifier of the newly created key
@@ -226,7 +275,7 @@ pub struct ReKeyResponse {
 
 /// 4.5 Re-key Key Pair
 /// This operation requests the server to generate a replacement key pair for an existing public/private key pair.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
     /// Unique identifier of private key to be rekeyed
@@ -246,7 +295,7 @@ pub struct ReKeyKeyPair {
 }
 
 /// Response to a Re-key Key Pair request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     /// Unique identifier of new private key
@@ -264,7 +313,7 @@ pub struct ReKeyKeyPairResponse {
 /// 4.6 Derive Key
 /// This operation requests the server to derive a symmetric key or secret data from a key or
 /// secret data that is already known to the key management system.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Unique identifier of the object to derive from
@@ -280,7 +329,7 @@ pub struct DeriveKey {
 }
 
 /// Response to a Derive Key request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKeyResponse {
     /// Unique identifier of derived object
@@ -292,7 +341,7 @@ pub struct DeriveKeyResponse {
 
 /// 4.7 Certify
 /// This operation requests the server to generate a Certificate object for a public key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
     pub unique_identifier: String,
@@ -303,7 +352,7 @@ pub struct Certify {
 }
 
 /// Response to a Certify request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     pub unique_identifier: String,
@@ -313,7 +362,7 @@ pub struct CertifyResponse {
 
 /// 4.8 Re-certify
 /// This operation requests the server to generate a new Certificate object for an existing public key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
     pub unique_identifier: String,
@@ -324,7 +373,7 @@ pub struct ReCertify {
 }
 
 /// Response to a Re-certify request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertifyResponse {
     pub unique_identifier: String,
@@ -334,7 +383,7 @@ pub struct ReCertifyResponse {
 
 /// 4.9 Locate
 /// This operation requests that the server search for one or more Managed Objects.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object identifiers the server MAY return.
@@ -378,7 +427,7 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
 }
 
 /// Response to a Locate request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
     #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
@@ -389,7 +438,7 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::LocateResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value
@@ -399,10 +448,28 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
     }
 }
 
+impl Display for LocateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LocateResponse {{")?;
+        if let Some(ids) = &self.unique_identifier {
+            write!(f, " unique_identifier: [{}]", ids.join(", "))?;
+        } else {
+            write!(f, " unique_identifier: None")?;
+        }
+        write!(f, " }}")
+    }
+}
+
+impl fmt::Debug for LocateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.10 Check
 /// This operation requests that the server check for use of a Managed Object according
 /// to values specified in the request.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
     pub unique_identifier: String,
@@ -410,12 +477,13 @@ pub struct Check {
     pub usage_limits_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<u32>,
+    // KMIP 1.4 specifies Lease Time as an Interval; use i32 to match TTLV Interval
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<bool>,
+    pub lease_time: Option<i32>,
 }
 
 /// Response to a Check request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CheckResponse {
     pub unique_identifier: String,
@@ -427,13 +495,42 @@ pub struct CheckResponse {
     pub lease_time: Option<i32>,
 }
 
+impl Display for CheckResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CheckResponse {{ unique_identifier: {}",
+            self.unique_identifier
+        )?;
+        if let Some(v) = &self.usage_limits_count {
+            write!(f, ", usage_limits_count: {v}")?;
+        }
+        if let Some(v) = &self.cryptographic_usage_mask {
+            write!(f, ", cryptographic_usage_mask: {v}")?;
+        }
+        if let Some(v) = &self.lease_time {
+            write!(f, ", lease_time: {v}")?;
+        }
+        write!(f, " }}")
+    }
+}
+
+impl fmt::Debug for CheckResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.11 Get
 /// This operation requests that the server returns the Managed Object specified by its
 /// Unique Identifier.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
-    pub unique_identifier: String,
+    /// The Unique Identifier of the Managed Object to get.
+    /// If omitted, the ID Placeholder SHALL be used (per KMIP 1.4 spec).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -445,9 +542,9 @@ pub struct Get {
 impl From<Get> for kmip_2_1::kmip_operations::Get {
     fn from(get: Get) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                get.unique_identifier,
-            )),
+            unique_identifier: get
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             key_format_type: get.key_format_type.map(Into::into),
             key_compression_type: get.key_compression_type.map(Into::into),
             key_wrapping_specification: get.key_wrapping_specification.map(Into::into),
@@ -457,7 +554,7 @@ impl From<Get> for kmip_2_1::kmip_operations::Get {
 }
 
 /// Response to a Get request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
@@ -481,12 +578,29 @@ impl TryFrom<kmip_2_1::kmip_operations::GetResponse> for GetResponse {
     }
 }
 
+impl Display for GetResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "GetResponse {{ object_type: {:?}, unique_identifier: {} }}",
+            self.object_type, self.unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for GetResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.12 Get Attributes
 /// This operation requests one or more attributes associated with a Managed Object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_name: Option<Vec<String>>,
 }
@@ -494,9 +608,9 @@ pub struct GetAttributes {
 impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
     fn from(get_attributes: GetAttributes) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                get_attributes.unique_identifier,
-            )),
+            unique_identifier: get_attributes
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             attribute_reference: get_attributes.attribute_name.map(|v| {
                 v.into_iter()
                     .map(|v| {
@@ -521,7 +635,7 @@ impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
 }
 
 /// Response to a Get Attributes request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     pub unique_identifier: String,
@@ -555,25 +669,111 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
     }
 }
 
+impl Display for GetAttributesResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "GetAttributesResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for GetAttributesResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.13 Get Attribute List
 /// This operation requests a list of the attribute names associated with a Managed Object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributeList {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+}
+
+impl From<GetAttributeList> for kmip_2_1::kmip_operations::GetAttributeList {
+    fn from(v: GetAttributeList) -> Self {
+        Self {
+            unique_identifier: v
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+        }
+    }
 }
 
 /// Response to a Get Attribute List request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributeListResponse {
     pub unique_identifier: String,
+    // XML encodes this as a repeated AttributeName element, not a pluralized container
+    #[serde(rename = "AttributeName")]
     pub attribute_names: Vec<String>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::GetAttributeListResponse> for GetAttributeListResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::GetAttributeListResponse,
+    ) -> Result<Self, Self::Error> {
+        // Convert 2.1 AttributeReference list into 1.4 AttributeName list
+        let mut names: Vec<String> = Vec::new();
+        if let Some(attr_refs) = value.attribute_references {
+            for ar in attr_refs {
+                match ar {
+                    kmip_2_1::kmip_types::AttributeReference::Vendor(v) => {
+                        // In 1.4, vendor attribute names are carried as-is (e.g., "x-ID")
+                        names.push(v.attribute_name);
+                    }
+                    kmip_2_1::kmip_types::AttributeReference::Standard(tag) => {
+                        names.push(attribute_name_from_tag(tag));
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            attribute_names: names,
+        })
+    }
+}
+
+fn attribute_name_from_tag(tag: kmip_2_1::kmip_types::Tag) -> String {
+    // Convert enum variant name (e.g., CryptographicAlgorithm) to spaced form ("Cryptographic Algorithm")
+    // by inserting a space before uppercase letters, then trimming.
+    // Also handle a few specific prettifications.
+    let raw = format!("{tag:?}"); // variant name
+    let mut out = String::with_capacity(raw.len() * 2);
+    let chars: Vec<char> = raw.chars().collect();
+    for (i, &ch) in chars.iter().enumerate() {
+        if i > 0 && ch.is_ascii_uppercase() {
+            // insert space when transitioning to an uppercase letter
+            out.push(' ');
+        }
+        out.push(ch);
+    }
+
+    // Minor normalizations to better match KMIP 1.x attribute naming
+    // ShortUniqueIdentifier -> Short Unique Identifier
+    // IVCounterNonce -> IV Counter Nonce
+    // X509CertificateSubject -> X509 Certificate Subject (best effort)
+    out = out
+        .replace("I V", "IV")
+        .replace("M A C", "MAC")
+        .replace("X 509", "X509")
+        .replace("U R I", "URI");
+
+    out
 }
 
 /// 4.14 Add Attribute
 /// This operation requests that the server add a new attribute or append attribute values to an existing attribute.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
     pub unique_identifier: String,
@@ -592,11 +792,21 @@ impl From<AddAttribute> for kmip_2_1::kmip_operations::AddAttribute {
 }
 
 /// Response to an Add Attribute request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
+}
+
+impl Display for AddAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "AddAttributeResponse {{ unique_identifier: {}, attribute: {:?} }}",
+            self.unique_identifier, self.attribute
+        )
+    }
 }
 
 impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeResponse {
@@ -612,24 +822,66 @@ impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeRespo
 
 /// 4.15 Modify Attribute
 /// This operation requests that the server modify one or more attributes associated with a Managed Object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ModifyAttribute {
-    pub unique_identifier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub attribute: Attribute,
 }
 
+impl From<ModifyAttribute> for kmip_2_1::kmip_operations::ModifyAttribute {
+    fn from(v: ModifyAttribute) -> Self {
+        Self {
+            unique_identifier: v
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            new_attribute: v.attribute.into(),
+        }
+    }
+}
+
 /// Response to a Modify Attribute request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ModifyAttributeResponse {
     pub unique_identifier: String,
     pub attribute: Attribute,
 }
 
+impl Display for ModifyAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ModifyAttributeResponse {{ unique_identifier: {}, attribute: {:?} }}",
+            self.unique_identifier, self.attribute
+        )
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ModifyAttributeResponse> for ModifyAttributeResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::ModifyAttributeResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value
+                .unique_identifier
+                .map(|u| u.to_string())
+                .unwrap_or_default(),
+            // KMIP 2.1 doesn't echo the modified attribute in the response. Preserve 1.4 shape
+            // by returning a placeholder Comment attribute to avoid deep comparisons.
+            attribute: Attribute::Comment(
+                "KMIP 2 does not send the attribute value on the response".to_owned(),
+            ),
+        })
+    }
+}
+
 /// 4.16 Delete Attribute
 /// This operation requests that the server delete an attribute associated with a Managed Object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttribute {
     pub unique_identifier: String,
@@ -638,23 +890,76 @@ pub struct DeleteAttribute {
     pub attribute_index: Option<i32>,
 }
 
+impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
+    fn from(v: DeleteAttribute) -> Self {
+        use kmip_2_1::kmip_types::{
+            AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference,
+        };
+
+        let name = v.attribute_name.trim();
+        let cleaned = name.replace(' ', "");
+        let aref = Tag::from_str(&cleaned).map_or_else(
+            |_| {
+                let (vendor_identification, attribute_name) = match name.split_once('-') {
+                    Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
+                        (vendor.to_owned(), rest.to_owned())
+                    }
+                    _ => (String::new(), name.to_owned()),
+                };
+                AttributeReference::Vendor(VendorAttributeReference {
+                    vendor_identification,
+                    attribute_name,
+                })
+            },
+            AttributeReference::Standard,
+        );
+        Self {
+            unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
+            current_attribute: None,
+            attribute_references: Some(vec![aref]),
+        }
+    }
+}
+
 /// Response to a Delete Attribute request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     pub unique_identifier: String,
 }
 
+impl Display for DeleteAttributeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "DeleteAttributeResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DeleteAttributeResponse> for DeleteAttributeResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::DeleteAttributeResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+        })
+    }
+}
+
 /// 4.17 Obtain Lease
 /// This operation requests a new or renewed lease for a client's use of a Managed Object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ObtainLease {
     pub unique_identifier: String,
 }
 
 /// Response to an Obtain Lease request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ObtainLeaseResponse {
     pub unique_identifier: String,
@@ -663,14 +968,14 @@ pub struct ObtainLeaseResponse {
 }
 
 /// 4.18 Get Usage Allocation
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetUsageAllocation {
     pub unique_identifier: String,
 }
 
 /// Response to a Get Usage Allocation request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetUsageAllocationResponse {
     pub unique_identifier: String,
@@ -679,7 +984,7 @@ pub struct GetUsageAllocationResponse {
 }
 
 /// 4.19 Activate
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Activate {
     pub unique_identifier: String,
@@ -696,7 +1001,7 @@ impl From<Activate> for kmip_2_1::kmip_operations::Activate {
 }
 
 /// Response to an Activate request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ActivateResponse {
     pub unique_identifier: String,
@@ -712,8 +1017,24 @@ impl TryFrom<kmip_2_1::kmip_operations::ActivateResponse> for ActivateResponse {
     }
 }
 
+impl Display for ActivateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ActivateResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for ActivateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.20 Revoke
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -731,12 +1052,13 @@ impl From<Revoke> for kmip_2_1::kmip_operations::Revoke {
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             revocation_reason: revoke.revocation_reason,
             compromise_occurrence_date: revoke.compromise_occurrence_date,
+            cascade: false,
         }
     }
 }
 
 /// Response to a Revoke request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     pub unique_identifier: String,
@@ -753,7 +1075,7 @@ impl TryFrom<kmip_2_1::kmip_operations::RevokeResponse> for RevokeResponse {
 }
 
 /// 4.21 Destroy
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     pub unique_identifier: String,
@@ -766,12 +1088,13 @@ impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
                 destroy.unique_identifier,
             )),
             remove: false,
+            cascade: false,
         }
     }
 }
 
 /// Response to a Destroy request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     pub unique_identifier: String,
@@ -781,7 +1104,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::DestroyResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -789,36 +1112,52 @@ impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
     }
 }
 
+impl Display for DestroyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DestroyResponse {{ unique_identifier: {} }}",
+            self.unique_identifier
+        )
+    }
+}
+
+impl fmt::Debug for DestroyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.22 Archive
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Archive {
     pub unique_identifier: String,
 }
 
 /// Response to an Archive request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ArchiveResponse {
     pub unique_identifier: String,
 }
 
 /// 4.23 Recover
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Recover {
     pub unique_identifier: String,
 }
 
 /// Response to a Recover request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RecoverResponse {
     pub unique_identifier: String,
 }
 
 /// 4.24 Validate
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Validate {
     /// One or more Certificates.
@@ -833,8 +1172,22 @@ pub struct Validate {
     pub validity_time: Option<OffsetDateTime>,
 }
 
+impl From<Validate> for kmip_2_1::kmip_operations::Validate {
+    fn from(validate: Validate) -> Self {
+        Self {
+            certificate: validate
+                .certificate
+                .map(|certs| certs.into_iter().map(|c| c.certificate_value).collect()),
+            unique_identifier: validate
+                .unique_identifier
+                .map(|uids| uids.into_iter().map(Into::into).collect()),
+            validity_time: validate.validity_time.map(|t| t.to_string()),
+        }
+    }
+}
+
 /// Response to a Validate request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
@@ -842,8 +1195,16 @@ pub struct ValidateResponse {
     pub validity_indicator: ValidityIndicator,
 }
 
+impl From<ValidateResponse> for kmip_2_1::kmip_operations::ValidateResponse {
+    fn from(response: ValidateResponse) -> Self {
+        Self {
+            validity_indicator: response.validity_indicator.into(),
+        }
+    }
+}
+
 /// 4.25 Query
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Query {
     pub query_function: Option<Vec<QueryFunction>>,
@@ -862,7 +1223,7 @@ impl From<Query> for kmip_2_1::kmip_operations::Query {
 }
 
 /// Response to a Query request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct QueryResponse {
     /// List of operations supported by the server.
@@ -971,28 +1332,28 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
 }
 
 /// 4.27 Cancel
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Cancel {
     pub asynchronous_correlation_value: String,
 }
 
 /// Response to a Cancel request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CancelResponse {
     pub cancellation_result: CancellationResult,
 }
 
 /// 4.28 Poll
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Poll {
     pub asynchronous_correlation_value: String,
 }
 
 /// Response to a Poll request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PollResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1002,7 +1363,7 @@ pub struct PollResponse {
 }
 
 /// 4.29 Encrypt
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     pub unique_identifier: String,
@@ -1071,7 +1432,7 @@ impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
 }
 
 /// Response to an Encrypt request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     pub unique_identifier: String,
@@ -1102,7 +1463,7 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::EncryptResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1115,7 +1476,7 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
 }
 
 /// 4.30 Decrypt
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     pub unique_identifier: String,
@@ -1188,7 +1549,7 @@ impl From<Decrypt> for kmip_2_1::kmip_operations::Decrypt {
 }
 
 /// Response to a Decrypt request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     pub unique_identifier: String,
@@ -1208,7 +1569,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::DecryptResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1219,7 +1580,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
 }
 
 /// 4.31 Sign
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct Sign {
     /// The Unique Identifier of the Managed
@@ -1284,15 +1645,44 @@ impl From<Sign> for kmip_2_1::kmip_operations::Sign {
 }
 
 /// Response to a Sign request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignResponse {
     pub unique_identifier: String,
     pub signature_data: Vec<u8>,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::SignResponse> for SignResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::SignResponse) -> Result<Self, Self::Error> {
+        trace!("Converting KMIP 2.1 SignResponse to KMIP 1.4: {value}");
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            signature_data: value.signature_data.unwrap_or_default(),
+        })
+    }
+}
+
+impl Display for SignResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SignResponse {{ unique_identifier: {}, signature_data_len: {} }}",
+            self.unique_identifier,
+            self.signature_data.len()
+        )
+    }
+}
+
+impl fmt::Debug for SignResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.32 Signature Verify
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerify {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the signature verify operation
@@ -1339,15 +1729,51 @@ impl From<SignatureVerify> for kmip_2_1::kmip_operations::SignatureVerify {
 }
 
 /// Response to a Signature Verify request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::SignatureVerifyResponse> for SignatureVerifyResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::SignatureVerifyResponse,
+    ) -> Result<Self, Self::Error> {
+        let vi_1_4 = match value.validity_indicator {
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Invalid) => ValidityIndicator::Invalid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Unknown) | None => {
+                ValidityIndicator::Unknown
+            }
+        };
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            validity_indicator: vi_1_4,
+        })
+    }
+}
+
+impl Display for SignatureVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SignatureVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?} }}",
+            self.unique_identifier, self.validity_indicator
+        )
+    }
+}
+
+impl fmt::Debug for SignatureVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.33 MAC
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MAC {
     pub unique_identifier: String,
@@ -1382,7 +1808,7 @@ impl From<MAC> for kmip_2_1::kmip_operations::MAC {
 }
 
 /// Response to a MAC request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct MACResponse {
     #[serde(rename = "UniqueIdentifier")]
     pub unique_identifier: String,
@@ -1409,54 +1835,153 @@ impl TryFrom<kmip_2_1::kmip_operations::MACResponse> for MACResponse {
 }
 
 /// 4.34 MAC Verify
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerify {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     pub data: Vec<u8>,
+    #[serde(rename = "MACData")]
     pub mac_data: Vec<u8>,
 }
 
+impl From<MACVerify> for kmip_2_1::kmip_operations::MACVerify {
+    fn from(value: MACVerify) -> Self {
+        Self {
+            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                value.unique_identifier,
+            ),
+            cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
+            data: value.data,
+            mac_data: value.mac_data,
+        }
+    }
+}
+
 /// Response to a MAC Verify request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerifyResponse {
     pub unique_identifier: String,
     pub validity_indicator: ValidityIndicator,
 }
 
+impl TryFrom<kmip_2_1::kmip_operations::MACVerifyResponse> for MACVerifyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::MACVerifyResponse) -> Result<Self, Self::Error> {
+        let vi_1_4 = match value.validity_indicator {
+            kmip_2_1::kmip_types::ValidityIndicator::Valid => ValidityIndicator::Valid,
+            kmip_2_1::kmip_types::ValidityIndicator::Invalid => ValidityIndicator::Invalid,
+            kmip_2_1::kmip_types::ValidityIndicator::Unknown => ValidityIndicator::Unknown,
+        };
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            validity_indicator: vi_1_4,
+        })
+    }
+}
+
+impl Display for MACVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MACVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?} }}",
+            self.unique_identifier, self.validity_indicator
+        )
+    }
+}
+
+impl fmt::Debug for MACVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
 /// 4.35 RNG Retrieve
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGRetrieve {
     pub data_length: i32,
 }
 
 /// Response to an RNG Retrieve request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGRetrieveResponse {
     pub data: Vec<u8>,
 }
 
+impl From<RNGRetrieve> for kmip_2_1::kmip_operations::RNGRetrieve {
+    fn from(value: RNGRetrieve) -> Self {
+        Self {
+            data_length: value.data_length,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RNGRetrieveResponse> for RNGRetrieveResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::RNGRetrieveResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self { data: value.data })
+    }
+}
+
 /// 4.36 RNG Seed
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeed {
     pub data: Vec<u8>,
 }
 
 /// Response to an RNG Seed request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    amount_of_seed_data: i32,
+    /// Number of bytes of seed data accepted by the RNG.
+    /// KMIP 1.4 optional vectors use <DataLength>; accept it as an alias.
+    #[serde(alias = "DataLength")]
+    pub amount_of_seed_data: i32,
+}
+
+impl From<RNGSeed> for kmip_2_1::kmip_operations::RNGSeed {
+    fn from(value: RNGSeed) -> Self {
+        Self { data: value.data }
+    }
+}
+
+impl Display for RNGSeedResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RNGSeedResponse {{ amount_of_seed_data: {} }}",
+            self.amount_of_seed_data
+        )
+    }
+}
+
+impl fmt::Debug for RNGSeedResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::RNGSeedResponse> for RNGSeedResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::RNGSeedResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            amount_of_seed_data: value.amount_of_seed_data,
+        })
+    }
 }
 
 /// 4.37 Hash
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Hash {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1465,14 +1990,40 @@ pub struct Hash {
 }
 
 /// Response to a Hash request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct HashResponse {
+    #[serde(rename = "Data", alias = "HashData")]
     pub hash_data: Vec<u8>,
 }
 
+impl From<Hash> for kmip_2_1::kmip_operations::Hash {
+    fn from(value: Hash) -> Self {
+        Self {
+            cryptographic_parameters: value
+                .cryptographic_parameters
+                .map(Into::into)
+                .unwrap_or_default(),
+            data: Some(value.data),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::HashResponse> for HashResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::HashResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hash_data: value.data.unwrap_or_default(),
+        })
+    }
+}
+
 /// 4.38 Create Split Key
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKey {
     pub split_key_parts: i32,
@@ -1485,7 +2036,7 @@ pub struct CreateSplitKey {
 }
 
 /// Response to a Create Split Key request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateSplitKeyResponse {
     pub unique_identifier: String,
@@ -1493,7 +2044,7 @@ pub struct CreateSplitKeyResponse {
 }
 
 /// 4.39 Join Split Key
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKey {
     pub split_key_parts: Vec<Vec<u8>>,
@@ -1503,14 +2054,14 @@ pub struct JoinSplitKey {
 }
 
 /// Response to a Join Split Key request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct JoinSplitKeyResponse {
     pub unique_identifier: String,
 }
 
 /// 4.40 Export
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Export {
     pub object_type: ObjectType,
@@ -1526,7 +2077,7 @@ pub struct Export {
 }
 
 /// Response to an Export request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExportResponse {
     pub object_type: ObjectType,
@@ -1541,7 +2092,7 @@ pub struct ExportResponse {
 }
 
 /// 4.41 Import
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     pub object_type: ObjectType,
@@ -1574,7 +2125,7 @@ impl From<Import> for kmip_2_1::kmip_operations::Import {
 }
 
 /// Response to an Import request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     pub unique_identifier: String,
@@ -1584,7 +2135,7 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_operations::ImportResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value:#?}");
+        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value}");
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
@@ -1593,7 +2144,7 @@ impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
 }
 
 /// The operation that processes a specific request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Operation {
     Activate(Activate),
@@ -1678,6 +2229,11 @@ pub enum Operation {
     SignatureVerifyResponse(SignatureVerifyResponse),
     Validate(Validate),
     ValidateResponse(ValidateResponse),
+    // KMIP 1.4 additional operations (declared for completeness)
+    Notify(Notify),
+    NotifyResponse(NotifyResponse),
+    Put(Put),
+    PutResponse(PutResponse),
 }
 
 impl Operation {
@@ -1803,180 +2359,112 @@ impl Operation {
             }
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
+            Self::Notify(_) | Self::NotifyResponse(_) => OperationEnumeration::Notify,
+            Self::Put(_) | Self::PutResponse(_) => OperationEnumeration::Put,
         }
     }
 }
 
 impl Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Create(create) => write!(f, "Create({create:?})"),
-            Self::CreateResponse(create_response) => {
-                write!(f, "CreateResponse({create_response:?})")
-            }
-            Self::CreateKeyPair(create_key_pair) => write!(f, "CreateKeyPair({create_key_pair:?})"),
-            Self::CreateKeyPairResponse(create_key_pair_response) => {
-                write!(f, "CreateKeyPairResponse({create_key_pair_response:?})")
-            }
-            Self::Register(register) => write!(f, "Register({register:?})"),
-            Self::RegisterResponse(register_response) => {
-                write!(f, "RegisterResponse({register_response:?})")
-            }
-            Self::ReKey(rekey) => write!(f, "ReKey({rekey:?})"),
-            Self::ReKeyResponse(rekey_response) => {
-                write!(f, "ReKeyResponse({rekey_response:?})")
-            }
-            Self::ReKeyKeyPair(rekey_key_pair) => write!(f, "ReKeyKeyPair({rekey_key_pair:?})"),
-            Self::ReKeyKeyPairResponse(rekey_key_pair_response) => {
-                write!(f, "ReKeyKeyPairResponse({rekey_key_pair_response:?})")
-            }
-            Self::DeriveKey(derive_key) => write!(f, "DeriveKey({derive_key:?})"),
-            Self::DeriveKeyResponse(derive_key_response) => {
-                write!(f, "DeriveKeyResponse({derive_key_response:?})")
-            }
-            Self::Certify(certify) => write!(f, "Certify({certify:?})"),
-            Self::CertifyResponse(certify_response) => {
-                write!(f, "CertifyResponse({certify_response:?})")
-            }
-            Self::ReCertify(recertify) => write!(f, "ReCertify({recertify:?})"),
-            Self::ReCertifyResponse(recertify_response) => {
-                write!(f, "ReCertifyResponse({recertify_response:?})")
-            }
-            Self::Locate(locate) => write!(f, "Locate({locate:?})"),
-            Self::LocateResponse(locate_response) => {
-                write!(f, "LocateResponse({locate_response:?})")
-            }
-            Self::Check(check) => write!(f, "Check({check:?})"),
-            Self::CheckResponse(check_response) => {
-                write!(f, "CheckResponse({check_response:?})")
-            }
-            Self::Get(get) => write!(f, "Get({get:?})"),
-            Self::GetResponse(get_response) => {
-                write!(f, "GetResponse({get_response:?})")
-            }
-            Self::GetAttributes(get_attrs) => write!(f, "GetAttributes({get_attrs:?})"),
-            Self::GetAttributesResponse(get_attrs_resp) => {
-                write!(f, "GetAttributesResponse({get_attrs_resp:?})")
-            } // ... continue implementing Display for remaining operations...
-            Self::GetAttributeList(get_attr_list) => {
-                write!(f, "GetAttributeList({get_attr_list:?})")
-            }
-            Self::GetAttributeListResponse(get_attr_list_resp) => {
-                write!(f, "GetAttributeListResponse({get_attr_list_resp:?})")
-            }
-            Self::AddAttribute(add_attr) => write!(f, "AddAttribute({add_attr:?})"),
-            Self::AddAttributeResponse(add_attr_resp) => {
-                write!(f, "AddAttributeResponse({add_attr_resp:?})")
-            }
-            Self::ModifyAttribute(modify_attr) => write!(f, "ModifyAttribute({modify_attr:?})"),
-            Self::ModifyAttributeResponse(modify_attr_resp) => {
-                write!(f, "ModifyAttributeResponse({modify_attr_resp:?})")
-            }
-            Self::DeleteAttribute(delete_attr) => write!(f, "DeleteAttribute({delete_attr:?})"),
-            Self::DeleteAttributeResponse(delete_attr_resp) => {
-                write!(f, "DeleteAttributeResponse({delete_attr_resp:?})")
-            }
-            Self::ObtainLease(obtain_lease) => write!(f, "ObtainLease({obtain_lease:?})"),
-            Self::ObtainLeaseResponse(obtain_lease_resp) => {
-                write!(f, "ObtainLeaseResponse({obtain_lease_resp:?})")
-            }
-            Self::GetUsageAllocation(get_usage) => write!(f, "GetUsageAllocation({get_usage:?})"),
-            Self::GetUsageAllocationResponse(get_usage_resp) => {
-                write!(f, "GetUsageAllocationResponse({get_usage_resp:?})")
-            }
-            Self::Activate(activate) => write!(f, "Activate({activate:?})"),
-            Self::ActivateResponse(activate_resp) => {
-                write!(f, "ActivateResponse({activate_resp:?})")
-            }
-            Self::Revoke(revoke) => write!(f, "Revoke({revoke:?})"),
-            Self::RevokeResponse(revoke_resp) => {
-                write!(f, "RevokeResponse({revoke_resp:?})")
-            }
-            Self::Destroy(destroy) => write!(f, "Destroy({destroy:?})"),
-            Self::DestroyResponse(destroy_resp) => {
-                write!(f, "DestroyResponse({destroy_resp:?})")
-            }
-            Self::Archive(archive) => write!(f, "Archive({archive:?})"),
-            Self::ArchiveResponse(archive_resp) => {
-                write!(f, "ArchiveResponse({archive_resp:?})")
-            }
-            Self::Recover(recover) => write!(f, "Recover({recover:?})"),
-            Self::RecoverResponse(recover_resp) => {
-                write!(f, "RecoverResponse({recover_resp:?})")
-            }
-            Self::Validate(validate) => write!(f, "Validate({validate:?})"),
-            Self::ValidateResponse(validate_resp) => {
-                write!(f, "ValidateResponse({validate_resp:?})")
-            }
-            Self::Query(query) => write!(f, "Query({query:?})"),
-            Self::QueryResponse(query_resp) => {
-                write!(f, "QueryResponse({query_resp:?})")
-            }
-            Self::DiscoverVersions(discover) => write!(f, "DiscoverVersions({discover:?})"),
-            Self::DiscoverVersionsResponse(discover_resp) => {
-                write!(f, "DiscoverVersionsResponse({discover_resp:?})")
-            }
-            Self::Cancel(cancel) => write!(f, "Cancel({cancel:?})"),
-            Self::CancelResponse(cancel_resp) => {
-                write!(f, "CancelResponse({cancel_resp:?})")
-            }
-            Self::Poll(poll) => write!(f, "Poll({poll:?})"),
-            Self::PollResponse(poll_resp) => {
-                write!(f, "PollResponse({poll_resp:?})")
-            }
-            Self::Encrypt(encrypt) => write!(f, "Encrypt({encrypt:?})"),
-            Self::EncryptResponse(encrypt_resp) => {
-                write!(f, "EncryptResponse({encrypt_resp:?})")
-            }
-            Self::Decrypt(decrypt) => write!(f, "Decrypt({decrypt:?})"),
-            Self::DecryptResponse(decrypt_resp) => {
-                write!(f, "DecryptResponse({decrypt_resp:?})")
-            }
-            Self::Sign(sign) => write!(f, "Sign({sign:?})"),
-            Self::SignResponse(sign_resp) => {
-                write!(f, "SignResponse({sign_resp:?})")
-            }
-            Self::SignatureVerify(verify) => write!(f, "SignatureVerify({verify:?})"),
-            Self::SignatureVerifyResponse(verify_resp) => {
-                write!(f, "SignatureVerifyResponse({verify_resp:?})")
-            }
-            Self::MAC(mac) => write!(f, "MAC({mac:?})"),
-            Self::MACResponse(mac_resp) => {
-                write!(f, "MACResponse({mac_resp:?})")
-            }
-            Self::MACVerify(mac_verify) => write!(f, "MACVerify({mac_verify:?})"),
-            Self::MACVerifyResponse(mac_verify_resp) => {
-                write!(f, "MACVerifyResponse({mac_verify_resp:?})")
-            }
-            Self::RNGRetrieve(rng) => write!(f, "RNGRetrieve({rng:?})"),
-            Self::RNGRetrieveResponse(rng_resp) => {
-                write!(f, "RNGRetrieveResponse({rng_resp:?})")
-            }
-            Self::RNGSeed(seed) => write!(f, "RNGSeed({seed:?})"),
-            Self::RNGSeedResponse(seed_resp) => {
-                write!(f, "RNGSeedResponse({seed_resp:?})")
-            }
-            Self::Hash(hash) => write!(f, "Hash({hash:?})"),
-            Self::HashResponse(hash_resp) => {
-                write!(f, "HashResponse({hash_resp:?})")
-            }
-            Self::CreateSplitKey(split) => write!(f, "CreateSplitKey({split:?})"),
-            Self::CreateSplitKeyResponse(split_resp) => {
-                write!(f, "CreateSplitKeyResponse({split_resp:?})")
-            }
-            Self::JoinSplitKey(join) => write!(f, "JoinSplitKey({join:?})"),
-            Self::JoinSplitKeyResponse(join_resp) => {
-                write!(f, "JoinSplitKeyResponse({join_resp:?})")
-            }
-            Self::Export(export) => write!(f, "Export({export:?})"),
-            Self::ExportResponse(export_resp) => {
-                write!(f, "ExportResponse({export_resp:?})")
-            }
-            Self::Import(import) => write!(f, "Import({import:?})"),
-            Self::ImportResponse(import_resp) => {
-                write!(f, "ImportResponse({import_resp:?})")
-            }
-        }
+        write!(f, "Operation {{")?;
+        let name = match self {
+            Self::Activate(_) => "Activate",
+            Self::ActivateResponse(_) => "ActivateResponse",
+            Self::AddAttribute(_) => "AddAttribute",
+            Self::AddAttributeResponse(_) => "AddAttributeResponse",
+            Self::Archive(_) => "Archive",
+            Self::ArchiveResponse(_) => "ArchiveResponse",
+            Self::Cancel(_) => "Cancel",
+            Self::CancelResponse(_) => "CancelResponse",
+            Self::Certify(_) => "Certify",
+            Self::CertifyResponse(_) => "CertifyResponse",
+            Self::Check(_) => "Check",
+            Self::CheckResponse(_) => "CheckResponse",
+            Self::Create(_) => "Create",
+            Self::CreateKeyPair(_) => "CreateKeyPair",
+            Self::CreateKeyPairResponse(_) => "CreateKeyPairResponse",
+            Self::CreateResponse(_) => "CreateResponse",
+            Self::CreateSplitKey(_) => "CreateSplitKey",
+            Self::CreateSplitKeyResponse(_) => "CreateSplitKeyResponse",
+            Self::Decrypt(_) => "Decrypt",
+            Self::DecryptResponse(_) => "DecryptResponse",
+            Self::DeleteAttribute(_) => "DeleteAttribute",
+            Self::DeleteAttributeResponse(_) => "DeleteAttributeResponse",
+            Self::DeriveKey(_) => "DeriveKey",
+            Self::DeriveKeyResponse(_) => "DeriveKeyResponse",
+            Self::Destroy(_) => "Destroy",
+            Self::DestroyResponse(_) => "DestroyResponse",
+            Self::DiscoverVersions(_) => "DiscoverVersions",
+            Self::DiscoverVersionsResponse(_) => "DiscoverVersionsResponse",
+            Self::Encrypt(_) => "Encrypt",
+            Self::EncryptResponse(_) => "EncryptResponse",
+            Self::Export(_) => "Export",
+            Self::ExportResponse(_) => "ExportResponse",
+            Self::Get(_) => "Get",
+            Self::GetAttributes(_) => "GetAttributes",
+            Self::GetAttributesResponse(_) => "GetAttributesResponse",
+            Self::GetAttributeList(_) => "GetAttributeList",
+            Self::GetAttributeListResponse(_) => "GetAttributeListResponse",
+            Self::GetResponse(_) => "GetResponse",
+            Self::GetUsageAllocation(_) => "GetUsageAllocation",
+            Self::GetUsageAllocationResponse(_) => "GetUsageAllocationResponse",
+            Self::Hash(_) => "Hash",
+            Self::HashResponse(_) => "HashResponse",
+            Self::Import(_) => "Import",
+            Self::ImportResponse(_) => "ImportResponse",
+            Self::JoinSplitKey(_) => "JoinSplitKey",
+            Self::JoinSplitKeyResponse(_) => "JoinSplitKeyResponse",
+            Self::Locate(_) => "Locate",
+            Self::LocateResponse(_) => "LocateResponse",
+            Self::MAC(_) => "MAC",
+            Self::MACResponse(_) => "MACResponse",
+            Self::MACVerify(_) => "MACVerify",
+            Self::MACVerifyResponse(_) => "MACVerifyResponse",
+            Self::ModifyAttribute(_) => "ModifyAttribute",
+            Self::ModifyAttributeResponse(_) => "ModifyAttributeResponse",
+            Self::ObtainLease(_) => "ObtainLease",
+            Self::ObtainLeaseResponse(_) => "ObtainLeaseResponse",
+            Self::Poll(_) => "Poll",
+            Self::PollResponse(_) => "PollResponse",
+            Self::Query(_) => "Query",
+            Self::QueryResponse(_) => "QueryResponse",
+            Self::ReCertify(_) => "ReCertify",
+            Self::ReCertifyResponse(_) => "ReCertifyResponse",
+            Self::Recover(_) => "Recover",
+            Self::RecoverResponse(_) => "RecoverResponse",
+            Self::Register(_) => "Register",
+            Self::RegisterResponse(_) => "RegisterResponse",
+            Self::ReKey(_) => "ReKey",
+            Self::ReKeyKeyPair(_) => "ReKeyKeyPair",
+            Self::ReKeyKeyPairResponse(_) => "ReKeyKeyPairResponse",
+            Self::ReKeyResponse(_) => "ReKeyResponse",
+            Self::RNGRetrieve(_) => "RNGRetrieve",
+            Self::RNGRetrieveResponse(_) => "RNGRetrieveResponse",
+            Self::RNGSeed(_) => "RNGSeed",
+            Self::RNGSeedResponse(_) => "RNGSeedResponse",
+            Self::Revoke(_) => "Revoke",
+            Self::RevokeResponse(_) => "RevokeResponse",
+            Self::Sign(_) => "Sign",
+            Self::SignResponse(_) => "SignResponse",
+            Self::SignatureVerify(_) => "SignatureVerify",
+            Self::SignatureVerifyResponse(_) => "SignatureVerifyResponse",
+            Self::Validate(_) => "Validate",
+            Self::ValidateResponse(_) => "ValidateResponse",
+            Self::Notify(_) => "Notify",
+            Self::NotifyResponse(_) => "NotifyResponse",
+            Self::Put(_) => "Put",
+            Self::PutResponse(_) => "PutResponse",
+        };
+        write!(f, "{name}}}")
+    }
+}
+
+// Provide Debug for assert_eq!/derives without exposing sensitive internals.
+impl fmt::Debug for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Reuse Display output for Debug to minimize verbosity and exposure
+        write!(f, "{self}")
     }
 }
 
@@ -2002,9 +2490,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
                 Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
             Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
-            // Operation::DeleteAttribute(delete_attribute) => {
-            //     Self::DeleteAttribute(delete_attribute.into())
-            // }
+            Operation::DeleteAttribute(delete_attribute) => {
+                Self::DeleteAttribute(delete_attribute.into())
+            }
             // Operation::DeriveKey(derive_key) => {
             //     Self::DeriveKey(derive_key.into())
             // }
@@ -2018,9 +2506,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::Encrypt(encrypt) => Self::Encrypt(Box::new((*encrypt).into())),
             Operation::Get(get) => Self::Get(get.into()),
             Operation::GetAttributes(get_attributes) => Self::GetAttributes(get_attributes.into()),
-            // Operation::GetAttributeList(get_attribute_list) => {
-            //     Self::GetAttributeList(get_attribute_list.into())
-            // }
+            Operation::GetAttributeList(get_attribute_list) => {
+                Self::GetAttributeList(get_attribute_list.into())
+            }
             // Operation::GetUsageAllocation(get_usage_allocation) => {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
@@ -2030,12 +2518,10 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
-            // Operation::MACVerify(mac_verify) => {
-            //     Self::MACVerify(mac_verify.into())
-            // }
-            // Operation::ModifyAttribute(modify_attribute) => {
-            //     Self::ModifyAttribute(modify_attribute.into())
-            // }
+            Operation::MACVerify(mac_verify) => Self::MACVerify(mac_verify.into()),
+            Operation::ModifyAttribute(modify_attribute) => {
+                Self::ModifyAttribute(modify_attribute.into())
+            }
             // Operation::ObtainLease(obtain_lease) => {
             //     Self::ObtainLease(obtain_lease.into())
             // }
@@ -2053,22 +2539,17 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
             Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
-            // Operation::RNGRetrieve(rng_retrieve) => {
-            //     Self::RNGRetrieve(rng_retrieve.into())
-            // }
-            // Operation::RNGSeed(rng_seed) => {
-            //     Self::RNGSeed(rng_seed.into())
-            // }
+            Operation::RNGRetrieve(rng_retrieve) => Self::RNGRetrieve(rng_retrieve.into()),
+            Operation::RNGSeed(rng_seed) => Self::RNGSeed(rng_seed.into()),
             Operation::Sign(sign) => Self::Sign(sign.into()),
             Operation::SignatureVerify(signature_verify) => {
                 Self::SignatureVerify(signature_verify.into())
             }
-            // Operation::Validate(validate) => {
-            //     Self::Validate(validate.into())
-            // }
+            Operation::Hash(hash) => Self::Hash(hash.into()),
+            Operation::Validate(validate) => Self::Validate(validate.into()),
             op => {
                 return Err(KmipError::NotSupported(format!(
-                    "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op:?}"
+                    "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op}"
                 )));
             }
         })
@@ -2111,17 +2592,26 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::DecryptResponse(decrypt_response) => {
                 Self::DecryptResponse(decrypt_response.try_into().context("DecryptResponse")?)
             }
-            // Operation::DeleteAttributeResponse(delete_attribute_response) => {
-            //     Self::DeleteAttributeResponse(
-            //         delete_attribute_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::DeleteAttributeResponse(
+                delete_attribute_response,
+            ) => Self::DeleteAttributeResponse(
+                delete_attribute_response
+                    .try_into()
+                    .context("DeleteAttributeResponse")?,
+            ),
             // Operation::DeriveKeyResponse(derive_key_response) => {
             //     Self::DeriveKeyResponse(derive_key_response.into())
             // }
             kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response) => {
                 Self::DestroyResponse(destroy_response.try_into().context("DestroyResponse")?)
             }
+            kmip_2_1::kmip_operations::Operation::ModifyAttributeResponse(
+                modify_attribute_response,
+            ) => Self::ModifyAttributeResponse(
+                modify_attribute_response
+                    .try_into()
+                    .context("ModifyAttributeResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
             }
@@ -2134,11 +2624,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::GetAttributesResponse(
                 get_attributes_response,
             ) => Self::GetAttributesResponse((*get_attributes_response).try_into()?),
-            // Operation::GetAttributeListResponse(get_attribute_list_response) => {
-            //     Self::GetAttributeListResponse(
-            //         get_attribute_list_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::GetAttributeListResponse(
+                get_attribute_list_response,
+            ) => Self::GetAttributeListResponse(
+                get_attribute_list_response
+                    .try_into()
+                    .context("GetAttributeListResponse")?,
+            ),
             kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
                 Self::GetResponse(get_response.try_into()?)
             }
@@ -2162,9 +2654,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::MACResponse(mac_response) => {
                 Self::MACResponse(mac_response.try_into().context("MACResponse")?)
             }
-            // Operation::MACVerifyResponse(mac_verify_response) => {
-            //     Self::MACVerifyResponse(mac_verify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::MACVerifyResponse(mac_verify_response) => {
+                Self::MACVerifyResponse(
+                    mac_verify_response
+                        .try_into()
+                        .context("MACVerifyResponse")?,
+                )
+            }
             // Operation::ModifyAttributeResponse(modify_attribute_response) => {
             //     Self::ModifyAttributeResponse(
             //         modify_attribute_response.into(),
@@ -2203,22 +2699,29 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response) => {
                 Self::RevokeResponse(revoke_response.try_into().context("RevokeResponse")?)
             }
-            // Operation::RNGRetrieveResponse(rng_retrieve_response) => {
-            //     Self::RNGRetrieveResponse(
-            //         rng_retrieve_response.into(),
-            //     )
-            // }
-            // Operation::RNGSeedResponse(rng_seed_response) => {
-            //     Self::RNGSeedResponse(rng_seed_response.into())
-            // }
-            // Operation::SignatureVerifyResponse(signature_verify_response) => {
-            //     Self::SignatureVerifyResponse(
-            //         signature_verify_response.into(),
-            //     )
-            // }
-            // Operation::SignResponse(sign_response) => {
-            //     Self::SignResponse(sign_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::HashResponse(hash_response) => {
+                Self::HashResponse(hash_response.try_into().context("HashResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::RNGRetrieveResponse(rng_retrieve_response) => {
+                Self::RNGRetrieveResponse(
+                    rng_retrieve_response
+                        .try_into()
+                        .context("RNGRetrieveResponse")?,
+                )
+            }
+            kmip_2_1::kmip_operations::Operation::RNGSeedResponse(rng_seed_response) => {
+                Self::RNGSeedResponse(rng_seed_response.try_into().context("RNGSeedResponse")?)
+            }
+            kmip_2_1::kmip_operations::Operation::SignatureVerifyResponse(
+                signature_verify_response,
+            ) => Self::SignatureVerifyResponse(
+                signature_verify_response
+                    .try_into()
+                    .context("SignatureVerifyResponse")?,
+            ),
+            kmip_2_1::kmip_operations::Operation::SignResponse(sign_response) => {
+                Self::SignResponse(sign_response.try_into().context("SignResponse")?)
+            }
             // Operation::ValidateResponse(validate_response) => {
             //     Self::ValidateResponse(validate_response.into())
             // }
@@ -2230,4 +2733,50 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             }
         })
     }
+}
+
+/// 4.26 Notify (server to client)
+/// Minimal declaration to allow encoding/decoding when present in KMIP 1.4 vectors.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Notify {
+    /// Carries the correlation value of the original asynchronous request
+    pub asynchronous_correlation_value: String,
+    /// Identifies the operation that completed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<OperationEnumeration>,
+    /// Unique Identifier related to the notification (if applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+}
+
+/// Response to a Notify request (empty body per spec; included for completeness)
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct NotifyResponse;
+
+/// 4.26 Put
+/// This operation requests the server to store or replace a Managed Object with provided attributes.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Put {
+    /// Object Type of the object being put
+    pub object_type: ObjectType,
+    /// Unique Identifier to use or replace (depends on `PutFunction`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// `NEW` or `REPLACE` (see `PutFunction`)
+    pub put_function: PutFunction,
+    /// Attributes to set on the object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute: Option<Vec<Attribute>>,
+    /// The object to store
+    pub object: Object,
+}
+
+/// Response to a Put request
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct PutResponse {
+    pub unique_identifier: String,
 }

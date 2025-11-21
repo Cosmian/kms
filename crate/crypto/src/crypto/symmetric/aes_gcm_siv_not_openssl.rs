@@ -1,7 +1,7 @@
 //! AES GCM SIV implementation using aes-gcm-siv crate.
 //! Openssl does implement AES GCM SIV, but it is not available in the openssl crate.
 
-use aes_gcm_siv::{AeadInPlace, Aes128GcmSiv, Aes256GcmSiv, KeyInit};
+use aes_gcm_siv::{AeadInPlace, Aes128GcmSiv, Aes256GcmSiv, KeyInit, Nonce, Tag};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -28,7 +28,7 @@ pub(super) fn encrypt(
     aad: &[u8],
     plaintext: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
-    let nonce = nonce.into();
+    let nonce: &Nonce = nonce.into();
     let mut buffer = plaintext.to_vec();
     let tag = if key.len() == AES_128_GCM_SIV_KEY_LENGTH {
         Aes128GcmSiv::new(key.into())
@@ -70,8 +70,8 @@ pub(super) fn decrypt(
     ciphertext: &[u8],
     tag: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    let nonce = nonce.into(); //Nonce::from_slice(nonce);
-    let tag = tag.into();
+    let nonce: &Nonce = nonce.into();
+    let tag: &Tag = tag.into();
     let mut buffer = ciphertext.to_vec();
     if key.len() == AES_128_GCM_SIV_KEY_LENGTH {
         Aes128GcmSiv::new(key.into())

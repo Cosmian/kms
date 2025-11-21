@@ -119,9 +119,9 @@ async fn create_rsa_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert_eq!(
-        create_response.private_key_unique_identifier,
-        UniqueIdentifier::TextString(dek_uid.to_owned())
+    assert!(
+        create_response.private_key_unique_identifier
+            == UniqueIdentifier::TextString(dek_uid.to_owned())
     );
     assert_eq!(
         create_response.public_key_unique_identifier.to_string(),

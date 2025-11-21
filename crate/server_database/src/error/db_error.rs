@@ -89,10 +89,6 @@ pub enum DbError {
     #[error("Access denied: {0}")]
     Unauthorized(String),
 
-    // When a user requests with placeholder id arg.
-    #[error("This KMIP server does not yet support place holder id")]
-    UnsupportedPlaceholder,
-
     // When a user requests with protection masks arg.
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
@@ -245,6 +241,7 @@ impl From<KmipError> for DbError {
             KmipError::TryFromSliceError(e) => {
                 Self::ConversionError(ConversionDbError::TryFromSlice(e))
             }
+            KmipError::RegexError(s) => Self::Default(s.to_string()),
             KmipError::SerdeJsonError(e) => Self::ConversionError(ConversionDbError::SerdeJson(e)),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::Kmip21Error(ErrorReason::Codec_Error, e)

@@ -341,6 +341,7 @@ pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<J
     let request = Destroy {
         unique_identifier: Some(unique_identifier),
         remove,
+        cascade: false,
     };
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))

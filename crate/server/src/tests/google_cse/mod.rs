@@ -16,8 +16,7 @@ use std::{
 };
 
 use actix_http::{Request, body::MessageBody};
-use actix_service::Service;
-use actix_web::dev::ServiceResponse;
+use actix_web::dev::{Service, ServiceResponse};
 use alcoholic_jwt::JWKS;
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
@@ -130,7 +129,7 @@ where
 
     debug!("import request: {import_request}");
     let response: ImportResponse = test_utils::post_2_1(app, import_request).await?;
-    debug!("import response: {response:?}");
+    debug!("import response: {}", response);
 
     let access = Access {
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
@@ -146,7 +145,7 @@ where
 
     let access_response: SuccessResponse =
         test_utils::post_json_with_uri(app, access, "/access/grant").await?;
-    debug!("grant response post: {access_response:?}");
+    debug!("grant response post: {:?}", access_response);
 
     Ok(())
 }

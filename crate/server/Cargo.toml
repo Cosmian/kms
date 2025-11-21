@@ -41,7 +41,6 @@ actix-cors = "0.6"
 actix-files = "0.6.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
-actix-service = "2.0"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 actix-tls = "3.4"
 actix-web = { workspace = true, features = ["macros", "openssl"] }
@@ -59,6 +58,7 @@ clap = { workspace = true, features = [
     "cargo",
 ] }
 cosmian_kms_access = { path = "../access", version = "5.12.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.12.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.12.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.12.0" }

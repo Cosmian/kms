@@ -167,15 +167,19 @@ impl EncryptAction {
                     authentication_data,
                 )
                 .await?;
-            output_file
-                .write_all(&nonce)
-                .with_context(|| "failed to write the nonce")?;
+            if let Some(nonce) = nonce {
+                output_file
+                    .write_all(&nonce)
+                    .with_context(|| "failed to write the nonce")?;
+            }
             output_file
                 .write_all(&data)
                 .context("failed to write the ciphertext")?;
-            output_file
-                .write_all(&tag)
-                .context("failed to write the authentication tag")?;
+            if let Some(tag) = tag {
+                output_file
+                    .write_all(&tag)
+                    .context("failed to write the authentication tag")?;
+            }
         }
 
         let stdout = format!(
@@ -203,7 +207,7 @@ impl EncryptAction {
         nonce: Option<Vec<u8>>,
         plaintext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
-    ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), KmsCliError> {
+    ) -> Result<(Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>), KmsCliError> {
         // Create the kmip query
         let encrypt_request = encrypt_request(
             data_encryption_key_id,
@@ -221,19 +225,17 @@ impl EncryptAction {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         // extract the nonce and write it
-        let nonce = encrypt_response
-            .i_v_counter_nonce
-            .context("the nonce is empty")?;
+        let nonce = encrypt_response.i_v_counter_nonce; // Some encryption modes (like RFC5649) don't use nonces
 
         // extract the ciphertext and write it
         let data = encrypt_response
             .data
             .context("The encrypted data is empty")?;
 
-        // extract the authentication tag and write it
-        let authentication_tag = encrypt_response
-            .authenticated_encryption_tag
-            .context("the authentication tag is empty")?;
+        // extract the authentication tag (only mandatory for AEAD modes: GCM, GCM-SIV, ChaCha20-Poly1305)
+        // Note: For server_side_encrypt, the algorithm used is determined by the cryptographic_parameters
+        // which may be different from self.data_encryption_algorithm (e.g., for key wrapping)
+        let authentication_tag = encrypt_response.authenticated_encryption_tag; // Some encryption modes don't use authentication tags
         Ok((nonce, data, authentication_tag))
     }
 
@@ -357,8 +359,12 @@ impl EncryptAction {
             )
             .await?;
 
-        #[expect(clippy::tuple_array_conversions)]
-        let encapsulation: Vec<u8> = [kem_nonce, kem_ciphertext, kem_tag].concat();
+        let encapsulation: Vec<u8> = [
+            kem_nonce.unwrap_or_default(),
+            kem_ciphertext,
+            kem_tag.unwrap_or_default(),
+        ]
+        .concat();
         Ok((dek, encapsulation))
     }
 
@@ -480,10 +486,10 @@ impl EncryptAction {
         };
         output_buffer.write_all(&nonce)?;
 
-        let ciphertext = encrypt(sym_cipher, dek, &nonce, &aad, plaintext, None)?;
-        // write the tag
-        output_buffer.write_all(&ciphertext.0)?;
-        output_buffer.write_all(&ciphertext.1)?;
+        let (ciphertext, tag) = encrypt(sym_cipher, dek, &nonce, &aad, plaintext, None)?;
+        // write the ciphertext and tag
+        output_buffer.write_all(&ciphertext)?;
+        output_buffer.write_all(&tag)?;
         output_buffer.flush()?;
         Ok(output_buffer)
     }

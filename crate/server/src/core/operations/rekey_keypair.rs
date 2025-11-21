@@ -60,8 +60,8 @@ pub(crate) async fn rekey_keypair(
         .into_values();
 
     for owm in owm_s {
-        // only active objects
-        if owm.state() != State::Active {
+        // Only Active or PreActive objects are eligible for rekey
+        if owm.state() != State::Active && owm.state() != State::PreActive {
             continue;
         }
 

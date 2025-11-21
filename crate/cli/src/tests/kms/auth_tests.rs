@@ -94,7 +94,7 @@ async fn run_auth_scenario(
             if list_result.is_ok() {
                 error!("It should fail for test: {}", description.to_string());
             }
-            assert!(list_result.is_err());
+            list_result.unwrap_err();
         }
     }
     ctx.stop_server().await?;
@@ -106,7 +106,7 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     let api_token_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    trace!("Symmetric key created of unique identifier: {api_token_id:?}");
+    trace!("Symmetric key created of unique identifier: {api_token_id}");
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     // create a temp dir
@@ -358,7 +358,10 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
+    ListOwnedObjects
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
     ctx.stop_server().await?;
     run_auth_scenario(
         "Testing server with JWT auth - User does not send the token (should fail)",
@@ -407,7 +410,10 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
+    ListOwnedObjects
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
     ctx.stop_server().await?;
     run_auth_scenario(
         "Testing server with Client Certificate auth - missing certificate (should fail)",
@@ -456,7 +462,10 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
+    ListOwnedObjects
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
     ctx.stop_server().await?;
     run_auth_scenario(
         "Testing server with API token auth - missing token (should fail)",
@@ -505,7 +514,10 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
         None,
     )
     .await?;
-    assert!(ListOwnedObjects.run(ctx.get_owner_client()).await.is_err());
+    ListOwnedObjects
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap_err();
     ctx.stop_server().await?;
     run_auth_scenario(
         "Testing server with JWT auth - but no JWT token sent (should fail)",
@@ -897,7 +909,7 @@ async fn test_tls_options() -> KmsCliResult<()> {
             if result.is_ok() {
                 error!("It should fail for test: {}", description.to_string());
             }
-            assert!(result.is_err());
+            result.unwrap_err();
         }
     }
 

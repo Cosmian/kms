@@ -44,7 +44,7 @@ pub fn ckm_rsa_aes_key_wrap(
     rand_bytes(&mut kek)?;
 
     // Encapsulate it using RSA-OAEP.
-    let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, &kek)?;
+    let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, hash_fn, None, &kek)?;
 
     // Wrap key according to RFC 5649 (CKM_AES_KEY_WRAP_PAD) as recommended.
     let wk = rfc5649_wrap(plaintext, &kek)?;
@@ -105,7 +105,7 @@ pub fn ckm_rsa_aes_key_unwrap(
         .ok_or_else(|| CryptoError::IndexingSlicing("ckm_rsa_aes_key_unwrap: wk".to_owned()))?;
 
     // Unwrap key-encryption-key using RSA-OAEP.
-    let kek = ckm_rsa_pkcs_oaep_key_unwrap(p_key, hash_fn, encapsulation)?;
+    let kek = ckm_rsa_pkcs_oaep_key_unwrap(p_key, hash_fn, hash_fn, None, encapsulation)?;
 
     // Unwrap key according to RFC 5649 as recommended.
     let plaintext = rfc5649_unwrap(wk, &kek)?;
@@ -248,6 +248,8 @@ FQIDAQAB
             ckm_rsa_pkcs_oaep_key_unwrap(
                 &priv_key,
                 HashingAlgorithm::SHA256,
+                HashingAlgorithm::SHA256,
+                None,
                 &hex::decode(openssl_rsa_oaep_encapsulation).unwrap(),
             )
             .unwrap(),
@@ -259,6 +261,8 @@ FQIDAQAB
         let rsa_oaep_encapsulation = ckm_rsa_pkcs_oaep_key_wrap(
             &pub_key,
             HashingAlgorithm::SHA256,
+            HashingAlgorithm::SHA256,
+            None,
             &hex::decode(aes_kek).unwrap(),
         )
         .unwrap();
@@ -266,6 +270,8 @@ FQIDAQAB
             ckm_rsa_pkcs_oaep_key_unwrap(
                 &priv_key,
                 HashingAlgorithm::SHA256,
+                HashingAlgorithm::SHA256,
+                None,
                 &rsa_oaep_encapsulation,
             )
             .unwrap(),
@@ -394,6 +400,8 @@ FQIDAQAB
         let oaep_encapsulation = ckm_rsa_pkcs_oaep_key_wrap(
             &pub_key,
             HashingAlgorithm::SHA1,
+            HashingAlgorithm::SHA1,
+            None,
             &hex::decode(ephemeral)
                 .map_err(|e| CryptoError::Default(format!("Failed to decode hex: {e}")))?,
         )?;
@@ -540,8 +548,13 @@ FQIDAQAB
 
         // chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
-        let rec_ephemeral =
-            ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA1, &oaep_encapsulation)?;
+        let rec_ephemeral = ckm_rsa_pkcs_oaep_key_unwrap(
+            &priv_key,
+            HashingAlgorithm::SHA1,
+            HashingAlgorithm::SHA1,
+            None,
+            &oaep_encapsulation,
+        )?;
         assert_eq!(
             rec_ephemeral.as_slice(),
             hex::decode(ephemeral)

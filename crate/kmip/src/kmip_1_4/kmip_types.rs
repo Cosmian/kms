@@ -300,11 +300,27 @@ pub enum ObjectType {
     PublicKey = 0x3,
     PrivateKey = 0x4,
     SplitKey = 0x5,
-    // Not supported in KMIP 2.1 and deprecated in KMIP 1.4
-    // Template = 0x6,
+    // Deprecated in KMIP 1.4 but still appears in interoperability vectors (e.g., Query responses)
+    Template = 0x6,
     SecretData = 0x7,
     OpaqueObject = 0x8,
     PGPKey = 0x9,
+}
+
+impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
+    fn from(val: ObjectType) -> Self {
+        match val {
+            // KMIP 2.1 does not support Template object type. Return Certificate as a placeholder.
+            ObjectType::Certificate | ObjectType::Template => Self::Certificate,
+            ObjectType::SymmetricKey => Self::SymmetricKey,
+            ObjectType::PublicKey => Self::PublicKey,
+            ObjectType::PrivateKey => Self::PrivateKey,
+            ObjectType::SplitKey => Self::SplitKey,
+            ObjectType::SecretData => Self::SecretData,
+            ObjectType::OpaqueObject => Self::OpaqueObject,
+            ObjectType::PGPKey => Self::PGPKey,
+        }
+    }
 }
 
 impl TryFrom<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
@@ -338,7 +354,7 @@ impl From<ObjectType> for u32 {
             ObjectType::PublicKey => 0x03,
             ObjectType::PrivateKey => 0x04,
             ObjectType::SplitKey => 0x05,
-            // ObjectType::Template => 0x06,
+            ObjectType::Template => 0x06,
             ObjectType::SecretData => 0x07,
             ObjectType::OpaqueObject => 0x08,
             ObjectType::PGPKey => 0x09,
@@ -356,10 +372,7 @@ impl TryFrom<u32> for ObjectType {
             0x03 => Ok(Self::PublicKey),
             0x04 => Ok(Self::PrivateKey),
             0x05 => Ok(Self::SplitKey),
-            0x06 => Err(KmipError::InvalidKmip14Value(
-                ResultReason::InvalidField,
-                "Template is not supported in this version of KMIP 1.4".to_owned(),
-            )),
+            0x06 => Ok(Self::Template),
             0x07 => Ok(Self::SecretData),
             0x08 => Ok(Self::OpaqueObject),
             0x09 => Ok(Self::PGPKey),
@@ -367,21 +380,6 @@ impl TryFrom<u32> for ObjectType {
                 ResultReason::InvalidField,
                 format!("Invalid Object Type value: {value}"),
             )),
-        }
-    }
-}
-
-impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
-    fn from(val: ObjectType) -> Self {
-        match val {
-            ObjectType::Certificate => Self::Certificate,
-            ObjectType::SymmetricKey => Self::SymmetricKey,
-            ObjectType::PublicKey => Self::PublicKey,
-            ObjectType::PrivateKey => Self::PrivateKey,
-            ObjectType::SplitKey => Self::SplitKey,
-            ObjectType::SecretData => Self::SecretData,
-            ObjectType::OpaqueObject => Self::OpaqueObject,
-            ObjectType::PGPKey => Self::PGPKey,
         }
     }
 }
@@ -624,6 +622,28 @@ pub enum ValidityIndicator {
     Valid = 0x1,
     Invalid = 0x2,
     Unknown = 0x3,
+}
+
+impl From<ValidityIndicator> for kmip_2_1::kmip_types::ValidityIndicator {
+    fn from(val: ValidityIndicator) -> Self {
+        match val {
+            ValidityIndicator::Valid => Self::Valid,
+            ValidityIndicator::Invalid => Self::Invalid,
+            ValidityIndicator::Unknown => Self::Unknown,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::ValidityIndicator> for ValidityIndicator {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_types::ValidityIndicator) -> Result<Self, Self::Error> {
+        Ok(match val {
+            kmip_2_1::kmip_types::ValidityIndicator::Valid => Self::Valid,
+            kmip_2_1::kmip_types::ValidityIndicator::Invalid => Self::Invalid,
+            kmip_2_1::kmip_types::ValidityIndicator::Unknown => Self::Unknown,
+        })
+    }
 }
 
 /// KMIP 1.4 Query Function Enumeration
@@ -1383,7 +1403,7 @@ impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatu
 /// KMIP 1.4 Opaque Data Type Enumeration
 #[kmip_enum]
 pub enum OpaqueDataType {
-    Unknown = 0x1,
+    Unknown = 0x8000_0001,
 }
 
 impl From<OpaqueDataType> for kmip_2_1::kmip_types::OpaqueDataType {
@@ -1399,7 +1419,8 @@ impl TryFrom<kmip_2_1::kmip_types::OpaqueDataType> for OpaqueDataType {
 
     fn try_from(value: kmip_2_1::kmip_types::OpaqueDataType) -> Result<Self, Self::Error> {
         Ok(match value {
-            kmip_2_1::kmip_types::OpaqueDataType::Unknown => Self::Unknown,
+            kmip_2_1::kmip_types::OpaqueDataType::Unknown
+            | kmip_2_1::kmip_types::OpaqueDataType::Vendor => Self::Unknown,
         })
     }
 }
@@ -1503,6 +1524,11 @@ impl TryFrom<kmip_2_1::kmip_types::Digest> for Digest {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RandomNumberGenerator {
+    // KMIP spec tag is RNGAlgorithm (all caps RNG). Without an explicit rename Serde would
+    // emit RngAlgorithm (PascalCase transformation of rng_algorithm), which does not match the
+    // Tag enumeration variant RNGAlgorithm and causes an Unknown Tag error during TTLV encoding.
+    // We therefore force the serialized field name to RNGAlgorithm.
+    #[serde(rename = "RNGAlgorithm")]
     pub rng_algorithm: RNGAlgorithm,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1625,7 +1651,7 @@ impl TryFrom<kmip_2_1::kmip_types::LinkedObjectIdentifier> for LinkedObjectIdent
             | kmip_2_1::kmip_types::LinkedObjectIdentifier::Index(_) => {
                 return Err(KmipError::InvalidKmip14Value(
                     ResultReason::OperationNotSupported,
-                    format!("{value:?} not supported in KMIP 1"),
+                    format!("{value} not supported in KMIP 1"),
                 ));
             }
         })

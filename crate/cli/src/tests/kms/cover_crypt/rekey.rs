@@ -59,28 +59,24 @@ async fn test_rekey_error() -> KmsCliResult<()> {
     .await?;
 
     // bad attributes
-    assert!(
-        ReKeyAction {
-            msk_uid: Some(master_secret_key_id.clone()),
-            access_policy: "bad_access_policy".to_string(),
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ReKeyAction {
+        msk_uid: Some(master_secret_key_id.clone()),
+        access_policy: "bad_access_policy".to_string(),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // bad keys
-    assert!(
-        ReKeyAction {
-            msk_uid: Some("bad_key".to_string()),
-            access_policy: "Department::MKG || Department::FIN".to_string(),
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ReKeyAction {
+        msk_uid: Some("bad_key".to_string()),
+        access_policy: "Department::MKG || Department::FIN".to_string(),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     // Import a wrapped key
 
@@ -115,16 +111,14 @@ async fn test_rekey_error() -> KmsCliResult<()> {
     .to_string();
 
     // Rekeying wrapped keys is not allowed
-    assert!(
-        ReKeyAction {
-            msk_uid: Some(wrapped_key_id.clone()),
-            access_policy: "Department::MKG || Department::FIN".to_string(),
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    ReKeyAction {
+        msk_uid: Some(wrapped_key_id.clone()),
+        access_policy: "Department::MKG || Department::FIN".to_string(),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }
@@ -370,18 +364,16 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
     .await?
     .to_string();
     // the imported user key should not be able to decrypt the new file
-    assert!(
-        DecryptAction {
-            input_files: vec![output_file_after.clone()],
-            key_id: Some(old_user_decryption_key_id.clone()),
-            output_file: Some(recovered_file.clone()),
-            authentication_data: Some("myid".to_owned()),
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_files: vec![output_file_after.clone()],
+        key_id: Some(old_user_decryption_key_id.clone()),
+        output_file: Some(recovered_file.clone()),
+        authentication_data: Some("myid".to_owned()),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
     // ... but should decrypt the old file
     DecryptAction {
         input_files: vec![output_file_before.clone()],
@@ -414,18 +406,16 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
     .await?;
 
     // but no longer the old file
-    assert!(
-        DecryptAction {
-            input_files: vec![output_file_before.clone()],
-            key_id: Some(user_decryption_key_id),
-            output_file: Some(recovered_file.clone()),
-            authentication_data: Some("myid".to_owned()),
-            tags: None,
-        }
-        .run(ctx.get_owner_client())
-        .await
-        .is_err()
-    );
+    DecryptAction {
+        input_files: vec![output_file_before.clone()],
+        key_id: Some(user_decryption_key_id),
+        output_file: Some(recovered_file.clone()),
+        authentication_data: Some("myid".to_owned()),
+        tags: None,
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
 
     Ok(())
 }

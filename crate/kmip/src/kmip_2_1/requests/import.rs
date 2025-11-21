@@ -38,10 +38,8 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
             }
         });
         // add the tags to the attributes
-        let attributes = attributes.map_or_else(
-            || object.attributes().cloned().unwrap_or_default(),
-            |attributes| attributes,
-        );
+        let attributes =
+            attributes.unwrap_or_else(|| object.attributes().cloned().unwrap_or_default());
         (key_wrap_type, attributes)
     };
 

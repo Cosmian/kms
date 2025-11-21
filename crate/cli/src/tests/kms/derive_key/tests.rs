@@ -217,7 +217,7 @@ pub(crate) async fn test_derive_key_error_invalid_hex_salt() -> KmsCliResult<()>
 
     // This should fail with hex validation error
     let result = derive_action.run(&ctx.get_owner_client()).await;
-    assert!(result.is_err());
+    result.unwrap_err();
 
     Ok(())
 }
@@ -250,7 +250,7 @@ pub(crate) async fn test_derive_key_error_invalid_hex_iv() -> KmsCliResult<()> {
 
     // This should fail with hex validation error
     let result = derive_action.run(&ctx.get_owner_client()).await;
-    assert!(result.is_err());
+    result.unwrap_err();
 
     Ok(())
 }
@@ -283,7 +283,7 @@ pub(crate) async fn test_derive_key_error_unsupported_method() -> KmsCliResult<(
 
     // This should fail with unsupported method error
     let result = derive_action.run(&ctx.get_owner_client()).await;
-    assert!(result.is_err());
+    result.unwrap_err();
 
     Ok(())
 }

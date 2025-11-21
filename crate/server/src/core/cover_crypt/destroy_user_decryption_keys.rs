@@ -14,6 +14,7 @@ use crate::{
 pub(crate) async fn destroy_user_decryption_keys(
     msk_uid: &str,
     remove: bool,
+    cascade: bool,
     kms: &KMS,
     owner: &str,
     params: Option<Arc<dyn SessionParams>>,
@@ -25,6 +26,7 @@ pub(crate) async fn destroy_user_decryption_keys(
             recursively_destroy_object(
                 &UniqueIdentifier::TextString(id),
                 remove,
+                cascade,
                 kms,
                 owner,
                 params.clone(),

@@ -56,6 +56,10 @@ pub struct KMS {
     /// A typical use case is delegating encryption/decryption to an HSM.
     /// This is a map of key prefixes to encryption oracles.
     pub(crate) encryption_oracles: RwLock<HashMap<String, Box<dyn EncryptionOracle + Sync + Send>>>,
+
+    /// Optional HSM instance for PKCS#11 operations.
+    /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
+    pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
 }
 
 impl KMS {
@@ -93,7 +97,7 @@ impl KMS {
         // HSMs are also encryption oracles
         let mut encryption_oracles: HashMap<String, Box<dyn EncryptionOracle + Sync + Send>> =
             HashMap::new();
-        if let Some(hsm) = hsm {
+        if let Some(hsm) = hsm.clone() {
             encryption_oracles.insert(
                 "hsm".to_owned(),
                 Box::new(HsmEncryptionOracle::new(hsm.clone())),
@@ -104,6 +108,7 @@ impl KMS {
             params: server_params,
             database,
             encryption_oracles: RwLock::new(encryption_oracles),
+            hsm: hsm.clone(),
         })
     }
 
