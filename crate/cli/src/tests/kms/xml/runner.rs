@@ -8,7 +8,7 @@ use cosmian_kms_client::{
     },
 };
 use cosmian_logger::log_init;
-use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
+use test_kms_server::start_default_test_kms_server;
 
 use crate::tests::kms::xml::{
     compare::compare_response_messages,
@@ -19,7 +19,7 @@ use crate::tests::kms::xml::{
 /// Run a single XML vector by starting a shared default test server.
 pub(crate) async fn run_single_xml_vector_with_server(test_name: &str, path: &str) {
     log_init(None);
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let ctx = start_default_test_kms_server().await;
     run_single_xml_vector_on_client(test_name, &ctx.get_owner_client(), path).await;
 }
 
