@@ -154,10 +154,24 @@ xml_test!(
 );
 
 // PKCS11 - PKCS#11 Interface Compatibility (1 file)
-xml_test!(
-    kmip_2_1_xml_pkcs11_m_1_21,
-    "../kmip/src/kmip_2_1/specifications/XML/mandatory/PKCS11-M-1-21.xml"
-);
+// This test requires Utimaco HSM and only runs on Linux
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[serial]
+async fn kmip_2_1_xml_pkcs11_m_1_21() {
+    use cosmian_logger::log_init;
+    use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
+
+    log_init(None);
+    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    run_single_xml_vector_on_client(
+        "kmip_2_1_xml_pkcs11_m_1_21",
+        &ctx.get_owner_client(),
+        "../kmip/src/kmip_2_1/specifications/XML/mandatory/PKCS11-M-1-21.xml",
+    )
+    .await;
+}
 
 // QS - Query Server (2 files)
 xml_test!(
