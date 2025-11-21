@@ -173,10 +173,10 @@ async fn kmip_1_4_xml_tl() {
             kmip_operations::{Destroy, Locate},
         },
     };
-    use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
+    use test_kms_server::start_default_test_kms_server;
 
     // Get the test server
-    let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
+    let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
 
     // Clean up any objects with LIBRARY-LTO application specific information
