@@ -105,13 +105,13 @@ impl SignAction {
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
-pub enum CDigitalSignatureAlgorithm {
+pub(crate) enum CDigitalSignatureAlgorithm {
     RSASSAPSS,
 }
 
 impl CDigitalSignatureAlgorithm {
     #[must_use]
-    pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
+    pub(crate) fn to_cryptographic_parameters(self) -> CryptographicParameters {
         match self {
             Self::RSASSAPSS => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
