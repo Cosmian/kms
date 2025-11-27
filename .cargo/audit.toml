@@ -3,4 +3,9 @@
 
 [advisories]
 # List of advisory IDs to ignore (extracted from deny.toml)
-ignore = []
+ignore = [
+    # NOTE: Must stay on scratchstack-aws-signature 0.10 for now (Feb 2026),
+    # which pulls ring 0.16.20.
+    "RUSTSEC-2025-0009",
+    "RUSTSEC-2025-0010",
+]

@@ -29,9 +29,12 @@ fn load_test_config() -> SocketServerParams<'static> {
     SocketServerParams {
         host: TEST_HOST.to_owned(),
         port: 11117,
-        p12: &TEST_P12,
+        p12: Some(&TEST_P12),
         client_ca_cert_pem: &TEST_CLIENT_CA_CERT_PEM,
         cipher_suites: None,
+        server_cert_pem: &[],
+        server_key_pem: &[],
+        server_chain_pem: None,
     }
 }
 

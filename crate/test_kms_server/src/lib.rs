@@ -7,7 +7,8 @@ pub use test_server::{
     start_default_test_kms_server_with_non_revocable_key_ids,
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_utimaco_and_kek,
-    start_default_test_kms_server_with_utimaco_hsm, start_test_server_with_options,
+    start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
+    start_test_server_with_options,
 };
 
 mod test_server;

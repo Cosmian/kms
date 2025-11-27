@@ -55,6 +55,7 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             "../../test_data/certificates/client_server/ca/ca.crt",
         )),
         tls_cipher_suites: None,
+        ..Default::default()
     };
 
     ClapConfig {
