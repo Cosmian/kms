@@ -58,6 +58,7 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
+const_format = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.12.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.12.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
@@ -82,6 +83,7 @@ reqwest = { workspace = true, features = [
     "native-tls",
     "socks",
 ] }
+scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.12.0" }

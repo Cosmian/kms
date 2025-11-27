@@ -14,6 +14,7 @@ use crate::{
     config::{ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
+    routes::aws_xks::AwsXksConfig,
 };
 
 #[cfg(not(target_os = "windows"))]
@@ -62,6 +63,7 @@ impl Default for ClapConfig {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            aws_xks_config: AwsXksConfig::default(),
         }
     }
 }
@@ -174,6 +176,9 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub aws_xks_config: AwsXksConfig,
 }
 
 impl ClapConfig {
