@@ -102,13 +102,13 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat"               # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols"         # Strip symbol tables for smaller binaries
-opt-level = "z"           # Optimize for size while maintaining performance
-codegen-units = 1         # Single codegen unit: best optimization and determinism
-panic = "abort"           # Smaller binaries, no unwinding tables
-incremental = false       # Disable incremental compilation for determinism
-debug = 0                 # No debug info (timestamps/paths)
+lto = "fat"         # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols"   # Strip symbol tables for smaller binaries
+opt-level = "z"     # Optimize for size while maintaining performance
+codegen-units = 1   # Single codegen unit: best optimization and determinism
+panic = "abort"     # Smaller binaries, no unwinding tables
+incremental = false # Disable incremental compilation for determinism
+debug = 0           # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
@@ -132,6 +132,7 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
+const_format = "0.2"
 cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "10.3", default-features = false, features = [
     "ser",

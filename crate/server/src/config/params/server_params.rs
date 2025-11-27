@@ -13,6 +13,7 @@ use crate::{
     },
     error::KmsError,
     result::{KResult, KResultHelper},
+    routes::aws_xks::AwsXksParams,
 };
 
 /// This structure is the context used by the server
@@ -121,6 +122,9 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// AWS XKS parameters, if any
+    pub aws_xks_params: Option<AwsXksParams>,
 }
 
 /// Represents the server parameters.
@@ -292,6 +296,10 @@ impl ServerParams {
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            aws_xks_params: conf.aws_xks_config.aws_xks_enable.then(|| AwsXksParams {
+                region: conf.aws_xks_config.region.clone(),
+                service: conf.aws_xks_config.aws_xks_service.clone(),
+            }),
         };
         debug!("{res:#?}");
 
