@@ -97,6 +97,7 @@ reqwest = { workspace = true, features = [
     "native-tls",
     "socks",
 ] }
+scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.14.0" }
