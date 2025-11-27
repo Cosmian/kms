@@ -36,6 +36,7 @@ let
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
+  withXks = (builtins.getEnv "WITH_XKS") == "1";
   withWasm = (builtins.getEnv "WITH_WASM") == "1";
 
   rustToolchain =
@@ -103,6 +104,7 @@ pkgs.mkShell {
     openssl312Fips
     openssl312FipsShared
     openssl360NonFips
+    pkgs.openssl.dev
     pkgs.pkg-config
     pkgs.gcc
     rustToolchain
@@ -119,6 +121,23 @@ pkgs.mkShell {
       [ ]
   )
   ++ (if withCurl then [ pkgs.curl ] else [ ])
+  ++ (
+    if withXks then
+      [
+        pkgs.bash
+        pkgs.curl
+        pkgs.jq
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnused
+        pkgs.vim
+        pkgs.xxd
+        # Provides `uuidgen` in the pure nix-shell environment.
+        pkgs.util-linux
+      ]
+    else
+      [ ]
+  )
   ++ (
     if withHsm then
       [

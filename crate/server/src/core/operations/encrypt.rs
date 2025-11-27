@@ -97,6 +97,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     // in the candidate list.
 
     let mut selected_owm = None;
+    let mut found_but_no_permission = false;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
             if !kms.database.is_object_owned_by(&uid, user).await? {
@@ -115,7 +116,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
             return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
         }
         let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
-            KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
+            KmsError::ItemNotFound(format!("Encrypt: failed to retrieve key: {uid}"))
         })?;
         // Check effective state (PreActive with past activation_date counts as Active)
         if get_effective_state(&owm)? != State::Active {
@@ -131,6 +132,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
                 .iter()
                 .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
             {
+                found_but_no_permission = true;
                 continue;
             }
         }
@@ -156,10 +158,13 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("Encrypt: no valid key for id: {unique_identifier}"),
-        )
+        if found_but_no_permission {
+            KmsError::Unauthorized(format!(
+                "Encrypt: the user {user} does not have permission to encrypt using the key: {unique_identifier}"
+            ))
+        } else {
+            KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))
+        }
     })?;
 
     // Enforce time window constraints: Active key is unusable for Encrypt if current time is

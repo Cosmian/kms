@@ -1,6 +1,8 @@
 [workspace]
 default-members = ["crate/server"]
 members = [
+    # Common crates
+    "crate/kmip",
     # Client crates
     "crate/client_utils",
     "crate/kms_client",
@@ -16,7 +18,6 @@ members = [
     "crate/hsm/utimaco",
     "crate/hsm/base_hsm",
     "crate/interfaces",
-    "crate/kmip",
     "crate/server",
     "crate/server_database",
     # Test crates
@@ -102,13 +103,13 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat"               # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols"         # Strip symbol tables for smaller binaries
-opt-level = "z"           # Optimize for size while maintaining performance
-codegen-units = 1         # Single codegen unit: best optimization and determinism
-panic = "abort"           # Smaller binaries, no unwinding tables
-incremental = false       # Disable incremental compilation for determinism
-debug = 0                 # No debug info (timestamps/paths)
+lto = "fat"         # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols"   # Strip symbol tables for smaller binaries
+opt-level = "z"     # Optimize for size while maintaining performance
+codegen-units = 1   # Single codegen unit: best optimization and determinism
+panic = "abort"     # Smaller binaries, no unwinding tables
+incremental = false # Disable incremental compilation for determinism
+debug = 0           # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
@@ -124,9 +125,17 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
+actix-cors = "0.6"
+actix-files = "0.6.10"
+actix-http = "3.10"
+actix-identity = "0.6"
 actix-rt = "2.10"
+actix-session = { version = "0.8" }
 actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.10", default-features = false }
+actix-tls = "3.4"
+actix-web = { version = "4.12", default-features = false }
+alcoholic_jwt = "4091"
+async-recursion = "1.1"
 async-trait = "0.1"
 base64 = "0.22"
 bitflags = "2.9"
@@ -138,8 +147,11 @@ cosmian_crypto_core = { version = "11.0", default-features = false, features = [
 ] }
 cosmian_logger = "0.5"
 der = { version = "0.7", default-features = false }
+dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }
+http = "1.4"
+jsonwebtoken = "10.3"
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
@@ -157,6 +169,7 @@ pem = "3.0"
 pkcs11-sys = "0.2"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false }
+scratchstack-aws-signature = "=0.10" # Must stay 0.10 for now (Feb 2026)
 serde = "1.0"
 serde_json = "1.0"
 sha2 = { version = "0.10", default-features = false }
@@ -168,6 +181,7 @@ time = "0.3"
 tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
+toml = "0.9"
 tracing = "0.1"
 url = "2.5"
 uuid = "=1.11.1"

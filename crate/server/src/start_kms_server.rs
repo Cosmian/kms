@@ -55,7 +55,9 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, azure_ekm, cli_archive_download, cli_archive_exists, get_version,
+        access,
+        aws_xks::{self},
+        azure_ekm, cli_archive_download, cli_archive_exists, get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -665,6 +667,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Should we enable the AWS XKS Service?
+    let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
     if enable_azure_ekm {
@@ -777,6 +782,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
+        }
+
+        if enable_aws_xks {
+            // The scope for the AWS XKS (External Key Store) endpoints served from /aws
+            let aws_xks_scope = web::scope("/aws")
+                .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))
+                .wrap(Cors::permissive())
+                .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
+                .service(aws_xks::get_health_status)
+                .service(aws_xks::get_key_metadata)
+                .service(aws_xks::encrypt)
+                .service(aws_xks::decrypt)
+                .default_service(web::to(aws_xks::xks_path_not_found_handler));
+
+            app = app.service(aws_xks_scope);
         }
 
         if enable_azure_ekm {
@@ -969,25 +989,14 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
     // Use the common TLS configuration
-    let tls_config = {
+    let tls_config = TlsConfig {
         #[cfg(feature = "non-fips")]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.as_deref(),
-                p12: &server_config.p12,
-                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
-            }
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.as_deref(),
-                server_cert_pem: &server_config.server_cert_pem,
-                server_key_pem: &server_config.server_key_pem,
-                server_chain_pem: server_config.server_chain_pem.as_deref(),
-                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
-            }
-        }
+        p12: server_config.p12.as_ref(),
+        cipher_suites: server_config.cipher_suites.as_deref(),
+        server_cert_pem: &server_config.server_cert_pem,
+        server_key_pem: &server_config.server_key_pem,
+        server_chain_pem: server_config.server_chain_pem.as_deref(),
+        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;
