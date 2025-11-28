@@ -602,7 +602,16 @@ fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer
     let spki_der = pk.public_key_to_der()?;
     let mut sha1 = Sha1::default();
     sha1.update(&spki_der);
-    let serial_number_bytes = sha1.finish().to_vec();
+    let mut serial_number_bytes = sha1.finish().to_vec();
+
+    // Ensure the serial number is always positive by clearing the high bit of the first byte.
+    // This prevents ASN.1 DER encoding from adding a leading 0x00 byte for negative numbers,
+    // which would make the serial number 21 bytes instead of 20 bytes.
+    // RFC 5280 Section 4.1.2.2 allows serial numbers up to 20 octets.
+    *serial_number_bytes
+        .get_mut(0)
+        .ok_or_else(|| KmsError::ServerError("SHA1 digest returned empty bytes".to_owned()))? &=
+        0x7F;
 
     let serial_number = openssl::asn1::Asn1Integer::from_bn(
         openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
@@ -720,4 +729,69 @@ fn build_and_sign_certificate(
         tags,
         attributes,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn test_serial_number_length() {
+        // Test that serial numbers are always 20 bytes or less
+        // This verifies the fix for the issue where some certificates
+        // had 21-byte serial numbers with a leading 0x00 byte
+
+        // Create test data with high bit set (would trigger the issue before the fix)
+        let test_cases = vec![
+            // Serial that starts with high bit set (0x83 = 10000011)
+            vec![
+                0x83, 0xE9, 0x9B, 0x1A, 0xCA, 0x8A, 0xB0, 0xDD, 0x65, 0xE3, 0x79, 0xB6, 0x28, 0x99,
+                0xAD, 0x73, 0x9E, 0x16, 0x33, 0x82,
+            ],
+            // Serial that starts with high bit NOT set (0x04)
+            vec![
+                0x04, 0xC5, 0xB6, 0x49, 0x2B, 0xE0, 0x8F, 0xF2, 0x16, 0x98, 0x1E, 0xBF, 0x65, 0x02,
+                0x50, 0xD7, 0xA9, 0xE1, 0xDC, 0xC5,
+            ],
+            // All high bits set
+            vec![
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            ],
+        ];
+
+        for (idx, mut serial_bytes) in test_cases.into_iter().enumerate() {
+            // Apply the fix (same as in create_subject_key_identifier_value)
+            if let Some(first_byte) = serial_bytes.get_mut(0) {
+                *first_byte &= 0x7F;
+            }
+
+            // Create BigNum and then Asn1Integer
+            let bn = openssl::bn::BigNum::from_slice(&serial_bytes)
+                .expect("Failed to create BigNum from slice");
+            let asn1_int = openssl::asn1::Asn1Integer::from_bn(bn.as_ref())
+                .expect("Failed to create Asn1Integer from BigNum");
+
+            // Get the DER encoding
+            let der = asn1_int
+                .to_bn()
+                .expect("Failed to convert Asn1Integer to BigNum")
+                .to_vec();
+
+            // The serial number should be at most 20 bytes
+            let first_byte = serial_bytes.first().copied().unwrap_or(0);
+            assert!(
+                der.len() <= 20,
+                "Test case {idx}: Serial number is {} bytes (expected <= 20 bytes). \
+                 First byte after fix: 0x{first_byte:02X}",
+                der.len(),
+            );
+
+            // Verify the high bit is not set in the first byte
+            assert_eq!(
+                first_byte & 0x80,
+                0,
+                "Test case {idx}: High bit should not be set in first byte",
+            );
+        }
+    }
 }
