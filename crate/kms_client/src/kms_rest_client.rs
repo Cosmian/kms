@@ -5,13 +5,7 @@ use cosmian_http_client::{
 // re-export the kmip module as kmip
 use cosmian_kms_client_utils::reexport::{
     cosmian_kmip::kmip_2_1::kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
-        DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
-        Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, ReKey, ReKeyKeyPair,
-        ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, StatusResponse, Validate, ValidateResponse,
+        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate, LocateResponse, MACResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate, ValidateResponse, MAC
     },
     cosmian_kms_access::access::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
@@ -113,6 +107,18 @@ impl KmsClient {
     /// Placeholder variable.
     pub async fn create(&self, request: Create) -> Result<CreateResponse, KmsClientError> {
         self.post_ttlv_2_1::<Create, CreateResponse>(&request).await
+    }
+
+    pub async fn sign(&self, request: Sign) -> Result<SignResponse, KmsClientError> {
+        self.post_ttlv_2_1::<Sign, SignResponse>(&request).await
+    }
+
+    pub async fn signature_verify(
+        &self,
+        request: SignatureVerify,
+    ) -> Result<SignatureVerifyResponse, KmsClientError> {
+        self.post_ttlv_2_1::<SignatureVerify, SignatureVerifyResponse>(&request)
+            .await
     }
 
     /// This operation requests the server to generate a new public/private key
