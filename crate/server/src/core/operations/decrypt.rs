@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
             },
         },
+        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -40,6 +41,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::{
         KMS,
+        operations::get_effective_state,
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -117,7 +119,8 @@ pub(crate) async fn decrypt(
                     format!("Decrypt: failed to retrieve the key: {uid}"),
                 )
             })?;
-        if owm.state() != State::Active {
+        // Check effective state (PreActive with past activation_date counts as Active)
+        if get_effective_state(&owm)? != State::Active {
             debug!("{uid} is not active");
             continue;
         }
@@ -171,6 +174,23 @@ pub(crate) async fn decrypt(
             format!("Decrypt: no valid key for id: {unique_identifier}"),
         )
     })?;
+
+    // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when
+    // current time is before ProcessStartDate or after ProtectStopDate. Required for vectors like
+    // CS-BC-M-14-21 which expect WrongKeyLifecycleState prior to revocation.
+    if get_effective_state(&owm)? == State::Active {
+        if let Ok(attrs) = owm.object().attributes() {
+            let now = time_normalize()?;
+            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
+            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
+            if too_early || too_late {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Wrong_Key_Lifecycle_State,
+                    "DENIED".to_owned(),
+                ));
+            }
+        }
+    }
 
     // if the key is wrapped, we need to unwrap it
     owm.set_object(
@@ -415,26 +435,76 @@ fn decrypt_single_with_symmetric_key(
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
-    let nonce = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Decrypt: the nonce/IV must be provided".to_owned())
-    })?;
+    // For modes with nonce_size()==0 (e.g. ECB) we do not expect / require an IV.
+    // For modes with nonce_size()>0 we require an IV. Some KMIP vectors supply an empty
+    // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a
+    // present-but-empty value as a zero IV of the required size. Any other length mismatch
+    // is reported as Invalid_Message instead of triggering an OpenSSL panic.
+    let empty_nonce_storage = Vec::new();
+    let nonce_storage: Cow<[u8]> = if aead.nonce_size() == 0 {
+        Cow::Borrowed(&empty_nonce_storage)
+    } else {
+        let provided = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
+            KmsError::Kmip21Error(ErrorReason::Invalid_Message, "missing-iv".to_owned())
+        })?;
+        if provided.is_empty() {
+            // Interpret empty provided IV as an all-zero IV of the recommended size for the cipher.
+            Cow::Owned(vec![0_u8; aead.nonce_size()])
+        } else if provided.len() == aead.nonce_size() {
+            Cow::Borrowed(provided)
+        } else {
+            // Length mismatch: allow variable length only for AES-GCM (per spec and OpenSSL support).
+            match aead {
+                SymCipher::Aes128Gcm | SymCipher::Aes192Gcm | SymCipher::Aes256Gcm => {
+                    // Accept any non-empty length; pass through unchanged. (OpenSSL derives J0 for non-96-bit IVs.)
+                    Cow::Borrowed(provided)
+                }
+                _ => {
+                    return Ok(Err(KmsError::Kmip21Error(
+                        ErrorReason::Invalid_Message,
+                        format!(
+                            "invalid-iv-length: expected {} got {}",
+                            aead.nonce_size(),
+                            provided.len()
+                        ),
+                    )));
+                }
+            }
+        }
+    };
+    let nonce: &[u8] = nonce_storage.as_ref();
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let tag = request
-        .authenticated_encryption_tag
-        .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+    let tag = if aead.tag_size() == 0 {
+        EMPTY_SLICE
+    } else {
+        request
+            .authenticated_encryption_tag
+            .as_deref()
+            .unwrap_or(EMPTY_SLICE)
+    };
     let padding_method = request
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| cp.padding_method)
-        .unwrap_or(PaddingMethod::PKCS5);
-    trace!(
-        "ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?}, \
-         padding_method: {padding_method:?}"
-    );
+        .unwrap_or(match aead {
+            SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => {
+                PaddingMethod::None
+            }
+            _ => PaddingMethod::PKCS5,
+        });
+    if aead.nonce_size() == 0 {
+        trace!(
+            "ciphertext (ECB): {ciphertext:?}, aad: {aad:?}, padding_method: {padding_method:?}"
+        );
+    } else {
+        trace!(
+            "ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?}, \
+             padding_method: {padding_method:?}"
+        );
+    }
     let plaintext = sym_decrypt(
         aead,
         &key_bytes,
@@ -462,16 +532,29 @@ fn get_aead_and_key(
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| {
+            owm.attributes()
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|cp| cp.cryptographic_algorithm)
+        })
         .unwrap_or_else(|| {
             key_block
                 .cryptographic_algorithm()
                 .copied()
                 .unwrap_or(CryptographicAlgorithm::AES)
         });
+    // Fallback to stored key block mode if request omitted it (e.g., ECB cases)
     let block_cipher_mode = request
         .cryptographic_parameters
         .as_ref()
-        .and_then(|cp| cp.block_cipher_mode);
+        .and_then(|cp| cp.block_cipher_mode)
+        .or_else(|| {
+            owm.attributes()
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|cp| cp.block_cipher_mode)
+        });
     let key_bytes = key_block.key_bytes()?;
     let aead = SymCipher::from_algorithm_and_key_size(
         cryptographic_algorithm,
@@ -489,13 +572,25 @@ fn decrypt_with_private_key(
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
     let private_key = kmip_private_key_to_openssl(owm.object())?;
+    // Merge stored key cryptographic parameters with request-provided parameters.
+    // Request overrides stored; if request absent, use stored.
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let effective_cp =
+        merge_cryptographic_parameters(stored_cp, request.cryptographic_parameters.as_ref());
+    if let Some(cp) = &effective_cp {
+        trace!(
+            "effective RSA CP -> padding={:?} hashing={:?} mgf1={:?} label_len={}",
+            cp.padding_method,
+            cp.hashing_algorithm,
+            cp.mask_generator_hashing_algorithm,
+            cp.p_source.as_ref().map_or(0, std::vec::Vec::len)
+        );
+    } else {
+        trace!("no effective cryptographic parameters; defaults will apply");
+    }
 
     let plaintext = match private_key.id() {
-        Id::RSA => decrypt_with_rsa(
-            &private_key,
-            request.cryptographic_parameters.as_ref(),
-            ciphertext,
-        )?,
+        Id::RSA => decrypt_with_rsa(&private_key, effective_cp.as_ref(), ciphertext)?,
         #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext)?,
         other => {
@@ -509,6 +604,43 @@ fn decrypt_with_private_key(
     })
 }
 
+/// Merge stored (from key attributes) and request cryptographic parameters.
+/// Request fields, when present, override stored ones; absent request uses stored.
+fn merge_cryptographic_parameters(
+    stored: Option<&CryptographicParameters>,
+    request: Option<&CryptographicParameters>,
+) -> Option<CryptographicParameters> {
+    match (stored, request) {
+        (None, None) => None,
+        (Some(s), None) => Some(s.clone()),
+        (None, Some(r)) => Some(r.clone()),
+        (Some(s), Some(r)) => Some(CryptographicParameters {
+            block_cipher_mode: r.block_cipher_mode.or(s.block_cipher_mode),
+            padding_method: r.padding_method.or(s.padding_method),
+            hashing_algorithm: r.hashing_algorithm.or(s.hashing_algorithm),
+            key_role_type: r.key_role_type.or(s.key_role_type),
+            digital_signature_algorithm: r
+                .digital_signature_algorithm
+                .or(s.digital_signature_algorithm),
+            cryptographic_algorithm: r.cryptographic_algorithm.or(s.cryptographic_algorithm),
+            random_iv: r.random_iv.or(s.random_iv),
+            iv_length: r.iv_length.or(s.iv_length),
+            tag_length: r.tag_length.or(s.tag_length),
+            fixed_field_length: r.fixed_field_length.or(s.fixed_field_length),
+            invocation_field_length: r.invocation_field_length.or(s.invocation_field_length),
+            counter_length: r.counter_length.or(s.counter_length),
+            initial_counter_value: r.initial_counter_value.or(s.initial_counter_value),
+            salt_length: r.salt_length.or(s.salt_length),
+            mask_generator: r.mask_generator.or(s.mask_generator),
+            mask_generator_hashing_algorithm: r
+                .mask_generator_hashing_algorithm
+                .or(s.mask_generator_hashing_algorithm),
+            p_source: r.p_source.clone().or_else(|| s.p_source.clone()),
+            trailer_field: r.trailer_field.or(s.trailer_field),
+        }),
+    }
+}
+
 fn decrypt_with_rsa(
     private_key: &PKey<Private>,
     cryptographic_parameters: Option<&CryptographicParameters>,
@@ -516,6 +648,13 @@ fn decrypt_with_rsa(
 ) -> KResult<Zeroizing<Vec<u8>>> {
     let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
+    // MGF1 hash may be specified separately
+    let (mgf1_hash_fn, label) = cryptographic_parameters.map_or((hashing_fn, None), |cp| {
+        (
+            cp.mask_generator_hashing_algorithm.unwrap_or(hashing_fn),
+            cp.p_source.as_deref(),
+        )
+    });
     trace!(
         "algorithm: {:?}, padding: {:?}, hashing_fn: {:?}",
         algorithm, padding, hashing_fn
@@ -526,7 +665,7 @@ fn decrypt_with_rsa(
             ckm_rsa_aes_key_unwrap(private_key, hashing_fn, ciphertext)?
         }
         (CryptographicAlgorithm::RSA, PaddingMethod::OAEP) => {
-            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ciphertext)?
+            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, mgf1_hash_fn, label, ciphertext)?
         }
         #[cfg(feature = "non-fips")]
         (CryptographicAlgorithm::RSA, PaddingMethod::PKCS1v15) => {

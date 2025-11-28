@@ -6,6 +6,10 @@ format = "fmt --all -- --check"
 build-all = "build --workspace --all-targets --all-features --bins"
 build-all-release = "build --release --workspace --all-targets --all-features --bins"
 
+# Test FIPS and non-FIPS builds
+test-fips = "test --lib --workspace"
+test-non-fips = "test --lib --workspace --features non-fips"
+
 # Run Clippy on all code paths
 clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings"
 
@@ -14,6 +18,10 @@ coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude
 
 # Find unused dependencies
 deps = "udeps --workspace --all-targets --all-features --backend depinfo"
+
+# Publish dry-run helpers (allow dirty tree during local checks)
+publish-dry = "publish --dry-run --workspace --allow-dirty"
+publish-dry-crate = "publish --dry-run --allow-dirty"
 
 ###
 # This options have been commented out because the Github runners responsible to build the KMS docker image have unpredictable CPU architectures, resulting in an error code 132 when running the generated container.

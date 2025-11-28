@@ -9,12 +9,13 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{Register, RegisterResponse},
             kmip_types::UniqueIdentifier,
         },
+        time_normalize,
     },
     cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{debug, trace};
-use time::OffsetDateTime;
 
+use super::import::process_opaque_object;
 use crate::{
     core::{
         KMS,
@@ -36,7 +37,7 @@ pub(crate) async fn register(
     params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<RegisterResponse> {
-    trace!("Register: {}", serde_json::to_string(&request)?);
+    trace!("{request}");
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
@@ -66,17 +67,35 @@ pub(crate) async fn register(
         ))
     }
 
-    // Update the initial date and last changed date of the object
-    // Update the state of the object to Active and activation date
-    let now = OffsetDateTime::now_utc()
-        .replace_millisecond(0)
-        .map_err(|e| KmsError::Default(e.to_string()))?;
+    // Update lifecycle: determine state based on ActivationDate per KMIP 2.1 spec.
+    // Per KMIP 2.1 section 3.1.7 "Key States and Transitions":
+    // - If ActivationDate is absent or in the future → PreActive state
+    // - If ActivationDate is present and <= now → Active state
+    let now = time_normalize()?;
+
+    // Determine the desired initial state based on ActivationDate
+    let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
+    let desired_state = if activation_allows_active {
+        debug!(
+            "Register: activation_date={:?} <= now, setting state to Active",
+            request.attributes.activation_date
+        );
+        State::Active
+    } else {
+        debug!("Register: no activation_date or future date, setting state to PreActive");
+        State::PreActive
+    };
+
+    // Set the state in the request attributes (used by process_* functions)
+    request.attributes.state = Some(desired_state);
+
+    // Also set it in the object's attributes for consistency
+    // Zero milliseconds for KMIP serialization compatibility
+    let now_stored = time_normalize()?;
     if let Ok(object_attributes) = request.object.attributes_mut() {
-        object_attributes.state = Some(State::Active);
-        // update the initial date
-        object_attributes.initial_date = Some(now);
+        object_attributes.state = Some(desired_state);
         // update the last change date
-        object_attributes.last_change_date = Some(now);
+        object_attributes.last_change_date = Some(now_stored);
     }
 
     // Process the request based on the object type,
@@ -117,6 +136,11 @@ pub(crate) async fn register(
                 params.clone(),
             ))
             .await?
+        }
+        ObjectType::OpaqueObject => {
+            // Reuse the import path logic (no unwrap/wrap for opaque objects)
+            let (uid, ops) = process_opaque_object(request.into())?;
+            (uid, ops)
         }
         x => {
             return Err(KmsError::InvalidRequest(format!(

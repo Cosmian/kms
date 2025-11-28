@@ -4,10 +4,11 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::KmipOperation,
+        time_normalize,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
-use cosmian_logger::trace;
+use cosmian_logger::{trace, warn};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -42,11 +43,32 @@ pub(crate) async fn retrieve_object_for_operation(
     {
         trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
-        if !(state == State::Active
-            || state == State::PreActive
-            || operation_type == KmipOperation::Export
-            || operation_type == KmipOperation::GetAttributes)
-        {
+        // Allow retrieval based on state and operation semantics.
+        // Rules:
+        // - Active / PreActive: always retrievable.
+        // - Compromised: permitted for Get / Export / GetAttributes (profiling vectors inspect attrs post-revoke).
+        // - Destroyed / Destroyed_Compromised: ONLY permit GetAttributes so clients can read lifecycle state.
+        let state_allows = match state {
+            State::Active | State::PreActive | State::Deactivated => true,
+            State::Compromised => matches!(
+                operation_type,
+                KmipOperation::Get | KmipOperation::Export | KmipOperation::GetAttributes
+            ),
+            State::Destroyed | State::Destroyed_Compromised => {
+                // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
+                // rather than ObjectNotFound. We therefore allow retrieval for Get so the operation layer
+                // can emit the correct Object_Destroyed error (BL-M-8-21 vector). Still restrict other
+                // operations besides GetAttributes and Get.
+                matches!(
+                    operation_type,
+                    KmipOperation::Get | KmipOperation::GetAttributes
+                )
+            }
+        };
+        if !state_allows {
+            trace!(
+                "state_allows: {state_allows}: state: {state}, operation_type: {operation_type}"
+            );
             continue;
         }
 
@@ -56,14 +78,70 @@ pub(crate) async fn retrieve_object_for_operation(
                 owm.id()
             );
             let mut owm = owm.to_owned();
-            // Update the state on the object attributes if they are not present.
-            if owm.attributes().state.is_none() {
-                owm.attributes_mut().state = Some(state);
-            }
+            // Compute effective state with lifecycle precedence:
+            // - If the DB marks the object as Destroyed / Destroyed_Compromised / Compromised / Deactivated,
+            //   NEVER override it with attribute-level values.
+            // - Otherwise (Active/PreActive), prefer attribute PreActive when present to satisfy
+            //   profile vectors that keep objects PreActive until explicit Activate.
+            let attr_state = owm.attributes().state;
+            let effective_state = match state {
+                State::Destroyed
+                | State::Destroyed_Compromised
+                | State::Compromised
+                | State::Deactivated
+                | State::Active => state, // never downgrade Active to PreActive
+                State::PreActive => attr_state.unwrap_or(State::PreActive),
+            };
+            // Synchronize both external attributes and embedded object attributes to effective state
+            owm.attributes_mut().state = Some(effective_state);
             if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
-                // Update the state on the object attributes if they are not present.
-                if attributes.state.is_none() {
-                    attributes.state = Some(state);
+                attributes.state = Some(effective_state);
+            }
+
+            // KMIP 2.1 Auto-activation: Automatically activate PreActive objects when activation_date has passed
+            // This ensures the database state stays synchronized with the object's actual lifecycle state
+            if effective_state == State::PreActive {
+                // Check if activation_date is set and has passed
+                let activation_date = owm.attributes().activation_date.or_else(|| {
+                    // Fallback to object's attributes if not in metadata
+                    owm.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.activation_date)
+                });
+
+                if let Some(activation_date) = activation_date {
+                    let now = time_normalize()?;
+                    if activation_date <= now {
+                        // Activation date has passed, automatically transition to Active
+                        trace!(
+                            "Auto-activating object {} (activation_date {} <= now {})",
+                            owm.id(),
+                            activation_date,
+                            now
+                        );
+
+                        // Update state in both the object attributes and metadata
+                        owm.attributes_mut().state = Some(State::Active);
+                        if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                            attributes.state = Some(State::Active);
+                        }
+
+                        // Persist the state change to database
+                        // Note: We do this synchronously to ensure consistency, but log errors
+                        // rather than failing the retrieval if the update fails
+                        if let Err(e) = kms
+                            .database
+                            .update_state(owm.id(), State::Active, params.clone())
+                            .await
+                        {
+                            warn!(
+                                "Failed to persist auto-activation of object {}: {}",
+                                owm.id(),
+                                e
+                            );
+                        }
+                    }
                 }
             }
 

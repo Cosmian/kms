@@ -38,8 +38,8 @@ use crate::{
 /// - Destroy
 #[test]
 fn test_aklc_m_3_14() {
-    // log_init(option_env!("RUST_LOG"));
-    log_init(Some("info,kmip=debug"));
+    log_init(None);
+    // log_init(Some("info,kmip=debug"));
 
     info!("Running AKLC-M-3-14 test");
     let client = get_client();
@@ -172,7 +172,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: private_key_id.to_owned(),
+                    unique_identifier: Some(private_key_id.to_owned()),
                     attribute_name: Some(vec![
                         "State".to_owned(),
                         "Cryptographic Usage Mask".to_owned(),
@@ -372,7 +372,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute_name: Some(vec![
                         "State".to_owned(),
                         "Activation Date".to_owned(),
@@ -438,8 +438,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
 /// Try to modify activation date (expected to fail)
 fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
     // Get current time in UTC
-    let now = OffsetDateTime::now_utc()
-        .replace_millisecond(0)
+    let now = cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize()
         .map_err(|e| KmsError::Default(e.to_string()))
         .unwrap();
 
@@ -458,7 +457,7 @@ fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"0752c951bb9926cc".to_vec()), /* Using the same ID as in the XML */
                 request_payload: Operation::ModifyAttribute(ModifyAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::ActivationDate(now),
                 }),
                 message_extension: None,
@@ -551,7 +550,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute_name: Some(vec!["State".to_owned()]),
                 }),
                 message_extension: None,
@@ -608,7 +607,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::GetAttributes(GetAttributes {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute_name: Some(vec!["State".to_owned()]),
                 }),
                 message_extension: None,
@@ -632,15 +631,23 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
         panic!("Expected GetAttributesResponse");
     };
 
-    // Verify the public key state is PreActive (revocation of private key doesn't affect public key)
-    // FIXME: Cosmian makes them compromised by default when the private key is compromised
+    // Debug: Print the actual state
+    if let Some(attrs) = get_attrs_response.attribute.as_ref() {
+        for attr in attrs {
+            if let Attribute::State(state) = attr {
+                info!("Public key actual state: {:?}", state);
+            }
+        }
+    }
+
+    // Verify the public key state remains PreActive (revocation of private key doesn't affect public key)
     assert!(
         get_attrs_response
             .attribute
             .as_ref()
             .unwrap()
             .iter()
-            .any(|attr| matches!(attr, Attribute::State(State::Compromised))),
+            .any(|attr| matches!(attr, Attribute::State(State::PreActive))),
     );
 
     info!("Successfully verified public key is still in PreActive state");

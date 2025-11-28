@@ -11,12 +11,11 @@ use std::{
     task::{Context, Poll},
 };
 
-use actix_service::{Service, Transform};
 use actix_tls::accept::openssl::TlsStream;
 use actix_web::{
     Error, HttpMessage,
     body::{BoxBody, EitherBody},
-    dev::{Extensions, ServiceRequest, ServiceResponse},
+    dev::{Extensions, Service, ServiceRequest, ServiceResponse, Transform},
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};

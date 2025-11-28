@@ -89,15 +89,12 @@ pub(crate) async fn grant_access(
     info!(
         user = user,
         access = access.to_string(),
-        "POST /access/grant {access:?} {user}"
+        "POST /access/grant"
     );
 
     kms.grant_access(&access, &user, None, privileged_users.as_ref().clone())
         .await?;
-    debug!(
-        "Access granted on {:?} for {:?} to {}",
-        access.unique_identifier, access.operation_types, access.user_id
-    );
+    debug!("Access granted on {}", access.user_id);
 
     Ok(Json(SuccessResponse {
         success: format!("Access for {} successfully added", access.user_id),
@@ -120,15 +117,12 @@ pub(crate) async fn revoke_access(
     info!(
         user = user,
         access = access.to_string(),
-        "POST /access/revoke {access:?} {user}"
+        "POST /access/revoke"
     );
 
     kms.revoke_access(&access, &user, None, privileged_users.as_ref().clone())
         .await?;
-    debug!(
-        "Access revoke on {:?} for {:?} to {}",
-        access.unique_identifier, access.operation_types, access.user_id
-    );
+    debug!("Access revoke for {}", access.user_id);
 
     Ok(Json(SuccessResponse {
         success: format!("Access for {} successfully deleted", access.user_id),

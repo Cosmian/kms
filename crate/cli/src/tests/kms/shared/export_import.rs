@@ -376,6 +376,7 @@ async fn test_google_cse_export_import() -> KmsCliResult<()> {
     info!("dek_id: {dek_id}");
 
     let wrapped_key_file = tmp_path.join("wrapped_key.bin");
+    // Export the key wrapped
     ExportSecretDataOrKeyAction {
         key_id: Some(dek_id.clone()),
         key_file: wrapped_key_file.clone(),

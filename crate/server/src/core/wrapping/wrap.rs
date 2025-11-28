@@ -107,6 +107,7 @@ pub(crate) async fn wrap_and_cache(
         EncodingOption::TTLVEncoding
     };
 
+    trace!("Wrapping key with id: {wrapping_key_id}");
     // wrap the current object
     Box::pin(wrap_object(
         object,

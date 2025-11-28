@@ -16,11 +16,11 @@ use std::{
 };
 
 use actix_http::{Request, body::MessageBody};
-use actix_service::Service;
-use actix_web::dev::ServiceResponse;
+use actix_web::dev::{Service, ServiceResponse};
 use alcoholic_jwt::JWKS;
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
+use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
@@ -119,18 +119,22 @@ where
 
     let object = read_object_from_json_ttlv_bytes(&symmetric_key)?;
 
+    // Set activation_date to current time to ensure key is immediately active
+    let mut attributes = object.attributes().cloned().unwrap_or_default();
+    attributes.activation_date = Some(time_normalize()?);
+
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         object_type: object.object_type(),
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: object.attributes().cloned().unwrap_or_default(),
+        attributes,
         object,
     };
 
     debug!("import request: {import_request}");
     let response: ImportResponse = test_utils::post_2_1(app, import_request).await?;
-    debug!("import response: {response:?}");
+    debug!("import response: {}", response);
 
     let access = Access {
         unique_identifier: Some(UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned())),
@@ -146,7 +150,7 @@ where
 
     let access_response: SuccessResponse =
         test_utils::post_json_with_uri(app, access, "/access/grant").await?;
-    debug!("grant response post: {access_response:?}");
+    debug!("grant response post: {:?}", access_response);
 
     Ok(())
 }
@@ -368,6 +372,13 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
             "../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.\
              json",
         ))?)?;
+
+    // Set activation_date to current time to ensure key is immediately active
+    // Note: Import operation truncates now to remove milliseconds, so we do the same
+    let activation_time = time_normalize()?;
+    let mut google_cse_attributes = google_cse_object.attributes().cloned().unwrap_or_default();
+    google_cse_attributes.activation_date = Some(activation_time);
+
     let google_cse_key = kms
         .import(
             Import {
@@ -375,7 +386,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 object_type: google_cse_object.object_type(),
                 replace_existing: Some(false),
                 key_wrap_type: None,
-                attributes: google_cse_object.attributes().cloned().unwrap_or_default(),
+                attributes: google_cse_attributes,
                 object: google_cse_object,
             },
             owner,

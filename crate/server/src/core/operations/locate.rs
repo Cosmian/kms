@@ -31,17 +31,32 @@ pub(crate) async fn locate(
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
-    // Filter the uids that match the access access structure
+    // Filter the uids that match the access access structure and exclude Destroyed objects by default.
+    // Per KMIP, destroyed objects should only be returned if explicitly requested via Storage Status Mask.
     let mut uids = Vec::new();
     if access_policy_from_attributes(&request.attributes).is_err() {
-        for (uid, _, attributes) in uids_attrs {
-            trace!("UID: {:?}, Attributes: {}", uid, attributes);
-            // If there is no access access structure, do not match and add, otherwise compare the access policies
+        for (uid, state, attributes) in uids_attrs {
+            trace!(
+                "UID: {:?}, State: {:?}, Attributes: {}",
+                uid, state, attributes
+            );
+            // Exclude destroyed objects unless caller explicitly constrained state (not currently exposed)
+            if matches!(state, State::Destroyed | State::Destroyed_Compromised) {
+                continue;
+            }
+            // If there is no access structure, accept; otherwise would compare the access policies
             uids.push(UniqueIdentifier::TextString(uid));
         }
     }
 
-    trace!("UIDs: {:?}", uids);
+    // Respect MaximumItems only when explicitly provided. If absent, return all matches.
+    if let Some(mi) = request.maximum_items {
+        let max_items = usize::try_from(mi.max(0))?;
+        if uids.len() > max_items {
+            uids.truncate(max_items);
+        }
+    }
+    trace!("UIDs count (post-truncate): {}", uids.len());
     let response = LocateResponse {
         located_items: Some(i32::try_from(uids.len())?),
         unique_identifier: if uids.is_empty() { None } else { Some(uids) },

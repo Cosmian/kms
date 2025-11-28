@@ -102,7 +102,7 @@ impl CreateKeyAction {
                 attributes.set_wrapping_key_id(wrapping_key_id);
             }
             let import_object_request =
-                import_object_request(self.key_id.clone(), object, None, false, false, &self.tags);
+                import_object_request(self.key_id.clone(), object, None, false, false, &self.tags)?;
             kms_rest_client
                 .import(import_object_request)
                 .await

@@ -26,7 +26,7 @@ if sys.version_info >= (3, 12):
             {
                 'operation': 'Version Check',
                 'status': 'error',
-                'error': f"Python {sys.version_info.major}.{sys.version_info.minor} is not supported. PyKMIP requires Python 3.11 or earlier due to ssl.wrap_socket deprecation.",
+                'error': f'Python {sys.version_info.major}.{sys.version_info.minor} is not supported. PyKMIP requires Python 3.11 or earlier due to ssl.wrap_socket deprecation.',
                 'solution': 'Install Python 3.11 and recreate virtual environment: rm -rf .venv && python3.11 -m venv .venv && source .venv/bin/activate && pip install PyKMIP',
             },
             indent=2,
@@ -43,7 +43,7 @@ except ImportError as e:
             {
                 'operation': 'Import Check',
                 'status': 'error',
-                'error': f"Failed to import PyKMIP: {str(e)}",
+                'error': f'Failed to import PyKMIP: {str(e)}',
                 'solution': 'Install PyKMIP: pip install PyKMIP',
             },
             indent=2,
@@ -58,7 +58,7 @@ except Exception as e:
                 {
                     'operation': 'SSL Check',
                     'status': 'error',
-                    'error': f"SSL compatibility issue: {str(e)}",
+                    'error': f'SSL compatibility issue: {str(e)}',
                     'solution': 'Use Python 3.11 or earlier. Current Python version has removed ssl.wrap_socket which PyKMIP requires.',
                 },
                 indent=2,
@@ -71,7 +71,7 @@ except Exception as e:
                 {
                     'operation': 'Import Check',
                     'status': 'error',
-                    'error': f"Unexpected import error: {str(e)}",
+                    'error': f'Unexpected import error: {str(e)}',
                 },
                 indent=2,
             )
@@ -118,7 +118,7 @@ def main():
 
         if args.verbose:
             print(
-                f"Connecting to KMIP server using configuration: {args.configuration}"
+                f'Connecting to KMIP server using configuration: {args.configuration}'
             )
 
         # Open connection
@@ -162,7 +162,7 @@ def main():
                 result = {
                     'operation': args.operation,
                     'status': 'error',
-                    'error': f"Unsupported operation: {args.operation}",
+                    'error': f'Unsupported operation: {args.operation}',
                 }
 
             # Output result as JSON for easy parsing
@@ -173,7 +173,7 @@ def main():
             error_result = {
                 'operation': args.operation,
                 'status': 'error',
-                'error': f"Unhandled exception in {args.operation} operation: {str(operation_error)}",
+                'error': f'Unhandled exception in {args.operation} operation: {str(operation_error)}',
                 'exception_type': type(operation_error).__name__,
             }
 
@@ -207,7 +207,7 @@ def main():
             result = {
                 'operation': args.operation,
                 'status': 'error',
-                'error': f"Connection or configuration error: {error_msg}",
+                'error': f'Connection or configuration error: {error_msg}',
             }
 
         print(json.dumps(result, indent=2))
@@ -218,7 +218,7 @@ def main():
         result = {
             'operation': args.operation,
             'status': 'error',
-            'error': f"Unexpected error: {str(unexpected_error)}",
+            'error': f'Unexpected error: {str(unexpected_error)}',
             'exception_type': type(unexpected_error).__name__,
         }
 
@@ -283,9 +283,9 @@ def perform_query(proxy, verbose=False):
                 }
             else:
                 # Query failed
-                error_msg = f"Query operation failed: {result.result_reason}"
+                error_msg = f'Query operation failed: {result.result_reason}'
                 if hasattr(result, 'result_message') and result.result_message:
-                    error_msg += f" - {result.result_message}"
+                    error_msg += f' - {result.result_message}'
 
                 response = {'operation': 'Query', 'status': 'error', 'error': error_msg}
         else:
@@ -342,6 +342,7 @@ def perform_create_symmetric_key(proxy, verbose=False):
         # Import necessary classes for template creation
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
+        from datetime import datetime, timezone
 
         # Create attribute factory
         attribute_factory = AttributeFactory()
@@ -361,10 +362,20 @@ def perform_create_symmetric_key(proxy, verbose=False):
                 enums.CryptographicUsageMask.DECRYPT,
             ],
         )
+        # Set Activation Date to now (UTC)
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
 
         # Create template
         template = cobjects.TemplateAttribute(
-            attributes=[algorithm_attr, length_attr, usage_attr]
+            attributes=[
+                algorithm_attr,
+                length_attr,
+                usage_attr,
+                activation_date_attr,
+            ]
         )
 
         # Create the key using proper KMIPProxy API
@@ -386,9 +397,9 @@ def perform_create_symmetric_key(proxy, verbose=False):
                 }
             else:
                 # Create failed
-                error_msg = f"Create operation failed: {result.result_reason}"
+                error_msg = f'Create operation failed: {result.result_reason}'
                 if hasattr(result, 'result_message') and result.result_message:
-                    error_msg += f" - {result.result_message}"
+                    error_msg += f' - {result.result_message}'
 
                 response = {
                     'operation': 'Create',
@@ -407,7 +418,7 @@ def perform_create_symmetric_key(proxy, verbose=False):
             }
 
         if verbose:
-            print(f"Created symmetric key with UID: {uid}")
+            print(f'Created symmetric key with UID: {uid}')
 
         return response
 
@@ -417,14 +428,14 @@ def perform_create_symmetric_key(proxy, verbose=False):
         return {
             'operation': 'Create',
             'status': 'error',
-            'error': f"Connection error: {str(e)}",
+            'error': f'Connection error: {str(e)}',
         }
     # pylint: disable=broad-exception-caught
     except Exception as e:  # Still catch any unexpected exceptions as fallback
         return {
             'operation': 'Create',
             'status': 'error',
-            'error': f"Unexpected error: {str(e)}",
+            'error': f'Unexpected error: {str(e)}',
         }
 
 
@@ -456,9 +467,9 @@ def perform_get_attributes(proxy, verbose=False):
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
             # Create failed
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'GetAttributes', 'status': 'error', 'error': error_msg}
 
@@ -485,7 +496,7 @@ def perform_get_attributes(proxy, verbose=False):
             else:
                 # Debug what's in the result
                 if verbose:
-                    print(f"GetAttributes result type: {type(attributes_result)}")
+                    print(f'GetAttributes result type: {type(attributes_result)}')
                     print(
                         f"Result attributes: {[attr for attr in dir(attributes_result) if not attr.startswith('_')]}"
                     )
@@ -504,7 +515,7 @@ def perform_get_attributes(proxy, verbose=False):
                     parsed_attributes[attr_name] = attr_value
                 except (ValueError, AttributeError, TypeError) as attr_error:
                     if verbose:
-                        print(f"Skipping attribute due to parsing error: {attr_error}")
+                        print(f'Skipping attribute due to parsing error: {attr_error}')
                     continue
 
             response = {
@@ -536,7 +547,7 @@ def perform_get_attributes(proxy, verbose=False):
             }
 
         if verbose:
-            print(f"Retrieved attributes for UID: {uid}")
+            print(f'Retrieved attributes for UID: {uid}')
 
         return response
 
@@ -579,20 +590,20 @@ def perform_destroy(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'Destroy', 'status': 'error', 'error': error_msg}
 
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         if verbose:
-            print(f"Created key with UID: {uid}")
+            print(f'Created key with UID: {uid}')
 
         # First revoke the key before destroying
         if verbose:
-            print(f"Revoking key with UID: {uid}")
+            print(f'Revoking key with UID: {uid}')
 
         revoke_result = proxy.revoke(
             revocation_reason=enums.RevocationReasonCode.CESSATION_OF_OPERATION,
@@ -607,18 +618,18 @@ def perform_destroy(proxy, verbose=False):
         if hasattr(revoke_result, 'result_status'):
             if revoke_result.result_status.value != enums.ResultStatus.SUCCESS:
                 revoke_success = False
-                revoke_error = f"Revoke failed: {revoke_result.result_reason}"
+                revoke_error = f'Revoke failed: {revoke_result.result_reason}'
                 if (
                     hasattr(revoke_result, 'result_message')
                     and revoke_result.result_message
                 ):
-                    revoke_error += f" - {revoke_result.result_message}"
+                    revoke_error += f' - {revoke_result.result_message}'
 
                 if verbose:
-                    print(f"Warning: {revoke_error}")
+                    print(f'Warning: {revoke_error}')
 
         if verbose and revoke_success:
-            print(f"Revoked key with UID: {uid}")
+            print(f'Revoked key with UID: {uid}')
 
         # Then destroy it
         destroy_result = proxy.destroy(uuid=uid)
@@ -639,12 +650,12 @@ def perform_destroy(proxy, verbose=False):
 
             else:
                 # Destroy failed
-                error_msg = f"Destroy operation failed: {destroy_result.result_reason}"
+                error_msg = f'Destroy operation failed: {destroy_result.result_reason}'
                 if (
                     hasattr(destroy_result, 'result_message')
                     and destroy_result.result_message
                 ):
-                    error_msg += f" - {destroy_result.result_message}"
+                    error_msg += f' - {destroy_result.result_message}'
 
                 response = {
                     'operation': 'Destroy',
@@ -671,7 +682,7 @@ def perform_destroy(proxy, verbose=False):
                 response['revoke_error'] = revoke_error
 
         if verbose:
-            print(f"Destroyed key with UID: {uid}")
+            print(f'Destroyed key with UID: {uid}')
 
         return response
 
@@ -694,6 +705,7 @@ def perform_decrypt(proxy: KMIPProxy, verbose=False):
 
     try:
         # Create a symmetric key for encryption using proper template approach
+        from datetime import datetime, timezone
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
 
@@ -711,13 +723,20 @@ def perform_decrypt(proxy: KMIPProxy, verbose=False):
         length_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
+        # Add activation date attribute
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         if verbose:
-            print(f"Created encryption key with UID: {uid}")
+            print(f'Created encryption key with UID: {uid}')
 
         # Test data to encrypt
         test_data = b'Hello, PyKMIP from Rust!'
@@ -816,10 +835,10 @@ def perform_create_keypair(proxy, verbose=False):
 
         # Debug: Check what's in the result
         if verbose:
-            print(f"Result type: {type(result)}")
-            print(f"Result status: {result.result_status}")
-            print(f"Result reason: {result.result_reason}")
-            print(f"Result message: {result.result_message}")
+            print(f'Result type: {type(result)}')
+            print(f'Result status: {result.result_status}')
+            print(f'Result reason: {result.result_reason}')
+            print(f'Result message: {result.result_message}')
             print(
                 f"Result attributes: {[attr for attr in dir(result) if not attr.startswith('_')]}"
             )
@@ -830,7 +849,7 @@ def perform_create_keypair(proxy, verbose=False):
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
             raise ValueError(
-                f"Create key pair failed: {result.result_reason} - {result.result_message}"
+                f'Create key pair failed: {result.result_reason} - {result.result_message}'
             )
 
         # Extract UIDs from result - try different possible attribute names
@@ -853,7 +872,7 @@ def perform_create_keypair(proxy, verbose=False):
 
         if verbose:
             print(
-                f"Created RSA key pair - Private: {private_uid}, Public: {public_uid}"
+                f'Created RSA key pair - Private: {private_uid}, Public: {public_uid}'
             )
 
         response = {
@@ -867,7 +886,7 @@ def perform_create_keypair(proxy, verbose=False):
 
         if verbose:
             print(
-                f"Created RSA key pair - Private: {private_uid}, Public: {public_uid}"
+                f'Created RSA key pair - Private: {private_uid}, Public: {public_uid}'
             )
 
         return response
@@ -910,7 +929,7 @@ def perform_locate(proxy, verbose=False):
                     located_uids = []
                     count = 0
                     if verbose:
-                        print(f"Locate result type: {type(result)}")
+                        print(f'Locate result type: {type(result)}')
                         print(
                             f"Locate result attributes: {[attr for attr in dir(result) if not attr.startswith('_')]}"
                         )
@@ -923,9 +942,9 @@ def perform_locate(proxy, verbose=False):
                 }
             else:
                 # Locate failed
-                error_msg = f"Locate operation failed: {result.result_reason}"
+                error_msg = f'Locate operation failed: {result.result_reason}'
                 if hasattr(result, 'result_message') and result.result_message:
-                    error_msg += f" - {result.result_message}"
+                    error_msg += f' - {result.result_message}'
 
                 response = {
                     'operation': 'Locate',
@@ -990,16 +1009,16 @@ def perform_revoke(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'Revoke', 'status': 'error', 'error': error_msg}
 
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         if verbose:
-            print(f"Created symmetric key with UID: {uid}")
+            print(f'Created symmetric key with UID: {uid}')
 
         result = proxy.revoke(
             revocation_reason=enums.RevocationReasonCode.CESSATION_OF_OPERATION,
@@ -1018,9 +1037,9 @@ def perform_revoke(proxy, verbose=False):
                 }
             else:
                 # Revoke failed
-                error_msg = f"Revoke operation failed: {result.result_reason}"
+                error_msg = f'Revoke operation failed: {result.result_reason}'
                 if hasattr(result, 'result_message') and result.result_message:
-                    error_msg += f" - {result.result_message}"
+                    error_msg += f' - {result.result_message}'
 
                 response = {
                     'operation': 'Revoke',
@@ -1036,7 +1055,7 @@ def perform_revoke(proxy, verbose=False):
                 'message': 'Key revoked successfully (result status unknown)',
             }
         if verbose:
-            print(f"Revoke operation completed for UID: {uid}")
+            print(f'Revoke operation completed for UID: {uid}')
 
         return response
 
@@ -1080,7 +1099,7 @@ def perform_discover_versions(proxy, verbose=False):
                 return {
                     'operation': 'DiscoverVersions',
                     'status': 'error',
-                    'error': f"Query failed: {query_result.result_reason}",
+                    'error': f'Query failed: {query_result.result_reason}',
                 }
 
         except (
@@ -1095,7 +1114,7 @@ def perform_discover_versions(proxy, verbose=False):
             return {
                 'operation': 'DiscoverVersions',
                 'status': 'error',
-                'error': f"Failed to query server information: {str(query_error)}",
+                'error': f'Failed to query server information: {str(query_error)}',
             }
 
         # Extract version and server information
@@ -1149,8 +1168,8 @@ def perform_discover_versions(proxy, verbose=False):
             print(
                 f"Negotiated protocol version: {version_info.get('negotiated_protocol_version', 'unknown')}"
             )
-            print(f"Supported operations: {supported_operations}")
-            print(f"Inferred KMIP versions: {supported_versions}")
+            print(f'Supported operations: {supported_operations}')
+            print(f'Inferred KMIP versions: {supported_versions}')
 
         response = {
             'operation': 'DiscoverVersions',
@@ -1207,23 +1226,23 @@ def perform_encrypt(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'Encrypt', 'status': 'error', 'error': error_msg}
 
         uid = result.uuid if hasattr(result, 'uuid') else str(result)
 
         if verbose:
-            print(f"Created encryption key with UID: {uid}")
+            print(f'Created encryption key with UID: {uid}')
 
         # Test data to encrypt
         test_data = b'Hello, PyKMIP Encrypt Test!'
 
         try:
             if verbose:
-                print(f"Attempting to encrypt data: {test_data}")
+                print(f'Attempting to encrypt data: {test_data}')
 
             # Encrypt the data (use default parameters)
             encrypt_result = proxy.encrypt(data=test_data, unique_identifier=uid)
@@ -1254,7 +1273,7 @@ def perform_encrypt(proxy, verbose=False):
             full_traceback = traceback.format_exc()
 
             if verbose:
-                print(f"Full error traceback:\n{full_traceback}")
+                print(f'Full error traceback:\n{full_traceback}')
 
             # Check for known KMIP compatibility issues
             if (
@@ -1266,7 +1285,7 @@ def perform_encrypt(proxy, verbose=False):
                     'status': 'error',
                     'uid': uid,
                     'error': 'KMIP version compatibility issue with encrypt operation',
-                    'technical_details': f"PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}",
+                    'technical_details': f'PyKMIP 1.2 parser incompatible with Cosmian KMS response format: {error_msg}',
                     'note': 'Key creation succeeded, but encrypt operation has protocol parsing issues',
                     'workaround': 'Use direct REST API or update PyKMIP for KMIP 2.x compatibility',
                     'full_traceback': full_traceback if verbose else None,
@@ -1322,9 +1341,9 @@ def perform_activate(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'Activate', 'status': 'error', 'error': error_msg}
 
@@ -1338,11 +1357,11 @@ def perform_activate(proxy, verbose=False):
             uid = str(result)
 
         if verbose:
-            print(f"Created key for activation with UID: {uid}")
+            print(f'Created key for activation with UID: {uid}')
 
         try:
             if verbose:
-                print(f"Attempting to activate object: {uid}")
+                print(f'Attempting to activate object: {uid}')
 
             # Activate the object
             activate_result = proxy.activate(uuid=uid)
@@ -1353,13 +1372,13 @@ def perform_activate(proxy, verbose=False):
                 and activate_result.result_status.value != enums.ResultStatus.SUCCESS
             ):
                 error_msg = (
-                    f"Activate operation failed: {activate_result.result_reason}"
+                    f'Activate operation failed: {activate_result.result_reason}'
                 )
                 if (
                     hasattr(activate_result, 'result_message')
                     and activate_result.result_message
                 ):
-                    error_msg += f" - {activate_result.result_message}"
+                    error_msg += f' - {activate_result.result_message}'
 
                 response = {
                     'operation': 'Activate',
@@ -1401,7 +1420,7 @@ def perform_activate(proxy, verbose=False):
             full_traceback = traceback.format_exc()
 
             if verbose:
-                print(f"Activate error traceback:\n{full_traceback}")
+                print(f'Activate error traceback:\n{full_traceback}')
 
             response = {
                 'operation': 'Activate',
@@ -1457,22 +1476,22 @@ def perform_mac(proxy, verbose=False):
             hasattr(result, 'result_status')
             and result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {result.result_reason}"
+            error_msg = f'Create operation failed: {result.result_reason}'
             if hasattr(result, 'result_message') and result.result_message:
-                error_msg += f" - {result.result_message}"
+                error_msg += f' - {result.result_message}'
 
             return {'operation': 'MAC', 'status': 'error', 'error': error_msg}
 
         uid = str(result.uuid) if hasattr(result, 'uuid') else str(result)
 
         if verbose:
-            print(f"Created MAC key with UID: {uid}")
+            print(f'Created MAC key with UID: {uid}')
 
         # Test data to generate MAC for
         test_data = b'Hello, PyKMIP MAC Test!'
 
         if verbose:
-            print(f"Attempting to generate MAC for data: {test_data}")
+            print(f'Attempting to generate MAC for data: {test_data}')
 
         # Create cryptographic parameters for HMAC-SHA256
         crypto_params = cobjects.CryptographicParameters(
@@ -1491,9 +1510,9 @@ def perform_mac(proxy, verbose=False):
             hasattr(mac_result, 'result_status')
             and mac_result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"MAC operation failed: {mac_result.result_reason}"
+            error_msg = f'MAC operation failed: {mac_result.result_reason}'
             if hasattr(mac_result, 'result_message') and mac_result.result_message:
-                error_msg += f" - {mac_result.result_message}"
+                error_msg += f' - {mac_result.result_message}'
 
             return {
                 'operation': 'MAC',
@@ -1516,7 +1535,7 @@ def perform_mac(proxy, verbose=False):
                     mac_hex = mac_result.mac_data.value.hex()
                     mac_length = len(mac_result.mac_data.value)
         except (ValueError, AttributeError, TypeError) as extract_error:
-            mac_hex = f"Error extracting MAC data: {str(extract_error)}"
+            mac_hex = f'Error extracting MAC data: {str(extract_error)}'
 
         response = {
             'operation': 'MAC',
@@ -1550,6 +1569,7 @@ def perform_get(proxy, verbose=False):
 
     try:
         # First create a symmetric key to retrieve
+        from datetime import datetime, timezone
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
 
@@ -1568,9 +1588,14 @@ def perform_get(proxy, verbose=False):
                 enums.CryptographicUsageMask.DECRYPT,
             ],
         )
+        # Set Activated state attribute
+        activated_state_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
 
         template = cobjects.TemplateAttribute(
-            attributes=[algorithm_attr, length_attr, usage_attr]
+            attributes=[algorithm_attr, length_attr, usage_attr, activated_state_attr]
         )
 
         # Create the key
@@ -1581,12 +1606,12 @@ def perform_get(proxy, verbose=False):
             hasattr(create_result, 'result_status')
             and create_result.result_status.value != enums.ResultStatus.SUCCESS
         ):
-            error_msg = f"Create operation failed: {create_result.result_reason}"
+            error_msg = f'Create operation failed: {create_result.result_reason}'
             if (
                 hasattr(create_result, 'result_message')
                 and create_result.result_message
             ):
-                error_msg += f" - {create_result.result_message}"
+                error_msg += f' - {create_result.result_message}'
 
             return {'operation': 'Get', 'status': 'error', 'error': error_msg}
 
@@ -1600,11 +1625,11 @@ def perform_get(proxy, verbose=False):
             uid = str(create_result)
 
         if verbose:
-            print(f"Created symmetric key with UID: {uid}")
+            print(f'Created symmetric key with UID: {uid}')
 
         try:
             if verbose:
-                print(f"Attempting to retrieve object with UID: {uid}")
+                print(f'Attempting to retrieve object with UID: {uid}')
 
             # Get the object using the Get operation
             get_result = proxy.get(uuid=uid)
@@ -1614,9 +1639,9 @@ def perform_get(proxy, verbose=False):
                 hasattr(get_result, 'result_status')
                 and get_result.result_status.value != enums.ResultStatus.SUCCESS
             ):
-                error_msg = f"Get operation failed: {get_result.result_reason}"
+                error_msg = f'Get operation failed: {get_result.result_reason}'
                 if hasattr(get_result, 'result_message') and get_result.result_message:
-                    error_msg += f" - {get_result.result_message}"
+                    error_msg += f' - {get_result.result_message}'
 
                 return {
                     'operation': 'Get',
@@ -1628,7 +1653,7 @@ def perform_get(proxy, verbose=False):
 
             if verbose:
                 print('Object retrieved successfully')
-                print(f"Get result type: {type(get_result)}")
+                print(f'Get result type: {type(get_result)}')
                 print(
                     f"Get result attributes: {[attr for attr in dir(get_result) if not attr.startswith('_')]}"
                 )
@@ -1661,7 +1686,7 @@ def perform_get(proxy, verbose=False):
 
             if managed_object:
                 if verbose:
-                    print(f"Managed object type: {type(managed_object)}")
+                    print(f'Managed object type: {type(managed_object)}')
                     print(
                         f"Managed object attributes: {[attr for attr in dir(managed_object) if not attr.startswith('_')]}"
                     )
@@ -1677,7 +1702,7 @@ def perform_get(proxy, verbose=False):
 
                 if key_block:
                     if verbose:
-                        print(f"Key block type: {type(key_block)}")
+                        print(f'Key block type: {type(key_block)}')
                         print(
                             f"Key block attributes: {[attr for attr in dir(key_block) if not attr.startswith('_')]}"
                         )
@@ -1697,11 +1722,11 @@ def perform_get(proxy, verbose=False):
                             else:
                                 object_format = str(format_enum)
                             if verbose:
-                                print(f"Key format type from .value: {object_format}")
+                                print(f'Key format type from .value: {object_format}')
                         else:
                             object_format = str(key_block.key_format_type)
                             if verbose:
-                                print(f"Key format type from str(): {object_format}")
+                                print(f'Key format type from str(): {object_format}')
                     elif verbose:
                         print('No key_format_type found in key_block')
 
@@ -1710,7 +1735,7 @@ def perform_get(proxy, verbose=False):
                         key_value = key_block.key_value
 
                         if verbose:
-                            print(f"Key value type: {type(key_value)}")
+                            print(f'Key value type: {type(key_value)}')
                             print(
                                 f"Key value attributes: {[attr for attr in dir(key_value) if not attr.startswith('_')]}"
                             )
@@ -1724,7 +1749,7 @@ def perform_get(proxy, verbose=False):
                             key_material_obj = key_value.key_material
                             if verbose:
                                 print(
-                                    f"Key material object type: {type(key_material_obj)}"
+                                    f'Key material object type: {type(key_material_obj)}'
                                 )
                                 print(
                                     f"Key material object attributes: {[attr for attr in dir(key_material_obj) if not attr.startswith('_')]}"
@@ -1766,8 +1791,8 @@ def perform_get(proxy, verbose=False):
                                     object_size = 0
 
                             if verbose:
-                                print(f"Key material type: {type(key_material)}")
-                                print(f"Key material size: {object_size} bytes")
+                                print(f'Key material type: {type(key_material)}')
+                                print(f'Key material size: {object_size} bytes')
                         elif verbose:
                             print('No key material found in key_value')
                     elif verbose:
@@ -1803,7 +1828,7 @@ def perform_get(proxy, verbose=False):
             full_traceback = traceback.format_exc()
 
             if verbose:
-                print(f"Get error traceback:\n{full_traceback}")
+                print(f'Get error traceback:\n{full_traceback}')
 
             return {
                 'operation': 'Get',

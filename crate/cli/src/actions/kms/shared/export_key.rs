@@ -208,6 +208,10 @@ impl ExportSecretDataOrKeyAction {
 }
 
 fn get_object_bytes(object: &Object) -> KmsCliResult<Vec<u8>> {
+    // OpaqueObject does not have a KeyBlock; return its raw bytes directly
+    if let Object::OpaqueObject(o) = object {
+        return Ok(o.opaque_data_value.clone());
+    }
     let key_block = object.key_block()?;
     match key_block
         .key_value

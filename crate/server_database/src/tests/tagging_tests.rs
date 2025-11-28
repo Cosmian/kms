@@ -77,8 +77,8 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         ..Attributes::default()
     };
     expected_attributes.set_tags(["_kk".to_owned()])?;
-    assert_eq!(State::Active, owm.state());
-    assert!(&symmetric_key == owm.object());
+    assert_eq!(State::PreActive, owm.state());
+    assert_eq!(&symmetric_key, owm.object());
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert_eq!(tags.len(), 2);
@@ -100,7 +100,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert!(owm.attributes() == &expected_attributes);
     }
-    assert_eq!(owm.state(), State::Active);
+    assert_eq!(owm.state(), State::PreActive);
 
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
@@ -120,7 +120,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert!(owm.attributes() == &expected_attributes);
     }
-    assert_eq!(owm.state(), State::Active);
+    assert_eq!(owm.state(), State::PreActive);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));
@@ -142,7 +142,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     if verify_attributes {
         assert!(owm.attributes() == &expected_attributes);
     }
-    assert_eq!(owm.state(), State::Active);
+    assert_eq!(owm.state(), State::PreActive);
     let tags = db.retrieve_tags(owm.id(), db_params.clone()).await?;
     assert!(tags.contains("tag1"));
     assert!(tags.contains("tag2"));

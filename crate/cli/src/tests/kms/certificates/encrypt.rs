@@ -11,7 +11,7 @@ use cosmian_logger::debug;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
-use crate::error::result::KmsCliResult;
+use crate::error::{KmsCliError, result::KmsCliResult};
 
 #[cfg(feature = "non-fips")]
 async fn test_certificate_import_encrypt(
@@ -93,13 +93,14 @@ async fn test_certificate_import_encrypt(
         }
         .run(ctx.get_owner_client()),
     )
-    .await?;
+    .await?
+    .ok_or_else(|| KmsCliError::Default("Failed to import certificate".to_owned()))?;
 
     debug!("\n\nEncrypt With Certificate");
 
     EncryptCertificateAction {
         input_file: input_file.clone(),
-        certificate_id,
+        certificate_id: Some(certificate_id),
         tags: None,
         output_file: Some(output_file.clone()),
         authentication_data: None,
@@ -196,12 +197,13 @@ async fn import_encrypt_decrypt(
         }
         .run(ctx.get_owner_client()),
     )
-    .await?;
+    .await?
+    .ok_or_else(|| KmsCliError::Default("Failed to import certificate".to_owned()))?;
 
     debug!("\n\nEncrypt With Certificate");
     EncryptCertificateAction {
         input_file: input_file.clone(),
-        certificate_id,
+        certificate_id: Some(certificate_id),
         tags: None,
         output_file: Some(output_file.clone()),
         authentication_data: None,

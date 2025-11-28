@@ -307,7 +307,33 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     .map_err(|e| TtlvError::from(format!("Integer conversion error{e}")))?;
                 visitor.visit_u8(value)
             }
-            _ => Err(TtlvError::from("Expected Integer value in TTLV for u8")),
+            TTLValue::LongInteger(i) => {
+                if *i < 0 {
+                    return Err(TtlvError::from(
+                        "Cannot convert negative long integer to u8",
+                    ));
+                }
+                let value: u8 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("LongInteger conversion error{e}")))?;
+                visitor.visit_u8(value)
+            }
+            TTLValue::Enumeration(e) => {
+                // Some small numeric fields may have been encoded as Enumeration; accept if within range
+                if e.value > u32::from(u8::MAX) {
+                    return Err(TtlvError::from(format!(
+                        "Enumeration value {} too large for u8",
+                        e.value
+                    )));
+                }
+                let value = u8::try_from(e.value).map_err(|_e| {
+                    TtlvError::from("Enumeration value conversion to u8 failed".to_owned())
+                })?;
+                visitor.visit_u8(value)
+            }
+            x => Err(TtlvError::from(format!(
+                "Expected Integer/LongInteger/Enumeration value in TTLV for u8, got: {x:?}"
+            ))),
         }
     }
 
@@ -379,6 +405,13 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!("deserialize_i32: state:  {:?}", self.current);
         match &self.fetch_element()?.value {
             TTLValue::Integer(i) => visitor.visit_i32(*i),
+            TTLValue::Interval(i) => {
+                // KMIP Interval is encoded as an unsigned 32-bit value; accept it for i32 fields
+                let v: i32 = (*i)
+                    .try_into()
+                    .map_err(|e| TtlvError::from(format!("Interval conversion error{e}")))?;
+                visitor.visit_i32(v)
+            }
             _ => Err(TtlvError::from("Expected Integer value in TTLV for i32")),
         }
     }
@@ -391,9 +424,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!("deserialize_i64: state:  {:?}", self.current);
         match &self.fetch_element()?.value {
             TTLValue::LongInteger(i) => visitor.visit_i64(*i),
-            _ => Err(TtlvError::from(
-                "Expected LongInteger value in TTLV for i64",
-            )),
+            TTLValue::Integer(i) => {
+                // KMIP Integer is 32-bit; widen to 64-bit when the target expects a LongInteger/i64.
+                // This situation arises in some test vectors where XML supplies an <Integer> but
+                // the model expects a LongInteger. Accept as a lossless widening.
+                let widened: i64 = i64::from(*i);
+                visitor.visit_i64(widened)
+            }
+            TTLValue::Interval(i) => {
+                // KMIP 1.4 LeaseTime uses Interval (u32). This widening is for other i64 fields that accept Interval.
+                visitor.visit_i64(i64::from(*i))
+            }
+            other => Err(TtlvError::from(format!(
+                "Expected LongInteger (or Integer for widening) value in TTLV for i64, got: {other:?}"
+            ))),
         }
     }
 
@@ -485,10 +529,47 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         if let TTLValue::TextString(s) = &element.value {
             trace!("... text string: value: {}", s);
             visitor.visit_str(s)
+        } else if let TTLValue::ByteString(bytes) = &element.value {
+            // Some KMIP 2.1 interop vectors encode ShortUniqueIdentifier as a ByteString even though
+            // the internal representation in our model is a String. Coerce by hex encoding.
+            if element.tag == "ShortUniqueIdentifier" {
+                let hexed = hex::encode(bytes);
+                trace!(
+                    "... coerced ShortUniqueIdentifier ByteString -> hex string: {}",
+                    hexed
+                );
+                visitor.visit_string(hexed)
+            } else {
+                let actual = "ByteString";
+                Err(TtlvError::from(format!(
+                    "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
+                    element.tag, actual
+                )))
+            }
         } else {
-            Err(TtlvError::from(
-                "deserialize_str: expected a TextString value in TTLV",
-            ))
+            let actual = match &element.value {
+                TTLValue::Integer(_) => "Integer",
+                TTLValue::LongInteger(_) => "LongInteger",
+                TTLValue::BigInteger(_) => "BigInteger",
+                TTLValue::Enumeration(e) => {
+                    if e.name.is_empty() {
+                        "Enumeration(code)"
+                    } else {
+                        "Enumeration(name)"
+                    }
+                }
+                TTLValue::Boolean(_) => "Boolean",
+                TTLValue::ByteString(_) => "ByteString",
+                TTLValue::DateTime(_) => "DateTime",
+                TTLValue::DateTimeExtended(_) => "DateTimeExtended",
+                TTLValue::Interval(_) => "Interval",
+                TTLValue::Structure(_) => "Structure",
+                TTLValue::TextString(_) => "TextString",
+            };
+            Err(TtlvError::from(format!(
+                "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
+                element.tag, actual
+            )))
         }
     }
 
@@ -538,18 +619,20 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     }
 
     // In Serde, unit means an anonymous value containing no data.
-    #[instrument(level = "trace", skip(self, _visitor))]
-    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
         trace!("deserialize_unit: state:  {:?}", self.current);
-        unimplemented!("deserialize_unit");
+        // KMIP does not have an explicit Unit representation; when a unit is expected,
+        // just signal an empty value to the visitor.
+        visitor.visit_unit()
     }
 
     // Unit struct means a named value containing no data.
-    #[instrument(level = "trace", skip(self, _visitor))]
-    fn deserialize_unit_struct<V>(self, name: &'static str, _visitor: V) -> Result<V::Value>
+    #[instrument(level = "trace", skip(self, visitor))]
+    fn deserialize_unit_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -557,7 +640,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_unit_struct with name: {name}, state:  {:?}",
             self
         );
-        unimplemented!("deserialize_unit_struct");
+        // Treat unit structs as units; the name is only informational.
+        visitor.visit_unit()
     }
 
     // As is done here, serializers are encouraged to treat newtype structs as
@@ -830,7 +914,10 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 at_root: RwLock::new(false),
             }))
         } else {
-            Err(TtlvError::from("Expected Structure value in TTLV"))
+            Err(TtlvError::from(format!(
+                "Expected Structure value in TTLV while deserializing struct '{name}' (tag='{}', actual={:?})",
+                element.tag, element.value
+            )))
         }
     }
 
@@ -869,15 +956,65 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // if the TTLV value is a Structure, we will deserialize the single child
                 // using the EnumWalker
                 TTLValue::Structure(children) => {
-                    if children.len() != 1 {
-                        return Err(TtlvError::from(format!(
-                            "Deserializing an enum of tag: {}: expected a child structure with \
-                             only one child",
-                            element.tag
-                        )));
+                    // Special case: KMIP 2.1 Vendor Attribute structure encoded directly as:
+                    // <Attribute><VendorIdentification/><AttributeName/><AttributeValue/></Attribute>
+                    // This has 3 children and should deserialize to the enum variant
+                    // Attribute::VendorAttribute(VendorAttribute { .. }). Our strict single-child
+                    // logic would normally reject this, so detect this pattern explicitly.
+                    if element.tag == "Attribute" {
+                        let mut has_vendor_id = false;
+                        let mut has_attr_name = false;
+                        let mut has_attr_value = false;
+                        for c in children {
+                            match c.tag.as_str() {
+                                "VendorIdentification" => has_vendor_id = true,
+                                "AttributeName" => has_attr_name = true,
+                                "AttributeValue" => has_attr_value = true,
+                                _ => {}
+                            }
+                        }
+                        if has_vendor_id && has_attr_name && has_attr_value {
+                            trace!(
+                                "... detected VendorAttribute triple children; deserializing element itself as enum variant"
+                            );
+                            return visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
+                                current: element.clone(),
+                                child_index: 0,
+                                map_state: MapAccessState::None,
+                                at_root: RwLock::new(true),
+                            }));
+                        }
                     }
-                    // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
-                    // which will iterate over the children of the structure as it were a map of properties to values
+                    if children.len() != 1 {
+                        // KMIP Attribute structures in some vectors may encode as:
+                        // Attribute -> AttributeName + <ActualAttributeValueStructure>
+                        // Accept this pattern by selecting the single non-AttributeName child.
+                        // Still error if pattern does not match this relaxed form.
+                        let mut candidate = None;
+                        for c in children {
+                            if c.tag != "AttributeName" {
+                                if candidate.is_some() {
+                                    return Err(TtlvError::from(format!(
+                                        "Deserializing an enum of tag: {}: unexpected multiple non-AttributeName children",
+                                        element.tag
+                                    )));
+                                }
+                                candidate = Some(c.clone());
+                            }
+                        }
+                        let selected = candidate.ok_or_else(|| {
+                            TtlvError::from(format!(
+                                "Deserializing an enum of tag: {}: could not locate attribute value child",
+                                element.tag
+                            ))
+                        })?;
+                        return visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
+                            current: selected,
+                            child_index: 0,
+                            map_state: MapAccessState::None,
+                            at_root: RwLock::new(true),
+                        }));
+                    }
                     visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
                         current: children
                             .first()

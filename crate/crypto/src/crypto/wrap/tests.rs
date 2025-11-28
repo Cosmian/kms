@@ -144,10 +144,7 @@ fn wrap_test(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
-        assert_eq!(
-            key_to_wrap.key_block()?.key_wrapping_data,
-            Some(KeyWrappingData::default())
-        );
+        assert!(key_to_wrap.key_block()?.key_wrapping_data == Some(KeyWrappingData::default()));
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
@@ -157,7 +154,7 @@ fn wrap_test(
             },
             key_to_wrap_bytes
         );
-        assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
+        assert!(key_to_wrap.key_block()?.key_wrapping_data.is_none());
     };
 
     // TTLV encoding
@@ -175,12 +172,12 @@ fn wrap_test(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
             key_to_wrap_bytes
         );
-        assert_eq!(
-            key_to_wrap.key_block()?.key_wrapping_data,
-            Some(KeyWrappingData {
-                encoding_option: Some(EncodingOption::TTLVEncoding),
-                ..Default::default()
-            })
+        assert!(
+            key_to_wrap.key_block()?.key_wrapping_data
+                == Some(KeyWrappingData {
+                    encoding_option: Some(EncodingOption::TTLVEncoding),
+                    ..Default::default()
+                })
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
@@ -191,7 +188,7 @@ fn wrap_test(
             },
             key_to_wrap_bytes
         );
-        assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
+        assert!(key_to_wrap.key_block()?.key_wrapping_data.is_none());
     };
 
     Ok(())

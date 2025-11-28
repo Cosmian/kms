@@ -128,6 +128,14 @@ if [ -f /etc/lsb-release ]; then
     HSM_MODEL="utimaco" \
     HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
     HSM_SLOT_ID=$UTIMACO_HSM_SLOT_ID \
+    cargo test -p cosmian_kms_cli --target "$TARGET" $RELEASE $FEATURES -- --nocapture kmip_2_1_xml_pkcs11_m_1_21 --ignored
+
+  # shellcheck disable=SC2086
+  sudo -E env "PATH=$PATH" \
+    RUST_LOG="cosmian_kms_cli=trace,cosmian_kms_server=trace" \
+    HSM_MODEL="utimaco" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID=$UTIMACO_HSM_SLOT_ID \
     TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" \
     TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \

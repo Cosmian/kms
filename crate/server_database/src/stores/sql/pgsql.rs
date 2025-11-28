@@ -7,7 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -368,14 +368,25 @@ pub(super) async fn create_(
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    sqlx::query(get_pgsql_query!("insert-objects"))
+    // Try to insert the object
+    match sqlx::query(get_pgsql_query!("insert-objects"))
         .bind(uid.clone())
         .bind(object_json)
         .bind(attributes_json)
-        .bind(State::Active.to_string())
+        .bind(attributes.state.unwrap_or(State::PreActive).to_string())
         .bind(owner)
         .execute(&mut **executor)
-        .await?;
+        .await
+    {
+        Ok(_) => {}
+        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
+            return Err(DbError::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                format!("Object with UID '{uid}' already exists"),
+            ));
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     // Insert the tags
     for tag in tags {
@@ -764,7 +775,7 @@ where
         user,
         user_must_be_owner,
     );
-    trace!("find_: {query:?}");
+    trace!("{query:?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 

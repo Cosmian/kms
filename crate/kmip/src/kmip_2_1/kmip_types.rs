@@ -39,6 +39,8 @@ pub enum CertificateRequestType {
 #[kmip_enum]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
+    /// Vendor-specific opaque data type used in interoperability test vectors
+    Vendor = 0x8012_3456,
 }
 
 #[kmip_enum]
@@ -217,6 +219,18 @@ impl Default for CryptographicDomainParameters {
     }
 }
 
+impl Display for CryptographicDomainParameters {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if let Some(qlen) = &self.qlength {
+            writeln!(f, "    Q Length: {qlen}")?;
+        }
+        if let Some(curve) = &self.recommended_curve {
+            writeln!(f, "    Recommended Curve: {curve}")?;
+        }
+        Ok(())
+    }
+}
+
 #[kmip_enum]
 pub enum DerivationMethod {
     PBKDF2 = 0x0000_0001,
@@ -353,6 +367,56 @@ bitflags::bitflags! {
         // Extensions XXX00000
     }
 }
+
+impl Display for ProtectionStorageMasks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.contains(Self::Software) {
+            parts.push("Software");
+        }
+        if self.contains(Self::Hardware) {
+            parts.push("Hardware");
+        }
+        if self.contains(Self::OnProcessor) {
+            parts.push("On Processor");
+        }
+        if self.contains(Self::OnSystem) {
+            parts.push("On System");
+        }
+        if self.contains(Self::OffSystem) {
+            parts.push("Off System");
+        }
+        if self.contains(Self::Hypervisor) {
+            parts.push("Hypervisor");
+        }
+        if self.contains(Self::OperatingSystem) {
+            parts.push("Operating System");
+        }
+        if self.contains(Self::Container) {
+            parts.push("Container");
+        }
+        if self.contains(Self::OnPremises) {
+            parts.push("On Premises");
+        }
+        if self.contains(Self::OffPremises) {
+            parts.push("Off Premises");
+        }
+        if self.contains(Self::SelfManaged) {
+            parts.push("Self Managed");
+        }
+        if self.contains(Self::Outsourced) {
+            parts.push("Outsourced");
+        }
+        if self.contains(Self::Validated) {
+            parts.push("Validated");
+        }
+        if self.contains(Self::SameJurisdiction) {
+            parts.push("Same Jurisdiction");
+        }
+        write!(f, "{}", parts.join(" | "))
+    }
+}
+
 impl Serialize for ProtectionStorageMasks {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -434,6 +498,23 @@ bitflags::bitflags! {
         // Extensions XXXXXXX0
     }
 }
+
+impl Display for StorageStatusMask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.contains(Self::OnlineStorage) {
+            parts.push("Online Storage");
+        }
+        if self.contains(Self::ArchivalStorage) {
+            parts.push("Archival Storage");
+        }
+        if self.contains(Self::DestroyedStorage) {
+            parts.push("Destroyed Storage");
+        }
+        write!(f, "{}", parts.join(" | "))
+    }
+}
+
 impl Serialize for StorageStatusMask {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -442,6 +523,7 @@ impl Serialize for StorageStatusMask {
         serializer.serialize_i32(i32::try_from(self.bits()).map_err(serde::ser::Error::custom)?)
     }
 }
+
 impl<'de> Deserialize<'de> for StorageStatusMask {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -569,7 +651,7 @@ pub enum UniqueIdentifierEnumeration {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum LinkedObjectIdentifier {
     /// Unique Identifier of a Managed Object.
@@ -628,11 +710,21 @@ impl From<UniqueIdentifier> for LinkedObjectIdentifier {
 /// material is not available to the server or client (e.g., the registration of
 /// a CA Signer certificate with a server, where the corresponding private key
 /// is held in a different manner).
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Link {
     pub link_type: LinkType,
     pub linked_object_identifier: LinkedObjectIdentifier,
+}
+
+impl Display for Link {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Link {{ link_type: {}, linked_object_identifier: {} }}",
+            self.link_type, self.linked_object_identifier
+        )
+    }
 }
 
 /// A vendor specific Attribute is a structure used for sending and receiving
@@ -650,7 +742,7 @@ pub struct Link {
 /// Vendor Attributes created by the server with Vendor Identification "y"
 /// are not created (provided during object creation), set, added, adjusted,
 /// modified or deleted by the client.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct VendorAttribute {
     /// Text String (with usage limited to alphanumeric, underscore and period –
@@ -665,7 +757,7 @@ impl Display for VendorAttribute {
         write!(
             f,
             "VendorAttribute {{ vendor_identification: {}, attribute_name: {}, attribute_value: \
-             {:?} }}",
+             {} }}",
             self.vendor_identification, self.attribute_name, self.attribute_value
         )
     }
@@ -684,7 +776,7 @@ impl Display for VendorAttribute {
 /// The serialization and deserialization to TTLV of this adjacently tagged enum
 /// involves special treatment in the KMIP serializer and deserializer.
 /// In particular, the name of the variants must match the `TTLValue` variant names EXACTLY.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(tag = "_t", content = "_c")]
 pub enum VendorAttributeValue {
     TextString(String),
@@ -716,7 +808,7 @@ impl Display for VendorAttributeValue {
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertificateAttributes {
     // Certificate Subject CN
@@ -767,6 +859,28 @@ pub struct CertificateAttributes {
     pub certificate_issuer_dc: String,
     // Certificate Issuer DN Qualifier
     pub certificate_issuer_dn_qualifier: String,
+}
+
+impl Display for CertificateAttributes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CertificateAttributes {{ CN: {}, O: {}, OU: {}, Email: {}, C: {}, ST: {}, L: {}, \
+             UID: {}, Serial Number: {}, Title: {}, DC: {}, DN Qualifier: {} }}",
+            self.certificate_subject_cn,
+            self.certificate_subject_o,
+            self.certificate_subject_ou,
+            self.certificate_subject_email,
+            self.certificate_subject_c,
+            self.certificate_subject_st,
+            self.certificate_subject_l,
+            self.certificate_subject_uid,
+            self.certificate_subject_serial_number,
+            self.certificate_subject_title,
+            self.certificate_subject_dc,
+            self.certificate_subject_dn_qualifier
+        )
+    }
 }
 
 impl CertificateAttributes {
@@ -834,6 +948,19 @@ pub struct VendorAttributeReference {
 pub enum AttributeReference {
     Vendor(VendorAttributeReference),
     Standard(Tag),
+}
+
+impl Display for AttributeReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Vendor(v) => write!(
+                f,
+                "VendorAttributeReference {{ vendor_identification: {}, attribute_name: {} }}",
+                v.vendor_identification, v.attribute_name
+            ),
+            Self::Standard(t) => write!(f, "Tag::{t}"),
+        }
+    }
 }
 
 impl AttributeReference {
@@ -1256,7 +1383,7 @@ pub enum DigitalSignatureAlgorithm {
 ///
 /// Initial Counter Value is the starting counter value for CTR mode (for
 /// RFC3686 it is 1).
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1304,9 +1431,70 @@ pub struct CryptographicParameters {
     pub trailer_field: Option<i32>,
 }
 
+impl Display for CryptographicParameters {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(v) = &self.block_cipher_mode {
+            parts.push(format!("BlockCipherMode: {v}"));
+        }
+        if let Some(v) = &self.padding_method {
+            parts.push(format!("PaddingMethod: {v}"));
+        }
+        if let Some(v) = &self.hashing_algorithm {
+            parts.push(format!("HashingAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.key_role_type {
+            parts.push(format!("KeyRoleType: {v}"));
+        }
+        if let Some(v) = &self.digital_signature_algorithm {
+            parts.push(format!("DigitalSignatureAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.cryptographic_algorithm {
+            parts.push(format!("CryptographicAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.random_iv {
+            parts.push(format!("RandomIV: {v}"));
+        }
+        if let Some(v) = &self.iv_length {
+            parts.push(format!("IVLength: {v}"));
+        }
+        if let Some(v) = &self.tag_length {
+            parts.push(format!("TagLength: {v}"));
+        }
+        if let Some(v) = &self.fixed_field_length {
+            parts.push(format!("FixedFieldLength: {v}"));
+        }
+        if let Some(v) = &self.invocation_field_length {
+            parts.push(format!("InvocationFieldLength: {v}"));
+        }
+        if let Some(v) = &self.counter_length {
+            parts.push(format!("CounterLength: {v}"));
+        }
+        if let Some(v) = &self.initial_counter_value {
+            parts.push(format!("InitialCounterValue: {v}"));
+        }
+        if let Some(v) = &self.salt_length {
+            parts.push(format!("SaltLength: {v}"));
+        }
+        if let Some(v) = &self.mask_generator {
+            parts.push(format!("MaskGenerator: {v}"));
+        }
+        if let Some(v) = &self.mask_generator_hashing_algorithm {
+            parts.push(format!("MaskGeneratorHashingAlgorithm: {v}"));
+        }
+        if let Some(p_source) = &self.p_source {
+            parts.push(format!("PSource: {}", hex::encode(p_source)));
+        }
+        if let Some(v) = &self.trailer_field {
+            parts.push(format!("TrailerField: {v}"));
+        }
+        write!(f, "CryptographicParameters({})", parts.join(", "))
+    }
+}
+
 /// Contains the Unique Identifier value of the encryption key and
 /// associated cryptographic parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
@@ -1314,12 +1502,38 @@ pub struct EncryptionKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+impl Display for EncryptionKeyInformation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EncryptionKeyInformation(id: {}, params: {})",
+            self.unique_identifier,
+            self.cryptographic_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+}
+
+impl Display for MacSignatureKeyInformation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MacSignatureKeyInformation(id: {}, params: {})",
+            self.unique_identifier,
+            self.cryptographic_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+        )
+    }
 }
 
 #[kmip_enum]
@@ -1349,7 +1563,7 @@ pub enum EncodingOption {
 /// The digest(s) are static and SHALL be set by the server when the object is created or registered,
 /// provided that the server has access to the Key Material
 /// or the Digest Value (possibly obtained via out-of-band mechanisms).
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Digest {
     pub hashing_algorithm: HashingAlgorithm,
@@ -1379,7 +1593,7 @@ impl Display for Digest {
 ///
 /// This attribute SHALL be assigned by the key management system at creation or registration time,
 /// and then SHALL NOT be changed or deleted before the object is destroyed.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
 #[serde(untagged)]
 pub enum UniqueIdentifier {
     TextString(String),
@@ -1426,14 +1640,20 @@ impl UniqueIdentifier {
     }
 }
 
-impl From<LinkedObjectIdentifier> for UniqueIdentifier {
-    fn from(value: LinkedObjectIdentifier) -> Self {
-        match value {
+impl TryFrom<LinkedObjectIdentifier> for UniqueIdentifier {
+    type Error = KmipError;
+
+    fn try_from(value: LinkedObjectIdentifier) -> Result<Self, Self::Error> {
+        Ok(match value {
             LinkedObjectIdentifier::TextString(s) => Self::TextString(s),
             LinkedObjectIdentifier::Enumeration(e) => Self::Enumeration(e),
-            #[expect(clippy::cast_possible_truncation, clippy::as_conversions)]
-            LinkedObjectIdentifier::Index(i) => Self::Integer(i as i32),
-        }
+            LinkedObjectIdentifier::Index(i) => {
+                let v = i32::try_from(i).map_err(|_e| {
+                    KmipError::Default("linked object index out of i32 range".into())
+                })?;
+                Self::Integer(v)
+            }
+        })
     }
 }
 
@@ -1545,18 +1765,21 @@ pub enum NistKeyType {
     HMACSHA512 = 0xF,
 }
 
-/// `ProtectionLevel` enumeration indicates the level of protection required for an object
+/// `ProtectionLevel` enumeration indicates the level of protection required for an object (KMIP 2.1 Profiles test vectors use Low/High)
 #[kmip_enum]
 pub enum ProtectionLevel {
-    Software = 0x1,
-    Hardware = 0x2,
-    Hybrid = 0x3,
+    High = 0x1,
+    Low = 0x2,
 }
 
 /// `RandomNumberGenerator` structure contains details of the random number generation
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RandomNumberGenerator {
+    // Ensure KMIP-compliant field name RNGAlgorithm instead of the default RngAlgorithm
+    // produced by rename_all = "PascalCase" so that tag mapping remains consistent and
+    // avoids Unknown Tag errors when round-tripping through XML/TTLV.
+    #[serde(rename = "RNGAlgorithm")]
     pub rng_algorithm: RNGAlgorithm,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1574,14 +1797,53 @@ pub struct RandomNumberGenerator {
     pub prediction_resistance: Option<bool>,
 }
 
+impl Display for RandomNumberGenerator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(format!("RNGAlgorithm: {}", self.rng_algorithm));
+        if let Some(v) = &self.cryptographic_algorithm {
+            parts.push(format!("CryptographicAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.cryptographic_length {
+            parts.push(format!("CryptographicLength: {v}"));
+        }
+        if let Some(v) = &self.hashing_algorithm {
+            parts.push(format!("HashingAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.drbg_algorithm {
+            parts.push(format!("DRBGAlgorithm: {v}"));
+        }
+        if let Some(v) = &self.recommended_curve {
+            parts.push(format!("RecommendedCurve: {v}"));
+        }
+        if let Some(v) = &self.fips186_variation {
+            parts.push(format!("FIPS186Variation: {v}"));
+        }
+        if let Some(v) = &self.prediction_resistance {
+            parts.push(format!("PredictionResistance: {v}"));
+        }
+        write!(f, "RandomNumberGenerator({})", parts.join(", "))
+    }
+}
+
 /// Name structure for identifying Managed Objects
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Name {
     /// The Name Value
     pub name_value: String,
     /// The Name Type
     pub name_type: NameType,
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Name(value: {}, type: {})",
+            self.name_value, self.name_type
+        )
+    }
 }
 
 /// `NameType` enumeration defines the type of name used to identify managed objects
@@ -1695,4 +1957,94 @@ pub enum ItemType {
     DateTime = 0x0000_0009,
     Interval = 0x0000_000A,
     DateTimeExtended = 0x0000_000B,
+}
+
+impl TryFrom<ItemType> for i32 {
+    type Error = KmipError;
+
+    fn try_from(value: ItemType) -> Result<Self, Self::Error> {
+        #[expect(clippy::as_conversions)]
+        // This conversion is idiomatic for items marked with #[repr(u32)]
+        Self::try_from(value as u32).map_err(|e| {
+            KmipError::ConversionError(format!("Failed to convert ItemType to i32: {e}"))
+        })
+    }
+}
+
+/// Batch Error Continuation Option enumeration (KMIP 2.x) - aligns with KMIP 1.x values.
+#[kmip_enum]
+pub enum BatchErrorContinuationOption {
+    Continue = 0x01,
+    Stop = 0x02,
+    Undo = 0x03,
+}
+
+// --------------------------
+// Usage Limits (KMIP 2.1)
+// --------------------------
+
+/// `UsageLimitsUnit` for KMIP 2.x extends the 1.x set with Block and Operation.
+/// Spec text (2.1) indicates units can be Byte, Block, Object, Operation.
+#[kmip_enum]
+pub enum UsageLimitsUnit {
+    Byte = 0x1,
+    Block = 0x2,
+    Object = 0x3,
+    Operation = 0x4,
+}
+
+/// KMIP 2.1 `UsageLimits` structure. Count MAY be omitted in requests (e.g. Locate test vectors
+/// provide only Total + Unit). Total is kept mandatory to preserve semantics (adjust if future
+/// vectors show it can be absent too).
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct UsageLimits {
+    pub usage_limits_unit: UsageLimitsUnit,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits_count: Option<i64>,
+    pub usage_limits_total: i64,
+}
+
+impl Display for UsageLimits {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "UsageLimits(unit: {}, count: {:?}, total: {})",
+            self.usage_limits_unit, self.usage_limits_count, self.usage_limits_total
+        )
+    }
+}
+
+// Conversions with KMIP 1.x structure (which requires count & only supports Byte/Object units)
+impl From<crate::kmip_0::kmip_types::UsageLimits> for UsageLimits {
+    fn from(v: crate::kmip_0::kmip_types::UsageLimits) -> Self {
+        // Map 1.x units (Byte=0x1, Object=0x2) to 2.x (Byte=0x1, Object=0x3)
+        let unit = match v.usage_limits_unit {
+            crate::kmip_0::kmip_types::UsageLimitsUnit::Byte => UsageLimitsUnit::Byte,
+            crate::kmip_0::kmip_types::UsageLimitsUnit::Object => UsageLimitsUnit::Object,
+        };
+        Self {
+            usage_limits_unit: unit,
+            usage_limits_count: v.usage_limits_count,
+            usage_limits_total: v.usage_limits_total,
+        }
+    }
+}
+
+impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
+    fn from(v: UsageLimits) -> Self {
+        // Collapse unsupported units for 1.x to Object when not Byte/Object
+        let unit = match v.usage_limits_unit {
+            UsageLimitsUnit::Byte => crate::kmip_0::kmip_types::UsageLimitsUnit::Byte,
+            UsageLimitsUnit::Object => crate::kmip_0::kmip_types::UsageLimitsUnit::Object,
+            UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                crate::kmip_0::kmip_types::UsageLimitsUnit::Object
+            }
+        };
+        Self {
+            usage_limits_unit: unit,
+            usage_limits_count: v.usage_limits_count,
+            usage_limits_total: v.usage_limits_total,
+        }
+    }
 }

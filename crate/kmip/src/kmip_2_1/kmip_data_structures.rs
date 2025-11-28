@@ -56,10 +56,34 @@ pub struct DerivationParameters {
     pub iteration_count: Option<i32>,
 }
 
+impl Display for DerivationParameters {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut parts = Vec::new();
+        if let Some(cryptographic_parameters) = &self.cryptographic_parameters {
+            parts.push(format!(
+                "cryptographic_parameters: {cryptographic_parameters}"
+            ));
+        }
+        if let Some(initialization_vector) = &self.initialization_vector {
+            parts.push(format!("initialization_vector: {initialization_vector:?}"));
+        }
+        if let Some(derivation_data) = &self.derivation_data {
+            parts.push(format!("derivation_data: {derivation_data:?}"));
+        }
+        if let Some(salt) = &self.salt {
+            parts.push(format!("salt: {salt:?}"));
+        }
+        if let Some(iteration_count) = &self.iteration_count {
+            parts.push(format!("iteration_count: {iteration_count}"));
+        }
+        write!(f, "DerivationParameters {{ {} }}", parts.join(", "))
+    }
+}
+
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
 /// Section 3 of KMIP Reference 2.1
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
 
@@ -85,32 +109,26 @@ pub struct KeyBlock {
 
 impl Display for KeyBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(key_value) = &self.key_value {
-            write!(
-                f,
-                "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: {}, \
-                 cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: \
-                 {:?} }}",
-                self.key_format_type,
-                self.key_compression_type,
-                key_value,
-                self.cryptographic_algorithm,
-                self.cryptographic_length,
-                self.key_wrapping_data
-            )
-        } else {
-            write!(
-                f,
-                "KeyBlock {{ key_format_type: {}, key_compression_type: {:?}, key_value: None, \
-                 cryptographic_algorithm: {:?}, cryptographic_length: {:?}, key_wrapping_data: \
-                 {:?} }}",
-                self.key_format_type,
-                self.key_compression_type,
-                self.cryptographic_algorithm,
-                self.cryptographic_length,
-                self.key_wrapping_data
-            )
+        let mut parts = Vec::new();
+        parts.push(format!("key_format_type: {}", self.key_format_type));
+        if let Some(key_compression_type) = &self.key_compression_type {
+            parts.push(format!("key_compression_type: {key_compression_type:?}"));
         }
+        if let Some(key_value) = &self.key_value {
+            parts.push(format!("key_value: {key_value}"));
+        }
+        if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
+            parts.push(format!(
+                "cryptographic_algorithm: {cryptographic_algorithm}"
+            ));
+        }
+        if let Some(cryptographic_length) = &self.cryptographic_length {
+            parts.push(format!("cryptographic_length: {cryptographic_length}"));
+        }
+        if let Some(key_wrapping_data) = &self.key_wrapping_data {
+            parts.push(format!("key_wrapping_data: {key_wrapping_data}"));
+        }
+        write!(f, "KeyBlock {{ {} }}", parts.join(", "))
     }
 }
 
@@ -602,7 +620,7 @@ impl KeyBlock {
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
 #[expect(clippy::large_enum_variant)]
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
     ByteString(Zeroizing<Vec<u8>>),
@@ -840,7 +858,7 @@ impl KeyValue {
 /// present, from the Cryptographic Parameters attribute of the respective
 /// key(s). Either the Encryption Key Information or the MAC/Signature Key
 /// Information (or both) in the Key Wrapping Data structure SHALL be specified.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
@@ -856,6 +874,29 @@ pub struct KeyWrappingData {
     /// wrapped Key Value structure SHALL be TTLV encoded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding_option: Option<EncodingOption>,
+}
+
+impl Display for KeyWrappingData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+        parts.push(format!("wrapping_method: {}", self.wrapping_method));
+        if let Some(eki) = &self.encryption_key_information {
+            parts.push(format!("encryption_key_information: {eki}"));
+        }
+        if let Some(mski) = &self.mac_signature_key_information {
+            parts.push(format!("mac_signature_key_information: {mski}"));
+        }
+        if let Some(mac) = &self.mac_signature {
+            parts.push(format!("mac_signature: len={}", mac.len()));
+        }
+        if let Some(iv) = &self.iv_counter_nonce {
+            parts.push(format!("iv_counter_nonce: len={}", iv.len()));
+        }
+        if let Some(encoding) = &self.encoding_option {
+            parts.push(format!("encoding_option: {encoding:?}"));
+        }
+        write!(f, "KeyWrappingData {{ {} }}", parts.join(", "))
+    }
 }
 
 impl KeyWrappingData {
@@ -904,7 +945,7 @@ impl Default for KeyWrappingData {
 /// ·         Zero or more Attribute Names to indicate the attributes to be wrapped with the key material.
 ///
 /// ·         An Encoding Option, specifying the encoding of the Key Value before wrapping. If No Encoding is specified, then the Key Value SHALL NOT contain any attributes
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingSpecification {
     pub wrapping_method: WrappingMethod,
@@ -929,6 +970,26 @@ impl Default for KeyWrappingSpecification {
             attribute_name: None,
             encoding_option: Some(EncodingOption::TTLVEncoding),
         }
+    }
+}
+
+impl Display for KeyWrappingSpecification {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+        parts.push(format!("wrapping_method: {}", self.wrapping_method));
+        if let Some(eki) = &self.encryption_key_information {
+            parts.push(format!("encryption_key_information: {eki}"));
+        }
+        if let Some(mski) = &self.mac_or_signature_key_information {
+            parts.push(format!("mac_or_signature_key_information: {mski}"));
+        }
+        if let Some(attr_names) = &self.attribute_name {
+            parts.push(format!("attribute_name: {attr_names:?}"));
+        }
+        if let Some(encoding) = &self.encoding_option {
+            parts.push(format!("encoding_option: {encoding:?}"));
+        }
+        write!(f, "KeyWrappingSpecification {{ {} }}", parts.join(", "))
     }
 }
 
@@ -1589,7 +1650,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
 /// Where a server supports returning information in a vendor-specific field for
 /// which there is an equivalent field within the structure,
 /// the server SHALL provide the standardized version of the field.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct ServerInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1662,7 +1723,7 @@ impl Display for ServerInformation {
 /// The Extension Name is a Text String that is used to name the Object.
 /// The Extension Tag is the Item Tag Value of the Object.
 /// The Extension Type is the Item Type Value of the Object.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExtensionInformation {
     /// The extension name.
@@ -1692,7 +1753,7 @@ pub struct ExtensionInformation {
 /// if the client omits them on factory methods for objects. The structure list the Attributes
 /// and their values by Object Type enumeration, as well as the Object Group(s)
 /// for which such defaults pertain (if not pertinent to ALL Object Group values)
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ObjectDefaults {
     /// Specifies the object type that these defaults apply to.
@@ -1713,9 +1774,15 @@ impl Display for ObjectDefaults {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(attributes) = &self.attributes {
             if let Some(object_groups) = &self.object_groups {
+                use std::fmt::Write as _;
+                let mut groups = String::new();
+                for group in object_groups {
+                    let _ = write!(groups, "{group}, ");
+                }
+                let object_groups = groups.trim_end_matches(", ");
                 return write!(
                     f,
-                    "ObjectDefaults {{ object_type: {:?}, attributes: {}, object_groups: {:?} }}",
+                    "ObjectDefaults {{ object_type: {:?}, attributes: {}, object_groups: {} }}",
                     self.object_type, attributes, object_groups
                 );
             }
@@ -1726,9 +1793,16 @@ impl Display for ObjectDefaults {
             );
         }
         if let Some(object_groups) = &self.object_groups {
+            use std::fmt::Write as _;
+            let mut groups = String::new();
+            for group in object_groups {
+                let _ = write!(groups, "{group}, ");
+            }
+            let object_groups = groups.trim_end_matches(", ");
+
             return write!(
                 f,
-                "ObjectDefaults {{ object_type: {:?}, object_groups: {:?} }}",
+                "ObjectDefaults {{ object_type: {:?}, object_groups: {} }}",
                 self.object_type, object_groups
             );
         }
@@ -1742,7 +1816,7 @@ impl Display for ObjectDefaults {
 
 /// The Defaults Information structure is used by the server to maintain client-defined
 /// defaults and is returned to the client as the result of a Query operation.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DefaultsInformation {
     /// The set of object defaults defined by the client or server.
@@ -1765,7 +1839,7 @@ impl Display for DefaultsInformation {
 
 /// The `CapabilityInformation` structure provides information about the capabilities
 /// of the server, such as supported operations, objects, and algorithms.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct CapabilityInformation {
     /// Specifies a particular KMIP profile supported by the server.

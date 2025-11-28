@@ -112,7 +112,7 @@ where
 {
     log_init(None);
     let hsm = BaseHsm::<P>::instantiate(cfg.lib_path, HashMap::new())?;
-    let info = hsm.get_info()?;
+    let info = hsm.hsm_lib().get_info_struct()?;
     info!("Connected to the HSM: {info}");
     Ok(())
 }
