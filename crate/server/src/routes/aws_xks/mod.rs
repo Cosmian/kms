@@ -26,4 +26,13 @@ const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub struct AwsXksParams {
     pub region: String,
     pub service: String,
+    // This could be per uri
+    pub uri_path_prefix: String,
+    pub sigv4_access_key_id: String,
+    pub sigv4_secret_access_key: String,
+    //
+    pub partition: String,
+    pub account_id: String,
+    pub user_path: String,
+    pub user_name: String,
 }
