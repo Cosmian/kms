@@ -24,4 +24,57 @@ pub struct AwsXksConfig {
         required_if_eq("aws_xks_enable", "true")
     )]
     pub aws_xks_service: String,
+
+    // This could be per uri
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_URI_PATH_PREFIX",
+        default_value = "/kms/v1",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_uri_path_prefix: String,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_SIGV4_ACCESS_KEY_ID",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_sigv4_access_key_id: String,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_SIGV4_SECRET_ACCESS_KEY",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_sigv4_secret_access_key: String,
+    //
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_PARTITION",
+        default_value = "aws",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_partition: String,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_ACCOUNT_ID",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_account_id: String,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_USER_PATH",
+        default_value = "/kms",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_user_path: String,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_USER_NAME",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    pub aws_xks_user_name: String,
 }

@@ -353,6 +353,33 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
 
+        let x = x.field("aws_xks_config", &self.aws_xks_config);
+        let x = if self.aws_xks_config.aws_xks_enable {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+                .field(
+                    "aws_xks_uri_path_prefix",
+                    &self.aws_xks_config.aws_xks_uri_path_prefix,
+                )
+                .field(
+                    "aws_xks_account id",
+                    &self.aws_xks_config.aws_xks_account_id,
+                )
+                .field("aws_xks_partition", &self.aws_xks_config.aws_xks_partition)
+                .field("aws_xks_service", &self.aws_xks_config.aws_xks_service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &self.aws_xks_config.aws_xks_sigv4_access_key_id,
+                )
+                .field(
+                    "aws_xks_sigv4_secret_access_key",
+                    &self.aws_xks_config.aws_xks_sigv4_secret_access_key,
+                )
+                .field("aws_xks_user_path", &self.aws_xks_config.aws_xks_user_path)
+                .field("aws_xks_user_name", &self.aws_xks_config.aws_xks_user_name)
+        } else {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+        };
+
         x.finish()
     }
 }

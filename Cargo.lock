@@ -5310,15 +5310,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
 dependencies = [
  "serde",
-<<<<<<< HEAD
- "serde_spanned",
- "toml_datetime 0.6.11",
- "toml_edit 0.22.27",
-=======
  "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
  "toml_edit",
->>>>>>> 5b8de978 (sigv4 alpha)
 ]
 
 [[package]]
@@ -5362,32 +5356,13 @@ checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
 dependencies = [
  "indexmap 2.12.1",
  "serde",
-<<<<<<< HEAD
- "serde_spanned",
-=======
  "serde_spanned 0.6.9",
->>>>>>> 5b8de978 (sigv4 alpha)
  "toml_datetime 0.6.11",
  "toml_write",
  "winnow",
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "toml_edit"
-version = "0.23.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d7cbc3b4b49633d57a0509303158ca50de80ae32c265093b24c414705807832"
-dependencies = [
- "indexmap 2.12.1",
- "toml_datetime 0.7.3",
- "toml_parser",
- "winnow",
-]
-
-[[package]]
-=======
->>>>>>> 5b8de978 (sigv4 alpha)
 name = "toml_parser"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
