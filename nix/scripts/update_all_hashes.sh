@@ -212,7 +212,7 @@ if [ "$UPDATE_BINARY" = "true" ]; then
             ARCH="${CURRENT_SYSTEM%%-*}"
             OS="${CURRENT_SYSTEM#*-}"
             IMPL=$([ "$link_mode" = "dynamic" ] && echo non-openssl || echo openssl)
-            HASH_FILE="$REPO_ROOT/nix/expected-hashes/${build_variant}-.${IMPL}.${ARCH}.${OS}.sha256"
+            HASH_FILE="$REPO_ROOT/nix/expected-hashes/${build_variant}.${IMPL}.${ARCH}.${OS}.sha256"
 
             # Create directory if it doesn't exist
             mkdir -p "$REPO_ROOT/nix/expected-hashes"
@@ -238,8 +238,8 @@ if [ "$UPDATE_BINARY" = "true" ]; then
     for build_variant in $VARIANTS_TO_UPDATE; do
         ARCH="${CURRENT_SYSTEM%%-*}"
         OS="${CURRENT_SYSTEM#*-}"
-        echo "  ✓ Binary hash (static): nix/expected-hashes/${build_variant}-.openssl.${ARCH}.${OS}.sha256"
-        echo "  ✓ Binary hash (dynamic): nix/expected-hashes/${build_variant}-.non-openssl.${ARCH}.${OS}.sha256"
+        echo "  ✓ Binary hash (static): nix/expected-hashes/${build_variant}.openssl.${ARCH}.${OS}.sha256"
+        echo "  ✓ Binary hash (dynamic): nix/expected-hashes/${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
     done
 fi
 echo ""

@@ -19,10 +19,10 @@ let
       cargoHash
     else if isFips then
       # Updated vendor hash for WASM/UI FIPS build
-      "sha256-h/hjrnNvirYKbSUF7dz4ZO4MjM91QUfHOSi/HcXzQTU="
+      "sha256-3t531rxDX6syyUCguKax8hv+L7rFTBVeNlypcDZSndg="
     else
       # Updated vendor hash for WASM/UI non-FIPS build (previous mismatch fixed)
-      "sha256-8Y6waP2g4wcryje4LZYgBbB+cOidjKufVWUkYUhjyVA=";
+      "sha256-JzLOE+jQn1qHfJJ9+QZXqCZxH9oS3R5YWchZBFKEctg=";
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -56,14 +56,14 @@ let
   # Build a matching wasm-bindgen-cli to the version used by the crates
   wasmBindgenCli = rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
-    version = "0.2.105";
+    version = "0.2.106";
 
     src = pkgs.fetchCrate {
       inherit pname version;
-      sha256 = "sha256-zLPFFgnqAWq5R2KkaTGAYqVQswfBEYm9x3OPjx8DJRY=";
+      sha256 = "sha256-M6WuGl7EruNopHZbqBpucu4RWz44/MSdv6f0zkYw+44=";
     };
 
-    cargoHash = "sha256-YKomgtyNQ4DOMk7AsfjJHBPx1EzQFq+91k8dlElU8BQ=";
+    cargoHash = "sha256-/zJzxtzOZuGyvDLdJNEQFPzFHC6IbEiWOeZYrKgGxEk=";
     doCheck = false;
   };
 

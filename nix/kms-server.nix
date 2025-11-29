@@ -319,15 +319,15 @@ rustPlatform.buildRustPackage rec {
     if pkgs.stdenv.isDarwin then
       # macOS vendor hash - different for static vs dynamic builds
       if static then
-        "sha256-dUhNnntoKEMCMinowO8dtuMWdGFLJ7kxYxUG/xsh6eY=" # static
+        "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg=" # static
       else
-        "sha256-2zxH0ifz/oRHr7aE9s810qzHG/zxsPIM0eCbOwj96bw=" # dynamic
+        "sha256-CVYkMkCeX7f9pR2AX9MA414WWEZG+VAO+Be3rJ9NyCU=" # dynamic
     else
     # Linux vendor hash for SERVER build - different for static vs dynamic
     if static then
-      "sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8" # static
+      "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg=" # static
     else
-      "sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8"; # dynamic
+      "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg="; # dynamic
   cargoSha256 = cargoHash;
 
   # Use release profile by default

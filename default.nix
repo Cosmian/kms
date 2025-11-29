@@ -136,15 +136,15 @@ let
   # UI cargo hashes - different for FIPS vs non-FIPS due to different crypto dependencies
   uiCargoHashFips =
     if pkgs.stdenv.isDarwin then
-      "sha256-h/hjrnNvirYKbSUF7dz4ZO4MjM91QUfHOSi/HcXzQTU="
+      "sha256-3t531rxDX6syyUCguKax8hv+L7rFTBVeNlypcDZSndg="
     else
-      "sha256-h/hjrnNvirYKbSUF7dz4ZO4MjM91QUfHOSi/HcXzQTU=";
+      "sha256-3t531rxDX6syyUCguKax8hv+L7rFTBVeNlypcDZSndg=";
 
   uiCargoHashNonFips =
     if pkgs.stdenv.isDarwin then
-      "sha256-8Y6waP2g4wcryje4LZYgBbB+cOidjKufVWUkYUhjyVA="
+      "sha256-JzLOE+jQn1qHfJJ9+QZXqCZxH9oS3R5YWchZBFKEctg="
     else
-      "sha256-8Y6waP2g4wcryje4LZYgBbB+cOidjKufVWUkYUhjyVA=";
+      "sha256-JzLOE+jQn1qHfJJ9+QZXqCZxH9oS3R5YWchZBFKEctg=";
 
   # Build UI for both variants (use modern pkgs for UI build tools)
   ui-fips = pkgs.callPackage ./nix/ui.nix {

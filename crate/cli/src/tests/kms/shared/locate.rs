@@ -197,14 +197,6 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     let base_tag = format!("test_ec_{ts}");
 
     // generate a new key pair
-    // Use a unique tag to avoid interference from objects created in other tests
-    let unique_tag = format!(
-        "test_ec_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
     let (private_key_id, public_key_id) = CreateEcKeyPairAction {
         curve: Curve::NistP256,
         tags: vec![base_tag.clone()],
@@ -304,14 +296,6 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     let base_tag = format!("test_sym_{ts}");
 
     // generate a new key
-    // Use a unique tag to avoid interference from objects created in other tests
-    let unique_tag = format!(
-        "test_sym_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
     let key_id = CreateKeyAction {
         tags: vec![base_tag.clone()],
         ..Default::default()
