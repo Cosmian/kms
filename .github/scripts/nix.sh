@@ -32,7 +32,7 @@ usage() {
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
     update-hashes [options]
-                       Update expected hashes for current platform
+                       Update expected hashes for current platform (always uses release profile)
       --vendor-only          Only update Cargo vendor hashes (server + UI)
       --npm-only             Only update NPM dependencies hash
       --binary-only          Only update binary hashes (after code changes)
@@ -178,7 +178,7 @@ docker)
   DOCKER_LOAD=false
   while [ $# -gt 0 ]; do
     case "$1" in
-    -v|--variant)
+    -v | --variant)
       DOCKER_VARIANT="${2:-}"
       shift 2 || true
       ;;
@@ -187,7 +187,8 @@ docker)
       shift
       ;;
     --)
-      shift; break
+      shift
+      break
       ;;
     *)
       # Unrecognized; stop parsing for docker
@@ -223,7 +224,7 @@ docker)
   if [ "$DOCKER_LOAD" = true ]; then
     if command -v docker >/dev/null 2>&1; then
       echo "Loading image into Docker (from $REAL_OUT)…"
-      docker load < "$REAL_OUT"
+      docker load <"$REAL_OUT"
     else
       echo "Warning: docker CLI not found; skipping --load" >&2
     fi
@@ -382,6 +383,8 @@ sbom)
   ;;
 update-hashes)
   # Hash update - delegate to standalone script
+  # Force release mode (hash updates must always use release builds)
+  PROFILE="release"
   echo "Delegating to nix/scripts/update_all_hashes.sh..."
   SCRIPT="$REPO_ROOT/nix/scripts/update_all_hashes.sh"
 
