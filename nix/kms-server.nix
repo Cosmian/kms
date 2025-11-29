@@ -487,9 +487,10 @@ rustPlatform.buildRustPackage rec {
         "-C link-arg=-Wl,--build-id=none"
         "-C link-arg=-Wl,--hash-style=gnu"
       ];
+      # For dynamic builds, set RPATH to /usr/local/lib/cosmian-kms where the .so files will be installed
       dynamicOnly = lib.optionalString (
         !static && pkgs.stdenv.isLinux
-      ) "-C link-arg=-Wl,-rpath,${openssl312}/lib";
+      ) "-C link-arg=-Wl,-rpath,/usr/local/lib/cosmian-kms";
     in
     if pkgs.stdenv.isLinux then remap + " " + linuxOnly + " " + dynamicOnly else remap;
   NIX_DONT_SET_RPATH = lib.optionalString pkgs.stdenv.isLinux "1";

@@ -10,6 +10,8 @@ ExecStart=/usr/sbin/cosmian_kms
 Restart=on-failure
 RestartSec=3s
 Environment="COSMIAN_KMS_CONF=/etc/cosmian/kms.toml"
+Environment="OPENSSL_CONF=/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+Environment="OPENSSL_MODULES=/usr/local/lib/cosmian-kms/ossl-modules"
 StandardOutput=journal+console
 
 [Install]

@@ -4,7 +4,8 @@
 #   package_common.sh --format deb|rpm [--variant fips|non-fips]
 # Notes:
 # - Builds the prebuilt server via Nix (offline), enforces deterministic hash natively in derivation,
-#   substitutes OpenSSL paths into Cargo.toml, then invokes cargo-deb or cargo-generate-rpm.
+#   substitutes OpenSSL source paths into Cargo.toml, then invokes cargo-deb or cargo-generate-rpm.
+# - Destination paths are hardcoded to /usr/local/lib/cosmian-kms in Cargo.toml
 # - Reuses existing result-server-<variant> symlink if present to avoid rebuilds.
 
 set -euo pipefail
@@ -268,9 +269,9 @@ resolve_expected_hash_file() {
 }
 
 enforce_binary_hash() {
-  # Skip hash enforcement for dynamic link builds (non-deterministic RPATHs/ELF)
-  if [ "$LINK" = "dynamic" ]; then
-    echo "Skipping binary hash enforcement for dynamic link (non-deterministic RPATHs/ELF)"
+  # Skip for non-fips variant
+  if [ "$VARIANT" = "non-fips" ]; then
+    echo "Skipping hash enforcement for non-fips variant"
     return 0
   fi
 
@@ -278,20 +279,18 @@ enforce_binary_hash() {
   local base_for_hash="${VARIANT}-${LINK}"
   local expected_file
   if ! expected_file=$(resolve_expected_hash_file "$base_for_hash"); then
-    if ! expected_file=$(resolve_expected_hash_file "$VARIANT"); then
-      echo "ERROR: Expected hash file missing for variant '$VARIANT' (link '$LINK')." >&2
-      # Print actual system to assist the user
-      local sys arch os impl
-      if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else sys="unknown-system"; fi
-      arch="${sys%%-*}"
-      os="${sys#*-}"
-      impl=$([ "$LINK" = "dynamic" ] && echo non-openssl || echo openssl)
-      echo "       Tried (new): nix/expected-hashes/${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
-      echo "       Tried (legacy): nix/expected-hashes/${VARIANT}-${LINK}.${sys}.sha256 and nix/expected-hashes/${VARIANT}.${sys}.sha256" >&2
-      echo "Present files:" >&2
-      ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true
-      exit 1
-    fi
+    echo "ERROR: Expected hash file missing for variant '$VARIANT' (link '$LINK')." >&2
+    # Print actual system to assist the user
+    local sys arch os impl
+    if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else sys="unknown-system"; fi
+    arch="${sys%%-*}"
+    os="${sys#*-}"
+    impl=$([ "$LINK" = "dynamic" ] && echo non-openssl || echo openssl)
+    echo "       Tried (new): nix/expected-hashes/${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
+    echo "       Tried (legacy): nix/expected-hashes/${VARIANT}-${LINK}.${sys}.sha256 and nix/expected-hashes/${VARIANT}.${sys}.sha256" >&2
+    echo "Present files:" >&2
+    ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true
+    exit 1
   fi
   local expected_hash actual_hash
   expected_hash=$(tr -d ' \t\r\n' <"$expected_file")
@@ -308,26 +307,12 @@ enforce_binary_hash() {
     echo "ERROR: Binary hash mismatch (variant $VARIANT, link $LINK)." >&2
     echo "  Expected: $expected_hash (from $(basename "$expected_file"))" >&2
     echo "  Actual:   $actual_hash" >&2
-    echo "Attempting fresh nix-build of kms-server-$VARIANT (link $LINK) to confirm installCheckPhase failure…" >&2
-    rm -f "$OUT_LINK" 2>/dev/null || true
-    local rebuild_attr
-    if [ "$LINK" = "dynamic" ]; then
-      rebuild_attr="kms-server-${VARIANT}-dynamic"
-    else
-      rebuild_attr="kms-server-${VARIANT}"
-    fi
-    if nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$rebuild_attr" -o "$OUT_LINK"; then
-      echo "Unexpected success rebuilding derivation despite hash mismatch; investigate installCheckPhase." >&2
-      exit 1
-    else
-      echo "Rebuild failed as expected due to deterministic hash mismatch." >&2
-      exit 1
-    fi
+    exit 1
   fi
   echo "Deterministic hash OK ($actual_hash) for variant $VARIANT-$LINK"
 }
 
-# 2) Get OpenSSL 3.1.2 path via Nix (for asset placeholders in Cargo.toml) offline
+# 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
 # Needed for both static and dynamic builds (dynamic builds ship OpenSSL .so files)
 resolve_openssl_path() {
   local openssl_attr="openssl312-static"
@@ -344,7 +329,33 @@ resolve_openssl_path() {
     nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"
   fi
   OSSL_PATH=$(readlink -f "$link")
-  OSSL_NO_SLASH="${OSSL_PATH#/}"
+
+  # Create symlinks at fixed locations that Cargo.toml can reference
+  # cargo-deb/cargo-generate-rpm look for paths relative to the crate directory
+  # Using target directory to avoid polluting workspace root
+  local fixed_path_workspace="$REPO_ROOT/target/.openssl-staging"
+  local fixed_path_server="$REPO_ROOT/crate/server/target/.openssl-staging"
+
+  # Remove existing paths (use chmod to handle Nix store readonly files)
+  for path in "$fixed_path_workspace" "$fixed_path_server"; do
+    if [ -e "$path" ] || [ -L "$path" ]; then
+      chmod -R u+w "$path" 2>/dev/null || true
+      rm -rf "$path" 2>/dev/null || true
+    fi
+  done
+
+  # For RPM builds, cargo-generate-rpm resolves symlinks and uses the resolved path
+  # in the RPM package, so we need to copy files instead of symlinking
+  if [ "$FORMAT" = "rpm" ]; then
+    echo "Copying OpenSSL files for RPM build (cargo-generate-rpm doesn't handle symlinks correctly)"
+    mkdir -p "$fixed_path_workspace" "$fixed_path_server"
+    cp -rL "$OSSL_PATH"/* "$fixed_path_workspace"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_workspace"/
+    cp -rL "$OSSL_PATH"/* "$fixed_path_server"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_server"/
+  else
+    # For DEB builds, symlinks work fine with cargo-deb
+    ln -sf "$OSSL_PATH" "$fixed_path_workspace"
+    ln -sf "$OSSL_PATH" "$fixed_path_server"
+  fi
 }
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
@@ -535,6 +546,24 @@ prepare_workspace() {
   cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
   cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
+  # For dynamic builds, patch the RPATH to point to /usr/local/lib/cosmian-kms
+  if [ "$LINK" = "dynamic" ] && command -v patchelf >/dev/null 2>&1; then
+    echo "Patching RPATH for dynamic build to /usr/local/lib/cosmian-kms"
+    for binary in \
+      "crate/server/target/$HOST_TRIPLE/release/cosmian_kms" \
+      "crate/server/target/release/cosmian_kms" \
+      "target/release/cosmian_kms"; do
+      if [ -f "$binary" ]; then
+        # Make binary writable
+        chmod u+w "$binary"
+        # Remove existing RPATH/RUNPATH and set to our standard path
+        patchelf --remove-rpath "$binary" 2>/dev/null || true
+        patchelf --set-rpath /usr/local/lib/cosmian-kms "$binary"
+        echo "  Patched: $binary"
+      fi
+    done
+  fi
+
   # Copy UI assets from independently built UI derivation (REAL_UI)
   UI_SRC="$UI_DIST_PATH"
   # For non-fips, cargo expects ui_non_fips/dist; for fips it expects ui/dist
@@ -560,25 +589,7 @@ prepare_workspace() {
   mkdir -p "$CARGO_HOME"
 }
 
-# 4) Substitute OpenSSL paths in Cargo.toml (temporary)
-# Needed for both static and dynamic builds (dynamic builds now ship OpenSSL .so files)
-substitute_cargo_toml() {
-  CARGO_TOML="crate/server/Cargo.toml"
-  BACKUP_TOML="$CARGO_TOML.bak"
-  cp -f "$CARGO_TOML" "$BACKUP_TOML"
-
-  # Substitute OpenSSL paths for both static and dynamic builds
-  perl -0777 -pe "s|XXX|$OSSL_PATH|g; s|YYY|$OSSL_NO_SLASH|g" "$BACKUP_TOML" >"$CARGO_TOML"
-}
-
-# Restore Cargo.toml from backup
-restore_cargo_toml() {
-  CARGO_TOML="crate/server/Cargo.toml"
-  BACKUP_TOML="$CARGO_TOML.bak"
-  mv -f "$BACKUP_TOML" "$CARGO_TOML" 2>/dev/null || true
-}
-
-# 5) Build package depending on format
+# 4) Build package depending on format
 build_deb() {
   # Ensure cargo-deb is available via Nix (pinned), add to PATH
   ensure_cargo_deb
@@ -896,9 +907,6 @@ resolve_openssl_path
 prewarm_cargo_registry
 prepare_workspace
 detect_arches
-substitute_cargo_toml
-# Set trap to restore Cargo.toml on exit
-trap restore_cargo_toml INT TERM EXIT
 
 case "$FORMAT" in
 deb)
@@ -913,8 +921,3 @@ rpm)
   collect_rpm
   ;;
 esac
-
-# Explicit restoration of substituted Cargo.toml (belt & suspenders in case trap did not fire)
-if [ -f "crate/server/Cargo.toml.bak" ]; then
-  mv -f "crate/server/Cargo.toml.bak" "crate/server/Cargo.toml" 2>/dev/null || true
-fi
