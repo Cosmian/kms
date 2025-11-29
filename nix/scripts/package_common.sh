@@ -336,6 +336,10 @@ resolve_openssl_path() {
   local fixed_path_workspace="$REPO_ROOT/target/.openssl-staging"
   local fixed_path_server="$REPO_ROOT/crate/server/target/.openssl-staging"
 
+  # Ensure parent directories exist
+  mkdir -p "$REPO_ROOT/target"
+  mkdir -p "$REPO_ROOT/crate/server/target"
+
   # Remove existing paths (use chmod to handle Nix store readonly files)
   for path in "$fixed_path_workspace" "$fixed_path_server"; do
     if [ -e "$path" ] || [ -L "$path" ]; then

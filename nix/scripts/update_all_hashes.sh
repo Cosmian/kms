@@ -62,7 +62,6 @@ Examples:
   $0 --npm-only                # Update only NPM dependencies hash
   $0 --binary-only             # Update only binary hashes
   $0 --variant fips            # Update only FIPS variant
-  $0 --binary-only --variant non-fips  # Update only non-FIPS binary hash
 
 When to use:
   --vendor-only    After updating Cargo.lock (dependency changes)
@@ -76,10 +75,10 @@ Platform support:
   - aarch64-darwin (Apple Silicon macOS)
 
 Hash types updated:
-  1. KMS Server Cargo vendor hashes (4 variants: static/dynamic x Darwin/Linux)
-  2. UI Cargo vendor hashes (2 variants: FIPS/non-FIPS)
+  1. KMS Server Cargo vendor hashes (2 variants: static/dynamic)
+  2. UI Cargo vendor hash (FIPS only)
   3. NPM dependencies hash (UI node_modules)
-  4. Binary hashes (FIPS/non-FIPS x static/dynamic)
+  4. Binary hashes (FIPS only: static/dynamic)
 
 Note: External tool hashes are NOT updated (cargo-generate-rpm, cargo-packager,
       wasm-bindgen-cli, OpenSSL source) as they are pinned to specific versions.
@@ -140,7 +139,7 @@ echo "Update binary hashes: $UPDATE_BINARY"
 if [ -n "$VARIANT" ]; then
     echo "Variant: $VARIANT"
 else
-    echo "Variant: both (fips and non-fips)"
+    echo "Variant: fips (default)"
 fi
 echo ""
 
@@ -246,7 +245,7 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
     if [ -n "$VARIANT" ]; then
         UI_VARIANTS="$VARIANT"
     else
-        UI_VARIANTS="fips non-fips"
+        UI_VARIANTS="fips"
     fi
 
     for UI_VARIANT in $UI_VARIANTS; do
@@ -359,8 +358,8 @@ if [ "$UPDATE_BINARY" = "true" ]; then
     if [ -n "$VARIANT" ]; then
         VARIANTS_TO_UPDATE="$VARIANT"
     else
-        # Default: update both FIPS and non-FIPS
-        VARIANTS_TO_UPDATE="fips non-fips"
+        # Default: update FIPS only
+        VARIANTS_TO_UPDATE="fips"
     fi
 
     # Update both static and dynamic builds for each variant
@@ -428,7 +427,6 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
     echo "    - Dynamic linkage hash (Darwin/Linux)"
     echo "  ✓ UI Cargo vendor hashes in nix/ui.nix and default.nix"
     echo "    - FIPS variant"
-    echo "    - Non-FIPS variant"
 fi
 if [ "$UPDATE_NPM" = "true" ]; then
     echo "  ✓ NPM dependencies hash (npmDepsHash) in nix/ui.nix"

@@ -49,8 +49,14 @@ let
         Please add the appropriate file with the expected SHA-256 of the built binary.
       '';
 
-  expectedHashPathVariant = expectedHashPath variant;
-  expectedHashRaw = builtins.readFile expectedHashPathVariant;
+  # Only compute and validate expected hash path if enforcement is enabled
+  expectedHashPathVariant = if enforceDeterministicHash then expectedHashPath variant else null;
+  # Only read the hash file if enforcement is enabled to avoid errors when file doesn't exist
+  expectedHashRaw =
+    if enforceDeterministicHash && expectedHashPathVariant != null then
+      builtins.readFile expectedHashPathVariant
+    else
+      "";
   sanitizeHash =
     s:
     let
@@ -281,7 +287,9 @@ let
         if [ "${enforceDeterministicHashStr}" != "true" ]; then
           echo "WARNING: enforceDeterministicHash=false -> Skipping deterministic hash enforcement (variant ${variant})."
         else
-          echo "Using expected hash file: ${expectedHashPathVariant}"
+          ${lib.optionalString (expectedHashPathVariant != null) ''
+            echo "Using expected hash file: ${expectedHashPathVariant}"
+          ''}
           ACTUAL_SHA256=$(sha256sum "$BINARY_PATH" | awk '{print $1}')
           if [ -z "${expectedHash}" ]; then
             echo "ERROR: expectedHash is empty (variant ${variant})."; exit 1; fi
