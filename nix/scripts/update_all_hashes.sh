@@ -160,7 +160,7 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
     if [ -n "$VARIANT" ]; then
         BUILD_VARIANTS="$VARIANT"
     else
-        BUILD_VARIANTS="fips"  # Use FIPS to discover hash (same for both)
+        BUILD_VARIANTS="fips" # Use FIPS to discover hash (same for both)
     fi
 
     for BUILD_VARIANT in $BUILD_VARIANTS; do

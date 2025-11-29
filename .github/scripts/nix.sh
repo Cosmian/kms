@@ -479,12 +479,13 @@ if [ "$COMMAND" = "package" ]; then
     NIXPKGS_ARG="$NIXPKGS_STORE"
   fi
 
-  # When PACKAGE_TYPE is empty, build all variants (fips/non-fips) and all link modes (static/dynamic)
-  # When PACKAGE_TYPE is specified, use the provided VARIANT and LINK from command-line
+  # When PACKAGE_TYPE is empty AND user hasn't specified custom variant/link, build all combinations
+  # When PACKAGE_TYPE is specified OR user provided explicit variant/link, use those values
   VARIANTS_TO_BUILD=("$VARIANT")
   LINKS_TO_BUILD=("$LINK")
 
-  if [ -z "$PACKAGE_TYPE" ]; then
+  # Only build all variants/links if user accepted defaults (fips + static)
+  if [ -z "$PACKAGE_TYPE" ] && [ "$VARIANT" = "fips" ] && [ "$LINK" = "static" ]; then
     VARIANTS_TO_BUILD=("fips" "non-fips")
     LINKS_TO_BUILD=("static" "dynamic")
   fi
