@@ -16,7 +16,7 @@ on:
 
 jobs:
   cargo-build:
-    name: cargo build - ${{ inputs.archive-name }}
+    name: windows-2022-non-fips-${{ inputs.debug_or_release }}
     runs-on: windows-2022
     steps:
       - name: Print ENV
@@ -82,84 +82,16 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cargo-build-${{ inputs.debug_or_release }}
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
           path: |
             target/${{ inputs.debug_or_release }}/*.exe
             target/${{ inputs.debug_or_release }}/*cosmian_pkcs11.dll
           retention-days: 1
           if-no-files-found: error
 
-  fips-build:
-    name: FIPS OpenSSL Build - ${{ inputs.archive-name }}
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build FIPS OpenSSL
-        shell: pwsh
-        run: |
-          if (Test-Path "vcpkg_fips.json") {
-            Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
-            vcpkg install
-            vcpkg integrate install
-
-            Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
-
-            # Copy fips.dll to the specified directory
-            Copy-Item -Path "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows\bin\legacy.dll" -Destination "$env:GITHUB_WORKSPACE"
-            Copy-Item -Path "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows\bin\fips.dll" -Destination "$env:GITHUB_WORKSPACE"
-          } else {
-            Write-Host "vcpkg_fips.json not found, skipping FIPS build"
-            New-Item -ItemType File -Path "$env:GITHUB_WORKSPACE\fips.dll" -Force
-            New-Item -ItemType File -Path "$env:GITHUB_WORKSPACE\legacy.dll" -Force
-          }
-
-      - name: Upload FIPS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fips-dlls
-          path: |
-            fips.dll
-            legacy.dll
-          retention-days: 1
-          if-no-files-found: error
-
-  combine-artifacts:
-    name: Combine Artifacts - ${{ inputs.archive-name }}
-    needs: [cargo-build, fips-build]
-    runs-on: windows-2022
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: cargo-build-${{ inputs.debug_or_release }}
-
-      - name: Download FIPS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: fips-dlls
-
-      - name: List files
-        shell: pwsh
-        run: Get-ChildItem -Recurse
-
-      - name: Upload combined artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
-          path: |
-            *.exe
-            *cosmian_pkcs11.dll
-            fips.dll
-            legacy.dll
-          retention-days: 1
-          if-no-files-found: error
-
   test:
-    needs: combine-artifacts
-    name: Clean env. ${{ inputs.archive-name }}
+    needs: cargo-build
+    name: windows-2022 - test on clean env. ${{ inputs.archive-name }}
     runs-on: windows-2022
     steps:
       - uses: actions/download-artifact@v4
@@ -169,15 +101,6 @@ jobs:
       - name: List files recursively
         shell: pwsh
         run: Get-ChildItem -Recurse
-
-      - name: Copy legacy.dll
-        shell: pwsh
-        run: |
-          if (Test-Path "legacy.dll") {
-            New-Item -ItemType Directory -Force -Path C:/Windows/System32/OpenSSL/lib/ossl-modules
-            Copy-Item -Path legacy.dll -Destination C:/Windows/System32/OpenSSL/lib/ossl-modules/legacy.dll
-            Get-ChildItem -Recurse C:/Windows/System32/OpenSSL
-          }
 
       - name: Launch binaries
         run: |

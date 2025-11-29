@@ -190,18 +190,20 @@ jobs:
           fi
 
   docker-image:
-    name: Docker image build ${{ matrix.runner }} - ${{ matrix.features }}
+    name: Docker image build ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
     needs: packages
     strategy:
       fail-fast: false
       matrix:
         features: [fips, non-fips]
+        link: [static]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     uses: ./.github/workflows/build_docker_image.yml
     with:
       registry-image: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
       os: ${{ matrix.runner }}
       features: ${{ matrix.features }}
+      link: ${{ matrix.link }}
       debug_or_release: release
     secrets: inherit
 
@@ -212,7 +214,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write  # Required for cosign keyless signing
+      id-token: write # Required for cosign keyless signing
     strategy:
       fail-fast: false
       matrix:

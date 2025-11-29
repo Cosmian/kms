@@ -13,6 +13,10 @@ on:
       features:
         required: true
         type: string
+      link:
+        required: false
+        type: string
+        default: static
       debug_or_release:
         required: false
         type: string
@@ -23,12 +27,12 @@ env:
 
 jobs:
   build-and-push-image:
-    name: Image ${{ inputs.features }} - ${{ inputs.os }}
+    name: Image ${{ inputs.features }} - ${{ inputs.link }} - ${{ inputs.os }}
     runs-on: ${{ inputs.os }}
     permissions:
       contents: read
       packages: write
-      id-token: write  # Required for cosign keyless signing
+      id-token: write # Required for cosign keyless signing
     steps:
       - name: Derive architecture from runner
         id: arch
@@ -52,7 +56,7 @@ jobs:
         id: artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.features }}_${{ inputs.os }}-${{ inputs.debug_or_release }}
+          name: ${{ inputs.features }}_${{ inputs.link }}_${{ inputs.os }}-${{ inputs.debug_or_release }}
       - name: Locate Debian package
         id: deb
         run: |
@@ -129,7 +133,7 @@ jobs:
       arch: ${{ steps.arch.outputs.arch }}
 
   test-image:
-    name: Test Image ${{ inputs.features }} - ${{ inputs.os }}
+    name: Test Image ${{ inputs.features }} - ${{ inputs.link }} - ${{ inputs.os }}
     runs-on: ${{ inputs.os }}
     needs: build-and-push-image
     env:

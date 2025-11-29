@@ -263,11 +263,7 @@ resolve_expected_hash_file() {
 }
 
 enforce_binary_hash() {
-  # Skip hash enforcement for non-fips builds and dynamic link builds (non-deterministic)
-  if [ "$VARIANT" = "non-fips" ]; then
-    echo "Skipping binary hash enforcement for non-fips variant (non-deterministic dependencies)"
-    return 0
-  fi
+  # Skip hash enforcement for dynamic link builds (non-deterministic RPATHs/ELF)
   if [ "$LINK" = "dynamic" ]; then
     echo "Skipping binary hash enforcement for dynamic link (non-deterministic RPATHs/ELF)"
     return 0
@@ -376,7 +372,7 @@ sign_packages() {
   fi
 
   local key_id
-  key_id=$(tr -d ' \t\r\n' < "$key_id_file")
+  key_id=$(tr -d ' \t\r\n' <"$key_id_file")
 
   if [ -z "$key_id" ]; then
     echo "ERROR: Empty key ID in $key_id_file" >&2
