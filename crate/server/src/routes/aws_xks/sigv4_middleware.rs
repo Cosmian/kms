@@ -3,6 +3,10 @@
 //! This module contains the middleware implementation for API token-based authentication.
 //! It provides a separate authentication pipeline that can be used independently of
 //! other authentication methods.
+//!
+//! Authentication: https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md#authentication
+//! Proxy Impl: https://github.com/aws-samples/aws-kms-xks-proxy/tree/main
+//! Testing client: https://github.com/aws-samples/aws-kms-xksproxy-test-client
 
 use std::{
     collections::HashSet,
