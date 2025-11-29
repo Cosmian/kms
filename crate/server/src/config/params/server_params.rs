@@ -291,6 +291,16 @@ impl ServerParams {
             aws_xks_params: conf.aws_xks_config.aws_xks_enable.then(|| AwsXksParams {
                 region: conf.aws_xks_config.region.clone(),
                 service: conf.aws_xks_config.aws_xks_service.clone(),
+                uri_path_prefix: conf.aws_xks_config.aws_xks_uri_path_prefix.clone(),
+                sigv4_access_key_id: conf.aws_xks_config.aws_xks_sigv4_access_key_id.clone(),
+                sigv4_secret_access_key: conf
+                    .aws_xks_config
+                    .aws_xks_sigv4_secret_access_key
+                    .clone(),
+                partition: conf.aws_xks_config.aws_xks_partition.clone(),
+                account_id: conf.aws_xks_config.aws_xks_account_id.clone(),
+                user_path: conf.aws_xks_config.aws_xks_user_path.clone(),
+                user_name: conf.aws_xks_config.aws_xks_user_name.clone(),
             }),
         };
         debug!("{res:#?}");
@@ -370,6 +380,24 @@ impl fmt::Debug for ServerParams {
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+        }
+
+        if let Some(aws_xks_params) = &self.aws_xks_params {
+            debug_struct
+                .field("aws_xks_params", &"configured")
+                .field("aws_xks_region", &aws_xks_params.region)
+                .field("aws_xks_service", &aws_xks_params.service)
+                .field("aws_xks_uri_path_prefix", &aws_xks_params.uri_path_prefix)
+                .field("aws_xks_partition", &aws_xks_params.partition)
+                .field("aws_xks_account_id", &aws_xks_params.account_id)
+                .field("aws_xks_user_path", &aws_xks_params.user_path)
+                .field("aws_xks_user_name", &aws_xks_params.user_name)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &aws_xks_params.sigv4_access_key_id,
+                );
+        } else {
+            debug_struct.field("aws_xks_params", &"not configured");
         }
 
         if self.hsm_model.is_some() {
