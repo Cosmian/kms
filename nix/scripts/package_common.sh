@@ -215,7 +215,12 @@ resolve_expected_hash_file() {
   #   <variant>.<arch-os>.sha256 (legacy)
   local base="$1"
   local dir="$REPO_ROOT/nix/expected-hashes"
-  local sys arch os impl
+  local sys arch os impl variant_for_hash
+
+  # Extract variant from base parameter (handles "fips-static", "non-fips-dynamic", "fips", "non-fips")
+  # Remove -static or -dynamic suffix to get the variant
+  variant_for_hash="${base%-static}"
+  variant_for_hash="${variant_for_hash%-dynamic}"
 
   # Compute system string
   if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then
@@ -240,8 +245,8 @@ resolve_expected_hash_file() {
     impl="openssl"
   fi
 
-  # Try new scheme first
-  local new_path="$dir/${VARIANT}.$impl.$arch.$os.sha256"
+  # Try new scheme first - use variant extracted from base parameter
+  local new_path="$dir/${variant_for_hash}.$impl.$arch.$os.sha256"
   if [ -f "$new_path" ]; then
     echo "$new_path"
     return 0
