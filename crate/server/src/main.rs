@@ -163,10 +163,13 @@ async fn run() -> KResult<()> {
 mod tests {
     use std::path::PathBuf;
 
-    use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
-        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
-        WorkspaceConfig,
+    use cosmian_kms_server::{
+        config::{
+            ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
+            MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+            WorkspaceConfig,
+        },
+        routes::aws_xks::AwsXksConfig,
     };
 
     #[cfg(feature = "non-fips")]
@@ -266,6 +269,19 @@ mod tests {
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
+            aws_xks_config: AwsXksConfig {
+                aws_xks_enable: true,
+                region: "us-east-1".to_owned(),
+                aws_xks_service: "example".to_owned(),
+                aws_xks_uri_path_prefix: "/engineering/".to_owned(),
+                aws_xks_sigv4_access_key_id: "AKIAIOSFODNN7EXAMPLE".to_owned(),
+                aws_xks_sigv4_secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                    .to_owned(),
+                aws_xks_partition: "aws".to_owned(),
+                aws_xks_account_id: "123456789012".to_owned(),
+                aws_xks_user_path: "?".to_owned(),
+                aws_xks_user_name: "user".to_owned(),
+            },
             key_encryption_key: Some("key wrapping key".to_owned()),
             default_unwrap_type: None,
             non_revocable_key_id: None,
@@ -350,6 +366,18 @@ rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 ansi_colors = false
+
+[aws_xks_config]
+aws_xks_enable = true
+region = "us-east-1"
+aws_xks_service = "example"
+aws_xks_uri_path_prefix = "/engineering/"
+aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+aws_xks_partition = "aws"
+aws_xks_account_id = "123456789012"
+aws_xks_user_path = "?"
+aws_xks_user_name = "user"
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
