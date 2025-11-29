@@ -16,8 +16,8 @@ function Build-UI {
     rustup target add wasm32-unknown-unknown
 
     # Install wasm-bindgen-cli with matching version
-    Write-Host "Installing wasm-bindgen-cli 0.2.105..."
-    cargo install wasm-bindgen-cli --version 0.2.105 --force
+    Write-Host "Installing wasm-bindgen-cli 0.2.106..."
+    cargo install wasm-bindgen-cli --version 0.2.106 --force
 
     # Build WASM package
     Write-Host "Building WASM package..."
@@ -26,7 +26,7 @@ function Build-UI {
     try {
         # Set the linker for WASM target (Windows uses rust-lld)
         $env:CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "rust-lld"
-        
+
         # Build the WASM binary with cargo
         if ($Variant -eq "fips") {
             cargo build --release --target wasm32-unknown-unknown
@@ -57,7 +57,7 @@ function Build-UI {
 {
   "name": "cosmian_kms_client_wasm",
   "type": "module",
-  "version": "5.12.0",
+  "version": "5.13.0",
   "main": "cosmian_kms_client_wasm.js",
   "types": "cosmian_kms_client_wasm.d.ts"
 }

@@ -11,7 +11,7 @@
 
 let
   # Version from the KMS server
-  version = "5.12.0";
+  version = "5.13.0";
 
   # Determine the actual KMS server to use
   actualKmsServer =

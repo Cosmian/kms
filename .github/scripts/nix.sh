@@ -33,9 +33,11 @@ usage() {
                        with full dependency graphs (runtime and buildtime)
     update-hashes [options]
                        Update expected hashes for current platform
-      --vendor-only          Only update Cargo vendor hash (after Cargo.lock changes)
+      --vendor-only          Only update Cargo vendor hashes (server + UI)
+      --npm-only             Only update NPM dependencies hash
       --binary-only          Only update binary hashes (after code changes)
-      (no options)           Update all hashes (vendor + binaries)
+      --variant <fips|non-fips>  Update specific variant (default: both)
+      (no options)           Update all hashes (vendor + npm + binaries)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -72,8 +74,10 @@ usage() {
     $0 sbom                                 # Generate SBOM for FIPS variant
     $0 --variant non-fips sbom              # Generate SBOM for non-FIPS variant
     $0 update-hashes                        # Update all hashes for current platform
-    $0 update-hashes --vendor-only          # Update only Cargo vendor hash
+    $0 update-hashes --vendor-only          # Update only Cargo vendor hashes (server + UI)
+    $0 update-hashes --npm-only             # Update only NPM dependencies hash
     $0 update-hashes --binary-only          # Update only binary hashes
+    $0 update-hashes --variant non-fips     # Update only non-FIPS variant hashes
 EOF
   exit 1
 }

@@ -60,7 +60,7 @@ let
   expectedHash = sanitizeHash expectedHashRaw;
 
   # KMS version
-  version = "5.12.0";
+  version = "5.13.0";
 
   # Force rebuild marker - increment to invalidate cache when only Nix expressions change
   rebuildMarker = "1";
@@ -319,15 +319,15 @@ rustPlatform.buildRustPackage rec {
     if pkgs.stdenv.isDarwin then
       # macOS vendor hash - different for static vs dynamic builds
       if static then
-        "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg=" # static
+        "sha256-dDu96ohNCURR9IfzJ2hG4ouRPrzbIQoaTpvypVi8ERA=" # static
       else
-        "sha256-CVYkMkCeX7f9pR2AX9MA414WWEZG+VAO+Be3rJ9NyCU=" # dynamic
+        "sha256-/+XNQN8Jd2ehj7skdI3R/D8zc0uhjSanOQis2jV3TXk=" # dynamic
     else
     # Linux vendor hash for SERVER build - different for static vs dynamic
     if static then
-      "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg=" # static
+      "sha256-GRCXobXJ8m09rNJcNUP0noZZIkrLe/tTr/CE7JxGsbQ=" # static
     else
-      "sha256-om0ngNQ4GatDceyei3YTS9PSGXwqbmCeaZn4Jbd4lsg="; # dynamic
+      "sha256-GRCXobXJ8m09rNJcNUP0noZZIkrLe/tTr/CE7JxGsbQ="; # dynamic
   cargoSha256 = cargoHash;
 
   # Use release profile by default

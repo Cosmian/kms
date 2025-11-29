@@ -150,7 +150,7 @@ let
   # Build the UI using buildNpmPackage for proper dependency management
   uiBuild = pkgs.buildNpmPackage {
     pname = "cosmian-kms-ui-deps-${variant}";
-    version = "5.12.0";
+    version = "5.13.0";
 
     src = lib.cleanSourceWith {
       src = ../ui;
@@ -179,7 +179,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "cosmian-kms-ui-${variant}";
-  version = "5.12.0";
+  version = "5.13.0";
 
   # Build from source with filtering (name = null disables gitignore filtering)
   src = lib.cleanSourceWith {
