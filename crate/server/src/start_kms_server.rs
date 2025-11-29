@@ -48,7 +48,9 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, get_version,
+        access,
+        aws_xks::Sigv4MWare,
+        get_version,
         google_cse::{self, GoogleCseConfig},
         kmip::{self, handle_ttlv_bytes},
         ms_dke,
@@ -601,6 +603,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Should we enable the MS DKE Service?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Should we enable the AWS XKS Service?
+    let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
     // Generate key for actix session cookie encryption and elements for UI exposure
@@ -669,6 +674,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
+        }
+
+        if enable_aws_xks {
+            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            let aws_xks_scope = web::scope("/aes_xks")
+                .wrap(Cors::permissive())
+                .wrap(Sigv4MWare::new(kms_server.clone()));
+            app = app.service(aws_xks_scope);
         }
 
         let ui_index_folder = kms_server.params.ui_index_html_folder.clone();

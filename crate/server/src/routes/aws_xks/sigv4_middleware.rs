@@ -4,12 +4,11 @@
 //! It provides a separate authentication pipeline that can be used independently of
 //! other authentication methods.
 //!
-//! Authentication: https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md#authentication
-//! Proxy Impl: https://github.com/aws-samples/aws-kms-xks-proxy/tree/main
-//! Testing client: https://github.com/aws-samples/aws-kms-xksproxy-test-client
+//! Authentication: <https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md#authentication>
+//! Proxy Impl: <https://github.com/aws-samples/aws-kms-xks-proxy/tree/main>
+//! Testing client: <https://github.com/aws-samples/aws-kms-xksproxy-test-client>
 
 use std::{
-    collections::HashSet,
     pin::Pin,
     rc::Rc,
     str::FromStr,
@@ -17,44 +16,50 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::core::KMS;
+use crate::{core::KMS, routes::aws_xks::AwsXksParams};
 use actix_service::{Service, Transform};
 use actix_web::dev::Payload;
 use actix_web::{
     Error,
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
+    error::InternalError,
 };
 use chrono::Utc;
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    kmip_operations::Get,
+    kmip_types::{KeyFormatType, UniqueIdentifier},
+};
 use futures::{
     Future, StreamExt,
-    future::{Ready, ok},
+    future::{Ready, err, ok},
 };
+use reqwest::StatusCode;
 use tower::BoxError;
 
 use scratchstack_aws_signature::{
     GetSigningKeyRequest, GetSigningKeyResponse, KSecretKey, NO_ADDITIONAL_SIGNED_HEADERS,
     SignatureOptions, principal::User, service_for_signing_key_fn, sigv4_validate_request,
 };
-use serde::Deserialize;
+use zeroize::Zeroizing;
 
-const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
-const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-const ACCOUNT_ID: &str = "123456789012";
-const PARTITION: &str = "aws";
-const PATH: &str = "/engineering/";
-const REGION: &str = "us-east-1";
-const SERVICE: &str = "example";
-const USER_NAME: &str = "user";
-const USER_ID: &str = "AIDAQXZEAEXAMPLEUSER";
+// const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+// const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+// const ACCOUNT_ID: &str = "123456789012";
+// const PARTITION: &str = "aws";
+// const PATH: &str = "/engineering/";
+// const REGION: &str = "us-east-1";
+// const SERVICE: &str = "example";
+// const USER_NAME: &str = "user";
+// const USER_ID: &str = "AIDAQXZEAEXAMPLEUSER";
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct ExternalKeyStore {
-    pub uri_path_prefix: String,
-    pub sigv4_access_key_id: String,
-    pub sigv4_secret_access_key: String,
-    pub xks_key_id_set: HashSet<String>,
-}
+// #[derive(Debug, Deserialize, Clone)]
+// pub struct ExternalKeyStore {
+//     pub uri_path_prefix: String,
+//     pub sigv4_access_key_id: String,
+//     pub sigv4_secret_access_key: String,
+//     pub xks_key_id_set: HashSet<String>,
+// }
 
 /// `Sigv4MWare` is an Actix web middleware that handles AWS Signature Version 4 (sigv4) protocol.
 ///
@@ -65,7 +70,7 @@ pub struct ExternalKeyStore {
 /// This transformer is responsible for creating the middleware service with the necessary
 /// configuration for API token authentication.
 #[derive(Clone)]
-pub(crate) struct Sigv4MWare {
+pub struct Sigv4MWare {
     /// Reference to the KMS server for API token authentication
     kms_server: Arc<KMS>,
 }
@@ -76,7 +81,7 @@ impl Sigv4MWare {
     /// # Parameters
     /// * `kms_server` - The KMS server instance used for API token validation
     #[must_use]
-    pub(crate) const fn new(kms_server: Arc<KMS>) -> Self {
+    pub const fn new(kms_server: Arc<KMS>) -> Self {
         Self { kms_server }
     }
 }
@@ -102,9 +107,16 @@ where
     /// that this middleware wraps. It passes the necessary configuration
     /// to the `Sigv4Service`.
     fn new_transform(&self, service: S) -> Self::Future {
+        let Some(aws_xks_params) = self.kms_server.params.aws_xks_params.clone() else {
+            tracing::error!(
+                "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set"
+            );
+            return err(());
+        };
         ok(Sigv4Service {
             service: Rc::new(service),
             kms_server: self.kms_server.clone(),
+            aws_xks_params,
         })
     }
 }
@@ -112,7 +124,7 @@ where
 /// `Sigv4Service` is the actual middleware service that processes each request
 ///
 /// This middleware validates API tokens for each incoming request.
-pub(crate) struct Sigv4Service<S, B>
+pub struct Sigv4Service<S, B>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -121,6 +133,8 @@ where
     service: Rc<S>,
     /// Reference to the KMS server for API token authentication
     kms_server: Arc<KMS>,
+    /// AWS XKS parameters for sigv4 validation
+    aws_xks_params: AwsXksParams,
 }
 
 impl<S, B> Sigv4Service<S, B>
@@ -140,62 +154,56 @@ where
     + Send
     + Clone
     + 'static {
-        let aws_xks_params = self.kms_server.params.aws_xks_params.as_ref().expect(
-            "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
-        );
-
-        let access_key_id = aws_xks_params.sigv4_access_key_id.clone();
-        let secret_key = aws_xks_params.sigv4_secret_access_key.clone();
-        //
-        let account_id = aws_xks_params.account_id.clone();
-        let user_path = aws_xks_params.user_path.clone();
-        let user_name = aws_xks_params.user_name.clone();
-        let partition = aws_xks_params.partition.clone();
+        let aws_xks_params = self.kms_server.params.aws_xks_params.clone();
 
         move |request: GetSigningKeyRequest| {
-            Box::pin({
-                let access_key_id_ = access_key_id.clone();
-                let partition_ = partition.clone();
-                let account_id_ = account_id.clone();
-                let user_path_ = user_path.clone();
-                let user_name_ = user_name.clone();
-                let secret_key = secret_key.clone();
-                async move {
-                    if request.access_key() != access_key_id_.as_str() {
-                        return Err(Box::<dyn std::error::Error + Send + Sync>::from(format!(
-                            "Access key ID '{}' not found",
-                            request.access_key()
-                        )) as BoxError);
-                    }
-
-                    let user = User::new(
-                        partition_.as_str(),
-                        account_id_.as_str(),
-                        user_path_.as_str(),
-                        user_name_.as_str(),
-                    )
-                    .map_err(|e| Box::<dyn std::error::Error + Send + Sync>::from(e) as BoxError)?;
-
-                    let k_secret_key = KSecretKey::from_str(&secret_key).map_err(|e| {
-                        Box::<dyn std::error::Error + Send + Sync>::from(e) as BoxError
-                    })?;
-
-                    let signing_key = k_secret_key.to_ksigning(
-                        request.request_date(),
-                        request.region(),
-                        request.service(),
-                    );
-
-                    let resp = GetSigningKeyResponse::builder()
-                        .principal(user)
-                        .signing_key(signing_key)
-                        .build()
-                        .map_err(|e| {
-                            Box::<dyn std::error::Error + Send + Sync>::from(e) as BoxError
-                        })?;
-
-                    Ok(resp)
+            let aws_xks_params = aws_xks_params.clone();
+            Box::pin(async move {
+                let Some(aws_xks_params) = aws_xks_params.clone() else {
+                    return Err(Box::<dyn std::error::Error + Send + Sync>::from(
+                        "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
+                    ));
+                };
+                // async move {
+                let access_key_id = aws_xks_params.sigv4_access_key_id;
+                let secret_key = aws_xks_params.sigv4_secret_access_key;
+                //
+                let account_id = aws_xks_params.account_id;
+                let user_path = aws_xks_params.user_path;
+                let user_name = aws_xks_params.user_name;
+                let partition = aws_xks_params.partition;
+                if request.access_key() != access_key_id.as_str() {
+                    return Err(Box::<dyn std::error::Error + Send + Sync>::from(format!(
+                        "Access key ID '{}' not found",
+                        request.access_key()
+                    )));
                 }
+
+                let user = User::new(
+                    partition.as_str(),
+                    account_id.as_str(),
+                    user_path.as_str(),
+                    user_name.as_str(),
+                )
+                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                let k_secret_key = KSecretKey::from_str(&secret_key)
+                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                let signing_key = k_secret_key.to_ksigning(
+                    request.request_date(),
+                    request.region(),
+                    request.service(),
+                );
+
+                let resp = GetSigningKeyResponse::builder()
+                    .principal(user)
+                    .signing_key(signing_key)
+                    .build()
+                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                Ok(resp)
+                // }
             })
         }
     }
@@ -224,21 +232,27 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
         let kms_server = self.kms_server.clone();
+        let aws_xks_params = self.aws_xks_params.clone();
+
         let get_signing_key_fn = self.get_signing_key_fn();
         Box::pin(async move {
+            let _key_bytes = get_aws_key(&kms_server, &aws_xks_params.sigv4_access_key_id).await?;
+
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
             let body_as_bytes = body
-                .map(|chunk| chunk.unwrap_or_default())
+                .map(Result::unwrap_or_default)
                 .fold(Vec::new(), |mut acc, chunk| async move {
                     acc.extend_from_slice(&chunk);
                     acc
                 })
                 .await;
 
-            let params = kms_server.params.aws_xks_params.clone().expect(
-                "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
-            );
+            let params = kms_server.params.aws_xks_params.clone().ok_or_else(||
+                actix_web::error::ErrorInternalServerError(
+                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
+                )
+            )?;
 
             // Wrap `get_signing_key` in a `tower::Service`.
             let mut get_signing_key_service = service_for_signing_key_fn(get_signing_key_fn);
@@ -267,7 +281,6 @@ where
             let version: http::Version = match actix_web_http_request.version() {
                 actix_web::http::Version::HTTP_09 => http::Version::HTTP_09,
                 actix_web::http::Version::HTTP_10 => http::Version::HTTP_10,
-                actix_web::http::Version::HTTP_11 => http::Version::HTTP_11,
                 actix_web::http::Version::HTTP_2 => http::Version::HTTP_2,
                 actix_web::http::Version::HTTP_3 => http::Version::HTTP_3,
                 _ => http::Version::HTTP_11,
@@ -277,7 +290,7 @@ where
                 .uri(uri)
                 .version(version);
 
-            for (header_name, header_value) in actix_web_http_request.headers().iter() {
+            for (header_name, header_value) in actix_web_http_request.headers() {
                 http_request_builder =
                     http_request_builder.header(header_name.as_str(), header_value.as_bytes());
             }
@@ -311,4 +324,44 @@ where
             Ok(res.map_into_left_body())
         })
     }
+}
+
+async fn get_aws_key(
+    kms_server: &Arc<KMS>,
+    sigv4_access_key_id: &str,
+) -> Result<Zeroizing<Vec<u8>>, actix_web::error::InternalError<String>> {
+    kms_server
+        .get(
+            Get {
+                unique_identifier: Some(UniqueIdentifier::TextString(
+                    sigv4_access_key_id.to_owned(),
+                )),
+                key_format_type: Some(KeyFormatType::Raw),
+                ..Default::default()
+            },
+            "",
+            None,
+        )
+        .await
+        .map_err(|e| {
+            InternalError::new(
+                format!("Failed to get AWS XKS sigv4 key from KMS: {e:?}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        })?
+        .object
+        .key_block()
+        .map_err(|e| {
+            InternalError::new(
+                format!("Failed to get AWS XKS sigv4 key block from KMS: {e:?}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        })?
+        .secret_data_bytes()
+        .map_err(|e| {
+            InternalError::new(
+                format!("Failed to get AWS XKS sigv4 key bytes from KMS: {e:?}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        })
 }
