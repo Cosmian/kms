@@ -1,4 +1,5 @@
 ---
+# Only used for local development and testing
 services:
   postgres:
     image: postgres

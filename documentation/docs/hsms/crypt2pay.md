@@ -121,7 +121,7 @@ hsm_password = ["<password>", "<password>", ] # example ["648219", "648219"] for
 >
 > If you do not want to login, use the special password value `<NO_LOGIN>`
 
-#### Configuration via command-line
+### Configuration via command-line
 
 HSM support can also be enabled with command-line arguments:
 

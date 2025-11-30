@@ -544,7 +544,7 @@ def detect_implemented_operations() -> Set[str]:
     ops = set()
 
     if not OPS_DIR.exists():
-        print(f"Warning: Operations directory not found: {OPS_DIR}", file=sys.stderr)
+        print(f'Warning: Operations directory not found: {OPS_DIR}', file=sys.stderr)
         return ops
 
     # Files to skip (utility modules, not KMIP operations)
@@ -735,7 +735,7 @@ def _detect_ops_from_rust_content(rust_source: str) -> Set[str]:
 def parse_attributes() -> List[str]:
     """Parse the Attribute enum from kmip_attributes.rs and return list of attribute names."""
     if not ATTRS_FILE.exists():
-        print(f"Warning: Attributes file not found: {ATTRS_FILE}", file=sys.stderr)
+        print(f'Warning: Attributes file not found: {ATTRS_FILE}', file=sys.stderr)
         return []
 
     content = ATTRS_FILE.read_text(encoding='utf-8')
@@ -1051,48 +1051,11 @@ The following table shows operation support across all KMIP versions.
 
 """
 
-    # Build operations table with version columns
-    # Collect ALL operations from all KMIP version specs (not just a hardcoded list)
-    all_operations = set()
-    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']
-
-    for version in versions:
-        all_operations.update(ops_by_version.get(version, set()))
-
-    # Sort operations alphabetically
-    all_operations = sorted(all_operations)
-
-    print(f"  Found {len(all_operations)} unique operations across all KMIP versions")
-
-    # Build version support matrix
-    op_version_matrix = {}
-    for op in all_operations:
-        implemented = op in implemented_ops
-        version_support = get_version_support_for_operation(
-            op, ops_by_version, implemented
-        )
-        op_version_matrix[op] = version_support
-
-    # Create table header with individual version columns
-    header_row = '| Operation |'
-    separator_row = '| --------- |'
-    for version in versions:
-        header_row += f' {version} |'
-        separator_row += ' :-----: |'
-
-    md += header_row + '\n'
-    md += separator_row + '\n'
-
-    # Add operation rows
-    for op in all_operations:
-        row = f"| {op:<30} |"
-
-        # Add status for each version
-        for version in versions:
-            status = op_version_matrix[op].get(version, 'N/A')
-            row += f' {status:^7} |'
-
-        md += row + '\n'
+    # Operations table
+    md += '| Operation              | Current |\n'
+    md += '| ---------------------- | ------: |\n'
+    for op, status in ops_support.items():
+        md += f'| {op:<22} | {status:>7} |\n'
 
     md += """
 ### Methodology
@@ -1539,11 +1502,7 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
     # (most attributes are present in all versions)
     for attr in sorted(attrs_support.keys()):
         status = attrs_support[attr]
-        row = f"| {attr:<35} |"
-        for version in versions:
-            # Attributes are generally present in all versions
-            row += f' {status:^7} |'
-        md += row + '\n'
+        md += f'| {attr:<35} | {status:>7} |\n'
 
     md += """
 Notes:
@@ -1560,14 +1519,14 @@ Notes:
 def update_support_md(content: str) -> int:
     """Write the generated content to support.md."""
     SUPPORT_MD.write_text(content, encoding='utf-8')
-    print(f"✓ Updated {SUPPORT_MD}")
+    print(f'✓ Updated {SUPPORT_MD}')
     return 0
 
 
 def update_readme_md(support_content: str) -> int:
     """Update README.md with the support content between markers."""
     if not README_MD.exists():
-        print(f"Error: README not found: {README_MD}", file=sys.stderr)
+        print(f'Error: README not found: {README_MD}', file=sys.stderr)
         return 2
 
     readme_text = README_MD.read_text(encoding='utf-8')
@@ -1591,10 +1550,10 @@ def update_readme_md(support_content: str) -> int:
 
     # Build replacement block
     replacement = (
-        f"{START_MARKER}\n"
-        f"<!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->\n"
-        f"{support_for_readme}\n"
-        f"{END_MARKER}"
+        f'{START_MARKER}\n'
+        f'<!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->\n'
+        f'{support_for_readme}\n'
+        f'{END_MARKER}'
     )
 
     new_readme = (
@@ -1602,7 +1561,7 @@ def update_readme_md(support_content: str) -> int:
     )
 
     README_MD.write_text(new_readme, encoding='utf-8')
-    print(f"✓ Updated {README_MD}")
+    print(f'✓ Updated {README_MD}')
     return 0
 
 
@@ -1737,24 +1696,11 @@ def main() -> int:
 
     # Detect implemented operations
     ops = detect_implemented_operations()
-    print(f"  Found {len(ops)} implemented operations")
+    print(f'  Found {len(ops)} implemented operations')
 
     # Parse attributes
     attrs = parse_attributes()
-    print(f"  Found {len(attrs)} defined attributes")
-
-    # Get operations by version
-    ops_by_version = get_operations_by_version()
-
-    # Get operation field support from Rust structs
-    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']
-    field_support = get_operation_field_support(versions)
-
-    # Determine baseline profile compliance
-    print('Checking baseline profile compliance...')
-    profile_compliance = determine_baseline_profile_compliance(ops)
-    for profile, status in profile_compliance.items():
-        print(f"  {profile}: {status}")
+    print(f'  Found {len(attrs)} defined attributes')
 
     # Map support
     ops_support = map_operation_support(ops)

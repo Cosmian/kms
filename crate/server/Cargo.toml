@@ -111,6 +111,10 @@ pem = { workspace = true }
 [build-dependencies]
 actix-http = "3.10"
 time = { workspace = true, features = ["local-offset", "formatting"] }
+sha2 = "0.10"
+
+[package.metadata.cargo-machete]
+ignored = ["sha2"]
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
@@ -128,12 +132,12 @@ assets = [
     [
         "ui_non_fips/dist/*",
         "usr/local/cosmian/ui/dist/",
-        "500",
+        "644",
     ],
     [
         "ui_non_fips/dist/assets/*",
         "usr/local/cosmian/ui/dist/assets/",
-        "500",
+        "644",
     ],
     [
         "target/release/cosmian_kms",
@@ -151,9 +155,9 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "usr/local/openssl/lib64/ossl-modules/legacy.so",
-        "400",
+        "target/.openssl-staging/lib/ossl-modules/legacy.so",
+        "usr/local/lib/cosmian-kms/ossl-modules/legacy.so",
+        "500",
     ],
 ]
 systemd-units = [
@@ -162,6 +166,56 @@ systemd-units = [
 
 [package.metadata.deb.variants.fips]
 features = []
+assets = [
+    [
+        "ui/dist/*",
+        "usr/local/cosmian/ui/dist/",
+        "644",
+    ],
+    [
+        "ui/dist/assets/*",
+        "usr/local/cosmian/ui/dist/assets/",
+        "644",
+    ],
+    [
+        "target/release/cosmian_kms",
+        "usr/sbin/cosmian_kms",
+        "500",
+    ],
+    [
+        "../../README.md",
+        "usr/share/doc/cosmian/README",
+        "644",
+    ],
+    [
+        "../../pkg/kms.toml",
+        "etc/cosmian/",
+        "400",
+    ],
+    [
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ossl-modules/fips.so",
+        "usr/local/lib/cosmian-kms/ossl-modules/fips.so",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/openssl.cnf",
+        "usr/local/lib/cosmian-kms/ssl/openssl.cnf",
+        "400",
+    ],
+    [
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf",
+        "usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf",
+        "400",
+    ],
+]
+
+# FIPS variant with dynamic OpenSSL linkage
+# Depends on system OpenSSL 3.x and packages the required provider modules and config files
+# Also embeds the OpenSSL shared libraries for self-contained deployment
+[package.metadata.deb.variants.fips-dynamic]
+features = []
+depends = ""
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
     [
         "ui/dist/*",
@@ -189,18 +243,62 @@ assets = [
         "400",
     ],
     [
-        "/usr/local/openssl/lib64/ossl-modules/fips.so",
-        "usr/local/openssl/lib64/ossl-modules/fips.so",
+        "target/.openssl-staging/lib/libssl.so.3",
+        "usr/local/lib/cosmian-kms/libssl.so.3",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/lib/libcrypto.so.3",
+        "usr/local/lib/cosmian-kms/libcrypto.so.3",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ossl-modules/fips.so",
+        "usr/local/lib/cosmian-kms/ossl-modules/fips.so",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/openssl.cnf",
+        "usr/local/lib/cosmian-kms/ssl/openssl.cnf",
         "400",
     ],
     [
-        "/usr/local/openssl/ssl/openssl.cnf",
-        "usr/local/openssl/ssl/openssl.cnf",
+        "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf",
+        "usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf",
         "400",
     ],
+]
+
+# Non-FIPS variant with dynamic OpenSSL linkage
+# Dynamic linking - OpenSSL libraries are provided by the system
+[package.metadata.deb.variants.non-fips-dynamic]
+features = ["non-fips"]
+depends = ""
+# Dynamic linking - uses system OpenSSL (no bundled libraries)
+assets = [
     [
-        "/usr/local/openssl/ssl/fipsmodule.cnf",
-        "usr/local/openssl/ssl/fipsmodule.cnf",
+        "ui_non_fips/dist/*",
+        "usr/local/cosmian/ui/dist/",
+        "500",
+    ],
+    [
+        "ui_non_fips/dist/assets/*",
+        "usr/local/cosmian/ui/dist/assets/",
+        "500",
+    ],
+    [
+        "target/release/cosmian_kms",
+        "usr/sbin/cosmian_kms",
+        "500",
+    ],
+    [
+        "../../README.md",
+        "usr/share/doc/cosmian/README",
+        "644",
+    ],
+    [
+        "../../pkg/kms.toml",
+        "etc/cosmian/",
         "400",
     ],
 ]
@@ -213,16 +311,74 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
+    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "644" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "/usr/local/openssl/lib64/ossl-modules/legacy.so", dest = "/usr/local/openssl/lib64/ossl-modules/legacy.so", mode = "500" },
+    { source = "target/.openssl-staging/lib/ossl-modules/legacy.so", dest = "/usr/local/lib/cosmian-kms/ossl-modules/legacy.so", mode = "500" },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+]
+auto-req = "no" # do not try to discover .so dependencies
+features = ["non-fips"]
+require-sh = true
+
+[package.metadata.generate-rpm.variants.fips]
+license = "BUSL-1.1"
+assets = [
+    # Use FIPS UI assets for the FIPS variant
+    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
+    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "644" },
+    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ossl-modules/fips.so", dest = "/usr/local/lib/cosmian-kms/ossl-modules/fips.so", mode = "500" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/openssl.cnf", dest = "/usr/local/lib/cosmian-kms/ssl/openssl.cnf", mode = "400" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf", dest = "/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf", mode = "400" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
+features = []
+
+# FIPS variant with dynamic OpenSSL linkage
+# Dynamic linking - OpenSSL libraries are provided by the system
+[package.metadata.generate-rpm.variants.fips-dynamic]
+license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "target/.openssl-staging/lib/libssl.so.3", dest = "/usr/local/lib/cosmian-kms/libssl.so.3", mode = "500" },
+    { source = "target/.openssl-staging/lib/libcrypto.so.3", dest = "/usr/local/lib/cosmian-kms/libcrypto.so.3", mode = "500" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ossl-modules/fips.so", dest = "/usr/local/lib/cosmian-kms/ossl-modules/fips.so", mode = "500" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/openssl.cnf", dest = "/usr/local/lib/cosmian-kms/ssl/openssl.cnf", mode = "400" },
+    { source = "target/.openssl-staging/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf", dest = "/usr/local/lib/cosmian-kms/ssl/fipsmodule.cnf", mode = "400" },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+]
+auto-req = "no"
+require-sh = true
+features = []
+
+# Non-FIPS variant with dynamic OpenSSL linkage
+# Dynamic linking - OpenSSL libraries are provided by the system
+[package.metadata.generate-rpm.variants.non-fips-dynamic]
+license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+]
+auto-req = "no"
+require-sh = true
+features = ["non-fips"]
 
 # END RPM PACKAGING
 # ------------------------------------------------------------------------------

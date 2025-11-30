@@ -77,11 +77,6 @@ we'll mark the PR incomplete and ask you to follow up on the missing requirement
 Please include a file within your PR named `changelog/#.txt`, where `#` is your pull request ID. There are many
 examples under [changelog](changelog), but the general format is:
 
-```text
-```CATEGORY
-COMPONENT: summary of change
-```
-
 CATEGORY is one of `🚀 Features`, `🐛 Bug Fixes`, `📚 Documentation`, `🧪 Testing`, `⚙️ Miscellaneous Tasks`, or
 `🚜 Refactor`. Your PR is almost certain to be one of `🐛 Bug Fixes` or `🚀 Features`, but don't worry too much about
 getting it exactly right, we'll tell you if a change is needed.
@@ -116,16 +111,16 @@ If you have never worked with Rust before, you will have to complete the followi
 1. Install Rust using [rustup](https://rustup.rs/)
 2. Install the required stable toolchain: `rustup toolchain install 1.90.0`
 3. Install required components: `rustup component add rustfmt clippy --toolchain 1.90.0`
-4. Set up OpenSSL 3.2.0 (required for FIPS compliance) by running: `bash .github/reusable_scripts/get_openssl_binaries.sh`
+4. Build the project: `cargo build --release`
 
-For detailed development setup, please refer to the [README](README.md) and the build instructions in
-[.github/copilot-instructions.md](.github/copilot-instructions.md).
+For detailed development setup including Nix-based reproducible builds, please refer to the [README](README.md) and
+the build instructions in [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
 ## Testing
 
 Before submitting a pull request, please ensure that:
 
-• All existing tests pass: `cargo test --workspace --lib`
+• All existing tests pass: `cargo test`
 • Your code is properly formatted: `cargo fmt --check`
 • Your code passes clippy lints: `cargo clippy --workspace --all-targets --all-features`
 • If you've added new functionality, include appropriate unit and/or integration tests

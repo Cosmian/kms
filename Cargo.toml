@@ -100,8 +100,15 @@ keywords = ["kms", "cosmian"]
 categories = ["security"]
 
 [profile.release]
-lto = true
-strip = true
+# Deterministic build configuration for reproducible binaries
+# These settings ensure the same source produces identical binaries across builds
+lto = "fat"               # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols"         # Strip symbol tables for smaller binaries
+opt-level = "z"           # Optimize for size while maintaining performance
+codegen-units = 1         # Single codegen unit: best optimization and determinism
+panic = "abort"           # Smaller binaries, no unwinding tables
+incremental = false       # Disable incremental compilation for determinism
+debug = 0                 # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
