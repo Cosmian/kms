@@ -286,8 +286,7 @@ enforce_binary_hash() {
     arch="${sys%%-*}"
     os="${sys#*-}"
     impl=$([ "$LINK" = "dynamic" ] && echo non-openssl || echo openssl)
-    echo "       Tried (new): nix/expected-hashes/${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
-    echo "       Tried (legacy): nix/expected-hashes/${VARIANT}-${LINK}.${sys}.sha256 and nix/expected-hashes/${VARIANT}.${sys}.sha256" >&2
+    echo "       Tried: nix/expected-hashes/${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
     echo "Present files:" >&2
     ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true
     exit 1

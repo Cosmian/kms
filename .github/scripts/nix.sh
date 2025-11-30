@@ -96,10 +96,12 @@ while [ $# -gt 0 ]; do
     ;;
   -v | --variant)
     VARIANT="${2:-}"
+    VARIANT_EXPLICIT=1
     shift 2 || true
     ;;
   -l | --link)
     LINK="${2:-}"
+    LINK_EXPLICIT=1
     shift 2 || true
     ;;
   build | docker | test | package | sbom | update-hashes)
@@ -479,13 +481,18 @@ if [ "$COMMAND" = "package" ]; then
     NIXPKGS_ARG="$NIXPKGS_STORE"
   fi
 
-  # When PACKAGE_TYPE is empty AND user hasn't specified custom variant/link, build all combinations
-  # When PACKAGE_TYPE is specified OR user provided explicit variant/link, use those values
+  # Build all combinations only when:
+  # 1. No package type specified (packaging all types for the platform)
+  # 2. User didn't explicitly override --variant or --link (used defaults)
+  # To detect explicit user choice, we track if flags were actually provided
   VARIANTS_TO_BUILD=("$VARIANT")
   LINKS_TO_BUILD=("$LINK")
 
-  # Only build all variants/links if user accepted defaults (fips + static)
-  if [ -z "$PACKAGE_TYPE" ] && [ "$VARIANT" = "fips" ] && [ "$LINK" = "static" ]; then
+  # Only build all combinations if BOTH conditions are true:
+  # - No specific package type requested
+  # - User didn't override defaults (variant=fips AND link=static)
+  # Note: This means "package" with no type builds all, but "package deb" builds only what's specified
+  if [ -z "$PACKAGE_TYPE" ] && [ "$VARIANT" = "fips" ] && [ "$LINK" = "static" ] && [ -z "${VARIANT_EXPLICIT:-}" ] && [ -z "${LINK_EXPLICIT:-}" ]; then
     VARIANTS_TO_BUILD=("fips" "non-fips")
     LINKS_TO_BUILD=("static" "dynamic")
   fi
@@ -597,8 +604,8 @@ if [ "$COMMAND" = "package" ]; then
 
           # Set OpenSSL environment to use packaged OpenSSL config and modules
           # This overrides the compile-time OPENSSLDIR path (which points to Nix store)
-          # Only needed for FIPS static builds to load FIPS provider and config
-          if [ "$BUILD_VARIANT" = "fips" ] && [ "$BUILD_LINK" = "static" ]; then
+          # Needed for FIPS builds to load FIPS provider and config from packaged location
+          if [ "$BUILD_VARIANT" = "fips" ]; then
             export OPENSSL_CONF="$tmpdir/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
             export OPENSSL_MODULES="$tmpdir/usr/local/lib/cosmian-kms/ossl-modules"
             echo "Setting OPENSSL_CONF=$OPENSSL_CONF"
@@ -606,8 +613,15 @@ if [ "$COMMAND" = "package" ]; then
           fi
 
           echo "Running cosmian_kms --info from extracted package…"
-          INFO_OUT="$($BIN_PATH --info 2>&1)"
-          STATUS=$?
+          # For FIPS builds, cd to SSL directory so .include directive can find fipsmodule.cnf
+          # OpenSSL 3.1.2's .include resolves paths relative to CWD, not config file location
+          if [ "$BUILD_VARIANT" = "fips" ]; then
+            INFO_OUT="$(cd "$tmpdir/usr/local/lib/cosmian-kms/ssl" && $BIN_PATH --info 2>&1)"
+            STATUS=$?
+          else
+            INFO_OUT="$($BIN_PATH --info 2>&1)"
+            STATUS=$?
+          fi
           echo "$INFO_OUT"
 
           # For FIPS dynamic builds, allow failure if system lacks FIPS provider

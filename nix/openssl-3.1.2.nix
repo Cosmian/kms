@@ -85,8 +85,7 @@ stdenv.mkDerivation rec {
       if static then "static" else "shared"
     } linkage)"
     # Configure with explicit libdir to normalize to 'lib' across platforms
-    # Note: MODULESDIR will still be set to lib64/ossl-modules on x86_64,
-    # but we'll create a symlink in postInstall to make it work
+    # Note: We use $out/ssl during build, then reorganize in postInstall
     perl ./Configure \
       ${if static then "no-shared" else "shared"} \
       enable-fips \
@@ -119,7 +118,7 @@ stdenv.mkDerivation rec {
 
   installPhase = ''
     runHook preInstall
-    echo "Installing OpenSSL ${version}..."
+    echo "Installing OpenSSL ${version} to target paths..."
     # Determine job count as (cores - 1), minimum 1
     if command -v nproc >/dev/null 2>&1; then
       CORES=$(nproc)
@@ -131,37 +130,43 @@ stdenv.mkDerivation rec {
       CORES=2
     fi
     JOBS=$(( CORES > 1 ? CORES - 1 : 1 ))
-    # make -j install 2>&1
     make -j"$JOBS" install_sw install_ssldirs install_fips > /dev/null 2>&1
 
-    # Enable FIPS provider in the installed OpenSSL configuration.
-    # 1) Include the generated fipsmodule.cnf
-    # 2) Activate FIPS by default and define a base provider section
-    # Some OpenSSL install targets do not install openssl.cnf by default (notably with install_sw).
-    # If it's missing, seed it from the source tree's default config.
+    # Reorganize output to match final installation layout
+    # Create target directory structure
+    mkdir -p "$out/usr/local/lib/cosmian-kms/ossl-modules"
+    mkdir -p "$out/usr/local/lib/cosmian-kms/ssl"
+
+    # Move FIPS provider module to target location
+    if [ -f "$out/lib/ossl-modules/fips.${soExt}" ]; then
+      mv "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+    elif [ -f "$out/lib64/ossl-modules/fips.${soExt}" ]; then
+      mv "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+    else
+      echo "ERROR: FIPS provider module not found"
+      exit 1
+    fi
+
+    # Move OpenSSL configuration files to target location
     if [ ! -f "$out/ssl/openssl.cnf" ]; then
-      echo "openssl.cnf not found under $out/ssl, seeding from ./apps/openssl.cnf"
+      echo "openssl.cnf not found, seeding from ./apps/openssl.cnf"
       install -Dm644 "./apps/openssl.cnf" "$out/ssl/openssl.cnf"
     fi
 
-    sed -i.bu "s,# \\.include fipsmodule\\.cnf,\\.include $out/ssl/fipsmodule.cnf," "$out/ssl/openssl.cnf"
-    sed -i.bu 's/# activate = 1/activate = 1/' "$out/ssl/openssl.cnf"
-    sed -i.bu 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' "$out/ssl/openssl.cnf"
+    mv "$out/ssl/fipsmodule.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
+    mv "$out/ssl/openssl.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
 
-    echo "OpenSSL installation completed successfully in $out."
+    # Inline the fipsmodule.cnf content into openssl.cnf instead of using .include
+    # This avoids path resolution issues since .include in OpenSSL 3.1.2 resolves relative to CWD
+    # Simply uncomment the .include line - we'll use OPENSSLDIR to make it work
+    sed -i 's|^# \.include fipsmodule\.cnf|.include fipsmodule.cnf|g' \
+        "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
 
-    # Normalize provider location to $out/lib/ossl-modules
-    # Some platforms may install modules under lib64/ossl-modules by default.
-    # Move any such modules into lib/ossl-modules and provide a compatibility symlink.
-    if [ -d "$out/lib64/ossl-modules" ]; then
-      mkdir -p "$out/lib/ossl-modules"
-      if [ -n "$(find "$out/lib64/ossl-modules" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-        mv -v "$out/lib64/ossl-modules/"* "$out/lib/ossl-modules/"
-      fi
-      rm -rf "$out/lib64/ossl-modules"
-      mkdir -p "$out/lib64"
-      ln -s ../lib/ossl-modules "$out/lib64/ossl-modules"
-    fi
+    sed -i 's/# activate = 1/activate = 1/' "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+    sed -i 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' \
+        "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+
+    echo "OpenSSL FIPS modules and config installed to $out/usr/local/lib/cosmian-kms/"
 
     runHook postInstall
   '';
@@ -177,14 +182,6 @@ stdenv.mkDerivation rec {
   # would invalidate the module integrity MAC and break self-tests at runtime.
   dontStrip = true;
   dontPatchELF = true;
-
-  # After Nix fixup, ensure lib64 points to lib for compatibility.
-  postFixup = ''
-    if [ -d "$out/lib/ossl-modules" ] && [ ! -e "$out/lib64/ossl-modules" ]; then
-      mkdir -p "$out/lib64"
-      ln -s ../lib/ossl-modules "$out/lib64/ossl-modules"
-    fi
-  '';
 
   # No passthru needed; consumers can use the derivation path as OPENSSL_DIR
 

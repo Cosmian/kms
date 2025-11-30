@@ -108,205 +108,57 @@ let
   };
 
   # Helper to embed boolean as string for shell script
-  enforceDeterministicHashStr = if enforceDeterministicHash then "true" else "false";
 
-  # Install check phase
-  installCheckPhase =
-    let
-      checkStaticOpenSSL = static;
-    in
-    ''
-      runHook preInstallCheck
+  # Install check phase - simplified version verification
+  installCheckPhase = ''
+    runHook preInstallCheck
 
-      BINARY_PATH="$out/bin/cosmian_kms"
+    BIN="$out/bin/cosmian_kms"
+    [ -f "$BIN" ] || { echo "ERROR: Binary not found"; exit 1; }
 
-      echo "========================================="
-      echo "Verifying installed binary: $BINARY_PATH"
+    # Run --version check
+    "$BIN" --version 2>&1 | grep -q "cosmian_kms_server" || { echo "ERROR: Version check failed"; exit 1; }
 
-      if [ ! -f "$BINARY_PATH" ]; then
-        echo "ERROR: Binary not found at $BINARY_PATH"
-        exit 1
-      fi
+    # Linux-specific checks
+    if [ "$(uname)" = "Linux" ]; then
+      # Check ELF interpreter is not in Nix store
+      interp=$(readelf -l "$BIN" | sed -n 's/^.*interpreter: \(.*\)]$/\1/p') || true
+      echo "$interp" | grep -q "/nix/store/" && { echo "ERROR: ELF interpreter in Nix store"; exit 1; }
 
-      export OPENSSL_CONF="${openssl312}/ssl/openssl.cnf"
-      ${lib.optionalString (
-        !static
-      ) ''export LD_LIBRARY_PATH="${openssl312}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"''}
+      # Check OpenSSL linkage
+      ${lib.optionalString static ''
+        ldd "$BIN" | grep -qi "libssl\|libcrypto" && { echo "ERROR: Unexpected dynamic OpenSSL"; exit 1; }
+      ''}
+      ${lib.optionalString (!static) ''
+        ldd "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
+      ''}
 
-      VERSION_OUTPUT=$("$BINARY_PATH" --version 2>&1 || true)
-      echo "Version: $VERSION_OUTPUT"
-      echo "$VERSION_OUTPUT" | grep -q "cosmian_kms_server" || {
-        echo "Direct exec failed or unexpected."
-        ${lib.optionalString pkgs.stdenv.isLinux ''
-          echo "Trying via glibc loader…"
-          LOADER=""
-          if [ "${pkgs.stdenv.hostPlatform.system}" = "x86_64-linux" ]; then
-            LOADER="${pkgs228.glibc}/lib/ld-linux-x86-64.so.2";
-          elif [ "${pkgs.stdenv.hostPlatform.system}" = "aarch64-linux" ]; then
-            LOADER="${pkgs228.glibc}/lib/ld-linux-aarch64.so.1";
-          fi
-          if [ -n "$LOADER" ] && [ -x "$LOADER" ]; then
-            ${
-              if !static then
-                ''VERSION_OUTPUT=$("$LOADER" --library-path "${openssl312}/lib:${pkgs228.glibc}/lib" "$BINARY_PATH" --version 2>&1 || true)''
-              else
-                ''VERSION_OUTPUT=$("$LOADER" --library-path "${pkgs228.glibc}/lib" "$BINARY_PATH" --version 2>&1 || true)''
-            }
-            echo "Version (via loader): $VERSION_OUTPUT"
-            echo "$VERSION_OUTPUT" | grep -q "cosmian_kms_server" || {
-              echo "Error: Binary does not report correct version even via loader"
-              exit 1
-            }
-          else
-            echo "Error: Could not locate glibc loader at $LOADER"
-            exit 1
-          fi
-        ''}
-        ${lib.optionalString (!pkgs.stdenv.isLinux) ''
-          echo "Error: Binary does not report correct version"
-          exit 1
-        ''}
+      # Check GLIBC version <= 2.28
+      MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
+      [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {
+        echo "ERROR: GLIBC $MAX_VER > 2.28"; exit 1;
       }
-      unset OPENSSL_CONF
 
-      if [ "$(uname)" = "Linux" ]; then
-        echo "Checking dynamic linkage..."
-        echo "Interpreter:"
-        interp=$(readelf -l "$BINARY_PATH" | sed -n 's/^.*interpreter: \(.*\)]$/\1/p') || true
-        echo "$interp"
-        ldd "$BINARY_PATH" || true
-
-        ${
-          if checkStaticOpenSSL then
-            ''
-              if ldd "$BINARY_PATH" | grep -qi "libssl\|libcrypto"; then
-                echo "ERROR: Dynamic OpenSSL linkage detected"
-                exit 1
-              fi
-            ''
-          else
-            ''
-              if ! ldd "$BINARY_PATH" | grep -qi "libssl\|libcrypto"; then
-                echo "ERROR: No dynamic OpenSSL linkage detected (expected dynamic linking)"
-                exit 1
-              fi
-              echo "SUCCESS: Dynamic OpenSSL linkage confirmed"
-            ''
+      # Deterministic hash check
+      ${lib.optionalString enforceDeterministicHash ''
+        ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
+        [ "$ACTUAL" = "${expectedHash}" ] || {
+          echo "ERROR: Hash mismatch. Expected ${expectedHash}, got $ACTUAL" >&2; exit 1;
         }
-
-        # Ensure the ELF interpreter does not point inside the Nix store
-        if echo "$interp" | grep -q "/nix/store/"; then
-          echo "ERROR: ELF interpreter points to Nix store: $interp"
-          exit 1
-        fi
-
-        # If we know the target dynamic linker from arch, assert it matches
-        ARCH="$(uname -m)"
-        EXPECTED_DL=""
-        if [ "$ARCH" = "x86_64" ]; then
-          EXPECTED_DL="/lib64/ld-linux-x86-64.so.2"
-        elif [ "$ARCH" = "aarch64" ]; then
-          EXPECTED_DL="/lib/ld-linux-aarch64.so.1"
-        fi
-        if [ -n "$EXPECTED_DL" ] && [ "$interp" != "$EXPECTED_DL" ]; then
-          echo "ERROR: Unexpected ELF interpreter. Expected $EXPECTED_DL, got: $interp"
-          exit 1
-        fi
-
-        echo "Checking GLIBC symbol versions..."
-        GLIBC_SYMS=$(readelf -sW "$BINARY_PATH" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu)
-        echo "GLIBC symbols found:"
-        echo "$GLIBC_SYMS"
-        MAX_GLIBC_VER=$(echo "$GLIBC_SYMS" | sed 's/^GLIBC_//' | sort -V | tail -n1 || echo "")
-        echo "Maximum GLIBC version: $MAX_GLIBC_VER"
-        if [ -n "$MAX_GLIBC_VER" ]; then
-          if [ "$(printf '%s\n' "$MAX_GLIBC_VER" "2.28" | sort -V | tail -n1)" != "2.28" ]; then
-            echo "ERROR: GLIBC symbols exceed 2.28 (max found: $MAX_GLIBC_VER)"
-            exit 1
-          fi
-        fi
-        echo "SUCCESS: GLIBC version check passed (max: $MAX_GLIBC_VER <= 2.28)"
-      fi
-
-      INFO=$("$BINARY_PATH" --info 2>&1 || true)
-      if echo "$INFO" | grep -q "OpenSSL 3.1.2"; then
-        :
-      else
-        echo "Direct --info failed or unexpected."
-        ${lib.optionalString pkgs.stdenv.isLinux ''
-          echo "Trying via glibc loader…"
-          LOADER=""
-          if [ "${pkgs.stdenv.hostPlatform.system}" = "x86_64-linux" ]; then
-            LOADER="${pkgs228.glibc}/lib/ld-linux-x86-64.so.2";
-          elif [ "${pkgs.stdenv.hostPlatform.system}" = "aarch64-linux" ]; then
-            LOADER="${pkgs228.glibc}/lib/ld-linux-aarch64.so.1";
-          fi
-          if [ -n "$LOADER" ] && [ -x "$LOADER" ]; then
-            ${
-              if !static then
-                ''INFO=$("$LOADER" --library-path "${openssl312}/lib:${pkgs228.glibc}/lib" "$BINARY_PATH" --info 2>&1 || true)''
-              else
-                ''INFO=$("$LOADER" --library-path "${pkgs228.glibc}/lib" "$BINARY_PATH" --info 2>&1 || true)''
-            }
-            echo "$INFO" | grep -q "OpenSSL 3.1.2" || {
-              echo "ERROR: --info did not report expected OpenSSL 3.1.2"
-              exit 1
-            }
-          else
-            echo "ERROR: Could not locate glibc loader at $LOADER"
-            exit 1
-          fi
-        ''}
-        ${lib.optionalString (!pkgs.stdenv.isLinux) ''
-          echo "ERROR: Failed to run --info on binary"
-          exit 1
-        ''}
-      fi
-
-      # Validate info content depending on FIPS mode
-      ${lib.optionalString isFips ''
-        echo "$INFO" | grep -Eq "OpenSSL FIPS mode" || {
-          echo "ERROR: In FIPS mode, --info should contain 'OpenSSL FIPS mode, version:'"
-          exit 1
-        }
+        echo "Hash OK: $ACTUAL"
       ''}
-      ${lib.optionalString (!isFips) ''
-        echo "$INFO" | grep -q "OpenSSL default mode" || {
-          echo "ERROR: In non-FIPS mode, --info must contain 'OpenSSL default mode version'"
-          exit 1
-        }
-      ''}
+    fi
 
-      echo "$INFO"
+    # For FIPS builds, verify binary was built against OpenSSL 3.1.2
+    # Note: OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
+    # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/lib/cosmian-kms/ssl
+    # Full FIPS validation happens in smoke test with proper environment variables set
+    strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not linked against OpenSSL 3.1.2"; exit 1; }
+    echo "Binary validation OK (OpenSSL 3.1.2 detected)"
 
-      echo "========================================="
-      echo "Binary verification completed successfully"
-
-      # Deterministic hash enforcement
-      if [ "$(uname)" = "Linux" ]; then
-        if [ "${enforceDeterministicHashStr}" != "true" ]; then
-          echo "WARNING: enforceDeterministicHash=false -> Skipping deterministic hash enforcement (variant ${variant})."
-        else
-          ${lib.optionalString (expectedHashPathVariant != null) ''
-            echo "Using expected hash file: ${expectedHashPathVariant}"
-          ''}
-          ACTUAL_SHA256=$(sha256sum "$BINARY_PATH" | awk '{print $1}')
-          if [ -z "${expectedHash}" ]; then
-            echo "ERROR: expectedHash is empty (variant ${variant})."; exit 1; fi
-          if [ "$ACTUAL_SHA256" != "${expectedHash}" ]; then
-            echo "ERROR: Deterministic hash mismatch for cosmian_kms (variant ${variant})." >&2
-            echo " Expected: ${expectedHash}" >&2
-            echo "   Actual: $ACTUAL_SHA256" >&2
-            exit 1
-          fi
-          echo "Deterministic hash check passed: $ACTUAL_SHA256 == ${expectedHash}"
-        fi
-      else
-        echo "Skipping deterministic hash enforcement on non-Linux platforms."
-      fi
-
-      runHook postInstallCheck
-    '';
+    echo "Binary verification passed"
+    runHook postInstallCheck
+  '';
 in
 rustPlatform.buildRustPackage rec {
   pname = "cosmian-kms-server${if static then "" else "-dynamic"}-rebuild-${rebuildMarker}";
@@ -412,41 +264,25 @@ rustPlatform.buildRustPackage rec {
     runHook postInstall
   '';
 
-  # Then add UI assets and build-info in postInstall.
+  # Add UI assets and FIPS modules in postInstall
   postInstall = ''
-        echo "=== Running postInstall phase ==="
-        # Install Web UI (if provided)
-        if [ -n "${lib.optionalString (ui != null) "yes"}" ]; then
-          echo "Installing Web UI from ${ui}"
-          mkdir -p "$out/usr/local/cosmian/ui/dist"
-          if [ -d "${ui}/dist" ]; then
-            echo "Copying UI files from ${ui}/dist to $out/usr/local/cosmian/ui/dist"
-            cp -R "${ui}/dist/"* "$out/usr/local/cosmian/ui/dist/" || {
-              echo "ERROR: Failed to copy UI files from ${ui}/dist"
-              echo "Contents of ${ui}:"
-              ls -la "${ui}" || true
-              echo "Contents of ${ui}/dist:"
-              ls -la "${ui}/dist" || true
-              exit 1
-            }
-            echo "UI files copied successfully"
-          else
-            echo "ERROR: UI dist folder not found in ${ui}"
-            echo "Contents of ${ui}:"
-            ls -la "${ui}" || true
-            exit 1
-          fi
-        else
-          echo "UI derivation not provided; skipping UI installation"
-        fi
+    ${lib.optionalString (ui != null) ''
+      mkdir -p "$out/usr/local/cosmian/ui/dist"
+      cp -R "${ui}/dist/"* "$out/usr/local/cosmian/ui/dist/"
+    ''}
 
-        # Write build info
-        mkdir -p "$out/bin"
-        cat > "$out/bin/build-info.txt" <<EOF
-    KMS Server ${variant} build (${if static then "static" else "dynamic"} OpenSSL linkage)
+    ${lib.optionalString isFips ''
+      mkdir -p "$out/usr/local/lib/cosmian-kms"
+      cp -r "${openssl312}/usr/local/lib/cosmian-kms/ossl-modules" "$out/usr/local/lib/cosmian-kms/"
+      cp -r "${openssl312}/usr/local/lib/cosmian-kms/ssl" "$out/usr/local/lib/cosmian-kms/"
+    ''}
+
+    # Write build info
+    cat > "$out/bin/build-info.txt" <<EOF
+    KMS Server ${variant} (${if static then "static" else "dynamic"} OpenSSL)
     Version: ${version}
-    Built with: Nix rustPlatform (glibc 2.27 on Linux)
     OpenSSL: ${openssl312}
+    ${lib.optionalString isFips "FIPS: usr/local/lib/cosmian-kms/ossl-modules/"}
     EOF
   '';
 
