@@ -1174,8 +1174,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_http_client"
-version = "0.5.3"
-source = "git+https://github.com/cosmian/http_client_server.git?branch=feat%2Fhttp_client_with_pem_certificates_instead_of_pkcs12#5f8fdc75a112f76ba956bc181d481e8d7ccddd9a"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfd1f4241f3ea37abd51de937cb5dea2c6c1d135e3835637ac3e5c56653af796"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",

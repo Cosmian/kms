@@ -15,11 +15,11 @@
 #   bash nix/scripts/update_all_hashes.sh [OPTIONS]
 #
 # Options:
-#   --vendor-only          Only update Cargo vendor hashes (server + UI)
-#   --binary-only          Only update binary hashes (skip vendor)
-#   --npm-only             Only update NPM dependencies hash
-#   --variant <fips|non-fips>  Update specific variant (default: both)
-#   --help                 Show this help message
+#   --component <ui|server>    Component to update
+#   --variant <fips|non-fips>  Crypto feature variant
+#   --max-retries N            Convergence attempts (default: 3)
+#   --retry-delay-seconds S    Delay between attempts (default: 2)
+#   --help                     Show this help message
 #
 # Requirements:
 #   - Nix package manager installed
@@ -27,6 +27,13 @@
 #   - Network access (for vendor hash update)
 
 set -euo pipefail
+
+# Maximum retry cycles to converge hashes (can be set via flags)
+MAX_RETRIES=${MAX_RETRIES:-3}
+RETRY_DELAY_SECONDS=${RETRY_DELAY_SECONDS:-2}
+
+# Track overall convergence status
+CONVERGED=false
 
 # Script directory and repository root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,6 +47,13 @@ compute_sha256() {
     else
         shasum -a 256 "$file" | awk '{print $1}'
     fi
+}
+
+# Validate SRI-style sha256 (must be 'sha256-' followed by base64 chars)
+is_valid_sri() {
+    local val="$1"
+    # Typical Nix SRI hashes are base64 ~44 chars; guard to avoid empty 'sha256-'
+    [[ "$val" =~ ^sha256-[A-Za-z0-9+/=]{20,}$ ]]
 }
 
 # Show usage
@@ -86,28 +100,22 @@ EOF
     exit 0
 }
 
-# Parse command-line arguments
+# Parse command-line arguments (new interface)
+COMPONENT=""
+VARIANT=""
 UPDATE_VENDOR=true
 UPDATE_BINARY=true
 UPDATE_NPM=true
-VARIANT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-    --vendor-only)
-        UPDATE_BINARY=false
-        UPDATE_NPM=false
-        shift
-        ;;
-    --binary-only)
-        UPDATE_VENDOR=false
-        UPDATE_NPM=false
-        shift
-        ;;
-    --npm-only)
-        UPDATE_VENDOR=false
-        UPDATE_BINARY=false
-        shift
+    --component)
+        COMPONENT="${2:-}"
+        if [ -z "$COMPONENT" ] || { [ "$COMPONENT" != "ui" ] && [ "$COMPONENT" != "server" ]; }; then
+            echo "Error: --component requires 'ui' or 'server'" >&2
+            exit 1
+        fi
+        shift 2
         ;;
     --variant)
         VARIANT="${2:-}"
@@ -115,6 +123,14 @@ while [ $# -gt 0 ]; do
             echo "Error: --variant requires an argument (fips or non-fips)" >&2
             exit 1
         fi
+        shift 2
+        ;;
+    --max-retries)
+        MAX_RETRIES="${2:-}"
+        shift 2
+        ;;
+    --retry-delay-seconds)
+        RETRY_DELAY_SECONDS="${2:-}"
         shift 2
         ;;
     --help | -h)
@@ -133,9 +149,7 @@ CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"'
 
 echo "Updating expected hashes for current platform..."
 echo "Platform: $CURRENT_SYSTEM"
-echo "Update vendor hash: $UPDATE_VENDOR"
-echo "Update NPM hash: $UPDATE_NPM"
-echo "Update binary hashes: $UPDATE_BINARY"
+echo "Component: ${COMPONENT:-all}"
 if [ -n "$VARIANT" ]; then
     echo "Variant: $VARIANT"
 else
@@ -143,8 +157,23 @@ else
 fi
 echo ""
 
-# Step 1: Update vendor hashes (if requested)
-if [ "$UPDATE_VENDOR" = "true" ]; then
+# Helper: try to build an attr and detect hash mismatch (returns 0 if ok)
+build_attr_validates() {
+    local attr="$1"
+    local outlink="$2"
+    if nix-build -A "$attr" -o "$outlink" >/dev/null 2>&1; then
+        return 0
+    fi
+    # Common mismatch messages include 'got:' in fetchers; treat as non-converged
+    return 1
+}
+
+# One pass to update vendor hashes
+update_vendor_hashes() {
+    # Step 1: Update vendor hashes (if requested)
+    if [ "$UPDATE_VENDOR" != "true" ]; then
+        return 0
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Step 1: Updating Cargo vendor hashes..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -175,60 +204,59 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
                 NIX_ATTR="kms-server-${BUILD_VARIANT}"
             fi
 
-            # Trigger a Nix build that will fail with the correct hash
-            if BUILD_OUTPUT=$(nix-build -A "$NIX_ATTR" -o "result-server-${BUILD_VARIANT}-${LINK_MODE}-vendor" 2>&1); then
+            # Precompute hash file path for this variant/linkage
+            ARCH="${CURRENT_SYSTEM%%-*}"
+            OS="${CURRENT_SYSTEM#*-}"
+            IMPL=$([ "$LINK_MODE" = "dynamic" ] && echo no-openssl || echo openssl)
+            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.vendor.${BUILD_VARIANT}.${IMPL}.${ARCH}.${OS}.sha256"
+            mkdir -p "$REPO_ROOT/nix/expected-hashes"
+
+            # Trigger a Nix build that will fail early with the correct vendor hash suggestion
+            # Disable deterministic binary hash enforcement to avoid masking the vendor error
+            if BUILD_OUTPUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "$NIX_ATTR" -o "result-server-${BUILD_VARIANT}-${LINK_MODE}-vendor" 2>&1); then
                 echo "Build succeeded (vendor hash already correct for $LINK_MODE)"
             else
-                # Extract the "got:" hash from error message
-                NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" | sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' | head -1 || true)
+                # Extract the suggested hash using multiple patterns
+                # Extract the suggested hash using multiple patterns
+                NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" |
+                    sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                    head -1 || true)
+                if ! is_valid_sri "$NEW_VENDOR_HASH"; then
+                    # Alternative message format
+                    NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" |
+                        sed -n 's/.*hash mismatch.*got is\s*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                        head -1 || true)
+                fi
 
-                if [ -n "$NEW_VENDOR_HASH" ]; then
+                if is_valid_sri "$NEW_VENDOR_HASH"; then
                     echo "Discovered vendor hash for $LINK_MODE: $NEW_VENDOR_HASH"
-
-                    # Determine the old hash to replace based on platform and link mode
-                    KMS_SERVER_NIX="$REPO_ROOT/nix/kms-server.nix"
-
-                    # Extract hash using awk (much faster than grep chains)
-                    if [ "$(uname)" = "Darwin" ]; then
-                        if [ "$LINK_MODE" = "static" ]; then
-                            # macOS static hash - line ~322
-                            OLD_HASH=$(awk '/# macOS vendor hash/{f=1} f && /static then/{getline; match($0, /sha256-[^"]+/); print substr($0, RSTART, RLENGTH); exit}' "$KMS_SERVER_NIX")
-                        else
-                            # macOS dynamic hash - line ~324
-                            OLD_HASH=$(awk '/# macOS vendor hash/{f=1} f && /else/{getline; match($0, /sha256-[^"]+/); print substr($0, RSTART, RLENGTH); exit}' "$KMS_SERVER_NIX")
-                        fi
-                    else
-                        # Linux
-                        if [ "$LINK_MODE" = "static" ]; then
-                            # Linux static hash - line ~327
-                            OLD_HASH=$(awk '/# Linux vendor hash for SERVER/{f=1} f && /if static then/{getline; match($0, /sha256-[^"]+/); print substr($0, RSTART, RLENGTH); exit}' "$KMS_SERVER_NIX")
-                        else
-                            # Linux dynamic hash - line ~329
-                            OLD_HASH=$(awk '/# Linux vendor hash for SERVER/{f=1} f && /else$/{getline; match($0, /sha256-[^"]+/); print substr($0, RSTART, RLENGTH); exit}' "$KMS_SERVER_NIX")
-                        fi
-                    fi
-
-                    if [ -n "$OLD_HASH" ] && [ "$OLD_HASH" != "$NEW_VENDOR_HASH" ]; then
-                        echo "Replacing $(uname) $LINK_MODE hash:"
-                        echo "  Old: $OLD_HASH"
-                        echo "  New: $NEW_VENDOR_HASH"
-
-                        # Simple string replacement
-                        if [ "$(uname)" = "Darwin" ]; then
-                            sed -i '' "s|$OLD_HASH|$NEW_VENDOR_HASH|g" "$KMS_SERVER_NIX"
-                        else
-                            sed -i "s|$OLD_HASH|$NEW_VENDOR_HASH|g" "$KMS_SERVER_NIX"
-                        fi
-
-                        echo "✅ Updated KMS server vendor hash ($(uname), $LINK_MODE)"
-                    elif [ "$OLD_HASH" = "$NEW_VENDOR_HASH" ]; then
-                        echo "Hash already up-to-date for $(uname) $LINK_MODE"
-                    else
-                        echo "⚠️  Could not extract old hash from $KMS_SERVER_NIX"
-                    fi
+                    echo "$NEW_VENDOR_HASH" >"$HASH_FILE"
+                    echo "✅ Wrote $HASH_FILE"
                 else
-                    echo "⚠️  Could not extract vendor hash from build output for $LINK_MODE"
-                    echo "Vendor hash may already be correct or build failed for another reason"
+                    # Dump a short snippet for debugging
+                    echo "⚠️  Could not extract vendor hash from build output for $LINK_MODE (no 'got:' found). Forcing placeholder and retry…"
+                    # Force a placeholder to trigger fetcher suggestion on next build
+                    echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$HASH_FILE"
+                    echo "Injected placeholder into $HASH_FILE"
+                    BUILD_OUTPUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "$NIX_ATTR" -o "result-server-${BUILD_VARIANT}-${LINK_MODE}-vendor" 2>&1 || true)
+                    NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" |
+                        sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                        head -1 || true)
+                    if ! is_valid_sri "$NEW_VENDOR_HASH"; then
+                        NEW_VENDOR_HASH=$(echo "$BUILD_OUTPUT" |
+                            sed -n 's/.*hash mismatch.*got is\s*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                            head -1 || true)
+                    fi
+                    if is_valid_sri "$NEW_VENDOR_HASH"; then
+                        echo "Discovered vendor hash on retry for $LINK_MODE: $NEW_VENDOR_HASH"
+                        echo "$NEW_VENDOR_HASH" >"$HASH_FILE"
+                        echo "✅ Wrote $HASH_FILE"
+                    else
+                        echo "⚠️  Still could not extract vendor hash."
+                        echo "--- build output (tail) ---"
+                        echo "$BUILD_OUTPUT" | tail -n 50
+                        echo "---------------------------"
+                    fi
                 fi
             fi
         done
@@ -238,8 +266,7 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
     echo ""
     echo "1.2: Updating UI vendor hashes..."
 
-    UI_NIX="$REPO_ROOT/nix/ui.nix"
-    DEFAULT_NIX="$REPO_ROOT/default.nix"
+    # (no longer editing Nix files directly; hashes are written to nix/expected-hashes)
 
     # Determine which UI variants to update
     if [ -n "$VARIANT" ]; then
@@ -252,107 +279,119 @@ if [ "$UPDATE_VENDOR" = "true" ]; then
         echo ""
         echo "Building UI ($UI_VARIANT) to discover vendor hash..."
 
+        # Ensure vendor UI expected-hash file exists with a placeholder
+        ARCH="${CURRENT_SYSTEM%%-*}"
+        OS="${CURRENT_SYSTEM#*-}"
+        UI_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
+        mkdir -p "$REPO_ROOT/nix/expected-hashes"
+        if [ ! -f "$UI_VENDOR_FILE" ]; then
+            echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$UI_VENDOR_FILE"
+            echo "Created placeholder UI vendor hash file: $UI_VENDOR_FILE"
+        fi
+
         # Trigger a Nix build that will fail with the correct hash
-        if BUILD_OUTPUT=$(nix-build -A "ui-${UI_VARIANT}" -o "result-ui-${UI_VARIANT}-vendor" 2>&1); then
+        if BUILD_OUTPUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "ui-${UI_VARIANT}" -o "result-ui-${UI_VARIANT}-vendor" 2>&1); then
             echo "Build succeeded (vendor hash already correct for $UI_VARIANT)"
         else
             # Extract the "got:" hash from error message
-            NEW_UI_HASH=$(echo "$BUILD_OUTPUT" | sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' | head -1 || true)
+            NEW_UI_HASH=$(echo "$BUILD_OUTPUT" |
+                sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                head -1 || true)
+            if ! is_valid_sri "$NEW_UI_HASH"; then
+                NEW_UI_HASH=$(echo "$BUILD_OUTPUT" |
+                    sed -n 's/.*hash mismatch.*got is\s*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                    head -1 || true)
+            fi
 
-            if [ -n "$NEW_UI_HASH" ]; then
+            if is_valid_sri "$NEW_UI_HASH"; then
                 echo "Discovered UI vendor hash for $UI_VARIANT: $NEW_UI_HASH"
-
-                # Determine the old hash to replace based on variant
-                if [ "$UI_VARIANT" = "fips" ]; then
-                    OLD_UI_HASH="sha256-3t531rxDX6syyUCguKax8hv+L7rFTBVeNlypcDZSndg="
-                else
-                    OLD_UI_HASH="sha256-JzLOE+jQn1qHfJJ9+QZXqCZxH9oS3R5YWchZBFKEctg="
-                fi
-
-                if [ "$OLD_UI_HASH" != "$NEW_UI_HASH" ]; then
-                    echo "Replacing UI $UI_VARIANT hash: $OLD_UI_HASH -> $NEW_UI_HASH"
-
-                    # Update ui.nix
-                    if [ "$(uname)" = "Darwin" ]; then
-                        sed -i '' "s|$OLD_UI_HASH|$NEW_UI_HASH|g" "$UI_NIX"
-                    else
-                        sed -i "s|$OLD_UI_HASH|$NEW_UI_HASH|g" "$UI_NIX"
-                    fi
-
-                    # Update default.nix
-                    if [ "$(uname)" = "Darwin" ]; then
-                        sed -i '' "s|$OLD_UI_HASH|$NEW_UI_HASH|g" "$DEFAULT_NIX"
-                    else
-                        sed -i "s|$OLD_UI_HASH|$NEW_UI_HASH|g" "$DEFAULT_NIX"
-                    fi
-
-                    echo "✅ Updated UI vendor hash ($UI_VARIANT) in $UI_NIX and $DEFAULT_NIX"
-                elif [ "$OLD_UI_HASH" = "$NEW_UI_HASH" ]; then
-                    echo "UI hash already up-to-date for $UI_VARIANT"
-                fi
+                echo "$NEW_UI_HASH" >"$UI_VENDOR_FILE"
+                echo "✅ Wrote $UI_VENDOR_FILE"
             else
                 echo "⚠️  Could not extract UI vendor hash from build output for $UI_VARIANT"
                 echo "Vendor hash may already be correct or build failed for another reason"
+                echo "--- build output (tail) ---"
+                echo "$BUILD_OUTPUT" | tail -n 50
+                echo "---------------------------"
             fi
         fi
     done
     echo ""
-fi
+}
 
-# Step 2: Update NPM dependencies hash (if requested)
-if [ "$UPDATE_NPM" = "true" ]; then
+# One pass to update NPM deps hash
+update_npm_hash() {
+    if [ "$UPDATE_NPM" != "true" ]; then
+        return 0
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Step 2: Updating NPM dependencies hash..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    UI_NIX="$REPO_ROOT/nix/ui.nix"
+    # (no longer editing ui.nix directly; hashes are written to nix/expected-hashes)
 
     echo ""
     echo "Building UI to discover NPM dependencies hash..."
 
     # Use FIPS variant for NPM hash discovery (hash is same for both variants)
-    if BUILD_OUTPUT=$(nix-build -A "ui-fips" -o "result-ui-fips-npm" 2>&1); then
+    ARCH="${CURRENT_SYSTEM%%-*}"
+    OS="${CURRENT_SYSTEM#*-}"
+    PLACEHOLDER_FILE="$REPO_ROOT/nix/expected-hashes/ui.npm.fips.${ARCH}.${OS}.sha256"
+    mkdir -p "$REPO_ROOT/nix/expected-hashes"
+    if [ ! -f "$PLACEHOLDER_FILE" ]; then
+        echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$PLACEHOLDER_FILE"
+        echo "Created placeholder NPM hash file: $PLACEHOLDER_FILE"
+    fi
+
+    if BUILD_OUTPUT=$(nix-build --show-trace -A "ui-fips" -o "result-ui-fips-npm" 2>&1); then
         echo "Build succeeded (NPM hash already correct)"
     else
         # Extract the "got:" hash from error message - look for npmDepsHash mismatch
-        # NPM hash errors typically appear after cargo hash errors, so use tail
-        NEW_NPM_HASH=$(echo "$BUILD_OUTPUT" | sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' | tail -1 || true)
+        NEW_NPM_HASH=$(echo "$BUILD_OUTPUT" |
+            sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+            tail -1 || true)
 
-        if [ -n "$NEW_NPM_HASH" ]; then
+        if is_valid_sri "$NEW_NPM_HASH"; then
             echo "Discovered NPM dependencies hash: $NEW_NPM_HASH"
 
-            # Extract current NPM hash
-            OLD_NPM_HASH=$(sed -n 's/.*npmDepsHash = "\(sha256-[^"]*\)".*/\1/p' "$UI_NIX")
-
-            if [ -n "$OLD_NPM_HASH" ] && [ "$OLD_NPM_HASH" != "$NEW_NPM_HASH" ]; then
-                echo "Replacing NPM hash: $OLD_NPM_HASH -> $NEW_NPM_HASH"
-
-                # Update ui.nix npmDepsHash
-                if [ "$(uname)" = "Darwin" ]; then
-                    sed -i '' "s|npmDepsHash = \"$OLD_NPM_HASH\"|npmDepsHash = \"$NEW_NPM_HASH\"|" "$UI_NIX"
-                else
-                    sed -i "s|npmDepsHash = \"$OLD_NPM_HASH\"|npmDepsHash = \"$NEW_NPM_HASH\"|" "$UI_NIX"
-                fi
-
-                echo "✅ Updated NPM dependencies hash in $UI_NIX"
-            elif [ "$OLD_NPM_HASH" = "$NEW_NPM_HASH" ]; then
-                echo "NPM hash already up-to-date"
-            else
-                echo "⚠️  Could not extract old NPM hash from $UI_NIX"
-            fi
+            echo "$NEW_NPM_HASH" >"$PLACEHOLDER_FILE"
+            echo "✅ Wrote $PLACEHOLDER_FILE"
         else
             echo "⚠️  Could not extract NPM dependencies hash from build output"
             echo "NPM hash may already be correct or build failed for another reason"
+            echo "--- build output (tail) ---"
+            echo "$BUILD_OUTPUT" | tail -n 50
+            echo "---------------------------"
         fi
     fi
     echo ""
-fi
+}
+
+# Step 2: Update NPM dependencies hash (if requested)
 
 # Step 3: Update binary hashes (if requested)
-if [ "$UPDATE_BINARY" = "true" ]; then
+update_binary_hashes() {
+    if [ "$UPDATE_BINARY" != "true" ]; then
+        return 0
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "Step 2: Updating binary hashes..."
+    echo "Step 3: Updating binary hashes..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # If server vendor hashes are unresolved (empty or placeholder), skip binary step to avoid build failure
+    KMS_SERVER_NIX="$REPO_ROOT/nix/kms-server.nix"
+    unresolved_vendor=false
+    # Detect empty cargoHash strings or placeholder AAAAA... in platform-specific sections
+    if grep -q 'cargoHash[[:space:]]*=.*""' "$KMS_SERVER_NIX" ||
+        grep -q 'cargoHash[[:space:]]*=.*sha256-AAAA' "$KMS_SERVER_NIX"; then
+        unresolved_vendor=true
+    fi
+    if [ "$unresolved_vendor" = true ]; then
+        echo "⚠️  Skipping binary hash update: server cargoHash appears unset (\"\")."
+        echo "    Run vendor-only update first, then re-run binary hashes."
+        echo ""
+        return 0
+    fi
 
     # Determine which variants to update based on --variant flag
     if [ -n "$VARIANT" ]; then
@@ -402,7 +441,7 @@ if [ "$UPDATE_BINARY" = "true" ]; then
             ARCH="${CURRENT_SYSTEM%%-*}"
             OS="${CURRENT_SYSTEM#*-}"
             IMPL=$([ "$link_mode" = "dynamic" ] && echo non-openssl || echo openssl)
-            HASH_FILE="$REPO_ROOT/nix/expected-hashes/${build_variant}.${IMPL}.${ARCH}.${OS}.sha256"
+            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.${build_variant}.${IMPL}.${ARCH}.${OS}.sha256"
 
             # Create directory if it doesn't exist
             mkdir -p "$REPO_ROOT/nix/expected-hashes"
@@ -414,6 +453,50 @@ if [ "$UPDATE_BINARY" = "true" ]; then
         done
     done
     echo ""
+}
+
+# Convergence loop: iterate until all targeted hashes validate or retries exhausted
+for attempt in $(seq 1 "$MAX_RETRIES"); do
+    echo "========================================================"
+    echo "Hash update cycle $attempt/$MAX_RETRIES"
+    echo "========================================================"
+
+    if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
+        update_vendor_hashes
+        update_npm_hash
+    fi
+    if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
+        update_vendor_hashes
+        update_binary_hashes
+    fi
+
+    echo "Validating builds for convergence…"
+
+    VARIANTS_TO_CHECK="${VARIANT:-fips}"
+    ALL_VALID=true
+    if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
+        for v in $VARIANTS_TO_CHECK; do
+            if ! build_attr_validates "kms-server-$v" "result-server-$v-fips-static"; then ALL_VALID=false; fi
+            if ! build_attr_validates "kms-server-$v-no-openssl" "result-server-$v-fips-dynamic"; then ALL_VALID=false; fi
+        done
+    fi
+    if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
+        if ! build_attr_validates "ui-${VARIANT:-fips}" "result-ui-${VARIANT:-fips}"; then ALL_VALID=false; fi
+    fi
+
+    if [ "$ALL_VALID" = true ]; then
+        CONVERGED=true
+        echo "✅ All builds validate with current hashes."
+        break
+    else
+        echo "Hashes not fully converged yet; retrying after ${RETRY_DELAY_SECONDS}s…"
+        sleep "$RETRY_DELAY_SECONDS"
+    fi
+done
+
+if [ "$CONVERGED" != true ]; then
+    echo "⚠️  Hash update did not fully converge after $MAX_RETRIES attempts."
+    echo "    You can increase retries via MAX_RETRIES or inspect the logs."
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -421,23 +504,22 @@ echo "✅ Hash update complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Summary of changes:"
-if [ "$UPDATE_VENDOR" = "true" ]; then
-    echo "  ✓ KMS Server Cargo vendor hashes in nix/kms-server.nix"
-    echo "    - Static linkage hash (Darwin/Linux)"
-    echo "    - Dynamic linkage hash (Darwin/Linux)"
-    echo "  ✓ UI Cargo vendor hashes in nix/ui.nix and default.nix"
-    echo "    - FIPS variant"
+ARCH="${CURRENT_SYSTEM%%-*}"
+OS="${CURRENT_SYSTEM#*-}"
+if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
+    echo "  ✓ Server vendor hashes: nix/expected-hashes/server.vendor.fips.openssl.${ARCH}.${OS}.sha256 and server.vendor.fips.no-openssl.${ARCH}.${OS}.sha256"
+    # Only print binary summary if we updated binaries and know which variants
+    if [ "$UPDATE_BINARY" = "true" ]; then
+        VARIANTS_SUMMARY="${VARIANT:-fips}"
+        for build_variant in $VARIANTS_SUMMARY; do
+            echo "  ✓ Binary hash (static):  nix/expected-hashes/server.${build_variant}.openssl.${ARCH}.${OS}.sha256"
+            echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
+        done
+    fi
 fi
-if [ "$UPDATE_NPM" = "true" ]; then
-    echo "  ✓ NPM dependencies hash (npmDepsHash) in nix/ui.nix"
-fi
-if [ "$UPDATE_BINARY" = "true" ]; then
-    for build_variant in $VARIANTS_TO_UPDATE; do
-        ARCH="${CURRENT_SYSTEM%%-*}"
-        OS="${CURRENT_SYSTEM#*-}"
-        echo "  ✓ Binary hash (static): nix/expected-hashes/${build_variant}.openssl.${ARCH}.${OS}.sha256"
-        echo "  ✓ Binary hash (dynamic): nix/expected-hashes/${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
-    done
+if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
+    echo "  ✓ UI vendor hash:      nix/expected-hashes/ui.vendor.fips.${ARCH}.${OS}.sha256"
+    echo "  ✓ NPM deps hash:       nix/expected-hashes/ui.npm.fips.${ARCH}.${OS}.sha256"
 fi
 echo ""
 echo "Next steps:"

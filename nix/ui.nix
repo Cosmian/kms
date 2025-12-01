@@ -4,25 +4,33 @@
   lib ? pkgs.lib,
   features ? [ ], # [ "non-fips" ] or []
   rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
-  # Cargo vendor hash for the workspace used to build the WASM crate
-  # Different hashes for fips vs non-fips due to different crypto dependencies
-  cargoHash ? null,
 }:
 
 let
   isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
   variant = if isFips then "fips" else "non-fips";
 
-  # Determine cargo hash for building the WASM crate
+  # Determine cargo vendor hash for building the WASM crate via external file
+  # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
   actualCargoHash =
-    if cargoHash != null then
-      cargoHash
-    else if isFips then
-      # Updated vendor hash for WASM/UI FIPS build
-      "sha256-3t531rxDX6syyUCguKax8hv+L7rFTBVeNlypcDZSndg="
-    else
-      # Updated vendor hash for WASM/UI non-FIPS build (previous mismatch fixed)
-      "sha256-JzLOE+jQn1qHfJJ9+QZXqCZxH9oS3R5YWchZBFKEctg=";
+    let
+      arch =
+        if pkgs.stdenv.hostPlatform.isx86_64 then
+          "x86_64"
+        else if pkgs.stdenv.hostPlatform.isAarch64 then
+          "aarch64"
+        else
+          "unknown";
+      os =
+        if pkgs.stdenv.hostPlatform.isLinux then
+          "linux"
+        else if pkgs.stdenv.hostPlatform.isDarwin then
+          "darwin"
+        else
+          "unknown";
+      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + arch + "." + os + ".sha256";
+    in
+    builtins.readFile hashFile;
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -162,9 +170,27 @@ let
         baseName != "node_modules" && baseName != "dist";
     };
 
-    # TODO: Update this hash when dependencies change
-    # Run with an empty string to get the correct hash
-    npmDepsHash = "sha256-vs6HY6anfQ0X6jRZkl5nJxnLlp5a/XKvjEEviFNOp6I=";
+    # Read NPM dependencies hash from external file
+    # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
+    npmDepsHash =
+      let
+        arch =
+          if pkgs.stdenv.hostPlatform.isx86_64 then
+            "x86_64"
+          else if pkgs.stdenv.hostPlatform.isAarch64 then
+            "aarch64"
+          else
+            "unknown";
+        os =
+          if pkgs.stdenv.hostPlatform.isLinux then
+            "linux"
+          else if pkgs.stdenv.hostPlatform.isDarwin then
+            "darwin"
+          else
+            "unknown";
+        hashFile = ../nix/expected-hashes + "/ui.npm." + variant + "." + arch + "." + os + ".sha256";
+      in
+      builtins.readFile hashFile;
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;

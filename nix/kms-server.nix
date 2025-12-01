@@ -26,7 +26,8 @@ let
   variant = if variant-suffix == "" then baseVariant else "${baseVariant}${variant-suffix}";
 
   # Expected deterministic sha256 of the final installed binary (cosmian_kms)
-  # New naming convention: <fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
+  # Naming convention (matches repository files):
+  #   server.<fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
   expectedHashPath =
     _unused:
     let
@@ -34,18 +35,17 @@ let
       parts = lib.splitString "-" sys;
       arch = builtins.elemAt parts 0;
       os = builtins.elemAt parts 1;
-      # Match repository's existing hash tags: static => openssl, dynamic => non-openssl
+      # Match binary expected-hash file naming: static => openssl, dynamic => non-openssl
       impl = if static then "openssl" else "non-openssl";
-      # Primary (new scheme)
-      newFile = ./expected-hashes + "/${baseVariant}.${impl}.${arch}.${os}.sha256";
+      file1 = ./expected-hashes + "/server.${baseVariant}.${impl}.${arch}.${os}.sha256";
     in
-    if builtins.pathExists newFile then
-      newFile
+    if builtins.pathExists file1 then
+      file1
     else
       builtins.throw ''
         Expected hash file not found for variant ${baseVariant} (impl ${impl}) on system ${sys}.
         Missing tried paths:
-          - expected-hashes/${baseVariant}.${impl}.${arch}.${os}.sha256
+            - expected-hashes/server.${baseVariant}.${impl}.${arch}.${os}.sha256
         Please add the appropriate file with the expected SHA-256 of the built binary.
       '';
 
@@ -176,18 +176,16 @@ rustPlatform.buildRustPackage rec {
   # Platform-specific vendor hashes (target-dependent deps). If out-of-date, temporarily set to ""
   # and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
   cargoHash =
-    if pkgs.stdenv.isDarwin then
-      # macOS vendor hash - different for static vs dynamic builds
-      if static then
-        "sha256-" # static
-      else
-        "sha256-/+XNQN8Jd2ehj7skdI3R/D8zc0uhjSanOQis2jV3TXk=" # dynamic
-    else
-    # Linux vendor hash for SERVER build - different for static vs dynamic
-    if static then
-      "sha256-GRCXobXJ8m09rNJcNUP0noZZIkrLe/tTr/CE7JxGsbQ=" # static
-    else
-      "sha256-GRCXobXJ8m09rNJcNUP0noZZIkrLe/tTr/CE7JxGsbQ="; # dynamic
+    let
+      sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
+      parts = lib.splitString "-" sys;
+      arch = builtins.elemAt parts 0;
+      os = builtins.elemAt parts 1;
+      impl = if static then "openssl" else "no-openssl";
+      vendorFile = ./expected-hashes + "/server.vendor.${baseVariant}.${impl}.${arch}.${os}.sha256";
+      placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    in
+    if builtins.pathExists vendorFile then builtins.readFile vendorFile else placeholder;
   cargoSha256 = cargoHash;
 
   # Use release profile by default

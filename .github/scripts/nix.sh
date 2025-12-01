@@ -86,6 +86,9 @@ EOF
 PROFILE="debug"
 VARIANT="fips"
 LINK="static"
+# Hash update tuning (passed through to update_all_hashes.sh)
+MAX_RETRIES=""
+RETRY_DELAY_SECONDS=""
 
 # Parse global options before the subcommand
 while [ $# -gt 0 ]; do
@@ -102,6 +105,14 @@ while [ $# -gt 0 ]; do
   -l | --link)
     LINK="${2:-}"
     LINK_EXPLICIT=1
+    shift 2 || true
+    ;;
+  --max-retries)
+    MAX_RETRIES="${2:-}"
+    shift 2 || true
+    ;;
+  --retry-delay-seconds)
+    RETRY_DELAY_SECONDS="${2:-}"
     shift 2 || true
     ;;
   build | docker | test | package | sbom | update-hashes)
@@ -391,11 +402,20 @@ update-hashes)
   SCRIPT="$REPO_ROOT/nix/scripts/update_all_hashes.sh"
 
   # Pass through variant flag and all arguments
+  ARGS=()
   if [ "$VARIANT" != "fips" ]; then
-    exec bash "$SCRIPT" --variant "$VARIANT" "$@"
-  else
-    exec bash "$SCRIPT" "$@"
+    ARGS+=(--variant "$VARIANT")
   fi
+  # Forward tuning flags if provided before subcommand
+  if [ -n "$MAX_RETRIES" ]; then
+    ARGS+=(--max-retries "$MAX_RETRIES")
+  fi
+  if [ -n "$RETRY_DELAY_SECONDS" ]; then
+    ARGS+=(--retry-delay-seconds "$RETRY_DELAY_SECONDS")
+  fi
+  # Include any remaining args (e.g., --vendor-only)
+  # shellcheck disable=SC2068
+  exec bash "$SCRIPT" ${ARGS[@]} $@
   ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2

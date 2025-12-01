@@ -32,3 +32,4 @@ sbom/*.json
 sbom/*.csv
 sbom/*.png
 crate/server/ui*
+vendor/
