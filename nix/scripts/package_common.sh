@@ -209,8 +209,8 @@ build_or_reuse_ui() {
 
 # Enforce expected deterministic hash even on reuse path.
 resolve_expected_hash_file() {
-  # New naming convention:
-  #   <fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
+  # New naming convention (per update_all_hashes.sh):
+  #   server.<fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
   # Backward-compatible fallbacks:
   #   <base>.<arch-os>.sha256 (legacy)
   #   <variant>.<arch-os>.sha256 (legacy)
@@ -238,7 +238,7 @@ resolve_expected_hash_file() {
 
   arch="${sys%%-*}"
   os="${sys#*-}"
-  # Map link type to implementation tag (compat with existing hashes):
+  # Map link type to implementation tag:
   # static => openssl, dynamic => non-openssl
   if [ "$LINK" = "dynamic" ]; then
     impl="non-openssl"
@@ -247,7 +247,7 @@ resolve_expected_hash_file() {
   fi
 
   # Try new scheme first - use variant extracted from base parameter
-  local new_path="$dir/${variant_for_hash}.$impl.$arch.$os.sha256"
+  local new_path="$dir/server.${variant_for_hash}.$impl.$arch.$os.sha256"
   if [ -f "$new_path" ]; then
     echo "$new_path"
     return 0
@@ -275,7 +275,7 @@ enforce_binary_hash() {
     return 0
   fi
 
-  # Prefer per-link hash (e.g., fips-static, fips-dynamic); fall back to variant-only (e.g., fips)
+  # Build base key for lookup (variant + link to derive impl)
   local base_for_hash="${VARIANT}-${LINK}"
   local expected_file
   if ! expected_file=$(resolve_expected_hash_file "$base_for_hash"); then
@@ -286,7 +286,7 @@ enforce_binary_hash() {
     arch="${sys%%-*}"
     os="${sys#*-}"
     impl=$([ "$LINK" = "dynamic" ] && echo non-openssl || echo openssl)
-    echo "       Tried: nix/expected-hashes/${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
+    echo "       Tried: nix/expected-hashes/server.${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
     echo "Present files:" >&2
     ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true
     exit 1

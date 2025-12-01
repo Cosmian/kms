@@ -240,11 +240,17 @@ setup_fips_openssl_env() {
     mod_ext="so"
   fi
 
-  # Check if FIPS OpenSSL already built locally; if not, trigger a build
+  # Check if FIPS OpenSSL already built locally; if not and we're outside Nix,
+  # avoid forcing a local build that breaks CI without FIPS toolchain.
   if [ ! -f "${prefix}/lib/ossl-modules/fips.${mod_ext}" ] || [ ! -f "${prefix}/ssl/fipsmodule.cnf" ]; then
+    if [ -n "${CI:-}" ] || [ -z "${IN_NIX_SHELL:-}" ]; then
+      echo "WARN: FIPS OpenSSL not found at ${prefix} and not in Nix; proceeding with system OpenSSL via pkg-config (non-FIPS)." >&2
+      # Allow rust-openssl to discover system OpenSSL if available
+      unset OPENSSL_NO_PKG_CONFIG || true
+      # No OPENSSL_CONF/OPENSSL_MODULES set, so FIPS provider won't be enforced.
+      return 0
+    fi
     echo "FIPS OpenSSL not found at ${prefix}; triggering build via cargo..." >&2
-    # Trigger a minimal build to invoke build.rs which will build OpenSSL FIPS
-    # Temporarily unset OpenSSL-related env vars and disable pkg-config to force build.rs to build locally
     (
       unset OPENSSL_DIR OPENSSL_INCLUDE_DIR OPENSSL_LIB_DIR PKG_CONFIG_PATH
       export OPENSSL_NO_PKG_CONFIG=1

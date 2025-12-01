@@ -313,9 +313,7 @@ test)
     ;;
   esac
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
-  # Only include HSM tooling when explicitly testing HSM.
-  # Default "all" should avoid HSM to prevent unnecessary softhsm2 builds.
-  if [ "$TEST_TYPE" = "hsm" ]; then
+  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_HSM=1
   fi
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell

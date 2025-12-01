@@ -151,11 +151,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-    # Enforce release profile if provided by caller
-    if [ -n "${PROFILE:-}" ] && [ "${PROFILE}" != "release" ]; then
-        echo "Error: PROFILE must be 'release' for hash updates (got '${PROFILE}')" >&2
-        exit 1
-    fi
+# Enforce release profile if provided by caller
+if [ -n "${PROFILE:-}" ] && [ "${PROFILE}" != "release" ]; then
+    echo "Error: PROFILE must be 'release' for hash updates (got '${PROFILE}')" >&2
+    exit 1
+fi
 
 # Detect current platform
 CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"')"
@@ -256,6 +256,7 @@ update_vendor_hashes() {
                     echo "Discovered vendor hash for $LINK_MODE: $NEW_VENDOR_HASH"
                     echo "$NEW_VENDOR_HASH" >"$HASH_FILE"
                     echo "✅ Wrote $HASH_FILE"
+                    echo "$HASH_FILE: $NEW_VENDOR_HASH"
                 else
                     # Dump a short snippet for debugging
                     echo "⚠️  Could not extract vendor hash from build output for $LINK_MODE (no 'got:' found). Forcing placeholder and retry…"
@@ -275,6 +276,7 @@ update_vendor_hashes() {
                         echo "Discovered vendor hash on retry for $LINK_MODE: $NEW_VENDOR_HASH"
                         echo "$NEW_VENDOR_HASH" >"$HASH_FILE"
                         echo "✅ Wrote $HASH_FILE"
+                        echo "$HASH_FILE: $NEW_VENDOR_HASH"
                     else
                         echo "⚠️  Still could not extract vendor hash."
                         echo "--- build output (tail) ---"
@@ -331,6 +333,7 @@ update_vendor_hashes() {
                 echo "Discovered UI vendor hash for $UI_VARIANT: $NEW_UI_HASH"
                 echo "$NEW_UI_HASH" >"$UI_VENDOR_FILE"
                 echo "✅ Wrote $UI_VENDOR_FILE"
+                echo "$UI_VENDOR_FILE: $NEW_UI_HASH"
             else
                 echo "⚠️  Could not extract UI vendor hash from build output for $UI_VARIANT"
                 echo "Vendor hash may already be correct or build failed for another reason"
@@ -380,6 +383,7 @@ update_npm_hash() {
 
             echo "$NEW_NPM_HASH" >"$PLACEHOLDER_FILE"
             echo "✅ Wrote $PLACEHOLDER_FILE"
+            echo "$PLACEHOLDER_FILE: $NEW_NPM_HASH"
         else
             echo "⚠️  Could not extract NPM dependencies hash from build output"
             echo "NPM hash may already be correct or build failed for another reason"
@@ -478,7 +482,8 @@ update_binary_hashes() {
             # Write new hash
             echo "$NEW_HASH" >"$HASH_FILE"
 
-            echo "✅ Updated $HASH_FILE"
+            echo "✅ Updated $HASH_FILE: $NEW_HASH"
+            echo "$HASH_FILE: $NEW_HASH"
         done
     done
     echo ""
