@@ -58,6 +58,11 @@ impl KMS {
                         params.clone(),
                     )
                     .await?;
+
+                // Record metrics for Create permission grant
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record_permission_grant(user_id, "Create");
+                }
             }
         }
 
@@ -92,10 +97,17 @@ impl KMS {
                 .grant_operations(
                     uid,
                     &access.user_id,
-                    HashSet::from_iter(updated_operations_types),
+                    HashSet::from_iter(updated_operations_types.clone()),
                     params,
                 )
                 .await?;
+
+            // Record metrics for each granted permission
+            if let Some(ref metrics) = self.metrics {
+                for operation in &updated_operations_types {
+                    metrics.record_permission_grant(&access.user_id, &format!("{operation:?}"));
+                }
+            }
         }
         Ok(())
     }

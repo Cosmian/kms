@@ -1,3 +1,4 @@
+#![cfg(feature = "non-fips")]
 use std::path::PathBuf;
 
 use base64::Engine;
@@ -161,6 +162,7 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     Ok((api_token_id.to_string(), api_token))
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // Ensure logging is initialized once across the whole test process
@@ -688,6 +690,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_tls_options() -> KmsCliResult<()> {
     init_test_logging();

@@ -615,6 +615,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         )
     });
 
+    // Clone kms_server for HttpServer closure
+    let kms_server_for_http = kms_server;
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
@@ -632,12 +635,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     )
                     .build(),
             )
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if kms_server.params.kms_public_url.is_some()
-            && kms_server.params.google_cse.google_cse_enable
+        if kms_server_for_http.params.kms_public_url.is_some()
+            && kms_server_for_http.params.google_cse.google_cse_enable
         {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
@@ -668,10 +671,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             app = app.service(ms_dke_scope);
         }
 
-        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
-            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let oidc_config = kms_server_for_http.params.ui_oidc_auth.clone();
 
             let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
@@ -733,8 +736,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
             .wrap(EnsureAuth::new(
-                kms_server.clone(),
+                kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
+            ))
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
@@ -778,6 +785,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Additionally, actix-web has a default client_request_timeout of 5 seconds which
     // was causing "408 Request Timeout" errors during long-running test operations.
 
+    // Start and return the main KMS server
     Ok(match tls_config {
         Some(ssl_acceptor) => {
             if use_cert_auth {

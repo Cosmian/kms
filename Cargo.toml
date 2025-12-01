@@ -150,6 +150,9 @@ num-format = "0.4"
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
+opentelemetry = "0.27"
+opentelemetry-otlp = { version = "0.27", features = ["metrics", "grpc-tonic"] }
+opentelemetry_sdk = { version = "0.27", features = ["metrics", "rt-tokio"] }
 pem = "3.0"
 pkcs11-sys = "0.2"
 rand = "0.9"
