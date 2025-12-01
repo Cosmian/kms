@@ -15,8 +15,9 @@
 #   bash nix/scripts/update_all_hashes.sh [OPTIONS]
 #
 # Options:
-#   --component <ui|server>    Component to update
-#   --variant <fips|non-fips>  Crypto feature variant
+#   --component <ui|server>       Component to update (default: both)
+#   --variant <fips|non-fips>     Crypto feature variant (default: fips)
+#   --link <static|dynamic>       Limit to a specific server linkage (default: both)
 #   --max-retries N            Convergence attempts (default: 3)
 #   --retry-delay-seconds S    Delay between attempts (default: 2)
 #   --help                     Show this help message
@@ -25,6 +26,7 @@
 #   - Nix package manager installed
 #   - Working directory must be repository root
 #   - Network access (for vendor hash update)
+#   - Profile: release (mandatory). If env var PROFILE is set, it must be 'release'
 
 set -euo pipefail
 
@@ -64,24 +66,23 @@ Usage: $0 [OPTIONS]
 Updates expected hashes for Cosmian KMS Nix builds on current platform.
 
 Options:
-  --vendor-only          Only update Cargo vendor hashes (server + UI)
-  --binary-only          Only update binary hashes (skip vendor)
-  --npm-only             Only update NPM dependencies hash
-  --variant <fips|non-fips>  Update specific variant (default: both)
-  --help                 Show this help message
+    --component <ui|server>       Limit to a single component (default: both)
+    --variant <fips|non-fips>     Update specific variant (default: fips)
+    --link <static|dynamic>       Limit server to a single linkage (default: both)
+    --max-retries N               Convergence attempts (default: 3)
+    --retry-delay-seconds S       Delay between attempts (default: 2)
+    --help                        Show this help message
 
 Examples:
-  $0                           # Update all hashes (vendor + npm + binaries)
-  $0 --vendor-only             # Update only Cargo vendor hashes (server + UI)
-  $0 --npm-only                # Update only NPM dependencies hash
-  $0 --binary-only             # Update only binary hashes
-  $0 --variant fips            # Update only FIPS variant
+    $0                                   # Update all (server+ui, fips, static+dynamic)
+    $0 --variant non-fips                # Update non-FIPS hashes
+    $0 --component server --link static  # Only server hashes for static linkage
+    bash .github/scripts/nix.sh --variant fips --link dynamic update-hashes
 
-When to use:
-  --vendor-only    After updating Cargo.lock (dependency changes)
-  --npm-only       After updating package-lock.json (UI dependency changes)
-  --binary-only    After code changes (keeps vendor hashes unchanged)
-  (no flags)       After both dependency and code changes
+Notes:
+    - Profile is release mandatory. If PROFILE is set, it must be 'release'.
+    - External tool hashes (cargo-generate-rpm, cargo-packager, wasm-bindgen-cli,
+        OpenSSL source) are pinned and not updated here.
 
 Platform support:
   - x86_64-linux (Intel/AMD Linux)
@@ -89,13 +90,10 @@ Platform support:
   - aarch64-darwin (Apple Silicon macOS)
 
 Hash types updated:
-  1. KMS Server Cargo vendor hashes (2 variants: static/dynamic)
-  2. UI Cargo vendor hash (FIPS only)
-  3. NPM dependencies hash (UI node_modules)
-  4. Binary hashes (FIPS only: static/dynamic)
-
-Note: External tool hashes are NOT updated (cargo-generate-rpm, cargo-packager,
-      wasm-bindgen-cli, OpenSSL source) as they are pinned to specific versions.
+    1. KMS Server Cargo vendor hashes (static/dynamic)
+    2. UI Cargo vendor hash
+    3. NPM dependencies hash (UI node_modules)
+    4. Server binary hashes (static/dynamic)
 EOF
     exit 0
 }
@@ -103,6 +101,7 @@ EOF
 # Parse command-line arguments (new interface)
 COMPONENT=""
 VARIANT=""
+LINK=""
 UPDATE_VENDOR=true
 UPDATE_BINARY=true
 UPDATE_NPM=true
@@ -121,6 +120,14 @@ while [ $# -gt 0 ]; do
         VARIANT="${2:-}"
         if [ -z "$VARIANT" ]; then
             echo "Error: --variant requires an argument (fips or non-fips)" >&2
+            exit 1
+        fi
+        shift 2
+        ;;
+    --link)
+        LINK="${2:-}"
+        if [ -z "$LINK" ] || { [ "$LINK" != "static" ] && [ "$LINK" != "dynamic" ]; }; then
+            echo "Error: --link requires 'static' or 'dynamic'" >&2
             exit 1
         fi
         shift 2
@@ -144,6 +151,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+    # Enforce release profile if provided by caller
+    if [ -n "${PROFILE:-}" ] && [ "${PROFILE}" != "release" ]; then
+        echo "Error: PROFILE must be 'release' for hash updates (got '${PROFILE}')" >&2
+        exit 1
+    fi
+
 # Detect current platform
 CURRENT_SYSTEM="$(nix-instantiate --eval -E 'builtins.currentSystem' | tr -d '"')"
 
@@ -154,6 +167,11 @@ if [ -n "$VARIANT" ]; then
     echo "Variant: $VARIANT"
 else
     echo "Variant: fips (default)"
+fi
+if [ -n "$LINK" ]; then
+    echo "Link: $LINK"
+else
+    echo "Link: static+dynamic"
 fi
 echo ""
 
@@ -193,7 +211,13 @@ update_vendor_hashes() {
     fi
 
     for BUILD_VARIANT in $BUILD_VARIANTS; do
-        for LINK_MODE in static dynamic; do
+        # Determine which link modes to process
+        if [ -n "$LINK" ]; then
+            LINK_MODES="$LINK"
+        else
+            LINK_MODES="static dynamic"
+        fi
+        for LINK_MODE in $LINK_MODES; do
             echo ""
             echo "Building KMS server ($BUILD_VARIANT, $LINK_MODE) to discover vendor hash..."
 
@@ -401,9 +425,14 @@ update_binary_hashes() {
         VARIANTS_TO_UPDATE="fips"
     fi
 
-    # Update both static and dynamic builds for each variant
+    # Update both static and dynamic builds for each variant (or limit via --link)
     for build_variant in $VARIANTS_TO_UPDATE; do
-        for link_mode in static dynamic; do
+        if [ -n "$LINK" ]; then
+            LINK_MODES="$LINK"
+        else
+            LINK_MODES="static dynamic"
+        fi
+        for link_mode in $LINK_MODES; do
             echo ""
             echo "Building $build_variant variant ($link_mode linkage)..."
 
@@ -476,8 +505,12 @@ for attempt in $(seq 1 "$MAX_RETRIES"); do
     ALL_VALID=true
     if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
         for v in $VARIANTS_TO_CHECK; do
-            if ! build_attr_validates "kms-server-$v" "result-server-$v-fips-static"; then ALL_VALID=false; fi
-            if ! build_attr_validates "kms-server-$v-no-openssl" "result-server-$v-fips-dynamic"; then ALL_VALID=false; fi
+            if [ -z "$LINK" ] || [ "$LINK" = "static" ]; then
+                if ! build_attr_validates "kms-server-$v" "result-server-$v-fips-static"; then ALL_VALID=false; fi
+            fi
+            if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
+                if ! build_attr_validates "kms-server-$v-no-openssl" "result-server-$v-fips-dynamic"; then ALL_VALID=false; fi
+            fi
         done
     fi
     if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
@@ -507,13 +540,23 @@ echo "Summary of changes:"
 ARCH="${CURRENT_SYSTEM%%-*}"
 OS="${CURRENT_SYSTEM#*-}"
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
-    echo "  ✓ Server vendor hashes: nix/expected-hashes/server.vendor.fips.openssl.${ARCH}.${OS}.sha256 and server.vendor.fips.no-openssl.${ARCH}.${OS}.sha256"
+    VARIANT_SUMMARY_VENDOR="${VARIANT:-fips}"
+    if [ -z "$LINK" ] || [ "$LINK" = "static" ]; then
+        echo "  ✓ Server vendor hash (static):  nix/expected-hashes/server.vendor.${VARIANT_SUMMARY_VENDOR}.openssl.${ARCH}.${OS}.sha256"
+    fi
+    if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
+        echo "  ✓ Server vendor hash (dynamic): nix/expected-hashes/server.vendor.${VARIANT_SUMMARY_VENDOR}.no-openssl.${ARCH}.${OS}.sha256"
+    fi
     # Only print binary summary if we updated binaries and know which variants
     if [ "$UPDATE_BINARY" = "true" ]; then
         VARIANTS_SUMMARY="${VARIANT:-fips}"
         for build_variant in $VARIANTS_SUMMARY; do
-            echo "  ✓ Binary hash (static):  nix/expected-hashes/server.${build_variant}.openssl.${ARCH}.${OS}.sha256"
-            echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
+            if [ -z "$LINK" ] || [ "$LINK" = "static" ]; then
+                echo "  ✓ Binary hash (static):  nix/expected-hashes/server.${build_variant}.openssl.${ARCH}.${OS}.sha256"
+            fi
+            if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
+                echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
+            fi
         done
     fi
 fi
@@ -524,6 +567,6 @@ fi
 echo ""
 echo "Next steps:"
 echo "  1. Review changes:   git diff nix/"
-echo "  2. Test the build:   bash .github/scripts/nix.sh build"
+echo "  2. Test the build:   bash .github/scripts/nix.sh --variant '${VARIANT:-fips}' --link '${LINK:-static}' build"
 echo "  3. Commit changes:   git add nix/ && git commit -m 'Update Nix hashes for $CURRENT_SYSTEM'"
 echo ""

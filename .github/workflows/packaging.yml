@@ -24,6 +24,28 @@ jobs:
       archive-name: windows
       debug_or_release: release
 
+  update-hashes:
+    name: Hash ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        link: [static, dynamic]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+
+    steps:
+      - name: Nix installation
+        uses: cachix/install-nix-action@v31
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Update hashes
+        run: |
+          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} update-hashes
+
   packages:
     name: ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
     runs-on: ${{ matrix.runner }}

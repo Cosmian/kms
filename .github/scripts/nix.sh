@@ -32,12 +32,11 @@ usage() {
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
     update-hashes [options]
-                       Update expected hashes for current platform (always uses release profile)
-      --vendor-only          Only update Cargo vendor hashes (server + UI)
-      --npm-only             Only update NPM dependencies hash
-      --binary-only          Only update binary hashes (after code changes)
-      --variant <fips|non-fips>  Update specific variant (default: both)
-      (no options)           Update all hashes (vendor + npm + binaries)
+                       Update expected hashes for current platform (release profile mandatory)
+      --variant <fips|non-fips>  Update specific variant (default: fips)
+      --link <static|dynamic>    Limit to a specific server linkage (default: both)
+      --max-retries N            Convergence attempts (default: 3)
+      --retry-delay-seconds S    Delay between attempts (default: 2)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -73,11 +72,10 @@ usage() {
     $0 --variant non-fips package dmg       # non-FIPS variant
     $0 sbom                                 # Generate SBOM for FIPS variant
     $0 --variant non-fips sbom              # Generate SBOM for non-FIPS variant
-    $0 update-hashes                        # Update all hashes for current platform
-    $0 update-hashes --vendor-only          # Update only Cargo vendor hashes (server + UI)
-    $0 update-hashes --npm-only             # Update only NPM dependencies hash
-    $0 update-hashes --binary-only          # Update only binary hashes
+    $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
     $0 update-hashes --variant non-fips     # Update only non-FIPS variant hashes
+    $0 update-hashes --link static          # Only static linkage hashes
+    $0 --variant fips --link dynamic update-hashes
 EOF
   exit 1
 }
@@ -315,7 +313,9 @@ test)
     ;;
   esac
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
-  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
+  # Only include HSM tooling when explicitly testing HSM.
+  # Default "all" should avoid HSM to prevent unnecessary softhsm2 builds.
+  if [ "$TEST_TYPE" = "hsm" ]; then
     export WITH_HSM=1
   fi
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
@@ -405,6 +405,10 @@ update-hashes)
   ARGS=()
   if [ "$VARIANT" != "fips" ]; then
     ARGS+=(--variant "$VARIANT")
+  fi
+  # Pass through link selector when explicitly provided (default is both)
+  if [ -n "${LINK_EXPLICIT:-}" ]; then
+    ARGS+=(--link "$LINK")
   fi
   # Forward tuning flags if provided before subcommand
   if [ -n "$MAX_RETRIES" ]; then
