@@ -27,7 +27,7 @@ let
 
   # Expected deterministic sha256 of the final installed binary (cosmian_kms)
   # Naming convention (matches repository files):
-  #   server.<fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
+  #   server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
   expectedHashPath =
     _unused:
     let
@@ -35,8 +35,8 @@ let
       parts = lib.splitString "-" sys;
       arch = builtins.elemAt parts 0;
       os = builtins.elemAt parts 1;
-      # Match binary expected-hash file naming: static => openssl, dynamic => non-openssl
-      impl = if static then "openssl" else "non-openssl";
+      # Match binary expected-hash file naming: static => openssl, dynamic => no-openssl
+      impl = if static then "openssl" else "no-openssl";
       file1 = ./expected-hashes + "/server.${baseVariant}.${impl}.${arch}.${os}.sha256";
     in
     if builtins.pathExists file1 then

@@ -470,10 +470,10 @@ update_binary_hashes() {
             echo "Computed hash for $build_variant ($link_mode): $NEW_HASH"
 
             # Update expected hash file using new naming convention:
-            #   <fips|non-fips>-.<openssl|non-openssl>.<arch>.<os>.sha256
+            #   <fips|non-fips>-.<openssl|no-openssl>.<arch>.<os>.sha256
             ARCH="${CURRENT_SYSTEM%%-*}"
             OS="${CURRENT_SYSTEM#*-}"
-            IMPL=$([ "$link_mode" = "dynamic" ] && echo non-openssl || echo openssl)
+            IMPL=$([ "$link_mode" = "dynamic" ] && echo no-openssl || echo openssl)
             HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.${build_variant}.${IMPL}.${ARCH}.${OS}.sha256"
 
             # Create directory if it doesn't exist
@@ -560,7 +560,7 @@ if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
                 echo "  ✓ Binary hash (static):  nix/expected-hashes/server.${build_variant}.openssl.${ARCH}.${OS}.sha256"
             fi
             if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
-                echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.non-openssl.${ARCH}.${OS}.sha256"
+                echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.no-openssl.${ARCH}.${OS}.sha256"
             fi
         done
     fi

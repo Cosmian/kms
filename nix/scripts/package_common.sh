@@ -210,7 +210,7 @@ build_or_reuse_ui() {
 # Enforce expected deterministic hash even on reuse path.
 resolve_expected_hash_file() {
   # New naming convention (per update_all_hashes.sh):
-  #   server.<fips|non-fips>.<openssl|non-openssl>.<arch>.<os>.sha256
+  #   server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
   # Backward-compatible fallbacks:
   #   <base>.<arch-os>.sha256 (legacy)
   #   <variant>.<arch-os>.sha256 (legacy)
@@ -239,9 +239,9 @@ resolve_expected_hash_file() {
   arch="${sys%%-*}"
   os="${sys#*-}"
   # Map link type to implementation tag:
-  # static => openssl, dynamic => non-openssl
+  # static => openssl, dynamic => no-openssl
   if [ "$LINK" = "dynamic" ]; then
-    impl="non-openssl"
+    impl="no-openssl"
   else
     impl="openssl"
   fi
@@ -285,7 +285,7 @@ enforce_binary_hash() {
     if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else sys="unknown-system"; fi
     arch="${sys%%-*}"
     os="${sys#*-}"
-    impl=$([ "$LINK" = "dynamic" ] && echo non-openssl || echo openssl)
+    impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
     echo "       Tried: nix/expected-hashes/server.${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
     echo "Present files:" >&2
     ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true

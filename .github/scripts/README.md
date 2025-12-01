@@ -349,7 +349,7 @@ bash .github/scripts/nix.sh update-hashes [options]
 2. **Binary Hashes** (`--binary-only` or default):
    - Builds FIPS and/or non-FIPS variants (static and dynamic)
    - Computes SHA-256 of resulting `cosmian_kms` binary
-   - Updates `nix/expected-hashes/<variant>.<openssl|non-openssl>.<arch>.<os>.sha256`
+   - Updates `nix/expected-hashes/<variant>.<openssl|no-openssl>.<arch>.<os>.sha256`
 
 **Examples:**
 
@@ -851,7 +851,7 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
         └──────────────────────┘   │                      │
                                    │ Update files in:     │
                                    │ nix/expected-hashes/ │
-                                   │ <variant>.<openssl\|non-openssl>.<arch>.<os>.sha256 │
+                                   │ <variant>.<openssl\|no-openssl>.<arch>.<os>.sha256 │
                                    └──────────────────────┘
                                               │
                                               ▼
@@ -1243,7 +1243,7 @@ bash .github/scripts/nix.sh update-hashes [--vendor-only | --binary-only]
 # Manual (for verification):
 nix-build -A kms-server-fips
 sha256sum result/bin/cosmian_kms
-# Update nix/expected-hashes/fips.<openssl|non-openssl>.<arch>.<os>.sha256
+# Update nix/expected-hashes/fips.<openssl|no-openssl>.<arch>.<os>.sha256
 ```
 
 **Review checklist:**

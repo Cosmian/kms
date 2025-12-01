@@ -443,7 +443,7 @@ OUTPUT LAYER (Hash Verification)
 │  installCheckPhase (Native Hash Verification)                            │
 │                                                                          │
 │  Computed: sha256($out/bin/cosmian_kms)                                  │
-│  Expected: nix/expected-hashes/<variant>.<openssl|non-openssl>.<arch>.<os>.sha256 │
+│  Expected: nix/expected-hashes/<variant>.<openssl|no-openssl>.<arch>.<os>.sha256 │
 │                                                                          │
 │  FIPS on Linux:                                                          │
 │    ✅ Hashes MUST match (bit-for-bit deterministic)                      │

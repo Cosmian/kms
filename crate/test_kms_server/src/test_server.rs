@@ -45,9 +45,58 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+#[cfg(not(feature = "non-fips"))]
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
+
+/// Ensure OpenSSL FIPS environment variables are set for tests.
+/// If already defined in the environment, do nothing.
+#[cfg(not(feature = "non-fips"))]
+#[allow(unsafe_code)]
+fn ensure_openssl_fips_env() {
+    let conf_is_set = env::var_os("OPENSSL_CONF").is_some();
+    let modules_is_set = env::var_os("OPENSSL_MODULES").is_some();
+    if conf_is_set && modules_is_set {
+        return;
+    }
+
+    // Determine OS and ARCH in expected folder naming
+    let os = if std::env::consts::OS == "macos" {
+        "darwin"
+    } else {
+        std::env::consts::OS
+    };
+    let arch = std::env::consts::ARCH;
+
+    // Compute workspace root from the current crate path
+    // `test_server.rs` lives under `crate/test_kms_server`, so go up two levels
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = crate_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(&crate_dir)
+        .to_path_buf();
+
+    let target_dir = workspace_root
+        .join("target")
+        .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
+    let openssl_conf = target_dir.join("ssl").join("openssl.cnf");
+
+    if !conf_is_set {
+        unsafe {
+            env::set_var("OPENSSL_CONF", &openssl_conf);
+        }
+        info!("Set OPENSSL_CONF to {}", openssl_conf.display());
+    }
+    if !modules_is_set {
+        let modules_dir = target_dir.join("lib").join("ossl-modules");
+        unsafe {
+            env::set_var("OPENSSL_MODULES", &modules_dir);
+        }
+        info!("Set OPENSSL_MODULES to {}", modules_dir.display());
+    }
+}
 
 // Small utilities to reduce repetition
 #[inline]
@@ -198,6 +247,11 @@ fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
 #[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
+    // Ensure OpenSSL FIPS env vars are present for tests (FIPS builds only)
+    #[cfg(not(feature = "non-fips"))]
+    {
+        ensure_openssl_fips_env();
+    }
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
         match use_kek {
@@ -468,37 +522,47 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 }
 
 /// Privileged users
+#[allow(unused_variables, clippy::needless_return)]
 pub async fn start_default_test_kms_server_with_privileged_users(
-    privileged_users: Vec<String>,
+    #[cfg(feature = "non-fips")] _privileged_users: Vec<String>,
+    #[cfg(not(feature = "non-fips"))] privileged_users: Vec<String>,
 ) -> &'static TestsContext {
     trace!("Starting test server with privileged users");
-    ONCE_SERVER_WITH_PRIVILEGED_USERS
-        .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 5;
-            let db_config = get_db_config(port, None);
+    #[cfg(feature = "non-fips")]
+    {
+        // Skip privileged-users variant under non-fips; reuse default server.
+        return start_default_test_kms_server().await;
+    }
+    #[cfg(not(feature = "non-fips"))]
+    {
+        return ONCE_SERVER_WITH_PRIVILEGED_USERS
+            .get_or_try_init(|| async move {
+                let port = DEFAULT_KMS_SERVER_PORT + 5;
+                let db_config = get_db_config(port, None);
 
-            // Use Auth0 config for IdP-enabled server
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::HttpsWithClientCa,
-                jwt: JwtAuth::Enabled,
-                privileged_users: Some(privileged_users),
-                ..Default::default()
+                // Use Auth0 config for IdP-enabled server
+                let server_params = build_server_params_full(BuildServerParamsOptions {
+                    db_config,
+                    port,
+                    tls: TlsMode::HttpsWithClientCa,
+                    jwt: JwtAuth::Enabled,
+                    privileged_users: Some(privileged_users),
+                    ..Default::default()
+                })
+                .map_err(|e| {
+                    KmsClientError::Default(format!(
+                        "failed initializing the server config (privileged users): {e}"
+                    ))
+                })?;
+
+                start_from_server_params(server_params).await
             })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (privileged users): {e}"
-                ))
-            })?;
-
-            start_from_server_params(server_params).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with privileged users: {e}");
-            std::process::abort();
-        })
+            .await
+            .unwrap_or_else(|e| {
+                error!("failed to start test server with privileged users: {e}");
+                std::process::abort();
+            });
+    }
 }
 
 #[derive(Debug)]

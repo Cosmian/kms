@@ -38,3 +38,96 @@ jobs:
       - name: Update hashes
         run: |
           bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} update-hashes
+      - name: Collect hash files for this variant
+        run: |
+          set -euo pipefail
+          # Map runner to ARCH/OS used in expected-hashes filenames
+          case "${{ matrix.runner }}" in
+            ubuntu-24.04)
+              ARCH=x86_64
+              OS=linux
+              ;;
+            ubuntu-24.04-arm)
+              ARCH=aarch64
+              OS=linux
+              ;;
+            macos-15)
+              ARCH=aarch64
+              OS=darwin
+              ;;
+            *) echo "Unsupported runner: ${{ matrix.runner }}" >&2; exit 1 ;;
+          esac
+
+          # Map link (static/dynamic) to implementation suffix (openssl/no-openssl)
+          if [ "${{ matrix.link }}" = "static" ]; then
+            IMPL=openssl
+          else
+            IMPL=no-openssl
+          fi
+
+          VARIANT="${{ matrix.features }}"
+          SRC_DIR="nix/expected-hashes"
+          OUT_DIR="hash-artifact"
+          mkdir -p "$OUT_DIR"
+
+          copy() {
+            local f="$1"
+            if [ -f "$SRC_DIR/$f" ]; then
+              cp "$SRC_DIR/$f" "$OUT_DIR/" || exit 1
+            else
+              echo "Missing expected hash file: $SRC_DIR/$f" >&2; exit 1
+            fi
+          }
+
+          # Server vendor & binary hash for selected link
+          copy "server.vendor.$VARIANT.$IMPL.$ARCH.$OS.sha256"
+          copy "server.$VARIANT.$IMPL.$ARCH.$OS.sha256"
+
+          # UI vendor + npm hashes (always variant specific)
+          copy "ui.vendor.$VARIANT.$ARCH.$OS.sha256"
+          copy "ui.npm.$VARIANT.$ARCH.$OS.sha256"
+
+          # Optional WASM vendor hash (only exists for non-fips)
+          if [ "$VARIANT" = "non-fips" ]; then
+            WASM_FILE="ui.wasm.vendor.non-fips.$ARCH.$OS.sha256"
+            if [ -f "$SRC_DIR/$WASM_FILE" ]; then
+              cp "$SRC_DIR/$WASM_FILE" "$OUT_DIR/";
+            else
+              echo "WASM vendor hash not found (optional): $SRC_DIR/$WASM_FILE" >&2
+            fi
+          fi
+
+          echo "Collected files:"; ls -1 "$OUT_DIR" || true
+      - name: Upload hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
+          path: hash-artifact/*.sha256
+          retention-days: 1
+          if-no-files-found: error
+
+  combine-hashes:
+    name: Combine all hash artifacts
+    needs: update-hashes
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all per-matrix artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: combined-hashes
+          merge-multiple: true
+      - name: Verify combined contents
+        run: |
+          set -euo pipefail
+          echo "Combined hash files:"; ls -1 combined-hashes
+          # Ensure only .sha256 files are present
+          if ls combined-hashes | grep -vE '\.sha256$' >/dev/null; then
+            echo "Unexpected non-.sha256 file present" >&2; exit 1
+          fi
+      - name: Upload aggregated hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hash-all-platforms
+          path: combined-hashes/*.sha256
+          retention-days: 1
+          if-no-files-found: error
