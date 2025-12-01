@@ -23,7 +23,9 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 
 [dependencies]
 cosmian_crypto_core = { workspace = true }
-cosmian_http_client = "0.5"
+cosmian_http_client = { git = "https://github.com/cosmian/http_client_server.git", branch = "feat/http_client_with_pem_certificates_instead_of_pkcs12" }
+# cosmian_http_client = { path = "/Users/manu/Cosmian/core/http_client_server/crate/http_client" }
+# cosmian_http_client = "0.5"
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.12.1" }
 cosmian_logger = { workspace = true }
 der = { workspace = true }

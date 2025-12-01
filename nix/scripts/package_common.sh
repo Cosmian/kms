@@ -584,7 +584,7 @@ prepare_workspace() {
   mkdir -p "$UI_DEST"
   cp -r "$UI_SRC"/* "$UI_DEST/"
   echo "UI assets copied successfully. Contents:"
-  ls -la "$UI_DEST" | head -n 20
+  find "$UI_DEST" -maxdepth 1 -print | head -n 20
 
   export HOME="${TMPDIR:-/tmp}"
   # Keep a persistent CARGO_HOME if already set (from prewarm); otherwise fallback to temp

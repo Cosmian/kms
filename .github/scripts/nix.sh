@@ -727,18 +727,18 @@ if [ "$USE_PURE" = true ]; then
   # shellcheck disable=SC2086
   if [ "$COMMAND" = "sbom" ]; then
     nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' $*"
+      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
   else
     nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' ${PROFILE:+--profile "$PROFILE"} --variant '$VARIANT' $*"
+      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
 else
   # shellcheck disable=SC2086
   if [ "$COMMAND" = "sbom" ]; then
     nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' $*"
+      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
   else
     nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' ${PROFILE:+--profile "$PROFILE"} --variant '$VARIANT' $*"
+      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
 fi

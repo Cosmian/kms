@@ -137,36 +137,51 @@ stdenv.mkDerivation rec {
     mkdir -p "$out/usr/local/lib/cosmian-kms/ossl-modules"
     mkdir -p "$out/usr/local/lib/cosmian-kms/ssl"
 
-    # Move FIPS provider module to target location
+    # Copy FIPS provider module to target location (keep original for tests/dev)
     if [ -f "$out/lib/ossl-modules/fips.${soExt}" ]; then
-      mv "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+      cp "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
     elif [ -f "$out/lib64/ossl-modules/fips.${soExt}" ]; then
-      mv "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+      cp "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
     else
       echo "ERROR: FIPS provider module not found"
       exit 1
     fi
 
-    # Move OpenSSL configuration files to target location
+    # Move OpenSSL configuration files to target location (keep originals for dev/test)
     if [ ! -f "$out/ssl/openssl.cnf" ]; then
       echo "openssl.cnf not found, seeding from ./apps/openssl.cnf"
       install -Dm644 "./apps/openssl.cnf" "$out/ssl/openssl.cnf"
     fi
 
-    mv "$out/ssl/fipsmodule.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
-    mv "$out/ssl/openssl.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
+    cp "$out/ssl/fipsmodule.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
+    cp "$out/ssl/openssl.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
 
-    # Inline the fipsmodule.cnf content into openssl.cnf instead of using .include
-    # This avoids path resolution issues since .include in OpenSSL 3.1.2 resolves relative to CWD
-    # Simply uncomment the .include line - we'll use OPENSSLDIR to make it work
-    sed -i 's|^# \.include fipsmodule\.cnf|.include fipsmodule.cnf|g' \
-        "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+    # Enable FIPS in both locations (original $out/ssl and target usr/local/lib/cosmian-kms/ssl)
+    # This ensures FIPS works during both development/testing and production
+    for conf_dir in "$out/ssl" "$out/usr/local/lib/cosmian-kms/ssl"; do
+      # Use absolute path for .include to avoid path resolution issues
+      # The .include directive in OpenSSL 3.x looks for files relative to CWD unless an absolute path is used
+      sed -i "s|^# \\.include fipsmodule\\.cnf|.include $conf_dir/fipsmodule.cnf|g" "$conf_dir/openssl.cnf"
 
-    sed -i 's/# activate = 1/activate = 1/' "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
-    sed -i 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' \
-        "$out/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+      # Uncomment the fips provider line
+      sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"
+
+      # Add base provider (for non-FIPS algorithms still needed)
+      # First check if base_sect already exists to avoid duplication
+      if ! grep -q "^base = base_sect" "$conf_dir/openssl.cnf"; then
+        sed -i '/^fips = fips_sect/a base = base_sect' "$conf_dir/openssl.cnf"
+      fi
+
+      # Add base_sect configuration if not already present
+      if ! grep -q "^\[ base_sect \]" "$conf_dir/openssl.cnf"; then
+        echo "" >> "$conf_dir/openssl.cnf"
+        echo "[ base_sect ]" >> "$conf_dir/openssl.cnf"
+        echo "activate = 1" >> "$conf_dir/openssl.cnf"
+      fi
+    done
 
     echo "OpenSSL FIPS modules and config installed to $out/usr/local/lib/cosmian-kms/"
+    echo "OpenSSL FIPS config also enabled in $out/ssl/ for development/testing"
 
     runHook postInstall
   '';

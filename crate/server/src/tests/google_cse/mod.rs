@@ -54,6 +54,8 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::routes::google_cse::operations::StatusResponse;
 use crate::{
     config::ServerParams,
     core::KMS,
@@ -66,8 +68,8 @@ use crate::{
             GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
             PrivateKeySignRequest, PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
             PrivilegedPrivateKeyDecryptResponse, PrivilegedUnwrapRequest, PrivilegedUnwrapResponse,
-            PrivilegedWrapRequest, PrivilegedWrapResponse, StatusResponse, UnwrapRequest,
-            UnwrapResponse, WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
+            PrivilegedWrapRequest, PrivilegedWrapResponse, UnwrapRequest, UnwrapResponse,
+            WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
         },
         validate_cse_authentication_token,
     },
@@ -242,6 +244,7 @@ async fn test_google_cse_resource_key_hash() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_google_cse_status() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));

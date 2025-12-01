@@ -803,10 +803,25 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
     // Use the common TLS configuration
-    let tls_config = TlsConfig {
-        cipher_suites: server_config.cipher_suites.as_deref(),
-        p12: &server_config.p12,
-        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+    let tls_config = {
+        #[cfg(feature = "non-fips")]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                p12: &server_config.p12,
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                server_cert_pem: &server_config.server_cert_pem,
+                server_key_pem: &server_config.server_key_pem,
+                server_chain_pem: server_config.server_chain_pem.as_deref(),
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;

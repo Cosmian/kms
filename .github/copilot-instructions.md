@@ -5,27 +5,22 @@ Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Manageme
 ## Quick start
 
 ```bash
-# Build the project
+# Build the project (FIPS mode is default)
 cargo build --release
 
-# Build with specific features
-cargo build --release --features fips
-
-# Run tests
+# Run tests (FIPS mode is default)
 cargo test
 
-# Run tests with specific features
-cargo test --features fips
+# For non-FIPS mode (includes additional algorithms)
+cargo build --release --features non-fips
+cargo test --features non-fips
 ```
 
 ## Testing
 
 ```bash
-# Run all tests
+# Run all tests (FIPS mode is default)
 cargo test
-
-# Run tests with specific features
-cargo test --features fips
 
 # Run tests for a specific package
 cargo test -p cosmian_kms_server
@@ -35,6 +30,10 @@ cargo test -p cosmian_kms_cli
 cargo test sqlite       # SQLite tests
 cargo test postgres     # PostgreSQL tests (requires local PostgreSQL)
 cargo test redis        # Redis tests
+
+# Run tests in non-FIPS mode (includes additional algorithms)
+cargo test --features non-fips
+cargo test --features non-fips sqlite
 ```
 
 Environment variables for DB tests:
@@ -47,6 +46,7 @@ Notes:
 
 - MySQL tests are currently disabled in CI
 - Redis-findex tests are skipped in FIPS mode
+- FIPS mode is the default; use `--features non-fips` for non-approved algorithms
 - Start database backends with `docker compose up -d` before running DB tests
 
 ## Running the server

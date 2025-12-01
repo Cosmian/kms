@@ -26,6 +26,9 @@ let
       }) { }
     else
       pkgs;
+  # Use custom OpenSSL 3.1.2 (FIPS-capable) for both FIPS and non-FIPS modes
+  # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
+  # via OPENSSL_CONF and OPENSSL_MODULES environment variables
   openssl312 = pkgs228.callPackage ./nix/openssl-3.1.2.nix { };
   # SoftHSM override: force OpenSSL backend (disable Botan) to avoid ABI issues on glibc 2.27
   # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
@@ -40,9 +43,9 @@ let
     {
       configureFlags = filteredFlags ++ [
         "--with-crypto-backend=openssl"
-        "--with-openssl=${pkgs228.openssl}"
+        "--with-openssl=${openssl312}"
       ];
-      buildInputs = (old.buildInputs or [ ]) ++ [ pkgs228.openssl ];
+      buildInputs = (old.buildInputs or [ ]) ++ [ openssl312 ];
     }
   );
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
@@ -82,8 +85,6 @@ pkgs228.mkShell {
       [ ]
   )
   ++ [ openssl312 ]
-  # Also include dynamic OpenSSL for runtime (libcrypto.so.3) needed by tests
-  ++ [ pkgs.openssl ]
   ++ extraTools
   ++ (
     if withHsm then
@@ -140,11 +141,9 @@ pkgs228.mkShell {
       export OPENSSL_LIB_DIR=${"\${NIX_OPENSSL_OUT}"}/lib
       export OPENSSL_INCLUDE_DIR=${"\${NIX_OPENSSL_OUT}"}/include
 
-      # Set OPENSSL_CONF to point to the nix store OpenSSL config
-      # This is required for FIPS mode to work properly during builds and tests
-      if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
-        export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
-      fi
+      # Add OpenSSL lib directory to LD_LIBRARY_PATH so dynamically linked binaries can find it
+      export LD_LIBRARY_PATH=${"\${NIX_OPENSSL_OUT}"}/lib:${"\${LD_LIBRARY_PATH:-}"}
+
 
       # Force openssl-sys to use our specific OpenSSL and detect version correctly
       # Disable pkg-config to prevent it from finding wrong OpenSSL versions

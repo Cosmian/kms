@@ -7,6 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+fail_fast: true
 exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|crate/kmip/src/kmip_2_1/specifications/|crate/kmip/src/kmip_1_4/specifications/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/kmip/src/oasis
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -176,30 +177,57 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        always_run: true
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
         entry: bash .github/scripts/test_sqlite.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
+        always_run: true
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)
         entry: bash .github/scripts/test_redis.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
+        always_run: true
+      - id: nix-cargo-test-fips
+        name: Nix cargo test (sqlite fips)
+        entry: bash .github/scripts/nix.sh test sqlite --variant fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+      - id: nix-cargo-test-non-fips
+        name: Nix cargo test (sqlite non-fips)
+        entry: bash .github/scripts/nix.sh test sqlite --variant non-fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
       - id: kms-server-package
-        name: KMS server non-fips packaging
+        name: Nix KMS server non-fips packaging
         entry: bash .github/scripts/nix.sh --variant non-fips package
         language: system
         types: [rust]
         pass_filenames: false
+        always_run: true
       - id: renew-server-doc
         name: renew server cli doc
         entry: bash .github/scripts/renew_server_doc.sh
         language: system
         types: [rust]
         pass_filenames: false
+        always_run: true
+      - id: update-hardcoded-reproducible-hashes
+        name: Update hardcoded reproducible hashes
+        entry: bash .github/scripts/nix.sh update-hashes
+        language: system
+        types: [nix]
+        files: ^nix/
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42

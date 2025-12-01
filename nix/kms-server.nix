@@ -179,7 +179,7 @@ rustPlatform.buildRustPackage rec {
     if pkgs.stdenv.isDarwin then
       # macOS vendor hash - different for static vs dynamic builds
       if static then
-        "sha256-dDu96ohNCURR9IfzJ2hG4ouRPrzbIQoaTpvypVi8ERA=" # static
+        "sha256-" # static
       else
         "sha256-/+XNQN8Jd2ehj7skdI3R/D8zc0uhjSanOQis2jV3TXk=" # dynamic
     else

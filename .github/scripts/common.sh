@@ -20,32 +20,63 @@ export PINNED_NIXPKGS_URL="$PIN_URL"
 #   LINK               static | dynamic (OpenSSL linkage type)
 init_build_env() {
   local profile="debug" variant="fips" link="static"
+  local profile_set=0 variant_set=0 link_set=0
 
   # Parse only our known flags; ignore/keep others for callers
   local i=1
   while [ $i -le $# ]; do
     case "${!i}" in
     --profile)
+      if [ $profile_set -eq 1 ]; then
+        echo "Error: --profile specified multiple times" >&2
+        exit 1
+      fi
+      profile_set=1
       i=$((i + 1))
       profile="${!i:-}"
       ;;
     --variant)
+      if [ $variant_set -eq 1 ]; then
+        echo "Error: --variant specified multiple times" >&2
+        exit 1
+      fi
+      variant_set=1
       i=$((i + 1))
       variant="${!i:-}"
       ;;
     --link)
+      if [ $link_set -eq 1 ]; then
+        echo "Error: --link specified multiple times" >&2
+        exit 1
+      fi
+      link_set=1
       i=$((i + 1))
       link="${!i:-}"
       ;;
     -p)
+      if [ $profile_set -eq 1 ]; then
+        echo "Error: -p/--profile specified multiple times" >&2
+        exit 1
+      fi
+      profile_set=1
       i=$((i + 1))
       profile="${!i:-}"
       ;;
     -v)
+      if [ $variant_set -eq 1 ]; then
+        echo "Error: -v/--variant specified multiple times" >&2
+        exit 1
+      fi
+      variant_set=1
       i=$((i + 1))
       variant="${!i:-}"
       ;;
     -l)
+      if [ $link_set -eq 1 ]; then
+        echo "Error: -l/--link specified multiple times" >&2
+        exit 1
+      fi
+      link_set=1
       i=$((i + 1))
       link="${!i:-}"
       ;;
@@ -85,6 +116,8 @@ init_build_env() {
   esac
 
   # FEATURES_FLAG derived strictly from variant
+  # FIPS is the default mode (no extra flags needed)
+  # non-fips requires explicit feature flag
   FEATURES_FLAG=()
   if [ "$VARIANT" = "non-fips" ]; then
     FEATURES_FLAG=(--features non-fips)
@@ -149,7 +182,18 @@ setup_test_logging() {
 # Export OpenSSL FIPS runtime variables to match the locally built static OpenSSL
 # Only for FIPS variant and when not running inside Nix (Nix sets these via derivations)
 setup_fips_openssl_env() {
-  if [ "${VARIANT:-}" != "fips" ] || [ -n "${IN_NIX_SHELL:-}" ]; then
+  # In non-FIPS variant, ensure no FIPS provider is enforced by env vars (Nix shells may set these)
+  if [ "${VARIANT:-}" != "fips" ]; then
+    # Clear runtime provider forcing
+    unset OPENSSL_CONF OPENSSL_MODULES || true
+    # Ensure we don't accidentally link against a locally built FIPS OpenSSL
+    # or any explicitly pinned OpenSSL from previous runs.
+    unset OPENSSL_DIR OPENSSL_INCLUDE_DIR OPENSSL_LIB_DIR PKG_CONFIG_PATH OPENSSL_NO_PKG_CONFIG OPENSSL_STATIC || true
+    return 0
+  fi
+
+  # For FIPS variant, if running inside Nix, derivations provide correct env; nothing to set here
+  if [ -n "${IN_NIX_SHELL:-}" ]; then
     return 0
   fi
 
@@ -198,7 +242,7 @@ setup_fips_openssl_env() {
 
   # Check if FIPS OpenSSL already built locally; if not, trigger a build
   if [ ! -f "${prefix}/lib/ossl-modules/fips.${mod_ext}" ] || [ ! -f "${prefix}/ssl/fipsmodule.cnf" ]; then
-    echo "FIPS OpenSSL not found at ${prefix}; triggering build via cargo..."
+    echo "FIPS OpenSSL not found at ${prefix}; triggering build via cargo..." >&2
     # Trigger a minimal build to invoke build.rs which will build OpenSSL FIPS
     # Temporarily unset OpenSSL-related env vars and disable pkg-config to force build.rs to build locally
     (
@@ -206,8 +250,31 @@ setup_fips_openssl_env() {
       export OPENSSL_NO_PKG_CONFIG=1
       cd "$repo_root/crate/server" && cargo build --lib
     ) || {
-      echo "Warning: Failed to build OpenSSL FIPS via cargo build" >&2
+      echo "Error: Failed to build OpenSSL FIPS automatically." >&2
+      echo "" >&2
+      echo "FIPS tests require a FIPS-compliant OpenSSL 3.1.2 build." >&2
+      echo "The recommended way to run FIPS tests is through Nix:" >&2
+      echo "" >&2
+      echo "  bash .github/scripts/nix.sh test          # Run all FIPS tests" >&2
+      echo "  bash .github/scripts/nix.sh test sqlite   # Run SQLite FIPS tests" >&2
+      echo "" >&2
+      echo "Alternatively, set OPENSSL_DIR to a valid FIPS OpenSSL installation." >&2
+      exit 1
     }
+  fi
+
+  # Verify FIPS artifacts were successfully built
+  if [ ! -f "${prefix}/lib/ossl-modules/fips.${mod_ext}" ] || [ ! -f "${prefix}/ssl/fipsmodule.cnf" ]; then
+    echo "Error: FIPS OpenSSL build completed but required files not found:" >&2
+    echo "  Expected: ${prefix}/lib/ossl-modules/fips.${mod_ext}" >&2
+    echo "  Expected: ${prefix}/ssl/fipsmodule.cnf" >&2
+    echo "" >&2
+    echo "FIPS tests require a FIPS-compliant OpenSSL 3.1.2 build." >&2
+    echo "The recommended way to run FIPS tests is through Nix:" >&2
+    echo "" >&2
+    echo "  bash .github/scripts/nix.sh test          # Run all FIPS tests" >&2
+    echo "  bash .github/scripts/nix.sh test sqlite   # Run SQLite FIPS tests" >&2
+    exit 1
   fi
 
   # Point OpenSSL to our patched config and provider modules
@@ -251,13 +318,13 @@ _run_workspace_tests() {
     ;;
   esac
 
-  # When running outside Nix in non-FIPS mode, skip CLI crate tests by default to avoid
-  # TLS/FIPS provider mismatches on host systems. Opt-in via KMS_INCLUDE_CLI=1.
+  # By default, skip CLI crate tests in Nix-driven suites (and outside too) because the CLI is primarily a binary crate
+  # and some tests may require host/network capabilities that are restricted in CI/Nix sandboxes.
+  # Run CLI tests by default; users can exclude explicitly if needed.
   local extra_args=()
-  if [ -z "${IN_NIX_SHELL:-}" ] && [ "${VARIANT:-}" = "non-fips" ] && [ -z "${KMS_INCLUDE_CLI:-}" ]; then
-    echo "Notice: Skipping cosmian_kms_cli tests (outside Nix, non-FIPS). Set KMS_INCLUDE_CLI=1 to include them." >&2
-    extra_args+=(--exclude cosmian_kms_cli)
-  fi
+
+  # Exclude WASM crate from lib tests (browser-only)
+  extra_args+=(--exclude cosmian_kms_client_wasm)
 
   # shellcheck disable=SC2086
   cargo test --workspace --lib "${extra_args[@]}" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture

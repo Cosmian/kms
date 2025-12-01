@@ -164,8 +164,7 @@ impl ServerParams {
             );
         }
 
-        let tls_params =
-            TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
+        let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
             .hsm

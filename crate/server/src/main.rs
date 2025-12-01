@@ -17,6 +17,41 @@ use tracing::span;
 #[cfg(feature = "timeout")]
 mod expiry;
 
+/// Initialize OpenSSL configuration for FIPS mode.
+/// Sets OPENSSL_CONF environment variable if not already set and running in Nix environment.
+///
+/// # Safety
+/// This function uses `unsafe` to call `std::env::set_var`, which is marked unsafe because
+/// modifying environment variables can cause data races if other threads read them concurrently.
+/// However, this is safe here because:
+/// 1. This function is called at startup before any other threads are spawned
+/// 2. OPENSSL_CONF is only read during OpenSSL initialization
+/// 3. The value is set once and never modified again
+#[cfg(not(feature = "non-fips"))]
+#[allow(unsafe_code)]
+fn init_openssl_conf() {
+    // Only set OPENSSL_CONF if not already set and we're in a Nix environment
+    if std::env::var("OPENSSL_CONF").is_err() {
+        if let Ok(nix_openssl) = std::env::var("NIX_OPENSSL_OUT") {
+            let openssl_conf = format!("{nix_openssl}/ssl/openssl.cnf");
+            // SAFETY: Setting OPENSSL_CONF at startup before any threading
+            unsafe {
+                std::env::set_var("OPENSSL_CONF", &openssl_conf);
+            }
+            info!("Set OPENSSL_CONF to: {openssl_conf}");
+        } else if let Ok(openssl_dir) = std::env::var("OPENSSL_DIR") {
+            let openssl_conf = format!("{openssl_dir}/ssl/openssl.cnf");
+            if std::path::Path::new(&openssl_conf).exists() {
+                // SAFETY: Setting OPENSSL_CONF at startup before any threading
+                unsafe {
+                    std::env::set_var("OPENSSL_CONF", &openssl_conf);
+                }
+                info!("Set OPENSSL_CONF to: {openssl_conf}");
+            }
+        }
+    }
+}
+
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
     "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
@@ -50,6 +85,10 @@ async fn main() {
 }
 
 async fn run() -> KResult<()> {
+    // Initialize OpenSSL configuration for FIPS mode early, before any OpenSSL operations
+    #[cfg(not(feature = "non-fips"))]
+    init_openssl_conf();
+
     // Load variable from a .env file
     dotenv().ok();
 
@@ -169,6 +208,7 @@ mod tests {
         WorkspaceConfig,
     };
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn test_toml() {
         let config = ClapConfig {
@@ -200,7 +240,6 @@ mod tests {
                 port: 443,
                 hostname: "[hostname]".to_owned(),
                 api_token_id: None,
-                ..Default::default()
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),

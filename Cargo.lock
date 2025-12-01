@@ -1175,8 +1175,7 @@ dependencies = [
 [[package]]
 name = "cosmian_http_client"
 version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e5e7fc08eed126e1fb2bc4258d8d5fe1131f5246011b300e29b00fe9eb18240"
+source = "git+https://github.com/cosmian/http_client_server.git?branch=feat%2Fhttp_client_with_pem_certificates_instead_of_pkcs12#5f8fdc75a112f76ba956bc181d481e8d7ccddd9a"
 dependencies = [
  "actix-web",
  "derive_more 0.99.20",
@@ -2540,7 +2539,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",

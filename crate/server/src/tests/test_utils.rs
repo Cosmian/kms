@@ -38,21 +38,28 @@ pub(crate) fn https_clap_config() -> ClapConfig {
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     let sqlite_path = get_tmp_sqlite_path();
 
+    // In FIPS mode, disable TLS with P12 certificates since PKCS12KDF is not FIPS-approved
+    #[cfg(not(feature = "non-fips"))]
+    let tls_config = TlsConfig::default();
+
+    #[cfg(feature = "non-fips")]
+    let tls_config = TlsConfig {
+        tls_p12_file: Some(PathBuf::from(
+            "../../test_data/certificates/client_server/server/kmserver.acme.com.p12",
+        )),
+        tls_p12_password: Some("password".to_owned()),
+        clients_ca_cert_file: Some(PathBuf::from(
+            "../../test_data/certificates/client_server/ca/ca.crt",
+        )),
+        tls_cipher_suites: None,
+    };
+
     ClapConfig {
         socket_server: SocketServerConfig {
             socket_server_start: true,
             ..Default::default()
         },
-        tls: TlsConfig {
-            tls_p12_file: Some(PathBuf::from(
-                "../../test_data/certificates/client_server/server/kmserver.acme.com.p12",
-            )),
-            tls_p12_password: Some("password".to_owned()),
-            clients_ca_cert_file: Some(PathBuf::from(
-                "../../test_data/certificates/client_server/ca/ca.crt",
-            )),
-            tls_cipher_suites: None,
-        },
+        tls: tls_config,
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
             database_url: None,
