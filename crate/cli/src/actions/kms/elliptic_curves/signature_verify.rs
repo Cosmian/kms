@@ -53,9 +53,8 @@ impl SignatureVerifyAction {
         let data = read_bytes_from_file(&self.data_file)
             .with_context(|| "Cannot read bytes from the file to decrypt")?;
 
-        // Read the file to decrypt
         let signature_data = read_bytes_from_file(&self.signature_file)
-            .with_context(|| "Cannot read bytes from the file to decrypt")?;
+            .with_context(|| "Cannot read bytes from the signature file")?;
 
         // Recover the unique identifier or set of tags
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
