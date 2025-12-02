@@ -1,22 +1,15 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
-use clap::{Parser, ValueEnum};
-use cosmian_kmip::{
-    kmip_0::kmip_types::PaddingMethod,
-    kmip_2_1::{
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
-        requests::sign_request,
-    },
-};
+use clap::Parser;
+use cosmian_kmip::kmip_2_1::requests::sign_request;
 use cosmian_kms_client::{
-    KmsClient, read_bytes_from_file,
-    reexport::cosmian_kms_client_utils::{create_utils::Curve, rsa_utils::HashFn},
+    KmsClient, read_bytes_from_file, reexport::cosmian_kms_client_utils::create_utils::Curve,
 };
-use serde::Deserialize;
-use strum::EnumString;
 
 use crate::{
-    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
+    actions::kms::{
+        console, labels::KEY_ID, shared::CDigitalSignatureAlgorithm, shared::get_key_uid,
+    },
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -43,11 +36,7 @@ pub struct SignAction {
     pub(crate) tags: Option<Vec<String>>,
 
     /// The signature algorithm
-    #[clap(
-        long,
-        short = 's',
-        default_value = "rsassa-pss"
-    )]
+    #[clap(long, short = 's', default_value = "rsassa-pss")]
     pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
 
     /// The encrypted output file path
@@ -101,24 +90,5 @@ impl SignAction {
         stdout.write()?;
 
         Ok(())
-    }
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
-pub(crate) enum CDigitalSignatureAlgorithm {
-    RSASSAPSS,
-}
-
-impl CDigitalSignatureAlgorithm {
-    #[must_use]
-    pub(crate) fn to_cryptographic_parameters(self) -> CryptographicParameters {
-        match self {
-            Self::RSASSAPSS => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::None),
-                hashing_algorithm: Some(HashFn::Sha1.into()),
-                ..Default::default()
-            },
-        }
     }
 }

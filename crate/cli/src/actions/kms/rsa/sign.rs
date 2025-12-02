@@ -6,8 +6,9 @@ use cosmian_kms_client::{KmsClient, read_bytes_from_file};
 
 use crate::{
     actions::kms::{
-        console, elliptic_curves::sign::CDigitalSignatureAlgorithm, labels::KEY_ID,
-        shared::get_key_uid,
+        console,
+        labels::KEY_ID,
+        shared::{CDigitalSignatureAlgorithm, get_key_uid},
     },
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
