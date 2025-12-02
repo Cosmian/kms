@@ -44,7 +44,7 @@ pub struct SignAction {
 
     /// The signature algorithm
     #[clap(
-        long = "signature-algorithm",
+        long,
         short = 's',
         default_value = "rsassa-pss"
     )]
