@@ -48,7 +48,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    // the user key should be able to decrypt the file
+    // the user key should be able to verify the signature
     let signature_result = SignatureVerifyAction {
         data_file: input_file.clone(),
         signature_file: output_file.clone(),
