@@ -235,10 +235,31 @@ update_vendor_hashes() {
             HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.vendor.${BUILD_VARIANT}.${IMPL}.${ARCH}.${OS}.sha256"
             mkdir -p "$REPO_ROOT/nix/expected-hashes"
 
+            # Ensure the expected-hash file exists to avoid missing-file errors
+            if [ ! -f "$HASH_FILE" ]; then
+                echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$HASH_FILE"
+                echo "Created placeholder server vendor hash file: $HASH_FILE"
+            fi
+
             # Trigger a Nix build that will fail early with the correct vendor hash suggestion
             # Disable deterministic binary hash enforcement to avoid masking the vendor error
             if BUILD_OUTPUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "$NIX_ATTR" -o "result-server-${BUILD_VARIANT}-${LINK_MODE}-vendor" 2>&1); then
                 echo "Build succeeded (vendor hash already correct for $LINK_MODE)"
+                # Even if build succeeded, make sure the hash file is present
+                if [ ! -s "$HASH_FILE" ]; then
+                    # Read current vendor hash via a forced fetch failure to capture 'got:'
+                    TMP_OUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "$NIX_ATTR" -o "result-server-${BUILD_VARIANT}-${LINK_MODE}-vendor" 2>&1 || true)
+                    CUR_VENDOR_HASH=$(echo "$TMP_OUT" |
+                        sed -n 's/.*got:[[:space:]]*\(sha256-[A-Za-z0-9+\/=]*\).*/\1/p' |
+                        head -1 || true)
+                    if is_valid_sri "$CUR_VENDOR_HASH"; then
+                        echo "$CUR_VENDOR_HASH" >"$HASH_FILE"
+                        echo "✅ Ensured $HASH_FILE exists with current hash"
+                    else
+                        # Leave placeholder; subsequent cycles will correct it if needed
+                        echo "⚠️  Could not determine current vendor hash on success; placeholder remains."
+                    fi
+                fi
             else
                 # Extract the suggested hash using multiple patterns
                 # Extract the suggested hash using multiple patterns
