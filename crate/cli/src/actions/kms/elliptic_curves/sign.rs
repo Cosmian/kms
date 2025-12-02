@@ -68,9 +68,9 @@ impl SignAction {
             .with_context(|| "Can't execute the query on the kms server")?;
         let plaintext = sign_response
             .signature_data
-            .context("Decrypt with RSA: the plaintext is empty")?;
+            .context("Sign with EC: the plaintext is empty")?;
 
-        // Write the decrypted file
+        // Write the signature file
         let output_file = self
             .output_file
             .clone()
@@ -82,7 +82,7 @@ impl SignAction {
             .with_context(|| "Fail to write the plain file")?;
 
         let stdout = format!(
-            "The decrypted file is available at {}",
+            "The signature file is available at {}",
             output_file.display()
         );
         let mut stdout = console::Stdout::new(&stdout);
