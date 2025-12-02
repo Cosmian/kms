@@ -4,7 +4,7 @@ use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
-use crate::{actions::kms::shared::CDigitalSignatureAlgorithm, error::result::KmsCliResult};
+use crate::{actions::kms::shared::CDigitalSignatureAlgorithmRSA, error::result::KmsCliResult};
 
 use cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator;
 
@@ -42,7 +42,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
         input_file: input_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithm::RSASSAPSS,
+        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
         output_file: Some(output_file.clone()),
     }
     .run(ctx.get_owner_client())
@@ -54,7 +54,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
         signature_file: output_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithm::RSASSAPSS,
+        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
         output_file: Some(recovered_file.clone()),
     }
     .run(ctx.get_owner_client())

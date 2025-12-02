@@ -8,7 +8,7 @@ use crate::{
     actions::kms::{
         console,
         labels::KEY_ID,
-        shared::{CDigitalSignatureAlgorithm, get_key_uid},
+        shared::{CDigitalSignatureAlgorithmEC, get_key_uid},
     },
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
@@ -40,7 +40,7 @@ pub struct SignatureVerifyAction {
         short = 's',
         default_value = "ecdsa-with-sha256"
     )]
-    pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
+    pub(crate) signature_algorithm: CDigitalSignatureAlgorithmEC,
 
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]

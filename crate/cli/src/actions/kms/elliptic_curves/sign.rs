@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::kms::{
-        console, labels::KEY_ID, shared::CDigitalSignatureAlgorithm, shared::get_key_uid,
+        console, labels::KEY_ID, shared::CDigitalSignatureAlgorithmEC, shared::get_key_uid,
     },
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
@@ -37,7 +37,7 @@ pub struct SignAction {
 
     /// The signature algorithm
     #[clap(long, short = 's', default_value = "ecdsa-with-sha256")]
-    pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
+    pub(crate) signature_algorithm: CDigitalSignatureAlgorithmEC,
 
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]

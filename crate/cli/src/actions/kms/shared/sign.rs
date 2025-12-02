@@ -8,18 +8,42 @@ use serde::Deserialize;
 use strum::EnumString;
 
 #[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
-pub enum CDigitalSignatureAlgorithm {
+pub enum CDigitalSignatureAlgorithmRSA {
     RSASSAPSS,
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
+pub enum CDigitalSignatureAlgorithmEC {
     ECDSAWithSHA256,
     ECDSAWithSHA384,
     ECDSAWithSHA512,
 }
 
-impl CDigitalSignatureAlgorithm {
+impl CDigitalSignatureAlgorithmRSA {
     #[must_use]
     pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
         match self {
-            Self::RSASSAPSS => todo!(),
+            Self::RSASSAPSS => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::None),
+                hashing_algorithm: None,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::RSASSAPSS => "rsassapss",
+        }
+    }
+}
+
+impl CDigitalSignatureAlgorithmEC {
+    #[must_use]
+    pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
+        match self {
             Self::ECDSAWithSHA256 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
                 padding_method: Some(PaddingMethod::None),
@@ -44,7 +68,6 @@ impl CDigitalSignatureAlgorithm {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::RSASSAPSS => "rsassapss",
             Self::ECDSAWithSHA256 => "ecdsa-with-sha256",
             Self::ECDSAWithSHA384 => "ecdsa-with-sha384",
             Self::ECDSAWithSHA512 => "ecdsa-with-sha512",
