@@ -72,7 +72,7 @@ impl SignatureVerifyAction {
             .with_context(|| "Can't execute the query on the kms server")?;
         let validity_indicator = response
             .validity_indicator
-            .context("Decrypt with RSA: the plaintext is empty")?;
+            .context("Verify with RSA: the validity indicator is not set")?;
 
         let stdout = format!("Signature verification is {validity_indicator}");
         let mut stdout = console::Stdout::new(&stdout);
