@@ -18,7 +18,7 @@ use crate::{
 #[clap(verbatim_doc_comment)]
 pub struct SignAction {
     /// The elliptic curve
-    #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
+    #[clap(long, short = 'c', default_value = "nist-p256")]
     pub(crate) curve: Curve,
 
     /// The file to sign
