@@ -28,7 +28,7 @@ pub struct SignAction {
     #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
     pub(crate) curve: Curve,
 
-    /// The file to decrypt
+    /// The file to sign
     #[clap(required = true, name = "FILE")]
     pub(crate) input_file: PathBuf,
 
