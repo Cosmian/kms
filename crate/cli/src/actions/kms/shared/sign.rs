@@ -44,10 +44,10 @@ impl CDigitalSignatureAlgorithm {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::RSASSAPSS => "rsassa-pss",
-            Self::ECDSAWithSHA256 => "ecdsa-sha256",
-            Self::ECDSAWithSHA384 => "ecdsa-sha384",
-            Self::ECDSAWithSHA512 => "ecdsa-sha512",
+            Self::RSASSAPSS => "rsassapss",
+            Self::ECDSAWithSHA256 => "ecdsa-with-sha256",
+            Self::ECDSAWithSHA384 => "ecdsa-with-sha384",
+            Self::ECDSAWithSHA512 => "ecdsa-with-sha512",
         }
     }
 }
