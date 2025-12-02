@@ -62,24 +62,6 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
 
     assert_eq!(signature_result, ValidityIndicator::Valid);
 
-    // // the user key should NOT be able to decrypt with another algorithm
-    // assert!(
-    //     DecryptAction {
-    //         input_file: output_file.clone(),
-    //         key_id: Some(private_key_id.to_string()),
-    //         tags: None,
-    //         encryption_algorithm: RsaEncryptionAlgorithm::CkmRsaAesKeyWrap,
-    //         hash_fn: HashFn::Sha256,
-    //         output_file: Some(recovered_file.clone()),
-    //     }
-    //     .run(ctx.get_owner_client())
-    //     .await
-    //     .is_err()
-    // );
-
-    // let original_content = read_bytes_from_file(&input_file)?;
-    // let recovered_content = read_bytes_from_file(&recovered_file)?;
-    // assert_eq!(original_content, recovered_content);
 
     Ok(())
 }
