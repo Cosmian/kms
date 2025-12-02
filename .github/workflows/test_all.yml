@@ -104,6 +104,21 @@ jobs:
           set -ex
           bash .github/scripts/test_${{ matrix.type }}.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }}
 
+      - name: With cargo only
+        run: |
+          set -ex
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
+            export RELEASE_FLAG="--release"
+          else
+            export RELEASE_FLAG=""
+          fi
+          if [ "${{ matrix.features }}" = "fips" ]; then
+            export FEATURES_FLAG="--features fips";
+          else
+            export FEATURES_FLAG="";
+          fi
+          cargo test --workspace --lib $RELEASE_FLAG $FEATURES_FLAG -- --nocapture
+
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')

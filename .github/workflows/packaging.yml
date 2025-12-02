@@ -58,6 +58,14 @@ jobs:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
+      - name: Upload hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
+          path: nix/expected-hashes/*.sha256
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
@@ -137,6 +145,9 @@ jobs:
         shell: bash
         run: |
           set -ex
+          # Ensure OpenSSL uses packaged config and modules
+          export OPENSSL_CONF="/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/lib/cosmian-kms/lib/ossl-modules"
           # Determine installed binary path
           BIN="/usr/sbin/cosmian_kms"
           if [ ! -x "$BIN" ]; then
@@ -165,6 +176,9 @@ jobs:
         shell: bash
         run: |
           set -ex
+          # Ensure OpenSSL uses packaged config and modules
+          export OPENSSL_CONF="/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/lib/cosmian-kms/lib/ossl-modules"
           # Determine installed binary path
           BIN="/usr/sbin/cosmian_kms"
           "$BIN" &

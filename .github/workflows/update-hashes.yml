@@ -115,6 +115,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: combined-hashes
+          # Only pull artifacts produced by this workflow's hash collection step
+          # Avoid downloading other build/package artifacts (executables, rpm/deb dirs, etc.)
+          pattern: hash-*
           merge-multiple: true
       - name: Verify combined contents
         run: |

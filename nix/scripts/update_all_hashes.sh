@@ -330,15 +330,29 @@ update_vendor_hashes() {
         ARCH="${CURRENT_SYSTEM%%-*}"
         OS="${CURRENT_SYSTEM#*-}"
         UI_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
+        UI_WASM_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.wasm.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
         mkdir -p "$REPO_ROOT/nix/expected-hashes"
         if [ ! -f "$UI_VENDOR_FILE" ]; then
             echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$UI_VENDOR_FILE"
             echo "Created placeholder UI vendor hash file: $UI_VENDOR_FILE"
         fi
+        # Create placeholder for WASM vendor hash as well (kept in sync with UI vendor)
+        if [ ! -f "$UI_WASM_VENDOR_FILE" ]; then
+            echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$UI_WASM_VENDOR_FILE"
+            echo "Created placeholder UI WASM vendor hash file: $UI_WASM_VENDOR_FILE"
+        fi
 
         # Trigger a Nix build that will fail with the correct hash
         if BUILD_OUTPUT=$(nix-build --show-trace --arg enforceDeterministicHash false -A "ui-${UI_VARIANT}" -o "result-ui-${UI_VARIANT}-vendor" 2>&1); then
             echo "Build succeeded (vendor hash already correct for $UI_VARIANT)"
+            # Ensure the WASM vendor hash file mirrors the UI vendor hash
+            if [ -s "$UI_VENDOR_FILE" ]; then
+                CUR_HASH=$(tr -d ' \t\r\n' <"$UI_VENDOR_FILE" || true)
+                if [ -n "$CUR_HASH" ]; then
+                    echo "$CUR_HASH" >"$UI_WASM_VENDOR_FILE"
+                    echo "✅ Ensured $UI_WASM_VENDOR_FILE mirrors UI vendor hash"
+                fi
+            fi
         else
             # Extract the "got:" hash from error message
             NEW_UI_HASH=$(echo "$BUILD_OUTPUT" |
@@ -355,6 +369,10 @@ update_vendor_hashes() {
                 echo "$NEW_UI_HASH" >"$UI_VENDOR_FILE"
                 echo "✅ Wrote $UI_VENDOR_FILE"
                 echo "$UI_VENDOR_FILE: $NEW_UI_HASH"
+                # Keep WASM vendor hash in sync
+                echo "$NEW_UI_HASH" >"$UI_WASM_VENDOR_FILE"
+                echo "✅ Wrote $UI_WASM_VENDOR_FILE"
+                echo "$UI_WASM_VENDOR_FILE: $NEW_UI_HASH"
             else
                 echo "⚠️  Could not extract UI vendor hash from build output for $UI_VARIANT"
                 echo "Vendor hash may already be correct or build failed for another reason"
@@ -588,6 +606,7 @@ if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
 fi
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
     echo "  ✓ UI vendor hash:      nix/expected-hashes/ui.vendor.fips.${ARCH}.${OS}.sha256"
+    echo "  ✓ UI WASM vendor hash: nix/expected-hashes/ui.wasm.vendor.fips.${ARCH}.${OS}.sha256"
     echo "  ✓ NPM deps hash:       nix/expected-hashes/ui.npm.fips.${ARCH}.${OS}.sha256"
 fi
 echo ""

@@ -61,12 +61,33 @@ fn ensure_openssl_fips_env() {
         return;
     }
 
+    // Prefer an existing OPENSSL_DIR (e.g. provided by Nix shell) if it contains
+    // FIPS artifacts. This avoids falling back to a locally built OpenSSL that
+    // may have been compiled against an incompatible glibc version.
+    if let Ok(dir) = env::var("OPENSSL_DIR") {
+        let openssl_dir = PathBuf::from(&dir);
+        let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
+        let modules_dir = openssl_dir.join("lib").join("ossl-modules");
+        // Detect fips module (Linux .so / macOS .dylib)
+        let fips_so = modules_dir.join("fips.so");
+        let fips_dylib = modules_dir.join("fips.dylib");
+        if conf_path.exists() && (fips_so.exists() || fips_dylib.exists()) {
+            unsafe {
+                if !conf_is_set {
+                    env::set_var("OPENSSL_CONF", &conf_path);
+                }
+                if !modules_is_set {
+                    env::set_var("OPENSSL_MODULES", &modules_dir);
+                }
+            }
+            info!("Using FIPS OpenSSL from OPENSSL_DIR={}", dir);
+            return;
+        }
+    }
+
     // Determine OS and ARCH in expected folder naming
-    let os = if std::env::consts::OS == "macos" {
-        "darwin"
-    } else {
-        std::env::consts::OS
-    };
+    // Match the directory naming used by build.rs and scripts ("macos" not "darwin")
+    let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
 
     // Compute workspace root from the current crate path

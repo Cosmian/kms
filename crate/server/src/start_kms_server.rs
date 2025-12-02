@@ -737,13 +737,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
-                use_api_token_auth,
-                ApiTokenAuth::new(kms_server.clone()),
-            ))
-            .wrap(Condition::new(
                 use_jwt_auth,
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
+            // Prefer checking API token before JWT to avoid header handling quirks
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server.clone()),
+            ))
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the

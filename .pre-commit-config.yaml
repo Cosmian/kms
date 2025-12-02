@@ -199,6 +199,7 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
+        stages: [manual]
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)
         entry: bash .github/scripts/nix.sh test sqlite --variant non-fips
@@ -213,19 +214,12 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
+        stages: [manual]
       - id: renew-server-doc
         name: renew server cli doc
         entry: bash .github/scripts/renew_server_doc.sh
         language: system
         types: [rust]
-        pass_filenames: false
-        always_run: true
-      - id: update-hardcoded-reproducible-hashes
-        name: Update hardcoded reproducible hashes
-        entry: bash .github/scripts/nix.sh update-hashes
-        language: system
-        types: [nix]
-        files: ^nix/
         pass_filenames: false
         always_run: true
 

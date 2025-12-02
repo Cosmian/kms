@@ -14,6 +14,7 @@ let
   # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
   actualCargoHash =
     let
+      placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
       arch =
         if pkgs.stdenv.hostPlatform.isx86_64 then
           "x86_64"
@@ -30,7 +31,7 @@ let
           "unknown";
       hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + arch + "." + os + ".sha256";
     in
-    builtins.readFile hashFile;
+    if builtins.pathExists hashFile then builtins.readFile hashFile else placeholder;
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -174,6 +175,7 @@ let
     # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
     npmDepsHash =
       let
+        placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
         arch =
           if pkgs.stdenv.hostPlatform.isx86_64 then
             "x86_64"
@@ -190,7 +192,7 @@ let
             "unknown";
         hashFile = ../nix/expected-hashes + "/ui.npm." + variant + "." + arch + "." + os + ".sha256";
       in
-      builtins.readFile hashFile;
+      if builtins.pathExists hashFile then builtins.readFile hashFile else placeholder;
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;

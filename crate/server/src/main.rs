@@ -18,14 +18,14 @@ use tracing::span;
 mod expiry;
 
 /// Initialize OpenSSL configuration for FIPS mode.
-/// Sets OPENSSL_CONF environment variable if not already set and running in Nix environment.
+/// Sets `OPENSSL_CONF` environment variable if not already set and running in Nix environment.
 ///
 /// # Safety
 /// This function uses `unsafe` to call `std::env::set_var`, which is marked unsafe because
 /// modifying environment variables can cause data races if other threads read them concurrently.
 /// However, this is safe here because:
 /// 1. This function is called at startup before any other threads are spawned
-/// 2. OPENSSL_CONF is only read during OpenSSL initialization
+/// 2. `OPENSSL_CONF` is only read during OpenSSL initialization
 /// 3. The value is set once and never modified again
 #[cfg(not(feature = "non-fips"))]
 #[allow(unsafe_code)]

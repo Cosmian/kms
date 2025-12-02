@@ -8,10 +8,9 @@ use cosmian_kms_client::{
 use cosmian_logger::{log_init, trace};
 use serial_test::serial;
 use tempfile::TempDir;
-use test_kms_server::{
-    init_test_logging, start_default_test_kms_server_with_cert_auth,
-    start_default_test_kms_server_with_privileged_users,
-};
+#[cfg(not(feature = "non-fips"))]
+use test_kms_server::start_default_test_kms_server_with_privileged_users;
+use test_kms_server::{init_test_logging, start_default_test_kms_server_with_cert_auth};
 
 use crate::{
     actions::kms::{
@@ -859,6 +858,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(feature = "non-fips"))]
 #[tokio::test]
 #[serial]
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {

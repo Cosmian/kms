@@ -330,7 +330,7 @@ test)
         --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
         --keep WITH_WGET \
         --keep WITH_HSM \
-        --keep WITH_PYTHON"
+          --keep WITH_PYTHON"
   ;;
 package)
   # Prefer Nix derivations (nix/package.nix) over shell scripts

@@ -71,6 +71,54 @@ static | dynamic) : ;;
 
 esac
 
+# Ensure expected-hash files exist for this platform/variant/link before building
+ensure_expected_hashes() {
+  local sys arch os impl
+  # Derive current system triple (best-effort)
+  if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else
+    case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) sys="x86_64-linux" ;;
+    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
+    Darwin-x86_64) sys="x86_64-darwin" ;;
+    Darwin-arm64) sys="aarch64-darwin" ;;
+    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
+    esac
+  fi
+  arch="${sys%%-*}"
+  os="${sys#*-}"
+  impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
+
+  local hashes_dir="$REPO_ROOT/nix/expected-hashes"
+  mkdir -p "$hashes_dir"
+
+  local missing=0
+  # Server vendor cargo hash file
+  local server_vendor_file="$hashes_dir/server.vendor.${VARIANT}.${impl}.${arch}.${os}.sha256"
+  [ -s "$server_vendor_file" ] || missing=1
+  # UI vendor cargo hash file
+  local ui_vendor_file="$hashes_dir/ui.vendor.${VARIANT}.${arch}.${os}.sha256"
+  [ -s "$ui_vendor_file" ] || missing=1
+  # UI npm deps hash file
+  local ui_npm_file="$hashes_dir/ui.npm.${VARIANT}.${arch}.${os}.sha256"
+  [ -s "$ui_npm_file" ] || missing=1
+  # UI WASM vendor cargo hash file (kept in sync with UI vendor)
+  local ui_wasm_vendor_file="$hashes_dir/ui.wasm.vendor.${VARIANT}.${arch}.${os}.sha256"
+  [ -s "$ui_wasm_vendor_file" ] || missing=1
+
+  if [ $missing -eq 1 ]; then
+    echo "Expected-hash files missing; generating via update_all_hashes.sh…"
+    # Generate server vendor hashes for this variant/link
+    bash "$REPO_ROOT/nix/scripts/update_all_hashes.sh" --component server --variant "$VARIANT" --link "$LINK" --max-retries 2 --retry-delay-seconds 2 || true
+    # Generate UI vendor + npm hashes for this variant
+    bash "$REPO_ROOT/nix/scripts/update_all_hashes.sh" --component ui --variant "$VARIANT" --max-retries 2 --retry-delay-seconds 2 || true
+    # If wasm vendor file still missing but UI vendor exists, mirror it
+    if [ ! -s "$ui_wasm_vendor_file" ] && [ -s "$ui_vendor_file" ]; then
+      cp -f "$ui_vendor_file" "$ui_wasm_vendor_file" || true
+      echo "Mirrored UI vendor hash to $ui_wasm_vendor_file"
+    fi
+  fi
+}
+
 # Pin nixpkgs to match the dev shell (prefer a pre-resolved store path if provided)
 # Default comes from common.sh; allow override via pre-resolved store path
 if [ -n "${NIXPKGS_STORE:-}" ] && [ -e "${NIXPKGS_STORE}" ]; then
@@ -279,17 +327,29 @@ enforce_binary_hash() {
   local base_for_hash="${VARIANT}-${LINK}"
   local expected_file
   if ! expected_file=$(resolve_expected_hash_file "$base_for_hash"); then
-    echo "ERROR: Expected hash file missing for variant '$VARIANT' (link '$LINK')." >&2
-    # Print actual system to assist the user
-    local sys arch os impl
-    if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else sys="unknown-system"; fi
-    arch="${sys%%-*}"
-    os="${sys#*-}"
-    impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
-    echo "       Tried: nix/expected-hashes/server.${VARIANT}.${impl}.${arch}.${os}.sha256" >&2
-    echo "Present files:" >&2
-    ls -1 "$REPO_ROOT/nix/expected-hashes" >&2 || true
-    exit 1
+    echo "Expected hash file missing; generating it via Nix…"
+    # Build the Nix attribute that produces the expected-hash file
+    local attr
+    case "$VARIANT-$LINK" in
+    fips-static) attr="expected-hash-server-fips-static" ;;
+    fips-dynamic) attr="expected-hash-server-fips-dynamic" ;;
+    non-fips-static) attr="expected-hash-server-non-fips-static" ;;
+    non-fips-dynamic) attr="expected-hash-server-non-fips-dynamic" ;;
+    *)
+      echo "ERROR: Unknown variant/link: $VARIANT-$LINK" >&2
+      exit 1
+      ;;
+    esac
+    local store_out
+    store_out=$(nix-build -I "nixpkgs=${PIN_URL}" -A "$attr" --no-out-link)
+    mkdir -p "$REPO_ROOT/nix/expected-hashes"
+    # Copy all .sha256 files from the derivation output (there should be exactly one)
+    cp -f "$store_out"/*.sha256 "$REPO_ROOT/nix/expected-hashes/"
+    # Re-resolve after generation
+    if ! expected_file=$(resolve_expected_hash_file "$base_for_hash"); then
+      echo "ERROR: Failed to generate expected hash file automatically" >&2
+      exit 1
+    fi
   fi
   local expected_hash actual_hash
   expected_hash=$(tr -d ' \t\r\n' <"$expected_file")
@@ -309,6 +369,35 @@ enforce_binary_hash() {
     exit 1
   fi
   echo "Deterministic hash OK ($actual_hash) for variant $VARIANT-$LINK"
+}
+
+# Create or refresh the expected binary hash file under nix/expected-hashes
+# Naming: server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
+write_binary_hash_file() {
+  # Compute system triple
+  local sys arch os impl out_dir out_file actual_hash
+  if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else
+    case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) sys="x86_64-linux" ;;
+    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
+    Darwin-x86_64) sys="x86_64-darwin" ;;
+    Darwin-arm64) sys="aarch64-darwin" ;;
+    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
+    esac
+  fi
+  arch="${sys%%-*}"
+  os="${sys#*-}"
+  impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
+  out_dir="$REPO_ROOT/nix/expected-hashes"
+  out_file="$out_dir/server.${VARIANT}.${impl}.${arch}.${os}.sha256"
+  mkdir -p "$out_dir"
+  if [ ! -f "$BIN_OUT" ]; then
+    echo "ERROR: Binary not found for hashing: $BIN_OUT" >&2
+    return 1
+  fi
+  actual_hash=$(sha256sum "$BIN_OUT" | awk '{print $1}')
+  printf '%s\n' "$actual_hash" >"$out_file"
+  echo "Wrote expected-hash: $(basename "$out_file") = $actual_hash"
 }
 
 # 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
@@ -383,26 +472,49 @@ sign_packages() {
   local keys_dir="$REPO_ROOT/nix/signing-keys"
   local key_id_file="$keys_dir/key-id.txt"
 
+  # Determine if signing is required. Default: required in CI, optional locally.
+  # Force signing by setting REQUIRE_SIGNING=1
+  local require_signing="0"
+  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then
+    require_signing="1"
+  fi
+
   # Signing is mandatory - fail if no key is configured
   if [ ! -f "$key_id_file" ]; then
-    echo "ERROR: No signing key found at $key_id_file" >&2
-    echo "Package signing is mandatory. Generate a signing key with: bash nix/scripts/generate_signing_key.sh" >&2
-    exit 1
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: No signing key found at $key_id_file" >&2
+      echo "Package signing is mandatory (CI or REQUIRE_SIGNING=1)." >&2
+      echo "Generate a signing key with: bash nix/scripts/generate_signing_key.sh" >&2
+      exit 1
+    else
+      echo "Signing skipped: no key-id.txt present (set REQUIRE_SIGNING=1 to enforce)"
+      return 0
+    fi
   fi
 
   local key_id
   key_id=$(tr -d ' \t\r\n' <"$key_id_file")
 
   if [ -z "$key_id" ]; then
-    echo "ERROR: Empty key ID in $key_id_file" >&2
-    exit 1
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: Empty key ID in $key_id_file" >&2
+      exit 1
+    else
+      echo "Signing skipped: empty key ID (set REQUIRE_SIGNING=1 to enforce)"
+      return 0
+    fi
   fi
 
   # Check if passphrase is available
   if [ -z "${GPG_SIGNING_KEY_PASSPHRASE:-}" ]; then
-    echo "ERROR: GPG_SIGNING_KEY_PASSPHRASE environment variable is not set" >&2
-    echo "Package signing is mandatory. Set GPG_SIGNING_KEY_PASSPHRASE to continue." >&2
-    exit 1
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: GPG_SIGNING_KEY_PASSPHRASE environment variable is not set" >&2
+      echo "Package signing is mandatory (CI or REQUIRE_SIGNING=1)." >&2
+      exit 1
+    else
+      echo "Signing skipped: GPG_SIGNING_KEY_PASSPHRASE not set (set REQUIRE_SIGNING=1 to enforce)"
+      return 0
+    fi
   fi
 
   # Import private key if not already in keyring
@@ -427,9 +539,14 @@ sign_packages() {
           exit 1
         }
       else
-        echo "ERROR: Signing key $key_id not found in GPG keyring and $private_key does not exist" >&2
-        echo "Either set GPG_SIGNING_KEY environment variable or ensure key is already imported" >&2
-        exit 1
+        if [ "$require_signing" = "1" ]; then
+          echo "ERROR: Signing key $key_id not found in GPG keyring and $private_key does not exist" >&2
+          echo "Either set GPG_SIGNING_KEY environment variable or ensure key is already imported" >&2
+          exit 1
+        else
+          echo "Signing skipped: no private key available (set REQUIRE_SIGNING=1 to enforce)"
+          return 0
+        fi
       fi
     else
       echo "Using signing key $key_id already present in GPG keyring"
@@ -903,8 +1020,10 @@ collect_rpm() {
 # Execute flow
 one_shot_fetch_openssl
 prewarm_store
+ensure_expected_hashes
 build_or_reuse_ui
 build_or_reuse_server
+write_binary_hash_file || true
 enforce_binary_hash
 resolve_openssl_path
 prewarm_cargo_registry

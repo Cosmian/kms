@@ -84,6 +84,23 @@ init_build_env() {
     i=$((i + 1))
   done
 
+  # If flags were not provided, inherit from existing environment (when available)
+  if [ $profile_set -eq 0 ] && [ -n "${BUILD_PROFILE:-}" ]; then
+    case "${BUILD_PROFILE}" in
+    release | debug) profile="${BUILD_PROFILE}" ;;
+    esac
+  fi
+  if [ $variant_set -eq 0 ] && [ -n "${VARIANT:-}" ]; then
+    case "${VARIANT}" in
+    fips | non-fips) variant="${VARIANT}" ;;
+    esac
+  fi
+  if [ $link_set -eq 0 ] && [ -n "${LINK:-}" ]; then
+    case "${LINK}" in
+    static | dynamic) link="${LINK}" ;;
+    esac
+  fi
+
   case "$variant" in
   fips | non-fips) : ;;
   *)
@@ -184,11 +201,45 @@ setup_test_logging() {
 setup_fips_openssl_env() {
   # In non-FIPS variant, ensure no FIPS provider is enforced by env vars (Nix shells may set these)
   if [ "${VARIANT:-}" != "fips" ]; then
-    # Clear runtime provider forcing
+    # Clear runtime provider forcing (no FIPS providers for non-FIPS feature set)
     unset OPENSSL_CONF OPENSSL_MODULES || true
-    # Ensure we don't accidentally link against a locally built FIPS OpenSSL
-    # or any explicitly pinned OpenSSL from previous runs.
-    unset OPENSSL_DIR OPENSSL_INCLUDE_DIR OPENSSL_LIB_DIR PKG_CONFIG_PATH OPENSSL_NO_PKG_CONFIG OPENSSL_STATIC || true
+    # If we have a locally provided OpenSSL (e.g. via Nix OPENSSL_DIR), create/use
+    # a lightweight config that activates the default and legacy providers so
+    # algorithms like PKCS12KDF (needed in CLI certificate tests) are available.
+    if [ -n "${OPENSSL_DIR:-}" ] && [ -d "${OPENSSL_DIR}/lib/ossl-modules" ]; then
+      local non_fips_conf
+      # Nix store paths are read-only; place generated config in repo target if needed
+      if [ -w "${OPENSSL_DIR}" ]; then
+        non_fips_conf="${OPENSSL_DIR}/ssl/openssl-nonfips-legacy.cnf"
+        mkdir -p "${OPENSSL_DIR}/ssl" || true
+      else
+        local repo_root
+        repo_root="$(get_repo_root "${SCRIPT_DIR:-$(pwd)}")"
+        mkdir -p "${repo_root}/target" || true
+        non_fips_conf="${repo_root}/target/openssl-nonfips-legacy.cnf"
+      fi
+      if [ ! -f "${non_fips_conf}" ]; then
+        cat >"${non_fips_conf}" <<'EOF'
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+EOF
+      fi
+      export OPENSSL_CONF="${non_fips_conf}"
+      export OPENSSL_MODULES="${OPENSSL_DIR}/lib/ossl-modules"
+    fi
+    # Retain OPENSSL_DIR so build scripts can locate headers/libs.
     return 0
   fi
 
@@ -324,16 +375,12 @@ _run_workspace_tests() {
     ;;
   esac
 
-  # By default, skip CLI crate tests in Nix-driven suites (and outside too) because the CLI is primarily a binary crate
+  # By default, skip CLI crate tests in Nix-driven suites because the CLI is primarily a binary crate
   # and some tests may require host/network capabilities that are restricted in CI/Nix sandboxes.
-  # Run CLI tests by default; users can exclude explicitly if needed.
   local extra_args=()
 
-  # Exclude WASM crate from lib tests (browser-only)
-  extra_args+=(--exclude cosmian_kms_client_wasm)
-
   # shellcheck disable=SC2086
-  cargo test --workspace --lib "${extra_args[@]}" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+  cargo test --workspace --lib --exclude cosmian_kms_cli "${extra_args[@]}" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
 }
 
 # Public: run DB-specific tests with optional service checks

@@ -162,13 +162,13 @@ impl fmt::Debug for TlsParams {
         {
             f.debug_struct("TlsParams")
                 .field("server_cert_pem", &"[PEM provided]")
+                .field("server_key_pem", &"[PEM provided]")
                 .field(
                     "server_chain_pem",
                     &self
                         .server_chain_pem
                         .as_ref()
-                        .map(|_| "[PEM provided]")
-                        .unwrap_or("[N/A]"),
+                        .map_or("[N/A]", |_| "[PEM provided]"),
                 )
                 .field("authority_cert_file: ", &ca_cert)
                 .field("cipher_suites: ", &cipher_suites)
