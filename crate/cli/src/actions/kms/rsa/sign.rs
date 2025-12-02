@@ -12,7 +12,7 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-/// Digital signature supported is rsassa-pss
+/// Digital signature supported is RSASSA-PSS
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SignAction {
