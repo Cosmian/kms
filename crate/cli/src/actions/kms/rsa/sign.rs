@@ -32,11 +32,7 @@ pub struct SignAction {
     pub(crate) tags: Option<Vec<String>>,
 
     /// The signature algorithm
-    #[clap(
-        long = "signature-algorithm",
-        short = 's',
-        default_value = "rsassa-pss"
-    )]
+    #[clap(long = "signature-algorithm", short = 's', default_value = "rsassapss")]
     pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
 
     /// The encrypted output file path

@@ -38,7 +38,7 @@ pub struct SignatureVerifyAction {
     #[clap(
         long = "signature-algorithm",
         short = 's',
-        default_value = "rsassa-pss"
+        default_value = "ecdsa-with-sha256"
     )]
     pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
 

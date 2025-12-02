@@ -13,7 +13,7 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-/// Digital signature supported is rsassa-pss
+/// Digital signature supported is rsassapss
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SignAction {
@@ -36,7 +36,7 @@ pub struct SignAction {
     pub(crate) tags: Option<Vec<String>>,
 
     /// The signature algorithm
-    #[clap(long, short = 's', default_value = "rsassa-pss")]
+    #[clap(long, short = 's', default_value = "rsassapss")]
     pub(crate) signature_algorithm: CDigitalSignatureAlgorithm,
 
     /// The encrypted output file path
