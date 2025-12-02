@@ -245,16 +245,17 @@ mod tests {
             },
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
-                region: "us-east-1".to_owned(),
-                aws_xks_service: "example".to_owned(),
-                aws_xks_uri_path_prefix: "/engineering/".to_owned(),
-                aws_xks_sigv4_access_key_id: "AKIAIOSFODNN7EXAMPLE".to_owned(),
-                aws_xks_sigv4_secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                    .to_owned(),
-                aws_xks_partition: "aws".to_owned(),
-                aws_xks_account_id: "123456789012".to_owned(),
-                aws_xks_user_path: "?".to_owned(),
-                aws_xks_user_name: "user".to_owned(),
+                aws_xks_region: Some("us-east-1".to_owned()),
+                aws_xks_service: Some("example".to_owned()),
+                aws_xks_uri_path_prefix: Some("/engineering/".to_owned()),
+                aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+                aws_xks_sigv4_secret_access_key: Some(
+                    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
+                ),
+                aws_xks_partition: Some("aws".to_owned()),
+                aws_xks_account_id: Some("123456789012".to_owned()),
+                aws_xks_user_path: Some("?".to_owned()),
+                aws_xks_user_name: Some("user".to_owned()),
             },
             key_encryption_key: Some("key wrapping key".to_owned()),
             default_unwrap_type: None,
@@ -337,7 +338,7 @@ ansi_colors = false
 
 [aws_xks_config]
 aws_xks_enable = true
-region = "us-east-1"
+aws_xks_region = "us-east-1"
 aws_xks_service = "example"
 aws_xks_uri_path_prefix = "/engineering/"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
