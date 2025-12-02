@@ -49,9 +49,8 @@ pub struct SignatureVerifyAction {
 
 impl SignatureVerifyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        // Read the file to decrypt
         let data = read_bytes_from_file(&self.data_file)
-            .with_context(|| "Cannot read bytes from the file to decrypt")?;
+            .with_context(|| "Cannot read bytes from the signature file")?;
 
         let signature_data = read_bytes_from_file(&self.signature_file)
             .with_context(|| "Cannot read bytes from the signature file")?;
