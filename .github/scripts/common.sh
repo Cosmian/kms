@@ -201,25 +201,17 @@ setup_test_logging() {
 setup_fips_openssl_env() {
   # In non-FIPS variant, ensure no FIPS provider is enforced by env vars (Nix shells may set these)
   if [ "${VARIANT:-}" != "fips" ]; then
-    # Clear runtime provider forcing (no FIPS providers for non-FIPS feature set)
+    # Clear any FIPS-enforcing variables inherited from the environment/shell.
     unset OPENSSL_CONF OPENSSL_MODULES || true
-    # If we have a locally provided OpenSSL (e.g. via Nix OPENSSL_DIR), create/use
-    # a lightweight config that activates the default and legacy providers so
-    # algorithms like PKCS12KDF (needed in CLI certificate tests) are available.
-    if [ -n "${OPENSSL_DIR:-}" ] && [ -d "${OPENSSL_DIR}/lib/ossl-modules" ]; then
-      local non_fips_conf
-      # Nix store paths are read-only; place generated config in repo target if needed
-      if [ -w "${OPENSSL_DIR}" ]; then
-        non_fips_conf="${OPENSSL_DIR}/ssl/openssl-nonfips-legacy.cnf"
-        mkdir -p "${OPENSSL_DIR}/ssl" || true
-      else
-        local repo_root
-        repo_root="$(get_repo_root "${SCRIPT_DIR:-$(pwd)}")"
-        mkdir -p "${repo_root}/target" || true
-        non_fips_conf="${repo_root}/target/openssl-nonfips-legacy.cnf"
-      fi
-      if [ ! -f "${non_fips_conf}" ]; then
-        cat >"${non_fips_conf}" <<'EOF'
+
+    # Always provide a lightweight non-FIPS config enabling default + legacy providers,
+    # so legacy algorithms (e.g., PKCS12KDF) are available in non-fips test runs.
+    local repo_root non_fips_conf
+    repo_root="$(get_repo_root "${SCRIPT_DIR:-$(pwd)}")"
+    mkdir -p "${repo_root}/target" || true
+    non_fips_conf="${repo_root}/target/openssl-nonfips-legacy.cnf"
+    if [ ! -f "${non_fips_conf}" ]; then
+      cat >"${non_fips_conf}" <<'EOF'
 openssl_conf = openssl_init
 
 [openssl_init]
@@ -235,10 +227,14 @@ activate = 1
 [legacy_sect]
 activate = 1
 EOF
-      fi
-      export OPENSSL_CONF="${non_fips_conf}"
+    fi
+    export OPENSSL_CONF="${non_fips_conf}"
+
+    # If a custom OpenSSL is present, help OpenSSL find its provider modules.
+    if [ -n "${OPENSSL_DIR:-}" ] && [ -d "${OPENSSL_DIR}/lib/ossl-modules" ]; then
       export OPENSSL_MODULES="${OPENSSL_DIR}/lib/ossl-modules"
     fi
+
     # Retain OPENSSL_DIR so build scripts can locate headers/libs.
     return 0
   fi

@@ -132,12 +132,12 @@ let
   # Build UI for both variants (use modern pkgs for UI build tools)
   ui-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ ];
-    inherit rustToolchain;
+    inherit rustToolchain enforceDeterministicHash;
   };
 
   ui-non-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ "non-fips" ];
-    inherit rustToolchain;
+    inherit rustToolchain enforceDeterministicHash;
   };
 
   # DRY helper to build servers for both variants and both linkage modes

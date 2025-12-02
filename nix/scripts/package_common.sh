@@ -106,16 +106,7 @@ ensure_expected_hashes() {
   [ -s "$ui_wasm_vendor_file" ] || missing=1
 
   if [ $missing -eq 1 ]; then
-    echo "Expected-hash files missing; generating via update_all_hashes.sh…"
-    # Generate server vendor hashes for this variant/link
-    bash "$REPO_ROOT/nix/scripts/update_all_hashes.sh" --component server --variant "$VARIANT" --link "$LINK" --max-retries 2 --retry-delay-seconds 2 || true
-    # Generate UI vendor + npm hashes for this variant
-    bash "$REPO_ROOT/nix/scripts/update_all_hashes.sh" --component ui --variant "$VARIANT" --max-retries 2 --retry-delay-seconds 2 || true
-    # If wasm vendor file still missing but UI vendor exists, mirror it
-    if [ ! -s "$ui_wasm_vendor_file" ] && [ -s "$ui_vendor_file" ]; then
-      cp -f "$ui_vendor_file" "$ui_wasm_vendor_file" || true
-      echo "Mirrored UI vendor hash to $ui_wasm_vendor_file"
-    fi
+    echo "WARNING: One or more expected hash files are missing for variant $VARIANT, link $LINK, system $sys." >&2
   fi
 }
 

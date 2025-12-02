@@ -172,7 +172,7 @@ rustPlatform.buildRustPackage rec {
   src = filteredSrc;
 
   # Deterministic vendoring: pinned cargo hash for workspace vendoring
-  # Support both cargoHash (new) and cargoSha256 (legacy) for compatibility across nixpkgs versions.
+  # Support cargoHash for compatibility across nixpkgs versions.
   # Platform-specific vendor hashes (target-dependent deps). If out-of-date, temporarily set to ""
   # and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
   cargoHash =
@@ -181,11 +181,25 @@ rustPlatform.buildRustPackage rec {
       parts = lib.splitString "-" sys;
       arch = builtins.elemAt parts 0;
       os = builtins.elemAt parts 1;
-      impl = if static then "openssl" else "no-openssl";
-      vendorFile = ./expected-hashes + "/server.vendor.${baseVariant}.${impl}.${arch}.${os}.sha256";
+      vendorFile = ./expected-hashes + "/server.vendor.${arch}.${os}.sha256";
       placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
-    if builtins.pathExists vendorFile then builtins.readFile vendorFile else placeholder;
+    if builtins.pathExists vendorFile then
+      let
+        raw = builtins.readFile vendorFile;
+        trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+      in
+      if enforceDeterministicHash then
+        (
+          assert trimmed != placeholder && trimmed != "";
+          trimmed
+        )
+      else
+        trimmed
+    else if enforceDeterministicHash then
+      builtins.throw ("Expected server vendor cargo hash file not found: " + vendorFile)
+    else
+      placeholder;
   cargoSha256 = cargoHash;
 
   # Use release profile by default

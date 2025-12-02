@@ -231,8 +231,8 @@ update_vendor_hashes() {
             # Precompute hash file path for this variant/linkage
             ARCH="${CURRENT_SYSTEM%%-*}"
             OS="${CURRENT_SYSTEM#*-}"
-            IMPL=$([ "$LINK_MODE" = "dynamic" ] && echo no-openssl || echo openssl)
-            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.vendor.${BUILD_VARIANT}.${IMPL}.${ARCH}.${OS}.sha256"
+            # Server vendor hash is shared across variants and linkage modes
+            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.vendor.${ARCH}.${OS}.sha256"
             mkdir -p "$REPO_ROOT/nix/expected-hashes"
 
             # Ensure the expected-hash file exists to avoid missing-file errors
@@ -330,7 +330,8 @@ update_vendor_hashes() {
         ARCH="${CURRENT_SYSTEM%%-*}"
         OS="${CURRENT_SYSTEM#*-}"
         UI_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
-        UI_WASM_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.wasm.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
+        # UI WASM vendor hash uses the same file as UI vendor hash
+        UI_WASM_VENDOR_FILE="$UI_VENDOR_FILE"
         mkdir -p "$REPO_ROOT/nix/expected-hashes"
         if [ ! -f "$UI_VENDOR_FILE" ]; then
             echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$UI_VENDOR_FILE"
@@ -348,10 +349,7 @@ update_vendor_hashes() {
             # Ensure the WASM vendor hash file mirrors the UI vendor hash
             if [ -s "$UI_VENDOR_FILE" ]; then
                 CUR_HASH=$(tr -d ' \t\r\n' <"$UI_VENDOR_FILE" || true)
-                if [ -n "$CUR_HASH" ]; then
-                    echo "$CUR_HASH" >"$UI_WASM_VENDOR_FILE"
-                    echo "✅ Ensured $UI_WASM_VENDOR_FILE mirrors UI vendor hash"
-                fi
+                echo "✅ UI vendor hash is current: $CUR_HASH"
             fi
         else
             # Extract the "got:" hash from error message
@@ -369,10 +367,6 @@ update_vendor_hashes() {
                 echo "$NEW_UI_HASH" >"$UI_VENDOR_FILE"
                 echo "✅ Wrote $UI_VENDOR_FILE"
                 echo "$UI_VENDOR_FILE: $NEW_UI_HASH"
-                # Keep WASM vendor hash in sync
-                echo "$NEW_UI_HASH" >"$UI_WASM_VENDOR_FILE"
-                echo "✅ Wrote $UI_WASM_VENDOR_FILE"
-                echo "$UI_WASM_VENDOR_FILE: $NEW_UI_HASH"
             else
                 echo "⚠️  Could not extract UI vendor hash from build output for $UI_VARIANT"
                 echo "Vendor hash may already be correct or build failed for another reason"
@@ -399,14 +393,14 @@ update_npm_hash() {
     echo ""
     echo "Building UI to discover NPM dependencies hash..."
 
-    # Use FIPS variant for NPM hash discovery (hash is same for both variants)
+    # NPM hash is shared across variants (content is identical)
     ARCH="${CURRENT_SYSTEM%%-*}"
     OS="${CURRENT_SYSTEM#*-}"
-    PLACEHOLDER_FILE="$REPO_ROOT/nix/expected-hashes/ui.npm.fips.${ARCH}.${OS}.sha256"
+    NPM_HASH_FILE="$REPO_ROOT/nix/expected-hashes/ui.npm.${ARCH}.${OS}.sha256"
     mkdir -p "$REPO_ROOT/nix/expected-hashes"
-    if [ ! -f "$PLACEHOLDER_FILE" ]; then
-        echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$PLACEHOLDER_FILE"
-        echo "Created placeholder NPM hash file: $PLACEHOLDER_FILE"
+    if [ ! -f "$NPM_HASH_FILE" ]; then
+        echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$NPM_HASH_FILE"
+        echo "Created placeholder NPM hash file: $NPM_HASH_FILE"
     fi
 
     if BUILD_OUTPUT=$(nix-build --show-trace -A "ui-fips" -o "result-ui-fips-npm" 2>&1); then
@@ -419,10 +413,9 @@ update_npm_hash() {
 
         if is_valid_sri "$NEW_NPM_HASH"; then
             echo "Discovered NPM dependencies hash: $NEW_NPM_HASH"
-
-            echo "$NEW_NPM_HASH" >"$PLACEHOLDER_FILE"
-            echo "✅ Wrote $PLACEHOLDER_FILE"
-            echo "$PLACEHOLDER_FILE: $NEW_NPM_HASH"
+            echo "$NEW_NPM_HASH" >"$NPM_HASH_FILE"
+            echo "✅ Wrote $NPM_HASH_FILE"
+            echo "$NPM_HASH_FILE: $NEW_NPM_HASH"
         else
             echo "⚠️  Could not extract NPM dependencies hash from build output"
             echo "NPM hash may already be correct or build failed for another reason"
@@ -508,12 +501,11 @@ update_binary_hashes() {
 
             echo "Computed hash for $build_variant ($link_mode): $NEW_HASH"
 
-            # Update expected hash file using new naming convention:
-            #   <fips|non-fips>-.<openssl|no-openssl>.<arch>.<os>.sha256
+            # Binary hash files are variant-specific but not impl-specific
+            # Naming convention: server.<variant>.<arch>.<os>.sha256
             ARCH="${CURRENT_SYSTEM%%-*}"
             OS="${CURRENT_SYSTEM#*-}"
-            IMPL=$([ "$link_mode" = "dynamic" ] && echo no-openssl || echo openssl)
-            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.${build_variant}.${IMPL}.${ARCH}.${OS}.sha256"
+            HASH_FILE="$REPO_ROOT/nix/expected-hashes/server.${build_variant}.${ARCH}.${OS}.sha256"
 
             # Create directory if it doesn't exist
             mkdir -p "$REPO_ROOT/nix/expected-hashes"
@@ -584,30 +576,19 @@ echo "Summary of changes:"
 ARCH="${CURRENT_SYSTEM%%-*}"
 OS="${CURRENT_SYSTEM#*-}"
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "server" ]; then
-    VARIANT_SUMMARY_VENDOR="${VARIANT:-fips}"
-    if [ -z "$LINK" ] || [ "$LINK" = "static" ]; then
-        echo "  ✓ Server vendor hash (static):  nix/expected-hashes/server.vendor.${VARIANT_SUMMARY_VENDOR}.openssl.${ARCH}.${OS}.sha256"
-    fi
-    if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
-        echo "  ✓ Server vendor hash (dynamic): nix/expected-hashes/server.vendor.${VARIANT_SUMMARY_VENDOR}.no-openssl.${ARCH}.${OS}.sha256"
-    fi
+    echo "  ✓ Server vendor hash: nix/expected-hashes/server.vendor.${ARCH}.${OS}.sha256"
     # Only print binary summary if we updated binaries and know which variants
     if [ "$UPDATE_BINARY" = "true" ]; then
         VARIANTS_SUMMARY="${VARIANT:-fips}"
         for build_variant in $VARIANTS_SUMMARY; do
-            if [ -z "$LINK" ] || [ "$LINK" = "static" ]; then
-                echo "  ✓ Binary hash (static):  nix/expected-hashes/server.${build_variant}.openssl.${ARCH}.${OS}.sha256"
-            fi
-            if [ -z "$LINK" ] || [ "$LINK" = "dynamic" ]; then
-                echo "  ✓ Binary hash (dynamic): nix/expected-hashes/server.${build_variant}.no-openssl.${ARCH}.${OS}.sha256"
-            fi
+            echo "  ✓ Binary hash: nix/expected-hashes/server.${build_variant}.${ARCH}.${OS}.sha256"
         done
     fi
 fi
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
-    echo "  ✓ UI vendor hash:      nix/expected-hashes/ui.vendor.fips.${ARCH}.${OS}.sha256"
-    echo "  ✓ UI WASM vendor hash: nix/expected-hashes/ui.wasm.vendor.fips.${ARCH}.${OS}.sha256"
-    echo "  ✓ NPM deps hash:       nix/expected-hashes/ui.npm.fips.${ARCH}.${OS}.sha256"
+    UI_VARIANT_SUMMARY="${VARIANT:-fips}"
+    echo "  ✓ UI vendor hash: nix/expected-hashes/ui.vendor.${UI_VARIANT_SUMMARY}.${ARCH}.${OS}.sha256"
+    echo "  ✓ NPM deps hash:  nix/expected-hashes/ui.npm.${ARCH}.${OS}.sha256"
 fi
 echo ""
 echo "Next steps:"

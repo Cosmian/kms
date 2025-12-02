@@ -4,6 +4,8 @@
   lib ? pkgs.lib,
   features ? [ ], # [ "non-fips" ] or []
   rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
+  # Allow callers to bypass strict enforcement for NPM deps hash discovery
+  enforceDeterministicHash ? false,
 }:
 
 let
@@ -31,7 +33,22 @@ let
           "unknown";
       hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + arch + "." + os + ".sha256";
     in
-    if builtins.pathExists hashFile then builtins.readFile hashFile else placeholder;
+    if builtins.pathExists hashFile then
+      let
+        raw = builtins.readFile hashFile;
+        trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+      in
+      if enforceDeterministicHash then
+        (
+          assert trimmed != placeholder && trimmed != "";
+          trimmed
+        )
+      else
+        trimmed
+    else if enforceDeterministicHash then
+      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile)
+    else
+      placeholder;
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -190,9 +207,24 @@ let
             "darwin"
           else
             "unknown";
-        hashFile = ../nix/expected-hashes + "/ui.npm." + variant + "." + arch + "." + os + ".sha256";
+        hashFile = ../nix/expected-hashes + "/ui.npm." + arch + "." + os + ".sha256";
       in
-      if builtins.pathExists hashFile then builtins.readFile hashFile else placeholder;
+      if builtins.pathExists hashFile then
+        let
+          raw = builtins.readFile hashFile;
+          trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+        in
+        if enforceDeterministicHash then
+          (
+            assert trimmed != placeholder && trimmed != "";
+            trimmed
+          )
+        else
+          trimmed
+      else if enforceDeterministicHash then
+        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile)
+      else
+        placeholder;
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;
