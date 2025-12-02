@@ -273,21 +273,13 @@ impl ServerParams {
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
-            aws_xks_params: conf.aws_xks_config.aws_xks_enable.then(|| AwsXksParams {
-                region: conf.aws_xks_config.region.clone(),
-                service: conf.aws_xks_config.aws_xks_service.clone(),
-                uri_path_prefix: conf.aws_xks_config.aws_xks_uri_path_prefix.clone(),
-                sigv4_access_key_id: conf.aws_xks_config.aws_xks_sigv4_access_key_id.clone(),
-                sigv4_secret_access_key: conf
-                    .aws_xks_config
-                    .aws_xks_sigv4_secret_access_key
-                    .clone(),
-                partition: conf.aws_xks_config.aws_xks_partition.clone(),
-                account_id: conf.aws_xks_config.aws_xks_account_id.clone(),
-                user_path: conf.aws_xks_config.aws_xks_user_path.clone(),
-                user_name: conf.aws_xks_config.aws_xks_user_name.clone(),
-            }),
+            aws_xks_params: if conf.aws_xks_config.aws_xks_enable {
+                Some(conf.aws_xks_config.try_into()?)
+            } else {
+                None
+            },
         };
+
         debug!("{res:#?}");
 
         Ok(res)
