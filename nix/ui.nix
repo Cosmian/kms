@@ -13,10 +13,9 @@ let
   variant = if isFips then "fips" else "non-fips";
 
   # Determine cargo vendor hash for building the WASM crate via external file
-  # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
   actualCargoHash =
     let
-      placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+      placeholder = "sha256-CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
       arch =
         if pkgs.stdenv.hostPlatform.isx86_64 then
           "x86_64"
@@ -189,25 +188,10 @@ let
     };
 
     # Read NPM dependencies hash from external file
-    # New naming: <server|ui>.<vendor|npm>.<fips|non-fips>.<arch>.<os>.sha256
     npmDepsHash =
       let
-        placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-        arch =
-          if pkgs.stdenv.hostPlatform.isx86_64 then
-            "x86_64"
-          else if pkgs.stdenv.hostPlatform.isAarch64 then
-            "aarch64"
-          else
-            "unknown";
-        os =
-          if pkgs.stdenv.hostPlatform.isLinux then
-            "linux"
-          else if pkgs.stdenv.hostPlatform.isDarwin then
-            "darwin"
-          else
-            "unknown";
-        hashFile = ../nix/expected-hashes + "/ui.npm." + arch + "." + os + ".sha256";
+        placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        hashFile = ../nix/expected-hashes + "/ui.npm.sha256";
       in
       if builtins.pathExists hashFile then
         let

@@ -182,7 +182,7 @@ rustPlatform.buildRustPackage rec {
       arch = builtins.elemAt parts 0;
       os = builtins.elemAt parts 1;
       vendorFile = ./expected-hashes + "/server.vendor.${arch}.${os}.sha256";
-      placeholder = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+      placeholder = "sha256-BBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
     if builtins.pathExists vendorFile then
       let
