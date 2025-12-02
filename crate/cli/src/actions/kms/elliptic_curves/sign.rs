@@ -59,7 +59,7 @@ impl SignAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         // Read the file to sign
         let data = read_bytes_from_file(&self.input_file)
-            .with_context(|| "Cannot read bytes from the file to decrypt")?;
+            .with_context(|| "Cannot read bytes from the file to sign")?;
 
         // Recover the unique identifier or set of tags
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
