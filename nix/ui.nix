@@ -16,13 +16,6 @@ let
   actualCargoHash =
     let
       placeholder = "sha256-CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-      arch =
-        if pkgs.stdenv.hostPlatform.isx86_64 then
-          "x86_64"
-        else if pkgs.stdenv.hostPlatform.isAarch64 then
-          "aarch64"
-        else
-          "unknown";
       os =
         if pkgs.stdenv.hostPlatform.isLinux then
           "linux"
@@ -30,7 +23,7 @@ let
           "darwin"
         else
           "unknown";
-      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + arch + "." + os + ".sha256";
+      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + os + ".sha256";
     in
     if builtins.pathExists hashFile then
       let

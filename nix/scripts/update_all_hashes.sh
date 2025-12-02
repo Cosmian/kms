@@ -588,7 +588,7 @@ fi
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "ui" ]; then
     UI_VARIANT_SUMMARY="${VARIANT:-fips}"
     echo "  ✓ UI vendor hash: nix/expected-hashes/ui.vendor.${UI_VARIANT_SUMMARY}.${ARCH}.${OS}.sha256"
-    echo "  ✓ NPM deps hash:  nix/expected-hashes/ui.npm.${ARCH}.${OS}.sha256"
+    echo "  ✓ NPM deps hash:  nix/expected-hashes/ui.npm.sha256"
 fi
 echo ""
 echo "Next steps:"
