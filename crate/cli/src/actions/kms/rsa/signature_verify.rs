@@ -45,13 +45,13 @@ pub struct SignatureVerifyAction {
 
 impl SignatureVerifyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<ValidityIndicator> {
-        // Read the file to decrypt
+        // Read the data that was signed
         let data = read_bytes_from_file(&self.data_file)
-            .with_context(|| "Cannot read bytes from the file to decrypt")?;
+            .with_context(|| "Cannot read bytes from the signed data file")?;
 
-        // Read the file to decrypt
+        // Read the signature file
         let signature_data = read_bytes_from_file(&self.signature_file)
-            .with_context(|| "Cannot read bytes from the file to decrypt")?;
+            .with_context(|| "Cannot read bytes from the signature file")?;
 
         // Recover the unique identifier or set of tags
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
