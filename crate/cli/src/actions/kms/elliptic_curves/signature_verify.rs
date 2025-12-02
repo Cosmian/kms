@@ -36,7 +36,7 @@ pub struct SignatureVerifyAction {
 
     /// The signature algorithm
     #[clap(
-        long = "signature-algorithm",
+        long,
         short = 's',
         default_value = "ecdsa-with-sha256"
     )]
