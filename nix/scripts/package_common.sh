@@ -5,7 +5,7 @@
 # Notes:
 # - Builds the prebuilt server via Nix (offline), enforces deterministic hash natively in derivation,
 #   substitutes OpenSSL source paths into Cargo.toml, then invokes cargo-deb or cargo-generate-rpm.
-# - Destination paths are hardcoded to /usr/local/lib/cosmian-kms in Cargo.toml
+# - Destination paths are hardcoded to /usr/local/cosmian/lib in Cargo.toml
 # - Reuses existing result-server-<variant> symlink if present to avoid rebuilds.
 
 set -euo pipefail
@@ -248,7 +248,7 @@ build_or_reuse_ui() {
 
 # Enforce expected deterministic hash even on reuse path.
 resolve_expected_hash_file() {
-  # New naming convention (per update_all_hashes.sh):
+  # Naming convention:
   #   server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
   # Backward-compatible fallbacks:
   #   <base>.<arch-os>.sha256 (legacy)
@@ -657,9 +657,9 @@ prepare_workspace() {
   cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
   cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
-  # For dynamic builds, patch the RPATH to point to /usr/local/lib/cosmian-kms
+  # For dynamic builds, patch the RPATH to point to /usr/local/cosmian/lib
   if [ "$LINK" = "dynamic" ] && command -v patchelf >/dev/null 2>&1; then
-    echo "Patching RPATH for dynamic build to /usr/local/lib/cosmian-kms"
+    echo "Patching RPATH for dynamic build to /usr/local/cosmian/lib"
     for binary in \
       "crate/server/target/$HOST_TRIPLE/release/cosmian_kms" \
       "crate/server/target/release/cosmian_kms" \
@@ -669,7 +669,7 @@ prepare_workspace() {
         chmod u+w "$binary"
         # Remove existing RPATH/RUNPATH and set to our standard path
         patchelf --remove-rpath "$binary" 2>/dev/null || true
-        patchelf --set-rpath /usr/local/lib/cosmian-kms "$binary"
+        patchelf --set-rpath /usr/local/cosmian/lib "$binary"
         echo "  Patched: $binary"
       fi
     done

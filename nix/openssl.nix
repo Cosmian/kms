@@ -134,14 +134,14 @@ stdenv.mkDerivation rec {
 
     # Reorganize output to match final installation layout
     # Create target directory structure
-    mkdir -p "$out/usr/local/lib/cosmian-kms/ossl-modules"
-    mkdir -p "$out/usr/local/lib/cosmian-kms/ssl"
+    mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
+    mkdir -p "$out/usr/local/cosmian/lib/ssl"
 
     # Copy FIPS provider module to target location (keep original for tests/dev)
     if [ -f "$out/lib/ossl-modules/fips.${soExt}" ]; then
-      cp "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+      cp "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
     elif [ -f "$out/lib64/ossl-modules/fips.${soExt}" ]; then
-      cp "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/lib/cosmian-kms/ossl-modules/"
+      cp "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
     else
       echo "ERROR: FIPS provider module not found"
       exit 1
@@ -153,12 +153,12 @@ stdenv.mkDerivation rec {
       install -Dm644 "./apps/openssl.cnf" "$out/ssl/openssl.cnf"
     fi
 
-    cp "$out/ssl/fipsmodule.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
-    cp "$out/ssl/openssl.cnf" "$out/usr/local/lib/cosmian-kms/ssl/"
+    cp "$out/ssl/fipsmodule.cnf" "$out/usr/local/cosmian/lib/ssl/"
+    cp "$out/ssl/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/"
 
-    # Enable FIPS in both locations (original $out/ssl and target usr/local/lib/cosmian-kms/ssl)
+    # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
     # This ensures FIPS works during both development/testing and production
-    for conf_dir in "$out/ssl" "$out/usr/local/lib/cosmian-kms/ssl"; do
+    for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
       # Use absolute path for .include to avoid path resolution issues
       # The .include directive in OpenSSL 3.x looks for files relative to CWD unless an absolute path is used
       sed -i "s|^# \\.include fipsmodule\\.cnf|.include $conf_dir/fipsmodule.cnf|g" "$conf_dir/openssl.cnf"
@@ -180,7 +180,7 @@ stdenv.mkDerivation rec {
       fi
     done
 
-    echo "OpenSSL FIPS modules and config installed to $out/usr/local/lib/cosmian-kms/"
+    echo "OpenSSL FIPS modules and config installed to $out/usr/local/cosmian/lib/"
     echo "OpenSSL FIPS config also enabled in $out/ssl/ for development/testing"
 
     runHook postInstall

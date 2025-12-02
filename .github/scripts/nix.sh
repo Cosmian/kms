@@ -84,7 +84,7 @@ EOF
 PROFILE="debug"
 VARIANT="fips"
 LINK="static"
-# Hash update tuning (passed through to update_all_hashes.sh)
+# Hash update tuning (used for hash enforcement settings)
 MAX_RETRIES=""
 RETRY_DELAY_SECONDS=""
 
@@ -393,21 +393,14 @@ sbom)
   exit $?
   ;;
 update-hashes)
-  # Hash update - delegate to standalone script
-  # Force release mode (hash updates must always use release builds)
-  PROFILE="release"
-  echo "Delegating to nix/scripts/update_all_hashes.sh..."
-  SCRIPT="$REPO_ROOT/nix/scripts/update_all_hashes.sh"
-
-  # Pass through variant flag and all arguments
-  ARGS=()
-  if [ "$VARIANT" != "fips" ]; then
-    ARGS+=(--variant "$VARIANT")
-  fi
-  # Pass through link selector when explicitly provided (default is both)
-  if [ -n "${LINK_EXPLICIT:-}" ]; then
-    ARGS+=(--link "$LINK")
-  fi
+  # Hash update functionality has been integrated into the Nix build process
+  # Hashes are automatically computed during builds and saved to result outputs
+  # To update hashes: run the build and copy the hash from the build output
+  echo "Hash updates are now integrated into build process."
+  echo "Build the target and check the installCheckPhase output for hash values."
+  echo "Example: nix-build -A kms-server-fips -o result-server-fips"
+  echo "The hash will be displayed in the build output with update instructions."
+  exit 0
   # Forward tuning flags if provided before subcommand
   if [ -n "$MAX_RETRIES" ]; then
     ARGS+=(--max-retries "$MAX_RETRIES")
@@ -628,8 +621,8 @@ if [ "$COMMAND" = "package" ]; then
           # This overrides the compile-time OPENSSLDIR path (which points to Nix store)
           # Needed for FIPS builds to load FIPS provider and config from packaged location
           if [ "$BUILD_VARIANT" = "fips" ]; then
-            export OPENSSL_CONF="$tmpdir/usr/local/lib/cosmian-kms/ssl/openssl.cnf"
-            export OPENSSL_MODULES="$tmpdir/usr/local/lib/cosmian-kms/ossl-modules"
+            export OPENSSL_CONF="$tmpdir/usr/local/cosmian/lib/ssl/openssl.cnf"
+            export OPENSSL_MODULES="$tmpdir/usr/local/cosmian/lib/ossl-modules"
             echo "Setting OPENSSL_CONF=$OPENSSL_CONF"
             echo "Setting OPENSSL_MODULES=$OPENSSL_MODULES"
           fi
@@ -638,7 +631,7 @@ if [ "$COMMAND" = "package" ]; then
           # For FIPS builds, cd to SSL directory so .include directive can find fipsmodule.cnf
           # OpenSSL 3.1.2's .include resolves paths relative to CWD, not config file location
           if [ "$BUILD_VARIANT" = "fips" ]; then
-            INFO_OUT="$(cd "$tmpdir/usr/local/lib/cosmian-kms/ssl" && $BIN_PATH --info 2>&1)"
+            INFO_OUT="$(cd "$tmpdir/usr/local/cosmian/lib/ssl" && $BIN_PATH --info 2>&1)"
             STATUS=$?
           else
             INFO_OUT="$($BIN_PATH --info 2>&1)"

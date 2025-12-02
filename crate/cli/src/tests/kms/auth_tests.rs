@@ -6,10 +6,13 @@ use cosmian_kms_client::{
 };
 use cosmian_logger::{error, info, trace};
 use tempfile::TempDir;
+#[cfg(feature = "non-fips")]
+#[cfg(not(target_os = "windows"))]
+use test_kms_server::build_server_params;
 use test_kms_server::{
     ApiTokenPolicy, AuthenticationOptions, ClientAuthOptions, ClientCertPolicy, JwtPolicy,
     MainDBConfig, ServerJwtAuth as JwtAuth, ServerTlsMode as TlsMode, TestsContext,
-    build_server_params, build_server_params_full, init_test_logging,
+    build_server_params_full, init_test_logging,
     reexport::cosmian_kms_server::config::ServerParams, start_test_server_with_options,
 };
 use tokio::fs;

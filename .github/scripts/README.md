@@ -428,10 +428,8 @@ All commands support these flags:
                  │                                                       ├─ Smoke test
                  │                                                       └─ Generate .sha256
                  │
-                 ├──[sbom]───────→ Delegate to generate_sbom.sh ────────→ Run sbomnix
-                 │                 (outside nix-shell)
-                 │
-                 └──[update-hashes]→ Delegate to update_all_hashes.sh ─→ Update Nix files
+                 └──[sbom]───────→ Delegate to generate_sbom.sh ────────→ Run sbomnix
+                                   (outside nix-shell)
 ```
 
 **Pure vs Non-Pure Shell:**
@@ -522,14 +520,13 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 | Script                 | Purpose                               | Invocation Context         |
 | ---------------------- | ------------------------------------- | -------------------------- |
-| `build.sh`             | Core build logic (called by `nix.sh`) | Inside `nix-shell --pure`  |
-| `package_deb.sh`       | Debian package build                  | Via `nix.sh package deb`   |
-| `package_rpm.sh`       | RPM package build                     | Via `nix.sh package rpm`   |
-| `package_dmg.sh`       | macOS DMG build                       | Via `nix.sh package dmg`   |
-| `generate_sbom.sh`     | SBOM generation orchestrator          | Via `nix.sh sbom`          |
-| `update_all_hashes.sh` | Hash update automation                | Via `nix.sh update-hashes` |
-| `get_version.sh`       | Extract version from `Cargo.toml`     | Packaging scripts          |
-| `package_common.sh`    | Shared packaging helpers              | Sourced by `package_*.sh`  |
+| `build.sh`         | Core build logic (called by `nix.sh`) | Inside `nix-shell --pure` |
+| `package_deb.sh`   | Debian package build                  | Via `nix.sh package deb`  |
+| `package_rpm.sh`   | RPM package build                     | Via `nix.sh package rpm`  |
+| `package_dmg.sh`   | macOS DMG build                       | Via `nix.sh package dmg`  |
+| `generate_sbom.sh` | SBOM generation orchestrator          | Via `nix.sh sbom`         |
+| `get_version.sh`   | Extract version from `Cargo.toml`     | Packaging scripts         |
+| `package_common.sh`| Shared packaging helpers              | Sourced by `package_*.sh` |
 
 ### Test Scripts Detailed
 
@@ -825,14 +822,13 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
                                  │
                                  ▼
                     ┌────────────────────────┐
-                    │nix/scripts/            │
-                    │update_all_hashes.sh    │
+                    │   Hash Update Process  │
+                    │  (Integrated in build) │
                     └────────┬───────────────┘
                              │
-                    ┌────────┴────────────────────┐
-                    │   Parse Options             │
-                    └─┬─────────────────────┬─────┘
-                      │                     │
+                    ┌────────┴──────────────┐
+                    │  Build & Compute Hash │
+                    └───────────────────────┘
           vendor-only │                     │ binary-only
                       │                     │  (or default: both)
                       │                     │

@@ -668,16 +668,16 @@ Code/Dependency Change
 │  (hash mismatch)│
 └────────┬────────┘
          ↓
-Run: bash .github/scripts/nix.sh update-hashes
-  or: bash nix/scripts/update_all_hashes.sh
+Rebuild and check build output for hash:
+  nix-build -A <target> -o result
          ↓
 ┌────────┴────────────────────┐
-│  Vendor hash?  Binary hash? │
-├─────────────────────────────┤
-│ • Cargo.lock → --vendor-only│
-│ • Code change → --binary-only│
-│ • Both → (no flags)         │
-└────────┬────────────────────┘
+│ Copy hash from build output │
+│   to expected-hashes/       │
+│                             │
+│ • Vendor: cargoHash error   │
+│ • Binary: installCheckPhase │
+└─────────────────────────────┘
          ↓
 Script performs:
   1. Build with Nix
@@ -718,15 +718,12 @@ bash .github/scripts/nix.sh update-hashes --vendor-only
 # Update only binary hashes (after code changes)
 bash .github/scripts/nix.sh update-hashes --binary-only
 
-# Update specific variant (default updates current variant based on --variant flag)
-bash .github/scripts/nix.sh --variant non-fips update-hashes --binary-only
+# Update specific variant (hash shown in build output)
+bash .github/scripts/nix.sh --variant non-fips build
 
-# Alternative: standalone script (same functionality)
-bash nix/scripts/update_all_hashes.sh
-
-# Manual method - Example for Apple Silicon macOS (aarch64-darwin)
+# Hash update method - Example for x86_64 Linux
 nix-build -A kms-server-fips -o result-server-fips
-sha256sum result-server-fips/bin/cosmian_kms | cut -d' ' -f1 > nix/expected-hashes/fips.aarch64-darwin.sha256
+# Check the installCheckPhase output for the hash and update command
 
 # Linux x86_64 example
 nix-build -A kms-server-non-fips -o result-server-non-fips
@@ -1107,7 +1104,6 @@ Benefits: consistent versions, no rustup downloads, contributes to build reprodu
 - `expected-hashes/` — authoritative binary hashes
 - `scripts/package_common.sh` — shared packaging logic
 - `scripts/package_deb.sh` / `scripts/package_rpm.sh` — thin wrappers
-- `scripts/update_all_hashes.sh` — automated hash update tool
 - `README.md` — this document
 
 ## Offline dependencies location
@@ -1187,26 +1183,23 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 ### Scripts Overview
 
-| Category            | Scripts                                                                   | Purpose                                      |
-| ------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
-| **Build**           | `build.sh`                                                                | Core server compilation with static OpenSSL  |
-| **Packaging**       | `package_common.sh`, `package_deb.sh`, `package_rpm.sh`, `package_dmg.sh` | Distribution package creation                |
-| **Hash Management** | `update_all_hashes.sh`                                                    | Maintain reproducibility verification hashes |
-| **SBOM**            | `generate_sbom.sh`                                                        | Software Bill of Materials generation        |
-| **Utilities**       | `get_version.sh`, `generate_signing_key.sh`                               | Version extraction, GPG key generation       |
+| Category      | Scripts                                                                   | Purpose                                 |
+| ------------- | ------------------------------------------------------------------------- | --------------------------------------- |
+| **Build**     | `build.sh`                                                                | Core server compilation with OpenSSL    |
+| **Packaging** | `package_common.sh`, `package_deb.sh`, `package_rpm.sh`, `package_dmg.sh` | Distribution package creation           |
+| **SBOM**      | `generate_sbom.sh`                                                        | Software Bill of Materials generation   |
+| **Utilities** | `get_version.sh`, `generate_signing_key.sh`                               | Version extraction, GPG key generation  |
 
 ### Quick Reference
 
-| Task                     | Recommended Command (via nix.sh)                          | Direct Command (advanced)                                    |
-| ------------------------ | --------------------------------------------------------- | ------------------------------------------------------------ |
-| **Build server**         | `bash .github/scripts/nix.sh build`                       | `bash nix/scripts/build.sh --variant fips --profile release` |
-| **Update all hashes**    | `bash .github/scripts/nix.sh update-hashes`               | `bash nix/scripts/update_all_hashes.sh`                      |
-| **Update vendor hash**   | `bash .github/scripts/nix.sh update-hashes --vendor-only` | `bash nix/scripts/update_all_hashes.sh --vendor-only`        |
-| **Package DEB**          | `bash .github/scripts/nix.sh package deb`                 | `bash nix/scripts/package_deb.sh --variant fips`             |
-| **Package RPM**          | `bash .github/scripts/nix.sh package rpm`                 | `bash nix/scripts/package_rpm.sh --variant fips`             |
-| **Package DMG**          | `bash .github/scripts/nix.sh package dmg`                 | `bash nix/scripts/package_dmg.sh --variant fips`             |
-| **Generate SBOM**        | `bash .github/scripts/nix.sh sbom`                        | `bash nix/scripts/generate_sbom.sh --variant fips`           |
-| **Generate signing key** | N/A                                                       | `bash nix/scripts/generate_signing_key.sh`                   |
+| Task                     | Recommended Command (via nix.sh)          | Direct Command (advanced)                                    |
+| ------------------------ | ----------------------------------------- | ------------------------------------------------------------ |
+| **Build server**         | `bash .github/scripts/nix.sh build`       | `bash nix/scripts/build.sh --variant fips --profile release` |
+| **Package DEB**          | `bash .github/scripts/nix.sh package deb` | `bash nix/scripts/package_deb.sh --variant fips`             |
+| **Package RPM**          | `bash .github/scripts/nix.sh package rpm` | `bash nix/scripts/package_rpm.sh --variant fips`             |
+| **Package DMG**          | `bash .github/scripts/nix.sh package dmg` | `bash nix/scripts/package_dmg.sh --variant fips`             |
+| **Generate SBOM**        | `bash .github/scripts/nix.sh sbom`        | `bash nix/scripts/generate_sbom.sh --variant fips`           |
+| **Generate signing key** | N/A                                       | `bash nix/scripts/generate_signing_key.sh`                   |
 
 ### Script Execution Flow Diagram
 
@@ -1388,16 +1381,16 @@ Entry: bash nix/scripts/package_<type>.sh --variant <fips|non-fips>
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│              Hash Update Workflow (update_all_hashes.sh)                │
+│              Hash Update Workflow (Integrated in Build)                 │
 └─────────────────────────────────────────────────────────────────────────┘
 
-Trigger: Code change, dependency update, or manual invocation
+Trigger: Code change, dependency update, or manual build
                                   │
                                   ▼
                     ┌──────────────────────────┐
-                    │  Parse Arguments         │
+                    │  Build Target            │
+                    │  (installCheckPhase)     │
                     │                          │
-                    │  Options:                │
                     │  • --vendor-only         │
                     │  • --binary-only         │
                     │  • --variant <variant>   │
