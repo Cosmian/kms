@@ -144,9 +144,10 @@ pkgs.dockerTools.buildLayeredImage {
     # Set the entrypoint to our startup script
     Entrypoint = [ "${startupScript}/bin/docker-entrypoint.sh" ];
 
-    # Expose the default KMS port
+    # Expose the default KMS ports
     ExposedPorts = {
       "9998/tcp" = { };
+      "5696/tcp" = { };
     };
 
     # Environment variables
