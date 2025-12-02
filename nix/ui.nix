@@ -23,7 +23,7 @@ let
           "darwin"
         else
           "unknown";
-      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + "." + os + ".sha256";
+      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + ".sha256";
     in
     if builtins.pathExists hashFile then
       let

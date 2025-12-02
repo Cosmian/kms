@@ -329,7 +329,7 @@ update_vendor_hashes() {
         # Ensure vendor UI expected-hash file exists with a placeholder
         ARCH="${CURRENT_SYSTEM%%-*}"
         OS="${CURRENT_SYSTEM#*-}"
-        UI_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.vendor.${UI_VARIANT}.${ARCH}.${OS}.sha256"
+        UI_VENDOR_FILE="$REPO_ROOT/nix/expected-hashes/ui.vendor.${UI_VARIANT}.${OS}.sha256"
         # UI WASM vendor hash uses the same file as UI vendor hash
         UI_WASM_VENDOR_FILE="$UI_VENDOR_FILE"
         mkdir -p "$REPO_ROOT/nix/expected-hashes"
@@ -396,10 +396,10 @@ update_npm_hash() {
     # NPM hash is shared across variants (content is identical)
     ARCH="${CURRENT_SYSTEM%%-*}"
     OS="${CURRENT_SYSTEM#*-}"
-    NPM_HASH_FILE="$REPO_ROOT/nix/expected-hashes/ui.npm.${ARCH}.${OS}.sha256"
+    NPM_HASH_FILE="$REPO_ROOT/nix/expected-hashes/ui.npm.sha256"
     mkdir -p "$REPO_ROOT/nix/expected-hashes"
     if [ ! -f "$NPM_HASH_FILE" ]; then
-        echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$NPM_HASH_FILE"
+        echo "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$NPM_HASH_FILE"
         echo "Created placeholder NPM hash file: $NPM_HASH_FILE"
     fi
 
