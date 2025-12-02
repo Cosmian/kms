@@ -208,7 +208,7 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
-    user: &str,
+    _user: &str,
     user_must_be_owner: bool,
 ) -> String {
     let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
@@ -242,7 +242,7 @@ ON objects.id = matched_tags.id"
         // select objects for which the user is the owner or has been granted an access right
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
-             read_access.userid = '{user}'"
+             read_access.userid = $1"
         );
     }
 
@@ -266,10 +266,9 @@ ON objects.id = matched_tags.id"
 
     if user_must_be_owner {
         // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = '{user}'",);
+        query = format!("{query} WHERE objects.owner = $1",);
     } else {
-        query =
-            format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
+        query = format!("{query} WHERE (objects.owner = $2 OR read_access.userid = $3)");
     }
 
     if let Some(state) = state {
