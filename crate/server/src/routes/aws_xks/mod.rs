@@ -10,6 +10,8 @@ mod sigv4_middleware;
 pub use aws_xks_config::AwsXksConfig;
 pub use sigv4_middleware::Sigv4MWare;
 
+use crate::{error::KmsError, result::KResultHelper};
+
 // const METADATA: &str = "metadata";
 // const ENCRYPT: &str = "encrypt";
 // const DECRYPT: &str = "decrypt";
@@ -36,4 +38,40 @@ pub struct AwsXksParams {
     pub account_id: String,
     pub user_path: String,
     pub user_name: String,
+}
+
+impl TryFrom<AwsXksConfig> for AwsXksParams {
+    type Error = KmsError;
+
+    fn try_from(config: AwsXksConfig) -> Result<Self, Self::Error> {
+        Ok(Self {
+            region: config
+                .aws_xks_region
+                .context("AWS XKS region is required")?,
+            service: config
+                .aws_xks_service
+                .context("AWS XKS service is required")?,
+            uri_path_prefix: config
+                .aws_xks_uri_path_prefix
+                .context("AWS XKS URI path prefix is required")?,
+            sigv4_access_key_id: config
+                .aws_xks_sigv4_access_key_id
+                .context("AWS XKS SigV4 access key ID is required")?,
+            sigv4_secret_access_key: config
+                .aws_xks_sigv4_secret_access_key
+                .context("AWS XKS SigV4 secret access key is required")?,
+            partition: config
+                .aws_xks_partition
+                .context("AWS XKS partition is required")?,
+            account_id: config
+                .aws_xks_account_id
+                .context("AWS XKS account ID is required")?,
+            user_path: config
+                .aws_xks_user_path
+                .context("AWS XKS user path is required")?,
+            user_name: config
+                .aws_xks_user_name
+                .context("AWS XKS user name is required")?,
+        })
+    }
 }

@@ -15,7 +15,7 @@ pub struct AwsXksConfig {
         env = "KMS_AWX_XKS_REGION",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub region: String,
+    pub aws_xks_region: Option<String>,
 
     /// The AWS XKS service name to use for signing requests (sigv4)
     #[clap(
@@ -23,7 +23,7 @@ pub struct AwsXksConfig {
         env = "KMS_AWX_XKS_SERVICE",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_service: String,
+    pub aws_xks_service: Option<String>,
 
     // This could be per uri
     #[clap(
@@ -32,21 +32,21 @@ pub struct AwsXksConfig {
         default_value = "/kms/v1",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_uri_path_prefix: String,
+    pub aws_xks_uri_path_prefix: Option<String>,
 
     #[clap(
         long,
         env = "KMS_AWX_XKS_SIGV4_ACCESS_KEY_ID",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_sigv4_access_key_id: String,
+    pub aws_xks_sigv4_access_key_id: Option<String>,
 
     #[clap(
         long,
         env = "KMS_AWX_XKS_SIGV4_SECRET_ACCESS_KEY",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_sigv4_secret_access_key: String,
+    pub aws_xks_sigv4_secret_access_key: Option<String>,
     //
     #[clap(
         long,
@@ -54,14 +54,14 @@ pub struct AwsXksConfig {
         default_value = "aws",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_partition: String,
+    pub aws_xks_partition: Option<String>,
 
     #[clap(
         long,
         env = "KMS_AWX_XKS_ACCOUNT_ID",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_account_id: String,
+    pub aws_xks_account_id: Option<String>,
 
     #[clap(
         long,
@@ -69,12 +69,12 @@ pub struct AwsXksConfig {
         default_value = "/kms",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_user_path: String,
+    pub aws_xks_user_path: Option<String>,
 
     #[clap(
         long,
         env = "KMS_AWX_XKS_USER_NAME",
         required_if_eq("aws_xks_enable", "true")
     )]
-    pub aws_xks_user_name: String,
+    pub aws_xks_user_name: Option<String>,
 }
