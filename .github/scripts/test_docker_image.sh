@@ -79,7 +79,7 @@ for i in {1..30}; do
     fi
     if [ "$i" -eq 30 ]; then
         echo "ERROR: KMS server on port 9998 failed to start"
-        docker compose -f .github/scripts/docker-compose-authentication-tests.yml logs
+        docker compose -f "$COMPOSE_FILE" logs
         exit 1
     fi
     sleep 1
