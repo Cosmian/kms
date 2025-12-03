@@ -168,7 +168,7 @@ jobs:
           set -ex
           # Ensure OpenSSL uses packaged config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
-          export OPENSSL_MODULES="/usr/local/cosmian/lib/lib/ossl-modules"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path
           BIN="/usr/sbin/cosmian_kms"
           if [ ! -x "$BIN" ]; then
@@ -199,7 +199,7 @@ jobs:
           set -ex
           # Ensure OpenSSL uses packaged config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
-          export OPENSSL_MODULES="/usr/local/cosmian/lib/lib/ossl-modules"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path
           BIN="/usr/sbin/cosmian_kms"
           "$BIN" &
