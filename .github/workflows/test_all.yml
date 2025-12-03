@@ -78,14 +78,15 @@ jobs:
           bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
 
   test:
-    name: Test on ${{ matrix.type }} - ${{ matrix.features }} - without Nix
-    runs-on: ubuntu-latest
+    name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         type:
           - sqlite
         features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
 
     steps:
       - uses: dtolnay/rust-toolchain@master
@@ -98,8 +99,6 @@ jobs:
           submodules: recursive
 
       - name: Test
-        env:
-          KMS_SQLITE_PATH: data/shared
         run: |
           set -ex
           bash .github/scripts/test_${{ matrix.type }}.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }}

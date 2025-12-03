@@ -221,12 +221,15 @@ let
     # OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
-    ${lib.optionalString static ''
+    ${lib.optionalString (static && pkgs.stdenv.isLinux) ''
       strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2"; exit 1; }
       echo "Binary validation OK (OpenSSL 3.1.2 statically linked)"
     ''}
+    ${lib.optionalString (static && pkgs.stdenv.isDarwin) ''
+      echo "Skipping static OpenSSL string check on macOS (validation handled via FIPS modules and runtime tests)"
+    ''}
     ${lib.optionalString (!static) ''
-      echo "Binary validation OK (dynamically linked, OpenSSL version in libssl.so.3)"
+      echo "Binary validation OK (dynamically linked, OpenSSL version in shared library)"
     ''}
 
     echo "Binary verification passed"

@@ -57,6 +57,7 @@ zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 [dev-dependencies]
 aes-kw = "0.3.0-rc.1"
 cosmian_logger = { workspace = true }
+ctor = "0.2"
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 

@@ -25,7 +25,7 @@ jobs:
       debug_or_release: release
 
   nix-docker-image:
-    name: ${{ matrix.runner }} - ${{ matrix.features }}
+    name: docker-${{ matrix.features }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
