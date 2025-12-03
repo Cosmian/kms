@@ -54,7 +54,7 @@ fi
 
 # Build and launch the KMS server in the background
 pushd "$REPO_ROOT" >/dev/null
-cargo build --bin cosmian_kms "${FEATURES_FLAG[@]}"
+cargo build --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
 
 # Clean up any previous server on the same port
 KMS_PORT=9998
@@ -62,7 +62,7 @@ KMS_PORT=9998
 # Start server
 set +e
 RUST_LOG=${RUST_LOG:-warn} COSMIAN_KMS_CONF="$COSMIAN_KMS_CONF" \
-  cargo run --bin cosmian_kms "${FEATURES_FLAG[@]}" &
+  cargo run --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} &
 KMS_PID=$!
 set -e
 

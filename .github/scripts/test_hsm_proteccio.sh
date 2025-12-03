@@ -39,7 +39,7 @@ env \
   HSM_SLOT_ID="1" \
   cargo test \
   -p cosmian_kms_server \
-  "${FEATURES_FLAG[@]}" \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
