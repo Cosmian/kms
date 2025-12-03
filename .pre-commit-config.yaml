@@ -178,6 +178,7 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
+
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
         entry: bash .github/scripts/test_sqlite.sh --variant non-fips
@@ -185,6 +186,8 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
+        stages: [manual]
+
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)
         entry: bash .github/scripts/test_redis.sh --variant non-fips
@@ -192,21 +195,25 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
+        stages: [manual]
+
       - id: nix-cargo-test-fips
         name: Nix cargo test (sqlite fips)
-        entry: bash .github/scripts/nix.sh test sqlite --variant fips
+        entry: bash .github/scripts/nix.sh --variant fips test sqlite
         language: system
         types: [rust]
         pass_filenames: false
         always_run: true
         stages: [manual]
+
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)
-        entry: bash .github/scripts/nix.sh test sqlite --variant non-fips
+        entry: bash .github/scripts/nix.sh --variant non-fips test redis
         language: system
         types: [rust]
         pass_filenames: false
         always_run: true
+
       - id: kms-server-package
         name: Nix KMS server non-fips packaging
         entry: bash .github/scripts/nix.sh --variant non-fips package
@@ -214,7 +221,7 @@ repos:
         types: [rust]
         pass_filenames: false
         always_run: true
-        stages: [manual]
+
       - id: renew-server-doc
         name: renew server cli doc
         entry: bash .github/scripts/renew_server_doc.sh

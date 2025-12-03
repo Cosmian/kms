@@ -628,15 +628,8 @@ if [ "$COMMAND" = "package" ]; then
           fi
 
           echo "Running cosmian_kms --info from extracted package…"
-          # For FIPS builds, cd to SSL directory so .include directive can find fipsmodule.cnf
-          # OpenSSL 3.1.2's .include resolves paths relative to CWD, not config file location
-          if [ "$BUILD_VARIANT" = "fips" ]; then
-            INFO_OUT="$(cd "$tmpdir/usr/local/cosmian/lib/ssl" && $BIN_PATH --info 2>&1)"
-            STATUS=$?
-          else
-            INFO_OUT="$($BIN_PATH --info 2>&1)"
-            STATUS=$?
-          fi
+          INFO_OUT="$($BIN_PATH --info 2>&1)"
+          STATUS=$?
           echo "$INFO_OUT"
 
           # For FIPS dynamic builds, allow failure if system lacks FIPS provider

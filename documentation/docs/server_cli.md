@@ -116,17 +116,6 @@ Options:
           The KMS HTTP server hostname [env: KMS_HOSTNAME=] [default: 0.0.0.0]
       --api-token-id <API_TOKEN_ID>
           An optional API token to use for authentication on the HTTP server. [env: KMS_API_TOKEN=]
-      --https-p12-file <HTTPS_P12_FILE>
-          DEPRECATED: use the TLS section instead.
-          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode. [env: KMS_HTTPS_P12_FILE=]
-      --https-p12-password <HTTPS_P12_PASSWORD>
-          DEPRECATED: use the TLS section instead.
-          The password to open the PKCS#12 Certificates and Key file. [env: KMS_HTTPS_P12_PASSWORD=]
-      --authority-cert-file <AUTHORITY_CERT_FILE>
-          DEPRECATED: use the TLS section instead.
-          The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
-          If provided, clients must present a certificate signed by this authority for authentication.
-          The server must run in TLS mode for this to be used. [env: KMS_AUTHORITY_CERT_FILE=]
       --proxy-url <PROXY_URL>
           The proxy URL:
             - e.g., `https://secure.example` for an HTTP proxy

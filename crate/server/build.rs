@@ -281,10 +281,7 @@ fn maybe_build_fips_openssl() {
             return;
         };
         if cnf.contains("# .include fipsmodule.cnf") {
-            cnf = cnf.replace(
-                "# .include fipsmodule.cnf",
-                &format!(".include {}/fipsmodule.cnf", ssl_dir.display()),
-            );
+            cnf = cnf.replace("# .include fipsmodule.cnf", ".include ./fipsmodule.cnf");
         }
         if cnf.contains("# activate = 1") {
             cnf = cnf.replace("# activate = 1", "activate = 1");

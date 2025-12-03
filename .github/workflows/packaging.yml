@@ -224,6 +224,113 @@ jobs:
             exit $rc
           fi
 
+  systemd-packages-test:
+    needs: packages
+    name: Use GH runners ${{ matrix.features }} - ${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && ' - ARM' || ' - AMD64' }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        link: [static, dynamic]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+
+      - name: List downloaded artifacts
+        run: find .
+
+      - name: Install package
+        shell: bash
+        run: |
+          set -ex
+          # DEB-based (Ubuntu/Debian)
+          dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
+          # Use apt to handle dependencies when installing local .deb files
+          dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+
+      - name: Enable info flag in config
+        shell: bash
+        run: |
+          set -ex
+          if [ -f /etc/cosmian/kms.toml ]; then
+            sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
+          else
+            echo "Config file /etc/cosmian/kms.toml not found; skipping info flag enable."
+            exit 1
+          fi
+
+      - name: Pre-check file
+        shell: bash
+        run: |
+          set -ex
+          # Ensure OpenSSL uses packaged config and modules
+          export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
+          # Determine installed binary path
+          BIN="/usr/sbin/cosmian_kms"
+          if [ ! -x "$BIN" ]; then
+            if [ -f "/usr/bin/cosmian_kms" ]; then
+              BIN="/usr/bin/cosmian_kms"
+            fi
+          fi
+          # Show libs and run
+          ldd "$BIN"
+          chmod +x "$BIN"
+          "$BIN" --version
+          "$BIN" --info
+
+      - name: Disable info flag in config
+        shell: bash
+        run: |
+          set -ex
+          if [ -f /etc/cosmian/kms.toml ]; then
+            sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+          else
+            echo "Config file /etc/cosmian/kms.toml not found; skipping info flag enable."
+            exit 1
+          fi
+
+      - name: systemctl start cosmian_kms
+        shell: bash
+        run: |
+          set -ex
+
+          systemctl start cosmian_kms
+          sleep 5
+
+          # Check systemd service status
+          systemctl status cosmian_kms --no-pager
+          if ! systemctl is-active --quiet cosmian_kms; then
+            echo "ERROR: cosmian_kms service is not active"
+            systemctl status cosmian_kms --no-pager
+            journalctl -u cosmian_kms --no-pager -n 50
+            exit 1
+          fi
+
+          # Test UI endpoints
+          if command -v curl >/dev/null 2>&1; then
+            curl -I http://127.0.0.1:9998/ui/index.html
+          else
+            # Last resort: pure Bash using /dev/tcp
+            # Requires bash; sends a HEAD request and checks for 200
+            set +e
+            {
+              exec 3<>/dev/tcp/127.0.0.1/9998
+              printf 'HEAD /ui/index.html HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+              read -r status_line <&3
+              echo "$status_line"
+              echo "$status_line" | grep -qE 'HTTP/.* 2[0-9]{2}\b'
+            } ; rc=$?
+            exec 3>&- 3<&-
+            set -e
+            exit $rc
+          fi
+
   docker-image:
     name: Docker image build ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
     needs: packages
@@ -316,7 +423,7 @@ jobs:
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     needs:
       - windows-package
-      - packages
+      - packages-test
       - docker-manifest
     uses: ./.github/workflows/push-artifacts.yml
     with:
