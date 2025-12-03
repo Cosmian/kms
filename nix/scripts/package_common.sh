@@ -434,10 +434,57 @@ resolve_openssl_path() {
     mkdir -p "$fixed_path_workspace" "$fixed_path_server"
     cp -rL "$OSSL_PATH"/* "$fixed_path_workspace"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_workspace"/
     cp -rL "$OSSL_PATH"/* "$fixed_path_server"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_server"/
+
+    # Override FIPS configuration files with production versions from server derivation
+    # This ensures portable paths (/usr/local/cosmian) instead of Nix store paths
+    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
+      echo "Using production FIPS config from server derivation (portable paths)"
+      # Remove readonly ssl directories and replace with production config
+      chmod -R u+w "$fixed_path_workspace/ssl" "$fixed_path_server/ssl" 2>/dev/null || true
+      rm -rf "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
+      mkdir -p "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
+      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_workspace/ssl/"
+      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_workspace/ssl/"
+      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_server/ssl/"
+      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_server/ssl/"
+      # Fix permissions (Nix store files are readonly)
+      chmod 644 "$fixed_path_workspace/ssl"/*.cnf "$fixed_path_server/ssl"/*.cnf
+    fi
   else
-    # For DEB builds, symlinks work fine with cargo-deb
-    ln -sf "$OSSL_PATH" "$fixed_path_workspace"
-    ln -sf "$OSSL_PATH" "$fixed_path_server"
+    # For DEB builds, handle based on whether we need production FIPS config
+    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
+      echo "Using production FIPS config from server derivation (portable paths)"
+      # Copy OpenSSL files but exclude ssl directory, then add production config
+      mkdir -p "$fixed_path_workspace" "$fixed_path_server"
+
+      for staging_dir in "$fixed_path_workspace" "$fixed_path_server"; do
+        # Copy all files from OpenSSL except ssl directory
+        for item in "$OSSL_PATH"/*; do
+          base=$(basename "$item")
+          if [ "$base" != "ssl" ]; then
+            if [ -d "$item" ]; then
+              cp -r "$item" "$staging_dir/" 2>/dev/null || true
+            else
+              cp "$item" "$staging_dir/" 2>/dev/null || true
+            fi
+          fi
+        done
+
+        # Now create ssl directory with production config
+        # Remove any existing ssl directory first (may have readonly files from previous run)
+        rm -rf "$staging_dir/ssl"
+        mkdir -p "$staging_dir/ssl"
+        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$staging_dir/ssl/"
+        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$staging_dir/ssl/"
+        # Fix permissions (Nix store files are readonly)
+        chmod 644 "$staging_dir/ssl/openssl.cnf"
+        chmod 644 "$staging_dir/ssl/fipsmodule.cnf"
+      done
+    else
+      # No production config available, use symlinks
+      ln -sf "$OSSL_PATH" "$fixed_path_workspace"
+      ln -sf "$OSSL_PATH" "$fixed_path_server"
+    fi
   fi
 }
 

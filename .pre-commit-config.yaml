@@ -177,7 +177,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
@@ -185,7 +184,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
         stages: [manual]
 
       - id: redis-cargo-test-non-fips
@@ -194,7 +192,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
         stages: [manual]
 
       - id: nix-cargo-test-fips
@@ -203,7 +200,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
         stages: [manual]
 
       - id: nix-cargo-test-non-fips
@@ -212,7 +208,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
 
       - id: kms-server-package
         name: Nix KMS server non-fips packaging
@@ -220,7 +215,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
 
       - id: renew-server-doc
         name: renew server cli doc
@@ -228,7 +222,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42

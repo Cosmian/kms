@@ -58,7 +58,7 @@ stdenv.mkDerivation rec {
   # Force evaluation of source path to trigger hash validation early
   passthru.srcPath = toString opensslSrc;
 
-  # We need perl for OpenSSL build system, and coreutils for runtime scripts
+  # We need perl for OpenSSL build system and coreutils for runtime scripts
   nativeBuildInputs = [
     perl
     coreutils
@@ -81,16 +81,25 @@ stdenv.mkDerivation rec {
     runHook preConfigure
     export CC="${stdenv.cc.targetPrefix}cc"
 
+    # Force use of system glibc by unsetting Nix's linker/compiler wrappers
+    # This prevents the built libraries from depending on /nix/store paths
+    unset NIX_LDFLAGS
+    unset NIX_CFLAGS_COMPILE
+    unset NIX_CFLAGS_LINK
+    export NIX_DONT_SET_RPATH=1
+    export NIX_NO_SELF_RPATH=1
+
     echo "Configuring OpenSSL ${version} for target ${target} (${
       if static then "static" else "shared"
     } linkage)"
-    # Configure with explicit libdir to normalize to 'lib' across platforms
-    # Note: We use $out/ssl during build, then reorganize in postInstall
+    # Configure with production openssldir path for portability
+    # This hardcodes /usr/local/cosmian/lib/ssl into the library, making binaries portable
+    # During build, we'll create this directory structure in $out for FIPS module generation
     perl ./Configure \
       ${if static then "no-shared" else "shared"} \
       enable-fips \
       --prefix=$out \
-      --openssldir=$out/ssl \
+      --openssldir=/usr/local/cosmian/lib/ssl \
       --libdir=lib \
       ${target}
 
@@ -130,38 +139,69 @@ stdenv.mkDerivation rec {
       CORES=2
     fi
     JOBS=$(( CORES > 1 ? CORES - 1 : 1 ))
-    make -j"$JOBS" install_sw install_ssldirs install_fips > /dev/null 2>&1
 
-    # Reorganize output to match final installation layout
-    # Create target directory structure
+    # Install OpenSSL binaries and libraries only (not ssldirs - we'll handle that manually)
+    echo "Running make install_sw..."
+    if ! make -j"$JOBS" install_sw; then
+      echo "ERROR: make install_sw failed"
+      exit 1
+    fi
+    echo "Make install_sw completed successfully."
+
+    # Now manually create the production directory structure
     mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
     mkdir -p "$out/usr/local/cosmian/lib/ssl"
+    mkdir -p "$out/lib/ossl-modules"
+    mkdir -p "$out/ssl"
 
-    # Copy FIPS provider module to target location (keep original for tests/dev)
-    if [ -f "$out/lib/ossl-modules/fips.${soExt}" ]; then
-      cp "$out/lib/ossl-modules/fips.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
-    elif [ -f "$out/lib64/ossl-modules/fips.${soExt}" ]; then
-      cp "$out/lib64/ossl-modules/fips.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
+    # The FIPS module was built but not installed by install_sw
+    # Find and copy it to both dev and production locations
+    echo "Looking for FIPS provider module..."
+    if [ -f "providers/fips.${soExt}" ]; then
+      echo "Found FIPS module at providers/fips.${soExt}"
+      cp "providers/fips.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
+      cp "providers/fips.${soExt}" "$out/lib/ossl-modules/"
     else
-      echo "ERROR: FIPS provider module not found"
+      echo "ERROR: FIPS provider module not found at providers/fips.${soExt}"
+      ls -la providers/ || true
       exit 1
     fi
 
-    # Move OpenSSL configuration files to target location (keep originals for dev/test)
-    if [ ! -f "$out/ssl/openssl.cnf" ]; then
-      echo "openssl.cnf not found, seeding from ./apps/openssl.cnf"
-      install -Dm644 "./apps/openssl.cnf" "$out/ssl/openssl.cnf"
+    # Generate fipsmodule.cnf in production location
+    echo "Generating FIPS module configuration..."
+    ${
+      if static then "" else "LD_LIBRARY_PATH=$out/lib:$LD_LIBRARY_PATH "
+    }$out/bin/openssl fipsinstall -out "$out/usr/local/cosmian/lib/ssl/fipsmodule.cnf" \
+      -module "$out/usr/local/cosmian/lib/ossl-modules/fips.${soExt}"
+
+    # Copy base openssl.cnf to production location
+    if [ -f "./apps/openssl.cnf" ]; then
+      cp "./apps/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+    else
+      echo "ERROR: openssl.cnf template not found"
+      exit 1
     fi
 
-    cp "$out/ssl/fipsmodule.cnf" "$out/usr/local/cosmian/lib/ssl/"
-    cp "$out/ssl/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/"
+    # Also create dev/test copies in $out/ssl
+    cp "$out/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$out/ssl/"
+    cp "$out/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/ssl/"
 
     # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
     # This ensures FIPS works during both development/testing and production
+    # For production path, use the runtime path not the build path
     for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
+      # Determine the appropriate include path based on the config directory
+      if [ "$conf_dir" = "$out/usr/local/cosmian/lib/ssl" ]; then
+        # Production path: use runtime location
+        include_path="/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+      else
+        # Dev/test path: use Nix store path for development
+        include_path="$conf_dir/fipsmodule.cnf"
+      fi
+
       # Use absolute path for .include to ensure it finds fipsmodule.cnf reliably
       # OpenSSL 3.x supports absolute paths in .include directives
-      sed -i "s|^# \\.include fipsmodule\\.cnf|.include $conf_dir/fipsmodule.cnf|g" "$conf_dir/openssl.cnf"
+      sed -i "s|^# \\.include fipsmodule\\.cnf|.include $include_path|g" "$conf_dir/openssl.cnf"
 
       # Uncomment the fips provider line
       sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"
@@ -193,10 +233,14 @@ stdenv.mkDerivation rec {
     echo "Static libraries removed. Only shared libraries remain."
   '';
 
-  # Critical for FIPS: do not strip or patch ELF on the provider module, as it
-  # would invalidate the module integrity MAC and break self-tests at runtime.
+  # Critical for FIPS: do not strip the provider module, as it would invalidate
+  # the module integrity MAC and break self-tests at runtime.
+  # Also don't patch ELF - we use compiler flags to link against system glibc
   dontStrip = true;
   dontPatchELF = true;
+
+  # No postFixup needed - libraries are built with system glibc due to unsetting
+  # NIX_LDFLAGS/NIX_CFLAGS in configurePhase
 
   # No passthru needed; consumers can use the derivation path as OPENSSL_DIR
 

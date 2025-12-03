@@ -12,6 +12,15 @@ rust-version.workspace = true
 homepage.workspace = true
 description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
 
+# NOTE: OpenSSL FIPS Build Paths
+# - Nix builds (production): OpenSSL is configured with --openssldir=/usr/local/cosmian/lib/ssl
+#   This hardcoded path makes binaries portable - they look for FIPS config at runtime in
+#   /usr/local/cosmian/lib/ssl regardless of where they were built.
+# - Local cargo builds: build.rs compiles OpenSSL with --openssldir=target/openssl-fips-{version}-{os}-{arch}/ssl
+#   This allows local development/testing without system-wide installation.
+# - The cargo-deb/cargo-rpm configurations below use target/.openssl-staging/ which is populated
+#   by build.rs for non-Nix packaging workflows (deprecated in favor of Nix).
+
 [lints]
 workspace = true
 
@@ -200,12 +209,12 @@ assets = [
     [
         "target/.openssl-staging/ssl/openssl.cnf",
         "usr/local/cosmian/lib/ssl/openssl.cnf",
-        "400",
+        "644",
     ],
     [
         "target/.openssl-staging/ssl/fipsmodule.cnf",
         "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
-        "400",
+        "644",
     ],
 ]
 
@@ -260,12 +269,12 @@ assets = [
     [
         "target/.openssl-staging/ssl/openssl.cnf",
         "usr/local/cosmian/lib/ssl/openssl.cnf",
-        "400",
+        "644",
     ],
     [
         "target/.openssl-staging/ssl/fipsmodule.cnf",
         "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
-        "400",
+        "644",
     ],
 ]
 
@@ -331,8 +340,8 @@ assets = [
     { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "644" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/.openssl-staging/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-    { source = "target/.openssl-staging/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "400" },
-    { source = "target/.openssl-staging/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "400" },
+    { source = "target/.openssl-staging/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+    { source = "target/.openssl-staging/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
@@ -350,11 +359,11 @@ assets = [
     { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
     { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "target/.openssl-staging/lib/libssl.so.3", dest = "/usr/local/cosmian/libssl.so.3", mode = "500" },
-    { source = "target/.openssl-staging/lib/libcrypto.so.3", dest = "/usr/local/cosmian/libcrypto.so.3", mode = "500" },
+    { source = "target/.openssl-staging/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+    { source = "target/.openssl-staging/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
     { source = "target/.openssl-staging/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-    { source = "target/.openssl-staging/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "400" },
-    { source = "target/.openssl-staging/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "400" },
+    { source = "target/.openssl-staging/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+    { source = "target/.openssl-staging/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },

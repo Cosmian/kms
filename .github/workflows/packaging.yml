@@ -251,7 +251,7 @@ jobs:
           # DEB-based (Ubuntu/Debian)
           dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
           # Use apt to handle dependencies when installing local .deb files
-          dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+          sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
 
       - name: Enable info flag in config
         shell: bash
