@@ -2,6 +2,14 @@
 
 set -ex
 
+# Detect FIPS vs non-FIPS from image name
+if [[ "${DOCKER_IMAGE_NAME:-}" == *"non-fips"* ]]; then
+    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+else
+    # Default to FIPS (includes pure "fips" and when no variant specified)
+    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-fips.yml"
+fi
+
 # Config paths
 CLI_VERSION="1.5.1"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
@@ -17,9 +25,21 @@ CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme
 
 set -ex
 
-# install cli
-cargo install cosmian_cli --version "$CLI_VERSION"
-cosmian --version
+# install cli (skip if already available or if cargo is not available)
+if ! command -v cosmian >/dev/null 2>&1; then
+    if command -v cargo >/dev/null 2>&1; then
+        cargo install cosmian_cli --version "$CLI_VERSION"
+    else
+        echo "Warning: cargo not available and cosmian CLI not installed. Skipping CLI installation."
+        echo "Some tests may be skipped."
+    fi
+fi
+
+if command -v cosmian >/dev/null 2>&1; then
+    cosmian --version
+else
+    echo "Warning: cosmian CLI not available, CLI-based tests will be skipped"
+fi
 
 # update cli conf
 mkdir -p ~/.cosmian
@@ -45,10 +65,25 @@ ssl_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
 
 # Run docker containers
-docker compose -f .github/scripts/docker-compose-authentication-tests.yml up -d
+docker compose -f "$COMPOSE_FILE" up -d
 
 # Wait for the containers to be ready
-sleep 10
+echo "Waiting for KMS servers to start..."
+sleep 15
+
+# Verify servers are responding
+for i in {1..30}; do
+    if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
+        echo "KMS server on port 9998 is ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: KMS server on port 9998 failed to start"
+        docker compose -f .github/scripts/docker-compose-authentication-tests.yml logs
+        exit 1
+    fi
+    sleep 1
+done
 
 # Function to test OpenSSL connections
 openssl_test() {

@@ -12,7 +12,10 @@ usage() {
 
   Commands:
     build              Build the KMS server inside nix-shell
-    docker [--load]    Build Docker image tarball (static OpenSSL; optional load)
+    docker [--load] [--test]
+                       Build Docker image tarball (static OpenSSL)
+                       --load: Load image into Docker
+                       --test: Run test_docker_image.sh after loading
     test [type] [args] Run tests inside nix-shell
       all                    Run all available tests (default)
       sqlite                 Run SQLite tests
@@ -55,6 +58,7 @@ usage() {
   Examples:
     $0 build --profile release --variant non-fips
     $0 docker --variant non-fips --load
+    $0 docker --variant fips --load --test
     $0 test                    # defaults to all
     $0 test all
     $0 test sqlite
@@ -182,11 +186,12 @@ build)
   KEEP_VARS=""
   ;;
 docker)
-  # Build Docker image(s) via Nix attributes; optionally docker load
-  # Allow flags after subcommand: --variant/--load (docker is always static-linked)
+  # Build Docker image(s) via Nix attributes; optionally docker load and/or test
+  # Allow flags after subcommand: --variant/--load/--test (docker is always static-linked)
   DOCKER_VARIANT="$VARIANT"
   DOCKER_LINK="static"
   DOCKER_LOAD=false
+  DOCKER_TEST=false
   while [ $# -gt 0 ]; do
     case "$1" in
     -v | --variant)
@@ -195,6 +200,11 @@ docker)
       ;;
     --load)
       DOCKER_LOAD=true
+      shift
+      ;;
+    --test)
+      DOCKER_TEST=true
+      DOCKER_LOAD=true # Testing requires loading the image
       shift
       ;;
     --)
@@ -221,6 +231,9 @@ docker)
   # Map variant to attribute (docker is always static-linked)
   ATTR="docker-image-$DOCKER_VARIANT"
 
+  # Version for image tag (should match docker.nix)
+  VERSION="5.13.0"
+
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
   # Reuse existing tarball if present unless FORCE_REBUILD is set
   if [ -z "${FORCE_REBUILD:-}" ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" || true) && [ -f "$REAL_OUT" ]; then
@@ -236,6 +249,13 @@ docker)
     if command -v docker >/dev/null 2>&1; then
       echo "Loading image into Docker (from $REAL_OUT)…"
       docker load <"$REAL_OUT"
+
+      # Run tests if requested
+      if [ "$DOCKER_TEST" = true ]; then
+        echo "Running Docker image tests..."
+        export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}-alpine"
+        bash "$REPO_ROOT/.github/scripts/test_docker_image.sh"
+      fi
     else
       echo "Warning: docker CLI not found; skipping --load" >&2
     fi

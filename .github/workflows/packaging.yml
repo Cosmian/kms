@@ -27,6 +27,10 @@ jobs:
   nix-docker-image:
     name: docker-${{ matrix.features }}-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # Required for cosign keyless signing
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +38,20 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
+      - name: Derive architecture from runner
+        id: arch
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.runner }}" == *arm* ]]; then
+            echo "arch=arm64" >> "$GITHUB_OUTPUT"
+            echo "platform=linux/arm64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "arch=amd64" >> "$GITHUB_OUTPUT"
+            echo "platform=linux/amd64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Nix installation
         uses: cachix/install-nix-action@v31
 
@@ -41,9 +59,169 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build Docker image
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Extract base Docker metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Append arch suffix to tags
+        id: arch_tags
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker
+          set -euo pipefail
+          echo "tags_with_arch<<EOF" >> $GITHUB_OUTPUT
+          while IFS= read -r t; do
+            [ -n "$t" ] && echo "${t}${{ steps.arch.outputs.suffix }}" >> $GITHUB_OUTPUT
+          done <<< "${{ steps.meta.outputs.tags }}"
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build and load Docker image
+        id: build
+        run: |
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --load --test
+
+      - name: Get image name and digest
+        id: image_info
+        run: |
+          set -euo pipefail
+          # Extract the image name and tag from the loaded image
+          IMAGE_INFO=$(docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep "cosmian-kms" | head -n1)
+          IMAGE_NAME=$(echo "$IMAGE_INFO" | awk '{print $1}')
+          IMAGE_ID=$(echo "$IMAGE_INFO" | awk '{print $2}')
+          echo "Original image: $IMAGE_NAME (ID: $IMAGE_ID)"
+          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
+
+      - name: Tag and push images
+        id: push
+        env:
+          TAGS: ${{ steps.arch_tags.outputs.tags_with_arch }}
+          IMAGE_NAME: ${{ steps.image_info.outputs.image_name }}
+        run: |
+          set -euo pipefail
+          DIGEST=""
+          for tag in ${TAGS}; do
+            echo "Tagging and pushing: $tag"
+            docker tag "$IMAGE_NAME" "$tag"
+            docker push "$tag"
+
+            # Get the digest from the first push
+            if [ -z "$DIGEST" ]; then
+              DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$tag" | cut -d'@' -f2)
+              echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+            fi
+          done
+
+      - name: Sign Docker images with Cosign
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.arch_tags.outputs.tags_with_arch }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          cosign sign --yes ${images}
+
+      - name: Test Docker image
+        run: |
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --test
+
+      - name: Select tag for output
+        id: pick
+        run: |
+          first=$(echo "${{ steps.arch_tags.outputs.tags_with_arch }}" | head -n1)
+          echo "first_tag=$first" >> $GITHUB_OUTPUT
+
+    outputs:
+      arch-tag: ${{ steps.pick.outputs.first_tag }}
+      arch: ${{ steps.arch.outputs.arch }}
+
+  nix-docker-manifest:
+    name: Docker manifest - ${{ matrix.features }}
+    needs: nix-docker-image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # Required for cosign keyless signing
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+    env:
+      REGISTRY_IMAGE: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Create and push manifest list
+        id: manifest
+        run: |
+          set -euo pipefail
+          echo "Tags to manifest:"; echo "${{ steps.meta.outputs.tags }}"
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "Creating manifest for $tag"
+            docker buildx imagetools create \
+              --tag "$tag" \
+              "${tag}-amd64" \
+              "${tag}-arm64"
+
+            # Get the manifest digest
+            DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r '.digest')
+            echo "manifest_digest_${tag##*:}=$DIGEST" >> $GITHUB_OUTPUT
+
+            docker buildx imagetools inspect "$tag"
+          done <<< "${{ steps.meta.outputs.tags }}"
+
+      - name: Sign multi-arch manifest with Cosign
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag} "
+          done
+          cosign sign --yes ${images}
 
   packages:
     name: ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
@@ -282,8 +460,8 @@ jobs:
           # Show libs and run
           sudo ldd "$BIN"
           sudo chmod +x "$BIN"
-          sudo "$BIN" --version
-          sudo "$BIN" --info
+          sudo -E "$BIN" --version
+          sudo -E "$BIN" --info
 
       - name: Disable info flag in config
         shell: bash
@@ -332,100 +510,12 @@ jobs:
             exit $rc
           fi
 
-  docker-image:
-    name: Docker image build ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
-    needs: packages
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [fips, non-fips]
-        link: [static]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-    uses: ./.github/workflows/build_docker_image.yml
-    with:
-      registry-image: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
-      os: ${{ matrix.runner }}
-      features: ${{ matrix.features }}
-      link: ${{ matrix.link }}
-      debug_or_release: release
-    secrets: inherit
-
-  docker-manifest:
-    name: Docker manifest - ${{ matrix.features }}
-    needs: docker-image
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-      id-token: write # Required for cosign keyless signing
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [fips, non-fips]
-    env:
-      REGISTRY_IMAGE: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
-    steps:
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.7.0
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Compute tags
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: |
-            ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Create and push manifest list
-        id: manifest
-        run: |
-          set -euo pipefail
-          echo "Tags to manifest:"; echo "${{ steps.meta.outputs.tags }}"
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            echo "Creating manifest for $tag"
-            docker buildx imagetools create \
-              --tag "$tag" \
-              "${tag}-amd64" \
-              "${tag}-arm64"
-
-            # Get the manifest digest
-            DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r '.digest')
-            echo "manifest_digest_${tag##*:}=$DIGEST" >> $GITHUB_OUTPUT
-
-            docker buildx imagetools inspect "$tag"
-          done <<< "${{ steps.meta.outputs.tags }}"
-
-      - name: Sign multi-arch manifest with Cosign
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          images=""
-          for tag in ${TAGS}; do
-            images+="${tag} "
-          done
-          cosign sign --yes ${images}
-
   push-artifacts:
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     needs:
       - windows-package
       - packages-test
-      - docker-manifest
+      - nix-docker-manifest
     uses: ./.github/workflows/push-artifacts.yml
     with:
       project-name: kms
