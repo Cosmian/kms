@@ -130,14 +130,22 @@ let
 
     # Check file type and dynamic linker
     file "$BIN" || true
-    readelf -l "$BIN" | grep -A 2 "interpreter" || true
+    if [ "$(uname)" = "Linux" ]; then
+      readelf -l "$BIN" | grep -A 2 "interpreter" || true
+    elif [ "$(uname)" = "Darwin" ]; then
+      otool -L "$BIN" || true
+    fi
 
     # For non-static builds, check if libraries are available
     ${lib.optionalString (!static) ''
       echo "Checking dynamic library dependencies..."
-      ldd "$BIN" || true
       export LD_LIBRARY_PATH="${openssl312}/lib:$LD_LIBRARY_PATH"
       echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
+      if [ "$(uname)" = "Linux" ]; then
+        ldd "$BIN" || true
+      elif [ "$(uname)" = "Darwin" ]; then
+        otool -L "$BIN" || true
+      fi
     ''}
 
     # Try to run version check
@@ -151,7 +159,7 @@ let
       echo "Skipping version check in install phase"
     fi
 
-    # Linux-specific checks
+    # Platform-specific checks
     if [ "$(uname)" = "Linux" ]; then
       # Check ELF interpreter is not in Nix store
       interp=$(readelf -l "$BIN" | sed -n 's/^.*interpreter: \(.*\)]$/\1/p') || true
@@ -165,7 +173,7 @@ let
         ldd "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
       ''}
 
-      # Check GLIBC version <= 2.28
+      # Check GLIBC version <= 2.28 (Linux only)
       MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
       [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {
         echo "ERROR: GLIBC $MAX_VER > 2.28"; exit 1;
@@ -185,14 +193,30 @@ let
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
       echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
+    elif [ "$(uname)" = "Darwin" ]; then
+      # macOS-specific checks
+      # Check that binary doesn't reference Nix store paths for system libraries
+      otool -L "$BIN" | grep -q "/nix/store.*dylib" && { echo "WARNING: Binary has Nix store dylib references"; } || true
+
+      # Always write actual hash to output for reference/updates
+      ACTUAL=$(shasum -a 256 "$BIN" | awk '{print $1}')
+      echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
+      echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
+      echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
     fi
 
-    # For FIPS builds, verify binary was built against OpenSSL 3.1.2
-    # Note: OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
+    # For FIPS builds with static linkage, verify binary was built against OpenSSL 3.1.2
+    # Note: For dynamic builds, the version string is in the shared library, not the binary
+    # OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
-    strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not linked against OpenSSL 3.1.2"; exit 1; }
-    echo "Binary validation OK (OpenSSL 3.1.2 detected)"
+    ${lib.optionalString static ''
+      strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2"; exit 1; }
+      echo "Binary validation OK (OpenSSL 3.1.2 statically linked)"
+    ''}
+    ${lib.optionalString (!static) ''
+      echo "Binary validation OK (dynamically linked, OpenSSL version in libssl.so.3)"
+    ''}
 
     echo "Binary verification passed"
     runHook postInstallCheck
@@ -253,9 +277,13 @@ rustPlatform.buildRustPackage rec {
     [
       pkg-config
       git
+      file # provides file command for binary inspection
     ]
     ++ lib.optionals pkgs.stdenv.isLinux [
-      binutils # provides readelf used during installCheckPhase
+      binutils # provides readelf and ldd used during installCheckPhase
+    ]
+    ++ lib.optionals pkgs.stdenv.isDarwin [
+      darwin.cctools # provides otool used during installCheckPhase
     ];
 
   buildInputs = [

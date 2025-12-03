@@ -8,7 +8,6 @@ source "$SCRIPT_DIR/common.sh"
 
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 # Enforce non-FIPS for PyKMIP as per existing CI workflow
 if [ "${VARIANT}" != "non-fips" ]; then
@@ -17,6 +16,9 @@ fi
 
 VARIANT="non-fips"
 FEATURES_FLAG=(--features non-fips)
+
+# Call setup_fips_openssl_env AFTER setting VARIANT to ensure correct OpenSSL config
+setup_fips_openssl_env
 
 # Default KMS config (can be overridden by env before invoking nix.sh)
 : "${COSMIAN_KMS_CONF:=$REPO_ROOT/scripts/kms.toml}"
