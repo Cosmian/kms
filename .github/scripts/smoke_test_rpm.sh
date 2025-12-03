@@ -2,7 +2,7 @@
 #
 # Smoke test for RPM packages built with Nix
 # This script extracts an RPM package and verifies the cosmian_kms binary can be loaded
-# with proper FIPS configuration.
+# with proper configuration.
 #
 # Usage:
 #   ./smoke_test_rpm.sh <path-to-rpm-file>
@@ -37,6 +37,13 @@ if [ $# -ne 1 ]; then
 fi
 
 RPM_FILE="$1"
+
+# Detect if this is a FIPS package based on filename
+# Match "fips" but exclude "non-fips"
+IS_FIPS=false
+if [[ "$RPM_FILE" == *"fips"* ]] && [[ "$RPM_FILE" != *"non-fips"* ]]; then
+  IS_FIPS=true
+fi
 
 if [ ! -f "$RPM_FILE" ]; then
   error "RPM package not found: $RPM_FILE"
@@ -85,47 +92,51 @@ fi
 
 info "Found binary at: $BINARY_PATH"
 
-# Verify FIPS modules and configuration are present
-FIPS_MODULE="$TEMP_DIR/usr/local/cosmian/lib/ossl-modules/fips.so"
-OPENSSL_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
-FIPS_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+# Verify FIPS modules and configuration are present (only for FIPS builds)
+if [ "$IS_FIPS" = true ]; then
+  FIPS_MODULE="$TEMP_DIR/usr/local/cosmian/lib/ossl-modules/fips.so"
+  OPENSSL_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  FIPS_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
 
-if [ ! -f "$FIPS_MODULE" ]; then
-  error "FIPS module not found: $FIPS_MODULE"
-fi
-info "✓ FIPS module found: $FIPS_MODULE"
+  if [ ! -f "$FIPS_MODULE" ]; then
+    error "FIPS module not found: $FIPS_MODULE"
+  fi
+  info "✓ FIPS module found: $FIPS_MODULE"
 
-if [ ! -f "$OPENSSL_CONF" ]; then
-  error "OpenSSL config not found: $OPENSSL_CONF"
-fi
-info "✓ OpenSSL config found: $OPENSSL_CONF"
+  if [ ! -f "$OPENSSL_CONF" ]; then
+    error "OpenSSL config not found: $OPENSSL_CONF"
+  fi
+  info "✓ OpenSSL config found: $OPENSSL_CONF"
 
-if [ ! -f "$FIPS_CONF" ]; then
-  error "FIPS module config not found: $FIPS_CONF"
-fi
-info "✓ FIPS module config found: $FIPS_CONF"
+  if [ ! -f "$FIPS_CONF" ]; then
+    error "FIPS module config not found: $FIPS_CONF"
+  fi
+  info "✓ FIPS module config found: $FIPS_CONF"
 
-# Verify the openssl.cnf contains production paths (not Nix store paths)
-if grep -q "/nix/store" "$OPENSSL_CONF"; then
-  error "OpenSSL config contains Nix store paths - not portable!"
-fi
-info "✓ OpenSSL config does not contain Nix store paths"
+  # Verify the openssl.cnf contains production paths (not Nix store paths)
+  if grep -q "/nix/store" "$OPENSSL_CONF"; then
+    error "OpenSSL config contains Nix store paths - not portable!"
+  fi
+  info "✓ OpenSSL config does not contain Nix store paths"
 
-# Verify the .include directive points to the correct location
-if ! grep -q "^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$OPENSSL_CONF"; then
-  error "OpenSSL config does not contain correct .include directive"
-fi
-info "✓ OpenSSL config has correct .include directive"
+  # Verify the .include directive points to the correct location
+  if ! grep -q "^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$OPENSSL_CONF"; then
+    error "OpenSSL config does not contain correct .include directive"
+  fi
+  info "✓ OpenSSL config has correct .include directive"
 
-# Check FIPS module has no hardcoded Nix store RPATH/RUNPATH
-# Note: We use readelf instead of ldd because ldd inside nix-shell will show
-# Nix store paths even for portable binaries (it uses the Nix glibc).
-# readelf shows the actual RPATH/RUNPATH embedded in the ELF file.
-info "Checking FIPS module RPATH..."
-if readelf -d "$FIPS_MODULE" | grep -E "RPATH|RUNPATH" | grep -q "/nix/store"; then
-  error "FIPS module has hardcoded Nix store RPATH!"
+  # Check FIPS module has no hardcoded Nix store RPATH/RUNPATH
+  # Note: We use readelf instead of ldd because ldd inside nix-shell will show
+  # Nix store paths even for portable binaries (it uses the Nix glibc).
+  # readelf shows the actual RPATH/RUNPATH embedded in the ELF file.
+  info "Checking FIPS module RPATH..."
+  if readelf -d "$FIPS_MODULE" | grep -E "RPATH|RUNPATH" | grep -q "/nix/store"; then
+    error "FIPS module has hardcoded Nix store RPATH!"
+  fi
+  info "✓ FIPS module has no hardcoded Nix store paths"
+else
+  info "Non-FIPS build detected - skipping FIPS-specific checks"
 fi
-info "✓ FIPS module has no hardcoded Nix store paths"
 
 # Check binary has no hardcoded Nix store RPATH/RUNPATH
 info "Checking binary RPATH..."
@@ -145,11 +156,16 @@ if readelf -d "$BINARY_PATH" | grep -q 'NEEDED.*libssl\.so'; then
     if [ -z "$OPENSSLDIR_OUTPUT" ]; then
       error "No OPENSSLDIR found in shared library"
     fi
-    if ! echo "$OPENSSLDIR_OUTPUT" | grep -q 'OPENSSLDIR: "/usr/local/cosmian/lib/ssl"'; then
-      echo "Found OPENSSLDIR: $OPENSSLDIR_OUTPUT" >&2
-      error "Shared library does not contain correct OPENSSLDIR"
+    if [ "$IS_FIPS" = true ]; then
+      if ! echo "$OPENSSLDIR_OUTPUT" | grep -q 'OPENSSLDIR: "/usr/local/cosmian/lib/ssl"'; then
+        echo "Found OPENSSLDIR: $OPENSSLDIR_OUTPUT" >&2
+        error "Shared library does not contain correct OPENSSLDIR for FIPS build"
+      fi
+      info "✓ Shared library has correct OPENSSLDIR: /usr/local/cosmian/lib/ssl"
+    else
+      # Non-FIPS dynamic builds package their own OpenSSL libraries
+      info "✓ Shared library OPENSSLDIR: $OPENSSLDIR_OUTPUT"
     fi
-    info "✓ Shared library has correct OPENSSLDIR: /usr/local/cosmian/lib/ssl"
   else
     warn "Dynamic build but libcrypto.so.3 not found in package - skipping OPENSSLDIR check"
   fi
@@ -159,19 +175,26 @@ else
   if [ -z "$OPENSSLDIR_OUTPUT" ]; then
     error "No OPENSSLDIR found in binary"
   fi
-  if ! echo "$OPENSSLDIR_OUTPUT" | grep -q 'OPENSSLDIR: "/usr/local/cosmian/lib/ssl"'; then
-    echo "Found OPENSSLDIR: $OPENSSLDIR_OUTPUT" >&2
-    error "Binary does not contain correct OPENSSLDIR"
+  if [ "$IS_FIPS" = true ]; then
+    if ! echo "$OPENSSLDIR_OUTPUT" | grep -q 'OPENSSLDIR: "/usr/local/cosmian/lib/ssl"'; then
+      echo "Found OPENSSLDIR: $OPENSSLDIR_OUTPUT" >&2
+      error "Binary does not contain correct OPENSSLDIR for FIPS build"
+    fi
+    info "✓ Binary has correct OPENSSLDIR: /usr/local/cosmian/lib/ssl"
+  else
+    # Non-FIPS uses system OpenSSL paths
+    info "✓ Binary OPENSSLDIR: $OPENSSLDIR_OUTPUT"
   fi
-  info "✓ Binary has correct OPENSSLDIR: /usr/local/cosmian/lib/ssl"
 fi
 
 # Now test loading the binary with environment variables set
 info "Testing binary execution..."
 
-# Set up environment variables for FIPS
-export OPENSSL_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
-export OPENSSL_MODULES="$TEMP_DIR/usr/local/cosmian/lib/ossl-modules"
+# Set up environment variables for FIPS builds
+if [ "$IS_FIPS" = true ]; then
+  export OPENSSL_CONF="$TEMP_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  export OPENSSL_MODULES="$TEMP_DIR/usr/local/cosmian/lib/ossl-modules"
+fi
 
 # Try to get version (should work without network/database)
 if ! VERSION_OUTPUT=$("$BINARY_PATH" --version 2>&1); then
@@ -198,8 +221,15 @@ info "============================================"
 info "✓ ALL SMOKE TESTS PASSED!"
 info "============================================"
 info ""
-info "The RPM package is ready for deployment:"
-info "  - Binary loads successfully"
-info "  - FIPS configuration is portable"
-info "  - No Nix store dependencies"
-info "  - Correct production paths configured"
+if [ "$IS_FIPS" = true ]; then
+  info "The FIPS RPM package is ready for deployment:"
+  info "  - Binary loads successfully"
+  info "  - FIPS configuration is portable"
+  info "  - No Nix store dependencies"
+  info "  - Correct production paths configured"
+else
+  info "The non-FIPS RPM package is ready for deployment:"
+  info "  - Binary loads successfully"
+  info "  - No Nix store dependencies"
+  info "  - Portable configuration"
+fi

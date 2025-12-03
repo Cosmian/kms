@@ -1,0 +1,17 @@
+---
+name: PR CI
+
+on:
+  pull_request:
+  schedule:
+    # every day at 1 AM
+    - cron: 00 1 * * *
+  workflow_dispatch:
+jobs:
+  # Run packaging for PRs
+  packaging:
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.90.0
