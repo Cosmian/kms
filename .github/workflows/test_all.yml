@@ -111,8 +111,8 @@ jobs:
           else
             export RELEASE_FLAG=""
           fi
-          if [ "${{ matrix.features }}" = "fips" ]; then
-            export FEATURES_FLAG="--features fips";
+          if [ "${{ matrix.features }}" = "non-fips" ]; then
+            export FEATURES_FLAG="--features non-fips";
           else
             export FEATURES_FLAG="";
           fi

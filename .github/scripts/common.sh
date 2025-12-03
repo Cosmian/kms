@@ -376,7 +376,7 @@ _run_workspace_tests() {
   local extra_args=()
 
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --exclude cosmian_kms_cli "${extra_args[@]}" $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
+  cargo test --workspace --lib --exclude cosmian_kms_cli ${extra_args[@]+"${extra_args[@]}"} $RELEASE_FLAG "${FEATURES_FLAG[@]}" -- --nocapture
 }
 
 # Public: run DB-specific tests with optional service checks
