@@ -18,7 +18,8 @@ echo "Running SQLite tests"
 echo "========================================="
 
 echo "Testing workspace binaries..."
-cargo test --workspace --bins "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
+# shellcheck disable=SC2086
+cargo test --workspace --bins $RELEASE_FLAG "${FEATURES_FLAG[@]}"
 
 run_db_tests "sqlite"
 

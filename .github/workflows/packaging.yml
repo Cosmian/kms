@@ -24,6 +24,27 @@ jobs:
       archive-name: windows
       debug_or_release: release
 
+  nix-docker-image:
+    name: ${{ matrix.runner }} - ${{ matrix.features }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - name: Nix installation
+        uses: cachix/install-nix-action@v31
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Docker image
+        run: |
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker
+
   packages:
     name: ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
     runs-on: ${{ matrix.runner }}

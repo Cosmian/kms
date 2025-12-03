@@ -195,11 +195,22 @@ let
       echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
     elif [ "$(uname)" = "Darwin" ]; then
       # macOS-specific checks
+
+      # Check OpenSSL linkage
+      ${lib.optionalString static ''
+        otool -L "$BIN" | grep -qi "libssl\|libcrypto" && { echo "ERROR: Unexpected dynamic OpenSSL"; exit 1; }
+      ''}
+      ${lib.optionalString (!static) ''
+        otool -L "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
+      ''}
+
       # Check that binary doesn't reference Nix store paths for system libraries
-      otool -L "$BIN" | grep -q "/nix/store.*dylib" && { echo "WARNING: Binary has Nix store dylib references"; } || true
+      if otool -L "$BIN" | grep -q "/nix/store.*dylib"; then
+        echo "WARNING: Binary has Nix store dylib references"
+      fi
 
       # Always write actual hash to output for reference/updates
-      ACTUAL=$(shasum -a 256 "$BIN" | awk '{print $1}')
+      ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
       echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
@@ -278,6 +289,7 @@ rustPlatform.buildRustPackage rec {
       pkg-config
       git
       file # provides file command for binary inspection
+      coreutils # provides sha256sum used during installCheckPhase
     ]
     ++ lib.optionals pkgs.stdenv.isLinux [
       binutils # provides readelf and ldd used during installCheckPhase
