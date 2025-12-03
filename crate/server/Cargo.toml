@@ -279,11 +279,11 @@ assets = [
 ]
 
 # Non-FIPS variant with dynamic OpenSSL linkage
-# Dynamic linking - OpenSSL libraries are provided by the system
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 [package.metadata.deb.variants.non-fips-dynamic]
 features = ["non-fips"]
 depends = ""
-# Dynamic linking - uses system OpenSSL (no bundled libraries)
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
     [
         "ui_non_fips/dist/*",
@@ -309,6 +309,21 @@ assets = [
         "../../pkg/kms.toml",
         "etc/cosmian/",
         "400",
+    ],
+    [
+        "target/.openssl-staging/lib/libssl.so.3",
+        "usr/local/cosmian/lib/libssl.so.3",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/lib/libcrypto.so.3",
+        "usr/local/cosmian/lib/libcrypto.so.3",
+        "500",
+    ],
+    [
+        "target/.openssl-staging/lib/ossl-modules/legacy.so",
+        "usr/local/cosmian/lib/ossl-modules/legacy.so",
+        "500",
     ],
 ]
 
@@ -373,7 +388,7 @@ require-sh = true
 features = []
 
 # Non-FIPS variant with dynamic OpenSSL linkage
-# Dynamic linking - OpenSSL libraries are provided by the system
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 [package.metadata.generate-rpm.variants.non-fips-dynamic]
 license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
@@ -381,6 +396,9 @@ assets = [
     { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
     { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+    { source = "target/.openssl-staging/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+    { source = "target/.openssl-staging/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
+    { source = "target/.openssl-staging/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },

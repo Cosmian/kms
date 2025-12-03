@@ -2,11 +2,15 @@
 name: PR CI
 
 on:
+  push:
+    tags:
+      - '**'
   pull_request:
   schedule:
     # every day at 1 AM
     - cron: 00 1 * * *
   workflow_dispatch:
+
 jobs:
   # Run packaging for PRs
   packaging:

@@ -3,8 +3,6 @@ name: Push CI
 
 on:
   push:
-    tags:
-      - '**'
   schedule:
     # every day at 1 AM
     - cron: 00 1 * * *

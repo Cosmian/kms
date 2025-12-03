@@ -97,7 +97,8 @@ jobs:
 
   packages-test:
     needs: packages
-    name: Test ${{ matrix.container }} - ${{ matrix.features }} - ${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && ' - ARM' || ' - AMD64' }}
+    name: In Docker ${{ matrix.container }} - ${{ matrix.features }} - ${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && ' - ARM' || ' - AMD64'
+      }}
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container }}
     strategy:
@@ -258,7 +259,7 @@ jobs:
         run: |
           set -ex
           if [ -f /etc/cosmian/kms.toml ]; then
-            sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
+            sudo sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
           else
             echo "Config file /etc/cosmian/kms.toml not found; skipping info flag enable."
             exit 1
@@ -279,17 +280,17 @@ jobs:
             fi
           fi
           # Show libs and run
-          ldd "$BIN"
-          chmod +x "$BIN"
-          "$BIN" --version
-          "$BIN" --info
+          sudo ldd "$BIN"
+          sudo chmod +x "$BIN"
+          sudo "$BIN" --version
+          sudo "$BIN" --info
 
       - name: Disable info flag in config
         shell: bash
         run: |
           set -ex
           if [ -f /etc/cosmian/kms.toml ]; then
-            sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+            sudo sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
           else
             echo "Config file /etc/cosmian/kms.toml not found; skipping info flag enable."
             exit 1
@@ -300,15 +301,15 @@ jobs:
         run: |
           set -ex
 
-          systemctl start cosmian_kms
+          sudo systemctl start cosmian_kms
           sleep 5
 
           # Check systemd service status
-          systemctl status cosmian_kms --no-pager
+          sudo systemctl status cosmian_kms --no-pager
           if ! systemctl is-active --quiet cosmian_kms; then
             echo "ERROR: cosmian_kms service is not active"
-            systemctl status cosmian_kms --no-pager
-            journalctl -u cosmian_kms --no-pager -n 50
+            sudo systemctl status cosmian_kms --no-pager
+            sudo journalctl -u cosmian_kms --no-pager -n 50
             exit 1
           fi
 
