@@ -159,9 +159,9 @@ stdenv.mkDerivation rec {
     # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
     # This ensures FIPS works during both development/testing and production
     for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
-      # Use explicit local path for .include to ensure it finds fipsmodule.cnf in same directory
-      # OpenSSL resolves ./ paths relative to the directory containing the config file
-      sed -i "s|^# \\.include fipsmodule\\.cnf|.include ./fipsmodule.cnf|g" "$conf_dir/openssl.cnf"
+      # Use absolute path for .include to ensure it finds fipsmodule.cnf reliably
+      # OpenSSL 3.x supports absolute paths in .include directives
+      sed -i "s|^# \\.include fipsmodule\\.cnf|.include $conf_dir/fipsmodule.cnf|g" "$conf_dir/openssl.cnf"
 
       # Uncomment the fips provider line
       sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"

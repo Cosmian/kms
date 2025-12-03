@@ -275,13 +275,34 @@ fn maybe_build_fips_openssl() {
     // Patch openssl.cnf to activate FIPS module exactly like nix derivation
     let ssl_dir = install_prefix.join("ssl");
     let openssl_cnf = ssl_dir.join("openssl.cnf");
+    let fipsmodule_cnf = ssl_dir.join("fipsmodule.cnf");
+
     if openssl_cnf.exists() {
         let Ok(mut cnf) = fs::read_to_string(&openssl_cnf) else {
             println!("cargo:warning=Failed to read openssl.cnf");
             return;
         };
+
+        // Use absolute path to fipsmodule.cnf to ensure it works regardless of CWD
+        let fipsmodule_path = fipsmodule_cnf.to_str().unwrap_or("fipsmodule.cnf");
+
+        // Handle both commented and uncommented .include directives
+        // Replace any relative path references with absolute path
         if cnf.contains("# .include fipsmodule.cnf") {
-            cnf = cnf.replace("# .include fipsmodule.cnf", ".include ./fipsmodule.cnf");
+            cnf = cnf.replace(
+                "# .include fipsmodule.cnf",
+                &format!(".include {}", fipsmodule_path),
+            );
+        } else if cnf.contains(".include ./fipsmodule.cnf") {
+            cnf = cnf.replace(
+                ".include ./fipsmodule.cnf",
+                &format!(".include {}", fipsmodule_path),
+            );
+        } else if cnf.contains(".include fipsmodule.cnf") {
+            cnf = cnf.replace(
+                ".include fipsmodule.cnf",
+                &format!(".include {}", fipsmodule_path),
+            );
         }
         if cnf.contains("# activate = 1") {
             cnf = cnf.replace("# activate = 1", "activate = 1");
@@ -342,6 +363,16 @@ fn emit_link_env(install_prefix: &Path) {
     // Static linking (no shared libcrypto/libssl)
     println!("cargo:rustc-link-lib=static=crypto");
     println!("cargo:rustc-link-lib=static=ssl");
+
+    // Set runtime environment variables so tests can find FIPS provider and config
+    println!(
+        "cargo:rustc-env=OPENSSL_CONF={}/ssl/openssl.cnf",
+        install_prefix.display()
+    );
+    println!(
+        "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
+        install_prefix.display()
+    );
 }
 
 fn fips_artifacts_present(prefix: &Path) -> bool {

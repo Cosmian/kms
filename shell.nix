@@ -153,6 +153,14 @@ pkgs228.mkShell {
       # Add OpenSSL lib directory to LD_LIBRARY_PATH so dynamically linked binaries can find it
       export LD_LIBRARY_PATH=${"\${NIX_OPENSSL_OUT}"}/lib:${"\${LD_LIBRARY_PATH:-}"}
 
+      # Configure FIPS provider for runtime (needed for tests)
+      # Point to the FIPS configuration and provider modules
+      if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
+        export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
+      fi
+      if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules ]; then
+        export OPENSSL_MODULES=${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules
+      fi
 
       # Force openssl-sys to use our specific OpenSSL and detect version correctly
       # Disable pkg-config to prevent it from finding wrong OpenSSL versions
