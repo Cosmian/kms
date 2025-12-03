@@ -50,15 +50,6 @@ let
       '';
 
   # Compute the actual hash file path for writing during build
-  actualHashFilePath =
-    let
-      sys = pkgs.stdenv.hostPlatform.system;
-      parts = lib.splitString "-" sys;
-      arch = builtins.elemAt parts 0;
-      os = builtins.elemAt parts 1;
-      impl = if static then "openssl" else "no-openssl";
-    in
-    "${toString srcRoot}/nix/expected-hashes/server.${baseVariant}.${impl}.${arch}.${os}.sha256";
 
   # Only compute and validate expected hash path if enforcement is enabled
   expectedHashPathVariant = if enforceDeterministicHash then expectedHashPath variant else null;
@@ -192,9 +183,11 @@ let
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
-      
+
       # Write the expected hash filename for easy copying
-      HASH_FILENAME="server.${baseVariant}.${if static then "openssl" else "no-openssl"}.x86_64.linux.sha256"
+      HASH_FILENAME="server.${baseVariant}.${
+        if static then "openssl" else "no-openssl"
+      }.x86_64.linux.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
       echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
@@ -218,10 +211,12 @@ let
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
-      
+
       # Write the expected hash filename for easy copying
       ARCH="$(uname -m)"
-      HASH_FILENAME="server.${baseVariant}.${if static then "openssl" else "no-openssl"}.$ARCH.darwin.sha256"
+      HASH_FILENAME="server.${baseVariant}.${
+        if static then "openssl" else "no-openssl"
+      }.$ARCH.darwin.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
       echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"

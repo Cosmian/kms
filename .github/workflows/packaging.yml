@@ -83,7 +83,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
-          path: result*/server.${{ matrix.features }}*.sha256
+          path: result*/bin/server.${{ matrix.features }}*.sha256
           retention-days: 1
           if-no-files-found: error
 
