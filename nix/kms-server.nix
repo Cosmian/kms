@@ -192,14 +192,12 @@ let
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
-      echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
       
-      # Create the expected hash file if it doesn't exist
-      if [ ! -f "${actualHashFilePath}" ]; then
-        mkdir -p "$(dirname "${actualHashFilePath}")"
-        echo "$ACTUAL" > "${actualHashFilePath}"
-        echo "Created expected hash file: ${actualHashFilePath}"
-      fi
+      # Write the expected hash filename for easy copying
+      HASH_FILENAME="server.${baseVariant}.${if static then "openssl" else "no-openssl"}.x86_64.linux.sha256"
+      echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
+      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     elif [ "$(uname)" = "Darwin" ]; then
       # macOS-specific checks
 
@@ -220,14 +218,13 @@ let
       ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
       echo "$ACTUAL" > "$out/bin/cosmian_kms.sha256"
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
-      echo "To update expected hash, run: echo '$ACTUAL' > ${actualHashFilePath}"
       
-      # Create the expected hash file if it doesn't exist
-      if [ ! -f "${actualHashFilePath}" ]; then
-        mkdir -p "$(dirname "${actualHashFilePath}")"
-        echo "$ACTUAL" > "${actualHashFilePath}"
-        echo "Created expected hash file: ${actualHashFilePath}"
-      fi
+      # Write the expected hash filename for easy copying
+      ARCH="$(uname -m)"
+      HASH_FILENAME="server.${baseVariant}.${if static then "openssl" else "no-openssl"}.$ARCH.darwin.sha256"
+      echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
+      echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
+      echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     fi
 
     # For FIPS builds with static linkage, verify binary was built against OpenSSL 3.1.2
