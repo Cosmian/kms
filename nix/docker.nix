@@ -22,7 +22,7 @@ let
 
   # Image name and tag
   imageName = "cosmian-kms";
-  imageTag = "${version}-${variant}-alpine";
+  imageTag = "${version}-${variant}";
 
   # Create a minimal runtime environment
   # Include necessary libraries for the KMS server
@@ -118,7 +118,7 @@ pkgs.dockerTools.buildLayeredImage {
     etcNsswitch
     kmsDirectories
     startupScript
-    # Add busybox for basic Alpine-like utilities
+    # Add busybox for basic utilities
     pkgs.busybox
   ];
 
@@ -167,7 +167,7 @@ pkgs.dockerTools.buildLayeredImage {
     Labels = {
       "org.opencontainers.image.title" = "Cosmian KMS";
       "org.opencontainers.image.description" =
-        "Cosmian KMS Server ${version} - ${variant} variant (Alpine-style via Nix)";
+        "Cosmian KMS Server ${version} - ${variant} variant (minimal via Nix)";
       "org.opencontainers.image.version" = version;
       "org.opencontainers.image.vendor" = "Cosmian";
       "org.opencontainers.image.source" = "https://github.com/Cosmian/kms";

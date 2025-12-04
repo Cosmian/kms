@@ -138,13 +138,38 @@ if [ -z "$APP_BUNDLE" ]; then
   echo "Error: .app bundle not found under crate/server/target/release or target/release" >&2
   exit 1
 fi
+
+# Ensure FIPS OpenSSL assets are embedded in the app bundle for FIPS variants
+if [ "$VARIANT" = "fips" ]; then
+  RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
+  mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
+  # Locate the OpenSSL store path built earlier
+  OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name '*-openssl-3.1.2' 2>/dev/null | head -n1 || true)
+  if [ -n "$OPENSSL_STORE" ]; then
+    SRC_MOD="$OPENSSL_STORE/usr/local/cosmian/lib/ossl-modules/fips.dylib"
+    SRC_CONF="$OPENSSL_STORE/usr/local/cosmian/lib/ssl/openssl.cnf"
+    SRC_FIPS_CONF="$OPENSSL_STORE/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+    if [ -f "$SRC_MOD" ]; then
+      cp -f "$SRC_MOD" "$RES_DIR/ossl-modules/fips.dylib"
+      echo "Embedded FIPS module: $RES_DIR/ossl-modules/fips.dylib"
+    fi
+    if [ -f "$SRC_CONF" ]; then
+      cp -f "$SRC_CONF" "$RES_DIR/ssl/openssl.cnf"
+      echo "Embedded OpenSSL config: $RES_DIR/ssl/openssl.cnf"
+    fi
+    if [ -f "$SRC_FIPS_CONF" ]; then
+      cp -f "$SRC_FIPS_CONF" "$RES_DIR/ssl/fipsmodule.cnf"
+      echo "Embedded FIPS config: $RES_DIR/ssl/fipsmodule.cnf"
+    fi
+  else
+    echo "Warning: OpenSSL store path not found; skipping FIPS asset embedding" >&2
+  fi
+fi
 DMG_NAME="Cosmian KMS Server_${VERSION_STR}_$(uname -m).dmg"
 echo "Creating DMG $DMG_NAME from $APP_BUNDLE..."
-if [ -z "${FORCE_REBUILD:-}" ] && [ -f "$RESULT_DIR/$DMG_NAME" ]; then
-  echo "Existing DMG found at $RESULT_DIR/$DMG_NAME (skipping hdiutil create)"
-else
-  hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"
-fi
+# Always recreate DMG to reflect updated app bundle resources (FIPS assets)
+rm -f "$RESULT_DIR/$DMG_NAME" 2>/dev/null || true
+hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"
 
 echo "Built dmg (${VARIANT}): $RESULT_DIR/$DMG_NAME"
 
@@ -153,6 +178,15 @@ DMG_SHA256=$(shasum -a 256 "$RESULT_DIR/$DMG_NAME" | awk '{print $1}')
 CHECKSUM_FILE="$RESULT_DIR/${DMG_NAME}.sha256"
 echo "$DMG_SHA256  $DMG_NAME" >"$CHECKSUM_FILE"
 echo "Wrote checksum: $CHECKSUM_FILE ($DMG_SHA256)"
+
+# Run DMG smoke test to validate contents and basic execution
+SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
+if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+  echo "Running DMG smoke test for $RESULT_DIR/$DMG_NAME..."
+  bash "$SMOKE_TEST_SCRIPT" "$RESULT_DIR/$DMG_NAME"
+else
+  echo "Warning: smoke test script not found: $SMOKE_TEST_SCRIPT" >&2
+fi
 
 # Source and use the unified sign_packages function from package_common.sh
 COMMON_LIB="$REPO_ROOT/nix/scripts/package_common.sh"

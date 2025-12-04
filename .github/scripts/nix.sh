@@ -253,7 +253,7 @@ docker)
       # Run tests if requested
       if [ "$DOCKER_TEST" = true ]; then
         echo "Running Docker image tests..."
-        export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}-alpine"
+        export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}"
         bash "$REPO_ROOT/.github/scripts/test_docker_image.sh"
       fi
     else
@@ -629,6 +629,24 @@ if [ "$COMMAND" = "package" ]; then
           nix-build -A "$ATTR" -o "$OUT_LINK"
           REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
           echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+
+          # Invoke DMG smoke test via nix.sh (in addition to any internal calls)
+          DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
+          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
+          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+            if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+              echo "Running DMG smoke test for $DMG_FILE..."
+              # Ensure we have macOS system tools; run outside pure shell
+              bash "$SMOKE_TEST_SCRIPT" "$DMG_FILE" || {
+                echo "ERROR: DMG smoke test failed for $DMG_FILE" >&2
+                exit 1
+              }
+            else
+              echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
+            fi
+          else
+            echo "Warning: DMG file not found in $REAL_OUT" >&2
+          fi
           ;;
         *)
           echo "Skipping unsupported package type: $TYPE" >&2

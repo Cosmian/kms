@@ -190,7 +190,7 @@ let
     enforceDeterministicHash = false;
   };
 
-  # Docker images using dockerTools (Alpine-style minimal images)
+  # Docker images using dockerTools (minimal images)
   docker-image-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-fips;
     variant = "fips";

@@ -72,13 +72,19 @@ echo "Waiting for KMS servers to start..."
 sleep 15
 
 # Verify servers are responding
+echo "Using compose file: $COMPOSE_FILE"
+echo "Docker image name: ${DOCKER_IMAGE_NAME:-not set}"
 for i in {1..30}; do
     if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
         echo "KMS server on port 9998 is ready"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: KMS server on port 9998 failed to start"
+        echo "ERROR: KMS server on port 9998 failed to start after 30 attempts"
+        echo "Compose file being used: $COMPOSE_FILE"
+        echo "Showing container status:"
+        docker compose -f "$COMPOSE_FILE" ps -a
+        echo "Showing container logs:"
         docker compose -f "$COMPOSE_FILE" logs
         exit 1
     fi
