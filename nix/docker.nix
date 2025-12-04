@@ -89,6 +89,8 @@ let
 
     echo "=== Checking binary locations ==="
     echo "which cosmian_kms: $(which cosmian_kms || echo 'NOT FOUND IN PATH')"
+    echo "ls -la /bin/cosmian_kms:"
+    ls -la /bin/cosmian_kms || echo "NOT FOUND"
     echo "ls -la /usr/local/bin/cosmian_kms:"
     ls -la /usr/local/bin/cosmian_kms || echo "NOT FOUND"
     echo ""
@@ -126,11 +128,11 @@ let
     echo ""
 
     echo "=== Attempting to execute binary directly ==="
-    if [ -x /usr/local/bin/cosmian_kms ]; then
-      echo "/usr/local/bin/cosmian_kms is executable, trying --version..."
-      /usr/local/bin/cosmian_kms --version || echo "FAILED with exit code $?"
+    if [ -x /bin/cosmian_kms ]; then
+      echo "/bin/cosmian_kms is executable, trying --version..."
+      /bin/cosmian_kms --version || echo "FAILED with exit code $?"
     else
-      echo "/usr/local/bin/cosmian_kms is NOT executable or does not exist"
+      echo "/bin/cosmian_kms is NOT executable or does not exist"
     fi
     echo "=== End Debug Info ==="
     echo ""
@@ -179,16 +181,19 @@ pkgs.dockerTools.buildLayeredImage {
   # For this nixpkgs version, use fakeRootCommands to create root files
   fakeRootCommands = ''
     echo "=== fakeRootCommands: Creating directory structure ==="
+    mkdir -p bin
     mkdir -p usr/local/bin
     mkdir -p usr/local/cosmian/ui
 
-    echo "=== fakeRootCommands: Creating binary symlink ==="
+    echo "=== fakeRootCommands: Creating binary symlinks ==="
+    ln -sv ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
     ln -sv ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
 
     echo "=== fakeRootCommands: Creating UI symlink ==="
     ln -sv ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
 
     echo "=== fakeRootCommands: Verifying symlinks created ==="
+    ls -la bin/ || echo "ERROR: bin not found"
     ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
     ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
 
