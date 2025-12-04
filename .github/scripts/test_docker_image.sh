@@ -35,11 +35,7 @@ if ! command -v cosmian >/dev/null 2>&1; then
     fi
 fi
 
-if command -v cosmian >/dev/null 2>&1; then
-    cosmian --version
-else
-    echo "Warning: cosmian CLI not available, CLI-based tests will be skipped"
-fi
+cosmian --version
 
 # update cli conf
 mkdir -p ~/.cosmian

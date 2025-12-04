@@ -18,8 +18,11 @@ echo "Running SQLite tests"
 echo "========================================="
 
 echo "Testing workspace binaries..."
+
 # shellcheck disable=SC2086
-cargo test --workspace --bins $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+  cargo test --workspace --bins $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+fi
 
 run_db_tests "sqlite"
 

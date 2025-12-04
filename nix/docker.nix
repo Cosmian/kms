@@ -93,11 +93,11 @@ let
       echo "  docker run -p 9998:9998 -v /path/to/data:/data cosmian-kms \\"
       echo "    --database-type sqlite --sqlite-path /data"
       echo ""
-      exec /bin/cosmian_kms --help
+      exec cosmian_kms --help
     fi
 
     # Execute the KMS server with provided arguments
-    exec /bin/cosmian_kms "$@"
+    exec cosmian_kms "$@"
   '';
 
   # Root filesystem overlay with symlinks for binary and UI under /usr/local

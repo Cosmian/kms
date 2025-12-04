@@ -3,5 +3,12 @@ default_username = "admin"
 [http]
 port = 8585
 hostname = "my_server.com"
-https_p12_file = "/mnt/some_p12_file.p12"
-https_p12_password = "Uuriez89("
+
+[tls]
+# For FIPS mode (default build):
+tls_cert_file = "/mnt/server.crt"
+tls_key_file = "/mnt/server.key"
+
+# For non-FIPS mode:
+# tls_p12_file = "/mnt/some_p12_file.p12"
+# tls_p12_password = "Uuriez89("

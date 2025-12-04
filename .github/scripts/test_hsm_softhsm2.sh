@@ -65,8 +65,6 @@ env \
   "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
-echo "SoftHSM2 HSM tests completed successfully."
-
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
@@ -79,3 +77,5 @@ env \
   ${RELEASE_FLAG:+$RELEASE_FLAG} \
   --features softhsm2 \
   -- tests::test_hsm_softhsm2_all --ignored
+
+echo "SoftHSM2 HSM tests completed successfully."

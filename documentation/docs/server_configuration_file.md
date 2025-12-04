@@ -89,11 +89,20 @@ unwrapped_cache_max_age = 15 # minutes
 
 # TLS configuration of the Socket server and HTTP server
 [tls]
+# For FIPS mode (default build):
+# The server's X.509 certificate in PEM format.
+tls_cert_file = "path/to/server.crt"
+# The server's private key in PEM format.
+tls_key_file = "path/to/server.key"
+# Optional certificate chain in PEM format (intermediate CAs).
+# tls_chain_file = "path/to/chain.pem"
+
+# For non-FIPS mode:
 # The KMS server's optional PKCS#12 Certificates and Key file.
-# If provided, this will start the server in HTTPS mode.
-tls_p12_file = "[tls p12 file]"
+# tls_p12_file = "path/to/server.p12"
 # The password to open the PKCS#12 certificates and key file.
-tls_p12_password = "[tls p12 password]"
+# tls_p12_password = "your_password"
+
 # The server's optional authority X509 certificate in PEM format
 # used to validate the client certificate presented for authentication.
 # If provided, clients must present a certificate signed by this authority for authentication.
