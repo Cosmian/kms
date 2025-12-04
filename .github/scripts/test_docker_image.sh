@@ -3,11 +3,14 @@
 set -ex
 
 # Detect FIPS vs non-FIPS from image name
-if [[ "${DOCKER_IMAGE_NAME:-}" == *"non-fips"* ]]; then
-    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
-else
-    # Default to FIPS (includes pure "fips" and when no variant specified)
+# FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:*-fips
+# Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:*-non-fips
+if [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
     COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-fips.yml"
+    echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
+else
+    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
 fi
 
 # Config paths

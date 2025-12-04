@@ -77,6 +77,12 @@ we'll mark the PR incomplete and ask you to follow up on the missing requirement
 Please include a file within your PR named `changelog/#.txt`, where `#` is your pull request ID. There are many
 examples under [changelog](changelog), but the general format is:
 
+```text
+CATEGORY
+COMPONENT: summary of change
+```
+
+Where COMPONENT is the relevant component (see below), and the summary of change is a short description of what your PR
 CATEGORY is one of `🚀 Features`, `🐛 Bug Fixes`, `📚 Documentation`, `🧪 Testing`, `⚙️ Miscellaneous Tasks`, or
 `🚜 Refactor`. Your PR is almost certain to be one of `🐛 Bug Fixes` or `🚀 Features`, but don't worry too much about
 getting it exactly right, we'll tell you if a change is needed.
@@ -120,7 +126,7 @@ the build instructions in [.github/copilot-instructions.md](.github/copilot-inst
 
 Before submitting a pull request, please ensure that:
 
-• All existing tests pass: `cargo test`
+• All existing tests pass: `cargo test --workspace --lib`
 • Your code is properly formatted: `cargo fmt --check`
 • Your code passes clippy lints: `cargo clippy --workspace --all-targets --all-features`
 • If you've added new functionality, include appropriate unit and/or integration tests

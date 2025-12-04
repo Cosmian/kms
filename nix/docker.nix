@@ -207,31 +207,32 @@ pkgs.dockerTools.buildLayeredImage {
     # Create all directory structures
     mkdir -p lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu
 
-    # Copy all shared libraries and dynamic linkers
+    # Copy all files from glibc lib directory using find
     # This will include whichever architecture glibc provides
-    for f in ${pkgs.glibc}/lib/*; do
-      if [ -f "$f" ]; then
-        filename=$(basename "$f")
-        echo "Copying: $filename"
+    echo "=== Copying glibc files with find ==="
+    find ${pkgs.glibc}/lib -maxdepth 1 -type f -o -type l | while IFS= read -r f; do
+      filename=$(basename "$f")
+      echo "Copying: $filename"
 
-        # Copy to lib/ (for aarch64 ld-linux-aarch64.so.1)
-        cp -L "$f" lib/ || true
+      # Copy to lib/ (for aarch64 ld-linux-aarch64.so.1)
+      cp -L "$f" lib/ 2>/dev/null || true
 
-        # Copy to lib64/ (for x86_64 ld-linux-x86-64.so.2)
-        cp -L "$f" lib64/ || true
+      # Copy to lib64/ (for x86_64 ld-linux-x86-64.so.2)
+      cp -L "$f" lib64/ 2>/dev/null || true
 
-        # Copy to architecture-specific directories
-        cp -L "$f" lib/x86_64-linux-gnu/ || true
-        cp -L "$f" lib/aarch64-linux-gnu/ || true
-      fi
+      # Copy to architecture-specific directories
+      cp -L "$f" lib/x86_64-linux-gnu/ 2>/dev/null || true
+      cp -L "$f" lib/aarch64-linux-gnu/ 2>/dev/null || true
     done
 
-    echo "Files copied to lib/:"
+    echo "=== Files copied to lib/ ==="
     ls -la lib/ | head -20 || true
-    echo "Files copied to lib64/:"
+    echo "=== Files copied to lib64/ ==="
     ls -la lib64/ | head -20 || true
-    echo "Files copied to lib/aarch64-linux-gnu/:"
+    echo "=== Files copied to lib/aarch64-linux-gnu/ ==="
     ls -la lib/aarch64-linux-gnu/ | head -20 || true
+    echo "=== Files copied to lib/x86_64-linux-gnu/ ==="
+    ls -la lib/x86_64-linux-gnu/ | head -20 || true
   '';
 
   # Configuration
