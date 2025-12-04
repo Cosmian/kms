@@ -132,8 +132,8 @@ socket_server_start = true
 [http]
 port = 9998
 hostname = "0.0.0.0"
-https_p12_file = "/etc/ssl/{{ORG_NAME}}_certs/server.p12"
-https_p12_password = "<P12_PASSWORD>"
+# TLS configuration moved to [tls] section
+# See the [tls] section below for certificate configuration
 authority_cert_file = "/etc/ssl/{{ORG_NAME}}_certs/ca.crt"
 ```
 

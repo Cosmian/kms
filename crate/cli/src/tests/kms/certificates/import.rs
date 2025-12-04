@@ -58,7 +58,8 @@ async fn test_certificate_import_different_format() -> KmsCliResult<()> {
     )
     .await?;
 
-    // import a PKCS12
+    // import a PKCS12 - not supported in FIPS mode (PKCS12KDF is not FIPS-approved)
+    #[cfg(feature = "non-fips")]
     Box::pin(
         ImportCertificateAction {
             certificate_file: Some(PathBuf::from("../../test_data/certificates/p12/output.p12")),

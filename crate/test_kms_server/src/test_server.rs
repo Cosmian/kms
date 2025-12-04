@@ -49,6 +49,110 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
+/// Ensure OpenSSL environment variables are set for tests (both FIPS and non-FIPS).
+/// If already defined in the environment, do nothing.
+#[allow(unsafe_code)]
+fn ensure_openssl_env() {
+    let conf_is_set = env::var_os("OPENSSL_CONF").is_some();
+    let modules_is_set = env::var_os("OPENSSL_MODULES").is_some();
+    if conf_is_set && modules_is_set {
+        return;
+    }
+
+    #[cfg(feature = "non-fips")]
+    {
+        // Non-FIPS mode: Check for custom OpenSSL provided via OPENSSL_DIR (e.g., from Nix)
+        if let Ok(dir) = env::var("OPENSSL_DIR") {
+            let openssl_dir = PathBuf::from(&dir);
+            let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
+            let modules_dir = openssl_dir.join("lib").join("ossl-modules");
+
+            if conf_path.exists() {
+                if !conf_is_set {
+                    unsafe {
+                        env::set_var("OPENSSL_CONF", &conf_path);
+                    }
+                    info!("Set OPENSSL_CONF to {} (non-FIPS)", conf_path.display());
+                }
+                if !modules_is_set && modules_dir.exists() {
+                    unsafe {
+                        env::set_var("OPENSSL_MODULES", &modules_dir);
+                    }
+                    info!("Set OPENSSL_MODULES to {}", modules_dir.display());
+                }
+                return;
+            }
+        }
+
+        // Fall back to system OpenSSL for non-FIPS builds (no custom config needed)
+        // The default and legacy providers should be available via system OpenSSL
+        info!("Using system OpenSSL for non-FIPS tests");
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    {
+        // Compute workspace root from the current crate path
+        // `test_server.rs` lives under `crate/test_kms_server`, so go up two levels
+        let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = crate_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or(&crate_dir)
+            .to_path_buf();
+
+        // FIPS mode: prefer an existing OPENSSL_DIR (e.g. provided by Nix shell) if it contains
+        // FIPS artifacts. This avoids falling back to a locally built OpenSSL that
+        // may have been compiled against an incompatible glibc version.
+        if let Ok(dir) = env::var("OPENSSL_DIR") {
+            let openssl_dir = PathBuf::from(&dir);
+            let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
+            let modules_dir = openssl_dir.join("lib").join("ossl-modules");
+            // Detect fips module (Linux .so / macOS .dylib)
+            let fips_so = modules_dir.join("fips.so");
+            let fips_dylib = modules_dir.join("fips.dylib");
+            if conf_path.exists() && (fips_so.exists() || fips_dylib.exists()) {
+                unsafe {
+                    if !conf_is_set {
+                        env::set_var("OPENSSL_CONF", &conf_path);
+                    }
+                    if !modules_is_set {
+                        env::set_var("OPENSSL_MODULES", &modules_dir);
+                    }
+                }
+                info!("Using FIPS OpenSSL from OPENSSL_DIR={}", dir);
+                return;
+            }
+        }
+
+        // Fall back to locally built FIPS OpenSSL (built by build.rs in crate/server)
+        // The build folder already contains everything needed:
+        // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/openssl.cnf
+        // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/fipsmodule.cnf
+        // - target/openssl-fips-3.1.2-{os}-{arch}/lib/ossl-modules/fips.so (or .dylib on macOS)
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+
+        let target_dir = workspace_root
+            .join("target")
+            .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
+        let openssl_conf = target_dir.join("ssl").join("openssl.cnf");
+        let modules_dir = target_dir.join("lib").join("ossl-modules");
+
+        if !conf_is_set {
+            unsafe {
+                env::set_var("OPENSSL_CONF", &openssl_conf);
+            }
+            info!("Set OPENSSL_CONF to {}", openssl_conf.display());
+        }
+        if !modules_is_set {
+            unsafe {
+                env::set_var("OPENSSL_MODULES", &modules_dir);
+            }
+            info!("Set OPENSSL_MODULES to {}", modules_dir.display());
+        }
+    }
+}
+
 // Small utilities to reduce repetition
 #[inline]
 fn root_dir() -> PathBuf {
@@ -198,6 +302,8 @@ fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
 #[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
+    // Ensure OpenSSL env vars are present for tests (both FIPS and non-FIPS)
+    ensure_openssl_env();
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
         match use_kek {
@@ -780,14 +886,39 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
     let clients_ca = mode
         .use_known_ca_list()
         .then(|| root_dir().join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"));
-    TlsConfig {
-        tls_p12_file: Some(
-            root_dir()
-                .join("../../test_data/certificates/client_server/server/kmserver.acme.com.p12"),
-        ),
-        tls_p12_password: Some("password".to_owned()),
-        clients_ca_cert_file: clients_ca,
-        tls_cipher_suites: server_tls_cipher_suites,
+    #[cfg(feature = "non-fips")]
+    {
+        TlsConfig {
+            tls_p12_file: Some(
+                root_dir().join(
+                    "../../test_data/certificates/client_server/server/kmserver.acme.com.p12",
+                ),
+            ),
+            tls_p12_password: Some("password".to_owned()),
+            clients_ca_cert_file: clients_ca,
+            tls_cipher_suites: server_tls_cipher_suites,
+        }
+    }
+    #[cfg(not(feature = "non-fips"))]
+    {
+        TlsConfig {
+            tls_cert_file: Some(
+                root_dir().join(
+                    "../../test_data/certificates/client_server/server/kmserver.acme.com.crt",
+                ),
+            ),
+            tls_key_file: Some(
+                root_dir().join(
+                    "../../test_data/certificates/client_server/server/kmserver.acme.com.key",
+                ),
+            ),
+            // Provide chain explicitly for FIPS tests
+            tls_chain_file: Some(
+                root_dir().join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"),
+            ),
+            clients_ca_cert_file: clients_ca,
+            tls_cipher_suites: server_tls_cipher_suites,
+        }
     }
 }
 
@@ -981,11 +1112,16 @@ fn generate_owner_conf(
         .ok()
         .and_then(|config| serde_json::from_str(&config).ok());
 
-    let use_client_cert_auth = server_params
+    // Server requests client cert only if a clients CA is configured,
+    // but the caller may explicitly suppress sending a client identity.
+    let server_requests_client_cert = server_params
         .tls_params
         .as_ref()
         .and_then(|tls| tls.clients_ca_cert_pem.as_ref())
         .is_some();
+    let caller_suppresses_client_cert =
+        matches!(client_opts.client_cert, ClientCertPolicy::Suppress);
+    let use_client_cert_auth = server_requests_client_cert && !caller_suppresses_client_cert;
 
     let use_jwt_token = match client_opts.jwt {
         JwtPolicy::Suppress => false,
@@ -1016,26 +1152,60 @@ fn generate_owner_conf(
         },
     );
     if use_client_cert_auth {
-        // If the server requires client certs: either don't send them (if requested),
-        // or auto-provide a default cert when none is configured explicitly.
-        if client_opts.client_cert == ClientCertPolicy::Suppress {
-            http_conf.ssl_client_pkcs12_path = None;
-            http_conf.ssl_client_pkcs12_password = None;
-        } else {
-            if http_conf.ssl_client_pkcs12_path.is_none() {
+        // Client certificate is mandatory when server requests it.
+        // Respect any explicit client identity provided by the caller; otherwise, inject defaults.
+        #[cfg(feature = "non-fips")]
+        {
+            let has_pkcs12 = http_conf.ssl_client_pkcs12_path.is_some();
+            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
+                && http_conf.ssl_client_pem_key_path.is_some();
+
+            if !has_pkcs12 && !has_pem {
+                // Inject default owner PKCS#12 only if caller didn't provide an identity
                 let p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12",
                 );
                 http_conf.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
-            }
-            if http_conf.ssl_client_pkcs12_password.is_none() {
                 http_conf.ssl_client_pkcs12_password = Some("password".to_owned());
+                // Ensure PEM fields are cleared in non-FIPS when using PKCS#12
+                http_conf.ssl_client_pem_cert_path = None;
+                http_conf.ssl_client_pem_key_path = None;
+            } else if has_pkcs12 {
+                // PKCS#12 provided by caller takes precedence; clear PEM to avoid ambiguity
+                http_conf.ssl_client_pem_cert_path = None;
+                http_conf.ssl_client_pem_key_path = None;
+            } else {
+                // PEM provided by caller in non-FIPS: honor it; ensure PKCS#12 is cleared
+                http_conf.ssl_client_pkcs12_path = None;
+                http_conf.ssl_client_pkcs12_password = None;
             }
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            // In FIPS mode, use PEM certificate and key; PKCS#12 must not be used.
+            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
+                && http_conf.ssl_client_pem_key_path.is_some();
+            if !has_pem {
+                // Inject default owner PEM identity only if caller didn't provide one
+                let cert_p = root_path.join(
+                    "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt",
+                );
+                let key_p = root_path.join(
+                    "../../test_data/certificates/client_server/owner/owner.client.acme.com.key",
+                );
+                http_conf.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+                http_conf.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
+            }
+            // Always clear PKCS#12 in FIPS
+            http_conf.ssl_client_pkcs12_path = None;
+            http_conf.ssl_client_pkcs12_password = None;
         }
     } else {
         // If server doesn't require client cert, don't send one
         http_conf.ssl_client_pkcs12_path = None;
         http_conf.ssl_client_pkcs12_password = None;
+        http_conf.ssl_client_pem_cert_path = None;
+        http_conf.ssl_client_pem_key_path = None;
     }
 
     let conf = KmsClientConfig {
@@ -1057,16 +1227,37 @@ fn generate_user_conf(
     let root_dir = root_dir();
 
     let mut conf = owner_client_conf.clone();
-    if client_opts.client_cert == ClientCertPolicy::Suppress {
-        conf.http_config.ssl_client_pkcs12_path = None;
-        conf.http_config.ssl_client_pkcs12_password = None;
-    } else {
-        conf.http_config.ssl_client_pkcs12_path = {
+    let is_https = conf.http_config.server_url.starts_with("https://");
+    if is_https {
+        // For HTTPS, client certificate is mandatory for test clients.
+        // Use PKCS#12 in non-FIPS, and PEM cert/key in FIPS mode.
+        // Always set the dedicated "user" identity (not the owner's).
+        #[cfg(feature = "non-fips")]
+        {
             let p = root_dir
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
-            Some(path_to_string(&p)?)
-        };
-        conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
+            conf.http_config.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
+            conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
+            conf.http_config.ssl_client_pem_cert_path = None;
+            conf.http_config.ssl_client_pem_key_path = None;
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            let cert_p = root_dir
+                .join("../../test_data/certificates/client_server/user/user.client.acme.com.crt");
+            let key_p = root_dir
+                .join("../../test_data/certificates/client_server/user/user.client.acme.com.key");
+            conf.http_config.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+            conf.http_config.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
+            conf.http_config.ssl_client_pkcs12_path = None;
+            conf.http_config.ssl_client_pkcs12_password = None;
+        }
+    } else {
+        // For HTTP, ensure no TLS identity is configured to avoid builder errors.
+        conf.http_config.ssl_client_pkcs12_path = None;
+        conf.http_config.ssl_client_pkcs12_password = None;
+        conf.http_config.ssl_client_pem_cert_path = None;
+        conf.http_config.ssl_client_pem_key_path = None;
     }
     conf.http_config.access_token = set_access_token(
         matches!(client_opts.jwt, JwtPolicy::AutoDefault) && use_jwt_token,
@@ -1080,6 +1271,7 @@ fn generate_user_conf(
 }
 
 #[cfg(test)]
+#[cfg(feature = "non-fips")]
 #[allow(clippy::unwrap_in_result)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use cosmian_kms_client::{
     kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     reexport::cosmian_kms_client_utils::create_utils::Curve,
@@ -5,27 +7,20 @@ use cosmian_kms_client::{
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 
-#[cfg(feature = "non-fips")]
-use crate::actions::kms::cover_crypt::keys::{
-    create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
-};
 use crate::{
     actions::kms::{
+        cover_crypt::keys::{
+            create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
+        },
         elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEcKeyPairAction,
-        shared::LocateObjectsAction, symmetric::keys::create_key::CreateKeyAction,
+        shared::LocateObjectsAction,
+        symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
 };
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
-    use std::path::PathBuf;
-
-    use cosmian_kms_client::kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType};
-
-    use crate::actions::kms::shared::LocateObjectsAction;
-
     log_init(option_env!("RUST_LOG"));
 
     // Generate unique tags to avoid cross-test collisions when tests run concurrently
@@ -360,7 +355,6 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     // init the test server
@@ -488,7 +482,6 @@ pub(crate) async fn test_locate_grant() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
     // init the test server

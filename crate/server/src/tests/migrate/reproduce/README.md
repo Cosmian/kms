@@ -8,16 +8,16 @@ The folder contains the necessary material to reproduce in the most quick yet lo
 2. Run a redis DB with the method of your choice on the default localhost port (6379)
 3. Run the following command to pull the KMS :
 
-```bash
-docker run -p 9998:9998 --rm --name kms_demo \
-  --network host \
-  ghcr.io/cosmian/kms:5.2.0 \
-  --database-type redis-findex \
-  --database-url redis://127.0.0.1:6379 \
-  --redis-master-password password \
-  --redis-findex-label label
-  --clear-database
-```
+    ```bash
+    docker run -p 9998:9998 --rm --name kms_demo \
+      --network host \
+      ghcr.io/cosmian/kms:5.2.0 \
+      --database-type redis-findex \
+      --database-url redis://127.0.0.1:6379 \
+      --redis-master-password password \
+      --redis-findex-label label
+      --clear-database
+    ```
 
 4. Build the cli project (`cargo b --all-targets --all-features`)
 5. From **the root folder**, copy paste the `populate_5_2_db.sh`, make it executable (chmod +x ...) and then execute it. The KMS will be populated.

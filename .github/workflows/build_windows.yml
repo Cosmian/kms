@@ -1,0 +1,110 @@
+---
+name: Windows Build
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+      debug_or_release:
+        required: true
+        type: string
+
+jobs:
+  cargo-build:
+    name: windows-2022-non-fips-${{ inputs.debug_or_release }}
+    runs-on: windows-2022
+    steps:
+      - name: Print ENV
+        run: printenv
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Discover environment variables on Runner
+        shell: pwsh
+        run: |
+          Get-ChildItem env:
+
+      - name: Locate VCPKG_INSTALLATION_ROOT
+        shell: pwsh
+        run: |
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.github\scripts\windows_ui.ps1
+          Build-UI -Variant non-fips
+
+      - name: Copy UI to server directory
+        shell: pwsh
+        run: |
+          if (Test-Path "crate\server\ui_non_fips") {
+            Remove-Item -Recurse -Force "crate\server\ui_non_fips"
+          }
+          New-Item -ItemType Directory -Path "crate\server\ui_non_fips" -Force
+          Copy-Item -Recurse "ui\dist\*" "crate\server\ui_non_fips\"
+          Write-Host "UI copied to crate\server\ui_non_fips"
+          Get-ChildItem -Recurse "crate\server\ui_non_fips"
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows-static
+          vcpkg integrate install
+
+          Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.github\scripts\cargo_build.ps1
+          BuildProject -BuildType ${{ inputs.debug_or_release }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          path: |
+            target/${{ inputs.debug_or_release }}/*.exe
+            target/${{ inputs.debug_or_release }}/*cosmian_pkcs11.dll
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    needs: cargo-build
+    name: windows-2022 - test on clean env. ${{ inputs.archive-name }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+
+      - name: List files recursively
+        shell: pwsh
+        run: Get-ChildItem -Recurse
+
+      - name: Launch binaries
+        run: |
+          Get-ChildItem -Filter "cosmian*.exe" | ForEach-Object {
+            Write-Host "Testing $_..."
+            & $_.FullName -V
+          }

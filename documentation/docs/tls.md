@@ -15,15 +15,46 @@ To enable TLS, one can provide certificates on the command line interface.
 
 ### Providing certificates
 
-The key and full certificate chain must be available in a [PKCS#12](https://en.wikipedia.org/wiki/PKCS_12) format to
-serve TLS. The password to open the PKCS#12 file must also be provided.
+The KMS server supports two certificate formats depending on the build variant:
+
+**FIPS mode (default build):** Requires PEM-formatted certificates and keys.
+
+- Server certificate in PEM format (may include full chain)
+- Private key in PEM format (PKCS#8 or traditional format)
+- Optional separate chain file for intermediate CAs
+
+**Non-FIPS mode:** Supports PKCS#12 format.
+
+- Key and full certificate chain in [PKCS#12](https://en.wikipedia.org/wiki/PKCS_12) format
+- Password to open the PKCS#12 file
 
 When enabling client certificate authentication, the server's authority X509 certificate in PEM format must also be
-provided. Multiple CA certificates can be concatenated in a single PEM file to support different certificate authorities.
+provided (for both modes). Multiple CA certificates can be concatenated in a single PEM file to support different certificate authorities.
 
 ### Configuration using the TOML configuration file
 
 Certificate information must be provided in the `[tls]` section of the TOML configuration file.
+
+**For FIPS mode (default build):**
+
+```toml
+# TLS configuration of the Socket server and HTTP server
+[tls]
+
+# The server's X.509 certificate in PEM format.
+# Provide a PEM containing the server leaf certificate,
+# optionally followed by intermediate certificates (full chain).
+tls_cert_file = "path/to/server.crt"
+
+# The server's private key in PEM format (PKCS#8 or traditional format).
+tls_key_file = "path/to/server.key"
+
+# Optional certificate chain in PEM format (intermediate CAs).
+# If not provided, the chain may be appended to tls_cert_file instead.
+tls_chain_file = "path/to/chain.pem"
+```
+
+**For non-FIPS mode:**
 
 ```toml
 # TLS configuration of the Socket server and HTTP server
@@ -31,10 +62,10 @@ Certificate information must be provided in the `[tls]` section of the TOML conf
 
 # The KMS server's optional PKCS#12 Certificates and Key file.
 # If provided, this will start the server in HTTPS mode.
-tls_p12_file = "[tls p12 file]"
+tls_p12_file = "path/to/server.p12"
 
 # The password to open the PKCS#12 Certificates and Key file.
-tls_p12_password = "[tls p12 password]"
+tls_p12_password = "your_password"
 
 # The server's optional authority X509 certificate in PEM format
 # used to validate the client certificate presented for authentication.

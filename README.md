@@ -70,10 +70,10 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
         - [Additional Directories](#additional-directories)
     - [Building and running the KMS](#building-and-running-the-kms)
         - [Features](#features)
-        - [Linux or macOS (CPU Intel or macOS ARM)](#linux-or-macos-cpu-intel-or-macos-arm)
+        - [Linux or macOS](#linux-or-macos)
         - [Windows](#windows)
-        - [Build the KMS](#build-the-kms)
         - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
+        - [Packaging (DEB/RPM/DMG) and hashes](#packaging-debrpmdmg-and-hashes)
     - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
     - [Development: running the server with cargo](#development-running-the-server-with-cargo)
     - [Server parameters](#server-parameters)
@@ -212,8 +212,11 @@ directory.
 
 ## Building and running the KMS
 
-The Cosmian KMS is built using the [Rust](https://www.rust-lang.org/) programming language.
-A Rust toolchain is required to build the KMS.
+Two paths are supported:
+
+- For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
+  reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
+- For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
 ### Features
 
@@ -225,36 +228,42 @@ These operations should only be enabled during testing: `cargo build --features 
 
 OpenSSL v3.2.0 is required to build the KMS.
 
-### Linux or macOS (CPU Intel or macOS ARM)
+### Linux or macOS
 
-Retrieve OpenSSL v3.2.0 (already built) with the following commands:
+Nix-based (reproducible FIPS builds):
 
 ```sh
-export OPENSSL_DIR=/usr/local/openssl
-sudo mkdir -p ${OPENSSL_DIR}
-sudo chown -R $USER ${OPENSSL_DIR}
-bash .github/reusable_scripts/get_openssl_binaries.sh
+# Run tests (defaults to 'all'; DB backends require services)
+bash .github/scripts/nix.sh test
+
+# Package artifacts (Linux → deb+rpm, macOS → dmg)
+bash .github/scripts/nix.sh package
+```
+
+Simple (Cargo-only):
+
+```sh
+cargo build
+cargo test --lib --workspace
+cargo test --lib --workspace --features non-fips
 ```
 
 ### Windows
 
-1. Install Visual Studio Community with the C++ workload and clang support.
-2. Install Strawberry Perl.
-3. Install `vcpkg` following
-   [these instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
+Follow the prerequisites below, or use the provided PowerShell helpers.
 
-4. Then install OpenSSL 3.2.0:
+Prerequisites (manual):
 
-The files `vcpkg.json` and `vcpkg_fips.json` are provided in the repository to install OpenSSL v3.2.0:
+1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
+2. Install OpenSSL 3.1.2 with vcpkg:
 
 ```powershell
-vcpkg install --triplet x64-windows-static # arm64-windows-static for ARM64
-
+vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64
 vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static" # openssl_arm64-windows-static for ARM64
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
 ```
 
-For a FIPS-compliant build, use the following commands (to build fips.dll), also run:
+For FIPS builds (to build fips.dll):
 
 ```powershell
 Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
@@ -262,33 +271,46 @@ vcpkg install
 vcpkg integrate install
 ```
 
-### Build the KMS
+PowerShell helpers (non-FIPS by default):
 
-Once OpenSSL is installed, you can build the KMS. To avoid the _additive feature_ issues, the main artifacts - the CLI,
-the KMS server and the PKCS11 provider should be directly built using `cargo build --release` within their crate,
-not from the project root.
+```powershell
+. .github/scripts/cargo_build.ps1
+BuildProject -BuildType release   # or debug
 
-Build the server:
-
-```sh
-cd crate/server
-cargo build --release
+. .github/scripts/cargo_test.ps1
+TestProject -BuildType release    # or debug
 ```
 
 ### Build the Docker Ubuntu container
 
-You can build a Docker containing the KMS server as follows:
+You can build a Docker image that contains the KMS server as follows:
 
 ```sh
 docker buildx build . -t kms
 ```
 
-Or:
+Or, with FIPS support:
 
 ```sh
-# Example with FIPS support
 docker buildx build --build-arg FIPS="true" -t kms .
 ```
+
+### Packaging (DEB/RPM/DMG) and hashes
+
+Use the Nix entrypoint to build packages:
+
+```sh
+# Linux
+bash .github/scripts/nix.sh package           # builds deb + rpm
+bash .github/scripts/nix.sh package deb       # build deb only
+bash .github/scripts/nix.sh package rpm       # build rpm only
+
+# macOS
+bash .github/scripts/nix.sh package dmg
+```
+
+On success, a SHA-256 checksum file (.sha256) is written next to each generated package
+(.deb/.rpm/.dmg) to ease verification and artifact distribution.
 
 ## Running the unit and integration tests
 

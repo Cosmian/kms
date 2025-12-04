@@ -737,13 +737,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
-                use_api_token_auth,
-                ApiTokenAuth::new(kms_server.clone()),
-            ))
-            .wrap(Condition::new(
                 use_jwt_auth,
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
+            // Prefer checking API token before JWT to avoid header handling quirks
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server.clone()),
+            ))
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
@@ -766,7 +767,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     .keep_alive(actix_web::http::KeepAlive::Timeout(
         std::time::Duration::from_secs(120),
     ))
-    .client_request_timeout(std::time::Duration::from_secs(300)); // 5 minute timeout for KMIP test vectors
+    .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
     // The KMIP XML vector test harness keeps a single HTTP connection open across
     // many serialized requests with potentially long gaps (several seconds) while
     // preparing the next request. Actix-web's default keep-alive (~5s) was closing
@@ -776,7 +777,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // lets us observe true protocol-level failures instead of transport resets.
     // Additionally, actix-web has a default client_request_timeout of 5 seconds which
     // was causing "408 Request Timeout" errors during long-running test operations.
-    // Setting it to 300 seconds (5 minutes) allows ample time for test completion.
 
     Ok(match tls_config {
         Some(ssl_acceptor) => {
@@ -803,10 +803,25 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
     // Use the common TLS configuration
-    let tls_config = TlsConfig {
-        cipher_suites: server_config.cipher_suites.as_deref(),
-        p12: &server_config.p12,
-        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+    let tls_config = {
+        #[cfg(feature = "non-fips")]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                p12: &server_config.p12,
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                server_cert_pem: &server_config.server_cert_pem,
+                server_key_pem: &server_config.server_key_pem,
+                server_chain_pem: server_config.server_chain_pem.as_deref(),
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;

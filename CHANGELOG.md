@@ -2,7 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
-## ✅ KMIP XML Vector Conformance (1.4 & 2.1)
+## ✅ Nix: Reproducible Package Management
+
+### 🚀 Features
+
+- **Reproducible builds with Nix** ([#596](https://github.com/Cosmian/kms/pull/596)):
+    - Full migration to Nix package manager for deterministic, bit-for-bit reproducible builds
+    - Automated hash verification system ensuring build artifact integrity across platforms
+    - Support for offline/air-gapped builds with complete dependency caching
+    - Unified build system replacing platform-specific scripts (`.sh`, `.ps1`)
+    - Comprehensive build variants: FIPS/non-FIPS × static/dynamic × vendor/non-vendor
+    - Native support for cross-platform builds (Linux x86_64/ARM64, macOS x86_64/ARM64, Windows)
+
+- **Build infrastructure improvements**:
+    - New `nix/` directory with reproducible derivations for KMS server, OpenSSL 3.1.2, UI, and Docker images
+    - Automated hash tracking system with 400+ expected hashes for all build artifacts and dependencies
+    - Deterministic OpenSSL 3.1.2 builds (both FIPS and non-FIPS variants) with static linking support
+    - Docker images built entirely through Nix for consistency
+    - Package signing infrastructure for Debian (.deb) and RPM packages
+    - SBOM (Software Bill of Materials) generation integrated into build process
+
+- **Testing & CI enhancements**:
+    - Refactored GitHub workflows with comprehensive reusable components
+    - New test suites: `test_all.sh`, `smoke_test_deb.sh`, `smoke_test_rpm.sh`, `smoke_test_dmg.sh`
+    - Database-specific test scripts for MySQL, PostgreSQL, Redis, and SQLite backends
+    - HSM integration tests for Utimaco, Proteccio, SoftHSM2, and Crypt2pay
+    - Google CSE endpoint testing with HSM integration
+    - Systemd service file validation tests
+    - Docker image smoke tests with health checks
+
+### 🚜 Refactor
+
+- **CI/CD pipeline reorganization**:
+    - New reusable workflow structure: `main.yml` → `main_base.yml`/`packaging.yml`
+    - Separated authentication tests by FIPS/non-FIPS variants
+    - Modularized test execution with dedicated scripts per component
+    - Common utilities consolidated in `.github/scripts/common.sh`
+
+### 📚 Documentation
+
+- Comprehensive Nix build system documentation with visual diagrams:
+    - Build architecture and reproducibility guarantees
+    - Hash verification flow and offline build processes
+    - Package signing setup and verification procedures
+    - Troubleshooting guides and learning resources
+- GitHub workflows documentation with complete execution flow diagrams
+- Updated Copilot instructions for Nix-based development
+- Build and test guide in `.github/copilot-instructions.md`
+
+## ✅ KMIP XML Vector Conformance (1.4 & 2.1) ([#583](https://github.com/Cosmian/kms/pull/583))
 
 - End-to-end alignment with the official KMIP XML test vectors across library, server routing, and CLI: Create, Query/DiscoverVersions, attribute flows, and OpaqueObject revoke/destroy are covered.
 

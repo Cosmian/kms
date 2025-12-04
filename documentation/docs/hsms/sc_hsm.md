@@ -20,7 +20,7 @@ To build and install the library, follow the instructions in the [sc-hsm-embedde
 >
 > - Initialization is **destructive**. It will erase all existing keys and objects on the HSM.
 > - Losing the **Security Officer (SO) PIN** will prevent future resets of the HSM. This can make the device permanently unusable. Keep it secure.
-
+>
 > **_NOTE:_**
 > The default PINs shown below are recommended by the manufacturer for development purposes. Always change them in production.
 

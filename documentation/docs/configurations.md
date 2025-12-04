@@ -63,9 +63,15 @@ TLS client certificate authentication with mutual TLS.
 ```toml
 # TLS Client Certificate Authentication
 [tls]
-tls_p12_file = "certificates/server.p12"
-tls_p12_password = "password"
+# For FIPS mode (default build):
+tls_cert_file = "certificates/server.crt"
+tls_key_file = "certificates/server.key"
 clients_ca_cert_file = "certificates/ca.crt"
+
+# For non-FIPS mode:
+# tls_p12_file = "certificates/server.p12"
+# tls_p12_password = "password"
+# clients_ca_cert_file = "certificates/ca.crt"
 ```
 
 **Use case:** High-security environments requiring mutual TLS authentication with client certificates.
@@ -79,6 +85,12 @@ Multi-factor authentication combining TLS client certificates and JWT tokens.
 ```toml
 # Multi-factor TLS + JWT authentication (idp_auth format)
 [tls]
+# For FIPS mode (default build):
+# tls_cert_file = "certificates/server.crt"
+# tls_key_file = "certificates/server.key"
+# clients_ca_cert_file = "certificates/ca.crt"
+
+# For non-FIPS mode:
 tls_p12_file = "certificates/server.p12"
 tls_p12_password = "password"
 clients_ca_cert_file = "certificates/ca.crt"
@@ -278,6 +290,11 @@ port = 443
 hostname = "0.0.0.0"
 
 [tls]
+# For FIPS mode (default build):
+# tls_cert_file = "/etc/ssl/kms/server.crt"
+# tls_key_file = "/etc/ssl/kms/server.key"
+
+# For non-FIPS mode:
 tls_p12_file = "/etc/ssl/kms/server.p12"
 tls_p12_password = "secure_password"
 
@@ -310,6 +327,11 @@ port = 9998
 hostname = "0.0.0.0"
 
 [tls]
+# For FIPS mode (default build):
+# tls_cert_file = "/etc/ssl/kms/server.crt"
+# tls_key_file = "/etc/ssl/kms/server.key"
+
+# For non-FIPS mode:
 tls_p12_file = "/etc/ssl/kms/server.p12"
 tls_p12_password = "cluster_password"
 

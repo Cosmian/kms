@@ -10,12 +10,34 @@ pub struct TlsConfig {
     /// The KMS server optional PKCS#12 Certificates and Key file.
     /// Mandatory when starting the socket server.
     /// When provided, the Socket and HTTP server will start in TLS Mode.
+    #[cfg(feature = "non-fips")]
     #[clap(long, env = "KMS_TLS_P12_FILE", verbatim_doc_comment)]
     pub tls_p12_file: Option<PathBuf>,
 
     /// The password to open the PKCS#12 Certificates and Key file
+    #[cfg(feature = "non-fips")]
     #[clap(long, env = "KMS_TLS_P12_PASSWORD", verbatim_doc_comment)]
     pub tls_p12_password: Option<String>,
+
+    /// The server's X.509 certificate in PEM format.
+    /// Only used in FIPS mode (default build). Provide a PEM containing the server leaf certificate,
+    /// optionally followed by intermediate certificates (full chain). When provided along with
+    /// `--tls-key-file`, the servers will start in TLS mode.
+    #[cfg(not(feature = "non-fips"))]
+    #[clap(long, env = "KMS_TLS_CERT_FILE", verbatim_doc_comment)]
+    pub tls_cert_file: Option<PathBuf>,
+
+    /// The server's private key in PEM format (PKCS#8 or traditional format).
+    /// Only used in FIPS mode (default build). Must correspond to the certificate in `--tls-cert-file`.
+    #[cfg(not(feature = "non-fips"))]
+    #[clap(long, env = "KMS_TLS_KEY_FILE", verbatim_doc_comment)]
+    pub tls_key_file: Option<PathBuf>,
+
+    /// Optional certificate chain in PEM format (intermediate CAs).
+    /// Only used in FIPS mode. If not provided, the chain may be appended to `--tls-cert-file` instead.
+    #[cfg(not(feature = "non-fips"))]
+    #[clap(long, env = "KMS_TLS_CHAIN_FILE", verbatim_doc_comment)]
+    pub tls_chain_file: Option<PathBuf>,
 
     /// The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
     /// If provided, clients must present a certificate signed by this authority for authentication.
@@ -45,20 +67,36 @@ pub struct TlsConfig {
 
 impl Display for TlsConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.tls_p12_file.is_some() {
-            write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
-            if let Some(https_p12_password) = &self.tls_p12_password {
-                write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+        #[cfg(feature = "non-fips")]
+        {
+            if self.tls_p12_file.is_some() {
+                write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
+                if let Some(https_p12_password) = &self.tls_p12_password {
+                    write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+                }
+                return write!(
+                    f,
+                    "clients' CA cert file: {:?}, cipher suites: {:?}",
+                    self.clients_ca_cert_file.as_ref(),
+                    self.tls_cipher_suites.as_ref()
+                );
             }
-            write!(
-                f,
-                "clients' CA cert file: {:?}, cipher suites: {:?}",
-                self.clients_ca_cert_file.as_ref(),
-                self.tls_cipher_suites.as_ref()
-            )
-        } else {
-            write!(f, "No TLS config")
         }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            if self.tls_cert_file.is_some() && self.tls_key_file.is_some() {
+                return write!(
+                    f,
+                    "PEM cert: {:?}, key: {:?}, chain: {:?}, clients' CA cert file: {:?}, cipher suites: {:?}",
+                    self.tls_cert_file.as_ref(),
+                    self.tls_key_file.as_ref(),
+                    self.tls_chain_file.as_ref(),
+                    self.clients_ca_cert_file.as_ref(),
+                    self.tls_cipher_suites.as_ref()
+                );
+            }
+        }
+        write!(f, "No TLS config")
     }
 }
 

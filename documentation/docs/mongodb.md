@@ -155,14 +155,10 @@ print("Encrypted document inserted.")
 - This setup requires MongoDB Enterprise, as CSFLE is not supported in the Community Edition.
 
 ---
-<br>
-<br>
-<br>
-<br>
 
-# Reading Encrypted Data with MongoDB CSFLE (Client-Side Field Level Encryption)
+## Reading Encrypted Data with MongoDB CSFLE (Client-Side Field Level Encryption)
 
-## Step-by-Step Guide
+### Step-by-Step Guide
 
 This guide walks you through reading encrypted documents stored in MongoDB using automatic decryption with the CSFLE feature.
 
@@ -265,7 +261,7 @@ Encrypted fields will be automatically decrypted in the returned documents, prov
 
 ---
 
-## Notes
+## Additional Notes
 
 - Make sure the key vault namespace (`encryption.__keyVault`) matches the namespace used during encryption.
 - This method works only with MongoDB Enterprise or MongoDB Atlas with CSFLE support.

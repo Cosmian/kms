@@ -7,6 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+fail_fast: true
 exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|crate/kmip/src/kmip_2_1/specifications/|crate/kmip/src/kmip_1_4/specifications/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/kmip/src/oasis
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -28,13 +29,6 @@ repos:
             --disable=MD046,
             --fix,
           ]
-
-  - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.13.7
-    hooks:
-      - id: markdown-link-check
-        args: [-q, --config, .markdown-link-check.json]
-        exclude: .github/copilot-instructions.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
@@ -92,6 +86,7 @@ repos:
       - id: check-vcs-permalinks
         exclude: crate/kmip/src/ttlv/kmip_ttlv_deserializer
       - id: check-xml
+        exclude: crate/server/resources/production.drawio.svg
       - id: check-yaml
       - id: debug-statements
       - id: destroyed-symlinks
@@ -119,6 +114,30 @@ repos:
         # avoid clash with `double-quote-string-fixer`
         args: [--skip-string-normalization]
 
+  - repo: local
+    hooks:
+      - id: nixfmt
+        name: nixfmt
+        entry: nixfmt
+        language: system
+        files: \.nix$
+        pass_filenames: true
+
+  - repo: https://github.com/astro/deadnix
+    rev: v1.2.1
+    hooks:
+      - id: deadnix
+        args: [--edit]
+
+  - repo: local
+    hooks:
+      - id: statix
+        name: statix check
+        entry: bash -c 'for f in "$@"; do statix fix "$f"; done' --
+        language: system
+        files: \.nix$
+        pass_filenames: true
+
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
@@ -130,15 +149,76 @@ repos:
       - id: cargo-update
         stages: [manual]
       - id: cargo-machete
-      - id: cargo-build
-      - id: renew-server-cli-doc
+
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.18.2
+    hooks:
+      - id: cargo-deny
+        args: [--all-features, check]
+        stages: [manual]
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.42
+    hooks:
       - id: docker-compose-up
-      - id: cargo-test
-      - id: cargo-build
-        args: [--all-features]
-      - id: cargo-test
-        alias: cargo-test-all
-        args: [--all-features]
+
+  - repo: local
+    hooks:
+      - id: cargo-test-fips
+        name: cargo test (sqlite fips)
+        entry: bash .github/scripts/test_sqlite.sh --variant fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-test-non-fips
+        name: cargo test (sqlite non-fips)
+        entry: bash .github/scripts/test_sqlite.sh --variant non-fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
+      - id: redis-cargo-test-non-fips
+        name: Redis and cargo test (non-fips)
+        entry: bash .github/scripts/test_redis.sh --variant non-fips
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
+      - id: nix-cargo-test-fips
+        name: Nix cargo test (sqlite fips)
+        entry: bash .github/scripts/nix.sh --variant fips test sqlite
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
+      - id: nix-cargo-test-non-fips
+        name: Nix cargo test (sqlite non-fips)
+        entry: bash .github/scripts/nix.sh --variant non-fips test redis
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: kms-server-package
+        name: Nix KMS server non-fips packaging
+        entry: bash .github/scripts/nix.sh --variant non-fips package
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: renew-server-doc
+        name: renew server cli doc
+        entry: bash .github/scripts/renew_server_doc.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.42
+    hooks:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
@@ -147,9 +227,10 @@ repos:
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 
-  - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.18.2
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.13.7
     hooks:
-      - id: cargo-deny
-        args: [--all-features, check]
-        stages: [manual]
+      - id: markdown-link-check
+        args: [-q, --config, .markdown-link-check.json]
+        exclude: .github/copilot-instructions.md
+
