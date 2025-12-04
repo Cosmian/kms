@@ -205,7 +205,9 @@ pkgs.dockerTools.buildLayeredImage {
     ls -la ${pkgs.glibc}/lib/ || echo "Failed to list glibc lib directory"
 
     # Create all directory structures
+    rm -f lib lib64 || true
     mkdir -p lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu
+    rm -f lib lib64 || true
 
     # Copy all files from glibc lib directory using find
     # This will include whichever architecture glibc provides
