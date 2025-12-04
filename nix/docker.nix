@@ -130,13 +130,22 @@ pkgs.dockerTools.buildLayeredImage {
     ln -s ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
 
     # Provide system dynamic linker and glibc locations expected by the binary
+    # Support both x86_64-linux and aarch64-linux
+
     # x86_64-linux
     mkdir -p lib64
-    if [ ! -e lib64/ld-linux-x86-64.so.2 ]; then
+    if [ -e ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 ]; then
       ln -s ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2 || true
     fi
     mkdir -p lib/x86_64-linux-gnu
     ln -s ${pkgs.glibc}/lib/* lib/x86_64-linux-gnu/ 2>/dev/null || true
+
+    # aarch64-linux
+    if [ -e ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 ]; then
+      ln -s ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 lib/ld-linux-aarch64.so.1 || true
+    fi
+    mkdir -p lib/aarch64-linux-gnu
+    ln -s ${pkgs.glibc}/lib/* lib/aarch64-linux-gnu/ 2>/dev/null || true
   '';
 
   # Configuration
