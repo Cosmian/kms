@@ -19,6 +19,7 @@ You'll use these certificates to connect your KMS instance to a vCenter environm
 - A working copy of `openssl.cnf` with a `[ v3_ca ]` section
 - UNIX shell (bash, zsh, etc.)
 - A directory to store your certificates, e.g., `/etc/ssl/{{ORG_NAME}}_certs`
+- VMware vSphere: 6.5 or higher
 
 ---
 
