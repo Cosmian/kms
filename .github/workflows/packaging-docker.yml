@@ -87,7 +87,7 @@ jobs:
       - name: Build and load Docker image
         id: build
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --load --test
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --load
 
       - name: Get image name and digest
         id: image_info
@@ -132,9 +132,17 @@ jobs:
           done
           cosign sign --yes ${images}
 
-      - name: Test Docker image
+      - name: Select test tag
+        id: pick_test_tag
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --test
+          first=$(echo "${{ steps.arch_tags.outputs.tags_with_arch }}" | head -n1)
+          echo "test_tag=$first" >> $GITHUB_OUTPUT
+
+      - name: Test Docker image
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+        run: |
+          bash .github/scripts/test_docker_image.sh
 
       - name: Select tag for output
         id: pick

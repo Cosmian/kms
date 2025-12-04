@@ -81,6 +81,62 @@ let
     #!${pkgs.bash}/bin/bash
     set -e
 
+    echo "=== Docker Entrypoint Debug Info ==="
+    echo "Architecture: $(uname -m)"
+    echo "Kernel: $(uname -r)"
+    echo "PATH: $PATH"
+    echo ""
+
+    echo "=== Checking binary locations ==="
+    echo "which cosmian_kms: $(which cosmian_kms || echo 'NOT FOUND IN PATH')"
+    echo "ls -la /bin/cosmian_kms:"
+    ls -la /bin/cosmian_kms || echo "NOT FOUND"
+    echo "ls -la /usr/local/bin/cosmian_kms:"
+    ls -la /usr/local/bin/cosmian_kms || echo "NOT FOUND"
+    echo ""
+
+    echo "=== Checking dynamic linker and libraries ==="
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+      echo "Expected linker: /lib64/ld-linux-x86-64.so.2"
+      ls -la /lib64/ld-linux-x86-64.so.2 || echo "NOT FOUND"
+      echo "Libraries in /lib/x86_64-linux-gnu/:"
+      ls -la /lib/x86_64-linux-gnu/ | head -20 || echo "NOT FOUND"
+    elif [ "$ARCH" = "aarch64" ]; then
+      echo "Expected linker: /lib/ld-linux-aarch64.so.1"
+      ls -la /lib/ld-linux-aarch64.so.1 || echo "NOT FOUND"
+      echo "Libraries in /lib/aarch64-linux-gnu/:"
+      ls -la /lib/aarch64-linux-gnu/ | head -20 || echo "NOT FOUND"
+    fi
+    echo ""
+
+    echo "=== Checking binary ELF information ==="
+    if command -v readelf >/dev/null 2>&1; then
+      echo "Binary interpreter:"
+      readelf -l /bin/cosmian_kms | grep interpreter || echo "readelf failed or no interpreter found"
+    else
+      echo "readelf not available"
+    fi
+    echo ""
+
+    echo "=== Checking ldd output ==="
+    if command -v ldd >/dev/null 2>&1; then
+      ldd /bin/cosmian_kms || echo "ldd failed"
+    else
+      echo "ldd not available"
+    fi
+    echo ""
+
+    echo "=== Attempting to execute binary directly ==="
+    if [ -x /bin/cosmian_kms ]; then
+      echo "/bin/cosmian_kms is executable, trying --version..."
+      /bin/cosmian_kms --version || echo "FAILED with exit code $?"
+    else
+      echo "/bin/cosmian_kms is NOT executable or does not exist"
+    fi
+    echo "=== End Debug Info ==="
+    echo ""
+
     # Create data directory if it doesn't exist
     mkdir -p /var/lib/cosmian-kms
 

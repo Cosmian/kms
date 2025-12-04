@@ -22,11 +22,22 @@ if [ "$(uname)" = "Linux" ]; then
   #    but we will override the runtime interpreter and suppress rpaths below.
 
   # 4) Explicitly set the system dynamic linker (avoids /nix/store/…/ld-linux-x86-64.so.2)
-  #    Prefer /lib64 path when present (matches expected ldd output), fallback to /lib/x86_64-linux-gnu
-  if [ -e "/lib64/ld-linux-x86-64.so.2" ]; then
-    RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib64/ld-linux-x86-64.so.2"
-  elif [ -e "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2" ]; then
-    RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+  #    Architecture-specific paths
+  ARCH="$(uname -m)"
+  if [ "$ARCH" = "x86_64" ]; then
+    # Prefer /lib64 path when present (matches expected ldd output), fallback to /lib/x86_64-linux-gnu
+    if [ -e "/lib64/ld-linux-x86-64.so.2" ]; then
+      RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib64/ld-linux-x86-64.so.2"
+    elif [ -e "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2" ]; then
+      RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+    fi
+  elif [ "$ARCH" = "aarch64" ]; then
+    # ARM64 uses /lib/ld-linux-aarch64.so.1
+    if [ -e "/lib/ld-linux-aarch64.so.1" ]; then
+      RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib/ld-linux-aarch64.so.1"
+    elif [ -e "/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1" ]; then
+      RUSTFLAGS+=" -C link-arg=-Wl,--dynamic-linker,/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1"
+    fi
   fi
 
   export RUSTFLAGS
