@@ -126,6 +126,11 @@ pkgs.dockerTools.buildLayeredImage {
   fakeRootCommands = ''
     mkdir -p usr/local/bin
     ln -s ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
+
+    # Also create /bin symlink for compatibility
+    mkdir -p bin
+    ln -s ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
+
     mkdir -p usr/local/cosmian/ui
     ln -s ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
 
@@ -135,17 +140,22 @@ pkgs.dockerTools.buildLayeredImage {
     # x86_64-linux
     mkdir -p lib64
     if [ -e ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 ]; then
-      ln -s ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2 || true
+      cp -L ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2
     fi
     mkdir -p lib/x86_64-linux-gnu
-    ln -s ${pkgs.glibc}/lib/* lib/x86_64-linux-gnu/ 2>/dev/null || true
+    for f in ${pkgs.glibc}/lib/*.so*; do
+      [ -f "$f" ] && cp -L "$f" lib/x86_64-linux-gnu/ || true
+    done
 
     # aarch64-linux
     if [ -e ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 ]; then
-      ln -s ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 lib/ld-linux-aarch64.so.1 || true
+      mkdir -p lib
+      cp -L ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 lib/ld-linux-aarch64.so.1
     fi
     mkdir -p lib/aarch64-linux-gnu
-    ln -s ${pkgs.glibc}/lib/* lib/aarch64-linux-gnu/ 2>/dev/null || true
+    for f in ${pkgs.glibc}/lib/*.so*; do
+      [ -f "$f" ] && cp -L "$f" lib/aarch64-linux-gnu/ || true
+    done
   '';
 
   # Configuration
