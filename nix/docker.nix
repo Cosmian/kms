@@ -191,27 +191,29 @@ pkgs.dockerTools.buildLayeredImage {
     ln -s ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
 
     # Provide system dynamic linker and glibc locations expected by the binary
-    # Support both x86_64-linux and aarch64-linux
+    # The pkgs.glibc will be for the target architecture (x86_64 or aarch64)
+    # based on the build system, so we copy what's available
 
-    # x86_64-linux
-    mkdir -p lib64
+    # Detect what architecture glibc we have and copy accordingly
     if [ -e ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 ]; then
+      # x86_64-linux
+      mkdir -p lib64
       cp -L ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2
-    fi
-    mkdir -p lib/x86_64-linux-gnu
-    for f in ${pkgs.glibc}/lib/*.so*; do
-      [ -f "$f" ] && cp -L "$f" lib/x86_64-linux-gnu/ || true
-    done
-
-    # aarch64-linux
-    if [ -e ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 ]; then
+      mkdir -p lib/x86_64-linux-gnu
+      for f in ${pkgs.glibc}/lib/*.so*; do
+        [ -f "$f" ] && cp -L "$f" lib/x86_64-linux-gnu/ || true
+      done
+    elif [ -e ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 ]; then
+      # aarch64-linux
       mkdir -p lib
       cp -L ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 lib/ld-linux-aarch64.so.1
+      mkdir -p lib/aarch64-linux-gnu
+      for f in ${pkgs.glibc}/lib/*.so*; do
+        [ -f "$f" ] && cp -L "$f" lib/aarch64-linux-gnu/ || true
+      done
+    else
+      echo "WARNING: Could not detect glibc architecture" >&2
     fi
-    mkdir -p lib/aarch64-linux-gnu
-    for f in ${pkgs.glibc}/lib/*.so*; do
-      [ -f "$f" ] && cp -L "$f" lib/aarch64-linux-gnu/ || true
-    done
   '';
 
   # Configuration

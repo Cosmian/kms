@@ -67,9 +67,15 @@ docker compose -f "$COMPOSE_FILE" up -d
 echo "Waiting for KMS servers to start..."
 sleep 15
 
+# Show container status
+echo "Container status:"
+docker compose -f "$COMPOSE_FILE" ps -a
+
 # Verify servers are responding
 echo "Using compose file: $COMPOSE_FILE"
 echo "Docker image name: ${DOCKER_IMAGE_NAME:-not set}"
+
+# Check no-authentication server (port 9998)
 for i in {1..30}; do
     if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
         echo "KMS server on port 9998 is ready"
@@ -82,6 +88,44 @@ for i in {1..30}; do
         docker compose -f "$COMPOSE_FILE" ps -a
         echo "Showing container logs:"
         docker compose -f "$COMPOSE_FILE" logs
+        exit 1
+    fi
+    sleep 1
+done
+
+# Check TLS server (port 9999) - give it more time if needed
+echo "Checking TLS server on port 9999..."
+for i in {1..30}; do
+    if curl -k -s -f https://127.0.0.1:9999/ui/index.html >/dev/null 2>&1; then
+        echo "TLS server on port 9999 is ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: TLS server on port 9999 failed to start after 30 attempts"
+        echo "Showing tls-authentication container logs:"
+        docker compose -f "$COMPOSE_FILE" logs tls-authentication
+        echo "Showing container status:"
+        docker compose -f "$COMPOSE_FILE" ps -a
+        echo "Showing container logs:"
+        docker compose -f "$COMPOSE_FILE" logs
+        exit 1
+    fi
+    sleep 1
+done
+
+# Check TLS13 server (port 10000) - give it more time if needed
+echo "Checking TLS13 server on port 10000..."
+for i in {1..30}; do
+    if curl -k -s -f https://127.0.0.1:10000/ui/index.html >/dev/null 2>&1; then
+        echo "TLS13 server on port 10000 is ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: TLS13 server on port 10000 failed to start after 30 attempts"
+        echo "Showing tls13-authentication container logs:"
+        docker compose -f "$COMPOSE_FILE" logs tls13-authentication
+        echo "Showing container status:"
+        docker compose -f "$COMPOSE_FILE" ps -a
         exit 1
     fi
     sleep 1
