@@ -18,8 +18,7 @@ on:
 
 jobs:
   packages-test:
-    name: In Docker ${{ matrix.container }} - ${{ matrix.features }} - ${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && ' - ARM' || ' - AMD64'
-      }}
+    name: In Docker ${{ matrix.container }}-${{ matrix.features }}-${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container }}
     strategy:
@@ -147,7 +146,7 @@ jobs:
           fi
 
   systemd-packages-test:
-    name: Use GH runners ${{ matrix.features }} - ${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && ' - ARM' || ' - AMD64' }}
+    name: Use GH runners ${{ matrix.features }}-${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
