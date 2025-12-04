@@ -11,7 +11,6 @@ usage() {
   cat <<EOF
 
   Commands:
-    build              Build the KMS server inside nix-shell
     docker [--load] [--test]
                        Build Docker image tarball (static OpenSSL)
                        --load: Load image into Docker
@@ -56,7 +55,6 @@ usage() {
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
 
   Examples:
-    $0 build --profile release --variant non-fips
     $0 docker --variant non-fips --load
     $0 docker --variant fips --load --test
     $0 test                    # defaults to all
@@ -117,7 +115,7 @@ while [ $# -gt 0 ]; do
     RETRY_DELAY_SECONDS="${2:-}"
     shift 2 || true
     ;;
-  build | docker | test | package | sbom | update-hashes)
+  docker | test | package | sbom | update-hashes)
     COMMAND="$1"
     shift
     break
@@ -181,10 +179,6 @@ compute_sha256() {
 
 # Validate command and corresponding script
 case "$COMMAND" in
-build)
-  SCRIPT="$REPO_ROOT/nix/scripts/build.sh"
-  KEEP_VARS=""
-  ;;
 docker)
   # Build Docker image(s) via Nix attributes; optionally docker load and/or test
   # Allow flags after subcommand: --variant/--load/--test (docker is always static-linked)
@@ -231,8 +225,8 @@ docker)
   # Map variant to attribute (docker is always static-linked)
   ATTR="docker-image-$DOCKER_VARIANT"
 
-  # Version for image tag (should match docker.nix)
-  VERSION="5.13.0"
+  # Extract version from Cargo.toml
+  VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
 
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
   # Reuse existing tarball if present unless FORCE_REBUILD is set

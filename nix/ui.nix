@@ -2,6 +2,8 @@
   pkgs ? import <nixpkgs> { },
   stdenv ? pkgs.stdenv,
   lib ? pkgs.lib,
+  # KMS version (from Cargo.toml)
+  version,
   features ? [ ], # [ "non-fips" ] or []
   rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
   # Allow callers to bypass strict enforcement for NPM deps hash discovery
@@ -16,13 +18,6 @@ let
   actualCargoHash =
     let
       placeholder = "sha256-CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-      os =
-        if pkgs.stdenv.hostPlatform.isLinux then
-          "linux"
-        else if pkgs.stdenv.hostPlatform.isDarwin then
-          "darwin"
-        else
-          "unknown";
       hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + ".sha256";
     in
     if builtins.pathExists hashFile then
@@ -168,7 +163,7 @@ let
   # Build the UI using buildNpmPackage for proper dependency management
   uiBuild = pkgs.buildNpmPackage {
     pname = "cosmian-kms-ui-deps-${variant}";
-    version = "5.13.0";
+    inherit version;
 
     src = lib.cleanSourceWith {
       src = ../ui;
@@ -216,7 +211,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "cosmian-kms-ui-${variant}";
-  version = "5.13.0";
+  inherit version;
 
   # Build from source with filtering (name = null disables gitignore filtering)
   src = lib.cleanSourceWith {

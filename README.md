@@ -233,9 +233,6 @@ OpenSSL v3.2.0 is required to build the KMS.
 Nix-based (reproducible FIPS builds):
 
 ```sh
-# Build (debug by default); add --profile release for optimized builds
-bash .github/scripts/nix.sh build
-
 # Run tests (defaults to 'all'; DB backends require services)
 bash .github/scripts/nix.sh test
 

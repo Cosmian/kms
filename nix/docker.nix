@@ -4,14 +4,14 @@
   kmsServer ? null,
   # Variant: "fips" or "non-fips"
   variant ? "fips",
+  # KMS version (from Cargo.toml)
+  version,
 }:
 
 # Note: The kmsServer derivation must be built with a UI parameter
 # to include the web interface at /usr/local/cosmian/ui/dist
 
 let
-  # Version from the KMS server
-  version = "5.13.0";
 
   # Determine the actual KMS server to use
   actualKmsServer =

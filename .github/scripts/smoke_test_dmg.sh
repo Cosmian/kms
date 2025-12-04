@@ -8,7 +8,7 @@
 #   ./smoke_test_dmg.sh <path-to-dmg-file>
 #
 # Example:
-#   ./smoke_test_dmg.sh result-dmg-fips-static/Cosmian\ KMS\ Server_5.13.0_arm64.dmg
+#   ./smoke_test_dmg.sh result-dmg-fips-static/Cosmian\ KMS\ Server_X.Y.Z_arm64.dmg
 
 set -euo pipefail
 
@@ -19,7 +19,10 @@ NC='\033[0m'
 
 info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+error() {
+  echo -e "${RED}[ERROR]${NC} $*"
+  exit 1
+}
 
 if [ $# -ne 1 ]; then
   error "Usage: $0 <path-to-dmg-file>"

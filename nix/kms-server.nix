@@ -6,6 +6,8 @@
   # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
   # links against pkgs228 (glibc 2.27) on Linux for maximum compatibility.
   rustPlatform ? pkgs.rustPlatform,
+  # KMS version (from Cargo.toml)
+  version,
   features ? [ ], # [ "non-fips" ] or []
   ui ? null, # Pre-built UI derivation providing dist/
   # Linkage mode: true for static OpenSSL, false for dynamic OpenSSL
@@ -66,9 +68,6 @@ let
     in
     lib.strings.removeSuffix "\n" noWS;
   expectedHash = sanitizeHash expectedHashRaw;
-
-  # KMS version
-  version = "5.13.0";
 
   # Force rebuild marker - increment to invalidate cache when only Nix expressions change
   rebuildMarker = "1";

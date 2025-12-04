@@ -245,15 +245,15 @@ This purely functional approach means:
 
 ```bash
 # Developer build on laptop (Linux x86_64)
-bash .github/scripts/nix.sh build --profile release --variant fips
+nix-build -A kms-server-fips -o result-server-fips
 # SHA256: abc123...
 
 # CI build on GitHub Actions (same platform)
-bash .github/scripts/nix.sh build --profile release --variant fips
+nix-build -A kms-server-fips -o result-server-fips
 # SHA256: abc123... ✅ IDENTICAL
 
 # Security team rebuild 6 months later (same commit)
-bash .github/scripts/nix.sh build --profile release --variant fips
+nix-build -A kms-server-fips -o result-server-fips
 # SHA256: abc123... ✅ STILL IDENTICAL
 ```
 
@@ -298,7 +298,7 @@ bash .github/scripts/nix.sh package deb  # ✅ Works perfectly
 
 Critical for:
 
-- **Secure environments**: Build in isolated networks
+- **Secure environments**: Package in isolated networks
 - **Disaster recovery**: Reproduce builds without external dependencies
 - **Compliance**: Prove no external influence during build
 

@@ -45,7 +45,7 @@ jobs:
       - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian*
       - uses: actions/download-artifact@v4
         with:
-          pattern: "*fips*"
+          pattern: '*fips*'
       - uses: actions/download-artifact@v4
         with:
           pattern: windows-*
@@ -113,11 +113,11 @@ jobs:
             fi
           done
 
-          # Hash artifacts produced by packaging (nix/expected-hashes/*.sha256)
+          # Hash artifacts produced by packaging (result-*/bin/*.sha256)
           for dir in hash-*; do
-            if [ -d "$dir" ] && compgen -G "$dir/nix/expected-hashes/*.sha256" > /dev/null; then
+            if [ -d "$dir" ] && compgen -G "$dir/result-*/bin/*.sha256" > /dev/null; then
               scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-                $dir/nix/expected-hashes/*.sha256 \
+                $dir/result-*/bin/*.sha256 \
                 cosmian@package.cosmian.com:$DESTINATION_DIR/
             fi
           done
@@ -162,10 +162,10 @@ jobs:
             # Windows EXE packages
             windows-release/*.exe
 
-            # Hash artifacts from nix/expected-hashes
-            hash-ubuntu-24.04-*-*/nix/expected-hashes/*.sha256
-            hash-ubuntu-24.04-arm-*-*/nix/expected-hashes/*.sha256
-            hash-macos-15-*-*/nix/expected-hashes/*.sha256
+            # Hash artifacts from result-*/bin
+            hash-ubuntu-24.04-*-*/result-*/bin/*.sha256
+            hash-ubuntu-24.04-arm-*-*/result-*/bin/*.sha256
+            hash-macos-15-*-*/result-*/bin/*.sha256
 
             # Include Cosmian public GPG key
             fips_*ubuntu-24.04-*/result-deb-fips*/cosmian-kms-public.asc

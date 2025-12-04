@@ -458,7 +458,7 @@ Certificate:
 {
   "critical": {
     "identity": {
-      "docker-reference": "ghcr.io/cosmian/kms:5.13.0-amd64"
+      "docker-reference": "ghcr.io/cosmian/kms:X.Y.Z-amd64"
     },
     "image": {
       "docker-manifest-digest": "sha256:abc123..."
@@ -706,7 +706,7 @@ Make it executable and use:
 
 ```bash
 chmod +x verify-kms.sh
-./verify-kms.sh ghcr.io/cosmian/kms:5.13.0-amd64
+./verify-kms.sh ghcr.io/cosmian/kms:X.Y.Z-amd64
 ```
 
 #### Manual Verification Steps
@@ -714,7 +714,7 @@ chmod +x verify-kms.sh
 ##### Step 1: Pull the image
 
 ```bash
-docker pull ghcr.io/cosmian/kms:5.13.0-amd64
+docker pull ghcr.io/cosmian/kms:X.Y.Z-amd64
 ```
 
 ##### Step 2: Verify with full output
@@ -723,13 +723,13 @@ docker pull ghcr.io/cosmian/kms:5.13.0-amd64
 cosign verify \
   --certificate-identity-regexp "^https://github.com/Cosmian/kms/" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/cosmian/kms:5.13.0-amd64
+  ghcr.io/cosmian/kms:X.Y.Z-amd64
 ```
 
 **Expected output:**
 
 ```text
-Verification for ghcr.io/cosmian/kms:5.13.0-amd64 --
+Verification for ghcr.io/cosmian/kms:X.Y.Z-amd64 --
 The following checks were performed on each of these signatures:
   - The cosign claims were validated
   - Existence of the claims in the transparency log was verified offline
@@ -745,7 +745,7 @@ cosign verify \
   --certificate-identity-regexp "^https://github.com/Cosmian/kms/" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   --output json \
-  ghcr.io/cosmian/kms:5.13.0-amd64 | jq -r '.[0].optional.Subject'
+  ghcr.io/cosmian/kms:X.Y.Z-amd64 | jq -r '.[0].optional.Subject'
 ```
 
 **Expected output:**
@@ -769,7 +769,7 @@ cosign verify \
 cosign verify \
   --certificate-identity-regexp "^https://github.com/Cosmian/kms/" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/cosmian/kms:5.13.0
+  ghcr.io/cosmian/kms:X.Y.Z
 
 # Verify by exact digest (most secure)
 cosign verify \

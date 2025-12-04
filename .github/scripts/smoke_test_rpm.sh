@@ -8,7 +8,7 @@
 #   ./smoke_test_rpm.sh <path-to-rpm-file>
 #
 # Example:
-#   ./smoke_test_rpm.sh result-rpm-fips-static/cosmian_kms_server_fips_static-5.13.0-1.x86_64.rpm
+#   ./smoke_test_rpm.sh result-rpm-fips-static/cosmian_kms_server_fips_static-X.Y.Z-1.x86_64.rpm
 
 set -euo pipefail
 

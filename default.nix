@@ -14,6 +14,60 @@
 }:
 
 let
+  # Extract version from workspace Cargo.toml
+  # Read the file and parse it to find version = "x.y.z"
+  cargoTomlContent = builtins.readFile ./Cargo.toml;
+  # Split into lines and find the version line in [workspace.package] section
+  lines = pkgs.lib.splitString "\n" cargoTomlContent;
+  # Find workspace.package section, then extract version
+  extractVersion =
+    lines:
+    let
+      # Find index of [workspace.package]
+      findWorkspacePackage =
+        idx:
+        if idx >= builtins.length lines then
+          null
+        else if pkgs.lib.hasPrefix "[workspace.package]" (builtins.elemAt lines idx) then
+          idx
+        else
+          findWorkspacePackage (idx + 1);
+
+      workspaceIdx = findWorkspacePackage 0;
+
+      # Starting from workspace.package section, find version line
+      findVersion =
+        idx:
+        if idx >= builtins.length lines || workspaceIdx == null then
+          null
+        else
+          let
+            line = builtins.elemAt lines idx;
+            # Stop at next section
+            isNextSection = pkgs.lib.hasPrefix "[" line && idx > workspaceIdx;
+          in
+          if isNextSection then
+            null
+          else if pkgs.lib.hasPrefix "version" (pkgs.lib.replaceStrings [ " " "\t" ] [ "" "" ] line) then
+            # Extract "x.y.z" from version = "x.y.z"
+            let
+              # Remove everything before the first quote
+              afterFirstQuote = builtins.elemAt (pkgs.lib.splitString "\"" line) 1;
+            in
+            afterFirstQuote
+          else
+            findVersion (idx + 1);
+    in
+    if workspaceIdx == null then
+      throw "Could not find [workspace.package] in Cargo.toml"
+    else
+      let
+        ver = findVersion (workspaceIdx + 1);
+      in
+      if ver == null then throw "Could not find version in [workspace.package] section" else ver;
+
+  kmsVersion = extractVersion lines;
+
   # Reuse the same pinned nixpkgs for internal imports/overlays
   nixpkgsSrc = builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
@@ -132,11 +186,13 @@ let
   # Build UI for both variants (use modern pkgs for UI build tools)
   ui-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ ];
+    version = kmsVersion;
     inherit rustToolchain enforceDeterministicHash;
   };
 
   ui-non-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ "non-fips" ];
+    version = kmsVersion;
     inherit rustToolchain enforceDeterministicHash;
   };
 
@@ -152,6 +208,7 @@ let
       openssl312 = if static then openssl312-static else openssl312-dynamic;
       inherit pkgs228;
       rustPlatform = rustPlatform190;
+      version = kmsVersion;
       inherit
         features
         ui
@@ -194,11 +251,13 @@ let
   docker-image-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-fips;
     variant = "fips";
+    version = kmsVersion;
   };
 
   docker-image-non-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-non-fips;
     variant = "non-fips";
+    version = kmsVersion;
   };
 
 in

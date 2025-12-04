@@ -47,10 +47,9 @@ The primary entrypoint is `nix.sh`, which provides a unified interface to all wo
 
 ```bash
 # Development iteration
-bash nix.sh build && bash nix.sh test sqlite
+bash nix.sh test sqlite
 
 # Full release build
-bash nix.sh build --profile release --variant fips
 bash nix.sh test all
 bash nix.sh package
 
@@ -90,42 +89,7 @@ Cosmian KMS uses **Nix** to achieve:
 
 ### Commands
 
-#### 1. `build` — Build the KMS Server
-
-Compiles the `cosmian_kms_server` binary inside a Nix shell with pinned toolchain.
-
-**Syntax:**
-
-```bash
-bash .github/scripts/nix.sh build [--profile <debug|release>] [--variant <fips|non-fips>]
-```
-
-**What it does:**
-
-- Invokes `nix/scripts/build.sh` inside pure `nix-shell`
-- Enforces static OpenSSL linking (no dynamic SSL dependencies)
-- On Linux: strips `/nix/store` paths from ELF metadata (interpreter, RPATH)
-- Validates GLIBC symbol versions ≤ 2.28 for broad Linux compatibility
-- Verifies binary runs and reports correct version
-
-**Examples:**
-
-```bash
-# Debug FIPS build (default)
-bash .github/scripts/nix.sh build
-
-# Release non-FIPS build
-bash .github/scripts/nix.sh build --profile release --variant non-fips
-```
-
-**Outputs:**
-
-- Binary: `target/<profile>/cosmian_kms`
-- Platform-specific checks via `ldd` (Linux) or `otool` (macOS)
-
----
-
-#### 2. `test` — Run Test Suites
+#### 1. `test` — Run Test Suites
 
 Executes comprehensive test suites across databases, cryptographic backends, and client protocols.
 
@@ -206,7 +170,7 @@ bash .github/scripts/nix.sh test hsm all
 
 ---
 
-#### 3. `package` — Build Distribution Packages
+#### 2. `package` — Build Distribution Packages
 
 Creates platform-native packages (DEB, RPM, DMG) using Nix derivations, with mandatory smoke tests.
 
@@ -272,7 +236,7 @@ After one successful online run, subsequent package builds work offline (network
 
 ---
 
-#### 4. `sbom` — Generate Software Bill of Materials
+#### 3. `sbom` — Generate Software Bill of Materials
 
 Produces comprehensive SBOM files using `sbomnix` tools for supply chain transparency and compliance.
 
@@ -320,7 +284,7 @@ bash .github/scripts/nix.sh --variant non-fips sbom
 
 ---
 
-#### 5. `update-hashes` — Update Expected Hashes
+#### 4. `update-hashes` — Update Expected Hashes
 
 Automated hash maintenance for Nix build reproducibility verification.
 
@@ -387,7 +351,7 @@ All commands support these flags:
 
 | Flag              | Values             | Default                                     | Effect                    |
 | ----------------- | ------------------ | ------------------------------------------- | ------------------------- |
-| `-p`, `--profile` | `debug`, `release` | `debug` (build/test)<br>`release` (package) | Cargo build profile       |
+| `-p`, `--profile` | `debug`, `release` | `debug` (test)<br>`release` (package) | Cargo build profile       |
 | `-v`, `--variant` | `fips`, `non-fips` | `fips`                                      | Cryptographic feature set |
 | `-h`, `--help`    | —                  | —                                           | Show usage and exit       |
 
@@ -436,7 +400,6 @@ All commands support these flags:
 
 | Scenario                     | Mode     | Rationale                                        |
 | ---------------------------- | -------- | ------------------------------------------------ |
-| Standard build               | `--pure` | Hermetic toolchain (Rust, OpenSSL from Nix)      |
 | Database tests (sqlite/psql) | `--pure` | Self-contained test environment                  |
 | HSM tests                    | Non-pure | Needs system PKCS#11 libraries (vendor-specific) |
 | macOS DMG packaging          | Non-pure | Requires system tools (`hdiutil`, `osascript`)   |
@@ -520,7 +483,6 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 | Script                 | Purpose                               | Invocation Context         |
 | ---------------------- | ------------------------------------- | -------------------------- |
-| `build.sh`         | Core build logic (called by `nix.sh`) | Inside `nix-shell --pure` |
 | `package_deb.sh`   | Debian package build                  | Via `nix.sh package deb`  |
 | `package_rpm.sh`   | RPM package build                     | Via `nix.sh package rpm`  |
 | `package_dmg.sh`   | macOS DMG build                       | Via `nix.sh package dmg`  |
@@ -630,7 +592,8 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
                          ▼
               ┌──────────────────────────────┐
               │  Output:                     │
-              │  target/release/cosmian_kms  │
+              │  Binary in target/           │
+              └──────────────────────────────┘
               └──────────────────────────────┘
 ```
 

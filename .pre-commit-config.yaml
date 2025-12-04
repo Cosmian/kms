@@ -30,13 +30,6 @@ repos:
             --fix,
           ]
 
-  - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.13.7
-    hooks:
-      - id: markdown-link-check
-        args: [-q, --config, .markdown-link-check.json]
-        exclude: .github/copilot-instructions.md
-
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
@@ -233,3 +226,11 @@ repos:
       - id: clippy-all-targets
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
+
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.13.7
+    hooks:
+      - id: markdown-link-check
+        args: [-q, --config, .markdown-link-check.json]
+        exclude: .github/copilot-instructions.md
+
