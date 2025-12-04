@@ -89,8 +89,6 @@ let
 
     echo "=== Checking binary locations ==="
     echo "which cosmian_kms: $(which cosmian_kms || echo 'NOT FOUND IN PATH')"
-    echo "ls -la /bin/cosmian_kms:"
-    ls -la /bin/cosmian_kms || echo "NOT FOUND"
     echo "ls -la /usr/local/bin/cosmian_kms:"
     ls -la /usr/local/bin/cosmian_kms || echo "NOT FOUND"
     echo ""
@@ -113,7 +111,7 @@ let
     echo "=== Checking binary ELF information ==="
     if command -v readelf >/dev/null 2>&1; then
       echo "Binary interpreter:"
-      readelf -l /bin/cosmian_kms | grep interpreter || echo "readelf failed or no interpreter found"
+      readelf -l /usr/local/bin/cosmian_kms | grep interpreter || echo "readelf failed or no interpreter found"
     else
       echo "readelf not available"
     fi
@@ -121,18 +119,18 @@ let
 
     echo "=== Checking ldd output ==="
     if command -v ldd >/dev/null 2>&1; then
-      ldd /bin/cosmian_kms || echo "ldd failed"
+      ldd /usr/local/bin/cosmian_kms || echo "ldd failed"
     else
       echo "ldd not available"
     fi
     echo ""
 
     echo "=== Attempting to execute binary directly ==="
-    if [ -x /bin/cosmian_kms ]; then
-      echo "/bin/cosmian_kms is executable, trying --version..."
-      /bin/cosmian_kms --version || echo "FAILED with exit code $?"
+    if [ -x /usr/local/bin/cosmian_kms ]; then
+      echo "/usr/local/bin/cosmian_kms is executable, trying --version..."
+      /usr/local/bin/cosmian_kms --version || echo "FAILED with exit code $?"
     else
-      echo "/bin/cosmian_kms is NOT executable or does not exist"
+      echo "/usr/local/bin/cosmian_kms is NOT executable or does not exist"
     fi
     echo "=== End Debug Info ==="
     echo ""
@@ -182,19 +180,16 @@ pkgs.dockerTools.buildLayeredImage {
   fakeRootCommands = ''
     echo "=== fakeRootCommands: Creating directory structure ==="
     mkdir -p usr/local/bin
-    mkdir -p bin
     mkdir -p usr/local/cosmian/ui
 
-    echo "=== fakeRootCommands: Creating binary symlinks ==="
+    echo "=== fakeRootCommands: Creating binary symlink ==="
     ln -sv ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
-    ln -sv ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
 
     echo "=== fakeRootCommands: Creating UI symlink ==="
     ln -sv ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
 
     echo "=== fakeRootCommands: Verifying symlinks created ==="
     ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
-    ls -la bin/ || echo "ERROR: bin not found"
     ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
 
     # Provide system dynamic linker and glibc locations expected by the binary
