@@ -123,7 +123,14 @@ jobs:
           done
 
           # Include Cosmian public GPG key
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa fips_ubuntu-24.04-*/result-deb-fips/cosmian-kms-public.asc cosmian@package.cosmian.com:$DESTINATION_DIR/
+          for dir in fips_*ubuntu-24.04-*${{ inputs.debug_or_release }}; do
+            if [ -d "$dir" ] && compgen -G "$dir/result-deb-fips*/cosmian-kms-public.asc" > /dev/null; then
+              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+                $dir/result-deb-fips*/cosmian-kms-public.asc \
+                cosmian@package.cosmian.com:$DESTINATION_DIR/
+              break  # Only need to copy once since the key is the same
+            fi
+          done
 
           # Windows EXE packages (kept separate because path differs from ARCHIVE_NAMES patterns)
           if compgen -G "windows-release/*setup.exe" > /dev/null; then
@@ -161,4 +168,4 @@ jobs:
             hash-macos-15-*-*/nix/expected-hashes/*.sha256
 
             # Include Cosmian public GPG key
-            fips_ubuntu-24.04-*/result-deb-fips/cosmian-kms-public.asc
+            fips_*ubuntu-24.04-*/result-deb-fips*/cosmian-kms-public.asc
