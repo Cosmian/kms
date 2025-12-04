@@ -180,40 +180,58 @@ pkgs.dockerTools.buildLayeredImage {
 
   # For this nixpkgs version, use fakeRootCommands to create root files
   fakeRootCommands = ''
+    echo "=== fakeRootCommands: Creating directory structure ==="
     mkdir -p usr/local/bin
-    ln -s ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
-
-    # Also create /bin symlink for compatibility
     mkdir -p bin
-    ln -s ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
-
     mkdir -p usr/local/cosmian/ui
-    ln -s ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
+
+    echo "=== fakeRootCommands: Creating binary symlinks ==="
+    ln -sv ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
+    ln -sv ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
+
+    echo "=== fakeRootCommands: Creating UI symlink ==="
+    ln -sv ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
+
+    echo "=== fakeRootCommands: Verifying symlinks created ==="
+    ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
+    ls -la bin/ || echo "ERROR: bin not found"
+    ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
 
     # Provide system dynamic linker and glibc locations expected by the binary
-    # The pkgs.glibc will be for the target architecture (x86_64 or aarch64)
-    # based on the build system, so we copy what's available
+    # Copy all files from glibc/lib to all possible locations
+    # The binary will use the correct one for its architecture
 
-    # Detect what architecture glibc we have and copy accordingly
-    if [ -e ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 ]; then
-      # x86_64-linux
-      mkdir -p lib64
-      cp -L ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2
-      mkdir -p lib/x86_64-linux-gnu
-      for f in ${pkgs.glibc}/lib/*.so*; do
-        [ -f "$f" ] && cp -L "$f" lib/x86_64-linux-gnu/ || true
-      done
-    elif [ -e ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 ]; then
-      # aarch64-linux
-      mkdir -p lib
-      cp -L ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 lib/ld-linux-aarch64.so.1
-      mkdir -p lib/aarch64-linux-gnu
-      for f in ${pkgs.glibc}/lib/*.so*; do
-        [ -f "$f" ] && cp -L "$f" lib/aarch64-linux-gnu/ || true
-      done
-    else
-      echo "WARNING: Could not detect glibc architecture" >&2
-    fi
+    echo "=== fakeRootCommands: Copying glibc files from ${pkgs.glibc}/lib ==="
+    ls -la ${pkgs.glibc}/lib/ || echo "Failed to list glibc lib directory"
+
+    # Create all directory structures
+    mkdir -p lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu
+
+    # Copy all shared libraries and dynamic linkers
+    # This will include whichever architecture glibc provides
+    for f in ${pkgs.glibc}/lib/*; do
+      if [ -f "$f" ]; then
+        filename=$(basename "$f")
+        echo "Copying: $filename"
+
+        # Copy to lib/ (for aarch64 ld-linux-aarch64.so.1)
+        cp -L "$f" lib/ || true
+
+        # Copy to lib64/ (for x86_64 ld-linux-x86-64.so.2)
+        cp -L "$f" lib64/ || true
+
+        # Copy to architecture-specific directories
+        cp -L "$f" lib/x86_64-linux-gnu/ || true
+        cp -L "$f" lib/aarch64-linux-gnu/ || true
+      fi
+    done
+
+    echo "Files copied to lib/:"
+    ls -la lib/ | head -20 || true
+    echo "Files copied to lib64/:"
+    ls -la lib64/ | head -20 || true
+    echo "Files copied to lib/aarch64-linux-gnu/:"
+    ls -la lib/aarch64-linux-gnu/ | head -20 || true
   '';
 
   # Configuration

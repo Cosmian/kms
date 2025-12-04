@@ -138,6 +138,11 @@ jobs:
           first=$(echo "${{ steps.arch_tags.outputs.tags_with_arch }}" | head -n1)
           echo "test_tag=$first" >> $GITHUB_OUTPUT
 
+          # Ensure the test tag is available locally for testing
+          # The image was loaded as cosmian-kms:VERSION-VARIANT, tag it with the GHCR name for the test
+          echo "Tagging local image for test: ${{ steps.image_info.outputs.image_name }} -> $first"
+          docker tag "${{ steps.image_info.outputs.image_name }}" "$first"
+
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
