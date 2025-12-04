@@ -30,6 +30,7 @@ wasm-pack build --target web --release --features non-fips
 Then copy the generated `pkg` directory into the React app's source tree:
 
 ```bash
+mkdir ../../ui/src/wasm/
 cp -R pkg ../../ui/src/wasm/
 ```
 
