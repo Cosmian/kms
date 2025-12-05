@@ -185,7 +185,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: nix-cargo-test-fips
         name: Nix cargo test (sqlite fips)
@@ -201,6 +200,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: kms-server-package
         name: Nix KMS server non-fips packaging
@@ -233,4 +233,3 @@ repos:
       - id: markdown-link-check
         args: [-q, --config, .markdown-link-check.json]
         exclude: .github/copilot-instructions.md
-
