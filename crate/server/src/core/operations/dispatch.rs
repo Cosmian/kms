@@ -2,14 +2,16 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-                kmip_0::kmip_types::State,
-        kmip_0::kmip_operations::DiscoverVersions,
-        kmip_2_1::kmip_operations::{
-            Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
-            DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
-            GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation, Query,
-            RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign,
-            SignatureVerify, Validate,
+        kmip_0::{kmip_operations::DiscoverVersions, kmip_types::State},
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_operations::{
+                Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
+                DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
+                GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation,
+                Query, RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute,
+                Sign, SignatureVerify, Validate,
+            },
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -57,7 +59,8 @@ pub(crate) async fn dispatch(
         // We issue an empty Locate request (no attribute filters) and let
         // the server-side locate handler apply `State::Active`.
         // Errors are ignored to avoid interfering with the main operation.
-        if operation_tag != "Locate" {
+        // Metrics on Destroy and Revoke as they are directly handled in those operations.
+        if operation_tag != "Destroy" && operation_tag != "Revoke" {
             let request = Locate {
                 attributes: Attributes {
                     state: Some(State::Active),
@@ -68,7 +71,9 @@ pub(crate) async fn dispatch(
             if let Ok(resp) = kms.locate(request, user, database_params.clone()).await {
                 let count = resp.located_items.unwrap_or(0);
                 trace!("Active keys count refreshed to {}", count);
-                metrics.update_active_keys_count(i64::from(count));
+                let prev = metrics.get_active_keys_current();
+                let delta = i64::from(count) - prev;
+                metrics.update_active_keys_count(delta);
             }
         }
     }

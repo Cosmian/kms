@@ -616,7 +616,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     });
 
     // Clone kms_server for HttpServer closure
-    let kms_server_for_http = kms_server;
+    let kms_server_for_http = kms_server.clone();
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {

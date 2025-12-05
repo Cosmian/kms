@@ -15,6 +15,7 @@ mod hash;
 mod hsm;
 mod mac;
 mod mac_verify;
+mod metrics;
 mod opaque_object;
 mod query;
 mod rng;

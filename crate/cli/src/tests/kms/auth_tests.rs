@@ -1,4 +1,3 @@
-#![cfg(feature = "non-fips")]
 use std::path::PathBuf;
 
 use base64::Engine;

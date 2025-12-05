@@ -83,6 +83,9 @@ pub struct OtelMetrics {
     /// Current number of active keys (keys in Active state)
     pub active_keys_current: UpDownCounter<i64>,
 
+    /// Mirror of `active_keys_current` for testing/inspection
+    active_keys_value: Arc<RwLock<i64>>,
+
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
 
@@ -269,6 +272,7 @@ impl OtelMetrics {
             active_connections,
             kms_objects_total,
             active_keys_current,
+            active_keys_value: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
         })
@@ -421,7 +425,17 @@ impl OtelMetrics {
     pub fn update_active_keys_count(&self, delta: i64) {
         if delta != 0 {
             self.active_keys_current.add(delta, &[]);
+            // Mirror the gauge internally for tests/inspection
+            if let Ok(mut v) = self.active_keys_value.write() {
+                *v += delta;
+            }
         }
+    }
+
+    /// Read the mirrored current active keys gauge value
+    #[must_use]
+    pub fn get_active_keys_current(&self) -> i64 {
+        self.active_keys_value.read().map_or(0, |guard| *guard)
     }
 
     /// Record cache operation
