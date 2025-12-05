@@ -191,7 +191,8 @@ async fn unwrap_using_encryption_oracle(
         .strip_suffix("_pk")
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
 
-    // do not check permissions on external keys
+    // Permission checks on HSM keys are not performed during unwrapping.
+    // The HSM itself manages access control for key operations.
 
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
