@@ -80,11 +80,11 @@ pub struct OtelMetrics {
     /// Total number of objects in the KMS
     pub kms_objects_total: UpDownCounter<i64>,
 
-    /// Current number of active keys (keys in Active state)
-    pub active_keys_current: UpDownCounter<i64>,
+    /// Current number of active keys (absolute count from Locate responses)
+    pub active_keys_count: UpDownCounter<i64>,
 
-    /// Mirror of `active_keys_current` for testing/inspection
-    active_keys_value: Arc<RwLock<i64>>,
+    /// Mirror of `active_keys_count` for tracking the last set value
+    active_keys_count_value: Arc<RwLock<i64>>,
 
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
@@ -231,10 +231,10 @@ impl OtelMetrics {
             .with_unit("{object}")
             .build();
 
-        // Active Keys (current number of keys in Active state)
-        let active_keys_current = meter
-            .i64_up_down_counter("kms.keys.active.current")
-            .with_description("Current number of keys in Active state")
+        // Active Keys count (absolute number of keys in Active state)
+        let active_keys_count = meter
+            .i64_up_down_counter("kms.keys.active.count")
+            .with_description("Number of keys in Active state (absolute count based on Locate)")
             .with_unit("{key}")
             .build();
 
@@ -271,8 +271,8 @@ impl OtelMetrics {
             errors_total,
             active_connections,
             kms_objects_total,
-            active_keys_current,
-            active_keys_value: Arc::new(RwLock::new(0)),
+            active_keys_count,
+            active_keys_count_value: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
         })
@@ -417,25 +417,19 @@ impl OtelMetrics {
         );
     }
 
-    /// Update current active keys count by adding a delta
+    /// Set the current active keys count from an absolute Locate response
     ///
-    /// This method adds the provided `delta` to the `active_keys_current` `UpDownCounter`.
-    /// If you have an absolute count from a locate query, compute the delta externally
-    /// before calling this method.
-    pub fn update_active_keys_count(&self, delta: i64) {
-        if delta != 0 {
-            self.active_keys_current.add(delta, &[]);
-            // Mirror the gauge internally for tests/inspection
-            if let Ok(mut v) = self.active_keys_value.write() {
-                *v += delta;
+    /// OTLP instrument is an `UpDownCounter`, so we compute the delta from
+    /// the previously observed value and add it. The last value is mirrored
+    /// internally for subsequent updates and optional inspection.
+    pub fn update_active_keys_count(&self, absolute_count: i64) {
+        if let Ok(mut last) = self.active_keys_count_value.write() {
+            let delta = absolute_count - *last;
+            if delta != 0 {
+                self.active_keys_count.add(delta, &[]);
+                *last = absolute_count;
             }
         }
-    }
-
-    /// Read the mirrored current active keys gauge value
-    #[must_use]
-    pub fn get_active_keys_current(&self) -> i64 {
-        self.active_keys_value.read().map_or(0, |guard| *guard)
     }
 
     /// Record cache operation

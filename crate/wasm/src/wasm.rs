@@ -61,6 +61,14 @@ use x509_cert::{
 };
 use zeroize::Zeroizing;
 
+#[wasm_bindgen(start)]
+#[allow(clippy::missing_const_for_fn)]
+pub fn init_panic_hook() {
+    // Improve error messages for panics in the browser console
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
+}
+
 fn parse_ttlv_response<T: DeserializeOwned + Serialize>(
     response: &str,
 ) -> Result<JsValue, JsValue> {

@@ -23,26 +23,41 @@ pub(crate) async fn locate(
     params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<LocateResponse> {
     trace!("{}", request);
+    // Determine the effective state filter: prefer explicit parameter, else Attributes.state
+    let effective_state = state.or(request.attributes.state);
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .database
-        .find(Some(&request.attributes), state, user, false, params)
+        .find(
+            Some(&request.attributes),
+            effective_state,
+            user,
+            false,
+            params,
+        )
         .await?;
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
-    // Filter the uids that match the access access structure and exclude Destroyed objects by default.
-    // Per KMIP, destroyed objects should only be returned if explicitly requested via Storage Status Mask.
+    // Filter the uids that match the access structure.
+    // If no explicit state is requested, exclude Destroyed objects by default per KMIP.
     let mut uids = Vec::new();
     if access_policy_from_attributes(&request.attributes).is_err() {
-        for (uid, state, attributes) in uids_attrs {
+        for (uid, state_found, attributes) in uids_attrs {
             trace!(
                 "UID: {:?}, State: {:?}, Attributes: {}",
-                uid, state, attributes
+                uid, state_found, attributes
             );
-            // Exclude destroyed objects unless caller explicitly constrained state (not currently exposed)
-            if matches!(state, State::Destroyed | State::Destroyed_Compromised) {
-                continue;
+            // If an explicit state filter is provided, enforce it strictly.
+            if let Some(s) = effective_state {
+                if state_found != s {
+                    continue;
+                }
+            } else {
+                // Otherwise, exclude destroyed objects
+                if matches!(state_found, State::Destroyed | State::Destroyed_Compromised) {
+                    continue;
+                }
             }
             // If there is no access structure, accept; otherwise would compare the access policies
             uids.push(UniqueIdentifier::TextString(uid));

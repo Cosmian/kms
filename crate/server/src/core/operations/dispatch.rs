@@ -17,7 +17,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::debug;
 
 use crate::{
     core::{
@@ -56,11 +56,10 @@ pub(crate) async fn dispatch(
         }
 
         // Refresh Active Keys metric via a KMIP Locate with Active state
-        // We issue an empty Locate request (no attribute filters) and let
-        // the server-side locate handler apply `State::Active`.
-        // Errors are ignored to avoid interfering with the main operation.
-        // Metrics on Destroy and Revoke as they are directly handled in those operations.
-        if operation_tag != "Destroy" && operation_tag != "Revoke" {
+        // We issue a Locate request filtered on Active state so the count
+        // reflects the current number of active keys. Errors are ignored.
+        // Skip for Locate/Destroy/Revoke which have their own specific handling.
+        if operation_tag != "Locate" && operation_tag != "Destroy" && operation_tag != "Revoke" {
             let request = Locate {
                 attributes: Attributes {
                     state: Some(State::Active),
@@ -70,10 +69,8 @@ pub(crate) async fn dispatch(
             };
             if let Ok(resp) = kms.locate(request, user, database_params.clone()).await {
                 let count = resp.located_items.unwrap_or(0);
-                trace!("Active keys count refreshed to {}", count);
-                let prev = metrics.get_active_keys_current();
-                let delta = i64::from(count) - prev;
-                metrics.update_active_keys_count(delta);
+                debug!("Active keys count refreshed to {}", count);
+                metrics.update_active_keys_count(i64::from(count));
             }
         }
     }
