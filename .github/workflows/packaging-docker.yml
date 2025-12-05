@@ -160,7 +160,7 @@ jobs:
       arch: ${{ steps.arch.outputs.arch }}
 
   nix-docker-manifest:
-    name: Docker manifest - ${{ matrix.features }}
+    name: docker-${{ matrix.features }}-manifest
     needs: nix-docker-image
     runs-on: ubuntu-24.04
     permissions:
