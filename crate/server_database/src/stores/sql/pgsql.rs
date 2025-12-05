@@ -778,7 +778,7 @@ where
     trace!("{query:?}");
 
     let mut query = sqlx::query(&query);
-    // Replace all the $x placeholders with user-provided values
+    // Bind user-provided values to placeholders
     query = if user_must_be_owner {
         query.bind(user)
     } else {
