@@ -26,7 +26,6 @@ pub(super) trait PlaceholderTrait {
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
-    #[expect(dead_code)]
     #[must_use]
     fn binder(param_number: usize) -> String {
         format!("${param_number}")
@@ -203,12 +202,10 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// to search for items in database.
 /// Returns a tuple containing the stringified query and the values to bind with.
 /// The different placeholder for variable binding is handled by trait specification.
-// TODO  although this is a select query, it is complex and the occurrence is unlikely,
-// TODO  protection against SQL Injection is not covered here
 pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
-    user: &str,
+    _user: &str,
     user_must_be_owner: bool,
 ) -> String {
     let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
@@ -242,7 +239,8 @@ ON objects.id = matched_tags.id"
         // select objects for which the user is the owner or has been granted an access right
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
-             read_access.userid = '{user}'"
+             read_access.userid = {}",
+            P::binder(1)
         );
     }
 
@@ -266,10 +264,13 @@ ON objects.id = matched_tags.id"
 
     if user_must_be_owner {
         // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = '{user}'",);
+        query = format!("{query} WHERE objects.owner = {}", P::binder(1));
     } else {
-        query =
-            format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
+        query = format!(
+            "{query} WHERE (objects.owner = {} OR read_access.userid = {})",
+            P::binder(2),
+            P::binder(3)
+        );
     }
 
     if let Some(state) = state {

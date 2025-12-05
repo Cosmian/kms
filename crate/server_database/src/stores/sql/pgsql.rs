@@ -776,7 +776,14 @@ where
         user_must_be_owner,
     );
     trace!("{query:?}");
-    let query = sqlx::query(&query);
+
+    let mut query = sqlx::query(&query);
+    // Bind user-provided values to placeholders
+    query = if user_must_be_owner {
+        query.bind(user)
+    } else {
+        query.bind(user).bind(user).bind(user)
+    };
     let rows = query.fetch_all(executor).await?;
 
     to_qualified_uids(&rows)
