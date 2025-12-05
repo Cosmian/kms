@@ -64,7 +64,7 @@ jobs:
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload hash artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
           path: result*/bin/server.${{ matrix.features }}*.sha256
@@ -72,7 +72,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
