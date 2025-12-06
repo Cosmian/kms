@@ -9,6 +9,7 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Cosmian KMS Client Utilities for WASM"
+build = "build.rs"
 
 [lints]
 workspace = true
@@ -42,3 +43,6 @@ ignored = ["getrandom"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

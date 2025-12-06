@@ -250,6 +250,9 @@ test)
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
     ;;
+  wasm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
+    ;;
   sqlite)
     SCRIPT="$REPO_ROOT/.github/scripts/test_sqlite.sh"
     ;;
@@ -783,22 +786,44 @@ if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "al
   echo "Note: Running without --pure mode for HSM tests to allow system PKCS#11/runtime libraries"
 fi
 
-if [ "$USE_PURE" = true ]; then
-  # shellcheck disable=SC2086
+{
+  # Decide purity and extra packages once, then run a single nix-shell
+  PURE_FLAG="--pure"
+  KEEP_ARGS="$KEEP_VARS"
+  EXTRA_PKGS=""
+  SHELL_PATH="$REPO_ROOT/shell.nix"
+
+  # sbom always uses pure shell with variant/link only
   if [ "$COMMAND" = "sbom" ]; then
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    PURE_FLAG="--pure"
+    KEEP_ARGS="$KEEP_VARS"
+    EXTRA_PKGS=""
   else
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    # For wasm tests: use non-pure shell and inject nodejs + wasm-pack (retain system cargo/rustup)
+    if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "wasm" ]; then
+      PURE_FLAG="" # non-pure
+      KEEP_ARGS="" # avoid mixing --keep with -p
+      EXTRA_PKGS="-p nodejs wasm-pack"
+      SHELL_PATH="<nixpkgs>" # run a minimal shell when using -p packages
+    else
+      # Otherwise respect computed USE_PURE setting
+      if [ "$USE_PURE" = true ]; then
+        PURE_FLAG="--pure"
+        KEEP_ARGS="$KEEP_VARS"
+      else
+        PURE_FLAG=""
+        KEEP_ARGS="$KEEP_VARS"
+      fi
+    fi
   fi
-else
-  # shellcheck disable=SC2086
+
+  # Build command to run inside nix-shell
   if [ "$COMMAND" = "sbom" ]; then
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    CMD="bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
   else
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    CMD="bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
-fi
+
+  # shellcheck disable=SC2086
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS "$SHELL_PATH" --run "$CMD"
+}

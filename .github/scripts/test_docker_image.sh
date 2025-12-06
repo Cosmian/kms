@@ -28,21 +28,14 @@ CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme
 
 set -ex
 
-# install cli using APT package if not already available
+# install cli (skip if already available or if cargo is not available)
 if ! command -v cosmian >/dev/null 2>&1; then
-    ARCH=$(dpkg --print-architecture || echo "amd64")
-    if [ "$ARCH" = "amd64" ]; then
-        DEB_URL="https://package.cosmian.com/cli/${CLI_VERSION}/ubuntu-24.04/cosmian-cli_${CLI_VERSION}-1_amd64.deb"
-        TMP_DEB="/tmp/cosmian-cli_${CLI_VERSION}-1_amd64.deb"
+    if command -v cargo >/dev/null 2>&1; then
+        cargo install cosmian_cli --version "$CLI_VERSION"
     else
-        echo "Unsupported architecture ($ARCH) for Cosmian CLI installation via .deb"
-        exit 1
+        echo "Warning: cargo not available and cosmian CLI not installed. Skipping CLI installation."
+        echo "Some tests may be skipped."
     fi
-
-    echo "Downloading Cosmian CLI deb: $DEB_URL"
-    curl -fsSL "$DEB_URL" -o "$TMP_DEB"
-    # Install directly with dpkg; fix deps only if necessary
-    sudo dpkg -i "$TMP_DEB" || sudo apt-get -y -f install
 fi
 
 cosmian --version
