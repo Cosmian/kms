@@ -398,14 +398,11 @@ sbom)
   exit $?
   ;;
 update-hashes)
-  # Hash update functionality has been integrated into the Nix build process
-  # Hashes are automatically computed during builds and saved to result outputs
-  # To update hashes: run the build and copy the hash from the build output
-  echo "Hash updates are now integrated into build process."
-  echo "Build the target and check the installCheckPhase output for hash values."
-  echo "Example: nix-build -A kms-server-fips -o result-server-fips"
-  echo "The hash will be displayed in the build output with update instructions."
-  exit 0
+  # Run automated hash update across all variant/link combinations
+  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
+  [ -f "$SCRIPT" ] || { echo "Missing $SCRIPT" >&2; exit 1; }
+  bash "$SCRIPT"
+  exit $?
   ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2
