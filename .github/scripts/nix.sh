@@ -400,7 +400,10 @@ sbom)
 update-hashes)
   # Run automated hash update across all variant/link combinations
   SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
-  [ -f "$SCRIPT" ] || { echo "Missing $SCRIPT" >&2; exit 1; }
+  [ -f "$SCRIPT" ] || {
+    echo "Missing $SCRIPT" >&2
+    exit 1
+  }
   bash "$SCRIPT"
   exit $?
   ;;

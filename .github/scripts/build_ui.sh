@@ -34,8 +34,9 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 # Install wasm-pack tool
-require_cmd cargo "Cargo is required to build the WASM component. Install Rust (rustup) and retry."
-cargo install wasm-pack
+if ! command -v npm >/dev/null 2>&1; then
+  cargo install wasm-pack
+fi
 
 # Build WASM component
 cd crate/wasm

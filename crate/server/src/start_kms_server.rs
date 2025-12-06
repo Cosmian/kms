@@ -41,6 +41,7 @@ use tokio::{runtime::Handle, task::JoinHandle, try_join};
 use crate::{
     config::{JwtAuthConfig, ServerParams, TlsParams},
     core::KMS,
+    cron,
     error::KmsError,
     middlewares::{
         ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
@@ -365,6 +366,13 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
+    // Spawn background metrics cron thread and retain shutdown signal
+    let metrics_shutdown_tx = if kms_server.metrics.is_some() {
+        Some(cron::spawn_metrics_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -385,6 +393,10 @@ pub async fn start_kms_server(
     // Log the server configuration
     info!("KMS Server configuration: {server_params:#?}");
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    // Signal the metrics cron thread to stop
+    if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
     if let Some(ss_command_tx) = ss_command_tx {
         // Send a shutdown command to the socket server
         ss_command_tx

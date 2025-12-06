@@ -2,16 +2,13 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::{kmip_operations::DiscoverVersions, kmip_types::State},
-        kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_operations::{
-                Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
-                DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
-                GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation,
-                Query, RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute,
-                Sign, SignatureVerify, Validate,
-            },
+        kmip_0::kmip_operations::DiscoverVersions,
+        kmip_2_1::kmip_operations::{
+            Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
+            DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
+            GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation, Query,
+            RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign,
+            SignatureVerify, Validate,
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -55,24 +52,7 @@ pub(crate) async fn dispatch(
             metrics.record_error(&operation_tag);
         }
 
-        // Refresh Active Keys metric via a KMIP Locate with Active state
-        // We issue a Locate request filtered on Active state so the count
-        // reflects the current number of active keys. Errors are ignored.
-        // Skip for Locate/Destroy/Revoke which have their own specific handling.
-        if operation_tag != "Locate" && operation_tag != "Destroy" && operation_tag != "Revoke" {
-            let request = Locate {
-                attributes: Attributes {
-                    state: Some(State::Active),
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            if let Ok(resp) = kms.locate(request, user, database_params.clone()).await {
-                let count = resp.located_items.unwrap_or(0);
-                debug!("Active keys count refreshed to {}", count);
-                metrics.update_active_keys_count(i64::from(count));
-            }
-        }
+        // Active keys metric refresh moved to standalone background task
     }
 
     result
