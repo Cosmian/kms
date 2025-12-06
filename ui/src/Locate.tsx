@@ -1,8 +1,9 @@
-import {Button, Card, Form, Input, List, Select, Space} from "antd";
-import React, {useEffect, useRef, useState} from "react";
-import {useAuth} from "./AuthContext";
-import {sendKmipRequest} from "./utils";
-import {locate_ttlv_request, parse_locate_ttlv_response} from "./wasm/pkg";
+import { Button, Card, Form, Input, Select, Space, Table, Tag } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { getNoTTLVRequest, sendKmipRequest } from "./utils";
+import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg";
+import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface LocateFormData {
     tags?: string[];
@@ -46,7 +47,9 @@ const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
-    const [objects, setObjects] = useState<string[] | undefined>(undefined);
+    type LocatedRow = { object_id: string; state?: string; attributes?: { ObjectType?: string }; meta?: Record<string, unknown> };
+    const [objects, setObjects] = useState<LocatedRow[] | undefined>(undefined);
+    // Details modal removed; tags are shown inline
     const {idToken, serverUrl} = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +78,72 @@ const LocateForm: React.FC = () => {
             if (result_str) {
                 const response = await parse_locate_ttlv_response(result_str);
                 if (response.UniqueIdentifier && response.UniqueIdentifier.length) {
-                    setObjects(response.UniqueIdentifier);
+                    const mapped: LocatedRow[] = response.UniqueIdentifier.map((uuid: string) => ({
+                        object_id: uuid,
+                        attributes: { ObjectType: undefined },
+                        state: undefined,
+                        meta: undefined,
+                    }));
+                    setObjects(mapped);
+
+                    // Enrich each object with Type and State using KMIP Get
+                    try {
+                        const enriched = await Promise.all(
+                            mapped.map(async (row: LocatedRow) => {
+                                try {
+                                    const getReq = get_attributes_ttlv_request(row.object_id);
+                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                    if (getRespStr) {
+                                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, ["object_type", "state", "tags", "user_tags"]);
+                                        let objectType: string | undefined;
+                                        let state: string | undefined;
+                                        let meta: Record<string, unknown> | undefined;
+                                        if (parsed instanceof Map) {
+                                            const mapParsed = parsed as Map<string, unknown>;
+                                            meta = Object.fromEntries(mapParsed);
+                                            objectType = (mapParsed.get("object_type") as string | undefined);
+                                            state = (mapParsed.get("state") as string | undefined);
+                                        } else {
+                                            const obj = parsed as Record<string, unknown>;
+                                            meta = obj;
+                                            objectType = obj["object_type"] as string | undefined;
+                                            state = obj["state"] as string | undefined;
+                                        }
+                                        // silently proceed if attributes are missing
+                                        return {
+                                            ...row,
+                                            attributes: { ObjectType: objectType },
+                                            state: state,
+                                            meta,
+                                        };
+                                    }
+                                } catch (e) {
+                                    console.error(`Error fetching Get for ${row.object_id}:`, e);
+                                }
+                                return row;
+                            })
+                        );
+                        // Try to supplement state from non-TTLV owned list when available
+                        try {
+                            const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                            const stateById = new Map<string, string>();
+                            if (Array.isArray(owned)) {
+                                owned.forEach((o: { object_id: string; state?: string }) => {
+                                    if (o.object_id && o.state) stateById.set(o.object_id, o.state);
+                                });
+                            }
+                            const merged = enriched.map((row) => ({
+                                ...row,
+                                state: row.state || stateById.get(row.object_id),
+                            }));
+                            setObjects(merged);
+                        } catch {
+                            // If owned endpoint not available, keep KMIP-only enrichment
+                            setObjects(enriched);
+                        }
+                    } catch (e) {
+                        console.error("Error enriching locate results with Get:", e);
+                    }
                 }
                 setRes(`${response.LocatedItems} Object(s) located.`);
             }
@@ -160,16 +228,45 @@ const LocateForm: React.FC = () => {
             {res && (
                 <div ref={responseRef}>
                     <Card title="Locate response">
-                        <List
-                            header={<div className="font-bold">{res}</div>}
-                            size="small"
-                            bordered
-                            dataSource={objects}
-                            renderItem={(uuid) => <List.Item>{uuid}</List.Item>}
-                        />
+                        <Space direction="vertical" size="middle" style={{ display: "flex" }}>
+                            <div className="font-bold">{res}</div>
+                            <Table
+                                dataSource={objects || []}
+                                rowKey="object_id"
+                                pagination={{
+                                    defaultPageSize: 10,
+                                    showSizeChanger: true,
+                                    pageSizeOptions: [10, 20, 50, 100],
+                                }}
+                                className="border rounded"
+                                columns={[
+                                    {
+                                        title: "Object UID",
+                                        dataIndex: "object_id",
+                                        key: "object_id",
+                                    },
+                                    {
+                                        title: "Type",
+                                        key: "attributes.ObjectType",
+                                        render: (record: { attributes?: { ObjectType?: string } }) =>
+                                            record.attributes?.ObjectType || "N/A",
+                                    },
+                                    {
+                                        title: "State",
+                                        dataIndex: "state",
+                                        key: "state",
+                                        render: (state?: string) => (
+                                            <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
+                                        ),
+                                    },
+
+                                ]}
+                            />
+                        </Space>
                     </Card>
                 </div>
             )}
+            {/* Details modal no longer used after replacing Actions with Tags */}
         </div>
     );
 };
