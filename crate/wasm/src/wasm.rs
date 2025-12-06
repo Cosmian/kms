@@ -283,6 +283,43 @@ pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CreateResponse>(response)
 }
 
+/// Create an Opaque Object (via Import) TTLV request.
+/// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
+/// Wrapping key id can be provided to set the object wrapping attribute.
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_opaque_object_ttlv_request(
+    object_value: Option<String>,
+    object_id: Option<String>,
+    tags: Vec<String>,
+    _sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_objects::OpaqueObject as KmipOpaqueObject, kmip_types::OpaqueDataType,
+        requests::import_object_request,
+    };
+    // Allow empty opaque object when value not provided
+    let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
+
+    let mut object = Object::OpaqueObject(KmipOpaqueObject {
+        opaque_data_type: OpaqueDataType::Unknown,
+        opaque_data_value: data,
+    });
+
+    if let Some(wrapping_key_id) = &wrap_key_id {
+        let attributes = object.attributes_mut().map_err(|e| {
+            JsValue::from_str(&format!("Error creating opaque object attributes: {e}"))
+        })?;
+        attributes.set_wrapping_key_id(wrapping_key_id);
+    }
+
+    let request = import_object_request(object_id, object, None, false, false, &tags)
+        .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
 // Decrypt requests
 #[wasm_bindgen]
 pub fn decrypt_sym_ttlv_request(

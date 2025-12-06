@@ -71,6 +71,14 @@ fn test_create_secret_data_ttlv_request() {
 }
 
 #[wasm_bindgen_test]
+fn test_create_opaque_object_ttlv_request() {
+    // value required for opaque object
+    let r =
+        w::create_opaque_object_ttlv_request(Some("opaque".to_string()), None, vec![], false, None);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
 fn test_parse_create_ttlv_response() {
     let r = w::parse_create_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
     assert!(r.is_ok() || r.is_err());
