@@ -13,14 +13,13 @@ use cosmian_kms_client::{
     cosmian_kmip::time_normalize,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, GetAttributes},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
     kms_client_bail, kms_client_error,
-    reexport::{cosmian_http_client::HttpClientConfig, cosmian_kms_access::access::Access},
+    reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_kms_server::{
     config::{
@@ -494,17 +493,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
         let _response = ctx.get_owner_client().create(create_request).await?;
     }
 
-    // Grant access to new KEK
-    let access = Access {
-        unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-        user_id: "owner.client@acme.com".to_owned(),
-        operation_types: vec![
-            KmipOperation::Get,
-            KmipOperation::Encrypt,
-            KmipOperation::Decrypt,
-        ],
-    };
-    ctx.get_owner_client().grant_access(access).await?;
+    // No grant access is required on external keys (e.g., when using HSM encryption oracles)
 
     ctx.stop_server().await?;
 

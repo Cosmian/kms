@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
     cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::debug;
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},
@@ -68,15 +68,9 @@ pub(crate) async fn unwrap_object(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        unwrapping_key_uid = unwrap_using_encryption_oracle(
-            object_key_block,
-            kms,
-            user,
-            params,
-            &unwrapping_key_uid,
-            prefix,
-        )
-        .await?;
+        unwrapping_key_uid =
+            unwrap_using_encryption_oracle(object_key_block, kms, &unwrapping_key_uid, prefix)
+                .await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
@@ -189,8 +183,6 @@ async fn unwrap_using_kms(
 async fn unwrap_using_encryption_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     unwrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<String> {
@@ -199,28 +191,8 @@ async fn unwrap_using_encryption_oracle(
         .strip_suffix("_pk")
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
 
-    // check permissions
-    if !kms
-        .database
-        .is_object_owned_by(&unwrapping_key_uid, user, params.clone())
-        .await?
-        && user != kms.params.default_username
-    {
-        let ops = kms
-            .database
-            .list_user_operations_on_object(&unwrapping_key_uid, user, false, params)
-            .await?;
-        if !ops
-            .iter()
-            .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-        {
-            return Err(KmsError::NotSupported(format!(
-                "The user {user} does not have the permission to unwrap using the key \
-                 {unwrapping_key_uid}"
-            )));
-        }
-    }
-    trace!("Checked permissions OK for user: {user} on key: {unwrapping_key_uid}");
+    // Permission checks on HSM keys are not performed during unwrapping.
+    // The HSM itself manages access control for key operations.
 
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {
