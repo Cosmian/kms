@@ -34,11 +34,9 @@ usage() {
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
     update-hashes [options]
-                       Update expected hashes for current platform (release profile mandatory)
+               Update expected hashes for current platform (release profile mandatory)
       --variant <fips|non-fips>  Update specific variant (default: fips)
       --link <static|dynamic>    Limit to a specific server linkage (default: both)
-      --max-retries N            Convergence attempts (default: 3)
-      --retry-delay-seconds S    Delay between attempts (default: 2)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -86,9 +84,7 @@ EOF
 PROFILE="debug"
 VARIANT="fips"
 LINK="static"
-# Hash update tuning (used for hash enforcement settings)
-MAX_RETRIES=""
-RETRY_DELAY_SECONDS=""
+# Hash update tuning flags removed (no longer used)
 
 # Parse global options before the subcommand
 while [ $# -gt 0 ]; do
@@ -105,14 +101,6 @@ while [ $# -gt 0 ]; do
   -l | --link)
     LINK="${2:-}"
     LINK_EXPLICIT=1
-    shift 2 || true
-    ;;
-  --max-retries)
-    MAX_RETRIES="${2:-}"
-    shift 2 || true
-    ;;
-  --retry-delay-seconds)
-    RETRY_DELAY_SECONDS="${2:-}"
     shift 2 || true
     ;;
   docker | test | package | sbom | update-hashes)
@@ -415,16 +403,6 @@ update-hashes)
   echo "Example: nix-build -A kms-server-fips -o result-server-fips"
   echo "The hash will be displayed in the build output with update instructions."
   exit 0
-  # Forward tuning flags if provided before subcommand
-  if [ -n "$MAX_RETRIES" ]; then
-    ARGS+=(--max-retries "$MAX_RETRIES")
-  fi
-  if [ -n "$RETRY_DELAY_SECONDS" ]; then
-    ARGS+=(--retry-delay-seconds "$RETRY_DELAY_SECONDS")
-  fi
-  # Include any remaining args (e.g., --vendor-only)
-  # shellcheck disable=SC2068
-  exec bash "$SCRIPT" ${ARGS[@]} $@
   ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2

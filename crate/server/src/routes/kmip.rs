@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse, post,
+    HttpRequest, HttpResponse,
+    http::header::CONTENT_TYPE,
+    post,
     web::{Bytes, Data, Json},
 };
 use cosmian_kms_server_database::reexport::{
@@ -20,7 +22,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{debug, error, info, trace, warn};
-use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
 use time::OffsetDateTime;
 use tracing::span;

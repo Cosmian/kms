@@ -719,8 +719,8 @@ async fn test_tls_options() -> KmsCliResult<()> {
             true, // should succeed
         ),
         (
-            "Testing server and client with same cipher suite - but rustls does not support this \
-             old cipher suite",
+            "Testing server and client with same cipher suite - old TLS 1.2 cipher that client \
+             (rustls) doesn't recognize, so client falls back to safe defaults which succeed",
             {
                 let client_http = HttpClientConfig {
                     cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
@@ -738,7 +738,7 @@ async fn test_tls_options() -> KmsCliResult<()> {
                     )?,
                 )
             },
-            false, // should fail
+            true, // should succeed due to fallback to defaults
         ),
         (
             "Testing server in TLS 1.3 but client in TLS 1.2",
