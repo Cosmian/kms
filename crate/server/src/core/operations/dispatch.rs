@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_operations::DiscoverVersions,
-        kmip_2_1::kmip_operations::{
-            Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
-            DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
-            GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation, Query,
-            RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign,
-            SignatureVerify, Validate,
+        kmip_0::{kmip_operations::DiscoverVersions, kmip_types::State},
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_operations::{
+                Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt,
+                DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
+                GetAttributes, Hash, Import, Locate, MAC, MACVerify, ModifyAttribute, Operation,
+                Query, RNGRetrieve, RNGSeed, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute,
+                Sign, SignatureVerify, Validate,
+            },
         },
         ttlv::{TTLV, from_ttlv},
     },
@@ -36,7 +39,53 @@ pub(crate) async fn dispatch(
     user: &str,
     database_params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Operation> {
-    Ok(match ttlv.tag.as_str() {
+    let operation_tag = ttlv.tag.clone();
+    let start_time = std::time::Instant::now();
+
+    let result = dispatch_inner(kms, ttlv, user, database_params.clone(), &operation_tag).await;
+
+    // Record metrics if enabled
+    if let Some(ref metrics) = kms.metrics {
+        let duration = start_time.elapsed().as_secs_f64();
+        metrics.record_kmip_operation(&operation_tag, user);
+        metrics.record_kmip_operation_duration(&operation_tag, duration);
+
+        // Record error if operation failed
+        if result.is_err() {
+            metrics.record_error(&operation_tag);
+        }
+
+        // Refresh Active Keys metric via a KMIP Locate with Active state
+        // We issue a Locate request filtered on Active state so the count
+        // reflects the current number of active keys. Errors are ignored.
+        // Skip for Locate/Destroy/Revoke which have their own specific handling.
+        if operation_tag != "Locate" && operation_tag != "Destroy" && operation_tag != "Revoke" {
+            let request = Locate {
+                attributes: Attributes {
+                    state: Some(State::Active),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            if let Ok(resp) = kms.locate(request, user, database_params.clone()).await {
+                let count = resp.located_items.unwrap_or(0);
+                debug!("Active keys count refreshed to {}", count);
+                metrics.update_active_keys_count(i64::from(count));
+            }
+        }
+    }
+
+    result
+}
+
+async fn dispatch_inner(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    database_params: Option<Arc<dyn SessionParams>>,
+    operation_tag: &str,
+) -> KResult<Operation> {
+    Ok(match operation_tag {
         "Activate" => {
             let req = from_ttlv::<Activate>(ttlv)?;
             let resp = kms.activate(req, user, database_params).await?;

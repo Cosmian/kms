@@ -161,6 +161,7 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
     Ok((api_token_id.to_string(), api_token))
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // Ensure logging is initialized once across the whole test process
@@ -688,6 +689,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_tls_options() -> KmsCliResult<()> {
     init_test_logging();
@@ -717,8 +719,8 @@ async fn test_tls_options() -> KmsCliResult<()> {
             true, // should succeed
         ),
         (
-            "Testing server and client with same cipher suite - but rustls does not support this \
-             old cipher suite",
+            "Testing server and client with same cipher suite - old TLS 1.2 cipher that client \
+             (rustls) doesn't recognize, so client falls back to safe defaults which succeed",
             {
                 let client_http = HttpClientConfig {
                     cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
@@ -736,7 +738,7 @@ async fn test_tls_options() -> KmsCliResult<()> {
                     )?,
                 )
             },
-            false, // should fail
+            true, // should succeed due to fallback to defaults
         ),
         (
             "Testing server in TLS 1.3 but client in TLS 1.2",

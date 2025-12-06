@@ -245,6 +245,7 @@ pub fn create_derivation_object_request(object_type: ObjectType) -> Result<Creat
             ),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             object_type: Some(ObjectType::SymmetricKey),
+            activation_date: Some(time_normalize()?),
             ..Attributes::default()
         },
         ObjectType::SecretData => Attributes {
@@ -252,6 +253,7 @@ pub fn create_derivation_object_request(object_type: ObjectType) -> Result<Creat
             cryptographic_usage_mask: Some(CryptographicUsageMask::DeriveKey),
             key_format_type: Some(KeyFormatType::Opaque),
             object_type: Some(ObjectType::SecretData),
+            activation_date: Some(time_normalize()?),
             ..Attributes::default()
         },
         _ => {

@@ -27,6 +27,7 @@ jobs:
           - google_cse
           - redis
           - pykmip
+          - wasm
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips

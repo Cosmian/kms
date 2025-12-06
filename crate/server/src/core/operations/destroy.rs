@@ -83,6 +83,7 @@ pub(crate) async fn recursively_destroy_object(
 
     let mut count = 0;
     for uid in uids {
+        let op_start = std::time::Instant::now();
         // If the object has a prefix (external object store),
         // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
@@ -211,6 +212,7 @@ pub(crate) async fn recursively_destroy_object(
         // perform the chain of destroy operations depending on the type of object
         count += 1;
         let object_type = owm.object().object_type();
+
         match object_type {
             ObjectType::SymmetricKey
             | ObjectType::Certificate
@@ -334,6 +336,12 @@ pub(crate) async fn recursively_destroy_object(
             x => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
             ))),
+        }
+        // Per-object KMIP metrics recording
+        if let Some(metrics) = &kms.metrics {
+            metrics.record_kmip_operation("Destroy", user);
+            let duration = op_start.elapsed().as_secs_f64();
+            metrics.record_kmip_operation_duration("Destroy", duration);
         }
         debug!(
             "Object type: {}, with unique identifier: {}, destroyed by user {}",

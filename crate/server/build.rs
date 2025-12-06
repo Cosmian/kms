@@ -66,38 +66,45 @@ fn in_nix_env() -> bool {
 }
 
 fn maybe_build_fips_openssl() {
-    if !is_fips_mode() {
-        // Non-FIPS build: rely on system / existing OpenSSL (or vendored via other means)
-        println!("cargo:warning=non-fips feature enabled; skipping FIPS OpenSSL build");
-        return;
-    }
+    let fips_mode = is_fips_mode();
 
     if in_nix_env() {
         // Nix provides OPENSSL_DIR (or paths discovered by openssl-sys). Nothing to do.
-        println!("cargo:warning=Detected Nix environment; skipping local FIPS OpenSSL build");
+        println!("cargo:warning=Detected Nix environment; skipping local OpenSSL build");
         return;
     }
 
-    // If user already exported OPENSSL_DIR, only respect it if it looks FIPS-capable
+    // If user already exported OPENSSL_DIR, check if it's suitable
     if let Ok(dir) = env::var("OPENSSL_DIR") {
         let dirp = Path::new(&dir);
         if dirp.join("include").exists() {
-            if fips_artifacts_present(dirp) {
+            if fips_mode {
+                if fips_artifacts_present(dirp) {
+                    println!(
+                        "cargo:warning=Using existing OPENSSL_DIR={dir} (FIPS artifacts detected; not rebuilding)"
+                    );
+                    return;
+                }
                 println!(
-                    "cargo:warning=Using existing OPENSSL_DIR={dir} (FIPS artifacts detected; not rebuilding)"
+                    "cargo:warning=OPENSSL_DIR is set to {dir}, but FIPS provider artifacts were not found; will build FIPS OpenSSL"
                 );
+            } else {
+                // In non-FIPS mode, any OpenSSL 3.x should work
+                println!("cargo:warning=Using existing OPENSSL_DIR={dir} in non-FIPS mode");
                 return;
             }
-            println!(
-                "cargo:warning=OPENSSL_DIR is set to {dir}, but FIPS provider artifacts were not found; falling back to non-FIPS"
-            );
-            return; // safe fallback: do not attempt local build here
         }
     }
 
-    println!(
-        "cargo:warning=Building OpenSSL {OPENSSL_VERSION} locally in FIPS mode (explicit/legacy FIPS requested, non-Nix environment)"
-    );
+    if fips_mode {
+        println!(
+            "cargo:warning=Building OpenSSL {OPENSSL_VERSION} locally in FIPS mode (explicit/legacy FIPS requested, non-Nix environment)"
+        );
+    } else {
+        println!(
+            "cargo:warning=Building OpenSSL {OPENSSL_VERSION} locally in non-FIPS mode with legacy provider support"
+        );
+    }
 
     let out_dir_os = env::var_os("OUT_DIR").unwrap();
     let out_dir = Path::new(&out_dir_os);
@@ -127,12 +134,16 @@ fn maybe_build_fips_openssl() {
         .map(|s| Path::new(&s).to_path_buf())
         .unwrap_or_else(|| workspace_root.join("target"));
 
-    let install_prefix =
-        target_dir.join(format!("openssl-fips-{}-{}-{}", OPENSSL_VERSION, os, arch));
+    let mode_suffix = if fips_mode { "fips" } else { "legacy" };
+    let install_prefix = target_dir.join(format!(
+        "openssl-{}-{}-{}-{}",
+        mode_suffix, OPENSSL_VERSION, os, arch
+    ));
 
     if install_prefix.join("lib/libcrypto.a").exists() {
         println!(
-            "cargo:warning=Cached FIPS OpenSSL already present at {}",
+            "cargo:warning=Cached {} OpenSSL already present at {}",
+            if fips_mode { "FIPS" } else { "legacy" },
             install_prefix.display()
         );
         emit_link_env(&install_prefix);
@@ -221,18 +232,36 @@ fn maybe_build_fips_openssl() {
     // Determine OpenSSL target (mirrors nix expression logic)
     let target = determine_openssl_target();
 
-    // Configure
+    // Configure with appropriate options based on mode
+    let prefix_arg = format!("--prefix={}", install_prefix.display());
+    let openssldir_arg = format!("--openssldir={}/ssl", install_prefix.display());
+
+    let mut configure_args = vec![
+        "./Configure",
+        "no-shared",
+        prefix_arg.as_str(),
+        openssldir_arg.as_str(),
+        "--libdir=lib",
+    ];
+
+    if fips_mode {
+        configure_args.push("enable-fips");
+    } else {
+        // In non-FIPS mode, enable legacy provider support
+        configure_args.push("enable-legacy");
+    }
+
+    configure_args.push(&target);
+
     if let Err(e) = run_cmd(
-        Command::new("perl").current_dir(&src_root).args([
-            "./Configure",
-            "no-shared",
-            "enable-fips",
-            &format!("--prefix={}", install_prefix.display()),
-            &format!("--openssldir={}/ssl", install_prefix.display()),
-            "--libdir=lib",
-            &target,
-        ]),
-        "Configure (FIPS)",
+        Command::new("perl")
+            .current_dir(&src_root)
+            .args(&configure_args),
+        if fips_mode {
+            "Configure (FIPS)"
+        } else {
+            "Configure (legacy)"
+        },
     ) {
         println!("cargo:warning=Configure failed: {e}");
         return;
@@ -257,25 +286,27 @@ fn maybe_build_fips_openssl() {
         return;
     }
 
-    // Install (including FIPS artifacts)
+    // Install (including FIPS artifacts in FIPS mode, or standard install in non-FIPS)
+    let jobs_str = jobs.to_string();
+    let mut install_args = vec!["install_sw", "install_ssldirs"];
+    if fips_mode {
+        install_args.push("install_fips");
+    }
+    install_args.extend_from_slice(&["-j", &jobs_str]);
+
     if let Err(e) = run_cmd(
-        Command::new("make").current_dir(&src_root).args([
-            "install_sw",
-            "install_ssldirs",
-            "install_fips",
-            "-j",
-            &jobs.to_string(),
-        ]),
+        Command::new("make")
+            .current_dir(&src_root)
+            .args(&install_args),
         "make install",
     ) {
         println!("cargo:warning=make install failed: {e}");
         return;
     }
 
-    // Patch openssl.cnf to activate FIPS module exactly like nix derivation
+    // Patch openssl.cnf to activate providers
     let ssl_dir = install_prefix.join("ssl");
     let openssl_cnf = ssl_dir.join("openssl.cnf");
-    let fipsmodule_cnf = ssl_dir.join("fipsmodule.cnf");
 
     if openssl_cnf.exists() {
         let Ok(mut cnf) = fs::read_to_string(&openssl_cnf) else {
@@ -283,41 +314,58 @@ fn maybe_build_fips_openssl() {
             return;
         };
 
-        // Use absolute path to fipsmodule.cnf to ensure it works regardless of CWD
-        let fipsmodule_path = fipsmodule_cnf.to_str().unwrap_or("fipsmodule.cnf");
+        if fips_mode {
+            // FIPS mode: activate FIPS module exactly like nix derivation
+            let fipsmodule_cnf = ssl_dir.join("fipsmodule.cnf");
+            let fipsmodule_path = fipsmodule_cnf.to_str().unwrap_or("fipsmodule.cnf");
 
-        // Handle both commented and uncommented .include directives
-        // Replace any relative path references with absolute path
-        if cnf.contains("# .include fipsmodule.cnf") {
-            cnf = cnf.replace(
-                "# .include fipsmodule.cnf",
-                &format!(".include {}", fipsmodule_path),
-            );
-        } else if cnf.contains(".include ./fipsmodule.cnf") {
-            cnf = cnf.replace(
-                ".include ./fipsmodule.cnf",
-                &format!(".include {}", fipsmodule_path),
-            );
-        } else if cnf.contains(".include fipsmodule.cnf") {
-            cnf = cnf.replace(
-                ".include fipsmodule.cnf",
-                &format!(".include {}", fipsmodule_path),
-            );
+            // Handle both commented and uncommented .include directives
+            // Replace any relative path references with absolute path
+            if cnf.contains("# .include fipsmodule.cnf") {
+                cnf = cnf.replace(
+                    "# .include fipsmodule.cnf",
+                    &format!(".include {}", fipsmodule_path),
+                );
+            } else if cnf.contains(".include ./fipsmodule.cnf") {
+                cnf = cnf.replace(
+                    ".include ./fipsmodule.cnf",
+                    &format!(".include {}", fipsmodule_path),
+                );
+            } else if cnf.contains(".include fipsmodule.cnf") {
+                cnf = cnf.replace(
+                    ".include fipsmodule.cnf",
+                    &format!(".include {}", fipsmodule_path),
+                );
+            }
+            if cnf.contains("# activate = 1") {
+                cnf = cnf.replace("# activate = 1", "activate = 1");
+            }
+            if cnf.contains("# fips = fips_sect") {
+                cnf = cnf.replace(
+                    "# fips = fips_sect",
+                    "fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n",
+                );
+            }
+        } else {
+            // Non-FIPS mode: ensure legacy and default providers are activated
+            // Add legacy provider configuration if not present
+            if !cnf.contains("[provider_sect]") {
+                cnf.push_str("\n[provider_sect]\ndefault = default_sect\nlegacy = legacy_sect\n\n[default_sect]\nactivate = 1\n\n[legacy_sect]\nactivate = 1\n");
+            } else if !cnf.contains("legacy = legacy_sect") {
+                // provider_sect exists but legacy is not configured
+                if let Some(pos) = cnf.find("[provider_sect]") {
+                    let insert_pos = cnf[pos..].find('\n').map_or(cnf.len(), |p| pos + p + 1);
+                    cnf.insert_str(insert_pos, "legacy = legacy_sect\n");
+                    cnf.push_str("\n[legacy_sect]\nactivate = 1\n");
+                }
+            }
         }
-        if cnf.contains("# activate = 1") {
-            cnf = cnf.replace("# activate = 1", "activate = 1");
-        }
-        if cnf.contains("# fips = fips_sect") {
-            cnf = cnf.replace(
-                "# fips = fips_sect",
-                "fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n",
-            );
-        }
+
         if let Err(e) = fs::write(&openssl_cnf, cnf) {
             println!("cargo:warning=Failed to patch openssl.cnf: {e}");
         }
     } else {
-        println!("cargo:warning=openssl.cnf not found; FIPS activation patch skipped");
+        println!("cargo:warning=openssl.cnf not found; provider activation patch skipped");
     }
 
     // Normalize provider path (lib64 -> lib) if necessary
@@ -344,13 +392,20 @@ fn maybe_build_fips_openssl() {
         }
     }
 
-    // Only enable link env if the resulting tree contains FIPS provider artifacts
-    if fips_artifacts_present(&install_prefix) {
-        emit_link_env(&install_prefix);
+    // Emit link environment variables
+    // In FIPS mode, only do this if FIPS artifacts are present
+    // In non-FIPS mode, always do this since we built OpenSSL with legacy provider
+    if fips_mode {
+        if fips_artifacts_present(&install_prefix) {
+            emit_link_env(&install_prefix);
+        } else {
+            println!(
+                "cargo:warning=Local OpenSSL build completed but FIPS artifacts are missing; falling back to system OpenSSL"
+            );
+        }
     } else {
-        println!(
-            "cargo:warning=Local OpenSSL build completed but FIPS artifacts are missing; falling back to non-FIPS"
-        );
+        // In non-FIPS mode, always emit link env since we built with legacy provider
+        emit_link_env(&install_prefix);
     }
 }
 
