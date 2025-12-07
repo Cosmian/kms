@@ -93,7 +93,8 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
 };
 
 export const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
-    const blob = new Blob([data], { type: mimeType });
+    const blobData = data instanceof Uint8Array ? [data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer] : [data];
+    const blob = new Blob(blobData, { type: mimeType });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
