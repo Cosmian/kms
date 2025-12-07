@@ -14,6 +14,7 @@ interface LocateFormData {
     publicKeyId?: string;
     privateKeyId?: string;
     certificateId?: string;
+    state?: string;
 }
 
 const CRYPTO_ALGORITHMS = [
@@ -43,12 +44,45 @@ const OBJECT_TYPES = [
     {label: "Certificate Request", value: "CertificateRequest"},
 ];
 
+const OBJECT_STATES = [
+    { label: "All", value: "__ALL__" },
+    { label: "Pre-Active", value: "Pre-Active" },
+    { label: "Active", value: "Active" },
+    { label: "Deactivated", value: "Deactivated" },
+    { label: "Compromised", value: "Compromised" },
+    { label: "Destroyed", value: "Destroyed" },
+    { label: "Destroyed Compromised", value: "Destroyed Compromised" },
+    { label: "Archived", value: "Archived" },
+];
+
 const LocateForm: React.FC = () => {
     const [form] = Form.useForm<LocateFormData>();
     const [isLoading, setIsLoading] = useState(false);
     const [res, setRes] = useState<string | undefined>(undefined);
     type LocatedRow = { object_id: string; state?: string; attributes?: { ObjectType?: string }; meta?: Record<string, unknown> };
     const [objects, setObjects] = useState<LocatedRow[] | undefined>(undefined);
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [pageSize, setPageSize] = useState<number>(10);
+    const normalizeState = (s?: string) => (s || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+    const stateEnumToName = (v: unknown): string | undefined => {
+        if (v == null) return undefined;
+        const s = String(v);
+        const n = Number(s);
+        if (!Number.isNaN(n)) {
+            switch (n) {
+                case 1: return "Pre-Active";
+                case 2: return "Active";
+                case 3: return "Deactivated";
+                case 4: return "Compromised";
+                case 5: return "Destroyed";
+                case 6: return "Destroyed Compromised";
+                case 7: return "Archived";
+                default: return s;
+            }
+        }
+        // If s already a textual state (possibly with hyphen), return as-is
+        return s;
+    };
     // Details modal removed; tags are shown inline
     const {idToken, serverUrl} = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
@@ -63,7 +97,109 @@ const LocateForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
+        setCurrentPage(1);
         try {
+            // Helpers to parse attributes and match criteria client-side
+            const extractMeta = (parsed: unknown): Record<string, unknown> => {
+                if (parsed instanceof Map) return Object.fromEntries(parsed as Map<string, unknown>);
+                return (parsed || {}) as Record<string, unknown>;
+            };
+
+            // no-op helpers pruned: Locate handles tags & other criteria server-side
+
+            // State-specific search: intersect Locate results with owned-by-state list
+            if (values.state && values.state !== "__ALL__") {
+                try {
+                    const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                    type OwnedEntry = { object_id?: string; state?: unknown };
+                    const ownedList: OwnedEntry[] = Array.isArray(owned) ? (owned as OwnedEntry[]) : [];
+                    const mappedOwnedRaw = ownedList.map((o) => ({ id: o.object_id, state: stateEnumToName(o.state) }));
+                    const mappedOwned = mappedOwnedRaw.filter((o) => typeof o.id === "string") as Array<{ id: string; state?: string }>;
+                    const target = normalizeState(values.state);
+                    const ownedFiltered = mappedOwned.filter((o) => normalizeState(o.state) === target);
+
+                    const hasOtherCriteria = Boolean(
+                        (values.tags && values.tags.length) ||
+                        values.cryptographicAlgorithm ||
+                        values.cryptographicLength != null ||
+                        values.keyFormatType ||
+                        values.objectType ||
+                        values.publicKeyId ||
+                        values.privateKeyId ||
+                        values.certificateId
+                    );
+                    if (!hasOtherCriteria) {
+                        const rows: LocatedRow[] = ownedFiltered.map((o) => ({ object_id: o.id, state: o.state }));
+                        setObjects(rows);
+                        setRes(`${rows.length} Object(s) located.`);
+
+                        return;
+                    }
+                    // Get server-side filtered IDs (tags/algorithm/etc.)
+                    const locateResp = await sendKmipRequest(
+                        locate_ttlv_request(
+                            values.tags,
+                            values.cryptographicAlgorithm,
+                            values.cryptographicLength,
+                            values.keyFormatType,
+                            values.objectType,
+                            values.publicKeyId,
+                            values.privateKeyId,
+                            values.certificateId
+                        ),
+                        idToken,
+                        serverUrl
+                    );
+                    let locatedIds: string[] = [];
+                    if (locateResp) {
+                        const lr = await parse_locate_ttlv_response(locateResp);
+                        if (lr.UniqueIdentifier && lr.UniqueIdentifier.length) locatedIds = lr.UniqueIdentifier as string[];
+                    }
+                    const ownedIds = new Set(ownedFiltered.map((o) => o.id));
+                    const intersection = locatedIds.filter((id) => ownedIds.has(id));
+
+                    // Enrich only intersection
+                    const enriched = await Promise.all(
+                        intersection.map(async (uid: string) => {
+                            try {
+                                const getReq = get_attributes_ttlv_request(uid);
+                                const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                if (getRespStr) {
+                                    const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                                        "object_type",
+                                        "state",
+                                        "tags",
+                                        "user_tags",
+                                        "cryptographic_algorithm",
+                                        "cryptographic_length",
+                                        "key_format_type",
+                                        "public_key_id",
+                                        "private_key_id",
+                                        "certificate_id",
+                                    ]);
+                                    const m = extractMeta(parsed);
+                                    return {
+                                        object_id: uid,
+                                        attributes: { ObjectType: m["object_type"] as string | undefined },
+                                        state: stateEnumToName(m["state"]) || values.state,
+                                        meta: m,
+                                    } as LocatedRow;
+                                }
+                            } catch (e) {
+                                console.error(`Error fetching Get for ${uid}:`, e);
+                            }
+                            return { object_id: uid, state: values.state } as LocatedRow;
+                        })
+                    );
+                    setObjects(enriched);
+                    setRes(`${enriched.length} Object(s) located.`);
+                    return;
+                } catch (e) {
+                    console.error("Owned+filter fallback failed:", e);
+                    // Fall back to Locate below
+                }
+            }
+
             const request = locate_ttlv_request(
                 values.tags,
                 values.cryptographicAlgorithm,
@@ -84,6 +220,7 @@ const LocateForm: React.FC = () => {
                         state: undefined,
                         meta: undefined,
                     }));
+
                     setObjects(mapped);
 
                     // Enrich each object with Type and State using KMIP Get
@@ -94,27 +231,25 @@ const LocateForm: React.FC = () => {
                                     const getReq = get_attributes_ttlv_request(row.object_id);
                                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                     if (getRespStr) {
-                                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, ["object_type", "state", "tags", "user_tags"]);
-                                        let objectType: string | undefined;
-                                        let state: string | undefined;
-                                        let meta: Record<string, unknown> | undefined;
-                                        if (parsed instanceof Map) {
-                                            const mapParsed = parsed as Map<string, unknown>;
-                                            meta = Object.fromEntries(mapParsed);
-                                            objectType = (mapParsed.get("object_type") as string | undefined);
-                                            state = (mapParsed.get("state") as string | undefined);
-                                        } else {
-                                            const obj = parsed as Record<string, unknown>;
-                                            meta = obj;
-                                            objectType = obj["object_type"] as string | undefined;
-                                            state = obj["state"] as string | undefined;
-                                        }
+                                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                                            "object_type",
+                                            "state",
+                                            "tags",
+                                            "user_tags",
+                                            "cryptographic_algorithm",
+                                            "cryptographic_length",
+                                            "key_format_type",
+                                            "public_key_id",
+                                            "private_key_id",
+                                            "certificate_id",
+                                        ]);
+                                        const m = extractMeta(parsed);
                                         // silently proceed if attributes are missing
                                         return {
                                             ...row,
-                                            attributes: { ObjectType: objectType },
-                                            state: state,
-                                            meta,
+                                            attributes: { ObjectType: m["object_type"] as string | undefined },
+                                            state: stateEnumToName(m["state"]),
+                                            meta: m,
                                         };
                                     }
                                 } catch (e) {
@@ -123,6 +258,45 @@ const LocateForm: React.FC = () => {
                                 return row;
                             })
                         );
+
+                        // If no additional criteria and state is 'All', display enriched results directly
+                        const hasOtherCriteria = Boolean(
+                            (values.tags && values.tags.length) ||
+                            values.cryptographicAlgorithm ||
+                            values.cryptographicLength != null ||
+                            values.keyFormatType ||
+                            values.objectType ||
+                            values.publicKeyId ||
+                            values.privateKeyId ||
+                            values.certificateId
+                        );
+                        if (!hasOtherCriteria && (!values.state || values.state === "__ALL__")) {
+                            // Merge state labels from owned list for display, without filtering
+                            try {
+                                const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                                const stateById = new Map<string, string>();
+                                if (Array.isArray(owned)) {
+                                    (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
+                                        if (o.object_id) {
+                                            const s = stateEnumToName(o.state);
+                                            if (s) stateById.set(o.object_id, s);
+                                        }
+                                    });
+                                }
+                                const merged = enriched.map((row) => ({
+                                    ...row,
+                                    state: row.state || stateEnumToName(stateById.get(row.object_id)),
+                                }));
+                                setObjects(merged);
+                                setRes(`${merged.length} Object(s) located.`);
+
+                                return;
+                            } catch {
+                                setObjects(enriched);
+                                setRes(`${enriched.length} Object(s) located.`);
+                                return;
+                            }
+                        }
                         // Try to supplement state from non-TTLV owned list when available
                         try {
                             const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
@@ -132,20 +306,36 @@ const LocateForm: React.FC = () => {
                                     if (o.object_id && o.state) stateById.set(o.object_id, o.state);
                                 });
                             }
-                            const merged = enriched.map((row) => ({
+                            let merged = enriched.map((row) => ({
                                 ...row,
-                                state: row.state || stateById.get(row.object_id),
+                                state: row.state || stateEnumToName(stateById.get(row.object_id)),
                             }));
+                            // State filter if requested
+                            if (values.state && values.state !== "__ALL__") {
+                                const target = normalizeState(values.state);
+                                merged = merged.filter((r) => normalizeState(r.state) === target);
+                            }
+                            // Do not re-filter by tags/criteria; Locate already applied them
+
                             setObjects(merged);
+                            setRes(`${merged.length} Object(s) located.`);
                         } catch {
                             // If owned endpoint not available, keep KMIP-only enrichment
-                            setObjects(enriched);
+                            let filtered = enriched;
+                            if (values.state && values.state !== "__ALL__") {
+                                const target = normalizeState(values.state);
+                                filtered = filtered.filter((r) => normalizeState(r.state) === target);
+                            }
+                            // Do not re-filter by tags/criteria; Locate already applied them
+
+                            setObjects(filtered);
+                            setRes(`${filtered.length} Object(s) located.`);
                         }
                     } catch (e) {
                         console.error("Error enriching locate results with Get:", e);
                     }
                 }
-                setRes(`${response.LocatedItems} Object(s) located.`);
+                // set by post-filtering to reflect visible rows
             }
         } catch (e) {
             setRes(`Error locating object: ${e}`);
@@ -164,7 +354,9 @@ const LocateForm: React.FC = () => {
                 <p>The HSM, if any, will not be searched</p>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical">
+
+
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ state: "__ALL__" }}>
                 <Space direction="vertical" size="middle" style={{display: "flex"}}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Basic Search Criteria</h3>
@@ -183,6 +375,10 @@ const LocateForm: React.FC = () => {
 
                         <Form.Item name="cryptographicLength" label="Cryptographic Length" help="Key size in bits">
                             <Input type="number" placeholder="Enter length in bits" min={0}/>
+                        </Form.Item>
+
+                        <Form.Item name="state" label="State" help="Lifecycle state of the object">
+                            <Select allowClear placeholder="Select state" options={OBJECT_STATES} />
                         </Form.Item>
                     </Card>
 
@@ -230,38 +426,58 @@ const LocateForm: React.FC = () => {
                     <Card title="Locate response">
                         <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                             <div className="font-bold">{res}</div>
-                            <Table
-                                dataSource={objects || []}
-                                rowKey="object_id"
-                                pagination={{
-                                    defaultPageSize: 10,
-                                    showSizeChanger: true,
-                                    pageSizeOptions: [10, 20, 50, 100],
-                                }}
-                                className="border rounded"
-                                columns={[
-                                    {
-                                        title: "Object UID",
-                                        dataIndex: "object_id",
-                                        key: "object_id",
-                                    },
-                                    {
-                                        title: "Type",
-                                        key: "attributes.ObjectType",
-                                        render: (record: { attributes?: { ObjectType?: string } }) =>
-                                            record.attributes?.ObjectType || "N/A",
-                                    },
-                                    {
-                                        title: "State",
-                                        dataIndex: "state",
-                                        key: "state",
-                                        render: (state?: string) => (
-                                            <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
-                                        ),
-                                    },
 
-                                ]}
-                            />
+                            {(() => {
+                                const data = objects || [];
+                                const start = (currentPage - 1) * pageSize;
+                                const end = start + pageSize;
+                                const pageData = data.slice(start, end);
+                                return (
+                                    <Table
+                                        dataSource={pageData}
+                                        rowKey="object_id"
+                                        pagination={{
+                                            current: currentPage,
+                                            pageSize,
+                                            total: data.length,
+                                            showSizeChanger: true,
+                                            pageSizeOptions: [10, 20, 50, 100],
+                                            onChange: (page, size) => {
+                                                setCurrentPage(page);
+                                                if (size && size !== pageSize) {
+                                                    setPageSize(size);
+                                                    setCurrentPage(1);
+                                                }
+                                            },
+                                        }}
+                                        className="border rounded"
+                                        columns={[
+                                            {
+                                                title: "Object UID",
+                                                dataIndex: "object_id",
+                                                key: "object_id",
+                                            },
+                                            {
+                                                title: "Type",
+                                                key: "attributes.ObjectType",
+                                                render: (record: { attributes?: { ObjectType?: string } }) =>
+                                                    record.attributes?.ObjectType || "N/A",
+                                            },
+                                            {
+                                                title: "State",
+                                                dataIndex: "state",
+                                                key: "state",
+                                                render: (state?: string) => (
+                                                    <Space size={4}>
+                                                        <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
+                                                    </Space>
+                                                ),
+                                            },
+
+                                        ]}
+                                    />
+                                );
+                            })()}
                         </Space>
                     </Card>
                 </div>
