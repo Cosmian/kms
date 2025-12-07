@@ -48,9 +48,7 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access,
-        aws_xks::Sigv4MWare,
-        get_version,
+        access, aws_xks, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip::{self, handle_ttlv_bytes},
         ms_dke,
@@ -678,9 +676,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         if enable_aws_xks {
             // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
-            let aws_xks_scope = web::scope("/aws_xks")
+            let aws_xks_scope = web::scope("/aws")
                 .wrap(Cors::permissive())
-                .wrap(Sigv4MWare::new(kms_server.clone()));
+                .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
+                .service(aws_xks::get_health_status);
+
             app = app.service(aws_xks_scope);
         }
 

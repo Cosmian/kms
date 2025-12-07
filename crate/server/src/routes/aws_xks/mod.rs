@@ -2,15 +2,15 @@
 
 // mod encrypt_decrypt;
 // mod error;
-// mod health_status;
+mod health_status;
 // mod key_metadata;
 mod aws_xks_config;
 mod sigv4_middleware;
 
-pub use aws_xks_config::AwsXksConfig;
-pub use sigv4_middleware::Sigv4MWare;
-
 use crate::{error::KmsError, result::KResultHelper};
+pub use aws_xks_config::AwsXksConfig;
+pub use health_status::get_health_status;
+pub use sigv4_middleware::Sigv4MWare;
 
 // const METADATA: &str = "metadata";
 // const ENCRYPT: &str = "encrypt";
@@ -32,6 +32,7 @@ pub struct AwsXksParams {
     // This could be per uri
     pub uri_path_prefix: String,
     pub sigv4_access_key_id: String,
+    pub sigv4_access_key_user: String,
     pub sigv4_secret_access_key: String,
     //
     pub partition: String,
@@ -57,6 +58,9 @@ impl TryFrom<AwsXksConfig> for AwsXksParams {
             sigv4_access_key_id: config
                 .aws_xks_sigv4_access_key_id
                 .context("AWS XKS SigV4 access key ID is required")?,
+            sigv4_access_key_user: config
+                .aws_xks_sigv4_access_key_user
+                .context("AWS XKS SigV4 access key User is required")?,
             sigv4_secret_access_key: config
                 .aws_xks_sigv4_secret_access_key
                 .context("AWS XKS SigV4 secret access key is required")?,

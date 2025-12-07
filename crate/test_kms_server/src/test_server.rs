@@ -171,9 +171,8 @@ fn get_db_config(workspace_dir: Option<&PathBuf>) -> MainDBConfig {
 /// No TLS, no certificate authentication
 /// # Panics
 /// - if the server fails to start
-#[allow(clippy::unwrap_used)]
 pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static TestsContext {
-    trace!("Starting default test server");
+    trace!("Starting test server with config : {:#?}", config);
     ONCE.get_or_try_init(|| async move {
         let server_params = ServerParams::try_from(config).context(
             "Failed to create ServerParams from ClapConfig in start_default_test_kms_server",

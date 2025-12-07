@@ -1076,6 +1076,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "cosmian_aws_structs"
+version = "5.12.0"
+dependencies = [
+ "cosmian_kmip",
+ "serde",
+]
+
+[[package]]
 name = "cosmian_config_utils"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,6 +1276,7 @@ dependencies = [
  "assert_cmd",
  "base64 0.22.1",
  "clap",
+ "cosmian_aws_structs",
  "cosmian_config_utils",
  "cosmian_kmip",
  "cosmian_kms_client",
@@ -1407,6 +1416,7 @@ dependencies = [
  "chrono",
  "clap",
  "const_format",
+ "cosmian_aws_structs",
  "cosmian_kms_access",
  "cosmian_kms_client_utils",
  "cosmian_kms_interfaces",
