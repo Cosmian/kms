@@ -1,3 +1,4 @@
+mod aws_xks_tests;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]
 mod cover_crypt_tests;
