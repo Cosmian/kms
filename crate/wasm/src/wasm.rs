@@ -21,13 +21,17 @@ use cosmian_kms_client_utils::{
     },
     locate_utils::build_locate_request,
     reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{
-            CertificateType, RevocationReason, RevocationReasonCode, SecretDataType,
+        kmip_0::{
+            self,
+            kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
         },
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyMaterial, KeyValue},
-            kmip_objects::{Certificate as KmipCertificate, Object, ObjectType, PrivateKey},
+            kmip_objects::{
+                Certificate as KmipCertificate, Object, ObjectType,
+                OpaqueObject as KmipOpaqueObject, PrivateKey,
+            },
             kmip_operations::{
                 CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
@@ -37,7 +41,8 @@ use cosmian_kms_client_utils::{
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-                LinkType, LinkedObjectIdentifier, RecommendedCurve, Tag, UniqueIdentifier,
+                LinkType, LinkedObjectIdentifier, OpaqueDataType, RecommendedCurve, Tag,
+                UniqueIdentifier,
             },
             requests::{
                 build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -60,6 +65,228 @@ use x509_cert::{
     der::{Decode, DecodePem, Encode},
 };
 use zeroize::Zeroizing;
+
+#[derive(Serialize)]
+struct AlgoOption {
+    value: String,
+    label: String,
+}
+
+// Try to parse KeyFormatType from various string representations (robust to spacing/case)
+fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
+    if let Ok(k) = KeyFormatType::from_str(s) {
+        return Ok(k);
+    }
+    let norm = s
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_lowercase();
+    let candidates: &[KeyFormatType] = &[
+        KeyFormatType::Raw,
+        KeyFormatType::Opaque,
+        KeyFormatType::PKCS1,
+        KeyFormatType::PKCS8,
+        KeyFormatType::X509,
+        KeyFormatType::ECPrivateKey,
+        KeyFormatType::TransparentSymmetricKey,
+        KeyFormatType::TransparentDSAPrivateKey,
+        KeyFormatType::TransparentDSAPublicKey,
+        KeyFormatType::TransparentRSAPrivateKey,
+        KeyFormatType::TransparentRSAPublicKey,
+        KeyFormatType::TransparentDHPrivateKey,
+        KeyFormatType::TransparentDHPublicKey,
+        KeyFormatType::TransparentECPrivateKey,
+        KeyFormatType::TransparentECPublicKey,
+        KeyFormatType::PKCS12,
+        KeyFormatType::PKCS10,
+        KeyFormatType::PKCS7,
+        KeyFormatType::EnclaveECKeyPair,
+        KeyFormatType::EnclaveECSharedKey,
+        KeyFormatType::CoverCryptSecretKey,
+        KeyFormatType::CoverCryptPublicKey,
+    ];
+    for v in candidates {
+        let display = v.to_string();
+        let display_norm = display
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase();
+        if display_norm == norm {
+            return Ok(*v);
+        }
+        let dbg = format!("{v:?}");
+        let dbg_norm = dbg.replace([' ', '-', '_'], "").to_lowercase();
+        if dbg_norm == norm {
+            return Ok(*v);
+        }
+    }
+    Err(JsValue::from("Invalid KeyFormatType"))
+}
+
+/// Returns the list of cryptographic algorithms available in this build.
+/// The content may vary depending on the `non-fips` feature.
+#[wasm_bindgen]
+pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
+    // Build from Rust enum variants to avoid string literals
+    #[allow(unused_mut)]
+    let mut variants: Vec<CryptographicAlgorithm> = vec![
+        CryptographicAlgorithm::AES,
+        CryptographicAlgorithm::RSA,
+        CryptographicAlgorithm::ECDSA,
+        CryptographicAlgorithm::ECDH,
+        CryptographicAlgorithm::EC,
+        CryptographicAlgorithm::SHA3224,
+        CryptographicAlgorithm::SHA3256,
+        CryptographicAlgorithm::SHA3384,
+        CryptographicAlgorithm::SHA3512,
+        CryptographicAlgorithm::Ed25519,
+        CryptographicAlgorithm::Ed448,
+        CryptographicAlgorithm::CoverCrypt,
+        CryptographicAlgorithm::CoverCryptBulk,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        variants.push(CryptographicAlgorithm::ChaCha20);
+        variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
+    }
+
+    let algorithms: Vec<AlgoOption> = variants
+        .into_iter()
+        .map(|alg| {
+            let value = alg.to_string();
+            let label = match alg {
+                CryptographicAlgorithm::SHA3224 => String::from("SHA3-224"),
+                CryptographicAlgorithm::SHA3256 => String::from("SHA3-256"),
+                CryptographicAlgorithm::SHA3384 => String::from("SHA3-384"),
+                CryptographicAlgorithm::SHA3512 => String::from("SHA3-512"),
+                CryptographicAlgorithm::ChaCha20Poly1305 => String::from("ChaCha20-Poly1305"),
+                _ => value.clone(),
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns supported key format types for UI filters.
+#[wasm_bindgen]
+pub fn get_key_format_types() -> Result<JsValue, JsValue> {
+    // Prefer KMIP 2.1 enum variants directly
+    let variants: &[KeyFormatType] = &[
+        KeyFormatType::Raw,
+        KeyFormatType::Opaque,
+        KeyFormatType::PKCS1,
+        KeyFormatType::PKCS8,
+        KeyFormatType::X509,
+        KeyFormatType::ECPrivateKey,
+        KeyFormatType::TransparentSymmetricKey,
+        KeyFormatType::TransparentDSAPrivateKey,
+        KeyFormatType::TransparentDSAPublicKey,
+        KeyFormatType::TransparentRSAPrivateKey,
+        KeyFormatType::TransparentRSAPublicKey,
+        KeyFormatType::TransparentDHPrivateKey,
+        KeyFormatType::TransparentDHPublicKey,
+        KeyFormatType::TransparentECPrivateKey,
+        KeyFormatType::TransparentECPublicKey,
+        KeyFormatType::PKCS12,
+        KeyFormatType::CoverCryptSecretKey,
+        KeyFormatType::CoverCryptPublicKey,
+    ];
+
+    let formats: Vec<AlgoOption> = variants
+        .iter()
+        .map(|k| {
+            let value = k.to_string();
+            let label = match k {
+                KeyFormatType::CoverCryptSecretKey => String::from("CoverCrypt Secret Key"),
+                KeyFormatType::CoverCryptPublicKey => String::from("CoverCrypt Public Key"),
+                _ => value.clone(),
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&formats).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns supported KMIP object types for UI filters.
+#[wasm_bindgen]
+pub fn get_object_types() -> Result<JsValue, JsValue> {
+    let variants: &[ObjectType] = &[
+        ObjectType::Certificate,
+        ObjectType::SymmetricKey,
+        ObjectType::PublicKey,
+        ObjectType::PrivateKey,
+        ObjectType::SplitKey,
+        ObjectType::SecretData,
+        ObjectType::OpaqueObject,
+        ObjectType::PGPKey,
+        ObjectType::CertificateRequest,
+    ];
+    let types: Vec<AlgoOption> = variants
+        .iter()
+        .map(|v| {
+            let value = v.to_string();
+            let label = match v {
+                ObjectType::SymmetricKey => String::from("Symmetric Key"),
+                ObjectType::PublicKey => String::from("Public Key"),
+                ObjectType::PrivateKey => String::from("Private Key"),
+                ObjectType::SplitKey => String::from("Split Key"),
+                ObjectType::SecretData => String::from("Secret Data"),
+                ObjectType::OpaqueObject => String::from("Opaque Object"),
+                ObjectType::PGPKey => String::from("PGP Key"),
+                ObjectType::CertificateRequest => String::from("Certificate Request"),
+                ObjectType::Certificate => String::from("Certificate"),
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&types).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns KMIP lifecycle states for UI filters.
+#[wasm_bindgen]
+pub fn get_object_states() -> Result<JsValue, JsValue> {
+    let mut states: Vec<AlgoOption> = Vec::new();
+    // Use KMIP 1.0 State enum to derive names/labels
+    let variants = [
+        kmip_0::kmip_types::State::PreActive,
+        kmip_0::kmip_types::State::Active,
+        kmip_0::kmip_types::State::Deactivated,
+        kmip_0::kmip_types::State::Compromised,
+        kmip_0::kmip_types::State::Destroyed,
+        kmip_0::kmip_types::State::Destroyed_Compromised,
+    ];
+    for s in variants {
+        let label = match s {
+            kmip_0::kmip_types::State::PreActive => String::from("Pre-Active"),
+            kmip_0::kmip_types::State::Active => String::from("Active"),
+            kmip_0::kmip_types::State::Deactivated => String::from("Deactivated"),
+            kmip_0::kmip_types::State::Compromised => String::from("Compromised"),
+            kmip_0::kmip_types::State::Destroyed => String::from("Destroyed"),
+            kmip_0::kmip_types::State::Destroyed_Compromised => {
+                String::from("Destroyed Compromised")
+            }
+        };
+        // Use UI labels for value to keep client-side filtering stable
+        states.push(AlgoOption {
+            value: label.clone(),
+            label,
+        });
+    }
+    serde_wasm_bindgen::to_value(&states).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen(start)]
+#[allow(clippy::missing_const_for_fn)]
+pub fn init_panic_hook() {
+    // Improve error messages for panics in the browser console
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
+}
 
 fn parse_ttlv_response<T: DeserializeOwned + Serialize>(
     response: &str,
@@ -94,7 +321,7 @@ pub fn locate_ttlv_request(
 
     let key_format_type: Option<KeyFormatType> = key_format_type
         .as_deref()
-        .map(|s| KeyFormatType::from_str(s).map_err(|e| JsValue::from(e.to_string())))
+        .map(parse_key_format_type_flexible)
         .transpose()?;
 
     let object_type: Option<ObjectType> = object_type
@@ -210,7 +437,8 @@ pub fn create_sym_key_ttlv_request(
             })?;
             attributes.set_wrapping_key_id(wrapping_key_id);
         }
-        let request = import_object_request(key_id, object, None, false, false, &tags);
+        let request = import_object_request(key_id, object, None, false, false, &tags)
+            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
@@ -255,7 +483,9 @@ pub fn create_secret_data_ttlv_request(
             })?;
             attributes.set_wrapping_key_id(wrapping_key_id);
         }
-        let request = import_object_request(secret_id, object, None, false, false, &tags);
+        let request = import_object_request(secret_id, object, None, false, false, &tags)
+            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
@@ -270,6 +500,40 @@ pub fn create_secret_data_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CreateResponse>(response)
+}
+
+/// Create an Opaque Object (via Import) TTLV request.
+/// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
+/// Wrapping key id can be provided to set the object wrapping attribute.
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_opaque_object_ttlv_request(
+    object_value: Option<String>,
+    object_id: Option<String>,
+    tags: Vec<String>,
+    _sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    // Allow empty opaque object when value not provided
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
+
+    let mut object = Object::OpaqueObject(KmipOpaqueObject {
+        opaque_data_type: OpaqueDataType::Unknown,
+        opaque_data_value: data,
+    });
+
+    if let Some(wrapping_key_id) = &wrap_key_id {
+        let attributes = object.attributes_mut().map_err(|e| {
+            JsValue::from_str(&format!("Error creating opaque object attributes: {e}"))
+        })?;
+        attributes.set_wrapping_key_id(wrapping_key_id);
+    }
+
+    let request = import_object_request(object_id, object, None, false, false, &tags)
+        .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
 
 // Decrypt requests
@@ -341,6 +605,7 @@ pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<J
     let request = Destroy {
         unique_identifier: Some(unique_identifier),
         remove,
+        cascade: false,
     };
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
@@ -605,7 +870,9 @@ pub fn import_ttlv_request(
         unwrap,
         replace_existing,
         tags,
-    );
+    )
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
@@ -826,7 +1093,8 @@ pub fn import_certificate_ttlv_request(
             "CCADB import not supported from the UI.".to_owned(),
         ))
         .map_err(|e| JsValue::from(e.to_string()))?,
-    };
+    }
+    .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }

@@ -7,10 +7,7 @@ use std::{
 };
 
 use cosmian_logger::{debug, error, info, trace, warn};
-use openssl::{
-    pkcs12::ParsedPkcs12_2,
-    ssl::{SslAcceptor, SslStream},
-};
+use openssl::ssl::{SslAcceptor, SslStream};
 use tokio::task::JoinHandle;
 
 use crate::{
@@ -29,8 +26,16 @@ pub struct SocketServerParams<'a> {
     pub host: String,
     /// Server port
     pub port: u16,
-    /// Server certificate and private key (PKCS#12 format)
-    pub p12: &'a ParsedPkcs12_2,
+    /// Server certificate and private key (PKCS#12 format) - non-fips
+    #[cfg(feature = "non-fips")]
+    pub p12: &'a openssl::pkcs12::ParsedPkcs12_2,
+    /// Server certificate and private key (PEM) - FIPS mode
+    #[cfg(not(feature = "non-fips"))]
+    pub server_cert_pem: &'a [u8],
+    #[cfg(not(feature = "non-fips"))]
+    pub server_key_pem: &'a [u8],
+    #[cfg(not(feature = "non-fips"))]
+    pub server_chain_pem: Option<&'a [u8]>,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
     /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
@@ -51,13 +56,28 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
                 "The Socket server cannot be started: Client CA certificate is not set".to_owned(),
             ));
         };
-        Ok(Self {
-            host: params.socket_server_hostname.clone(),
-            port: params.socket_server_port,
-            p12: &tls_params.p12,
-            client_ca_cert_pem,
-            cipher_suites: tls_params.cipher_suites.as_ref(),
-        })
+        #[cfg(feature = "non-fips")]
+        {
+            Ok(Self {
+                host: params.socket_server_hostname.clone(),
+                port: params.socket_server_port,
+                p12: &tls_params.p12,
+                client_ca_cert_pem,
+                cipher_suites: tls_params.cipher_suites.as_ref(),
+            })
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            Ok(Self {
+                host: params.socket_server_hostname.clone(),
+                port: params.socket_server_port,
+                server_cert_pem: &tls_params.server_cert_pem,
+                server_key_pem: &tls_params.server_key_pem,
+                server_chain_pem: tls_params.server_chain_pem.as_deref(),
+                client_ca_cert_pem,
+                cipher_suites: tls_params.cipher_suites.as_ref(),
+            })
+        }
     }
 }
 
@@ -406,10 +426,25 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
     trace!("Creating OpenSSL SslAcceptor for socket server");
 
     // Use the common TLS configuration
-    let tls_config = TlsConfig {
-        cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
-        p12: server_config.p12,
-        client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
+    let tls_config = {
+        #[cfg(feature = "non-fips")]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
+                p12: server_config.p12,
+                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
+            }
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
+                server_cert_pem: server_config.server_cert_pem,
+                server_key_pem: server_config.server_key_pem,
+                server_chain_pem: server_config.server_chain_pem,
+                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
+            }
+        }
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "socket server")?;

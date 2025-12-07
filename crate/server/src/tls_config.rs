@@ -1,6 +1,9 @@
 use cosmian_logger::trace;
+#[cfg(feature = "non-fips")]
+use openssl::pkcs12::ParsedPkcs12_2;
+#[cfg(not(feature = "non-fips"))]
+use openssl::pkey::PKey;
 use openssl::{
-    pkcs12::ParsedPkcs12_2,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509, store::X509StoreBuilder},
 };
@@ -19,7 +22,14 @@ const TLS13_CIPHER_SUITES: &[&str] = &[
 /// Common TLS configuration for both HTTP and socket servers
 pub struct TlsConfig<'a> {
     pub cipher_suites: Option<&'a str>,
+    #[cfg(feature = "non-fips")]
     pub p12: &'a ParsedPkcs12_2,
+    #[cfg(not(feature = "non-fips"))]
+    pub server_cert_pem: &'a [u8],
+    #[cfg(not(feature = "non-fips"))]
+    pub server_key_pem: &'a [u8],
+    #[cfg(not(feature = "non-fips"))]
+    pub server_chain_pem: Option<&'a [u8]>,
     pub client_ca_cert_pem: Option<&'a [u8]>,
 }
 
@@ -49,8 +59,21 @@ pub(crate) fn create_base_openssl_acceptor(
     // Configure cipher suites
     let mut builder = configure_cipher_suites(config.cipher_suites)?;
 
-    // Configure the server certificate and private key from PKCS#12
-    configure_server_certificate(&mut builder, config.p12, server_type)?;
+    // Configure the server certificate and private key
+    #[cfg(feature = "non-fips")]
+    {
+        configure_server_certificate_p12(&mut builder, config.p12, server_type)?;
+    }
+    #[cfg(not(feature = "non-fips"))]
+    {
+        configure_server_certificate_pem(
+            &mut builder,
+            config.server_cert_pem,
+            config.server_key_pem,
+            config.server_chain_pem,
+            server_type,
+        )?;
+    }
 
     Ok(builder)
 }
@@ -102,7 +125,8 @@ fn configure_cipher_suites(cipher_suites: Option<&str>) -> KResult<SslAcceptorBu
 }
 
 /// Configure server certificate and private key from PKCS#12
-fn configure_server_certificate(
+#[cfg(feature = "non-fips")]
+fn configure_server_certificate_p12(
     builder: &mut SslAcceptorBuilder,
     p12: &ParsedPkcs12_2,
     server_type: &str,
@@ -126,6 +150,45 @@ fn configure_server_certificate(
     if let Some(cas) = &p12.ca {
         for ca in cas {
             builder.add_extra_chain_cert(ca.to_owned())?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Configure server certificate and private key from PEM files (FIPS mode)
+#[cfg(not(feature = "non-fips"))]
+fn configure_server_certificate_pem(
+    builder: &mut SslAcceptorBuilder,
+    cert_pem: &[u8],
+    key_pem: &[u8],
+    chain_pem: Option<&[u8]>,
+    server_type: &str,
+) -> KResult<()> {
+    // Parse key
+    let pkey = PKey::private_key_from_pem(key_pem)?;
+
+    // Parse certificate(s). The provided cert PEM may include the chain after the leaf.
+    let mut certs = X509::stack_from_pem(cert_pem)?;
+    if certs.is_empty() {
+        return Err(KmsError::Certificate(format!(
+            "{server_type}: no server certificate found in PEM"
+        )));
+    }
+    let server_cert = certs.remove(0);
+
+    builder.set_certificate(&server_cert)?;
+    builder.set_private_key(&pkey)?;
+
+    // Add any remaining certs from the cert pem as chain
+    for ca in certs {
+        builder.add_extra_chain_cert(ca)?;
+    }
+
+    // If a separate chain pem is provided, add those as well
+    if let Some(chain) = chain_pem {
+        for ca in X509::stack_from_pem(chain)? {
+            builder.add_extra_chain_cert(ca)?;
         }
     }
 

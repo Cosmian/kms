@@ -24,10 +24,23 @@ use crate::{
     Session, SlotManager, hsm_call,
 };
 
+/// Returns the library path for a given HSM, checking environment variable override first.
+///
+/// # Arguments
+/// * `env_var` - The environment variable name to check (e.g., `UTIMACO_PKCS11_LIB`)
+/// * `default_path` - The default library path to use if environment variable is not set
+///
+/// # Returns
+/// The library path as a `String`
+#[must_use]
+pub fn lib_path(env_var: &str, default_path: &str) -> String {
+    std::env::var(env_var).unwrap_or_else(|_| default_path.to_owned())
+}
+
 /// Per-HSM configuration for shared tests
 #[derive(Debug)]
-pub struct HsmTestConfig<'a> {
-    pub lib_path: &'a str,
+pub struct HsmTestConfig {
+    pub lib_path: String,
     pub slot_ids_and_passwords: HashMap<usize, Option<String>>, // for BaseHsm::instantiate
     pub slot_id_for_tests: usize,                               // slot to use
     pub rsa_oaep_digest: Option<RsaOaepDigest>,                 // Some if supported, None if not
@@ -45,7 +58,7 @@ fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
 
 #[allow(unsafe_code)]
 pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
-    let path = cfg.lib_path;
+    let path = &cfg.lib_path;
     let library = unsafe { Library::new(path) }?;
     let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
 
@@ -74,7 +87,7 @@ where
     BaseHsm<P>: Sized,
 {
     info!("instantiating hsm");
-    BaseHsm::<P>::instantiate(cfg.lib_path, cfg.slot_ids_and_passwords.clone())
+    BaseHsm::<P>::instantiate(&cfg.lib_path, cfg.slot_ids_and_passwords.clone())
 }
 
 pub fn get_slot<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<Arc<SlotManager>>
@@ -111,8 +124,8 @@ where
     BaseHsm<P>: Sized,
 {
     log_init(None);
-    let hsm = BaseHsm::<P>::instantiate(cfg.lib_path, HashMap::new())?;
-    let info = hsm.get_info()?;
+    let hsm = BaseHsm::<P>::instantiate(&cfg.lib_path, HashMap::new())?;
+    let info = hsm.hsm_lib().get_info_struct()?;
     info!("Connected to the HSM: {info}");
     Ok(())
 }
@@ -144,7 +157,7 @@ where
 {
     log_init(None);
     info!("Config: {cfg:#?}");
-    let hsm = BaseHsm::<P>::instantiate(cfg.lib_path, cfg.slot_ids_and_passwords.clone())?;
+    let hsm = BaseHsm::<P>::instantiate(&cfg.lib_path, cfg.slot_ids_and_passwords.clone())?;
     let supported_algorithms = hsm.get_algorithms(cfg.slot_id_for_tests)?;
     info!("{:?}", supported_algorithms);
     Ok(())

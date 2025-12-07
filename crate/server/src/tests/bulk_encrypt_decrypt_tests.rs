@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_in_result)]
 
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
@@ -14,14 +15,19 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
         },
     },
+    time_normalize,
 };
+#[cfg(feature = "non-fips")]
 use uuid::Uuid;
+#[cfg(feature = "non-fips")]
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};
 
 const NUM_MESSAGES: usize = 1000;
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
@@ -82,6 +88,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
@@ -124,6 +131,7 @@ async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     block_cipher_mode: BlockCipherMode,
     tags: T,
@@ -145,6 +153,7 @@ fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
@@ -155,6 +164,7 @@ fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     })
 }
 
+#[cfg(feature = "non-fips")]
 fn encrypt_request(
     key_id: UniqueIdentifier,
     block_cipher_mode: BlockCipherMode,
@@ -176,6 +186,7 @@ fn encrypt_request(
     }
 }
 
+#[cfg(feature = "non-fips")]
 fn decrypt_request(
     key_id: UniqueIdentifier,
     block_cipher_mode: BlockCipherMode,

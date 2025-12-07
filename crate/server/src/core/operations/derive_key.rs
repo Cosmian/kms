@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType},
+        kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType, State},
         kmip_2_1::{
             KmipOperation,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -10,6 +10,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{DeriveKey, DeriveKeyResponse},
             kmip_types::{DerivationMethod, KeyFormatType, LinkType, UniqueIdentifier},
         },
+        time_normalize,
     },
     cosmian_kms_interfaces::SessionParams,
 };
@@ -225,6 +226,35 @@ pub(crate) async fn derive_key(
         ));
     }
 
+    // Determine lifecycle state per KMIP 2.1 spec (same as Create/Register/Import):
+    // - If ActivationDate is absent or in the future → PreActive state
+    // - If ActivationDate is present and <= now → Active state
+    let now = time_normalize()?;
+    let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
+    let desired_state = if activation_allows_active {
+        debug!(
+            "DeriveKey: activation_date={:?} <= now, setting state to Active",
+            request.attributes.activation_date
+        );
+        State::Active
+    } else {
+        debug!("DeriveKey: no activation_date or future date, setting state to PreActive");
+        State::PreActive
+    };
+
+    // Set the state in request attributes before creating the object
+    let mut attributes = request.attributes.clone();
+    attributes.state = Some(desired_state);
+    // Set lifecycle timestamps
+    // Zero milliseconds for KMIP serialization compatibility
+    let now_stored = time_normalize()?;
+    attributes.initial_date = Some(now_stored);
+    attributes.original_creation_date = Some(now_stored);
+    attributes.last_change_date = Some(now_stored);
+    if desired_state == State::Active {
+        attributes.activation_date = Some(now_stored);
+    }
+
     // Create the derived object based on the requested type
     let derived_object = match request.object_type {
         ObjectType::SymmetricKey => {
@@ -235,10 +265,10 @@ pub(crate) async fn derive_key(
                     key_material: KeyMaterial::TransparentSymmetricKey {
                         key: derived_key_bytes.clone().into(),
                     },
-                    attributes: Some(request.attributes.clone()),
+                    attributes: Some(attributes.clone()),
                 }),
-                cryptographic_algorithm: request.attributes.cryptographic_algorithm,
-                cryptographic_length: request.attributes.cryptographic_length,
+                cryptographic_algorithm: attributes.cryptographic_algorithm,
+                cryptographic_length: attributes.cryptographic_length,
                 key_wrapping_data: None,
             };
             Object::SymmetricKey(SymmetricKey { key_block })
@@ -278,7 +308,7 @@ pub(crate) async fn derive_key(
             Some(derived_object_id.clone()),
             user,
             &derived_object,
-            &request.attributes,
+            &attributes,
             &tags,
             params.clone(),
         )

@@ -19,6 +19,14 @@ use crate::{
 
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
+    // Skip this test in Nix sandbox (no network access)
+    if option_env!("IN_NIX_SHELL").is_some() || std::env::var("IN_NIX_SHELL").is_ok() {
+        eprintln!(
+            "Skipping test_validate_with_certificates_bytes: running in Nix sandbox without network access"
+        );
+        return Ok(());
+    }
+
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =
@@ -39,7 +47,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root certificate");
     let request = Validate {
         certificate: Some([intermediate_cert.clone(), root_cert.clone()].to_vec()),
@@ -47,7 +55,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate certificates");
     let request = Validate {
         certificate: Some(
@@ -77,7 +85,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: None,
     };
     let res = kms.validate(request, owner, None).await?;
-    assert!(res.validity_indicator == ValidityIndicator::Valid);
+    assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf certificates - valid");
     let request = Validate {
         certificate: Some(
@@ -109,6 +117,14 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
+    // Skip this test in Nix sandbox (no network access)
+    if option_env!("IN_NIX_SHELL").is_some() || std::env::var("IN_NIX_SHELL").is_ok() {
+        eprintln!(
+            "Skipping test_validate_with_certificates_ids: running in Nix sandbox without network access"
+        );
+        return Ok(());
+    }
+
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =

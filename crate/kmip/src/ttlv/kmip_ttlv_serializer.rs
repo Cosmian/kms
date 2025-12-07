@@ -301,9 +301,21 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok> {
-        Err(TtlvError::custom(format!(
-            "cannot map the 'unit struct' {name}, unit_struct is unsupported in TTLV"
-        )))
+        // Represent a unit struct as an empty Structure. When nested under an enum
+        // newtype variant (e.g., Operation::InteropResponse(InteropResponse)), the
+        // variant handling already created a child with the variant tag; we just
+        // need to ensure its value remains an empty structure. If there is no
+        // parent, create a new root structure with the provided name.
+        if let Some(parent) = self.stack.peek_mut() {
+            parent.value = TTLValue::Structure(vec![]);
+        } else {
+            let tag = name.to_owned();
+            self.stack.push(TTLV {
+                tag,
+                value: TTLValue::Structure(vec![]),
+            });
+        }
+        Ok(())
     }
 
     #[instrument(level = "trace", skip(self))]
@@ -650,7 +662,7 @@ impl SerializeStruct for &mut TtlvSerializer {
                 }
             }
         }
-        let struct_elems = self.current_mut_structure()?;
+        let struct_elements = self.current_mut_structure()?;
         if let TTLValue::Structure(ref v) = current_element.value {
             let is_array = !v.is_empty() && v.iter().all(|child| child.tag == key);
             if is_array {
@@ -658,19 +670,19 @@ impl SerializeStruct for &mut TtlvSerializer {
                     matches!(child.value, TTLValue::Integer(_) | TTLValue::LongInteger(_))
                 });
                 if all_numeric {
-                    struct_elems.push(current_element);
+                    struct_elements.push(current_element);
                 } else {
-                    struct_elems.extend_from_slice(v);
+                    struct_elements.extend_from_slice(v);
                 }
             } else {
-                struct_elems.push(current_element);
+                struct_elements.push(current_element);
             }
         } else {
-            struct_elems.push(current_element);
+            struct_elements.push(current_element);
         }
         trace!(
             "... added a struct field: {key}, the parent struct is now: {:?}",
-            &struct_elems,
+            &struct_elements,
         );
         Ok(())
     }

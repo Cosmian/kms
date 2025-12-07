@@ -48,14 +48,8 @@ async fn test_re_key_with_tags() -> KResult<()> {
         &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post_2_1(&app, &request).await?;
-    assert_eq!(
-        &rekey_keypair_response.private_key_unique_identifier,
-        private_key_unique_identifier
-    );
-    assert_eq!(
-        &rekey_keypair_response.public_key_unique_identifier,
-        public_key_unique_identifier
-    );
+    assert!(&rekey_keypair_response.private_key_unique_identifier == private_key_unique_identifier);
+    assert!(&rekey_keypair_response.public_key_unique_identifier == public_key_unique_identifier);
 
     // Encrypt with the re-keyed public key
     let authentication_data = b"cc the uid".to_vec();
@@ -235,6 +229,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
                 revocation_message: Some("Revocation test".to_owned()),
             },
             compromise_occurrence_date: None,
+            cascade: true,
         },
     )
     .await?;
@@ -245,14 +240,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         &RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_owned()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post_2_1(&app, &request).await?;
-    assert_eq!(
-        &rekey_keypair_response.private_key_unique_identifier,
-        private_key_unique_identifier
-    );
-    assert_eq!(
-        &rekey_keypair_response.public_key_unique_identifier,
-        public_key_unique_identifier
-    );
+    assert!(&rekey_keypair_response.private_key_unique_identifier == private_key_unique_identifier);
+    assert!(&rekey_keypair_response.public_key_unique_identifier == public_key_unique_identifier);
 
     // ReEncrypt with same ABE attribute (which has been previously incremented)
     let authentication_data = b"cc the uid".to_vec();
@@ -302,6 +291,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let request = Destroy {
         unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
         remove: false,
+        cascade: true,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

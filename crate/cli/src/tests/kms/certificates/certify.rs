@@ -354,7 +354,7 @@ async fn test_certify_a_csr_without_extensions() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
 
     Ok(())
 }
@@ -398,7 +398,7 @@ async fn test_certify_a_csr_with_extensions() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -442,7 +442,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> KmsCliResult<()>
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -493,7 +493,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -551,7 +551,7 @@ async fn test_certify_renew_a_certificate() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -593,7 +593,7 @@ async fn test_certify_issue_with_subject_name() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -630,7 +630,7 @@ async fn test_certify_a_public_key_test_self_signed() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -673,7 +673,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
     Ok(())
 }
 
@@ -710,7 +710,7 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> K
     .run(ctx.get_owner_client())
     .await?;
 
-    assert!(validation == ValidityIndicator::Valid);
+    assert_eq!(validation, ValidityIndicator::Valid);
 
     Ok(())
 }

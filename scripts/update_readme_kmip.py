@@ -98,14 +98,14 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
 
     if not spec_file.exists():
         print(
-            f"  Warning: Spec file not found for version {version}: {spec_file}",
+            f'  Warning: Spec file not found for version {version}: {spec_file}',
             file=sys.stderr,
         )
         return get_fallback_version_data(version)
 
     if not HAS_BS4:
         print(
-            f"  Warning: BeautifulSoup4 not available, using fallback data",
+            f'  Warning: BeautifulSoup4 not available, using fallback data',
             file=sys.stderr,
         )
         return get_fallback_version_data(version)
@@ -118,6 +118,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
         attributes = set()
         managed_objects = set()
         key_structures = set()
+        base_objects = set()
 
         # Extract operations from section headings
         # In KMIP 1.x specs, operations are in section 4.x
@@ -266,6 +267,37 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
             if struct in full_text:
                 key_structures.add(struct)
 
+        # Extract base objects presence by simple pattern search in spec text
+        base_object_patterns = [
+            'Attribute',
+            'Credential',
+            'Key Block',
+            'Key Value',
+            'Key Wrapping Data',
+            'Key Wrapping Specification',
+            'Transparent Key Structures',
+            'Template-Attribute Structures',
+            'Server Information',
+            'Extension Information',
+            'Data',
+            'Data Length',
+            'Signature Data',
+            'MAC Data',
+            'Nonce',
+            'Correlation Value',
+            'Init Indicator',
+            'Final Indicator',
+            'RNG Parameters',
+            'Profile Information',
+            'Validation Information',
+            'Capability Information',
+            'Authenticated Encryption Additional Data',
+            'Authenticated Encryption Tag',
+        ]
+        for bo in base_object_patterns:
+            if bo in full_text:
+                base_objects.add(bo)
+
         # Combine with fallback data to ensure we don't miss anything
         fallback = get_fallback_version_data(version)
 
@@ -278,13 +310,13 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
             'managed_objects': (
                 managed_objects if managed_objects else fallback['managed_objects']
             ),
-            'base_objects': fallback['base_objects'],
+            'base_objects': base_objects if base_objects else fallback['base_objects'],
             'key_structures': (
                 key_structures if key_structures else fallback['key_structures']
             ),
         }
     except Exception as e:
-        print(f"  Error parsing spec file {spec_file}: {e}", file=sys.stderr)
+        print(f'  Error parsing spec file {spec_file}: {e}', file=sys.stderr)
         import traceback
 
         traceback.print_exc()
@@ -409,7 +441,7 @@ def get_supported_versions() -> List[Tuple[int, int]]:
     """Extract supported KMIP versions from discover_versions.rs."""
     discover_file = OPS_DIR / 'discover_versions.rs'
     if not discover_file.exists():
-        print(f"Warning: discover_versions.rs not found", file=sys.stderr)
+        print(f'Warning: discover_versions.rs not found', file=sys.stderr)
         return [(2, 1)]
 
     content = discover_file.read_text(encoding='utf-8')
@@ -436,7 +468,7 @@ def get_operations_by_version() -> Dict[str, Set[str]]:
     ops_by_version = {}
 
     for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']:
-        print(f"  Parsing KMIP {version}...")
+        print(f'  Parsing KMIP {version}...')
         spec_data = parse_kmip_spec(version)
         ops_by_version[version] = spec_data['operations']
         print(f"    Found {len(spec_data['operations'])} operations")
@@ -492,7 +524,7 @@ def determine_baseline_profile_compliance(implemented_ops: Set[str]) -> Dict[str
 
     if not required_missing:
         profiles['Baseline Server'] = (
-            f"✅ Compliant (all {len(baseline_required_ops)} required + {len(optional_supported)}/{len(baseline_optional_ops)} optional)"
+            f'✅ Compliant (all {len(baseline_required_ops)} required + {len(optional_supported)}/{len(baseline_optional_ops)} optional)'
         )
     else:
         profiles['Baseline Server'] = (
@@ -512,7 +544,7 @@ def detect_implemented_operations() -> Set[str]:
     ops = set()
 
     if not OPS_DIR.exists():
-        print(f"Warning: Operations directory not found: {OPS_DIR}", file=sys.stderr)
+        print(f'Warning: Operations directory not found: {OPS_DIR}', file=sys.stderr)
         return ops
 
     # Files to skip (utility modules, not KMIP operations)
@@ -547,10 +579,14 @@ def detect_implemented_operations() -> Set[str]:
             'export': 'Export',
             'get': 'Get',
             'get_attributes': 'Get Attributes',
+            'get_attribute_list': 'Get Attribute List',
             'hash': 'Hash',
             'import': 'Import',
             'locate': 'Locate',
             'mac': 'MAC',
+            'modify_attribute': 'Modify Attribute',
+            'rng_retrieve': 'RNG Retrieve',
+            'rng_seed': 'RNG Seed',
             'query': 'Query',
             'register': 'Register',
             'rekey': 'Re-key',
@@ -579,6 +615,13 @@ def detect_implemented_operations() -> Set[str]:
             # It's a .rs file - represents a single operation
             op_name = name_to_operation(item.stem)
             ops.add(op_name)
+            # Additionally, scan file content for embedded operation types (e.g., MACVerify in mac.rs)
+            try:
+                txt = item.read_text(encoding='utf-8', errors='ignore')
+            except Exception:
+                txt = ''
+
+            ops.update(_detect_ops_from_rust_content(txt))
         elif item.is_dir():
             # It's a directory - check if it contains operation-related files
             # A directory represents one operation if it contains actual implementation files
@@ -595,14 +638,104 @@ def detect_implemented_operations() -> Set[str]:
             if has_implementation:
                 op_name = name_to_operation(item.name)
                 ops.add(op_name)
+                # Scan sub-files for embedded operation types
+                for subitem in item.iterdir():
+                    if subitem.is_file() and subitem.suffix == '.rs':
+                        try:
+                            txt = subitem.read_text(encoding='utf-8', errors='ignore')
+                        except Exception:
+                            txt = ''
+                        ops.update(_detect_ops_from_rust_content(txt))
 
     return ops
+
+
+def _detect_ops_from_rust_content(rust_source: str) -> Set[str]:
+    """Heuristically detect KMIP operations used/implemented inside a Rust source file.
+
+    This complements filename-based detection to catch cases where multiple operations
+    live in the same module (e.g., MAC and MAC Verify in mac.rs).
+
+    Strategy:
+    - Look for kmip_operations::{ ... } imports and collect request types
+    - Look for async function handlers with well-known names (e.g., mac_verify)
+    - Map Rust request type names to display names used in the README
+    """
+    detected: Set[str] = set()
+
+    rust_to_op = {
+        'Activate': 'Activate',
+        'AddAttribute': 'Add Attribute',
+        'Certify': 'Certify',
+        'Check': 'Check',
+        'Create': 'Create',
+        'CreateKeyPair': 'Create Key Pair',
+        'Decrypt': 'Decrypt',
+        'DeleteAttribute': 'Delete Attribute',
+        'DeriveKey': 'DeriveKey',
+        'Destroy': 'Destroy',
+        'DiscoverVersions': 'Discover Versions',
+        'Encrypt': 'Encrypt',
+        'Export': 'Export',
+        'Get': 'Get',
+        'GetAttributeList': 'Get Attribute List',
+        'GetAttributes': 'Get Attributes',
+        'Hash': 'Hash',
+        'Import': 'Import',
+        'Locate': 'Locate',
+        'MAC': 'MAC',
+        'MACVerify': 'MAC Verify',
+        'ModifyAttribute': 'Modify Attribute',
+        'PKCS11': 'PKCS11',  # non-standard KMIP extension, may be omitted in spec-based table
+        'Query': 'Query',
+        'ReKey': 'Re-key',
+        'ReKeyKeyPair': 'Re-key Key Pair',
+        'Register': 'Register',
+        'Revoke': 'Revoke',
+        'RNGRetrieve': 'RNG Retrieve',
+        'RNGSeed': 'RNG Seed',
+        'SetAttribute': 'Set Attribute (Modify)',
+        'Sign': 'Sign',
+        'SignatureVerify': 'Signature Verify',
+        'Validate': 'Validate',
+    }
+
+    # 1) Parse kmip_operations import lists
+    for m in re.finditer(r'kmip_operations::\{([^}]+)\}', rust_source):
+        items = [s.strip() for s in m.group(1).split(',')]
+        for it in items:
+            # Remove generic type suffixes or trailing tokens
+            it = re.sub(r'\s+as\s+\w+$', '', it)  # strip aliases
+            it = it.strip()
+            if not it:
+                continue
+            # Only consider request type names (Response variants are ignored)
+            if it.endswith('Response'):
+                continue
+            disp = rust_to_op.get(it)
+            if disp:
+                detected.add(disp)
+
+    # 2) Look for well-known handler function names when imports are absent
+    handler_map = {
+        r'\bmac_verify\s*\(': 'MAC Verify',
+        r'\bsignature_verify\s*\(': 'Signature Verify',
+        r'\brng_retrieve\s*\(': 'RNG Retrieve',
+        r'\brng_seed\s*\(': 'RNG Seed',
+        r'\bmodify_attribute\s*\(': 'Modify Attribute',
+        r'\bset_attribute\s*\(': 'Set Attribute (Modify)',
+    }
+    for pattern, disp in handler_map.items():
+        if re.search(pattern, rust_source):
+            detected.add(disp)
+
+    return detected
 
 
 def parse_attributes() -> List[str]:
     """Parse the Attribute enum from kmip_attributes.rs and return list of attribute names."""
     if not ATTRS_FILE.exists():
-        print(f"Warning: Attributes file not found: {ATTRS_FILE}", file=sys.stderr)
+        print(f'Warning: Attributes file not found: {ATTRS_FILE}', file=sys.stderr)
         return []
 
     content = ATTRS_FILE.read_text(encoding='utf-8')
@@ -749,7 +882,7 @@ def group_version_columns(version_support: Dict[str, str]) -> List[Tuple[str, st
             if start_ver == end_ver:
                 groups.append((start_ver, prev_status))
             else:
-                groups.append((f"{start_ver}-{end_ver}", prev_status))
+                groups.append((f'{start_ver}-{end_ver}', prev_status))
 
             start_ver = ver
             start_idx = i
@@ -761,91 +894,103 @@ def group_version_columns(version_support: Dict[str, str]) -> List[Tuple[str, st
         if start_ver == end_ver:
             groups.append((start_ver, prev_status))
         else:
-            groups.append((f"{start_ver}-{end_ver}", prev_status))
+            groups.append((f'{start_ver}-{end_ver}', prev_status))
 
     return groups
 
 
 def map_attribute_support(attrs: List[str]) -> Dict[str, str]:
-    """Map attributes to support status based on their definition."""
-    # Attributes that are explicitly known to be supported through operations
-    # These are verified by checking the operations code
-    supported_attrs = {
-        'Unique Identifier',
-        'Object Type',
-        'Cryptographic Algorithm',
-        'Cryptographic Length',
-        'Cryptographic Parameters',
-        'Cryptographic Domain Parameters',
-        'Certificate Type',
-        'Digest',
-        'Cryptographic Usage Mask',
-        'State',
-        'Initial Date',
-        'Activation Date',
-        'Deactivation Date',
-        'Compromise Occurrence Date',
-        'Revocation Reason',
-        'Link',
-        'Last Change Date',
-        'X.509 Certificate Identifier',
-        'X.509 Certificate Issuer',
-        'X.509 Certificate Subject',
-        'Digital Signature Algorithm',
-        'Original Creation Date',
-        'Sensitive',
-    }
+    """Map attributes to support status by scanning server operations for usage.
 
-    # Deprecated certificate attributes from older KMIP versions
-    deprecated_cert_attrs = {
-        'Certificate Identifier',
-        'Certificate Subject',
-        'Certificate Issuer',
-        'Operation Policy Name',
-    }
+    A ✅ indicates the attribute appears in at least one operation implementation under
+    `crate/server/src/core/operations`, including the attribute handlers (Add/Delete/Set/Get Attribute).
+    """
 
-    result = {}
-    for attr in attrs:
-        if attr in supported_attrs:
-            result[attr] = '✅'
-        elif attr in deprecated_cert_attrs:
-            result[attr] = '🚫'
-        else:
-            result[attr] = '❌'
+    ops_dir = OPS_DIR
+    # Don't exclude attribute handlers anymore; they indicate real support for those attributes
+    exclude_files: Set[str] = set()
 
-    # Add any known attributes not in parsed list
-    for attr in deprecated_cert_attrs:
-        if attr not in result:
-            result[attr] = '🚫'
+    # Build a map from readable attribute name -> possible field identifiers in code
+    def camel_to_snake(name: str) -> str:
+        # Special cases
+        if name.startswith('X.509'):
+            # e.g., X.509 Certificate Identifier -> x_509_certificate_identifier
+            tail = name.replace('X.509 ', '')
+            snake_tail = re.sub(r'[^A-Za-z0-9]+', ' ', tail)
+            snake_tail = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', snake_tail)
+            snake_tail = re.sub(r'([a-z])([A-Z])', r'\1 \2', snake_tail)
+            snake_tail = '_'.join(snake_tail.lower().split())
+            return 'x_509_' + snake_tail
+        if name.startswith('PKCS#12'):
+            tail = name.replace('PKCS#12 ', '')
+            snake_tail = re.sub(r'[^A-Za-z0-9]+', ' ', tail)
+            snake_tail = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', snake_tail)
+            snake_tail = re.sub(r'([a-z])([A-Z])', r'\1 \2', snake_tail)
+            snake_tail = '_'.join(snake_tail.lower().split())
+            return 'pkcs_12_' + snake_tail
 
-    # Ensure all attributes from the standard are present
-    standard_attrs = {
-        'Name': '❌',
-        'Lease Time': '❌',
-        'Usage Limits': '❌',
-        'Process Start Date': '❌',
-        'Protect Stop Date': '❌',
-        'Destroy Date': '❌',
-        'Compromise Date': '❌',
-        'Archive Date': '❌',
-        'Object Group': '❌',
-        'Application Specific Information': '❌',
-        'Contact Information': '❌',
-        'Fresh': '❌',
-        'Alternative Name': '❌',
-        'Key Value Present': '❌',
-        'Key Value Location': '❌',
-        'Random Number Generator': '❌',
-        'Description': '❌',
-        'Comment': '❌',
-        'Always Sensitive': '❌',
-        'Extractable': '❌',
-        'Never Extractable': '❌',
-    }
+        # Generic conversion
+        cleaned = re.sub(r'[^A-Za-z0-9]+', ' ', name)
+        cleaned = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', cleaned)
+        cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+        return '_'.join(cleaned.lower().split())
 
-    for attr, status in standard_attrs.items():
-        if attr not in result:
-            result[attr] = status
+    # Scan operations for occurrences
+    ops_texts: List[Tuple[str, str]] = []
+    if ops_dir.exists():
+        for item in ops_dir.iterdir():
+            if (
+                item.is_file()
+                and item.suffix == '.rs'
+                and item.name not in exclude_files
+            ):
+                try:
+                    ops_texts.append((item.name, item.read_text(encoding='utf-8')))
+                except Exception:
+                    continue
+            elif item.is_dir():
+                for sub in item.iterdir():
+                    if (
+                        sub.is_file()
+                        and sub.suffix == '.rs'
+                        and sub.name not in exclude_files
+                    ):
+                        try:
+                            ops_texts.append(
+                                (sub.name, sub.read_text(encoding='utf-8'))
+                            )
+                        except Exception:
+                            continue
+
+    result: Dict[str, str] = {}
+    for readable in attrs:
+        snake = camel_to_snake(readable)
+        supported = False
+
+        # Special-case: Vendor Attribute
+        # The server supports Vendor Attributes via Add/Set/Delete/Get Attribute, and also
+        # references them in other paths (message filtering, cover_crypt utilities, etc.).
+        # The token often appears as `vendor_attributes` (plural) or `VendorAttribute` type.
+        if readable.lower().strip() == 'vendor attribute':
+            vendor_patterns = [
+                re.compile(r'\bvendor_attribute\b'),
+                re.compile(r'\bvendor_attributes\b'),
+                re.compile(r'\bVendorAttribute\b'),
+                re.compile(r'\bVendorAttributeReference\b'),
+            ]
+            for _, text in ops_texts:
+                if any(p.search(text) for p in vendor_patterns):
+                    supported = True
+                    break
+            result[readable] = '✅' if supported else '❌'
+            continue
+
+        pattern = re.compile(rf'\b{re.escape(snake)}\b')
+        for _, text in ops_texts:
+            if pattern.search(text):
+                supported = True
+                break
+        result[readable] = '✅' if supported else '❌'
 
     return result
 
@@ -862,7 +1007,11 @@ def generate_support_markdown(
     """Generate the complete support.md content with version-aware tables."""
 
     # Format server supported versions
-    version_str = ', '.join([f"{maj}.{min}" for maj, min in server_versions])
+    versions = [f'{maj}.{min}' for maj, min in server_versions]
+    version_str = ', '.join(versions)
+
+    # Reverse to show oldest to newest (1.0 to 2.1) in tables
+    versions = list(reversed(versions))
 
     md = f"""# KMIP support by Cosmian KMS
 
@@ -879,15 +1028,14 @@ Legend:
 - N/A Not applicable (operation/attribute not defined in that KMIP version)
 
 ## KMIP Baseline Profile Compliance
-
 """
 
     # Add profile compliance section
     for profile_name, status in profile_compliance.items():
-        md += f"**{profile_name}:** {status}\n\n"
+        md += f'**{profile_name}:** {status}\n\n'
 
-    md += """
-The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
+    md += """The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
+
 - **Required operations:** Discover Versions, Query, Create, Register, Get, Destroy, Locate, Activate, Revoke
 - **Optional operations:** Many additional operations for extended functionality
 
@@ -906,51 +1054,35 @@ The following table shows operation support across all KMIP versions.
 
 """
 
-    # Build operations table with version columns
-    # Collect ALL operations from all KMIP version specs (not just a hardcoded list)
-    all_operations = set()
-    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']
+    # Build operations table with all version columns
+    # Get all operations from ops_support (which are the canonical operation names)
+    all_operations = sorted(ops_support.keys())
 
+    # Create table header with version columns
+    md += '| Operation |'
     for version in versions:
-        all_operations.update(ops_by_version.get(version, set()))
+        md += f' {version} |'
+    md += '\n'
 
-    # Sort operations alphabetically
-    all_operations = sorted(all_operations)
-
-    print(f"  Found {len(all_operations)} unique operations across all KMIP versions")
-
-    # Build version support matrix
-    op_version_matrix = {}
-    for op in all_operations:
-        implemented = op in implemented_ops
-        version_support = get_version_support_for_operation(
-            op, ops_by_version, implemented
-        )
-        op_version_matrix[op] = version_support
-
-    # Create table header with individual version columns
-    header_row = '| Operation |'
-    separator_row = '| --------- |'
-    for version in versions:
-        header_row += f' {version} |'
-        separator_row += ' :-----: |'
-
-    md += header_row + '\n'
-    md += separator_row + '\n'
+    md += '| --------- |'
+    for _ in versions:
+        md += ' :-----: |'
+    md += '\n'
 
     # Add operation rows
     for op in all_operations:
-        row = f"| {op:<30} |"
+        is_implemented = ops_support[op] == '✅'
+        version_support = get_version_support_for_operation(
+            op, ops_by_version, is_implemented
+        )
 
-        # Add status for each version
+        md += f'| {op:<22} |'
         for version in versions:
-            status = op_version_matrix[op].get(version, 'N/A')
-            row += f' {status:^7} |'
+            status = version_support.get(version, 'N/A')
+            md += f' {status:^7} |'
+        md += '\n'
 
-        md += row + '\n'
-
-    md += """
-### Methodology
+    md += """\n### Methodology
 
 - Operations marked ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
 - Operations marked ❌ are defined in the KMIP specification but not implemented in Cosmian KMS.
@@ -962,7 +1094,6 @@ If you spot a mismatch or want to extend coverage, please open an issue or PR.
 ### Managed Objects
 
 The following table shows managed object support across all KMIP versions.
-
 """
 
     # Build managed objects table with version columns
@@ -974,7 +1105,7 @@ The following table shows managed object support across all KMIP versions.
         'Split Key',
         'Template',
         'Secret Data',
-        'Opaque Object',
+        'Opaque Data',
         'PGP Key',
     ]
 
@@ -987,7 +1118,7 @@ The following table shows managed object support across all KMIP versions.
         'Split Key': False,
         'Template': False,  # Deprecated
         'Secret Data': True,
-        'Opaque Object': True,
+        'Opaque Data': True,
         'PGP Key': False,
     }
 
@@ -1028,15 +1159,13 @@ The following table shows managed object support across all KMIP versions.
 
     # Add object rows
     for obj in managed_objects_list:
-        row = f"| {obj:<14} |"
+        row = f'| {obj:<14} |'
         for version in versions:
             status = obj_version_matrix[obj].get(version, 'N/A')
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """
-Notes:
-
+    md += """\nNotes:
 - Opaque Object import support is present (see `import.rs`).
 - PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
 - Template objects are deprecated in newer KMIP versions.
@@ -1044,11 +1173,10 @@ Notes:
 ### Base Objects
 
 The following table shows base object support across all KMIP versions.
-
 """
 
-    # Base objects list
-    base_objects_list = [
+    # Base objects list (from spec patterns); we will filter by presence in spec text per version
+    all_base_objects = [
         'Attribute',
         'Credential',
         'Key Block',
@@ -1057,6 +1185,7 @@ The following table shows base object support across all KMIP versions.
         'Key Wrapping Specification',
         'Transparent Key Structures',
         'Template-Attribute Structures',
+        'Server Information',
         'Extension Information',
         'Data',
         'Data Length',
@@ -1066,7 +1195,7 @@ The following table shows base object support across all KMIP versions.
         'Correlation Value',
         'Init Indicator',
         'Final Indicator',
-        'RNG Parameter',
+        'RNG Parameters',
         'Profile Information',
         'Validation Information',
         'Capability Information',
@@ -1074,32 +1203,159 @@ The following table shows base object support across all KMIP versions.
         'Authenticated Encryption Tag',
     ]
 
-    # Implementation status for base objects
-    implemented_base_objects = {
-        'Attribute': True,
-        'Credential': True,
-        'Key Block': True,
-        'Key Value': True,
-        'Key Wrapping Data': True,
-        'Key Wrapping Specification': True,
-        'Transparent Key Structures': True,
-        'Template-Attribute Structures': True,
-        'Extension Information': True,
-        'Data': False,
-        'Data Length': False,
-        'Signature Data': False,
-        'MAC Data': False,
-        'Nonce': True,
-        'Correlation Value': False,
-        'Init Indicator': False,
-        'Final Indicator': False,
-        'RNG Parameter': True,
-        'Profile Information': True,
-        'Validation Information': True,
-        'Capability Information': True,
-        'Authenticated Encryption Additional Data': True,
-        'Authenticated Encryption Tag': True,
+    # Detect implementation by scanning types/operations for relevant tokens
+    base_object_tokens = {
+        'Attribute': ['struct Attributes', 'enum Attribute '],
+        'Credential': ['struct Credential'],
+        'Key Block': ['struct KeyBlock', 'KeyBlock ='],
+        'Key Value': ['struct KeyValue'],
+        'Key Wrapping Data': ['KeyWrappingData'],
+        'Key Wrapping Specification': ['KeyWrappingSpecification'],
+        'Transparent Key Structures': [
+            'TransparentRSAPrivateKey',
+            'TransparentRSAPublicKey',
+            'TransparentECPublicKey',
+            'TransparentECPrivateKey',
+            'TransparentSymmetricKey',
+            'TransparentDSAPrivateKey',
+            'TransparentDSAPublicKey',
+            'TransparentDHPublicKey',
+            'TransparentDHPrivateKey',
+        ],
+        'Template-Attribute Structures': ['TemplateAttribute'],
+        # Server Information is distinct from Extension Information in KMIP Query
+        'Server Information': ['ServerInformation'],
+        'Extension Information': ['ExtensionInformation'],
+        'Data': ['Data = 0x42', 'OpaqueDataValue'],
+        'Data Length': ['DataLength', 'length:'],
+        'Signature Data': ['signature data', 'SignatureData', 'signature_data'],
+        'MAC Data': ['MacData', 'MACData', 'mac_data'],
+        'Nonce': ['Nonce', 'IVCounterNonce'],
+        'Correlation Value': ['CorrelationValue'],
+        'Init Indicator': ['InitIndicator'],
+        'Final Indicator': ['FinalIndicator'],
+        'RNG Parameters': ['RNGParameters'],
+        'Profile Information': ['ProfileInformation'],
+        'Validation Information': ['ValidationInformation'],
+        'Capability Information': ['CapabilityInformation'],
+        'Authenticated Encryption Additional Data': [
+            'authenticated_encryption_additional_data'
+        ],
+        'Authenticated Encryption Tag': ['authenticated_encryption_tag'],
     }
+
+    # Aggregate Rust source text to search
+    def read_all(paths: List[Path]) -> str:
+        buf = []
+        for p in paths:
+            if p.exists():
+                if p.is_file():
+                    try:
+                        buf.append(p.read_text(encoding='utf-8', errors='ignore'))
+                    except Exception:
+                        pass
+                else:
+                    for sub in p.rglob('*.rs'):
+                        try:
+                            buf.append(sub.read_text(encoding='utf-8', errors='ignore'))
+                        except Exception:
+                            pass
+        return '\n'.join(buf)
+
+    # Only scan the server crate to assert actual usage by the KMS implementation.
+    # Scanning the KMIP crate would mark types as "implemented" merely because they exist,
+    # which is not the goal of this section.
+    rust_text = read_all(
+        [
+            ROOT / 'crate' / 'server' / 'src',
+        ]
+    )
+
+    implemented_base_objects: Dict[str, bool] = {}
+    for bo, tokens in base_object_tokens.items():
+        implemented_base_objects[bo] = any(token in rust_text for token in tokens)
+
+    # Strengthen base object detection using parsed operation fields from KMIP structs
+    # so we don't miss snake_case field usages in server code (init_indicator, final_indicator, etc.).
+    if field_support:
+        # Map KMIP struct names to display op names
+        struct_to_op = {
+            'Activate': 'Activate',
+            'AddAttribute': 'Add Attribute',
+            'Certify': 'Certify',
+            'Check': 'Check',
+            'Create': 'Create',
+            'CreateKeyPair': 'Create Key Pair',
+            'Decrypt': 'Decrypt',
+            'DeleteAttribute': 'Delete Attribute',
+            'DeriveKey': 'DeriveKey',
+            'Destroy': 'Destroy',
+            'DiscoverVersions': 'Discover Versions',
+            'Encrypt': 'Encrypt',
+            'Export': 'Export',
+            'Get': 'Get',
+            'GetAttributeList': 'Get Attribute List',
+            'GetAttributes': 'Get Attributes',
+            'Hash': 'Hash',
+            'Import': 'Import',
+            'Locate': 'Locate',
+            'MAC': 'MAC',
+            'MACVerify': 'MAC Verify',
+            'ModifyAttribute': 'Modify Attribute',
+            'Query': 'Query',
+            'ReKey': 'Re-key',
+            'ReKeyKeyPair': 'Re-key Key Pair',
+            'Register': 'Register',
+            'Revoke': 'Revoke',
+            'RNGRetrieve': 'RNG Retrieve',
+            'RNGSeed': 'RNG Seed',
+            'SetAttribute': 'Set Attribute (Modify)',
+            'Sign': 'Sign',
+            'SignatureVerify': 'Signature Verify',
+            'Validate': 'Validate',
+        }
+
+        # Aggregate fields by op across the parsed versions (1.4 and 2.1 proxies)
+        op_to_fields: Dict[str, Set[str]] = {}
+        for ver, structs in field_support.items():
+            for struct_name, fields in structs.items():
+                # Ignore Response structs
+                if struct_name.endswith('Response'):
+                    continue
+                op_name = struct_to_op.get(struct_name)
+                if not op_name:
+                    # Fallback: insert spaces before capitals (SignatureVerify -> Signature Verify)
+                    fallback = re.sub(r'([a-z])([A-Z])', r'\1 \2', struct_name)
+                    op_name = fallback
+                # Merge fields
+                if op_name not in op_to_fields:
+                    op_to_fields[op_name] = set()
+                op_to_fields[op_name].update(fields)
+
+        # Helper to check if any implemented op uses a given field name
+        def any_impl_uses(field_name: str) -> bool:
+            for op in implemented_ops:
+                fields = op_to_fields.get(op)
+                if fields and field_name in fields:
+                    return True
+            return False
+
+        # Map specific base objects to expected KMIP request field names
+        field_backed_bo = {
+            'Data': ['data'],
+            'Data Length': ['data_length'],
+            'Correlation Value': ['correlation_value'],
+            'Init Indicator': ['init_indicator'],
+            'Final Indicator': ['final_indicator'],
+        }
+
+        for bo, field_list in field_backed_bo.items():
+            if implemented_base_objects.get(bo):
+                continue  # already detected via direct tokens
+            for fld in field_list:
+                if any_impl_uses(fld):
+                    implemented_base_objects[bo] = True
+                    break
 
     # For base objects, we'll assume they're present in all versions
     # (they're fundamental structures)
@@ -1112,17 +1368,29 @@ The following table shows base object support across all KMIP versions.
     md += header_row + '\n'
     md += separator_row + '\n'
 
-    for obj in base_objects_list:
+    # Determine base objects present per version
+    base_obj_version_matrix: Dict[str, Dict[str, str]] = {}
+    for obj in all_base_objects:
+        version_support = {}
+        for version in versions:
+            spec_data = parse_kmip_spec(version)
+            # Consider base objects generally present across versions; fall back to simple heuristic using spec text
+            in_spec = True
+            if spec_data and spec_data.get('base_objects'):
+                in_spec = obj in spec_data['base_objects']
+            status = '✅' if implemented_base_objects.get(obj, False) else '❌'
+            version_support[version] = status if in_spec else 'N/A'
+        base_obj_version_matrix[obj] = version_support
+
+    for obj in all_base_objects:
         is_implemented = implemented_base_objects.get(obj, False)
         status = '✅' if is_implemented else '❌'
-        row = f"| {obj:<40} |"
+        row = f'| {obj:<40} |'
         for version in versions:
-            row += f' {status:^7} |'
+            row += f' {base_obj_version_matrix[obj].get(version, status):^7} |'
         md += row + '\n'
 
-    md += """
-Notes:
-
+    md += """\nNotes:
 - AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
 - Nonce and RNG Parameter are used by symmetric encryption paths.
 - Base objects are fundamental structures present across all KMIP versions.
@@ -1130,7 +1398,6 @@ Notes:
 ### Transparent Key Structures
 
 The following table shows transparent key structure support across all KMIP versions.
-
 """
 
     # Transparent key structures
@@ -1142,34 +1409,61 @@ The following table shows transparent key structure support across all KMIP vers
         'RSA Public Key',
         'DH Private Key',
         'DH Public Key',
+        'EC Private Key',
+        'EC Public Key',
+        # EC variants explicitly listed in KMIP 1.x specs
         'ECDSA Private Key',
         'ECDSA Public Key',
         'ECDH Private Key',
         'ECDH Public Key',
         'ECMQV Private Key',
         'ECMQV Public Key',
-        'EC Private Key',
-        'EC Public Key',
     ]
 
-    # Implementation status
-    implemented_structures = {
-        'Symmetric Key': True,
-        'DSA Private Key': False,
-        'DSA Public Key': False,
-        'RSA Private Key': True,
-        'RSA Public Key': True,
-        'DH Private Key': False,
-        'DH Public Key': False,
-        'ECDSA Private Key': True,
-        'ECDSA Public Key': True,
-        'ECDH Private Key': False,
-        'ECDH Public Key': False,
-        'ECMQV Private Key': False,
-        'ECMQV Public Key': False,
-        'EC Private Key': True,
-        'EC Public Key': True,
+    # Dynamically detect implemented transparent key structures from server code
+    transp_token_to_name = {
+        'TransparentSymmetricKey': 'Symmetric Key',
+        'TransparentDSAPrivateKey': 'DSA Private Key',
+        'TransparentDSAPublicKey': 'DSA Public Key',
+        'TransparentRSAPrivateKey': 'RSA Private Key',
+        'TransparentRSAPublicKey': 'RSA Public Key',
+        'TransparentDHPrivateKey': 'DH Private Key',
+        'TransparentDHPublicKey': 'DH Public Key',
+        'TransparentECPrivateKey': 'EC Private Key',
+        'TransparentECPublicKey': 'EC Public Key',
     }
+
+    server_src = (ROOT / 'crate' / 'server' / 'src').rglob('*.rs')
+    transp_in_code: Set[str] = set()
+    for f in server_src:
+        try:
+            txt = f.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            continue
+        for token, disp in transp_token_to_name.items():
+            if token in txt:
+                transp_in_code.add(disp)
+
+    implemented_structures = {
+        name: (name in transp_in_code) for name in key_structures_list
+    }
+    # Mirror EC implementation for ECDSA variants; leave ECDH/ECMQV as unimplemented unless tokens are present (they won't be)
+    if 'EC Private Key' in implemented_structures:
+        implemented_structures['ECDSA Private Key'] = implemented_structures[
+            'EC Private Key'
+        ]
+    if 'EC Public Key' in implemented_structures:
+        implemented_structures['ECDSA Public Key'] = implemented_structures[
+            'EC Public Key'
+        ]
+    # Ensure defaults for ECDH/ECMQV are False if not explicitly detected
+    for alias_name in [
+        'ECDH Private Key',
+        'ECDH Public Key',
+        'ECMQV Private Key',
+        'ECMQV Public Key',
+    ]:
+        implemented_structures.setdefault(alias_name, False)
 
     # Build version support matrix
     struct_version_matrix = {}
@@ -1197,46 +1491,32 @@ The following table shows transparent key structure support across all KMIP vers
     md += separator_row + '\n'
 
     for struct in key_structures_list:
-        row = f"| {struct:<24} |"
+        row = f'| {struct:<24} |'
         for version in versions:
             status = struct_version_matrix[struct].get(version, 'N/A')
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """
-Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+    md += """\nNote: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
-
 """
 
-    # Attributes table - with version columns
-    md += '| Attribute |'
-    for version in versions:
-        md += f' {version} |'
-    md += '\n'
+    # Attributes table - simple 2-column format (attributes are version-agnostic)
+    md += '| Attribute | Current |\n'
+    md += '| --------- | ------: |\n'
 
-    md += '| --------- |'
-    for _ in versions:
-        md += ' :-----: |'
-    md += '\n'
-
-    # For attributes, show implementation status across all versions
+    # For attributes, show implementation status
     # (most attributes are present in all versions)
     for attr in sorted(attrs_support.keys()):
         status = attrs_support[attr]
-        row = f"| {attr:<35} |"
-        for version in versions:
-            # Attributes are generally present in all versions
-            row += f' {status:^7} |'
-        md += row + '\n'
+        md += f'| {attr:<35} | {status:>7} |\n'
 
-    md += """
-Notes:
+    md += """\nNotes:
 
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
 - "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
-- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, explicitly excluding the attribute-only handlers (Add/Delete/Get/Set Attribute).
+- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, including attribute handlers (Add/Delete/Set/Get Attribute).
 - Most attributes are present across all KMIP versions with some additions in newer versions.
 """
 
@@ -1246,14 +1526,14 @@ Notes:
 def update_support_md(content: str) -> int:
     """Write the generated content to support.md."""
     SUPPORT_MD.write_text(content, encoding='utf-8')
-    print(f"✓ Updated {SUPPORT_MD}")
+    print(f'✓ Updated {SUPPORT_MD}')
     return 0
 
 
 def update_readme_md(support_content: str) -> int:
     """Update README.md with the support content between markers."""
     if not README_MD.exists():
-        print(f"Error: README not found: {README_MD}", file=sys.stderr)
+        print(f'Error: README not found: {README_MD}', file=sys.stderr)
         return 2
 
     readme_text = README_MD.read_text(encoding='utf-8')
@@ -1277,10 +1557,10 @@ def update_readme_md(support_content: str) -> int:
 
     # Build replacement block
     replacement = (
-        f"{START_MARKER}\n"
-        f"<!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->\n"
-        f"{support_for_readme}\n"
-        f"{END_MARKER}"
+        f'{START_MARKER}\n'
+        f'<!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->\n'
+        f'{support_for_readme}\n'
+        f'{END_MARKER}'
     )
 
     new_readme = (
@@ -1288,7 +1568,7 @@ def update_readme_md(support_content: str) -> int:
     )
 
     README_MD.write_text(new_readme, encoding='utf-8')
-    print(f"✓ Updated {README_MD}")
+    print(f'✓ Updated {README_MD}')
     return 0
 
 
@@ -1308,7 +1588,7 @@ def parse_rust_operation_structs(version: str) -> Dict[str, Set[str]]:
 
     if not operations_file.exists():
         print(
-            f"  Warning: Operations file not found: {operations_file}", file=sys.stderr
+            f'  Warning: Operations file not found: {operations_file}', file=sys.stderr
         )
         return {}
 
@@ -1363,7 +1643,7 @@ def parse_rust_operation_structs(version: str) -> Dict[str, Set[str]]:
         return operation_fields
 
     except Exception as e:
-        print(f"  Warning: Error parsing {operations_file}: {e}", file=sys.stderr)
+        print(f'  Warning: Error parsing {operations_file}: {e}', file=sys.stderr)
         return {}
 
 
@@ -1403,7 +1683,7 @@ def get_operation_field_support(versions: List[str]) -> Dict[str, Dict[str, Set[
 
         # Parse implementation if not already cached
         if impl_version not in parsed_impls:
-            print(f"  Parsing KMIP {impl_version} operation structs...")
+            print(f'  Parsing KMIP {impl_version} operation structs...')
             parsed_impls[impl_version] = parse_rust_operation_structs(impl_version)
 
         field_support_by_version[version] = parsed_impls[impl_version]
@@ -1423,24 +1703,21 @@ def main() -> int:
 
     # Detect implemented operations
     ops = detect_implemented_operations()
-    print(f"  Found {len(ops)} implemented operations")
+    print(f'  Found {len(ops)} implemented operations')
 
     # Parse attributes
     attrs = parse_attributes()
-    print(f"  Found {len(attrs)} defined attributes")
+    print(f'  Found {len(attrs)} defined attributes')
 
     # Get operations by version
     ops_by_version = get_operations_by_version()
 
-    # Get operation field support from Rust structs
-    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']
-    field_support = get_operation_field_support(versions)
-
-    # Determine baseline profile compliance
-    print('Checking baseline profile compliance...')
+    # Determine profile compliance
     profile_compliance = determine_baseline_profile_compliance(ops)
-    for profile, status in profile_compliance.items():
-        print(f"  {profile}: {status}")
+
+    # Get field support
+    versions = [f'{maj}.{min}' for maj, min in server_versions]
+    field_support = get_operation_field_support(versions)
 
     # Map support
     ops_support = map_operation_support(ops)

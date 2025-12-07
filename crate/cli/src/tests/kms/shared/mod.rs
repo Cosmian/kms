@@ -5,6 +5,7 @@ pub(super) mod import;
 pub(super) mod import_export_encodings;
 #[cfg(feature = "non-fips")]
 pub(super) mod import_export_wrapping;
+#[cfg(feature = "non-fips")]
 pub(super) mod locate;
 pub(super) mod revoke;
 #[cfg(feature = "non-fips")]

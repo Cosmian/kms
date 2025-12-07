@@ -1,0 +1,68 @@
+---
+name: Cargo Publish Workspace
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+    secrets:
+      token:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # This might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+
+          # All of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Manual cleanup for extra space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
+      - name: Dump context for debug
+        uses: crazy-max/ghaction-dump-context@v1
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Publishing - dry run
+        if: startsWith(github.ref, 'refs/tags/') != true
+        shell: bash
+        run: |
+          cargo publish --dry-run --all-features --workspace --allow-dirty
+
+      - name: Publishing
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.token }}
+        run: |
+          rustup toolchain install
+          cargo install cargo-workspaces
+          cargo workspaces publish --from-git --allow-dirty --yes --no-verify
+
+      - name: Check disk space after build
+        if: always()
+        run: df -h

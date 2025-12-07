@@ -109,7 +109,7 @@ impl DeriveKeyAction {
                 false,
                 false,
                 Vec::<String>::new(), // No tags for temporary password object
-            );
+            )?;
 
             let import_response = kms_rest_client.import(import_request).await?;
             import_response.unique_identifier.to_string()

@@ -1,19 +1,33 @@
-use std::{fmt, path::PathBuf};
+use std::fmt;
+#[cfg(feature = "non-fips")]
+use std::path::PathBuf;
 
 use cosmian_logger::debug;
+#[cfg(feature = "non-fips")]
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 use x509_parser::pem::Pem;
 
+#[cfg(feature = "non-fips")]
+use crate::error::KmsError;
 use crate::{
-    config::{HttpConfig, TlsConfig},
-    error::KmsError,
+    config::TlsConfig,
     result::{KResult, KResultHelper},
 };
 
 /// The TLS parameters of the API server
 pub struct TlsParams {
-    /// The TLS private key and certificate of the HTTP server and Socket server
+    /// The TLS private key and certificate of the HTTP server and Socket server (PKCS#12)
+    #[cfg(feature = "non-fips")]
     pub p12: ParsedPkcs12_2,
+    /// The server certificate in PEM (may include chain) - FIPS mode
+    #[cfg(not(feature = "non-fips"))]
+    pub server_cert_pem: Vec<u8>,
+    /// The server private key in PEM - FIPS mode
+    #[cfg(not(feature = "non-fips"))]
+    pub server_key_pem: Vec<u8>,
+    /// Optional separate chain PEM (intermediate CAs) - FIPS mode
+    #[cfg(not(feature = "non-fips"))]
+    pub server_chain_pem: Option<Vec<u8>>,
     /// The certificate used to verify the client TLS certificates
     /// used for authentication in PEM format
     pub clients_ca_cert_pem: Option<Vec<u8>>,
@@ -28,7 +42,6 @@ impl TlsParams {
     /// # Arguments
     ///
     /// * `config` - The `HttpConfig` object containing the configuration parameters.
-    /// * `deprecated_config` - The `HttpConfig` object containing the deprecated configuration parameters.
     ///
     /// # Returns
     ///
@@ -37,51 +50,71 @@ impl TlsParams {
     /// # Errors
     ///
     /// This function can return an error if there is an issue reading the PKCS#12 file or parsing it.
-    pub fn try_from(config: &TlsConfig, deprecated_config: &HttpConfig) -> KResult<Option<Self>> {
-        debug!("tls_config: {config:#?}, deprecated_config: {deprecated_config:#?}");
+    pub fn try_from(config: &TlsConfig) -> KResult<Option<Self>> {
+        debug!("tls_config: {config:#?}");
+        #[cfg(feature = "non-fips")]
         let p12 = if let (Some(p12_file), Some(p12_password)) =
             (&config.tls_p12_file, &config.tls_p12_password)
         {
             open_p12(p12_file, p12_password)?
-        } else if let (Some(p12_file), Some(p12_password)) = (
-            &deprecated_config.https_p12_file,
-            &deprecated_config.https_p12_password,
-        ) {
-            open_p12(p12_file, p12_password)?
         } else {
             return Ok(None);
         };
+        #[cfg(not(feature = "non-fips"))]
+        let (server_cert_pem, server_key_pem, server_chain_pem) =
+            if let (Some(cert), Some(key)) = (&config.tls_cert_file, &config.tls_key_file) {
+                (
+                    std::fs::read(cert).context("TLS configuration. Failed opening cert PEM")?,
+                    std::fs::read(key).context("TLS configuration. Failed opening key PEM")?,
+                    match &config.tls_chain_file {
+                        Some(chain) => Some(
+                            std::fs::read(chain)
+                                .context("TLS configuration. Failed opening chain PEM")?,
+                        ),
+                        None => None,
+                    },
+                )
+            } else {
+                return Ok(None);
+            };
         debug!(
             "Client Authority cert file: {:?}",
             config.clients_ca_cert_file
         );
-        debug!(
-            "[DEPRECATED] Client Authority cert file: {:?}",
-            deprecated_config.authority_cert_file
-        );
-        let clients_ca_cert_pem = if let Some(authority_cert_file) = config
-            .clients_ca_cert_file
-            .as_ref()
-            .or(deprecated_config.authority_cert_file.as_ref())
-        {
-            Some(std::fs::read(authority_cert_file).context(&format!(
-                "TLS configuration. Failed opening authority cert file at {:?}",
-                authority_cert_file.display()
-            ))?)
-        } else {
-            None
-        };
+        let clients_ca_cert_pem =
+            if let Some(authority_cert_file) = config.clients_ca_cert_file.as_ref() {
+                Some(std::fs::read(authority_cert_file).context(&format!(
+                    "TLS configuration. Failed opening authority cert file at {:?}",
+                    authority_cert_file.display()
+                ))?)
+            } else {
+                None
+            };
         let cipher_suites = config.tls_cipher_suites.clone();
 
-        Ok(Some(Self {
-            p12,
-            clients_ca_cert_pem,
-            cipher_suites,
-        }))
+        #[cfg(feature = "non-fips")]
+        {
+            Ok(Some(Self {
+                p12,
+                clients_ca_cert_pem,
+                cipher_suites,
+            }))
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            Ok(Some(Self {
+                server_cert_pem,
+                server_key_pem,
+                server_chain_pem,
+                clients_ca_cert_pem,
+                cipher_suites,
+            }))
+        }
     }
 }
 
 /// Opens a PKCS#12 file and parses it into a `TlsParams` object.
+#[cfg(feature = "non-fips")]
 fn open_p12(p12_file: &PathBuf, p12_password: &str) -> Result<ParsedPkcs12_2, KmsError> {
     // Open and read the file into a byte vector
     let der_bytes = std::fs::read(p12_file).context("TLS configuration. Failed opening P12")?;
@@ -111,16 +144,35 @@ impl fmt::Debug for TlsParams {
             |cipher_string| format!("Custom cipher string: {cipher_string}"),
         );
 
-        f.debug_struct("TlsParams")
-            .field(
-                "p12",
-                &self.p12.cert.as_ref().map_or_else(
-                    || "[N/A]".to_owned(),
-                    |cert| format!("{:?}", cert.subject_name()),
-                ),
-            )
-            .field("authority_cert_file: ", &ca_cert)
-            .field("cipher_suites: ", &cipher_suites)
-            .finish()
+        #[cfg(feature = "non-fips")]
+        {
+            f.debug_struct("TlsParams")
+                .field(
+                    "p12",
+                    &self.p12.cert.as_ref().map_or_else(
+                        || "[N/A]".to_owned(),
+                        |cert| format!("{:?}", cert.subject_name()),
+                    ),
+                )
+                .field("authority_cert_file: ", &ca_cert)
+                .field("cipher_suites: ", &cipher_suites)
+                .finish()
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            f.debug_struct("TlsParams")
+                .field("server_cert_pem", &"[PEM provided]")
+                .field("server_key_pem", &"[PEM provided]")
+                .field(
+                    "server_chain_pem",
+                    &self
+                        .server_chain_pem
+                        .as_ref()
+                        .map_or("[N/A]", |_| "[PEM provided]"),
+                )
+                .field("authority_cert_file: ", &ca_cert)
+                .field("cipher_suites: ", &cipher_suites)
+                .finish()
+        }
     }
 }

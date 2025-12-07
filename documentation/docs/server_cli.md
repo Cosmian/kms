@@ -1,5 +1,4 @@
 ```text
-Cosmian Key Management Service
 
 Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]
 
@@ -7,6 +6,50 @@ Arguments:
   [KEY_ENCRYPTION_KEY]  Force all keys imported or created in the KMS, which are not protected by a key encryption key, to be wrapped by the specified key encryption key (KEK)
 
 Options:
+  -c, --config <COSMIAN_KMS_CONF>
+          Explicit configuration file path provided via -c / --config. When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable and the default system path. All other command line arguments (except `--help` / `--version`) and environment variables are ignored once the configuration file is loaded
+      --default-username <DEFAULT_USERNAME>
+          The default username to use when no authentication method is provided [env: KMS_DEFAULT_USERNAME=] [default: admin]
+      --force-default-username
+          When an authentication method is provided, perform the authentication
+          but always use the default username instead of the one provided by the authentication method [env: KMS_FORCE_DEFAULT_USERNAME=]
+      --ms-dke-service-url <MS_DKE_SERVICE_URL>
+          This setting enables the Microsoft Double Key Encryption service feature of this server. [env: KMS_MS_DKE_SERVICE_URL=]
+      --info
+          Print the server configuration information and exit
+      --hsm-model <HSM_MODEL>
+          The HSM model.
+          `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+          `Smartcard HSM`, and `SoftHSM2` are natively supported.
+          Other HSMs are supported too; specify `other` and check the documentation [default: proteccio] [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
+      --hsm-admin <HSM_ADMIN>
+          The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
+      --hsm-slot <HSM_SLOT>
+          HSM slot number. The slots used must be listed.
+          Repeat this option to specify multiple slots
+          while specifying a password for each slot (or an empty string for no password)
+          e.g.
+          ```sh
+            --hsm-slot 1 --hsm-password password1 \
+            --hsm-slot 2 --hsm-password password2
+          ```
+      --hsm-password <HSM_PASSWORD>
+          Password for the user logging in to the HSM Slot specified with `--hsm_slot`
+          Provide an empty string for no password
+          see `--hsm_slot` for more information
+      --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
+          Specifies which KMIP object types should be automatically unwrapped when retrieved.
+          Repeat this option to specify multiple object types
+          e.g.
+          ```sh
+            --default-unwrap-type SecretData \
+            --default-unwrap-type SymmetricKey
+          ``` [possible values: All, Certificate, CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey]
+      --kms-public-url <KMS_PUBLIC_URL>
+          The exposed URL of the KMS - this is required if Google CSE configuration is activated.
+          If this server is running on the domain `cse.my_domain.com` with this public URL,
+          The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
+          The URL is also used during the authentication flow initiated from the KMS UI. [env: KMS_PUBLIC_URL=]
       --database-type <DATABASE_TYPE>
           The main database of the KMS server that holds default cryptographic objects and permissions.
           - postgresql: `PostgreSQL`. The database URL must be provided
@@ -73,17 +116,6 @@ Options:
           The KMS HTTP server hostname [env: KMS_HOSTNAME=] [default: 0.0.0.0]
       --api-token-id <API_TOKEN_ID>
           An optional API token to use for authentication on the HTTP server. [env: KMS_API_TOKEN=]
-      --https-p12-file <HTTPS_P12_FILE>
-          DEPRECATED: use the TLS section instead.
-          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode. [env: KMS_HTTPS_P12_FILE=]
-      --https-p12-password <HTTPS_P12_PASSWORD>
-          DEPRECATED: use the TLS section instead.
-          The password to open the PKCS#12 Certificates and Key file. [env: KMS_HTTPS_P12_PASSWORD=]
-      --authority-cert-file <AUTHORITY_CERT_FILE>
-          DEPRECATED: use the TLS section instead.
-          The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
-          If provided, clients must present a certificate signed by this authority for authentication.
-          The server must run in TLS mode for this to be used. [env: KMS_AUTHORITY_CERT_FILE=]
       --proxy-url <PROXY_URL>
           The proxy URL:
             - e.g., `https://secure.example` for an HTTP proxy
@@ -105,7 +137,7 @@ Options:
       --jwt-auth-provider <JWT_AUTH_PROVIDER>
           JWT authentication provider configuration [env: KMS_JWT_AUTH_PROVIDER=]
   -u, --ui-index-html-folder <UI_INDEX_HTML_FOLDER>
-          The UI distribution folder [env: COSMIAN_UI_DIST_PATH=] [default: /usr/local/cosmian/ui/dist/]
+          The UI distribution folder [env: COSMIAN_UI_DIST_PATH=]
       --ui-oidc-client-id <UI_OIDC_CLIENT_ID>
           The client ID of the configured OIDC tenant for UI Auth [env: UI_OIDC_CLIENT_ID=]
       --ui-oidc-client-secret <UI_OIDC_CLIENT_SECRET>
@@ -126,13 +158,6 @@ Options:
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory [env: KMS_ROOT_DATA_PATH=] [default: ./cosmian-kms]
       --tmp-path <TMP_PATH>
           The folder to store temporary data (non-persistent data readable by no one but the current instance during the current execution) [env: KMS_TMP_PATH=] [default: /tmp]
-      --default-username <DEFAULT_USERNAME>
-          The default username to use when no authentication method is provided [env: KMS_DEFAULT_USERNAME=] [default: admin]
-      --force-default-username
-          When an authentication method is provided, perform the authentication
-          but always use the default username instead of the one provided by the authentication method [env: KMS_FORCE_DEFAULT_USERNAME=]
-      --ms-dke-service-url <MS_DKE_SERVICE_URL>
-          This setting enables the Microsoft Double Key Encryption service feature of this server. [env: KMS_MS_DKE_SERVICE_URL=]
       --rust-log <RUST_LOG>
           An alternative to setting the `RUST_LOG` environment variable.
           Setting this variable will override the `RUST_LOG` environment variable [env: KMS_RUST_LOG=]
@@ -158,36 +183,6 @@ Options:
           This will be added to the telemetry data if telemetry is enabled [env: KMS_ENVIRONMENT=] [default: development]
       --ansi-colors
           Enable ANSI colors in the logs to stdout [env: KMS_ANSI_COLORS=]
-      --info
-          Print the server configuration information and exit
-      --hsm-model <HSM_MODEL>
-          The HSM model.
-          Trustway Proteccio, Utimaco General purpose HSM, Smartcard HSM, and SoftHSM2 are supported. [default: proteccio] [possible values: proteccio, utimaco, softhsm2, smartcardhsm]
-      --hsm-admin <HSM_ADMIN>
-          The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them [env: KMS_HSM_ADMIN=] [default: admin]
-      --hsm-slot <HSM_SLOT>
-          HSM slot number. The slots used must be listed.
-          Repeat this option to specify multiple slots
-          while specifying a password for each slot (or an empty string for no password)
-          e.g.
-            --hsm-slot 1 --hsm-password password1 \
-            --hsm-slot 2 --hsm-password password2
-      --hsm-password <HSM_PASSWORD>
-          Password for the user logging in to the HSM Slot specified with `--hsm_slot`
-          Provide an empty string for no password
-          see `--hsm_slot` for more information
-      --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
-          Specifies which KMIP object types should be automatically unwrapped when retrieved.
-          Repeat this option to specify multiple object types
-          e.g.
-            --default-unwrap-type SecretData \
-            --default-unwrap-type SymmetricKey
-          [possible values: PrivateKey, PublicKey, SymmetricKey, SecretData]
-      --kms-public-url <KMS_PUBLIC_URL>
-          The exposed URL of the KMS - this is required if Google CSE configuration is activated.
-          If this server is running on the domain `cse.my_domain.com` with this public URL,
-          The configured URL from Google admin  should be something like <https://cse.my_domain.com/google_cse>
-          The URL is also used during the authentication flow initiated from the KMS UI. [env: KMS_PUBLIC_URL=]
       --privileged-users <PRIVILEGED_USERS>
           List of users who have the right to create and import Objects
           and grant access rights for Create Kmip Operation.

@@ -27,7 +27,7 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
     { label: "RSA AES Key Wrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data" | "opaque-object";
 
 const exportFileExtension = {
     "json-ttlv": "json",
@@ -56,6 +56,9 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const selectedFormat: ExportKeyFormat | undefined = Form.useWatch("keyFormat", form);
 
     const isSecretData = key_type === "secret-data";
+    const isOpaqueObject = key_type === "opaque-object";
+    const isDataLike = isSecretData || isOpaqueObject;
+    const displayName = isSecretData ? "Secret Data" : isOpaqueObject ? "Opaque Object" : key_type.toUpperCase();
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -130,7 +133,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             { label: "Base64", value: "base64" },
             { label: "Raw", value: "raw" },
         ];
-    } else if (key_type === "symmetric" || key_type === "secret-data") {
+    } else if (key_type === "symmetric" || isDataLike) {
         keyFormats = [
             { label: "JSON TTLV (default)", value: "json-ttlv" },
             { label: "Base64", value: "base64" },
@@ -145,14 +148,13 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Export {isSecretData ? "Secret Data" : key_type.toUpperCase()}</h1>
+            <h1 className="text-2xl font-bold mb-6">Export {displayName}</h1>
 
             <div className="mb-8 space-y-2">
                 <p>
-                    Export {isSecretData ? "secret data" : key_type.toUpperCase()} from the KMS. The{" "}
-                    {isSecretData ? "secret data" : "object"} can be identified using either its ID or associated tags.
+                    Export {displayName} from the KMS. The {isDataLike ? "object" : "object"} can be identified using either its ID or associated tags.
                 </p>
-                {!isSecretData && (
+                {!isDataLike && (
                     <>
                         <p>When exporting a key pair using its ID, only the public key is exported.</p>
                         <p>The key can optionally be unwrapped and/or wrapped when exported.</p>
@@ -173,9 +175,9 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{isSecretData ? "Secret Data" : "Key"} Identification (required)</h3>
-                        <Form.Item name="keyId" label={isSecretData ? "Secret Data ID" : "Key ID"}>
-                            <Input placeholder={`Enter ${isSecretData ? "secret data" : "key"} ID`} />
+                        <h3 className="text-m font-bold mb-4">{isDataLike ? "Object" : "Key"} Identification (required)</h3>
+                        <Form.Item name="keyId" label={isSecretData ? "Secret Data ID" : isOpaqueObject ? "Opaque Object ID" : "Key ID"}>
+                            <Input placeholder={`Enter ${isSecretData ? "secret data" : isOpaqueObject ? "opaque object" : "key"} ID`} />
                         </Form.Item>
 
                         <Form.Item name="tags" label="Tags">
@@ -193,7 +195,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                         <Card>
                             <h3 className="text-m font-bold mb-4">Unwrapping Options</h3>
                             <Form.Item name="unwrap" valuePropName="checked">
-                                <Checkbox>Unwrap {isSecretData ? "secret data" : "key"} before export</Checkbox>
+                                <Checkbox>Unwrap {isDataLike ? "object" : "key"} before export</Checkbox>
                             </Form.Item>
 
                             {selectedFormat !== "raw" && selectedFormat !== "base64" && (
@@ -226,7 +228,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
-                            Export {isSecretData ? "Secret Data" : "Key"}
+                            Export {isDataLike ? "Object" : "Key"}
                         </Button>
                     </Form.Item>
                 </Space>
@@ -234,7 +236,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
             {res && (
                 <div ref={responseRef}>
-                    <Card title={isSecretData ? "Secret Data Export Response" : "Key Export Response"}>{res}</Card>
+                    <Card title={isDataLike ? "Object Export Response" : "Key Export Response"}>{res}</Card>
                 </div>
             )}
         </div>

@@ -89,33 +89,38 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
     let api_token = get_api_token(kms_server, api_token_id.as_str()).await?;
 
     // Extract the token from the Authorization header
-    let client_token = req
+    let auth_header = req
         .headers()
         .get(header::AUTHORIZATION)
         .ok_or_else(|| KmsError::InvalidRequest("Missing Authorization header".to_owned()))?
         .to_str()
         .map_err(|e| {
             KmsError::InvalidRequest(format!("Error converting header value to string: {e:?}"))
-        })?
-        .split("Bearer")
-        .collect::<Vec<&str>>();
+        })?;
 
-    // Validate the Authorization header format
-    if client_token.len() != 2 {
+    trace!(
+        "[api_token_auth] Authorization header received: {}",
+        auth_header
+    );
+
+    // Support case-insensitive bearer scheme and robust splitting
+    let mut parts = auth_header.splitn(2, ' ');
+    let scheme = parts.next().unwrap_or("");
+    let token_part = parts.next().unwrap_or("");
+    if !scheme.eq_ignore_ascii_case("Bearer") || token_part.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
-            "Invalid Authorization header format: expected: \"Bearer <API_TOKEN>\", got \
-             {client_token:?}"
+            "Invalid Authorization header format: expected: \"Bearer <API_TOKEN>\", got: {auth_header}"
         )));
     }
 
-    // Extract the actual token value after "Bearer "
-    let client_token = client_token
-        .get(1)
-        .ok_or_else(|| {
-            KmsError::ServerError("Missing token after 'Bearer' in Authorization header".to_owned())
-        })?
-        .trim_start()
-        .to_lowercase();
+    // Normalize the client token for comparison
+    let client_token = token_part.trim().to_lowercase();
+
+    trace!(
+        "[api_token_auth] token preview (client/server): {}/{}",
+        client_token.chars().take(8).collect::<String>(),
+        api_token.chars().take(8).collect::<String>()
+    );
 
     // Compare the client token with the stored token
     if client_token == api_token.as_str() {

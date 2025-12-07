@@ -3,7 +3,7 @@ import moment from "moment";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
+import { get_crypto_algorithms, parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -22,23 +22,7 @@ const ALLOWED_ATTRIBUTES = [
     { value: "child_id", label: "Child ID link" },
 ];
 
-const CRYPTO_ALGORITHMS = [
-    { value: "AES", label: "AES" },
-    { value: "RSA", label: "RSA" },
-    { value: "ECDSA", label: "ECDSA" },
-    { value: "ECDH", label: "ECDH" },
-    { value: "EC", label: "EC" },
-    { value: "ChaCha20", label: "ChaCha20" },
-    { value: "ChaCha20Poly1305", label: "ChaCha20-Poly1305" },
-    { value: "SHA3224", label: "SHA3-224" },
-    { value: "SHA3256", label: "SHA3-256" },
-    { value: "SHA3384", label: "SHA3-384" },
-    { value: "SHA3512", label: "SHA3-512" },
-    { value: "Ed25519", label: "Ed25519" },
-    { value: "Ed448", label: "Ed448" },
-    { value: "CoverCrypt", label: "CoverCrypt" },
-    { value: "CoverCryptBulk", label: "CoverCryptBulk" },
-];
+type AlgoOption = { value: string; label: string };
 
 const KEY_USAGE_OPTIONS = [
     { value: "Sign", label: "Sign" },
@@ -61,6 +45,7 @@ const AttributeSetForm: React.FC = () => {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
+    const [cryptoAlgorithms, setCryptoAlgorithms] = useState<AlgoOption[]>([]);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +54,16 @@ const AttributeSetForm: React.FC = () => {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        try {
+            const opts = (get_crypto_algorithms() as unknown) as AlgoOption[];
+            if (Array.isArray(opts)) setCryptoAlgorithms(opts);
+        } catch {
+            // ignore; WASM not ready or not built yet
+            // keep empty list which renders as empty select
+        }
+    }, []);
 
     const onAttributeNameChange = (value: string) => {
         setSelectedAttributeName(value);
@@ -137,7 +132,7 @@ const AttributeSetForm: React.FC = () => {
                         rules={[{ required: true, message: "Please select an algorithm" }]}
                     >
                         <Select placeholder="Select algorithm">
-                            {CRYPTO_ALGORITHMS.map((algo) => (
+                            {cryptoAlgorithms.map((algo) => (
                                 <Option key={algo.value} value={algo.value}>
                                     {algo.label}
                                 </Option>

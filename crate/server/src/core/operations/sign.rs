@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
+        kmip_0::kmip_types::{
+            CryptographicUsageMask, ErrorReason, HashingAlgorithm as KmipHash, State,
+        },
         kmip_2_1::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
             kmip_types::{DigitalSignatureAlgorithm, KeyFormatType, UniqueIdentifier},
         },
+        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::rsa::default_cryptographic_parameters, openssl::kmip_private_key_to_openssl,
@@ -58,6 +61,28 @@ pub(crate) async fn sign(
             .ok_or_else(|| {
                 KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
             })?;
+        // Lifecycle gating: For mandatory profile vector CS-AC-M-8-21 we must reject Sign when the
+        // key has an ActivationDate in the past but either (a) a future ProcessStartDate (not yet
+        // usable) or (b) a ProtectStopDate already in the past (no longer protected/usable).
+        // In such cases the expected KMIP response is OperationFailed / Wrong_Key_Lifecycle_State
+        // with message "DENIED".
+        let attributes = owm
+            .object()
+            .attributes()
+            .unwrap_or_else(|_| owm.attributes());
+        let now = time_normalize()?;
+        let activation_ok = attributes
+            .activation_date
+            .map_or_else(|| owm.state() == State::Active, |ad| ad <= now);
+        let process_window_ok = attributes.process_start_date.is_none_or(|psd| psd <= now)
+            && attributes.protect_stop_date.is_none_or(|psd| psd > now);
+        if !(activation_ok && process_window_ok) {
+            // force Wrong_Key_Lifecycle_State semantics for this candidate
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Wrong_Key_Lifecycle_State,
+                "DENIED".to_owned(),
+            ));
+        }
         if owm.state() != State::Active {
             continue;
         }
@@ -146,8 +171,49 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
             trace!("OpenSSL Private Key instantiated before signing");
+            // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
+            let effective_cp = {
+                let stored_cp = owm
+                    .object()
+                    .attributes()
+                    .ok()
+                    .and_then(|a| a.cryptographic_parameters.clone())
+                    .unwrap_or_default();
+                match request.cryptographic_parameters.clone() {
+                    None => stored_cp,
+                    Some(mut req_cp) => {
+                        if req_cp.cryptographic_algorithm.is_none() {
+                            req_cp.cryptographic_algorithm = stored_cp.cryptographic_algorithm;
+                        }
+                        if req_cp.padding_method.is_none() {
+                            req_cp.padding_method = stored_cp.padding_method;
+                        }
+                        if req_cp.hashing_algorithm.is_none() {
+                            req_cp.hashing_algorithm = stored_cp.hashing_algorithm;
+                        }
+                        if req_cp.digital_signature_algorithm.is_none() {
+                            req_cp.digital_signature_algorithm =
+                                stored_cp.digital_signature_algorithm;
+                        }
+                        if req_cp.mask_generator.is_none() {
+                            req_cp.mask_generator = stored_cp.mask_generator;
+                        }
+                        if req_cp.mask_generator_hashing_algorithm.is_none() {
+                            req_cp.mask_generator_hashing_algorithm =
+                                stored_cp.mask_generator_hashing_algorithm;
+                        }
+                        if req_cp.p_source.is_none() {
+                            req_cp.p_source = stored_cp.p_source;
+                        }
+                        req_cp
+                    }
+                }
+            };
 
-            let signature = sign_with_pkey(request.clone(), &private_key)?;
+            let mut req_for_sign = request.clone();
+            req_for_sign.cryptographic_parameters = Some(effective_cp);
+
+            let signature = sign_with_pkey(req_for_sign, &private_key)?;
 
             let response = SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -176,28 +242,75 @@ fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>
 }
 
 fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    let (_algorithm, _padding, _hashing_fn, digital_signature_algorithm) =
+    let (_algorithm, _padding, default_hash, digital_signature_algorithm) =
         default_cryptographic_parameters(request.cryptographic_parameters.as_ref());
     debug!("signing with {digital_signature_algorithm}");
 
-    // Matches the hashing algorithm to use
-    let digest = match digital_signature_algorithm {
-        DigitalSignatureAlgorithm::RSASSAPSS
-        | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
-        DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),
-        DigitalSignatureAlgorithm::SHA512WithRSAEncryption => MessageDigest::sha512(),
-        DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
-        DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
-        DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
-        _ => kms_bail!(KmsError::NotSupported(format!(
-            "sign_with_rsa: not supported: {digital_signature_algorithm:?}"
-        ))),
+    // Determine message digest from CP.hashing_algorithm when present, otherwise infer from DSA/default
+    let digest = if let Some(cp) = request.cryptographic_parameters.as_ref() {
+        if let Some(h) = &cp.hashing_algorithm {
+            match h {
+                KmipHash::SHA1 => MessageDigest::sha1(),
+                KmipHash::SHA256 => MessageDigest::sha256(),
+                KmipHash::SHA384 => MessageDigest::sha384(),
+                KmipHash::SHA512 => MessageDigest::sha512(),
+                KmipHash::SHA3256 => MessageDigest::sha3_256(),
+                KmipHash::SHA3384 => MessageDigest::sha3_384(),
+                KmipHash::SHA3512 => MessageDigest::sha3_512(),
+                _ => kms_bail!(KmsError::NotSupported(
+                    "sign_with_rsa: hashing algorithm not supported".to_owned()
+                )),
+            }
+        } else {
+            match digital_signature_algorithm {
+                DigitalSignatureAlgorithm::RSASSAPSS
+                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
+                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),
+                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => MessageDigest::sha512(),
+                DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
+                DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
+                DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
+                _ => kms_bail!(KmsError::NotSupported(format!(
+                    "sign_with_rsa: not supported: {digital_signature_algorithm:?}"
+                ))),
+            }
+        }
+    } else {
+        match default_hash {
+            KmipHash::SHA1 => MessageDigest::sha1(),
+            KmipHash::SHA384 => MessageDigest::sha384(),
+            KmipHash::SHA512 => MessageDigest::sha512(),
+            KmipHash::SHA3256 => MessageDigest::sha3_256(),
+            KmipHash::SHA3384 => MessageDigest::sha3_384(),
+            KmipHash::SHA3512 => MessageDigest::sha3_512(),
+            _ => MessageDigest::sha256(),
+        }
     };
 
     let mut signer = Signer::new(digest, private_key)?;
 
     if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+        // Align MGF1 digest with CP when provided; otherwise use the message digest
+        if let Some(cp) = request.cryptographic_parameters.as_ref() {
+            if let Some(h) = &cp.mask_generator_hashing_algorithm {
+                let mgf1 = match h {
+                    KmipHash::SHA1 => MessageDigest::sha1(),
+                    KmipHash::SHA384 => MessageDigest::sha384(),
+                    KmipHash::SHA512 => MessageDigest::sha512(),
+                    KmipHash::SHA3256 => MessageDigest::sha3_256(),
+                    KmipHash::SHA3384 => MessageDigest::sha3_384(),
+                    KmipHash::SHA3512 => MessageDigest::sha3_512(),
+                    _ => MessageDigest::sha256(),
+                };
+                signer.set_rsa_mgf1_md(mgf1)?;
+            } else {
+                signer.set_rsa_mgf1_md(digest)?;
+            }
+        } else {
+            signer.set_rsa_mgf1_md(digest)?;
+        }
+        // Use digest length for salt length per KMIP profile vectors
         signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
     }
     if let Some(corr) = request.correlation_value {

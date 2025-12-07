@@ -9,7 +9,7 @@ use cosmian_kms_server::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
 #[cfg(feature = "timeout")]
 use cosmian_logger::warn;
-use cosmian_logger::{TelemetryConfig, TracingConfig, debug, info, tracing_init};
+use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
 use tracing::span;
@@ -92,8 +92,6 @@ async fn run() -> KResult<()> {
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
-    // print openssl version
-
     #[cfg(not(feature = "non-fips"))]
     info!(
         "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
@@ -130,7 +128,7 @@ async fn run() -> KResult<()> {
     }
 
     // Instantiate a config object using the env variables and the args of the binary
-    debug!("Command line / file config: {clap_config:#?}");
+    info!("Command line / file config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
     let server_params = Arc::new(ServerParams::try_from(clap_config)?);
@@ -171,6 +169,7 @@ mod tests {
         WorkspaceConfig,
     };
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn test_toml() {
         let config = ClapConfig {
@@ -202,7 +201,6 @@ mod tests {
                 port: 443,
                 hostname: "[hostname]".to_owned(),
                 api_token_id: None,
-                ..Default::default()
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),

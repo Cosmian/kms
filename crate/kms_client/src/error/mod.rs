@@ -118,6 +118,7 @@ impl From<KmipError> for KmsClientError {
             | KmipError::ObjectNotFound(s) => Self::NotSupported(s),
             KmipError::TryFromSliceError(e) => Self::Conversion(e.to_string()),
             KmipError::SerdeJsonError(e) => Self::Conversion(e.to_string()),
+            KmipError::RegexError(e) => Self::Default(e.to_string()),
             KmipError::Deserialization(e) | KmipError::Serialization(e) => {
                 Self::KmipNotSupported(ErrorReason::Codec_Error, e)
             }

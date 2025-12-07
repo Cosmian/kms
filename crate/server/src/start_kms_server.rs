@@ -41,6 +41,7 @@ use tokio::{runtime::Handle, task::JoinHandle, try_join};
 use crate::{
     config::{JwtAuthConfig, ServerParams, TlsParams},
     core::KMS,
+    cron,
     error::KmsError,
     middlewares::{
         ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
@@ -285,7 +286,7 @@ async fn import_cse_migration_key(
             false,
             false,
             vec![],
-        );
+        )?;
         kms_server.import(
             import_request_sk,
             &server_params.default_username,
@@ -302,7 +303,7 @@ async fn import_cse_migration_key(
             false,
             false,
             vec![],
-        );
+        )?;
         kms_server.import(
             import_request_pk,
             &server_params.default_username,
@@ -365,6 +366,13 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
+    // Spawn background metrics cron thread and retain shutdown signal
+    let metrics_shutdown_tx = if kms_server.metrics.is_some() {
+        Some(cron::spawn_metrics_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -385,6 +393,10 @@ pub async fn start_kms_server(
     // Log the server configuration
     info!("KMS Server configuration: {server_params:#?}");
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
+    // Signal the metrics cron thread to stop
+    if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
     if let Some(ss_command_tx) = ss_command_tx {
         // Send a shutdown command to the socket server
         ss_command_tx
@@ -606,17 +618,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Generate key for actix session cookie encryption and elements for UI exposure
     let secret_key: Key = Key::generate();
 
-    let kms_public_url = kms_server.params.kms_public_url.clone().map_or_else(
-        || {
-            format!(
-                "http{}://{}:{}",
-                if tls_config.is_some() { "s" } else { "" },
-                &kms_server.params.http_hostname,
-                &kms_server.params.http_port
-            )
-        },
-        |url| url,
-    );
+    let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
+        format!(
+            "http{}://{}:{}",
+            if tls_config.is_some() { "s" } else { "" },
+            &kms_server.params.http_hostname,
+            &kms_server.params.http_port
+        )
+    });
+
+    // Clone kms_server for HttpServer closure
+    let kms_server_for_http = kms_server.clone();
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -635,12 +647,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     )
                     .build(),
             )
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
-        if kms_server.params.kms_public_url.is_some()
-            && kms_server.params.google_cse.google_cse_enable
+        if kms_server_for_http.params.kms_public_url.is_some()
+            && kms_server_for_http.params.google_cse.google_cse_enable
         {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
@@ -671,10 +683,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             app = app.service(ms_dke_scope);
         }
 
-        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
-            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let oidc_config = kms_server_for_http.params.ui_oidc_auth.clone();
 
             let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
@@ -736,17 +748,22 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
             .wrap(EnsureAuth::new(
-                kms_server.clone(),
+                kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
-                ApiTokenAuth::new(kms_server.clone()),
+                ApiTokenAuth::new(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
+            // Prefer checking API token before JWT to avoid header handling quirks
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server.clone()),
+            ))
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
@@ -765,8 +782,22 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(get_version);
 
         app.service(default_scope)
-    });
+    })
+    .keep_alive(actix_web::http::KeepAlive::Timeout(
+        std::time::Duration::from_secs(120),
+    ))
+    .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+    // The KMIP XML vector test harness keeps a single HTTP connection open across
+    // many serialized requests with potentially long gaps (several seconds) while
+    // preparing the next request. Actix-web's default keep-alive (~5s) was closing
+    // the idle connection, leading to sporadic "connection reset by peer" errors
+    // surfaced in the client test (reqwest) when it attempted to reuse the pooled
+    // socket. Extending the keep-alive timeout prevents these false negatives and
+    // lets us observe true protocol-level failures instead of transport resets.
+    // Additionally, actix-web has a default client_request_timeout of 5 seconds which
+    // was causing "408 Request Timeout" errors during long-running test operations.
 
+    // Start and return the main KMS server
     Ok(match tls_config {
         Some(ssl_acceptor) => {
             if use_cert_auth {
@@ -792,10 +823,25 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
     // Use the common TLS configuration
-    let tls_config = TlsConfig {
-        cipher_suites: server_config.cipher_suites.as_deref(),
-        p12: &server_config.p12,
-        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+    let tls_config = {
+        #[cfg(feature = "non-fips")]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                p12: &server_config.p12,
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            TlsConfig {
+                cipher_suites: server_config.cipher_suites.as_deref(),
+                server_cert_pem: &server_config.server_cert_pem,
+                server_key_pem: &server_config.server_key_pem,
+                server_chain_pem: server_config.server_chain_pem.as_deref(),
+                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
+            }
+        }
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;

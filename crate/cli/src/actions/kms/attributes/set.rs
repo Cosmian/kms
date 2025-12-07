@@ -338,7 +338,7 @@ impl SetAttributesAction {
                 new_attribute: attribute.clone(),
             })
             .await?;
-        info!("SetAttributes response for {unique_identifier}: {attribute:?}");
+        info!("SetAttributes response for {unique_identifier}: {attribute}");
         let mut stdout = console::Stdout::new("Attribute set successfully");
         stdout.set_tags(self.requested_attributes.tags.as_ref());
         stdout.set_unique_identifier(&id);

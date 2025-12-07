@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Build the KMS UI
 # This script:
@@ -6,25 +6,27 @@
 # 2. Builds the UI
 # 3. Copies the built UI to the final location
 
-# Exit on error, print commands
-set -ex
+# Exit on error, undefined vars, and fail pipelines; print commands
+set -euo pipefail
+set -x
 
-if [ -n "$FEATURES" ]; then
-  CARGO_FEATURES="--features $FEATURES"
+CARGO_FEATURES=""
+if [ -n "${FEATURES:-}" ]; then
+  CARGO_FEATURES="--features ${FEATURES}"
 fi
 
 # Install nodejs from nodesource if npm is not installed
-if ! command -v npm &>/dev/null; then
+if ! command -v npm >/dev/null 2>&1; then
   SUDO="sudo"
-  [ "$(id -u)" = "0" ] && SUDO=""
+  if [ "$(id -u)" = "0" ]; then SUDO=""; fi
   if [ -f /etc/debian_version ]; then
     # Debian/Ubuntu
-    curl -fsSL https://deb.nodesource.com/setup_23.x | $SUDO bash -
-    $SUDO apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_23.x | "$SUDO" bash -
+    "$SUDO" apt-get install -y nodejs
   elif [ -f /etc/redhat-release ]; then
     # RHEL/CentOS/Fedora
-    curl -fsSL https://rpm.nodesource.com/setup_23.x | $SUDO bash -
-    $SUDO yum install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_23.x | "$SUDO" bash -
+    "$SUDO" yum install -y nodejs
   else
     echo "Unsupported distribution"
     exit 1
@@ -32,7 +34,9 @@ if ! command -v npm &>/dev/null; then
 fi
 
 # Install wasm-pack tool
-cargo install wasm-pack
+if ! command -v npm >/dev/null 2>&1; then
+  cargo install wasm-pack
+fi
 
 # Build WASM component
 cd crate/wasm

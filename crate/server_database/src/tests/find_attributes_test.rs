@@ -71,11 +71,11 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(State::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
-    assert_eq!(
-        obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
-        LinkedObjectIdentifier::TextString("foo".to_owned())
+    assert_eq!(State::PreActive, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
+    assert!(
+        obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier
+            == LinkedObjectIdentifier::TextString("foo".to_owned())
     );
     assert_eq!(
         obj.object().attributes()?.name.as_ref().unwrap()[0].name_value,
@@ -91,7 +91,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -109,7 +109,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -128,7 +128,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params.clone(),
@@ -151,7 +151,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
     let found = db
         .find(
             researched_attributes.as_ref(),
-            Some(State::Active),
+            Some(State::PreActive),
             owner,
             true,
             db_params,

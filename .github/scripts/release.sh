@@ -39,7 +39,11 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/test_km
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/wasm/Cargo.toml
 
 # Other files
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" Dockerfile
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/scripts/nix.sh
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/scripts/windows_ui.ps1
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" nix/kms-server.nix
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" nix/ui.nix
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" nix/docker.nix
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" ui/package.json
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/index.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/installation/installation_getting_started.md
@@ -47,8 +51,6 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/fips.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
-
-bash .github/scripts/build_ui_all.sh
 
 cargo build
 
@@ -58,3 +60,6 @@ git cliff -w "$PWD" -u -p CHANGELOG.md -t "$NEW_VERSION"
 
 # Convert (#XXX) references to full GitHub pull request URLs
 ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com\/Cosmian\/kms\/pull\/\1))/g' CHANGELOG.md
+
+bash .github/scripts/build_ui.sh
+bash .github/scripts/nix.sh update-hashes

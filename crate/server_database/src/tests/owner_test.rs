@@ -61,8 +61,8 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(
         .retrieve(&uid, db_params.clone())
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
-    assert_eq!(State::Active, obj.state());
-    assert!(&symmetric_key == obj.object());
+    assert_eq!(State::PreActive, obj.state());
+    assert_eq!(&symmetric_key, obj.object());
     assert_eq!(owner, obj.owner());
 
     // Grant `Get` operation to `userid 1`
@@ -113,7 +113,7 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _) = &objects[0];
     assert_eq!(o_uid, &uid);
-    assert_eq!(o_state, &State::Active);
+    assert_eq!(o_state, &State::PreActive);
 
     // We should not be able to find the object by specifying  that user_id_2 is the owner
     let objects = db
@@ -128,7 +128,7 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(
         objects[&uid],
         (
             String::from(owner),
-            State::Active,
+            State::PreActive,
             vec![KmipOperation::Get].into_iter().collect(),
         )
     );

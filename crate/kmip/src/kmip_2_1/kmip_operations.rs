@@ -1,10 +1,12 @@
 use std::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Display},
     ops::Not,
 };
 
 use base64::{Engine, engine::general_purpose};
+use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use serde::{Deserialize, Serialize};
+use strum_macros::Display;
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
@@ -28,7 +30,9 @@ use crate::{
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
+        kmip_types::{
+            AttestationType, CryptographicUsageMask, Direction, KeyWrapType, RevocationReason,
+        },
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
 };
@@ -92,7 +96,7 @@ impl Base64Display for Option<Vec<Vec<u8>>> {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(untagged)]
 #[expect(clippy::large_enum_variant)]
 pub enum Operation {
@@ -102,12 +106,12 @@ pub enum Operation {
     AddAttributeResponse(AddAttributeResponse),
     Certify(Box<Certify>),
     CertifyResponse(CertifyResponse),
+    Check(Check),
+    CheckResponse(CheckResponse),
     Create(Create),
-    CreateResponse(CreateResponse),
     CreateKeyPair(Box<CreateKeyPair>),
     CreateKeyPairResponse(CreateKeyPairResponse),
-    DiscoverVersions(DiscoverVersions),
-    DiscoverVersionsResponse(DiscoverVersionsResponse),
+    CreateResponse(CreateResponse),
     Decrypt(Box<Decrypt>),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
@@ -116,112 +120,147 @@ pub enum Operation {
     DeriveKeyResponse(DeriveKeyResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
+    DiscoverVersions(DiscoverVersions),
+    DiscoverVersionsResponse(DiscoverVersionsResponse),
     Encrypt(Box<Encrypt>),
     EncryptResponse(EncryptResponse),
     Export(Export),
     ExportResponse(Box<ExportResponse>),
     Get(Get),
-    GetResponse(GetResponse),
+    GetAttributeList(GetAttributeList),
+    GetAttributeListResponse(GetAttributeListResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(Box<GetAttributesResponse>),
+    GetResponse(GetResponse),
     Hash(Hash),
     HashResponse(HashResponse),
     Import(Box<Import>),
     ImportResponse(ImportResponse),
+    #[cfg(feature = "interop")]
+    Interop(Interop),
+    #[cfg(feature = "interop")]
+    InteropResponse(InteropResponse),
     Locate(Box<Locate>),
     LocateResponse(LocateResponse),
+    Log(Log),
+    LogResponse(LogResponse),
     MAC(MAC),
     MACResponse(MACResponse),
+    MACVerify(MACVerify),
+    MACVerifyResponse(MACVerifyResponse),
+    ModifyAttribute(ModifyAttribute),
+    ModifyAttributeResponse(ModifyAttributeResponse),
+    PKCS11(PKCS11),
+    PKCS11Response(PKCS11Response),
     Query(Query),
     QueryResponse(Box<QueryResponse>),
+    ReKey(ReKey),
+    ReKeyKeyPair(Box<ReKeyKeyPair>),
+    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
+    ReKeyResponse(ReKeyResponse),
     Register(Box<Register>),
     RegisterResponse(RegisterResponse),
     Revoke(Revoke),
     RevokeResponse(RevokeResponse),
-    ReKey(ReKey),
-    ReKeyResponse(ReKeyResponse),
-    ReKeyKeyPair(Box<ReKeyKeyPair>),
-    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
+    RNGRetrieve(RNGRetrieve),
+    RNGRetrieveResponse(RNGRetrieveResponse),
+    RNGSeed(RNGSeed),
+    RNGSeedResponse(RNGSeedResponse),
     SetAttribute(SetAttribute),
     SetAttributeResponse(SetAttributeResponse),
     Sign(Sign),
     SignResponse(SignResponse),
-    Validate(Validate),
-    ValidateResponse(ValidateResponse),
     SignatureVerify(SignatureVerify),
     SignatureVerifyResponse(SignatureVerifyResponse),
+    Validate(Validate),
+    ValidateResponse(ValidateResponse),
 }
 
 impl Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Operation {{")?;
         match self {
-            Self::Activate(op) => write!(f, "Operation::Activate({op:?})"),
-            Self::ActivateResponse(op) => write!(f, "Operation::ActivateResponse({op:?})"),
-            Self::AddAttribute(op) => write!(f, "Operation::AddAttribute({op:?})"),
-            Self::AddAttributeResponse(op) => {
-                write!(f, "Operation::AddAttributeResponse({op:?})")
-            }
-            Self::Certify(op) => write!(f, "Operation::Certify({op})"),
-            Self::CertifyResponse(op) => write!(f, "Operation::CertifyResponse({op})"),
-            Self::Create(op) => write!(f, "Operation::Create({op})"),
-            Self::CreateResponse(op) => write!(f, "Operation::CreateResponse({op})"),
-            Self::CreateKeyPair(op) => write!(f, "Operation::CreateKeyPair({op})"),
-            Self::CreateKeyPairResponse(op) => {
-                write!(f, "Operation::CreateKeyPairResponse({op})")
-            }
-            Self::DiscoverVersions(op) => write!(f, "Operation::DiscoverVersions({op:?})"),
+            Self::Activate(op) => write!(f, "{op}")?,
+            Self::ActivateResponse(op) => write!(f, "{op}")?,
+            Self::AddAttribute(op) => write!(f, "{op}")?,
+            Self::AddAttributeResponse(op) => write!(f, "{op}")?,
+            Self::Certify(op) => write!(f, "{op}")?,
+            Self::CertifyResponse(op) => write!(f, "{op}")?,
+            Self::Check(op) => write!(f, "{op}")?,
+            Self::CheckResponse(op) => write!(f, "{op}")?,
+            Self::Create(op) => write!(f, "{op}")?,
+            Self::CreateKeyPair(op) => write!(f, "{op}")?,
+            Self::CreateKeyPairResponse(op) => write!(f, "{op}")?,
+            Self::CreateResponse(op) => write!(f, "{op}")?,
+            Self::Decrypt(op) => write!(f, "{op}")?,
+            Self::DecryptResponse(op) => write!(f, "{op}")?,
+            Self::DeleteAttribute(op) => write!(f, "{op}")?,
+            Self::DeleteAttributeResponse(op) => write!(f, "{op}")?,
+            Self::DeriveKey(op) => write!(f, "{op}")?,
+            Self::DeriveKeyResponse(op) => write!(f, "{op}")?,
+            Self::Destroy(op) => write!(f, "{op}")?,
+            Self::DestroyResponse(op) => write!(f, "{op}")?,
+            Self::DiscoverVersions(op) => write!(f, "{op}")?,
             Self::DiscoverVersionsResponse(op) => {
-                write!(f, "Operation::DiscoverVersionsResponse({op:?})")
+                write!(f, "{op}")?;
             }
-            Self::Decrypt(op) => write!(f, "Operation::Decrypt({op})"),
-            Self::DecryptResponse(op) => write!(f, "Operation::DecryptResponse({op})"),
-            Self::DeleteAttribute(op) => write!(f, "Operation::DeleteAttribute({op})"),
-            Self::DeleteAttributeResponse(op) => {
-                write!(f, "Operation::DeleteAttributeResponse({op})")
+            Self::Encrypt(op) => write!(f, "{op}")?,
+            Self::EncryptResponse(op) => write!(f, "{op}")?,
+            Self::Export(op) => write!(f, "{op}")?,
+            Self::ExportResponse(op) => write!(f, "{op}")?,
+            Self::Get(op) => write!(f, "{op}")?,
+            Self::GetAttributeList(op) => write!(f, "{op}")?,
+            Self::GetAttributeListResponse(op) => {
+                write!(f, "{op}")?;
             }
-            Self::DeriveKey(op) => write!(f, "Operation::DeriveKey({op})"),
-            Self::DeriveKeyResponse(op) => write!(f, "Operation::DeriveKeyResponse({op})"),
-            Self::Destroy(op) => write!(f, "Operation::Destroy({op})"),
-            Self::DestroyResponse(op) => write!(f, "Operation::DestroyResponse({op})"),
-            Self::Encrypt(op) => write!(f, "Operation::Encrypt({op})"),
-            Self::EncryptResponse(op) => write!(f, "Operation::EncryptResponse({op})"),
-            Self::Export(op) => write!(f, "Operation::Export({op})"),
-            Self::ExportResponse(op) => write!(f, "Operation::ExportResponse({op})"),
-            Self::Get(op) => write!(f, "Operation::Get({op})"),
-            Self::GetResponse(op) => write!(f, "Operation::GetResponse({op})"),
-            Self::GetAttributes(op) => write!(f, "Operation::GetAttributes({op})"),
-            Self::GetAttributesResponse(op) => {
-                write!(f, "Operation::GetAttributesResponse({op})")
-            }
-            Self::Hash(op) => write!(f, "Operation::Hash({op})"),
-            Self::HashResponse(op) => write!(f, "Operation::HashResponse({op})"),
-            Self::Import(op) => write!(f, "Operation::Import({op})"),
-            Self::ImportResponse(op) => write!(f, "Operation::ImportResponse({op})"),
-            Self::Locate(op) => write!(f, "Operation::Locate({op})"),
-            Self::LocateResponse(op) => write!(f, "Operation::LocateResponse({op})"),
-            Self::MAC(op) => write!(f, "Operation::MAC({op})"),
-            Self::MACResponse(op) => write!(f, "Operation::MACResponse({op})"),
-            Self::Query(op) => write!(f, "Operation::Query({op})"),
-            Self::QueryResponse(op) => write!(f, "Operation::QueryResponse({op})"),
-            Self::Register(op) => write!(f, "Operation::Register({op})"),
-            Self::RegisterResponse(op) => write!(f, "Operation::RegisterResponse({op})"),
-            Self::Revoke(op) => write!(f, "Operation::Revoke({op})"),
-            Self::RevokeResponse(op) => write!(f, "Operation::RevokeResponse({op})"),
-            Self::ReKey(op) => write!(f, "Operation::ReKey({op})"),
-            Self::ReKeyResponse(op) => write!(f, "Operation::ReKeyResponse({op})"),
-            Self::ReKeyKeyPair(op) => write!(f, "Operation::ReKeyKeyPair({op})"),
-            Self::ReKeyKeyPairResponse(op) => write!(f, "Operation::ReKeyKeyPairResponse({op})"),
-            Self::SetAttribute(op) => write!(f, "Operation::SetAttribute({op})"),
-            Self::SetAttributeResponse(op) => write!(f, "Operation::SetAttributeResponse({op})"),
-            Self::Sign(op) => write!(f, "Operation::Sign({op})"),
-            Self::SignResponse(op) => write!(f, "Operation::SignResponse({op})"),
-            Self::Validate(op) => write!(f, "Operation::Validate({op})"),
-            Self::ValidateResponse(op) => write!(f, "Operation::ValidateResponse({op})"),
-            Self::SignatureVerify(op) => write!(f, "Operation::SignatureVerify({op})"),
-            Self::SignatureVerifyResponse(op) => {
-                write!(f, "Operation::SignatureVerifyResponse({op})")
-            }
+            Self::GetAttributes(op) => write!(f, "{op}")?,
+            Self::GetAttributesResponse(op) => write!(f, "{op}")?,
+            Self::GetResponse(op) => write!(f, "{op}")?,
+            Self::Hash(op) => write!(f, "{op}")?,
+            Self::HashResponse(op) => write!(f, "{op}")?,
+            Self::Import(op) => write!(f, "{op}")?,
+            Self::ImportResponse(op) => write!(f, "{op}")?,
+            #[cfg(feature = "interop")]
+            Self::Interop(op) => write!(f, "{op}")?,
+            #[cfg(feature = "interop")]
+            Self::InteropResponse(op) => write!(f, "{op}")?,
+            Self::Locate(op) => write!(f, "{op}")?,
+            Self::LocateResponse(op) => write!(f, "{op}")?,
+            Self::Log(op) => write!(f, "{op}")?,
+            Self::LogResponse(op) => write!(f, "{op}")?,
+            Self::MAC(op) => write!(f, "{op}")?,
+            Self::MACResponse(op) => write!(f, "{op}")?,
+            Self::MACVerify(op) => write!(f, "{op}")?,
+            Self::MACVerifyResponse(op) => write!(f, "{op}")?,
+            Self::ModifyAttribute(op) => write!(f, "{op}")?,
+            Self::ModifyAttributeResponse(op) => write!(f, "{op}")?,
+            Self::PKCS11(op) => write!(f, "{op}")?,
+            Self::PKCS11Response(op) => write!(f, "{op}")?,
+            Self::Query(op) => write!(f, "{op}")?,
+            Self::QueryResponse(op) => write!(f, "{op}")?,
+            Self::ReKey(op) => write!(f, "{op}")?,
+            Self::ReKeyKeyPair(op) => write!(f, "{op}")?,
+            Self::ReKeyKeyPairResponse(op) => write!(f, "{op}")?,
+            Self::ReKeyResponse(op) => write!(f, "{op}")?,
+            Self::Register(op) => write!(f, "{op}")?,
+            Self::RegisterResponse(op) => write!(f, "{op}")?,
+            Self::Revoke(op) => write!(f, "{op}")?,
+            Self::RevokeResponse(op) => write!(f, "{op}")?,
+            Self::RNGRetrieve(op) => write!(f, "{op}")?,
+            Self::RNGRetrieveResponse(op) => write!(f, "{op}")?,
+            Self::RNGSeed(op) => write!(f, "{op}")?,
+            Self::RNGSeedResponse(op) => write!(f, "{op}")?,
+            Self::SetAttribute(op) => write!(f, "{op}")?,
+            Self::SetAttributeResponse(op) => write!(f, "{op}")?,
+            Self::Sign(op) => write!(f, "{op}")?,
+            Self::SignResponse(op) => write!(f, "{op}")?,
+            Self::SignatureVerify(op) => write!(f, "{op}")?,
+            Self::SignatureVerifyResponse(op) => write!(f, "{op}")?,
+            Self::Validate(op) => write!(f, "{op}")?,
+            Self::ValidateResponse(op) => write!(f, "{op}")?,
         }
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -229,72 +268,59 @@ impl Operation {
     #[must_use]
     pub const fn direction(&self) -> Direction {
         match self {
-            Self::Activate(_)
-            | Self::AddAttribute(_)
-            | Self::Certify(_)
-            | Self::Create(_)
-            | Self::CreateKeyPair(_)
-            | Self::Decrypt(_)
-            | Self::DeleteAttribute(_)
-            | Self::DeriveKey(_)
-            | Self::Destroy(_)
-            | Self::Encrypt(_)
-            | Self::Export(_)
-            | Self::Get(_)
-            | Self::Import(_)
-            | Self::GetAttributes(_)
-            | Self::Hash(_)
-            | Self::Locate(_)
-            | Self::MAC(_)
-            | Self::Query(_)
-            | Self::Register(_)
-            | Self::Revoke(_)
-            | Self::ReKey(_)
-            | Self::ReKeyKeyPair(_)
-            | Self::Sign(_)
-            | Self::Validate(_)
-            | Self::DiscoverVersions(_)
-            | Self::SetAttribute(_)
-            | Self::SignatureVerify(_) => Direction::Request,
-
+            // All Response variants
             Self::ActivateResponse(_)
             | Self::AddAttributeResponse(_)
             | Self::CertifyResponse(_)
-            | Self::CreateResponse(_)
+            | Self::CheckResponse(_)
             | Self::CreateKeyPairResponse(_)
+            | Self::CreateResponse(_)
             | Self::DecryptResponse(_)
             | Self::DeleteAttributeResponse(_)
             | Self::DeriveKeyResponse(_)
             | Self::DestroyResponse(_)
+            | Self::DiscoverVersionsResponse(_)
             | Self::EncryptResponse(_)
             | Self::ExportResponse(_)
-            | Self::GetResponse(_)
+            | Self::GetAttributeListResponse(_)
             | Self::GetAttributesResponse(_)
-            | Self::SetAttributeResponse(_)
-            | Self::ImportResponse(_)
+            | Self::GetResponse(_)
             | Self::HashResponse(_)
+            | Self::ImportResponse(_)
             | Self::LocateResponse(_)
+            | Self::LogResponse(_)
             | Self::MACResponse(_)
+            | Self::MACVerifyResponse(_)
+            | Self::ModifyAttributeResponse(_)
+            | Self::PKCS11Response(_)
+            | Self::QueryResponse(_)
+            | Self::ReKeyKeyPairResponse(_)
+            | Self::ReKeyResponse(_)
             | Self::RegisterResponse(_)
             | Self::RevokeResponse(_)
-            | Self::ReKeyResponse(_)
-            | Self::ReKeyKeyPairResponse(_)
+            | Self::RNGRetrieveResponse(_)
+            | Self::RNGSeedResponse(_)
+            | Self::SetAttributeResponse(_)
             | Self::SignResponse(_)
-            | Self::QueryResponse(_)
-            | Self::ValidateResponse(_)
-            | Self::DiscoverVersionsResponse(_)
-            | Self::SignatureVerifyResponse(_) => Direction::Response,
+            | Self::SignatureVerifyResponse(_)
+            | Self::ValidateResponse(_) => Direction::Response,
+            #[cfg(feature = "interop")]
+            Self::InteropResponse(_) => Direction::Response,
+            // All Request variants
+            _ => Direction::Request,
         }
     }
 
     #[must_use]
     pub const fn operation_enum(&self) -> OperationEnumeration {
         match self {
+            // Alphabetical by operation name
             Self::Activate(_) | Self::ActivateResponse(_) => OperationEnumeration::Activate,
             Self::AddAttribute(_) | Self::AddAttributeResponse(_) => {
                 OperationEnumeration::AddAttribute
             }
             Self::Certify(_) | Self::CertifyResponse(_) => OperationEnumeration::Certify,
+            Self::Check(_) | Self::CheckResponse(_) => OperationEnumeration::Check,
             Self::Create(_) | Self::CreateResponse(_) => OperationEnumeration::Create,
             Self::CreateKeyPair(_) | Self::CreateKeyPairResponse(_) => {
                 OperationEnumeration::CreateKeyPair
@@ -311,13 +337,22 @@ impl Operation {
             Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
+            Self::GetAttributeList(_) | Self::GetAttributeListResponse(_) => {
+                OperationEnumeration::GetAttributeList
+            }
             Self::GetAttributes(_) | Self::GetAttributesResponse(_) => {
                 OperationEnumeration::GetAttributes
             }
-            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
+            Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
+            Self::Log(_) | Self::LogResponse(_) => OperationEnumeration::Log,
             Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
+            Self::MACVerify(_) | Self::MACVerifyResponse(_) => OperationEnumeration::MACVerify,
+            Self::ModifyAttribute(_) | Self::ModifyAttributeResponse(_) => {
+                OperationEnumeration::ModifyAttribute
+            }
+            Self::PKCS11(_) | Self::PKCS11Response(_) => OperationEnumeration::PKCS11,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::Register(_) | Self::RegisterResponse(_) => OperationEnumeration::Register,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
@@ -325,15 +360,521 @@ impl Operation {
                 OperationEnumeration::ReKeyKeyPair
             }
             Self::Revoke(_) | Self::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Self::RNGRetrieve(_) | Self::RNGRetrieveResponse(_) => {
+                OperationEnumeration::RNGRetrieve
+            }
+            Self::RNGSeed(_) | Self::RNGSeedResponse(_) => OperationEnumeration::RNGSeed,
             Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
                 OperationEnumeration::SetAttribute
             }
             Self::Sign(_) | Self::SignResponse(_) => OperationEnumeration::Sign,
-            Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
             Self::SignatureVerify(_) | Self::SignatureVerifyResponse(_) => {
                 OperationEnumeration::SignatureVerify
             }
+            Self::Validate(_) | Self::ValidateResponse(_) => OperationEnumeration::Validate,
+            #[cfg(feature = "interop")]
+            Self::Interop(_) | Self::InteropResponse(_) => OperationEnumeration::Interop,
         }
+    }
+}
+
+/// This operation enables the server to perform a PKCS#11 operation.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct PKCS11 {
+    // Accept historical / profile vector forms: PKCS11Function, Pkcs11Function, PKCS_11Function, Pkcs_11Function
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11Function",
+        alias = "Pkcs11Function",
+        alias = "PKCS_11Function",
+        alias = "Pkcs_11Function"
+    )]
+    pub pkcs11_function: Option<PKCS11Function>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11InputParameters",
+        alias = "Pkcs11InputParameters",
+        alias = "PKCS_11InputParameters",
+        alias = "Pkcs_11InputParameters"
+    )]
+    pub pkcs11_input_parameters: Option<Vec<u8>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "CorrelationValue",
+        alias = "correlation_value"
+    )]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for PKCS11 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PKCS11 {{")?;
+        if let Some(func) = &self.pkcs11_function {
+            write!(f, "  PKCS11Function: {func:?}")?;
+        } else {
+            write!(f, "  PKCS11Function: None")?;
+        }
+        write!(
+            f,
+            "  PKCS11InputParameters: {}",
+            self.pkcs11_input_parameters.to_base64()
+        )?;
+        write!(
+            f,
+            "  CorrelationValue: {}",
+            self.correlation_value.to_base64()
+        )?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct PKCS11Response {
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11Function",
+        alias = "Pkcs11Function",
+        alias = "PKCS_11Function",
+        alias = "Pkcs_11Function"
+    )]
+    pub pkcs11_function: Option<PKCS11Function>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11OutputParameters",
+        alias = "Pkcs11OutputParameters",
+        alias = "PKCS_11OutputParameters",
+        alias = "Pkcs_11OutputParameters"
+    )]
+    pub pkcs11_output_parameters: Option<Vec<u8>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11ReturnCode",
+        alias = "Pkcs11ReturnCode",
+        alias = "PKCS_11ReturnCode",
+        alias = "Pkcs_11ReturnCode"
+    )]
+    pub pkcs11_return_code: Option<PKCS11ReturnCode>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "CorrelationValue",
+        alias = "correlation_value"
+    )]
+    pub correlation_value: Option<Vec<u8>>,
+}
+
+impl Display for PKCS11Response {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PKCS11Response {{")?;
+        if let Some(func) = &self.pkcs11_function {
+            write!(f, "  PKCS11Function: {func:?}")?;
+        } else {
+            write!(f, "  PKCS11Function: None")?;
+        }
+        write!(
+            f,
+            "  PKCS11OutputParameters: {}",
+            self.pkcs11_output_parameters.to_base64()
+        )?;
+        if let Some(code) = &self.pkcs11_return_code {
+            write!(f, "  PKCS11ReturnCode: {code:?}")?;
+        } else {
+            write!(f, "  PKCS11ReturnCode: None")?;
+        }
+        write!(
+            f,
+            "  CorrelationValue: {}",
+            self.correlation_value.to_base64()
+        )?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[kmip_enum]
+pub enum PKCS11Function {
+    C_Initialize = 0x0000_0001,
+    C_GetInfo = 0x0000_0002,
+    C_Finalize = 0x0000_0003,
+    C_OpenSession = 0x0000_0004,
+    C_CloseSession = 0x0000_0005,
+    C_DestroyObject = 0x0000_0006,
+    C_Decrypt = 0x0000_0007,
+    C_DecryptInit = 0x0000_0008,
+    C_DecryptUpdate = 0x0000_0009,
+    C_DecryptFinal = 0x0000_000A,
+    C_Encrypt = 0x0000_000B,
+    C_EncryptInit = 0x0000_000C,
+    C_EncryptUpdate = 0x0000_000D,
+    C_EncryptFinal = 0x0000_000E,
+    C_FindObjectsInit = 0x0000_000F,
+    C_FindObjects = 0x0000_0010,
+    C_FindObjectsFinal = 0x0000_0011,
+    C_GenerateKey = 0x0000_0012,
+    C_GenerateKeyPair = 0x0000_0013,
+    C_GenerateRandom = 0x0000_0014,
+    C_SeedRandom = 0x0000_0015,
+    C_GetAttributeValue = 0x0000_0016,
+    C_GetMechanismList = 0x0000_0017,
+    C_GetMechanismInfo = 0x0000_0018,
+    C_Login = 0x0000_0019,
+    C_Logout = 0x0000_001A,
+    C_WrapKey = 0x0000_001B,
+    C_UnwrapKey = 0x0000_001C,
+}
+
+#[kmip_enum]
+pub enum PKCS11ReturnCode {
+    OK = 0x0000_0000,
+    CKR_GENERAL_ERROR = 0x0000_0005,
+    CKR_FUNCTION_NOT_SUPPORTED = 0x0000_0054,
+    CKR_ARGUMENTS_BAD = 0x0000_0007,
+    CKR_CRYPTOKI_NOT_INITIALIZED = 0x0000_0190,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Log {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_message: Option<String>,
+}
+
+impl Display for Log {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Log {{")?;
+        if let Some(msg) = &self.log_message {
+            write!(f, "  LogMessage: {msg}")?;
+        } else {
+            write!(f, "  LogMessage: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Default, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct LogResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_message: Option<String>,
+}
+
+impl Display for LogResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LogResponse {{")?;
+        if let Some(msg) = &self.log_message {
+            write!(f, "  LogMessage: {msg}")?;
+        } else {
+            write!(f, "  LogMessage: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+/// This operation informs the server about the status if interop tests.
+/// It SHALL NOT be available in a production server. The Interop Operation uses three Interop Functions (Begin, End and Reset).
+#[cfg(feature = "interop")]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Interop {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interop_function: Option<InteropFunction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interop_identifier: Option<String>,
+}
+
+#[cfg(feature = "interop")]
+impl Display for Interop {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Interop {{")?;
+        if let Some(func) = &self.interop_function {
+            let func_str = match func {
+                InteropFunction::Begin => "Begin",
+                InteropFunction::End => "End",
+            };
+            write!(f, "  InteropFunction: {func_str}")?;
+        } else {
+            write!(f, "  InteropFunction: None")?;
+        }
+        if let Some(id) = &self.interop_identifier {
+            write!(f, "  InteropIdentifier: {id}")?;
+        } else {
+            write!(f, "  InteropIdentifier: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "interop")]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+#[derive(Default)]
+pub struct InteropResponse;
+
+#[cfg(feature = "interop")]
+impl Display for InteropResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "InteropResponse {{")?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "interop")]
+#[kmip_enum]
+pub enum InteropFunction {
+    Begin = 0x0000_0001,
+    End = 0x0000_0002,
+}
+
+/// 4.x Check
+/// This operation requests that the server check whether a Managed Object can be used
+/// according to values specified in the request. The server evaluates the request
+/// against its policy and, if compliant, indicates success; otherwise it returns a
+/// failure with an appropriate reason (e.g., `IncompatibleCryptographicUsageMask`).
+///
+/// Request fields:
+/// - Unique Identifier (optional): Determines the object being checked. If omitted,
+///   `KMIP` Check operation (KMIP v2.0, Section 4.2.2.4; also applies to v2.1)
+///
+/// The Check operation allows a client to query the server to determine if use of a
+/// particular Managed Object would be permitted under the server's current policy.
+/// The Client may ask the server to validate one or more of the following elements:
+///
+/// - Unique Identifier (optional): Determines the object being checked. If omitted,
+///   the server uses the ID Placeholder value as the Unique Identifier.
+/// - Usage Limits Count (optional): Number of Usage Limits Units whose protection is
+///   to be checked against server policy.
+/// - Cryptographic Usage Mask (optional): Intended cryptographic usages to validate
+///   against server policy.
+/// - Lease Time (optional): Desired lease time value to validate against server policy.
+///
+/// On success, the Response Payload MAY include the Unique Identifier and MAY include
+/// the policy-adjusted values for the requested elements. If any policy validation
+/// fails (e.g., an incompatible Cryptographic Usage Mask), the server SHALL return an
+/// `OperationFailed` with the appropriate `ResultReason` (e.g.,
+/// `IncompatibleCryptographicUsageMask`). In batched requests using Undo semantics, a
+/// later failure MAY cause prior successful operations (including Check) to be marked
+/// `OperationUndone` in the response, potentially including only the Unique Identifier
+/// in the payload as per the KMIP profiles.
+///
+/// Reference: <https://docs.oasis-open.org/kmip/kmip-spec/v2.0/os/kmip-spec-v2.0-os.html>#_`Toc6497533L`
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Check {
+    /// Determines the object being checked. If omitted, then the ID Placeholder value
+    /// is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Specifies the number of Usage Limits Units to be protected to be checked against server policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits_count: Option<i64>,
+    /// Specifies the Cryptographic Usage for which the client intends to use the object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
+    /// Specifies a Lease Time value that the Client is asking the server to validate against policy.
+    /// KMIP Interval type (32-bit signed integer in TTLV).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_time: Option<i32>,
+}
+
+impl Display for Check {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Check {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  UniqueIdentifier: {uid}")?;
+        } else {
+            write!(f, "  UniqueIdentifier: None")?;
+        }
+        if let Some(count) = &self.usage_limits_count {
+            write!(f, "  UsageLimitsCount: {count}")?;
+        } else {
+            write!(f, "  UsageLimitsCount: None")?;
+        }
+        if let Some(cum) = &self.cryptographic_usage_mask {
+            write!(f, "  CryptographicUsageMask: {cum}")?;
+        } else {
+            write!(f, "  CryptographicUsageMask: None")?;
+        }
+        if let Some(lt) = &self.lease_time {
+            write!(f, "  LeaseTime: {lt}")?;
+        } else {
+            write!(f, "  LeaseTime: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct CheckResponse {
+    /// The Unique Identifier of the object. Present on success; omitted on failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Returned if the Usage Limits Count specified in the request exceeds allowed policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits_count: Option<i64>,
+    /// Returned if the Cryptographic Usage Mask is rejected by the server for policy violation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
+    /// Returned if the Lease Time requested exceeds a valid Lease Time the server MAY grant.
+    /// KMIP Interval type (32-bit signed integer in TTLV).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_time: Option<i32>,
+}
+
+impl Display for CheckResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CheckResponse {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  UniqueIdentifier: {uid}")?;
+        } else {
+            write!(f, "  UniqueIdentifier: None")?;
+        }
+        if let Some(count) = &self.usage_limits_count {
+            write!(f, "  UsageLimitsCount: {count}")?;
+        } else {
+            write!(f, "  UsageLimitsCount: None")?;
+        }
+        if let Some(mask) = &self.cryptographic_usage_mask {
+            write!(f, "  CryptographicUsageMask: {mask}")?;
+        } else {
+            write!(f, "  CryptographicUsageMask: None")?;
+        }
+        if let Some(lt) = &self.lease_time {
+            write!(f, "  LeaseTime: {lt}")?;
+        } else {
+            write!(f, "  LeaseTime: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+/// `RNGRetrieve` operation
+///
+/// Requests the server to return cryptographically secure random data.
+/// The request contains the desired Data Length.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGRetrieve {
+    /// Length in bytes of random data to return.
+    pub data_length: i32,
+}
+
+impl Display for RNGRetrieve {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RNGRetrieve {{")?;
+        write!(f, "  DataLength: {}", self.data_length)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGRetrieveResponse {
+    /// Random data generated by the server.
+    pub data: Vec<u8>,
+}
+
+impl Display for RNGRetrieveResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RNGRetrieveResponse {{")?;
+        write!(f, "  Data: {}", self.data.to_base64())?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+/// `RNGSeed` operation
+///
+/// Requests the server to seed an RNG instance with the provided Data.
+/// The response returns the Amount of Seed Data consumed.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGSeed {
+    /// Seed material provided by the client.
+    pub data: Vec<u8>,
+}
+
+impl Display for RNGSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RNGSeed {{")?;
+        write!(f, "  Data: {}", self.data.to_base64())?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct RNGSeedResponse {
+    /// Number of bytes of seed data accepted by the RNG.
+    #[serde(alias = "DataLength")]
+    pub amount_of_seed_data: i32,
+}
+
+impl Display for RNGSeedResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RNGSeedResponse {{")?;
+        write!(f, "  AmountOfSeedData: {}", self.amount_of_seed_data)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ModifyAttribute {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    // KMIP XML vectors (e.g. SKLC-M-3-21) use <NewAttribute> element inside
+    // ModifyAttribute request payload (same container name as AddAttribute),
+    // while the spec text can be ambiguous across versions. We normalize on
+    // a single internal field named `new_attribute` and alias it to
+    // "NewAttribute" for XML/TTLV (de)serialization so the parser can map
+    // vectors without special casing.
+    #[serde(rename = "NewAttribute")]
+    pub new_attribute: Attribute,
+}
+
+impl Display for ModifyAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ModifyAttribute {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  UniqueIdentifier: {uid}")?;
+        } else {
+            write!(f, "  UniqueIdentifier: None")?;
+        }
+        write!(f, "  NewAttribute: {}", self.new_attribute)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ModifyAttributeResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+}
+
+impl Display for ModifyAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ModifyAttributeResponse {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  UniqueIdentifier: {uid}")?;
+        } else {
+            write!(f, "  UniqueIdentifier: None")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -341,7 +882,7 @@ impl Operation {
 ///
 /// The operation SHALL only be performed on an object in the Pre-Active state
 /// and has the effect of changing its state to Active, and setting its Activation Date to the current date and time
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Activate {
     /// Determines the object being activated. If omitted,
@@ -349,11 +890,29 @@ pub struct Activate {
     pub unique_identifier: UniqueIdentifier,
 }
 
+impl Display for Activate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Activate {{")?;
+        write!(f, "  UniqueIdentifier: {}", self.unique_identifier)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 /// Response to an Activate request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ActivateResponse {
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for ActivateResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ActivateResponse {{")?;
+        write!(f, "  UniqueIdentifier: {}", self.unique_identifier)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
 }
 
 /// This operation requests the server to add a new attribute instance to be associated with
@@ -363,18 +922,79 @@ pub struct ActivateResponse {
 /// attributes, this is how the first and subsequent values are created. Existing attribute
 /// values SHALL NOT be changed by this operation. Read-Only attributes SHALL NOT be added
 /// using the Add Attribute operation.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
     pub unique_identifier: UniqueIdentifier,
     pub new_attribute: Attribute,
 }
 
+impl Display for AddAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AddAttribute {{")?;
+        write!(f, "  UniqueIdentifier: {}", self.unique_identifier)?;
+        write!(f, "  NewAttribute: {}", self.new_attribute)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 /// Response to an Add Attribute request
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
     pub unique_identifier: UniqueIdentifier,
+}
+
+impl Display for AddAttributeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AddAttributeResponse {{")?;
+        write!(f, "  UniqueIdentifier: {}", self.unique_identifier)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct GetAttributeList {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+}
+
+impl Display for GetAttributeList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GetAttributeList {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {uid}")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct GetAttributeListResponse {
+    pub unique_identifier: UniqueIdentifier,
+    #[serde(rename = "AttributeReference", skip_serializing_if = "Option::is_none")]
+    pub attribute_references: Option<Vec<AttributeReference>>,
+}
+
+impl Display for GetAttributeListResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GetAttributeListResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        if let Some(attrs) = &self.attribute_references {
+            write!(f, "  attribute_references: [")?;
+            for attr in attrs {
+                write!(f, "    {attr}")?;
+            }
+            write!(f, "  ]")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
 }
 
 /// Certify
@@ -406,7 +1026,7 @@ pub struct AddAttributeResponse {
 /// into the ID Placeholder variable. If the information in the Certificate
 /// Request conflicts with the attributes specified in the Attributes, then the
 /// information in the Certificate Request takes precedence.
-#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
     // The Unique Identifier of the Public Key or the Certificate Request being certified. If
@@ -432,32 +1052,32 @@ pub struct Certify {
 
 impl Display for Certify {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(attributes) = self.attributes.as_ref() {
-            return write!(
-                f,
-                "Certify {{ unique_identifier: {:?}, certificate_request_type: {:?}, \
-                 certificate_request_value: {}, attributes: {} (missing CertificateType), \
-                 protection_storage_masks: {:?} }}",
-                self.unique_identifier,
-                self.certificate_request_type,
-                self.certificate_request_value.to_base64(),
-                attributes,
-                self.protection_storage_masks
-            );
+        write!(f, "Certify {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {uid}")?;
         }
-        write!(
-            f,
-            "Certify {{ unique_identifier: {:?}, certificate_request_type: {:?}, \
-             certificate_request_value: {}, attributes: None, protection_storage_masks: {:?} }}",
-            self.unique_identifier,
-            self.certificate_request_type,
-            self.certificate_request_value.to_base64(),
-            self.protection_storage_masks
-        )
+        if let Some(t) = &self.certificate_request_type {
+            write!(f, "  certificate_request_type: {t}")?;
+        }
+        if self.certificate_request_value.is_some() {
+            write!(
+                f,
+                "  certificate_request_value: {}",
+                self.certificate_request_value.to_base64()
+            )?;
+        }
+        if let Some(a) = &self.attributes {
+            write!(f, "  attributes: {a}")?;
+        }
+        if let Some(p) = &self.protection_storage_masks {
+            write!(f, "  protection_storage_masks: {p}")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     /// The Unique Identifier of the newly created object.
@@ -466,11 +1086,9 @@ pub struct CertifyResponse {
 
 impl Display for CertifyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "CertifyResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "CertifyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -483,7 +1101,7 @@ impl Display for CertifyResponse {
 /// Cryptographic Length, etc.). The response contains the Unique Identifier of
 /// the created object. The server SHALL copy the Unique Identifier returned by
 /// this operation into the ID Placeholder variable.
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created.
@@ -498,15 +1116,17 @@ pub struct Create {
 
 impl Display for Create {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Create {{ object_type: {}, attributes: {}, protection_storage_masks: {:?} }}",
-            self.object_type, self.attributes, self.protection_storage_masks
-        )
+        write!(f, "Create {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        write!(f, "  attributes: {}", self.attributes)?;
+        if let Some(p) = &self.protection_storage_masks {
+            write!(f, "  protection_storage_masks: {p}")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of object created.
@@ -517,11 +1137,10 @@ pub struct CreateResponse {
 
 impl Display for CreateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "CreateResponse {{ object_type: {}, unique_identifier: {} }}",
-            self.object_type, self.unique_identifier
-        )
+        write!(f, "CreateResponse {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -541,7 +1160,7 @@ impl Display for CreateResponse {
 /// Private Key pointing to the Private Key. The response contains the Unique
 /// Identifiers of both created objects. The ID Placeholder value SHALL be set
 /// to the Unique Identifier of the Private Key
-#[derive(Deserialize, Serialize, Default, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Specifies desired attributes to be associated with the new object that
@@ -572,35 +1191,30 @@ pub struct CreateKeyPair {
 
 impl Display for CreateKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let common_attrs = self
-            .common_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-        let private_attrs = self
-            .private_key_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-        let public_attrs = self
-            .public_key_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-
-        write!(
-            f,
-            "CreateKeyPair {{ common_attributes: {}, private_key_attributes: {}, \
-             public_key_attributes: {}, common_protection_storage_masks: {:?}, \
-             private_protection_storage_masks: {:?}, public_protection_storage_masks: {:?} }}",
-            common_attrs,
-            private_attrs,
-            public_attrs,
-            self.common_protection_storage_masks,
-            self.private_protection_storage_masks,
-            self.public_protection_storage_masks
-        )
+        write!(f, "CreateKeyPair {{")?;
+        if let Some(a) = &self.common_attributes {
+            write!(f, "  common_attributes: {a}")?;
+        }
+        if let Some(a) = &self.private_key_attributes {
+            write!(f, "  private_key_attributes: {a}")?;
+        }
+        if let Some(a) = &self.public_key_attributes {
+            write!(f, "  public_key_attributes: {a}")?;
+        }
+        if let Some(m) = &self.common_protection_storage_masks {
+            write!(f, "  common_protection_storage_masks: {m}")?;
+        }
+        if let Some(m) = &self.private_protection_storage_masks {
+            write!(f, "  private_protection_storage_masks: {m}")?;
+        }
+        if let Some(m) = &self.public_protection_storage_masks {
+            write!(f, "  public_protection_storage_masks: {m}")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// The Unique Identifier of the newly created private key object.
@@ -611,12 +1225,18 @@ pub struct CreateKeyPairResponse {
 
 impl Display for CreateKeyPairResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CreateKeyPairResponse {{")?;
         write!(
             f,
-            "CreateKeyPairResponse {{ private_key_unique_identifier: {}, \
-             public_key_unique_identifier: {} }}",
-            self.private_key_unique_identifier, self.public_key_unique_identifier
-        )
+            "  private_key_unique_identifier: {}",
+            self.private_key_unique_identifier
+        )?;
+        write!(
+            f,
+            "  public_key_unique_identifier: {}",
+            self.public_key_unique_identifier
+        )?;
+        write!(f, "}}")
     }
 }
 
@@ -689,22 +1309,43 @@ pub struct Decrypt {
 
 impl Display for Decrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Decrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
-             iv_counter_nonce: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
-             {:?}, authenticated_encryption_additional_data: {}, authenticated_encryption_tag: {} \
-             }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.i_v_counter_nonce.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator,
-            self.authenticated_encryption_additional_data.to_base64(),
-            self.authenticated_encryption_tag.to_base64()
-        )
+        write!(f, "Decrypt {{")?;
+        if let Some(uid) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {uid}")?;
+        }
+        if let Some(v) = &self.cryptographic_parameters {
+            write!(f, "  cryptographic_parameters: {v}")?;
+        }
+        if let Some(data) = &self.data {
+            write!(f, "  data: {}", data.to_base64())?;
+        }
+        if let Some(iv) = &self.i_v_counter_nonce {
+            write!(f, "  iv_counter_nonce: {}", iv.to_base64())?;
+        }
+        if let Some(correlation) = &self.correlation_value {
+            write!(f, "  correlation_value: {}", correlation.to_base64())?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        if let Some(additional_data) = &self.authenticated_encryption_additional_data {
+            write!(
+                f,
+                "  authenticated_encryption_additional_data: {}",
+                additional_data.to_base64()
+            )?;
+        }
+        if self.authenticated_encryption_tag.is_some() {
+            write!(
+                f,
+                "  authenticated_encryption_tag: {}",
+                self.authenticated_encryption_tag.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -757,7 +1398,7 @@ impl TryFrom<&[u8]> for DecryptedData {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     /// The Unique Identifier of the Managed
@@ -777,17 +1418,23 @@ pub struct DecryptResponse {
 
 impl Display for DecryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DecryptResponse {{ unique_identifier: {}, data: {}, correlation_value: {} }}",
-            self.unique_identifier,
-            self.data.to_base64(),
-            self.correlation_value.to_base64()
-        )
+        write!(f, "DecryptResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttribute {
     /// Determines the object whose attributes are being deleted. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -803,16 +1450,23 @@ pub struct DeleteAttribute {
 
 impl Display for DeleteAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DeleteAttribute {{ unique_identifier: {:?}, current_attribute: {:?}, \
-             attribute_references: {:?} }}",
-            self.unique_identifier, self.current_attribute, self.attribute_references
-        )
+        write!(f, "DeleteAttribute {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.current_attribute {
+            write!(f, "  current_attribute: {v}")?;
+        }
+        if let Some(v) = &self.attribute_references {
+            for v in v {
+                write!(f, "  attribute_reference: {v}")?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     /// The Unique Identifier of the object
@@ -821,15 +1475,13 @@ pub struct DeleteAttributeResponse {
 
 impl Display for DeleteAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DeleteAttributeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "DeleteAttributeResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     /// Determines the object being destroyed. If omitted, then the ID
@@ -843,19 +1495,30 @@ pub struct Destroy {
     /// creation errors.
     #[serde(skip_serializing_if = "<&bool>::not", default)]
     pub remove: bool,
+    /// Cosmian extension: when true, Destroy will cascade to linked objects (e.g.,
+    /// destroying a `PrivateKey` will also destroy its linked `PublicKey`, and vice versa).
+    /// Default is false to match KMIP profiles that do not cascade by default.
+    #[serde(skip_serializing_if = "<&bool>::not", default)]
+    pub cascade: bool,
 }
 
 impl Display for Destroy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Destroy {{ unique_identifier: {:?} }}",
-            self.unique_identifier
-        )
+        write!(f, "Destroy {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if self.remove {
+            write!(f, "  remove: true")?;
+        }
+        if self.cascade {
+            write!(f, "  cascade: true")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     /// The Unique Identifier of the object.
@@ -864,11 +1527,9 @@ pub struct DestroyResponse {
 
 impl Display for DestroyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DestroyResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "DestroyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -881,7 +1542,7 @@ impl Display for DestroyResponse {
 /// The server SHALL perform the derivation function, and then register the derived object as a new Managed Object, returning the new Unique Identifier for the new object in the response. The server SHALL copy the Unique Identifier returned by this operation into the ID Placeholder variable.
 ///
 /// For the keys or Secret Data objects from which the key or Secret Data object is derived, the server SHALL create a Link attribute of Link Type Derived Key pointing to the Symmetric Key or Secret Data object derived as a result of this operation. For the Symmetric Key or Secret Data object derived as a result of this operation, the server SHALL create a Link attribute of Link Type Derivation Base Object pointing to the keys or Secret Data objects from which the key or Secret Data object is derived.
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Determines the type of object to be created.
@@ -904,16 +1565,17 @@ pub struct DeriveKey {
 
 impl Display for DeriveKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DeriveKey {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
         write!(
             f,
-            "DeriveKey {{ object_type: {}, object_unique_identifier: {}, derivation_method: {:?}, \
-             derivation_parameters: {:?}, attributes: {} }}",
-            self.object_type,
-            self.object_unique_identifier,
-            self.derivation_method,
-            self.derivation_parameters,
-            self.attributes
-        )
+            "  object_unique_identifier: {}",
+            self.object_unique_identifier
+        )?;
+        write!(f, "  derivation_method: {}", self.derivation_method)?;
+        write!(f, "  derivation_parameters: {}", self.derivation_parameters)?;
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "}}")
     }
 }
 
@@ -921,7 +1583,7 @@ impl Display for DeriveKey {
 ///
 /// Response to a `DeriveKey` request. Contains the unique identifier
 /// of the newly derived key or secret data object.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKeyResponse {
     /// The Unique Identifier of the newly derived object.
@@ -930,11 +1592,9 @@ pub struct DeriveKeyResponse {
 
 impl Display for DeriveKeyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DeriveKeyResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "DeriveKeyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -997,24 +1657,40 @@ pub struct Encrypt {
 
 impl Display for Encrypt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Encrypt {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
-             iv_counter_nonce: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
-             {:?}, authenticated_encryption_additional_data: {} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.i_v_counter_nonce.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator,
-            self.authenticated_encryption_additional_data.to_base64(),
-        )
+        write!(f, "Encrypt {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.cryptographic_parameters {
+            write!(f, "  cryptographic_parameters: {v}")?;
+        }
+        if let Some(data) = &self.data {
+            write!(f, "  data: {}", data.to_base64())?;
+        }
+        if let Some(iv) = &self.i_v_counter_nonce {
+            write!(f, "  iv_counter_nonce: {}", iv.to_base64())?;
+        }
+        if let Some(correlation) = &self.correlation_value {
+            write!(f, "  correlation_value: {}", correlation.to_base64())?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        if let Some(additional_data) = &self.authenticated_encryption_additional_data {
+            write!(
+                f,
+                "  authenticated_encryption_additional_data: {}",
+                additional_data.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     /// The Unique Identifier of the Managed
@@ -1050,16 +1726,33 @@ pub struct EncryptResponse {
 
 impl Display for EncryptResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "EncryptResponse {{ unique_identifier: {}, data: {}, iv_counter_nonce: {}, \
-             correlation_value: {}, authenticated_encryption_tag: {} }}",
-            self.unique_identifier,
-            self.data.to_base64(),
-            self.i_v_counter_nonce.to_base64(),
-            self.correlation_value.to_base64(),
-            self.authenticated_encryption_tag.to_base64()
-        )
+        write!(f, "EncryptResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.i_v_counter_nonce.is_some() {
+            write!(
+                f,
+                "  iv_counter_nonce: {}",
+                self.i_v_counter_nonce.to_base64()
+            )?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        if self.authenticated_encryption_tag.is_some() {
+            write!(
+                f,
+                "  authenticated_encryption_tag: {}",
+                self.authenticated_encryption_tag.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1073,7 +1766,7 @@ impl Display for EncryptResponse {
 /// SHALL not be returned in the response.
 /// The server SHALL copy the Unique Identifier returned by this operations
 /// into the ID Placeholder variable.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Export {
     /// Determines the object being requested. If omitted, then the ID
@@ -1096,16 +1789,23 @@ pub struct Export {
 
 impl Display for Export {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Export {{ unique_identifier: {:?}, key_format_type: {:?}, key_wrap_type: {:?}, \
-             key_compression_type: {:?}, key_wrapping_specification: {:?} }}",
-            self.unique_identifier,
-            self.key_format_type,
-            self.key_wrap_type,
-            self.key_compression_type,
-            self.key_wrapping_specification
-        )
+        write!(f, "Export {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.key_format_type {
+            write!(f, "  key_format_type: {v}")?;
+        }
+        if let Some(v) = &self.key_wrap_type {
+            write!(f, "  key_wrap_type: {v}")?;
+        }
+        if let Some(v) = &self.key_compression_type {
+            write!(f, "  key_compression_type: {v}")?;
+        }
+        if let Some(v) = &self.key_wrapping_specification {
+            write!(f, "  key_wrapping_specification: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1183,7 +1883,7 @@ impl From<Get> for Export {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExportResponse {
     pub object_type: ObjectType,
@@ -1194,12 +1894,12 @@ pub struct ExportResponse {
 
 impl Display for ExportResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ExportResponse {{ object_type: {}, unique_identifier: {}, attributes: {}, object: {} \
-             }}",
-            self.object_type, self.unique_identifier, self.attributes, self.object
-        )
+        write!(f, "ExportResponse {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "  object: {}", self.object)?;
+        write!(f, "}}")
     }
 }
 
@@ -1233,7 +1933,7 @@ impl Display for ExportResponse {
 /// A Get operation may use both a Key Wrap Type and a Wrapping Key Specification,
 /// in which case the Key Wrap Type is processed as if there was no Wrapping Key Specification,
 /// and the result is then wrapped as specified.
-#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
     /// Determines the object being requested. If omitted, then the ID
@@ -1256,16 +1956,23 @@ pub struct Get {
 
 impl Display for Get {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Get {{ unique_identifier: {:?}, key_format_type: {:?}, key_wrap_type: {:?}, \
-             key_compression_type: {:?}, key_wrapping_specification: {:?} }}",
-            self.unique_identifier,
-            self.key_format_type,
-            self.key_wrap_type,
-            self.key_compression_type,
-            self.key_wrapping_specification
-        )
+        write!(f, "Get {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.key_format_type {
+            write!(f, "  key_format_type: {v}")?;
+        }
+        if let Some(v) = &self.key_wrap_type {
+            write!(f, "  key_wrap_type: {v}")?;
+        }
+        if let Some(v) = &self.key_compression_type {
+            write!(f, "  key_compression_type: {v}")?;
+        }
+        if let Some(v) = &self.key_wrapping_specification {
+            write!(f, "  key_wrapping_specification: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1347,7 +2054,7 @@ impl From<&str> for Get {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
@@ -1357,11 +2064,11 @@ pub struct GetResponse {
 
 impl Display for GetResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "GetResponse {{ object_type: {}, unique_identifier: {}, object: {} }}",
-            self.object_type, self.unique_identifier, self.object
-        )
+        write!(f, "GetResponse {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  object: {}", self.object)?;
+        write!(f, "}}")
     }
 }
 
@@ -1375,7 +2082,7 @@ impl From<ExportResponse> for GetResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes
@@ -1392,11 +2099,16 @@ pub struct GetAttributes {
 
 impl Display for GetAttributes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "GetAttributes {{ unique_identifier: {:?}, attribute_references: {:?} }}",
-            self.unique_identifier, self.attribute_reference
-        )
+        write!(f, "GetAttributes {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.attribute_reference {
+            for v in v {
+                write!(f, "  attribute_reference: {v}")?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1419,7 +2131,7 @@ impl From<&str> for GetAttributes {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     /// The Unique Identifier of the object
@@ -1430,15 +2142,14 @@ pub struct GetAttributesResponse {
 
 impl Display for GetAttributesResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "GetAttributesResponse {{ unique_identifier: {}, attributes: {} }}",
-            self.unique_identifier, self.attributes
-        )
+        write!(f, "GetAttributesResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Hash {
     /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
@@ -1459,20 +2170,33 @@ pub struct Hash {
 
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Hash {{")?;
         write!(
             f,
-            "Hash {{ cryptographic_parameters: {:?}, data: {}, correlation_value: {}, \
-             init_indicator: {:?}, final_indicator: {:?} }}",
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator
-        )
+            "  cryptographic_parameters: {}",
+            self.cryptographic_parameters
+        )?;
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct HashResponse {
     /// The hashed data (as a Byte String).
@@ -1485,12 +2209,18 @@ pub struct HashResponse {
 
 impl Display for HashResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "HashResponse {{ data: {}, correlation_value: {} }}",
-            self.data.to_base64(),
-            self.correlation_value.to_base64()
-        )
+        write!(f, "HashResponse {{")?;
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1507,7 +2237,7 @@ impl Display for HashResponse {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operation into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     /// The Unique Identifier of the object to be imported
@@ -1533,21 +2263,22 @@ pub struct Import {
 
 impl Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Import {{ unique_identifier: {}, object_type: {}, replace_existing: {:?}, \
-             key_wrap_type: {:?}, attributes: {}, object: {} }}",
-            self.unique_identifier,
-            self.object_type,
-            self.replace_existing,
-            self.key_wrap_type,
-            self.attributes,
-            self.object
-        )
+        write!(f, "Import {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        if let Some(v) = self.replace_existing {
+            write!(f, "  replace_existing: {v}")?;
+        }
+        if let Some(v) = self.key_wrap_type {
+            write!(f, "  key_wrap_type: {v}")?;
+        }
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "  object: {}", self.object)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     /// The Unique Identifier of the newly imported object.
@@ -1556,11 +2287,9 @@ pub struct ImportResponse {
 
 impl Display for ImportResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ImportResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "ImportResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -1649,7 +2378,7 @@ impl Display for ImportResponse {
 /// Mask field includes the Destroyed Storage indicator. The server SHALL NOT
 /// return unique identifiers for objects that are archived unless the Storage
 /// Status Mask field includes the Archived Storage indicator.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object
@@ -1675,21 +2404,26 @@ pub struct Locate {
 }
 
 impl Display for Locate {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Locate {{ maximum_items: {:?}, offset_items: {:?}, storage_status_mask: {:?}, \
-             object_group_member: {:?}, attributes: {} }}",
-            self.maximum_items,
-            self.offset_items,
-            self.storage_status_mask,
-            self.object_group_member,
-            self.attributes
-        )
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Locate {{")?;
+        if let Some(v) = self.maximum_items {
+            write!(f, "  maximum_items: {v}")?;
+        }
+        if let Some(v) = self.offset_items {
+            write!(f, "  offset_items: {v}")?;
+        }
+        if let Some(v) = &self.storage_status_mask {
+            write!(f, "  storage_status_mask: {v}")?;
+        }
+        if let Some(v) = &self.object_group_member {
+            write!(f, "  object_group_member: {v}")?;
+        }
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
     /// An Integer object that indicates the number of object identifiers that
@@ -1707,11 +2441,16 @@ pub struct LocateResponse {
 
 impl Display for LocateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "LocateResponse {{ located_items: {:?}, unique_identifiers: {:?} }}",
-            self.located_items, self.unique_identifier
-        )
+        write!(f, "LocateResponse {{")?;
+        if let Some(v) = self.located_items {
+            write!(f, "  located_items: {v}")?;
+        }
+        if let Some(v) = &self.unique_identifier {
+            for v in v {
+                write!(f, "  unique_identifier: {v}")?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1722,6 +2461,7 @@ pub struct MAC {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
     /// The Cryptographic Parameters (Hashing Algorithm) corresponding to the particular hash method requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be hashed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1739,17 +2479,30 @@ pub struct MAC {
 
 impl Display for MAC {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Mac {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
-             correlation_value: {}, init_indicator: {:?}, final_indicator: {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator
-        )
+        write!(f, "Mac {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.cryptographic_parameters {
+            write!(f, "  cryptographic_parameters: {v}")?;
+        }
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1760,6 +2513,7 @@ pub struct MACResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The hashed data (as a Byte String).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "MACData")]
     pub mac_data: Option<Vec<u8>>,
     /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation for performing cryptographic operations.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1768,12 +2522,59 @@ pub struct MACResponse {
 
 impl Display for MACResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "MacResponse {{ data: {}, correlation_value: {} }}",
-            self.mac_data.to_base64(),
-            self.correlation_value.to_base64()
-        )
+        write!(f, "MacResponse {{")?;
+        if self.mac_data.is_some() {
+            write!(f, "  mac_data: {}", self.mac_data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        write!(f, "}}")
+    }
+}
+
+/// 4.34 MAC Verify (KMIP 2.1)
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct MACVerify {
+    pub unique_identifier: UniqueIdentifier,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub data: Vec<u8>,
+    #[serde(rename = "MACData")]
+    pub mac_data: Vec<u8>,
+}
+
+impl Display for MACVerify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MACVerify {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  data: {}", self.data.to_base64())?;
+        write!(f, "  mac_data: {}", self.mac_data.to_base64())?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+/// Response to a MAC Verify request
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct MACVerifyResponse {
+    pub unique_identifier: UniqueIdentifier,
+    pub validity_indicator: ValidityIndicator,
+}
+
+impl Display for MACVerifyResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MACVerifyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "  validity_indicator: {}", self.validity_indicator)?;
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -1788,12 +2589,18 @@ pub struct Query {
 }
 
 impl Display for Query {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Query {{ query_functions: {:?} }}", self.query_function)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Query {{")?;
+        if let Some(v) = &self.query_function {
+            for func in v {
+                write!(f, "  query_function: {func}")?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct QueryResponse {
     /// List of operations supported by the server.
@@ -1852,31 +2659,57 @@ pub struct QueryResponse {
 
 impl Display for QueryResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let defaults_information = self
-            .defaults_information
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), std::string::ToString::to_string);
-        write!(
-            f,
-            "QueryResponse {{ operation: {:?}, object_type: {:?}, vendor_identification: {:?}, \
-             application_namespaces: {:?}, server_information: {:?}, extension_information: {:?}, \
-             attestation_types: {:?}, rng_parameters: {:?}, profiles_information: {:?}, \
-             validation_information: {:?}, capability_information: {:?}, defaults_information: \
-             {}, protection_storage_masks: {:?} }}",
-            self.operation,
-            self.object_type,
-            self.vendor_identification,
-            self.application_namespaces,
-            self.server_information,
-            self.extension_information,
-            self.attestation_types,
-            self.rng_parameters,
-            self.profiles_information,
-            self.validation_information,
-            self.capability_information,
-            defaults_information,
-            self.protection_storage_masks
-        )
+        write!(f, "QueryResponse {{")?;
+        if let Some(v) = &self.operation {
+            for op in v {
+                write!(f, "  operation: {op}")?;
+            }
+        }
+        if let Some(v) = &self.object_type {
+            for object_type in v {
+                write!(f, "  object_type: {object_type}")?;
+            }
+        }
+        if let Some(v) = &self.vendor_identification {
+            write!(f, "  vendor_identification: {v}")?;
+        }
+        if let Some(v) = &self.application_namespaces {
+            for v in v {
+                write!(f, "  application_namespaces: {v}")?;
+            }
+        }
+        if let Some(v) = &self.server_information {
+            write!(f, "  server_information: {v}")?;
+        }
+        if let Some(v) = &self.extension_information {
+            write!(f, "  extension_information: <items:{}>", v.len())?;
+        }
+        if let Some(v) = &self.attestation_types {
+            for at in v {
+                write!(f, "  attestation_types: {at}")?;
+            }
+        }
+        if let Some(v) = &self.rng_parameters {
+            write!(f, "  rng_parameters: <items:{}>", v.len())?;
+        }
+        if let Some(v) = &self.profiles_information {
+            write!(f, "  profiles_information: <items:{}>", v.len())?;
+        }
+        if let Some(v) = &self.validation_information {
+            write!(f, "  validation_information: <items:{}>", v.len())?;
+        }
+        if let Some(v) = &self.capability_information {
+            for v in v {
+                write!(f, "  capability_information: {v}")?;
+            }
+        }
+        if let Some(v) = &self.defaults_information {
+            write!(f, "  defaults_information: {v}")?;
+        }
+        if let Some(v) = &self.protection_storage_masks {
+            write!(f, "  protection_storage_masks: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 /// Register
@@ -1898,7 +2731,7 @@ impl Display for QueryResponse {
 /// this operation into the ID Placeholder variable. The Initial Date attribute
 /// of the object SHALL be set to the current time.
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Register {
     /// Determines the type of object to be registered.
@@ -1915,12 +2748,14 @@ pub struct Register {
 
 impl Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Register {{ object_type: {}, attributes: {}, object: {}, protection_storage_masks: \
-             {:?} }}",
-            self.object_type, self.attributes, self.object, self.protection_storage_masks
-        )
+        write!(f, "Register {{")?;
+        write!(f, "  object_type: {}", self.object_type)?;
+        write!(f, "  attributes: {}", self.attributes)?;
+        write!(f, "  object: {}", self.object)?;
+        if let Some(v) = &self.protection_storage_masks {
+            write!(f, "  protection_storage_masks: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
@@ -1937,7 +2772,7 @@ impl From<Register> for Import {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RegisterResponse {
     /// The Unique Identifier of the newly registered object.
@@ -1946,11 +2781,9 @@ pub struct RegisterResponse {
 
 impl Display for RegisterResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "RegisterResponse {{  unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "RegisterResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
@@ -1971,7 +2804,7 @@ impl Display for RegisterResponse {
 /// If the revocation reason is neither "key
 /// compromise" nor "CA compromise", the object is placed into the "deactivated"
 /// state, and the Deactivation Date is set to the current date and time.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
     /// Determines the object being revoked. If omitted, then the ID Placeholder
@@ -1985,20 +2818,28 @@ pub struct Revoke {
     /// enumerations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compromise_occurrence_date: Option<OffsetDateTime>,
+    /// Cosmian extension: when true, the server will cascade revocation to linked key(s)
+    /// in the same key pair. Defaults to false when omitted to preserve KMIP vector behavior.
+    #[serde(skip_serializing_if = "<&bool>::not", default)]
+    pub cascade: bool,
 }
 
 impl Display for Revoke {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Revoke {{ unique_identifier: {:?}, revocation_reason: {:?}, \
-             compromise_occurrence_date: {:?} }}",
-            self.unique_identifier, self.revocation_reason, self.compromise_occurrence_date
-        )
+        write!(f, "Revoke {{")?;
+        if let Some(ref uid) = self.unique_identifier {
+            write!(f, "  unique_identifier: {uid}")?;
+        }
+        write!(f, "  revocation_reason: {}", self.revocation_reason)?;
+        if let Some(ref date) = self.compromise_occurrence_date {
+            write!(f, "  compromise_occurrence_date: {date}")?;
+        }
+        write!(f, "  cascade: {}", self.cascade)?;
+        f.write_str("}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     /// The Unique Identifier of the object.
@@ -2007,11 +2848,9 @@ pub struct RevokeResponse {
 
 impl Display for RevokeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "RevokeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "RevokeResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        f.write_str("}")
     }
 }
 
@@ -2025,7 +2864,7 @@ impl Display for RevokeResponse {
 /// The server SHALL copy the Unique Identifier of the replacement key returned by this operation into the ID Placeholder variable.
 /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
 /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKey {
     // Determines the existing Symmetric Key being re-keyed. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -2048,20 +2887,24 @@ pub struct ReKey {
 
 impl Display for ReKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let attributes = self
-            .attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-        write!(
-            f,
-            "ReKey {{ unique_identifier: {:?}, offset: {:?}, attributes: {}, \
-             protection_storage_masks: {:?} }}",
-            self.unique_identifier, self.offset, attributes, self.protection_storage_masks
-        )
+        write!(f, "ReKey {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = self.offset {
+            write!(f, "  offset: {v}")?;
+        }
+        if let Some(v) = &self.attributes {
+            write!(f, "  attributes: {v}")?;
+        }
+        if let Some(v) = &self.protection_storage_masks {
+            write!(f, "  protection_storage_masks: {v}")?;
+        }
+        f.write_str("}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
@@ -2070,11 +2913,9 @@ pub struct ReKeyResponse {
 
 impl Display for ReKeyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ReKeyResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "ReKeyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        f.write_str("}")
     }
 }
 
@@ -2104,7 +2945,7 @@ impl Display for ReKeyResponse {
 /// key pair. If Offset is set and dates exist for the existing key pair, then
 /// the dates of the replacement key pair SHALL be set based on the dates of the
 /// existing key pair as follows
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
     // Determines the existing Asymmetric key pair to be re-keyed.  If omitted, then the ID
@@ -2147,38 +2988,36 @@ pub struct ReKeyKeyPair {
 
 impl Display for ReKeyKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let common_attrs = self
-            .common_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-        let private_attrs = self
-            .private_key_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-        let public_attrs = self
-            .public_key_attributes
-            .as_ref()
-            .map_or_else(|| "None".to_owned(), |attrs| format!("{attrs}"));
-
-        write!(
-            f,
-            "ReKeyKeyPair {{ private_key_unique_identifier: {:?}, offset: {:?}, \
-             common_attributes: {}, private_key_attributes: {}, public_key_attributes: {}, \
-             common_protection_storage_masks: {:?}, private_protection_storage_masks: {:?}, \
-             public_protection_storage_masks: {:?} }}",
-            self.private_key_unique_identifier,
-            self.offset,
-            common_attrs,
-            private_attrs,
-            public_attrs,
-            self.common_protection_storage_masks,
-            self.private_protection_storage_masks,
-            self.public_protection_storage_masks
-        )
+        write!(f, "ReKeyKeyPair {{")?;
+        if let Some(v) = &self.private_key_unique_identifier {
+            write!(f, "  private_key_unique_identifier: {v}")?;
+        }
+        if let Some(v) = self.offset {
+            write!(f, "  offset: {v}")?;
+        }
+        if let Some(v) = &self.common_attributes {
+            write!(f, "  common_attributes: {v}")?;
+        }
+        if let Some(v) = &self.private_key_attributes {
+            write!(f, "  private_key_attributes: {v}")?;
+        }
+        if let Some(v) = &self.public_key_attributes {
+            write!(f, "  public_key_attributes: {v}")?;
+        }
+        if let Some(v) = &self.common_protection_storage_masks {
+            write!(f, "  common_protection_storage_masks: {v}")?;
+        }
+        if let Some(v) = &self.private_protection_storage_masks {
+            write!(f, "  private_protection_storage_masks: {v}")?;
+        }
+        if let Some(v) = &self.public_protection_storage_masks {
+            write!(f, "  public_protection_storage_masks: {v}")?;
+        }
+        f.write_str("}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     pub private_key_unique_identifier: UniqueIdentifier,
@@ -2187,16 +3026,22 @@ pub struct ReKeyKeyPairResponse {
 
 impl Display for ReKeyKeyPairResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ReKeyKeyPairResponse {{")?;
         write!(
             f,
-            "ReKeyKeyPairResponse {{ private_key_unique_identifier: {}, \
-             public_key_unique_identifier: {} }}",
-            self.private_key_unique_identifier, self.public_key_unique_identifier
-        )
+            "  private_key_unique_identifier: {}",
+            self.private_key_unique_identifier
+        )?;
+        write!(
+            f,
+            "  public_key_unique_identifier: {}",
+            self.public_key_unique_identifier
+        )?;
+        f.write_str("}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct SetAttribute {
     /// The Unique Identifier of the object. If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
@@ -2208,15 +3053,16 @@ pub struct SetAttribute {
 
 impl Display for SetAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SetAttribute {{ unique_identifier: {:?}, new_attribute: {:?} }}",
-            self.unique_identifier, self.new_attribute
-        )
+        write!(f, "SetAttribute {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        write!(f, "  new_attribute: {}", self.new_attribute)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct SetAttributeResponse {
     /// The Unique Identifier of the object
@@ -2225,15 +3071,13 @@ pub struct SetAttributeResponse {
 
 impl Display for SetAttributeResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SetAttributeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
+        write!(f, "SetAttributeResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        write!(f, "}}")
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct StatusResponse {
     pub kacls_url: String,
 }
@@ -2271,17 +3115,23 @@ pub struct Validate {
 
 impl Display for Validate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Validate {{ certificate: {}, unique_identifier: {:?}, validity_time: {:?} }}",
-            self.certificate.to_base64(),
-            self.unique_identifier,
-            self.validity_time
-        )
+        write!(f, "Validate {{")?;
+        if self.certificate.is_some() {
+            write!(f, "  certificate: {}", self.certificate.to_base64())?;
+        }
+        if let Some(v) = &self.unique_identifier {
+            for uid in v {
+                write!(f, "  unique_identifier: {uid}")?;
+            }
+        }
+        if let Some(v) = &self.validity_time {
+            write!(f, "  validity_time: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ValidateResponse {
     /// An Enumeration object indicating whether the certificate chain is valid,
@@ -2291,11 +3141,9 @@ pub struct ValidateResponse {
 
 impl Display for ValidateResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ValidateResponse {{ validity_indicator: {:?} }}",
-            self.validity_indicator
-        )
+        write!(f, "ValidateResponse {{")?;
+        write!(f, "  validity_indicator: {}", self.validity_indicator)?;
+        write!(f, "}}")
     }
 }
 
@@ -2358,23 +3206,37 @@ pub struct Sign {
 
 impl Display for Sign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Sign {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: {}, \
-             digested_data: {}, correlation_value: {}, init_indicator: {:?}, final_indicator: \
-             {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.digested_data.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator
-        )
+        write!(f, "Sign {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.cryptographic_parameters {
+            write!(f, "  cryptographic_parameters: {v}")?;
+        }
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.digested_data.is_some() {
+            write!(f, "  digested_data: {}", self.digested_data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignResponse {
     /// The Unique Identifier of the Managed
@@ -2394,18 +3256,24 @@ pub struct SignResponse {
 
 impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SignResponse {{ unique_identifier: {}, signature_data: {}, correlation_value: {} }}",
-            self.unique_identifier,
-            self.signature_data.to_base64(),
-            self.correlation_value.to_base64()
-        )
+        write!(f, "SignResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        if self.signature_data.is_some() {
+            write!(f, "  signature_data: {}", self.signature_data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }
 
 /// Signature Verify operation request
-#[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Default, Clone, Deserialize, PartialEq, Eq, Serialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerify {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key to use for the signature verify operation
@@ -2436,25 +3304,41 @@ pub struct SignatureVerify {
 
 impl Display for SignatureVerify {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SignatureVerify {{ unique_identifier: {:?}, cryptographic_parameters: {:?}, data: \
-             {}, digested_data: {}, signature_data: {}, correlation_value: {}, init_indicator: \
-             {:?}, final_indicator: {:?} }}",
-            self.unique_identifier,
-            self.cryptographic_parameters,
-            self.data.to_base64(),
-            self.digested_data.to_base64(),
-            self.signature_data.to_base64(),
-            self.correlation_value.to_base64(),
-            self.init_indicator,
-            self.final_indicator
-        )
+        write!(f, "SignatureVerify {{")?;
+        if let Some(v) = &self.unique_identifier {
+            write!(f, "  unique_identifier: {v}")?;
+        }
+        if let Some(v) = &self.cryptographic_parameters {
+            write!(f, "  cryptographic_parameters: {v}")?;
+        }
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.digested_data.is_some() {
+            write!(f, "  digested_data: {}", self.digested_data.to_base64())?;
+        }
+        if self.signature_data.is_some() {
+            write!(f, "  signature_data: {}", self.signature_data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        if let Some(v) = self.init_indicator {
+            write!(f, "  init_indicator: {v}")?;
+        }
+        if let Some(v) = self.final_indicator {
+            write!(f, "  final_indicator: {v}")?;
+        }
+        write!(f, "}}")
     }
 }
 
 /// Signature Verify operation response
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Deserialize, PartialEq, Eq, Serialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerifyResponse {
     /// The Unique Identifier of the Managed Cryptographic Object that is the key used for the verification operation
@@ -2472,14 +3356,21 @@ pub struct SignatureVerifyResponse {
 
 impl Display for SignatureVerifyResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SignatureVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?}, data: \
-             {}, correlation_value: {} }}",
-            self.unique_identifier,
-            self.validity_indicator,
-            self.data.to_base64(),
-            self.correlation_value.to_base64(),
-        )
+        write!(f, "SignatureVerifyResponse {{")?;
+        write!(f, "  unique_identifier: {}", self.unique_identifier)?;
+        if let Some(v) = &self.validity_indicator {
+            write!(f, "  validity_indicator: {v}")?;
+        }
+        if self.data.is_some() {
+            write!(f, "  data: {}", self.data.to_base64())?;
+        }
+        if self.correlation_value.is_some() {
+            write!(
+                f,
+                "  correlation_value: {}",
+                self.correlation_value.to_base64()
+            )?;
+        }
+        write!(f, "}}")
     }
 }

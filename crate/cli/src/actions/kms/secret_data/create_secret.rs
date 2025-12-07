@@ -92,7 +92,7 @@ impl CreateSecretDataAction {
                 false,
                 false,
                 &self.tags,
-            );
+            )?;
             kms_rest_client
                 .import(import_object_request)
                 .await

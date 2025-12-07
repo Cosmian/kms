@@ -1,0 +1,175 @@
+---
+name: Build all
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      debug_or_release:
+        required: true
+        type: string
+  workflow_dispatch:
+
+jobs:
+  test-nix:
+    name: Test on ${{ matrix.type }} - ${{ matrix.features }}
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - sqlite
+          - mysql
+          - psql
+          - google_cse
+          - redis
+          - pykmip
+          - wasm
+        features: [fips, non-fips]
+        exclude:
+          # redis is exclusively for non-fips
+          - type: redis
+            features: fips
+
+    steps:
+      - name: Nix installation
+        uses: cachix/install-nix-action@v31
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run docker containers
+        run: |
+          docker compose -h
+          docker compose up -d
+
+      - name: Test
+        env:
+          POSTGRES_USER: kms
+          PGUSER: kms
+          POSTGRES_PASSWORD: kms
+          POSTGRES_DB: kms
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          KMS_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
+
+          MYSQL_DATABASE: kms
+          MYSQL_ROOT_PASSWORD: kms
+          MYSQL_HOST: localhost
+          MYSQL_PORT: 3306
+          KMS_MYSQL_URL: mysql://root:kms@localhost:3306/kms
+
+          KMS_SQLITE_PATH: data/shared
+
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          KMS_REDIS_URL: redis://localhost:6379
+
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+        run: |
+          set -ex
+          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
+
+  test:
+    name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - sqlite
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+
+    steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Test
+        run: |
+          set -ex
+          bash .github/scripts/test_${{ matrix.type }}.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }}
+
+      - name: With cargo only
+        run: |
+          set -ex
+          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
+            export RELEASE_FLAG="--release"
+          else
+            export RELEASE_FLAG=""
+          fi
+          if [ "${{ matrix.features }}" = "non-fips" ]; then
+            export FEATURES_FLAG="--features non-fips";
+          else
+            export FEATURES_FLAG="";
+          fi
+          cargo test --workspace --lib $RELEASE_FLAG $FEATURES_FLAG -- --nocapture
+
+  hsm:
+    name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hsm-type:
+          - utimaco
+          - proteccio
+          - softhsm2
+        features: [fips, non-fips]
+        exclude:
+          # parallel connections on proteccio is not supported
+          - hsm-type: proteccio
+            features: non-fips
+
+    steps:
+      - name: Nix installation
+        uses: cachix/install-nix-action@v31
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Test
+        env:
+          # HSM
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+        run: |
+          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+
+  windows-2022:
+    uses: ./.github/workflows/test_windows.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: windows
+      debug_or_release: ${{ inputs.debug_or_release }}
+
+  cleanup:
+    needs:
+      - test-nix
+      - test
+      - hsm
+      - windows-2022
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit

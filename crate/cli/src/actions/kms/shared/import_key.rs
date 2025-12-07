@@ -134,7 +134,7 @@ impl ImportSecretDataOrKeyAction {
             self.unwrap,
             self.replace_existing,
             &self.tags,
-        );
+        )?;
         let unique_identifier = kms_rest_client
             .import(import_object_request)
             .await?

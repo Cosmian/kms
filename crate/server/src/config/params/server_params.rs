@@ -8,7 +8,8 @@ use cosmian_logger::{debug, warn};
 use super::TlsParams;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig, params::proxy_params::ProxyParams,
+        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        params::{OpenTelemetryConfig, proxy_params::ProxyParams},
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -106,6 +107,9 @@ pub struct ServerParams {
     /// If `None`, no automatic unwrapping will be performed.
     pub default_unwrap_types: Option<Vec<ObjectType>>,
 
+    /// Open Telemetry configuration
+    pub otel_params: Option<OpenTelemetryConfig>,
+
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
@@ -164,8 +168,7 @@ impl ServerParams {
             );
         }
 
-        let tls_params =
-            TlsParams::try_from(&conf.tls, &conf.http).context("failed to create TLS params")?;
+        let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
             .hsm
@@ -265,6 +268,18 @@ impl ServerParams {
                     }
                 })
                 .transpose()?,
+            otel_params: if conf.logging.otlp.is_some()
+                || conf.logging.enable_metering
+                || conf.logging.environment.is_some()
+            {
+                Some(OpenTelemetryConfig {
+                    otlp_url: conf.logging.otlp,
+                    enable_metering: conf.logging.enable_metering,
+                    environment: conf.logging.environment,
+                })
+            } else {
+                None
+            },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
@@ -297,6 +312,10 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age);
+
+        if let Some(ref otel_params) = self.otel_params {
+            debug_struct.field("otel_params", otel_params);
+        }
 
         if let Some(ref key_id) = self.non_revocable_key_id {
             debug_struct.field("non_revocable_key_id", key_id);

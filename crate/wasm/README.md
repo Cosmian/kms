@@ -28,14 +28,9 @@ This crate exposes the Cosmian KMS client functionality to JavaScript and WebAss
 - **Certificates**: X.509 certificates and certificate chains
 - **Data Formats**: Base64, hexadecimal, and binary data handling
 
-### Build Commands
+## Build Commands
 
-At root directory:
-
-```bash
-# Build for web browsers
-bash ./github/scripts/build_ui.sh
-```
+UI build is handled from the `ui/` directory; see `ui/README.md` for current instructions.
 
 ## Security Considerations
 

@@ -381,7 +381,7 @@ fn get_attributes() {
     assert_eq!(
         request_message.request_payload,
         Operation::GetAttributes(GetAttributes {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute_name: Some(vec!["x-Product_Version".to_owned()]),
         })
     );
@@ -514,7 +514,7 @@ fn get() {
     assert_eq!(
         request_message.request_payload,
         Operation::Get(Get {
-            unique_identifier: "2".to_owned(),
+            unique_identifier: Some("2".to_owned()),
             key_format_type: None,
             key_compression_type: None,
             key_wrapping_specification: None

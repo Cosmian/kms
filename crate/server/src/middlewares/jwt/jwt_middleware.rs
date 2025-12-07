@@ -10,11 +10,10 @@ use std::{
     task::{Context, Poll},
 };
 
-use actix_service::{Service, Transform};
 use actix_web::{
     Error, HttpMessage,
     body::{BoxBody, EitherBody},
-    dev::{ServiceRequest, ServiceResponse},
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
 use cosmian_logger::debug;
 use futures::{

@@ -50,19 +50,32 @@ To enable certificate-based authentication, the server must be started with TLS 
 === "Docker"
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-        --https-p12-file kms.server.p12 \
-        --https-p12-password password \
-        --authority-cert-file client_ca.cert.pem
+    # For FIPS mode (default build):
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest \
+        --tls-cert-file server.crt \
+        --tls-key-file server.key \
+        --clients-ca-cert-file client_ca.cert.pem
+
+    # For non-FIPS mode:
+    # docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    #     --tls-p12-file kms.server.p12 \
+    #     --tls-p12-password password \
+    #     --clients-ca-cert-file client_ca.cert.pem
     ```
 
 === "kms.toml"
 
     ```toml
     [tls]
-    tls_p12_file = "kms.server.p12"
-    tls_p12_password = "password"
+    # For FIPS mode (default build):
+    tls_cert_file = "server.crt"
+    tls_key_file = "server.key"
     clients_ca_cert_file = "client_ca.cert.pem"
+
+    # For non-FIPS mode:
+    # tls_p12_file = "kms.server.p12"
+    # tls_p12_password = "password"
+    # clients_ca_cert_file = "client_ca.cert.pem"
     ```
 
 The server extracts the username from the certificate's Subject Common Name (CN) field. Specifically, the Common Name of the client certificate subject is used directly as the username for authentication purposes. If the certificate is valid but does not contain a Common Name, authentication will fail.
@@ -209,20 +222,34 @@ When `force-default-username` is enabled with multiple authentication methods, t
 === "Docker"
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
-        --https-p12-file kms.server.p12 \
-        --https-p12-password password \
-        --authority-cert-file client_ca.cert.pem \
+    # For FIPS mode (default build):
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest \
+        --tls-cert-file server.crt \
+        --tls-key-file server.key \
+        --clients-ca-cert-file client_ca.cert.pem \
         --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
+
+    # For non-FIPS mode:
+    # docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest \
+    #     --tls-p12-file kms.server.p12 \
+    #     --tls-p12-password password \
+    #     --clients-ca-cert-file client_ca.cert.pem \
+    #     --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"
     ```
 
 === "kms.toml"
 
     ```toml
     [tls]
-    tls_p12_file = "kms.server.p12"
-    tls_p12_password = "password"
+    # For FIPS mode (default build):
+    tls_cert_file = "server.crt"
+    tls_key_file = "server.key"
     clients_ca_cert_file = "client_ca.cert.pem"
+
+    # For non-FIPS mode:
+    # tls_p12_file = "kms.server.p12"
+    # tls_p12_password = "password"
+    # clients_ca_cert_file = "client_ca.cert.pem"
 
     [idp_auth]
     # Empty audience example: leave trailing comma after jwks URL

@@ -2,11 +2,150 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.13.0] - 2025-12-07
+
+### 🚀 Features
+
+- KMIP XML Vector Conformance (1.4 & 2.1) ([see details](#-kmip-xml-vector-conformance-14--21)) ([#583](https://github.com/Cosmian/kms/pull/583))
+- Nix: Reproducible Package Management ([see details](#-nix-reproducible-package-management)) ([#596](https://github.com/Cosmian/kms/pull/596)):
+- Create OpenTelemetryConfig to be consumed for server metrics ([#610](https://github.com/Cosmian/kms/pull/610))
+
+### 🐛 Bug Fixes
+
+- Better sql for the Find query ([#618](https://github.com/Cosmian/kms/pull/618))
+- HSM unwrapping without permission ([#621](https://github.com/Cosmian/kms/pull/621))
+
+### 📚 Documentation
+
+- Fix UI README.md ([#611](https://github.com/Cosmian/kms/pull/611))
+- Add vsphere minimal version ([#612](https://github.com/Cosmian/kms/pull/612))
+
+### 🧪 Testing
+
+- Support official KMIP test vectors 1.4/2.1 ([#583](https://github.com/Cosmian/kms/pull/583))
+
+### ⚙️ Build
+
+- Reproducible Package Management with Nix ([#596](https://github.com/Cosmian/kms/pull/596))
+- *(deps)* Bump docker/metadata-action from 4 to 5 ([#613](https://github.com/Cosmian/kms/vpull/613))
+- *(deps)* Bump actions/checkout from 4 to 6 ([#614](https://github.com/Cosmian/kms/pull/614))
+- *(deps)* Bump crazy-max/ghaction-import-gpg from 5 to 6 ([#615](https://github.com/Cosmian/kms/pull/615))
+- *(deps)* Bump actions/upload-artifact from 4 to 5 ([#616](https://github.com/Cosmian/kms/pull/616))
+- *(deps)* Bump softprops/action-gh-release from 1 to 2 ([#617](https://github.com/Cosmian/kms/pull/617))
+
+### ✅ KMIP XML Vector Conformance (1.4 & 2.1)
+
+- End-to-end alignment with the official KMIP XML test vectors across library, server routing, and CLI: Create, Query/DiscoverVersions, attribute flows, and OpaqueObject revoke/destroy are covered.
+
+#### 🚀 Features
+
+- KMIP crate
+    - Operations/types/messages:
+        - Expanded Operation enum and message wiring to include: Interop, PKCS11, Check, RNG Retrieve, RNG Seed, GetAttributeList, MACVerify, ModifyAttribute, Log, plus responses.
+        - Request/Response batch items are Clone with structured Display for clearer diagnostics.
+        - Added Vendor OpaqueDataType; Display impls for CryptographicDomainParameters, ProtectionStorageMasks, StorageStatusMask.
+    - TTLV improvements:
+        - Deserializer coercions: Integer/Interval→i64, Enumeration/LongInteger→u8; ByteString→hex for ShortUniqueIdentifier.
+        - Relaxed Attribute decoding supporting VendorAttribute and AttributeName+Value forms.
+        - deserialize_ignored_any no-op to avoid loops in permissive paths.
+    - Protocol alignment:
+        - DiscoverVersions now uses KMIP 0.x types (protocol_version_major/minor) per spec; Query advertises operations/objects supported.
+    - XML support:
+        - Added XML serializer/deserializer and parser with tests for 1.4 and 2.1 XML vectors.
+
+- server
+    - New KMIP operations exposed and routed: DiscoverVersions, Query, RNG Retrieve, RNG Seed, MACVerify, GetAttributeList, ModifyAttribute, Check.
+    - OpaqueObject Revoke/Destroy parity with vectors; deterministic ordering for GetAttributeList.
+    - RNG implementation module (ANSI X9.31) with public routing.
+    - Optional cascade mechanism for Destroy and Revoke.
+
+- CLI
+    - New subcommands: rng (Retrieve/Seed), mac verify, discover-versions, query.
+    - New opaque-object subcommands: Create/Import/Export/Revoke/Destroy (no wrap/unwrap).
+
+- kms_client
+    - REST client methods added for RNG Retrieve/Seed, MACVerify, Query, DiscoverVersions, Check, GetAttributeList, attribute ops, register, and crypto ops.
+
+- server_database
+    - Deterministic GetAttributeList behavior across backends; Locate query refinements; backend adapters updated (MySQL, PostgreSQL, SQLite, Redis-Findex).
+
+- crypto
+    - Robustness and consistency improvements to RSA OAEP and wrap/unwrap paths used by KMIP flows.
+
+- interfaces / hsm / access / client_utils
+    - Minor interface refinements and HSM integration stability improvements supporting the new routes and attribute flows.
+
+#### 🐛 Bug Fixes
+
+- Export OpaqueObject Raw/Base64 returns opaque bytes (no KeyBlock).
+- DiscoverVersions type/field mismatches fixed by switching to KMIP 0.x (major/minor).
+- TTLV deserializer: better errors and coercions (u8 from Enumeration/LongInteger; i64 widening from Integer/Interval; vendor Attribute decoding) for XML vector compatibility.
+- GetAttributeList: unified, deterministic ordering across environments.
+
+#### 🧪 Testing
+
+- Extensive XML vector tests for 1.4 and 2.1 in the kmip crate (mandatory/optional suites, crypto coverage).
+- Added CLI tests: OpaqueObject CRUD (create/import, export json/base64/raw, revoke, destroy), RNG Retrieve/Seed, MAC Verify, Query, and DiscoverVersions.
+- Server TTLV tests expanded (e.g., DSA creation/get flows) and vector integrations.
+
+#### 📚 Documentation / Tooling
+
+- Added KMIP specification scaffolding READMEs and a script to generate XML-based support tables.
+- Build scripts adjusted for the new test coverage and flows.
+
+### ✅ Nix: Reproducible Package Management
+
+#### 🚀 Features
+
+- **Reproducible builds with Nix**:
+    - Full migration to Nix package manager for deterministic, bit-for-bit reproducible builds
+    - Automated hash verification system ensuring build artifact integrity across platforms
+    - Support for offline/air-gapped builds with complete dependency caching
+    - Unified build system replacing platform-specific scripts (`.sh`, `.ps1`)
+    - Comprehensive build variants: FIPS/non-FIPS × static/dynamic × vendor/non-vendor
+    - Native support for cross-platform builds (Linux x86_64/ARM64, macOS x86_64/ARM64, Windows)
+
+- **Build infrastructure improvements**:
+    - New `nix/` directory with reproducible derivations for KMS server, OpenSSL 3.1.2, UI, and Docker images
+    - Automated hash tracking system with 400+ expected hashes for all build artifacts and dependencies
+    - Deterministic OpenSSL 3.1.2 builds (both FIPS and non-FIPS variants) with static linking support
+    - Docker images built entirely through Nix for consistency
+    - Package signing infrastructure for Debian (.deb) and RPM packages
+    - SBOM (Software Bill of Materials) generation integrated into build process
+
+- **Testing & CI enhancements**:
+    - Refactored GitHub workflows with comprehensive reusable components
+    - New test suites: `test_all.sh`, `smoke_test_deb.sh`, `smoke_test_rpm.sh`, `smoke_test_dmg.sh`
+    - Database-specific test scripts for MySQL, PostgreSQL, Redis, and SQLite backends
+    - HSM integration tests for Utimaco, Proteccio, SoftHSM2, and Crypt2pay
+    - Google CSE endpoint testing with HSM integration
+    - Systemd service file validation tests
+    - Docker image smoke tests with health checks
+
+#### 🚜 Refactor
+
+- **CI/CD pipeline reorganization**:
+    - New reusable workflow structure: `main.yml` → `main_base.yml`/`packaging.yml`
+    - Separated authentication tests by FIPS/non-FIPS variants
+    - Modularized test execution with dedicated scripts per component
+    - Common utilities consolidated in `.github/scripts/common.sh`
+
+#### 📚 Documentation
+
+- Comprehensive Nix build system documentation with visual diagrams:
+    - Build architecture and reproducibility guarantees
+    - Hash verification flow and offline build processes
+    - Package signing setup and verification procedures
+    - Troubleshooting guides and learning resources
+- GitHub workflows documentation with complete execution flow diagrams
+- Updated Copilot instructions for Nix-based development
+- Build and test guide in `.github/copilot-instructions.md`
+
 ## [5.12.1] - 2025-11-28
 
 ### 🐛 Bug Fixes
 
-- Avoid negative certificate serial number (#609)
+- Avoid negative certificate serial number ([#609](https://github.com/Cosmian/kms/pull/609))
 
 ### 💼 Other
 
@@ -14,7 +153,7 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Build
 
-- *(deps)* Bump actions/checkout from 5 to 6 (#604)
+- *(deps)* Bump actions/checkout from 5 to 6 ([#604](https://github.com/Cosmian/kms/pull/604))
 
 ## [5.12.0] - 2025-11-19
 

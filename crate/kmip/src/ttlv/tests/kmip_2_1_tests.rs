@@ -179,7 +179,7 @@ fn test_ser_aes_key() {
 
     // Deserializer
     let rec: Object = from_ttlv(ttlv.clone()).unwrap();
-    assert!(aes_key == rec);
+    assert_eq!(aes_key, rec);
 
     assert_eq!(aes_key_ttlv(key_bytes), ttlv);
 }
@@ -313,7 +313,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_object_inside_struct() {
-    #[derive(Serialize, Deserialize, PartialEq)]
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
     struct Wrapper {
         object: Object,
@@ -335,7 +335,7 @@ fn test_object_inside_struct() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Wrapper = from_ttlv(ttlv).unwrap();
-    assert!(wrapper == rec);
+    assert_eq!(wrapper, rec);
 }
 
 #[test]
@@ -353,7 +353,7 @@ fn test_vendor_attribute_value() {
 
     // Serializer
     let ttlv = to_ttlv(&vendor_attribute_value).unwrap();
-    info!("TTLV:\n{:#?}", ttlv);
+    // TTLV supports Debug; keep as-is
     // Serialize
     let json = serde_json::to_string_pretty(&ttlv).unwrap();
     info!("JSON TTLV:\n{}", json);
@@ -446,7 +446,7 @@ fn test_import_symmetric_key() {
     info!("{}", json);
     // JSON deserialize
     let import_from_json = serde_json::from_str::<Import>(&json).unwrap();
-    assert!(import == import_from_json);
+    assert_eq!(import, import_from_json);
 
     // Serializer
     let ttlv = to_ttlv(&import).unwrap();
@@ -496,14 +496,14 @@ fn test_object_public_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert!(key == rec);
+    assert_eq!(key, rec);
 
     // JSON
     let json = serde_json::to_string_pretty(&key).unwrap();
     info!("{}", json);
     // Deserialize
     let key_from_json = serde_json::from_str::<Object>(&json).unwrap();
-    assert!(key == key_from_json);
+    assert_eq!(key, key_from_json);
 }
 
 #[test]
@@ -555,7 +555,7 @@ fn test_import_public_key() {
 
 #[test]
 fn test_attributes() {
-    #[derive(Serialize, Deserialize, Clone, PartialEq)]
+    #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
     struct Wrapper {
         attrs: Attributes,
     }
@@ -572,12 +572,12 @@ fn test_attributes() {
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(ttlv_).unwrap();
-    assert!(wrapper == rec);
+    assert_eq!(wrapper, rec);
 }
 
 #[test]
 fn test_some_attributes() {
-    #[derive(Serialize, Deserialize, Clone, PartialEq)]
+    #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
     #[serde(untagged)]
     #[expect(clippy::large_enum_variant)]
     enum Wrapper {
@@ -603,7 +603,7 @@ fn test_some_attributes() {
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(ttlv_).unwrap();
-    assert!(value == rec);
+    assert_eq!(value, rec);
 }
 
 #[test]
@@ -665,7 +665,7 @@ fn test_aes_key_full() {
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
     let aes_key_: Object = from_ttlv(ttlv).unwrap();
-    assert!(aes_key == aes_key_);
+    assert_eq!(aes_key, aes_key_);
 }
 
 #[test]
@@ -696,7 +696,7 @@ fn test_attributes_with_links() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Attributes = from_ttlv(ttlv).unwrap();
-    assert!(attributes == rec);
+    assert_eq!(attributes, rec);
 }
 
 #[test]
@@ -723,9 +723,9 @@ pub(super) fn test_create() {
         CryptographicAlgorithm::AES,
         create_.attributes.cryptographic_algorithm.unwrap()
     );
-    assert_eq!(
-        LinkedObjectIdentifier::TextString("SK".to_owned()),
-        create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
+    assert!(
+        LinkedObjectIdentifier::TextString("SK".to_owned())
+            == create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
 
@@ -1164,7 +1164,11 @@ fn test_serialization_link() -> KmipResult<()> {
     trace!("link: {:#?}", link);
 
     let link_deserialized: Vec<Link> = from_ttlv(link)?;
-    trace!("set_attribute_deserialized: {:?}", link_deserialized);
+    // Avoid Debug on Link; just check lengths
+    trace!(
+        "set_attribute_deserialized: count={}",
+        link_deserialized.len()
+    );
 
     Ok(())
 }
@@ -1292,7 +1296,7 @@ fn normative_request_message_test() {
             },
         )],
     };
-    assert!(request_message == norm_req);
+    assert_eq!(request_message, norm_req);
 
     // Serializer
     let ttlv__ = to_ttlv(&request_message).unwrap();
@@ -1318,7 +1322,7 @@ fn test_locate_with_empty_attributes() {
 
     // Deserializer
     let locate_: Locate = from_ttlv(ttlv).unwrap();
-    assert!(locate == locate_);
+    assert_eq!(locate, locate_);
 }
 
 // TODO: implement the Query operation in 2.1 first
@@ -1361,7 +1365,7 @@ fn test_query_response() {
     let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
     trace!("query_response_deserialized: {}", response_batch_item_);
 
-    assert!(response_batch_item == response_batch_item_);
+    assert_eq!(response_batch_item, response_batch_item_);
 }
 
 #[test]
@@ -1404,7 +1408,7 @@ pub(super) fn test_simple_message_request() {
         query.query_function,
         Some(vec![QueryFunction::QueryOperations])
     );
-    assert!(req == req_);
+    assert_eq!(req, req_);
 }
 
 #[test]
@@ -1469,7 +1473,7 @@ pub(super) fn test_message_request() {
         panic!("not an encrypt operation's request payload: {batch_item}");
     };
     assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
-    assert!(req == req_);
+    assert_eq!(req, req_);
 }
 
 #[test]
@@ -1564,7 +1568,7 @@ pub(super) fn test_message_response() {
         decrypt.unique_identifier,
         UniqueIdentifier::TextString("id_12345".to_owned())
     );
-    assert!(res == res_);
+    assert_eq!(res, res_);
 }
 
 #[test]
@@ -1724,9 +1728,7 @@ fn test_key_value_ttlv() {
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
 
     // We loose milliseconds in the conversion
-    let time = OffsetDateTime::now_utc()
-        .replace_millisecond(0)
-        .expect("failed to set millisecond");
+    let time = crate::time_normalize().expect("failed to set millisecond");
 
     let kv = KeyValue::Structure {
         key_material: KeyMaterial::TransparentRSAPublicKey {
@@ -1770,21 +1772,15 @@ fn test_set_attribute() {
     let deserialized_set_attribute: SetAttribute =
         from_ttlv(ttlv).expect("Failed to deserialize TTLV");
 
-    info!("Deserialized Object: {:#?}", deserialized_set_attribute);
-    assert_eq!(
-        set_attribute, deserialized_set_attribute,
-        "Deserialized Object does not match the original"
-    );
+    info!("Deserialized Object: {}", deserialized_set_attribute);
+    assert_eq!(set_attribute, deserialized_set_attribute);
 
     // JSON Serde
     let json = serde_json::to_string_pretty(&set_attribute).expect("Failed to serialize to JSON");
     info!("JSON: {}", json);
     let deserialized_set_attribute_json: SetAttribute =
         serde_json::from_str(&json).expect("Failed to deserialize from JSON");
-    assert_eq!(
-        set_attribute, deserialized_set_attribute_json,
-        "Deserialized Object from JSON does not match the original"
-    );
+    assert_eq!(set_attribute, deserialized_set_attribute_json);
 }
 
 #[test]

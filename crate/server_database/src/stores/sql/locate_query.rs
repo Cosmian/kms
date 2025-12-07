@@ -2,7 +2,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_types::{LinkedObjectIdentifier::TextString, NameType},
+        kmip_types::{LinkedObjectIdentifier::TextString, NameType, UniqueIdentifier},
     },
 };
 
@@ -26,7 +26,6 @@ pub(super) trait PlaceholderTrait {
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
-    #[expect(dead_code)]
     #[must_use]
     fn binder(param_number: usize) -> String {
         format!("${param_number}")
@@ -170,10 +169,30 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 
     // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
 
-    /// Format the JSON path to extract an attribute
-    /// from the `objects.attributes` JSON field
-    fn format_json_path(attribute_names: &[&str]) -> String {
-        attribute_names.join(",")
+    /// For `PostgreSQL`, `json_extract_path_text` expects each path element as a separate
+    /// argument (e.g., `json_extract_path_text(json`, '`ApplicationSpecificInformation`', '`ApplicationData`')).
+    /// Override `extract_attribute_path` to build a call with multiple quoted args instead
+    /// of a single comma-joined string.
+    fn extract_attribute_path(attribute_names: &[&str]) -> String {
+        let args = attribute_names
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{}(objects.attributes, {})",
+            Self::JSON_FN_EXTRACT_TEXT,
+            args
+        )
+    }
+
+    /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
+    fn extract_object_type() -> String {
+        // Equivalent to json_extract_path_text(objects.attributes, 'ObjectType')
+        format!(
+            "{}(objects.attributes, 'ObjectType')",
+            Self::JSON_FN_EXTRACT_TEXT
+        )
     }
 }
 pub(super) enum SqlitePlaceholder {}
@@ -183,12 +202,10 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// to search for items in database.
 /// Returns a tuple containing the stringified query and the values to bind with.
 /// The different placeholder for variable binding is handled by trait specification.
-// TODO  although this is a select query, it is complex and the occurrence is unlikely,
-// TODO  protection against SQL Injection is not covered here
 pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
-    user: &str,
+    _user: &str,
     user_must_be_owner: bool,
 ) -> String {
     let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
@@ -222,7 +239,8 @@ ON objects.id = matched_tags.id"
         // select objects for which the user is the owner or has been granted an access right
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
-             read_access.userid = '{user}'"
+             read_access.userid = {}",
+            P::binder(1)
         );
     }
 
@@ -246,17 +264,46 @@ ON objects.id = matched_tags.id"
 
     if user_must_be_owner {
         // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = '{user}'",);
+        query = format!("{query} WHERE objects.owner = {}", P::binder(1));
     } else {
-        query =
-            format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
+        query = format!(
+            "{query} WHERE (objects.owner = {} OR read_access.userid = {})",
+            P::binder(2),
+            P::binder(3)
+        );
     }
 
     if let Some(state) = state {
         query = format!("{query} AND state = '{state}'");
     }
 
+    #[allow(clippy::collapsible_match)]
     if let Some(attributes) = attributes {
+        // UniqueIdentifier
+        if let Some(uid) = &attributes.unique_identifier {
+            if let UniqueIdentifier::TextString(id) = uid {
+                query = format!("{query} AND objects.id = '{id}'");
+            }
+        }
+
+        // ObjectGroup
+        if let Some(object_group) = &attributes.object_group {
+            query = format!(
+                "{query} AND {} = '{}'",
+                P::extract_attribute_path(&["ObjectGroup"]),
+                object_group
+            );
+        }
+
+        // ObjectGroupMember
+        if let Some(object_group_member) = attributes.object_group_member {
+            query = format!(
+                "{query} AND {} = '{}'",
+                P::extract_attribute_path(&["ObjectGroupMember"]),
+                object_group_member
+            );
+        }
+
         // CryptographicAlgorithm
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
@@ -285,6 +332,30 @@ ON objects.id = matched_tags.id"
         // ObjectType
         if let Some(object_type) = attributes.object_type {
             query = format!("{query} AND {} = '{object_type}'", P::extract_object_type());
+        }
+
+        // ApplicationSpecificInformation
+        if let Some(app) = &attributes.application_specific_information {
+            // ApplicationNamespace is required in the struct
+            query = format!(
+                "{query} AND {} = '{}'",
+                P::extract_attribute_path(&[
+                    "ApplicationSpecificInformation",
+                    "ApplicationNamespace"
+                ]),
+                app.application_namespace
+            );
+            // ApplicationData is optional
+            if let Some(data) = &app.application_data {
+                query = format!(
+                    "{query} AND {} = '{}'",
+                    P::extract_attribute_path(&[
+                        "ApplicationSpecificInformation",
+                        "ApplicationData"
+                    ]),
+                    data
+                );
+            }
         }
 
         // Link

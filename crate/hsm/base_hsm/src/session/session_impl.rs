@@ -520,6 +520,28 @@ impl Session {
         Ok(values)
     }
 
+    /// Seed the HSM RNG with the provided data
+    pub fn seed_random(&self, seed: &[u8]) -> HResult<()> {
+        if seed.is_empty() {
+            return Ok(());
+        }
+        #[cfg(target_os = "windows")]
+        let len = u32::try_from(seed.len())?;
+        #[cfg(not(target_os = "windows"))]
+        let len = u64::try_from(seed.len())?;
+        // PKCS#11 expects a mutable u8 pointer, cast away constness safely here.
+        let mut_ptr = seed.as_ptr().cast_mut();
+        hsm_call!(
+            self.hsm,
+            "Failed seeding HSM RNG",
+            C_SeedRandom,
+            self.handle,
+            mut_ptr,
+            len
+        );
+        Ok(())
+    }
+
     /// List objects in the HSM that match the specified filter
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.

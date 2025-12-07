@@ -394,7 +394,7 @@ fn unwrap_with_rsa(
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => ckm_rsa_aes_key_unwrap(private_key, hashing_fn, wrapped_key),
             PaddingMethod::OAEP => {
-                ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, wrapped_key)
+                ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, hashing_fn, None, wrapped_key)
             }
             #[cfg(feature = "non-fips")]
             PaddingMethod::PKCS1v15 => ckm_rsa_pkcs_key_unwrap(private_key, wrapped_key),

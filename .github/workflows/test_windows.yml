@@ -1,0 +1,47 @@
+---
+name: Windows Tests
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+      debug_or_release:
+        required: true
+        type: string
+
+jobs:
+  cargo-test:
+    name: cargo test - ${{ inputs.archive-name }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows-static
+          vcpkg integrate install
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.github\scripts\cargo_test.ps1
+          TestProject -BuildType ${{ inputs.debug_or_release }}
+        env:
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}

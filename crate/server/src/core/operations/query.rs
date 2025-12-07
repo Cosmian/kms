@@ -14,7 +14,7 @@ use crate::result::KResult;
 /// to interrogate server features and functions.
 /// The Query Function field in the request SHALL contain one or more of the following items:
 pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
-    trace!("Query: {request:#?}");
+    trace!("{request}");
 
     let mut response = QueryResponse {
         operation: None,
@@ -37,24 +37,50 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
             match func {
                 QueryFunction::QueryOperations => {
                     response.operation = Some(vec![
+                        // Core object lifecycle and attribute ops
                         OperationEnumeration::Activate,
-                        OperationEnumeration::Certify,
+                        OperationEnumeration::AddAttribute,
+                        OperationEnumeration::ModifyAttribute,
+                        OperationEnumeration::SetAttribute,
+                        OperationEnumeration::DeleteAttribute,
+                        OperationEnumeration::GetAttributeList,
+                        OperationEnumeration::GetAttributes,
+                        // Key management ops
                         OperationEnumeration::Create,
                         OperationEnumeration::CreateKeyPair,
-                        OperationEnumeration::Decrypt,
-                        OperationEnumeration::Destroy,
-                        OperationEnumeration::Encrypt,
-                        OperationEnumeration::Get,
-                        OperationEnumeration::GetAttributes,
-                        OperationEnumeration::Locate,
-                        OperationEnumeration::Query,
-                        OperationEnumeration::Recover,
                         OperationEnumeration::Register,
+                        OperationEnumeration::Import,
+                        OperationEnumeration::Export,
+                        OperationEnumeration::Get,
+                        OperationEnumeration::Locate,
                         OperationEnumeration::ReKey,
                         OperationEnumeration::ReKeyKeyPair,
+                        OperationEnumeration::Destroy,
                         OperationEnumeration::Revoke,
-                        OperationEnumeration::SetAttribute,
+                        // Crypto ops
+                        OperationEnumeration::Encrypt,
+                        OperationEnumeration::Decrypt,
+                        OperationEnumeration::Sign,
+                        OperationEnumeration::SignatureVerify,
+                        OperationEnumeration::MAC,
+                        OperationEnumeration::MACVerify,
+                        OperationEnumeration::Hash,
+                        OperationEnumeration::DeriveKey,
+                        // Server/platform ops
+                        OperationEnumeration::Query,
+                        OperationEnumeration::DiscoverVersions,
+                        // RNG
+                        OperationEnumeration::RNGRetrieve,
+                        OperationEnumeration::RNGSeed,
+                        // Certificate/validation
+                        OperationEnumeration::Certify,
                         OperationEnumeration::Validate,
+                        // Additional supported/interop surface
+                        OperationEnumeration::PKCS11,
+                        #[cfg(feature = "interop")]
+                        OperationEnumeration::Interop,
+                        OperationEnumeration::Log,
+                        OperationEnumeration::Check,
                     ]);
                 }
                 QueryFunction::QueryObjects => {
@@ -63,6 +89,8 @@ pub(crate) async fn query(request: Query) -> KResult<QueryResponse> {
                         ObjectType::SymmetricKey,
                         ObjectType::PrivateKey,
                         ObjectType::PublicKey,
+                        ObjectType::SecretData,
+                        ObjectType::OpaqueObject,
                     ]);
                 }
                 QueryFunction::QueryServerInformation => {

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::time_normalize;
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::{
@@ -113,7 +114,11 @@ impl ImportCertificateAction {
         trace!("{self:?}");
 
         // generate the leaf certificate attributes if links are specified
-        let mut leaf_certificate_attributes = None;
+        let mut leaf_certificate_attributes = Some(Attributes {
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        });
+
         if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
             let attributes = leaf_certificate_attributes.get_or_insert_with(Attributes::default);
             attributes.set_link(
@@ -295,7 +300,7 @@ impl ImportCertificateAction {
             false,
             self.replace_existing,
             &self.tags,
-        );
+        )?;
         let private_key_id = kms_rest_client
             .import(import_object_request)
             .await?
@@ -338,6 +343,9 @@ impl ImportCertificateAction {
                     LinkedObjectIdentifier::TextString(id.clone()),
                 );
             }
+            // Set activation_date to now if activate flag is set
+            let attributes = import_attributes.get_or_insert_with(Attributes::default);
+            attributes.activation_date = Some(time_normalize()?);
             // import the certificate
             let import_object_request = import_object_request(
                 self.certificate_id.clone(),
@@ -346,7 +354,7 @@ impl ImportCertificateAction {
                 false,
                 replace_existing,
                 &self.tags,
-            );
+            )?;
             let unique_identifier = kms_rest_client
                 .import(import_object_request)
                 .await?

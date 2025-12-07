@@ -92,6 +92,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
             revocation_message: None,
         },
         compromise_occurrence_date: None,
+        cascade: true,
     };
 
     let revoke_response = kms.revoke(revoke_request, owner, None).await?;
@@ -104,6 +105,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
     let destroy_request = Destroy {
         unique_identifier: Some(create_response.unique_identifier.clone()),
         remove: true, // Force remove to clean up
+        cascade: true,
     };
 
     let destroy_response = kms.destroy(destroy_request, owner, None).await?;
@@ -185,6 +187,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
             revocation_message: None,
         },
         compromise_occurrence_date: None,
+        cascade: true,
     };
 
     kms.revoke(revoke_request, owner, None).await?;
@@ -192,6 +195,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
         remove: true,
+        cascade: true,
     };
 
     kms.destroy(destroy_request, owner, None).await?;
@@ -361,6 +365,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
             revocation_message: None,
         },
         compromise_occurrence_date: None,
+        cascade: true,
     };
 
     kms.revoke(revoke_request, owner, None).await?;
@@ -368,6 +373,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
         remove: true,
+        cascade: true,
     };
 
     kms.destroy(destroy_request, owner, None).await?;

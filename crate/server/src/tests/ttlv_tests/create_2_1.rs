@@ -85,6 +85,6 @@ fn test_create_2_1() {
         panic!("Expected CreateResponse");
     };
 
-    assert!(create_response.object_type == ObjectType::SymmetricKey);
+    assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
     assert!(!create_response.unique_identifier.to_string().is_empty());
 }

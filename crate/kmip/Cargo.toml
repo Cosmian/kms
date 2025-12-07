@@ -19,15 +19,18 @@ workspace = true
 doctest = false
 
 [features]
+default = ["interop"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 non-fips = []
+# Enable interop test operations (should only be used for testing)
+interop = []
 
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.12.1" }
+kmip-derive = { path = "../kmip-derive", version = "5.13.0" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -35,9 +38,16 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
+num-traits = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+regex = { version = "1" }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = [
   "formatting",
@@ -45,10 +55,9 @@ time = { workspace = true, features = [
   "serde",
   "macros",
 ] }
-num-traits = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
-zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

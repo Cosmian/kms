@@ -93,7 +93,8 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
 };
 
 export const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
-    const blob = new Blob([data], { type: mimeType });
+    const blobData = data instanceof Uint8Array ? [data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer] : [data];
+    const blob = new Blob(blobData, { type: mimeType });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
@@ -159,7 +160,7 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data";
+export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data" | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -172,6 +173,8 @@ export const getObjectLabel = (type: ObjectType): string => {
             return "certificate";
         case "secret-data":
             return "secret data";
+        case "opaque-object":
+            return "opaque object";
         default:
             return "object";
     }
@@ -191,6 +194,8 @@ export const getTypeString = (type: ObjectType): string => {
             return "a";
         case "secret-data":
             return "a";
+        case "opaque-object":
+            return "an";
         default:
             return "a";
     }
