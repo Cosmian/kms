@@ -10,6 +10,7 @@ use std::{
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
+    cosmian_kmip::KmipResultHelper,
     cosmian_kmip::time_normalize,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -300,6 +301,26 @@ fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
 /// # Panics
 /// - if the server fails to start
 #[allow(clippy::unwrap_used)]
+pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static TestsContext {
+    trace!("Starting default test server");
+    ONCE.get_or_try_init(|| async move {
+        let server_params = ServerParams::try_from(config).context(
+            "Failed to create ServerParams from ClapConfig in start_default_test_kms_server",
+        )?;
+        start_from_server_params(server_params).await
+    })
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start default test server: {e}");
+        std::process::abort();
+    })
+}
+
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
+/// # Panics
+/// - if the server fails to start
+#[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     // Ensure OpenSSL env vars are present for tests (both FIPS and non-FIPS)
@@ -329,6 +350,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
         std::process::abort();
     })
 }
+
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     trace!("Starting test server with cert auth");
