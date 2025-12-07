@@ -236,7 +236,12 @@ where
 
         let get_signing_key_fn = self.get_signing_key_fn();
         Box::pin(async move {
-            let _key_bytes = get_aws_key(&kms_server, &aws_xks_params.sigv4_access_key_id).await?;
+            let _key_bytes = get_aws_key(
+                &kms_server,
+                &aws_xks_params.sigv4_access_key_id,
+                &aws_xks_params.sigv4_access_key_user,
+            )
+            .await?;
 
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
@@ -329,6 +334,7 @@ where
 async fn get_aws_key(
     kms_server: &Arc<KMS>,
     sigv4_access_key_id: &str,
+    sigv4_access_key_user: &str,
 ) -> Result<Zeroizing<Vec<u8>>, actix_web::error::InternalError<String>> {
     kms_server
         .get(
@@ -339,7 +345,7 @@ async fn get_aws_key(
                 key_format_type: Some(KeyFormatType::Raw),
                 ..Default::default()
             },
-            "",
+            sigv4_access_key_user,
             None,
         )
         .await
