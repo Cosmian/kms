@@ -83,7 +83,7 @@ let
   # Build the WASM crate from source to avoid relying on prebuilt ui/src/wasm/pkg
   wasmPkg = rustPlatform.buildRustPackage {
     pname = "cosmian-kms-ui-wasm-${variant}";
-    version = "5.12.1";
+    inherit version;
 
     # Build from the whole workspace so path dependencies resolve
     src = lib.cleanSourceWith {
