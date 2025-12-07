@@ -1,9 +1,10 @@
-import { Button, Card, Col, Form, Input, Row, Select, Space, Table, Tag } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import HashMapDisplay from "./HashMapDisplay";
 import { getNoTTLVRequest, sendKmipRequest } from "./utils";
 import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg";
-import { get_attributes_ttlv_request, get_crypto_algorithms, get_key_format_types, get_object_states, get_object_types, parse_get_attributes_ttlv_response } from "./wasm/pkg/cosmian_kms_client_wasm";
+import { destroy_ttlv_request, get_attributes_ttlv_request, get_crypto_algorithms, get_key_format_types, get_object_states, get_object_types, parse_get_attributes_ttlv_response, revoke_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface LocateFormData {
     tags?: string[];
@@ -55,6 +56,10 @@ const LocateForm: React.FC = () => {
     // Details modal removed; tags are shown inline
     const {idToken, serverUrl} = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const [detailsVisible, setDetailsVisible] = useState<boolean>(false);
+    const [detailsData, setDetailsData] = useState<Map<string, unknown> | undefined>(undefined);
+    const [detailsForId, setDetailsForId] = useState<string | undefined>(undefined);
+    const [actionLoadingId, setActionLoadingId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -519,6 +524,105 @@ const LocateForm: React.FC = () => {
         }
     };
 
+    const handleShowDetails = async (uid: string) => {
+        setActionLoadingId(uid);
+        try {
+            const getReq = get_attributes_ttlv_request(uid);
+            const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+            if (getRespStr) {
+                const parsed = await parse_get_attributes_ttlv_response(getRespStr, []);
+                if (parsed instanceof Map) {
+                    setDetailsData(parsed);
+                } else if (parsed && typeof parsed === "object") {
+                    // Convert record to Map
+                    const m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
+                    setDetailsData(m);
+                } else {
+                    setDetailsData(new Map());
+                }
+                setDetailsForId(uid);
+                setDetailsVisible(true);
+            }
+        } catch (e) {
+            console.error("Error getting attributes:", e);
+        } finally {
+            setActionLoadingId(undefined);
+        }
+    };
+
+    // Optional TTLV helpers for actions (best-effort; may depend on WASM exports)
+    const handleRevoke = async (uid: string) => {
+        if (!uid) return;
+        const ok = window.confirm("Revoke this object? This will set its state to Revoked/Compromised as per policy.");
+        if (!ok) return;
+        setActionLoadingId(uid);
+        try {
+            if (typeof revoke_ttlv_request === "function") {
+                const req = revoke_ttlv_request(uid, "User-initiated revoke");
+                await sendKmipRequest(req, idToken, serverUrl);
+                await handleRefreshRow(uid);
+                setRes((prev) => (prev ? String(prev).replace(/\d+ Object\(s\) located\./, "Action completed.") : "Action completed."));
+            } else {
+                console.warn("revoke_ttlv_request not available in WASM package");
+            }
+        } catch (e) {
+            console.error("Error revoking object:", e);
+        } finally {
+            setActionLoadingId(undefined);
+        }
+    };
+
+    const handleDestroy = async (uid: string) => {
+        if (!uid) return;
+        const ok = window.confirm("Destroy this object? This operation is irreversible.");
+        if (!ok) return;
+        setActionLoadingId(uid);
+        try {
+            if (typeof destroy_ttlv_request === "function") {
+                const req = destroy_ttlv_request(uid, true);
+                await sendKmipRequest(req, idToken, serverUrl);
+                setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
+                setRes("Object destroyed.");
+            } else {
+                console.warn("destroy_ttlv_request not available in WASM package");
+            }
+        } catch (e) {
+            console.error("Error destroying object:", e);
+        } finally {
+            setActionLoadingId(undefined);
+        }
+    };
+
+    const handleRefreshRow = async (uid: string) => {
+        try {
+            const getReq = get_attributes_ttlv_request(uid);
+            const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+            if (getRespStr) {
+                const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                    "object_type",
+                    "state",
+                    "key_format_type",
+                ]);
+                const meta = parsed instanceof Map ? Object.fromEntries(parsed as Map<string, unknown>) : (parsed as Record<string, unknown>);
+                setObjects((prev) => {
+                    if (!prev) return prev;
+                    return prev.map((row) =>
+                        row.object_id === uid
+                            ? {
+                                  ...row,
+                                  attributes: { ObjectType: (meta["object_type"] as string | undefined) || row.attributes?.ObjectType },
+                                  state: (typeof meta["state"] === "string" ? meta["state"] as string : stateEnumToName(meta["state"])) || row.state,
+                                  meta: { ...(row.meta || {}), key_format_type: meta["key_format_type"] },
+                              }
+                            : row
+                    );
+                });
+            }
+        } catch (e) {
+            console.error("Error refreshing row via Get:", e);
+        }
+    };
+
     return (
         <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">Locate Cryptographic Objects</h1>
@@ -668,6 +772,23 @@ const LocateForm: React.FC = () => {
                                                     </Space>
                                                 ),
                                             },
+                                            {
+                                                title: "Actions",
+                                                key: "actions",
+                                                render: (row: { object_id: string }) => (
+                                                    <Space size="small">
+                                                        <Button size="small" onClick={() => handleRevoke(row.object_id)} loading={actionLoadingId === row.object_id}>
+                                                            Revoke
+                                                        </Button>
+                                                        <Button danger size="small" onClick={() => handleDestroy(row.object_id)} loading={actionLoadingId === row.object_id}>
+                                                            Destroy
+                                                        </Button>
+                                                        <Button size="small" onClick={() => handleShowDetails(row.object_id)} loading={actionLoadingId === row.object_id}>
+                                                            Details
+                                                        </Button>
+                                                    </Space>
+                                                ),
+                                            },
 
                                         ]}
                                     />
@@ -677,6 +798,18 @@ const LocateForm: React.FC = () => {
                     </Card>
                 </div>
             )}
+            <Modal
+                title={detailsForId ? `Attributes for ${detailsForId}` : "Attributes"}
+                open={detailsVisible}
+                onCancel={() => setDetailsVisible(false)}
+                footer={<Button onClick={() => setDetailsVisible(false)}>Close</Button>}
+            >
+                {detailsData && detailsData.size ? (
+                    <HashMapDisplay data={detailsData} />
+                ) : (
+                    <div>No attributes found.</div>
+                )}
+            </Modal>
             {/* Details modal no longer used after replacing Actions with Tags */}
         </div>
     );
