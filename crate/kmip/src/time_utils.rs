@@ -14,9 +14,21 @@ use crate::error::KmipError;
 /// # Errors
 ///
 /// Returns a `KmipError::Default` if the millisecond replacement fails.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn time_normalize() -> Result<OffsetDateTime, KmipError> {
     OffsetDateTime::now_utc()
         .replace_millisecond(0)
+        .map_err(|e| KmipError::Default(e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn time_normalize() -> Result<OffsetDateTime, KmipError> {
+    // In WASM, rely on JS Date.now to avoid potential panics from time::now_utc
+    let ms = js_sys::Date::now();
+    let secs = (ms / 1000.0).floor() as i64;
+    let ts =
+        OffsetDateTime::from_unix_timestamp(secs).map_err(|e| KmipError::Default(e.to_string()))?;
+    ts.replace_millisecond(0)
         .map_err(|e| KmipError::Default(e.to_string()))
 }
 

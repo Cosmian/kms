@@ -78,28 +78,17 @@ Options:
           About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
           after a maximum of 150% of the time. [env: KMS_UNWRAPPED_CACHE_MAX_AGE=] [default: 15]
       --socket-server-start
-          Start the KMIP socket server? If this is set to true, the TLS config must be provided [env: KMS_SOCKET_SERVER_START=]
+          Start the KMIP socket server? If this is set to true, the TLS config must be provided, featuring a server PKCS#12 file and a client certificate authority certificate file [env: KMS_SOCKET_SERVER_START=]
       --socket-server-port <SOCKET_SERVER_PORT>
           The KMS socket server port [env: KMS_SOCKET_SERVER_PORT=] [default: 5696]
       --socket-server-hostname <SOCKET_SERVER_HOSTNAME>
           The KMS socket server hostname [env: KMS_SOCKET_SERVER_HOSTNAME=] [default: 0.0.0.0]
-      --tls-cert-file <TLS_CERT_FILE>
-          The server's X.509 certificate in PEM format.
-          Only used in FIPS mode (default build). Provide a PEM containing the server leaf certificate,
-          optionally followed by intermediate certificates (full chain). When provided along with
-          --tls-key-file, the servers will start in TLS mode. [env: KMS_TLS_CERT_FILE=]
-      --tls-key-file <TLS_KEY_FILE>
-          The server's private key in PEM format (PKCS#8 or traditional format).
-          Only used in FIPS mode (default build). Must correspond to the certificate in --tls-cert-file. [env: KMS_TLS_KEY_FILE=]
-      --tls-chain-file <TLS_CHAIN_FILE>
-          Optional certificate chain in PEM format (intermediate CAs).
-          Only used in FIPS mode. If not provided, the chain may be appended to --tls-cert-file instead. [env: KMS_TLS_CHAIN_FILE=]
       --tls-p12-file <TLS_P12_FILE>
           The KMS server optional PKCS#12 Certificates and Key file.
-          Only used in non-FIPS mode. When provided, the Socket and HTTP server will start in TLS Mode. [env: KMS_TLS_P12_FILE=]
+          Mandatory when starting the socket server.
+          When provided, the Socket and HTTP server will start in TLS Mode. [env: KMS_TLS_P12_FILE=]
       --tls-p12-password <TLS_P12_PASSWORD>
-          The password to open the PKCS#12 Certificates and Key file.
-          Only used in non-FIPS mode. [env: KMS_TLS_P12_PASSWORD=]
+          The password to open the PKCS#12 Certificates and Key file [env: KMS_TLS_P12_PASSWORD=]
       --clients-ca-cert-file <CLIENTS_CA_CERT_FILE>
           The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
           If provided, clients must present a certificate signed by this authority for authentication.

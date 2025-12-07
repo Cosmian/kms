@@ -1,6 +1,6 @@
-import {ConfigProvider, theme} from "antd";
-import {useEffect, useState} from "react";
-import {BrowserRouter, Navigate, Route, Routes} from "react-router-dom";
+import { ConfigProvider, theme } from "antd";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AccessGrantForm from "./AccessGrant";
 import AccessListForm from "./AccessList";
 import AccessObtainedList from "./AccessObtained";
@@ -8,7 +8,9 @@ import AccessRevokeForm from "./AccessRevoke";
 import AttributeDeleteForm from "./AttributeDelete";
 import AttributeGetForm from "./AttributeGet";
 import AttributeSetForm from "./AttributeSet";
-import {AuthProvider, useAuth} from "./AuthContext";
+import { AuthProvider, useAuth } from "./AuthContext";
+import ExportAzureBYOKForm from "./AzureExportByok";
+import ImportAzureKekForm from "./AzureImportKek";
 import CertificateCertifyForm from "./CertificateCertify";
 import CertificateDecryptForm from "./CertificateDecrypt";
 import CertificateEncryptForm from "./CertificateEncrypt";
@@ -23,8 +25,6 @@ import CseInfo from "./CseInfo";
 import ECDecryptForm from "./ECDecrypt";
 import ECEncryptForm from "./ECEncrypt";
 import ECKeyCreateForm from "./ECKeysCreate";
-import ExportAzureBYOKForm from "./AzureExportByok";
-import ImportAzureKekForm from "./AzureImportKek";
 import KeyExportForm from "./KeysExport";
 import KeyImportForm from "./KeysImport";
 import LocateForm from "./Locate";
@@ -34,6 +34,7 @@ import NotFoundPage from "./NotFoundPage";
 import DestroyForm from "./ObjectsDestroy";
 import ObjectsOwnedList from "./ObjectsOwned";
 import RevokeForm from "./ObjectsRevoke";
+import OpaqueObjectForm from "./OpaqueObject";
 import RsaDecryptForm from "./RsaDecrypt";
 import RsaEncryptForm from "./RsaEncrypt";
 import RsaKeyCreateForm from "./RsaKeysCreate";
@@ -41,7 +42,7 @@ import SecretDataCreateForm from "./SecretDataCreate";
 import SymKeyCreateForm from "./SymKeysCreate";
 import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
-import {AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest} from "./utils";
+import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
 import init from "./wasm/pkg";
 
 type AppContentProps = {
@@ -148,6 +149,13 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                             <Route path="import" element={<KeyImportForm key_type={"secret-data"}/>}/>
                             <Route path="revoke" element={<RevokeForm objectType="secret-data"/>}/>
                             <Route path="destroy" element={<DestroyForm objectType="secret-data"/>}/>
+                        </Route>
+                        <Route path="opaque-object">
+                            <Route path="create" element={<OpaqueObjectForm/>}/>
+                            <Route path="export" element={<KeyExportForm key_type={"opaque-object"}/>}/>
+                            <Route path="import" element={<KeyImportForm key_type={"opaque-object"}/>}/>
+                            <Route path="revoke" element={<RevokeForm objectType="opaque-object"/>}/>
+                            <Route path="destroy" element={<DestroyForm objectType="opaque-object"/>}/>
                         </Route>
                         <Route path="access-rights">
                             <Route path="grant" element={<AccessGrantForm/>}/>

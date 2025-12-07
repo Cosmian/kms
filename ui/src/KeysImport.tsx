@@ -24,7 +24,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data" | "opaque-object";
 
 interface KeyImportFormProps {
     key_type: KeyType;
@@ -125,7 +125,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             { label: "Wrap", value: "wrap" },
             { label: "Unwrap", value: "unwrap" },
         ];
-    } else if (key_type === "secret-data") {
+    } else if (key_type === "secret-data" || key_type === "opaque-object") {
         key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
         key_usages = [
             { label: "Wrap", value: "wrap" },
@@ -140,13 +140,16 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
     }
 
     const isSecretData = key_type === "secret-data";
+    const isOpaqueObject = key_type === "opaque-object";
+    const isDataLike = isSecretData || isOpaqueObject;
+    const displayName = isSecretData ? "Secret Data" : isOpaqueObject ? "Opaque Object" : `${key_type} key`;
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Import {isSecretData ? "secret data" : `${key_type} key`}</h1>
+            <h1 className="text-2xl font-bold mb-6">Import {displayName}</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Import {isSecretData ? "secret data" : `${key_type} key`} into the KMS.</p>
+                <p>Import {displayName} into the KMS.</p>
                 <p>When no ID is specified, a random UUID will be generated.</p>
             </div>
 
@@ -165,9 +168,9 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                     <Card>
                         <Form.Item
                             name="keyFile"
-                            label={isSecretData ? "Data File" : "Key File"}
+                            label={isDataLike ? "Data File" : "Key File"}
                             rules={[{ required: true, message: "Please upload a file" }]}
-                            help={isSecretData ? "Upload the secret data file to import" : "Upload the key file to import"}
+                            help={isSecretData ? "Upload the secret data file to import" : isOpaqueObject ? "Upload the opaque object file to import" : "Upload the key file to import"}
                         >
                             <Upload
                                 beforeUpload={(file) => {
@@ -201,7 +204,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined />}>Upload {isSecretData ? "Secret Data File" : "Key File"}</Button>
+                                <Button icon={<UploadOutlined />}>Upload {isSecretData ? "Secret Data File" : isOpaqueObject ? "Opaque Object File" : "Key File"}</Button>
                             </Upload>
                         </Form.Item>
 
@@ -268,7 +271,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
-                            Import {isSecretData ? "Data" : "Key"}
+                            Import {isDataLike ? "Data" : "Key"}
                         </Button>
                     </Form.Item>
                 </Space>

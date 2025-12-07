@@ -1,4 +1,4 @@
-import {SafetyCertificateOutlined, SearchOutlined, SolutionOutlined, ToolOutlined} from "@ant-design/icons";
+import { SafetyCertificateOutlined, SearchOutlined, SolutionOutlined, ToolOutlined } from "@ant-design/icons";
 
 export interface MenuItem {
     key: string;
@@ -108,6 +108,18 @@ export const menuItems: MenuItem[] = [
             {key: "secret-data/import", label: "Import"},
             {key: "secret-data/revoke", label: "Revoke"},
             {key: "secret-data/destroy", label: "Destroy"},
+        ],
+    },
+    {
+        key: "opaque-object",
+        label: "Opaque Object",
+        collapsedlabel: "Opaque",
+        children: [
+            {key: "opaque-object/create", label: "Create"},
+            {key: "opaque-object/export", label: "Export"},
+            {key: "opaque-object/import", label: "Import"},
+            {key: "opaque-object/revoke", label: "Revoke"},
+            {key: "opaque-object/destroy", label: "Destroy"},
         ],
     },
     {

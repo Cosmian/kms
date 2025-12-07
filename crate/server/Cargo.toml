@@ -86,6 +86,9 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 openidconnect = { version = "4.0", features = ["reqwest", "native-tls"] }
 openssl = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.12.1" }
 reqwest = { workspace = true, features = [

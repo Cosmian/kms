@@ -34,11 +34,9 @@ usage() {
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
     update-hashes [options]
-                       Update expected hashes for current platform (release profile mandatory)
+               Update expected hashes for current platform (release profile mandatory)
       --variant <fips|non-fips>  Update specific variant (default: fips)
       --link <static|dynamic>    Limit to a specific server linkage (default: both)
-      --max-retries N            Convergence attempts (default: 3)
-      --retry-delay-seconds S    Delay between attempts (default: 2)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -86,9 +84,7 @@ EOF
 PROFILE="debug"
 VARIANT="fips"
 LINK="static"
-# Hash update tuning (used for hash enforcement settings)
-MAX_RETRIES=""
-RETRY_DELAY_SECONDS=""
+# Hash update tuning flags removed (no longer used)
 
 # Parse global options before the subcommand
 while [ $# -gt 0 ]; do
@@ -105,14 +101,6 @@ while [ $# -gt 0 ]; do
   -l | --link)
     LINK="${2:-}"
     LINK_EXPLICIT=1
-    shift 2 || true
-    ;;
-  --max-retries)
-    MAX_RETRIES="${2:-}"
-    shift 2 || true
-    ;;
-  --retry-delay-seconds)
-    RETRY_DELAY_SECONDS="${2:-}"
     shift 2 || true
     ;;
   docker | test | package | sbom | update-hashes)
@@ -262,6 +250,9 @@ test)
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
     ;;
+  wasm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
+    ;;
   sqlite)
     SCRIPT="$REPO_ROOT/.github/scripts/test_sqlite.sh"
     ;;
@@ -407,24 +398,14 @@ sbom)
   exit $?
   ;;
 update-hashes)
-  # Hash update functionality has been integrated into the Nix build process
-  # Hashes are automatically computed during builds and saved to result outputs
-  # To update hashes: run the build and copy the hash from the build output
-  echo "Hash updates are now integrated into build process."
-  echo "Build the target and check the installCheckPhase output for hash values."
-  echo "Example: nix-build -A kms-server-fips -o result-server-fips"
-  echo "The hash will be displayed in the build output with update instructions."
-  exit 0
-  # Forward tuning flags if provided before subcommand
-  if [ -n "$MAX_RETRIES" ]; then
-    ARGS+=(--max-retries "$MAX_RETRIES")
-  fi
-  if [ -n "$RETRY_DELAY_SECONDS" ]; then
-    ARGS+=(--retry-delay-seconds "$RETRY_DELAY_SECONDS")
-  fi
-  # Include any remaining args (e.g., --vendor-only)
-  # shellcheck disable=SC2068
-  exec bash "$SCRIPT" ${ARGS[@]} $@
+  # Run automated hash update across all variant/link combinations
+  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
+  [ -f "$SCRIPT" ] || {
+    echo "Missing $SCRIPT" >&2
+    exit 1
+  }
+  bash "$SCRIPT"
+  exit $?
   ;;
 *)
   echo "Error: Unknown command '$COMMAND'" >&2
@@ -805,22 +786,44 @@ if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "al
   echo "Note: Running without --pure mode for HSM tests to allow system PKCS#11/runtime libraries"
 fi
 
-if [ "$USE_PURE" = true ]; then
-  # shellcheck disable=SC2086
+{
+  # Decide purity and extra packages once, then run a single nix-shell
+  PURE_FLAG="--pure"
+  KEEP_ARGS="$KEEP_VARS"
+  EXTRA_PKGS=""
+  SHELL_PATH="$REPO_ROOT/shell.nix"
+
+  # sbom always uses pure shell with variant/link only
   if [ "$COMMAND" = "sbom" ]; then
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    PURE_FLAG="--pure"
+    KEEP_ARGS="$KEEP_VARS"
+    EXTRA_PKGS=""
   else
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" --pure $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    # For wasm tests: use non-pure shell and inject nodejs + wasm-pack (retain system cargo/rustup)
+    if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "wasm" ]; then
+      PURE_FLAG="" # non-pure
+      KEEP_ARGS="" # avoid mixing --keep with -p
+      EXTRA_PKGS="-p nodejs wasm-pack"
+      SHELL_PATH="<nixpkgs>" # run a minimal shell when using -p packages
+    else
+      # Otherwise respect computed USE_PURE setting
+      if [ "$USE_PURE" = true ]; then
+        PURE_FLAG="--pure"
+        KEEP_ARGS="$KEEP_VARS"
+      else
+        PURE_FLAG=""
+        KEEP_ARGS="$KEEP_VARS"
+      fi
+    fi
   fi
-else
-  # shellcheck disable=SC2086
+
+  # Build command to run inside nix-shell
   if [ "$COMMAND" = "sbom" ]; then
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    CMD="bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
   else
-    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
-      --run "bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    CMD="bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
-fi
+
+  # shellcheck disable=SC2086
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS "$SHELL_PATH" --run "$CMD"
+}

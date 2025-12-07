@@ -5,13 +5,12 @@ use serde::{Deserialize, Serialize};
 
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
+#[must_use]
 pub fn get_default_ui_dist_path() -> String {
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        format!("{}\\Cosmian KMS Server\\ui", localappdata)
-    } else {
-        // Fallback if LOCALAPPDATA is not set (shouldn't happen on Windows)
-        String::from("C:\\ProgramData\\cosmian\\ui")
-    }
+    std::env::var("LOCALAPPDATA").map_or_else(
+        |_| String::from("C:\\ProgramData\\cosmian\\ui"),
+        |localappdata| format!("{localappdata}\\Cosmian KMS Server\\ui"),
+    )
 }
 
 #[cfg(target_os = "linux")]

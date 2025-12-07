@@ -14,7 +14,7 @@ else
 fi
 
 # Config paths
-CLI_VERSION="1.5.1"
+CLI_VERSION="1.5.2"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"

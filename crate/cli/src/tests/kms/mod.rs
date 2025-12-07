@@ -1,4 +1,4 @@
-#[cfg(feature = "non-fips")]
+#![cfg(feature = "non-fips")]
 mod access;
 mod attributes;
 #[cfg(feature = "non-fips")]
@@ -15,6 +15,7 @@ mod hash;
 mod hsm;
 mod mac;
 mod mac_verify;
+mod metrics;
 mod opaque_object;
 mod query;
 mod rng;
