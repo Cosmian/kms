@@ -98,14 +98,14 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
 
     if not spec_file.exists():
         print(
-            f"  Warning: Spec file not found for version {version}: {spec_file}",
+            f'  Warning: Spec file not found for version {version}: {spec_file}',
             file=sys.stderr,
         )
         return get_fallback_version_data(version)
 
     if not HAS_BS4:
         print(
-            f"  Warning: BeautifulSoup4 not available, using fallback data",
+            f'  Warning: BeautifulSoup4 not available, using fallback data',
             file=sys.stderr,
         )
         return get_fallback_version_data(version)
@@ -316,7 +316,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
             ),
         }
     except Exception as e:
-        print(f"  Error parsing spec file {spec_file}: {e}", file=sys.stderr)
+        print(f'  Error parsing spec file {spec_file}: {e}', file=sys.stderr)
         import traceback
 
         traceback.print_exc()
@@ -441,7 +441,7 @@ def get_supported_versions() -> List[Tuple[int, int]]:
     """Extract supported KMIP versions from discover_versions.rs."""
     discover_file = OPS_DIR / 'discover_versions.rs'
     if not discover_file.exists():
-        print(f"Warning: discover_versions.rs not found", file=sys.stderr)
+        print(f'Warning: discover_versions.rs not found', file=sys.stderr)
         return [(2, 1)]
 
     content = discover_file.read_text(encoding='utf-8')
@@ -468,7 +468,7 @@ def get_operations_by_version() -> Dict[str, Set[str]]:
     ops_by_version = {}
 
     for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']:
-        print(f"  Parsing KMIP {version}...")
+        print(f'  Parsing KMIP {version}...')
         spec_data = parse_kmip_spec(version)
         ops_by_version[version] = spec_data['operations']
         print(f"    Found {len(spec_data['operations'])} operations")
@@ -524,7 +524,7 @@ def determine_baseline_profile_compliance(implemented_ops: Set[str]) -> Dict[str
 
     if not required_missing:
         profiles['Baseline Server'] = (
-            f"✅ Compliant (all {len(baseline_required_ops)} required + {len(optional_supported)}/{len(baseline_optional_ops)} optional)"
+            f'✅ Compliant (all {len(baseline_required_ops)} required + {len(optional_supported)}/{len(baseline_optional_ops)} optional)'
         )
     else:
         profiles['Baseline Server'] = (
@@ -882,7 +882,7 @@ def group_version_columns(version_support: Dict[str, str]) -> List[Tuple[str, st
             if start_ver == end_ver:
                 groups.append((start_ver, prev_status))
             else:
-                groups.append((f"{start_ver}-{end_ver}", prev_status))
+                groups.append((f'{start_ver}-{end_ver}', prev_status))
 
             start_ver = ver
             start_idx = i
@@ -894,7 +894,7 @@ def group_version_columns(version_support: Dict[str, str]) -> List[Tuple[str, st
         if start_ver == end_ver:
             groups.append((start_ver, prev_status))
         else:
-            groups.append((f"{start_ver}-{end_ver}", prev_status))
+            groups.append((f'{start_ver}-{end_ver}', prev_status))
 
     return groups
 
@@ -985,7 +985,7 @@ def map_attribute_support(attrs: List[str]) -> Dict[str, str]:
             result[readable] = '✅' if supported else '❌'
             continue
 
-        pattern = re.compile(rf"\b{re.escape(snake)}\b")
+        pattern = re.compile(rf'\b{re.escape(snake)}\b')
         for _, text in ops_texts:
             if pattern.search(text):
                 supported = True
@@ -1007,7 +1007,11 @@ def generate_support_markdown(
     """Generate the complete support.md content with version-aware tables."""
 
     # Format server supported versions
-    version_str = ', '.join([f"{maj}.{min}" for maj, min in server_versions])
+    versions = [f'{maj}.{min}' for maj, min in server_versions]
+    version_str = ', '.join(versions)
+
+    # Reverse to show oldest to newest (1.0 to 2.1) in tables
+    versions = list(reversed(versions))
 
     md = f"""# KMIP support by Cosmian KMS
 
@@ -1024,15 +1028,14 @@ Legend:
 - N/A Not applicable (operation/attribute not defined in that KMIP version)
 
 ## KMIP Baseline Profile Compliance
-
 """
 
     # Add profile compliance section
     for profile_name, status in profile_compliance.items():
-        md += f"**{profile_name}:** {status}\n\n"
+        md += f'**{profile_name}:** {status}\n\n'
 
-    md += """
-The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
+    md += """The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
+
 - **Required operations:** Discover Versions, Query, Create, Register, Get, Destroy, Locate, Activate, Revoke
 - **Optional operations:** Many additional operations for extended functionality
 
@@ -1051,14 +1054,35 @@ The following table shows operation support across all KMIP versions.
 
 """
 
-    # Operations table
-    md += '| Operation              | Current |\n'
-    md += '| ---------------------- | ------: |\n'
-    for op, status in ops_support.items():
-        md += f'| {op:<22} | {status:>7} |\n'
+    # Build operations table with all version columns
+    # Get all operations from ops_support (which are the canonical operation names)
+    all_operations = sorted(ops_support.keys())
 
-    md += """
-### Methodology
+    # Create table header with version columns
+    md += '| Operation |'
+    for version in versions:
+        md += f' {version} |'
+    md += '\n'
+
+    md += '| --------- |'
+    for _ in versions:
+        md += ' :-----: |'
+    md += '\n'
+
+    # Add operation rows
+    for op in all_operations:
+        is_implemented = ops_support[op] == '✅'
+        version_support = get_version_support_for_operation(
+            op, ops_by_version, is_implemented
+        )
+
+        md += f'| {op:<22} |'
+        for version in versions:
+            status = version_support.get(version, 'N/A')
+            md += f' {status:^7} |'
+        md += '\n'
+
+    md += """\n### Methodology
 
 - Operations marked ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
 - Operations marked ❌ are defined in the KMIP specification but not implemented in Cosmian KMS.
@@ -1070,7 +1094,6 @@ If you spot a mismatch or want to extend coverage, please open an issue or PR.
 ### Managed Objects
 
 The following table shows managed object support across all KMIP versions.
-
 """
 
     # Build managed objects table with version columns
@@ -1136,15 +1159,13 @@ The following table shows managed object support across all KMIP versions.
 
     # Add object rows
     for obj in managed_objects_list:
-        row = f"| {obj:<14} |"
+        row = f'| {obj:<14} |'
         for version in versions:
             status = obj_version_matrix[obj].get(version, 'N/A')
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """
-Notes:
-
+    md += """\nNotes:
 - Opaque Object import support is present (see `import.rs`).
 - PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
 - Template objects are deprecated in newer KMIP versions.
@@ -1152,7 +1173,6 @@ Notes:
 ### Base Objects
 
 The following table shows base object support across all KMIP versions.
-
 """
 
     # Base objects list (from spec patterns); we will filter by presence in spec text per version
@@ -1365,14 +1385,12 @@ The following table shows base object support across all KMIP versions.
     for obj in all_base_objects:
         is_implemented = implemented_base_objects.get(obj, False)
         status = '✅' if is_implemented else '❌'
-        row = f"| {obj:<40} |"
+        row = f'| {obj:<40} |'
         for version in versions:
-            row += f" {base_obj_version_matrix[obj].get(version, status):^7} |"
+            row += f' {base_obj_version_matrix[obj].get(version, status):^7} |'
         md += row + '\n'
 
-    md += """
-Notes:
-
+    md += """\nNotes:
 - AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
 - Nonce and RNG Parameter are used by symmetric encryption paths.
 - Base objects are fundamental structures present across all KMIP versions.
@@ -1380,7 +1398,6 @@ Notes:
 ### Transparent Key Structures
 
 The following table shows transparent key structure support across all KMIP versions.
-
 """
 
     # Transparent key structures
@@ -1474,38 +1491,28 @@ The following table shows transparent key structure support across all KMIP vers
     md += separator_row + '\n'
 
     for struct in key_structures_list:
-        row = f"| {struct:<24} |"
+        row = f'| {struct:<24} |'
         for version in versions:
             status = struct_version_matrix[struct].get(version, 'N/A')
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """
-Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+    md += """\nNote: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
-
 """
 
-    # Attributes table - with version columns
-    md += '| Attribute |'
-    for version in versions:
-        md += f' {version} |'
-    md += '\n'
+    # Attributes table - simple 2-column format (attributes are version-agnostic)
+    md += '| Attribute | Current |\n'
+    md += '| --------- | ------: |\n'
 
-    md += '| --------- |'
-    for _ in versions:
-        md += ' :-----: |'
-    md += '\n'
-
-    # For attributes, show implementation status across all versions
+    # For attributes, show implementation status
     # (most attributes are present in all versions)
     for attr in sorted(attrs_support.keys()):
         status = attrs_support[attr]
         md += f'| {attr:<35} | {status:>7} |\n'
 
-    md += """
-Notes:
+    md += """\nNotes:
 
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
 - "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
@@ -1581,7 +1588,7 @@ def parse_rust_operation_structs(version: str) -> Dict[str, Set[str]]:
 
     if not operations_file.exists():
         print(
-            f"  Warning: Operations file not found: {operations_file}", file=sys.stderr
+            f'  Warning: Operations file not found: {operations_file}', file=sys.stderr
         )
         return {}
 
@@ -1636,7 +1643,7 @@ def parse_rust_operation_structs(version: str) -> Dict[str, Set[str]]:
         return operation_fields
 
     except Exception as e:
-        print(f"  Warning: Error parsing {operations_file}: {e}", file=sys.stderr)
+        print(f'  Warning: Error parsing {operations_file}: {e}', file=sys.stderr)
         return {}
 
 
@@ -1676,7 +1683,7 @@ def get_operation_field_support(versions: List[str]) -> Dict[str, Dict[str, Set[
 
         # Parse implementation if not already cached
         if impl_version not in parsed_impls:
-            print(f"  Parsing KMIP {impl_version} operation structs...")
+            print(f'  Parsing KMIP {impl_version} operation structs...')
             parsed_impls[impl_version] = parse_rust_operation_structs(impl_version)
 
         field_support_by_version[version] = parsed_impls[impl_version]
@@ -1701,6 +1708,16 @@ def main() -> int:
     # Parse attributes
     attrs = parse_attributes()
     print(f'  Found {len(attrs)} defined attributes')
+
+    # Get operations by version
+    ops_by_version = get_operations_by_version()
+
+    # Determine profile compliance
+    profile_compliance = determine_baseline_profile_compliance(ops)
+
+    # Get field support
+    versions = [f'{maj}.{min}' for maj, min in server_versions]
+    field_support = get_operation_field_support(versions)
 
     # Map support
     ops_support = map_operation_support(ops)

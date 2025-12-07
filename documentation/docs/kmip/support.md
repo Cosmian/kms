@@ -36,50 +36,49 @@ The following table shows operation support across all KMIP versions.
 
 | Operation | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Activate                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Add Attribute                  |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Archive                        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Cancel                         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Certify                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Check                          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Key Pair                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Split Key               |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Decrypt                        |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Delete Attribute               |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DeriveKey                      |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Destroy                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Discover Versions              |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Encrypt                        |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Export                         |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Get                            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attribute List             |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attributes                 |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Usage Allocation           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Hash                           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Import                         |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Join Split Key                 |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Locate                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC                            |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC Verify                     |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Modify Attribute               |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Notify                         |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
-| Obtain Lease                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Poll                           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Put                            |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
-| Query                          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Retrieve                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Seed                       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-certify                     |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Re-key                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-key Key Pair                |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Recover                        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Register                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Revoke                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Set Attribute (Modify)         |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
-| Sign                           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Signature Verify               |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Validate                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Activate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Add Attribute          |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Archive                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Cancel                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Certify                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Check                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Create                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Create Key Pair        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Create Split Key       |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Decrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Delete Attribute       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| DeriveKey              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Destroy                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Discover Versions      |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Encrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Export                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
+| Get                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attribute List     |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attributes         |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Usage Allocation   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Hash                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Import                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
+| Join Split Key         |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Locate                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| MAC                    |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| MAC Verify             |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Notify                 |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
+| Obtain Lease           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Poll                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Put                    |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
+| Query                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| RNG Retrieve           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| RNG Seed               |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Re-certify             |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Re-key                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Re-key Key Pair        |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Recover                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Register               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Revoke                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Set Attribute (Modify) |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
+| Sign                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Signature Verify       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Validate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 
 ### Methodology
 
@@ -175,73 +174,73 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
 
-| Attribute | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
-| --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Activation Date                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Alternative Name                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Always Sensitive                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Application Specific Information    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Archive Date                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Attribute Index                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Certificate Attributes              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Certificate Length                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Certificate Type                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Comment                             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Compromise Date                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Compromise Occurrence Date          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Contact Information                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Critical                            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Cryptographic Algorithm             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Cryptographic Domain Parameters     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Cryptographic Length                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Cryptographic Parameters            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Cryptographic Usage Mask            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Deactivation Date                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Description                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Destroy Date                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Digest                              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Digital Signature Algorithm         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Extractable                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Fresh                               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Initial Date                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Key Format Type                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Key Value Location                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Key Value Present                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Last Change Date                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Lease Time                          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Link                                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Name                                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Never Extractable                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Nist Key Type                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Object Group                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Object Group Member                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Object Type                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Opaque Data Type                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Original Creation Date              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| PKCS#12 Friendly Name               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Process Start Date                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Protect Stop Date                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Protection Level                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Protection Period                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Protection Storage Masks            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Quantum Safe                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Random Number Generator             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Revocation Reason                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Date                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Generation                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Interval                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Latest                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Name                         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Rotate Offset                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Sensitive                           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Short Unique Identifier             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| State                               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Unique Identifier                   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Usage Limits                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Vendor Attribute                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| X.509 Certificate Identifier        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| X.509 Certificate Issuer            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| X.509 Certificate Subject           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Attribute | Current |
+| --------- | ------: |
+| Activation Date                     |       ✅ |
+| Alternative Name                    |       ✅ |
+| Always Sensitive                    |       ✅ |
+| Application Specific Information    |       ✅ |
+| Archive Date                        |       ✅ |
+| Attribute Index                     |       ✅ |
+| Certificate Attributes              |       ✅ |
+| Certificate Length                  |       ✅ |
+| Certificate Type                    |       ✅ |
+| Comment                             |       ✅ |
+| Compromise Date                     |       ✅ |
+| Compromise Occurrence Date          |       ✅ |
+| Contact Information                 |       ✅ |
+| Critical                            |       ✅ |
+| Cryptographic Algorithm             |       ✅ |
+| Cryptographic Domain Parameters     |       ✅ |
+| Cryptographic Length                |       ✅ |
+| Cryptographic Parameters            |       ✅ |
+| Cryptographic Usage Mask            |       ✅ |
+| Deactivation Date                   |       ✅ |
+| Description                         |       ✅ |
+| Destroy Date                        |       ✅ |
+| Digest                              |       ✅ |
+| Digital Signature Algorithm         |       ✅ |
+| Extractable                         |       ✅ |
+| Fresh                               |       ✅ |
+| Initial Date                        |       ✅ |
+| Key Format Type                     |       ✅ |
+| Key Value Location                  |       ✅ |
+| Key Value Present                   |       ✅ |
+| Last Change Date                    |       ✅ |
+| Lease Time                          |       ✅ |
+| Link                                |       ✅ |
+| Name                                |       ✅ |
+| Never Extractable                   |       ✅ |
+| Nist Key Type                       |       ✅ |
+| Object Group                        |       ✅ |
+| Object Group Member                 |       ✅ |
+| Object Type                         |       ✅ |
+| Opaque Data Type                    |       ✅ |
+| Original Creation Date              |       ✅ |
+| PKCS#12 Friendly Name               |       ✅ |
+| Process Start Date                  |       ✅ |
+| Protect Stop Date                   |       ✅ |
+| Protection Level                    |       ✅ |
+| Protection Period                   |       ✅ |
+| Protection Storage Masks            |       ✅ |
+| Quantum Safe                        |       ✅ |
+| Random Number Generator             |       ✅ |
+| Revocation Reason                   |       ✅ |
+| Rotate Date                         |       ✅ |
+| Rotate Generation                   |       ✅ |
+| Rotate Interval                     |       ✅ |
+| Rotate Latest                       |       ✅ |
+| Rotate Name                         |       ✅ |
+| Rotate Offset                       |       ✅ |
+| Sensitive                           |       ✅ |
+| Short Unique Identifier             |       ✅ |
+| State                               |       ✅ |
+| Unique Identifier                   |       ✅ |
+| Usage Limits                        |       ✅ |
+| Vendor Attribute                    |       ✅ |
+| X.509 Certificate Identifier        |       ✅ |
+| X.509 Certificate Issuer            |       ✅ |
+| X.509 Certificate Subject           |       ✅ |
 
 Notes:
 

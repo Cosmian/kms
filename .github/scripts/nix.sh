@@ -73,9 +73,6 @@ usage() {
     $0 sbom                                 # Generate SBOM for FIPS variant
     $0 --variant non-fips sbom              # Generate SBOM for non-FIPS variant
     $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
-    $0 update-hashes --variant non-fips     # Update only non-FIPS variant hashes
-    $0 update-hashes --link static          # Only static linkage hashes
-    $0 --variant fips --link dynamic update-hashes
 EOF
   exit 1
 }

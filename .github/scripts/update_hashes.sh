@@ -32,6 +32,7 @@ run_package non-fips static
 declare -A FILE_TO_HASH
 current_run_variant=""
 current_run_link=""
+last_drv_path=""
 while IFS= read -r line; do
   # Track which combination we are in
   if [[ "$line" =~ ^###\ RUN\ variant= ]]; then
@@ -39,45 +40,47 @@ while IFS= read -r line; do
     current_run_link=$(echo "$line" | sed -E 's/^### RUN variant=[^ ]+ link=([^ ]+)/\1/')
     continue
   fi
+  # Capture the derivation path from error lines to identify what's failing
+  if echo "$line" | grep -q "hash mismatch in fixed-output derivation"; then
+    last_drv_path=$(echo "$line" | grep -Eo "'/nix/store/[^']+'" | tr -d "'")
+  fi
   # For Nix fixed-output mismatch lines, capture the SRI sha256 after 'got:'
   if echo "$line" | grep -q "got:"; then
     sri=$(echo "$line" | grep -Eo "sha256-[A-Za-z0-9+/=]+" | head -n1 || true)
     if [ -n "${sri:-}" ] && [ -n "$current_run_variant" ] && [ -n "$current_run_link" ]; then
-      # Map to expected-hash file name based on platform and link
-      os=$(uname)
-      case "$os" in
-      Darwin)
-        # server vendor hash
-        if [ "$current_run_link" = "dynamic" ]; then
-          file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
-        else
-          file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
-        fi
-        # ui vendor hash may also appear; last one wins is fine
-        if echo "$line" | grep -q "ui"; then
-          if [ "$current_run_variant" = "fips" ]; then
-            file="$EXPECTED_DIR/ui.vendor.fips.sha256"
-          else
-            file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
-          fi
-        fi
-        ;;
-      Linux)
-        # Use linux files if run on Linux
+      # Determine which file to update based on the derivation path
+      file=""
+      # Check if this is a UI vendor hash (wasm vendor derivation)
+      if echo "$last_drv_path" | grep -qE "ui-wasm-(fips|non-fips).*-vendor"; then
         if [ "$current_run_variant" = "fips" ]; then
-          file="$EXPECTED_DIR/server.fips.openssl.x86_64.linux.sha256"
+          file="$EXPECTED_DIR/ui.vendor.fips.sha256"
         else
-          if [ "$current_run_link" = "dynamic" ]; then
-            file="$EXPECTED_DIR/server.non-fips.openssl.x86_64.linux.sha256"
-          else
-            file="$EXPECTED_DIR/server.non-fips.no-openssl.x86_64.linux.sha256"
-          fi
+          file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
         fi
-        ;;
-      *)
-        file=""
-        ;;
-      esac
+      # Check if this is a UI npm deps hash
+      elif echo "$last_drv_path" | grep -qE "ui-deps-(fips|non-fips).*-npm-deps"; then
+        file="$EXPECTED_DIR/ui.npm.sha256"
+      # Otherwise, map server vendor hashes based on platform
+      else
+        os=$(uname)
+        case "$os" in
+        Darwin)
+          # server vendor hash
+          if [ "$current_run_link" = "dynamic" ]; then
+            file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
+          else
+            file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
+          fi
+          ;;
+        Linux)
+          # server vendor hash on Linux
+          file="$EXPECTED_DIR/server.vendor.linux.sha256"
+          ;;
+        *)
+          file=""
+          ;;
+        esac
+      fi
       if [ -n "$file" ]; then
         FILE_TO_HASH["$file"]="$sri"
       fi
