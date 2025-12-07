@@ -1,6 +1,9 @@
 [workspace]
 default-members = ["crate/server"]
 members = [
+    # Common crates
+    "crate/aws_structs",
+    "crate/kmip",
     # Client crates
     "crate/client_utils",
     "crate/kms_client",
@@ -16,7 +19,6 @@ members = [
     "crate/hsm/utimaco",
     "crate/hsm/base_hsm",
     "crate/interfaces",
-    "crate/kmip",
     "crate/server",
     "crate/server_database",
     # Test crates

@@ -39,7 +39,16 @@ pub struct AwsXksConfig {
         env = "KMS_AWX_XKS_SIGV4_ACCESS_KEY_ID",
         required_if_eq("aws_xks_enable", "true")
     )]
+    /// The AWS XKS `SigV4` access key ID used to sign requests
     pub aws_xks_sigv4_access_key_id: Option<String>,
+
+    #[clap(
+        long,
+        env = "KMS_AWX_XKS_SIGV4_ACCESS_KEY_USER",
+        required_if_eq("aws_xks_enable", "true")
+    )]
+    /// The AWS XKS `SigV4` access key user that can retrieve the key
+    pub aws_xks_sigv4_access_key_user: Option<String>,
 
     #[clap(
         long,
