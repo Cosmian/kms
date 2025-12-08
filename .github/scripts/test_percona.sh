@@ -17,4 +17,6 @@ echo "========================================="
 : "${PERCONA_HOST:=127.0.0.1}"
 : "${PERCONA_PORT:=3307}"
 
+export KMS_MYSQL_URL="${KMS_PERCONA_URL:-mysql://root:kms@${PERCONA_HOST}:${PERCONA_PORT}/kms}"
+
 check_and_test_db "Percona XtraDB Cluster" "mysql" "PERCONA_HOST" "PERCONA_PORT"
