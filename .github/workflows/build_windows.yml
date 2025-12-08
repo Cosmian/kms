@@ -10,13 +10,10 @@ on:
       archive-name:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
 
 jobs:
   cargo-build:
-    name: windows-2022-non-fips-${{ inputs.debug_or_release }}
+    name: windows-2022-non-fips-release
     runs-on: windows-2022
     steps:
       - name: Print ENV
@@ -77,15 +74,15 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           . .\.github\scripts\cargo_build.ps1
-          BuildProject -BuildType ${{ inputs.debug_or_release }}
+          BuildProject -BuildType release
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          name: ${{ inputs.archive-name }}-release
           path: |
-            target/${{ inputs.debug_or_release }}/*.exe
-            target/${{ inputs.debug_or_release }}/*cosmian_pkcs11.dll
+            target/release/*.exe
+            target/release/*cosmian_pkcs11.dll
           retention-days: 1
           if-no-files-found: error
 
@@ -96,7 +93,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v6
         with:
-          name: ${{ inputs.archive-name }}-${{ inputs.debug_or_release }}
+          name: ${{ inputs.archive-name }}-release
 
       - name: List files recursively
         shell: pwsh
