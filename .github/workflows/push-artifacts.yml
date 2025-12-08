@@ -39,9 +39,10 @@ jobs:
         non-fips_dynamic_ubuntu-24.04-arm-${{ inputs.debug_or_release }}/result-*
         non-fips_static_macos-15-${{ inputs.debug_or_release }}/result-*
         non-fips_dynamic_macos-15-${{ inputs.debug_or_release }}/result-*
+        target/release
 
     steps:
-      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe
+      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target
       - uses: actions/download-artifact@v6
         with:
           pattern: '*fips*'
