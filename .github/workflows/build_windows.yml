@@ -13,7 +13,7 @@ on:
 
 jobs:
   cargo-build:
-    name: windows-2022-non-fips-release
+    name: windows-2022-non-fips
     runs-on: windows-2022
     steps:
       - name: Print ENV
