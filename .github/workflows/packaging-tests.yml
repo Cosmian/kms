@@ -30,14 +30,14 @@ jobs:
           - ubuntu:24.04
           - ubuntu:22.04
           - ubuntu:20.04
-          # Cannot download artifacts using actions/download-artifact@v4 - Glibc v2.28 required
+          # Cannot download artifacts using actions/download-artifact@v6 - Glibc v2.28 required
           # - ubuntu:18.04
           # Debian stable releases within the last ~10 years
           - debian:trixie-slim # Debian 13
           - debian:bookworm-slim # Debian 12
           - debian:bullseye-slim # Debian 11
           - debian:buster-slim # Debian 10
-          # Cannot download artifacts using actions/download-artifact@v4 - Glibc v2.28 required
+          # Cannot download artifacts using actions/download-artifact@v6 - Glibc v2.28 required
           # - debian:stretch-slim # Debian 9
           # Rocky Linux releases
           - rockylinux/rockylinux:10
@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -157,7 +157,7 @@ jobs:
 
     steps:
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
