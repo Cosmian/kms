@@ -23,7 +23,7 @@ use openssl::{
     hash::MessageDigest,
     pkey::{Id, PKey, Private},
     rsa::Padding,
-    sign::Signer,
+    sign::{RsaPssSaltlen, Signer},
 };
 
 use crate::{
@@ -287,7 +287,14 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
         }
     };
 
-    let mut signer = Signer::new(digest, private_key)?;
+    // For RSASSA-PSS: choose pre-hash path when digested_data provided, otherwise let OpenSSL hash
+    let mut signer = if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm
+        && request.digested_data.is_some()
+    {
+        Signer::new_without_digest(private_key)?
+    } else {
+        Signer::new(digest, private_key)?
+    };
 
     if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
@@ -310,8 +317,8 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
         } else {
             signer.set_rsa_mgf1_md(digest)?;
         }
-        // Use digest length for salt length per KMIP profile vectors
-        signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
+        // Set salt length to digest length for RSASSA-PSS compliance
+        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
     }
     if let Some(corr) = request.correlation_value {
         signer.update(&corr)?;

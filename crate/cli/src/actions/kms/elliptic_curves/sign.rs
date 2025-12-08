@@ -1,19 +1,18 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip_2_1::requests::sign_request;
-use cosmian_kms_client::{
-    KmsClient, read_bytes_from_file, reexport::cosmian_kms_client_utils::create_utils::Curve,
-};
+use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
+use cosmian_kms_client::{KmsClient, reexport::cosmian_kms_client_utils::create_utils::Curve};
 
 use crate::{
     actions::kms::{
-        console, labels::KEY_ID, shared::CDigitalSignatureAlgorithmEC, shared::get_key_uid,
+        labels::KEY_ID,
+        shared::{CDigitalSignatureAlgorithmEC, sign::run_sign},
     },
-    error::result::{KmsCliResult, KmsCliResultHelper},
+    error::result::KmsCliResult,
 };
 
-/// Digital signature supported is rsassapss
+/// Sign a file using elliptic curve digital signature algorithms (ECDSA)
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SignAction {
@@ -39,56 +38,27 @@ pub struct SignAction {
     #[clap(long, short = 's', default_value = "ecdsa-with-sha256")]
     pub(crate) signature_algorithm: CDigitalSignatureAlgorithmEC,
 
-    /// The encrypted output file path
+    /// The signature output file path
     #[clap(required = false, long, short = 'o')]
     pub(crate) output_file: Option<PathBuf>,
+
+    /// Treat input as already-digested data (pre-hash)
+    #[clap(long = "digested", action)]
+    pub(crate) digested: bool,
 }
 
 impl SignAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        // Read the file to sign
-        let data = read_bytes_from_file(&self.input_file)
-            .with_context(|| "Cannot read bytes from the file to sign")?;
-
-        // Recover the unique identifier or set of tags
-        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
-
-        // Create the kmip query
-        let sign_request = sign_request(
-            &id,
-            None,
-            Some(data),
-            Some(self.signature_algorithm.to_cryptographic_parameters()),
-        );
-
-        // Query the KMS with your kmip data and get the key pair ids
-        let sign_response = kms_rest_client
-            .sign(sign_request)
-            .await
-            .with_context(|| "Can't execute the query on the kms server")?;
-        let plaintext = sign_response
-            .signature_data
-            .context("Sign with EC: the plaintext is empty")?;
-
-        // Write the signature file
-        let output_file = self
-            .output_file
-            .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
-        let mut buffer =
-            File::create(&output_file).with_context(|| "Fail to write the plain file")?;
-        buffer
-            .write_all(&plaintext)
-            .with_context(|| "Fail to write the plain file")?;
-
-        let stdout = format!(
-            "The signature file is available at {}",
-            output_file.display()
-        );
-        let mut stdout = console::Stdout::new(&stdout);
-        stdout.set_tags(self.tags.as_ref());
-        stdout.write()?;
-
-        Ok(())
+        let cp: CryptographicParameters = self.signature_algorithm.to_cryptographic_parameters();
+        run_sign(
+            kms_rest_client,
+            self.input_file.clone(),
+            self.key_id.clone(),
+            self.tags.clone(),
+            cp,
+            self.output_file.clone(),
+            self.digested,
+        )
+        .await
     }
 }

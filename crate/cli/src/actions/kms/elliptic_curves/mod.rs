@@ -48,7 +48,9 @@ impl EllipticCurveCommands {
             #[cfg(feature = "non-fips")]
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
             Self::Sign(action) => action.run(kms_rest_client).await?,
-            Self::SignVerify(action) => action.run(kms_rest_client).await?,
+            Self::SignVerify(action) => {
+                let _ = action.run(kms_rest_client).await?;
+            }
         }
         Ok(())
     }

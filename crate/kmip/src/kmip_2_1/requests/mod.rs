@@ -5,8 +5,6 @@ mod encrypt;
 mod get;
 mod import;
 mod revoke;
-mod sign;
-mod signature_verify;
 mod validate;
 
 pub use create::{
@@ -22,6 +20,4 @@ pub use get::{
 };
 pub use import::import_object_request;
 pub use revoke::build_revoke_key_request;
-pub use sign::sign_request;
-pub use signature_verify::signature_verify_request;
 pub use validate::build_validate_certificate_request;

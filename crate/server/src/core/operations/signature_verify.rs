@@ -24,7 +24,7 @@ use openssl::{
     hash::MessageDigest,
     pkey::{Id, PKey, Public},
     rsa::Padding,
-    sign::Verifier,
+    sign::{RsaPssSaltlen, Verifier},
 };
 
 use crate::{
@@ -33,14 +33,6 @@ use crate::{
     kms_bail,
     result::{KResult, KResultHelper},
 };
-
-/// This operation requests the server to verify a signature on data using a managed object.
-///
-/// The request contains information about the verification key, the signature algorithm,
-/// the data that was signed, and the signature to be verified.
-///
-/// # Arguments
-///
 /// * `kms` - A reference to the KMS (Key Management Service) instance.
 /// * `request` - The `SignatureVerify` request containing the verification parameters.
 /// * `user` - A string slice representing the user requesting the verification.
@@ -347,29 +339,18 @@ fn verify_signature(
                     let mut verifier = Verifier::new_without_digest(verification_key)?;
                     verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
                     verifier.set_rsa_mgf1_md(mgf1_digest)?;
-                    let mut ok = verifier.verify_oneshot(signature, data)?;
-                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
-                        // Fallback: retry with MGF1=SHA1, which some toolchains use by default
-                        let mut verifier = Verifier::new_without_digest(verification_key)?;
-                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
-                        ok = verifier.verify_oneshot(signature, data)?;
-                    }
-                    ok
+                    // Accept signatures regardless of salt length used by signer.
+                    // OpenSSL constant RSA_PSS_SALTLEN_AUTO = -2
+                    verifier.set_rsa_pss_saltlen(RsaPssSaltlen::custom(-2))?;
+                    verifier.verify_oneshot(signature, data)?
                 } else {
                     // Use OpenSSL-managed digesting so the PSS MD is set correctly
                     let mut verifier = Verifier::new(message_digest, verification_key)?;
                     verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
                     verifier.set_rsa_mgf1_md(mgf1_digest)?;
-                    let mut ok = verifier.verify_oneshot(signature, data)?;
-                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
-                        // Fallback: retry with MGF1=SHA1 when unspecified
-                        let mut verifier = Verifier::new(message_digest, verification_key)?;
-                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
-                        ok = verifier.verify_oneshot(signature, data)?;
-                    }
-                    ok
+                    // Accept signatures regardless of salt length used by signer.
+                    verifier.set_rsa_pss_saltlen(RsaPssSaltlen::custom(-2))?;
+                    verifier.verify_oneshot(signature, data)?
                 }
             } else {
                 // Non-PSS algorithms: use OpenSSL-managed digesting
