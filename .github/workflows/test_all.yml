@@ -23,6 +23,8 @@ jobs:
         type:
           - sqlite
           - mysql
+          - percona
+          - mariadb
           - psql
           - google_cse
           - redis
@@ -62,6 +64,14 @@ jobs:
           MYSQL_HOST: localhost
           MYSQL_PORT: 3306
           KMS_MYSQL_URL: mysql://root:kms@localhost:3306/kms
+
+          PERCONA_HOST: localhost
+          PERCONA_PORT: 3307
+          KMS_PERCONA_URL: mysql://root:kms@localhost:3307/kms
+
+          MARIADB_HOST: localhost
+          MARIADB_PORT: 3308
+          KMS_MARIADB_URL: mysql://root:kms@localhost:3308/kms
 
           KMS_SQLITE_PATH: data/shared
 
