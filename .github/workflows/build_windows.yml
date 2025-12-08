@@ -81,6 +81,7 @@ jobs:
         with:
           name: ${{ inputs.archive-name }}-release
           path: |
+            README.md
             target/release/*.exe
           retention-days: 1
           if-no-files-found: error

@@ -42,7 +42,7 @@ jobs:
         windows-release
 
     steps:
-      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian*
+      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-*
       - uses: actions/download-artifact@v6
         with:
           pattern: '*fips*'
