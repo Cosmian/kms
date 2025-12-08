@@ -48,7 +48,7 @@ jobs:
           pattern: '*fips*'
       - uses: actions/download-artifact@v6
         with:
-          pattern: windows-*
+          pattern: windows-release
       - uses: actions/download-artifact@v6
         with:
           pattern: hash-*
