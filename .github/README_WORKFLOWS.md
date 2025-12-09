@@ -9,15 +9,15 @@ This document provides a visual representation of all GitHub Actions workflows i
 │                         ENTRY POINT WORKFLOWS                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  ┌────────────┐  ┌────────────┐  ┌─────────────────────┐           │
-│  │  main.yml  │  │   pr.yml   │  │ github_cache_       │           │
-│  │ (Push CI)  │  │  (PR CI)   │  │  cleanup.yml        │           │
-│  └────────────┘  └────────────┘  └─────────────────────┘           │
+│  ┌────────────┐  ┌────────────┐  ┌─────────────────────┐            │
+│  │  main.yml  │  │   pr.yml   │  │ github_cache_       │            │
+│  │ (Push CI)  │  │  (PR CI)   │  │  cleanup.yml        │            │
+│  └────────────┘  └────────────┘  └─────────────────────┘            │
 │       │               │                     │                       │
 │       │               │                     │                       │
 │  Triggers:       Triggers:            Triggers:                     │
 │  • Push          • Tags (push)        • Manual                      │
-│  • Schedule      • Pull Requests      (workflow_dispatch)           │
+│  • Schedule      • Pull Requests      (workflow_dispatch)            │
 │  • Manual        • Schedule                                         │
 │                  • Manual                                           │
 │                                                                     │
@@ -194,7 +194,7 @@ test_all.yml
 
 ---
 
-## 4. Windows Test Workflow (`test_windows.yml`)
+## 5. Windows Test Workflow (`test_windows.yml`)
 
 Windows-specific testing.
 
@@ -216,7 +216,7 @@ test_windows.yml
 
 ---
 
-## 5. Packaging Workflow (`packaging.yml`)
+## 6. Packaging Workflow (`packaging.yml`)
 
 Builds and packages KMS for multiple platforms using Nix.
 
@@ -278,7 +278,7 @@ Note: (S+D) = Static and Dynamic linking variants
 
 ---
 
-## 6. Packaging Tests Workflow (`packaging-tests.yml`)
+## 7. Packaging Tests Workflow (`packaging-tests.yml`)
 
 Tests packaged binaries across multiple Linux distributions.
 
@@ -307,7 +307,7 @@ packaging-tests.yml
 
 ---
 
-## 7. Docker Packaging Workflow (`packaging-docker.yml`)
+## 8. Docker Packaging Workflow (`packaging-docker.yml`)
 
 Multi-architecture Docker image creation using Nix.
 
@@ -361,12 +361,12 @@ packaging-docker.yml
 ├─────────────────┬───────────┬────────────────┬─────────────────┤
 │ OS              │ Features  │ Architecture   │ Registry Image  │
 ├─────────────────┼───────────┼────────────────┼─────────────────┤
-│ ubuntu-24.04    │ fips      │ amd64          │ kms-fips        │
-│ ubuntu-24.04    │ non-fips  │ amd64          │ kms             │
+│ ubuntu-24.04    │ fips       │ amd64          │ kms-fips         │
+│ ubuntu-24.04    │ non-fips   │ amd64          │ kms             │
 │ ubuntu-24.04-   │           │                │                 │
-│  arm            │ fips      │ arm64          │ kms-fips        │
+│  arm            │ fips       │ arm64          │ kms-fips         │
 │ ubuntu-24.04-   │           │                │                 │
-│  arm            │ non-fips  │ arm64          │ kms             │
+│  arm            │ non-fips   │ arm64          │ kms             │
 └─────────────────┴───────────┴────────────────┴─────────────────┘
 
 Tags generated:
@@ -380,7 +380,7 @@ Final manifest combines: <image>:tag-amd64 + <image>:tag-arm64
 
 ---
 
-## 8. Windows Build Workflow (`build_windows.yml`)
+## 9. Windows Build Workflow (`build_windows.yml`)
 
 Windows binary and installer creation.
 
@@ -433,7 +433,7 @@ build_windows.yml
 
 ---
 
-## 9. Push Artifacts Workflow (`push-artifacts.yml`)
+## 10. Push Artifacts Workflow (`push-artifacts.yml`)
 
 Upload packages to package.cosmian.com and GitHub Releases.
 
@@ -505,7 +505,7 @@ On Branches (e.g., develop):
 
 ---
 
-## 9. Cargo Publish Workflow (`cargo-publish.yml`)
+## 11. Cargo Publish Workflow (`cargo-publish.yml`)
 
 Publishes Rust crates to crates.io.
 
@@ -529,7 +529,7 @@ cargo-publish.yml
 
 ---
 
-## 10. CLA Assistant Workflow (`cla.yml`)
+## 12. CLA Assistant Workflow (`cla.yml`)
 
 Contributor License Agreement verification.
 
@@ -550,7 +550,7 @@ cla.yml
 
 ---
 
-## 11. Cache Cleanup Workflow (`github_cache_cleanup.yml`)
+## 13. Cache Cleanup Workflow (`github_cache_cleanup.yml`)
 
 Manual cache cleanup.
 
