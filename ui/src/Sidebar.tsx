@@ -30,8 +30,14 @@ const Sidebar: React.FC = () => {
     }, [idToken, serverUrl]);
 
     useEffect(() => {
-        fetchCreatePermission();
-    }, [fetchCreatePermission]);
+        // Only attempt fetching permissions when we have a JWT
+        if (idToken) {
+            fetchCreatePermission();
+        } else {
+            // Default: disable create/import when unauthenticated
+            processMenuItems(false);
+        }
+    }, [fetchCreatePermission, idToken]);
 
     // Process menu items to disable "Create" and "Import" options based on access rights
     const processMenuItems = (hasCreateAccess: boolean) => {

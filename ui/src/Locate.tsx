@@ -94,23 +94,127 @@ const LocateForm: React.FC = () => {
         }
     }, []);
 
+    // Utility: parse WASM/Get response into a plain record
+    const extractMeta = (parsed: unknown): Record<string, unknown> => {
+        if (parsed instanceof Map) return Object.fromEntries(parsed as Map<string, unknown>);
+        return (parsed || {}) as Record<string, unknown>;
+    };
+
+    // Utility: enrich a list of UIDs via KMIP Get
+    const enrichUids = async (uids: string[], idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+        const rows = await Promise.all(
+            uids.map(async (uid) => {
+                try {
+                    const getReq = get_attributes_ttlv_request(uid);
+                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                    if (getRespStr) {
+                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                            "object_type",
+                            "state",
+                            "tags",
+                            "user_tags",
+                            "cryptographic_algorithm",
+                            "cryptographic_length",
+                            "key_format_type",
+                            "public_key_id",
+                            "private_key_id",
+                            "certificate_id",
+                        ]);
+                        const m = extractMeta(parsed);
+                        return {
+                            object_id: uid,
+                            attributes: { ObjectType: m["object_type"] as string | undefined },
+                            state: stateEnumToName(m["state"]),
+                            meta: m,
+                        } as LocatedRow;
+                    }
+                } catch (e) {
+                    console.error(`Error fetching Get for ${uid}:`, e);
+                }
+                return { object_id: uid } as LocatedRow;
+            })
+        );
+        return rows;
+    };
+
+    // Utility: build state lookup from /access/owned
+    const getOwnedStateMap = async (idToken: string, serverUrl: string): Promise<Map<string, string>> => {
+        const stateById = new Map<string, string>();
+        const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+        if (Array.isArray(owned)) {
+            (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
+                if (o.object_id) {
+                    const s = stateEnumToName(o.state);
+                    if (s) stateById.set(o.object_id, s);
+                }
+            });
+        }
+        return stateById;
+    };
+
+    // Utility: supplement missing state from owned
+    const supplementStateFromOwned = async (rows: LocatedRow[], idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+        try {
+            const stateById = await getOwnedStateMap(idToken, serverUrl);
+            return rows.map((row) => ({
+                ...row,
+                state: row.state || stateEnumToName(stateById.get(row.object_id)),
+            }));
+        } catch {
+            return rows;
+        }
+    };
+
+    // KMIP Locate helper
+    const runKmipLocate = async (
+        values: LocateFormData,
+        cryptographicAlgorithm: string | undefined,
+        keyFormatType: string | undefined,
+        objectType: string | undefined,
+        idToken: string,
+        serverUrl: string
+    ): Promise<string[]> => {
+        const req = locate_ttlv_request(
+            values.tags,
+            cryptographicAlgorithm,
+            values.cryptographicLength,
+            keyFormatType,
+            objectType,
+            values.publicKeyId,
+            values.privateKeyId,
+            values.certificateId
+        );
+        const respStr = await sendKmipRequest(req, idToken, serverUrl);
+        if (!respStr) return [];
+        const resp = await parse_locate_ttlv_response(respStr);
+        return Array.isArray(resp.UniqueIdentifier) ? (resp.UniqueIdentifier as string[]) : [];
+    };
+
+    // Owned-fallback without criteria
+    const ownedFallbackNoCriteria = async (idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+        const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+        const ids: string[] = Array.isArray(owned) ? (owned as Array<{ object_id: string }>).map((o) => o.object_id).filter(Boolean) : [];
+        const enriched = await enrichUids(ids, idToken, serverUrl);
+        return supplementStateFromOwned(enriched, idToken, serverUrl);
+    };
+
     const onFinish = async (values: LocateFormData) => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
         setCurrentPage(1);
         try {
+            if (!idToken) {
+                setRes("You must be authenticated to search. Please log in.");
+                setIsLoading(false);
+                return;
+            }
             const norm = (s?: string) => (s && s.trim() !== "" ? s : undefined);
             const keyFormatType = norm(values.keyFormatType);
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
             const objectType = norm(values.objectType);
             const stateVal = norm(values.state);
             const kftNorm = (s: string) => s.toLowerCase().replace(/\s+|[-_]/g, "");
-            // Helpers to parse attributes and match criteria client-side
-            const extractMeta = (parsed: unknown): Record<string, unknown> => {
-                if (parsed instanceof Map) return Object.fromEntries(parsed as Map<string, unknown>);
-                return (parsed || {}) as Record<string, unknown>;
-            };
 
             // no-op helpers pruned: Locate handles tags & other criteria server-side
 
@@ -175,50 +279,22 @@ const LocateForm: React.FC = () => {
                         return;
                     }
                     // Get server-side filtered IDs (tags/algorithm/etc.)
-                    const locateResp = await sendKmipRequest(
-                        locate_ttlv_request(
-                            values.tags,
-                            cryptographicAlgorithm,
-                            values.cryptographicLength,
-                            keyFormatType,
-                            objectType,
-                            values.publicKeyId,
-                            values.privateKeyId,
-                            values.certificateId
-                        ),
-                        idToken,
-                        serverUrl
-                    );
-                    let locatedIds: string[] = [];
-                    if (locateResp) {
-                        const lr = await parse_locate_ttlv_response(locateResp);
-                        if (lr.UniqueIdentifier && lr.UniqueIdentifier.length) locatedIds = lr.UniqueIdentifier as string[];
-                    }
+                    const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
                     const ownedIds = new Set(ownedFiltered.map((o) => o.id));
                     let intersection = locatedIds.filter((id) => ownedIds.has(id));
 
                     // Fallback: if KFT provided but intersection is empty, drop KFT server-side and filter locally
                     if (keyFormatType && intersection.length === 0) {
                         try {
-                            const fallbackLocateResp = await sendKmipRequest(
-                                locate_ttlv_request(
-                                    values.tags,
-                                    cryptographicAlgorithm,
-                                    values.cryptographicLength,
-                                    undefined,
-                                    objectType,
-                                    values.publicKeyId,
-                                    values.privateKeyId,
-                                    values.certificateId
-                                ),
+                            const fbIds = await runKmipLocate(
+                                { ...values, keyFormatType: undefined },
+                                cryptographicAlgorithm,
+                                undefined,
+                                objectType,
                                 idToken,
                                 serverUrl
                             );
-                            if (fallbackLocateResp) {
-                                const flr = await parse_locate_ttlv_response(fallbackLocateResp);
-                                const fbIds: string[] = Array.isArray(flr.UniqueIdentifier) ? flr.UniqueIdentifier : [];
-                                intersection = fbIds.filter((id) => ownedIds.has(id));
-                            }
+                            intersection = fbIds.filter((id) => ownedIds.has(id));
                         } catch (e) {
                             console.warn("State+KFT fallback Locate without KFT failed:", e);
                         }
@@ -273,64 +349,20 @@ const LocateForm: React.FC = () => {
                     // Fall back to Locate below
                 }
             }
-            const request = locate_ttlv_request(
-                values.tags,
-                cryptographicAlgorithm,
-                values.cryptographicLength,
-                keyFormatType,
-                objectType,
-                values.publicKeyId,
-                values.privateKeyId,
-                values.certificateId
-            );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
-            if (result_str) {
-                const response = await parse_locate_ttlv_response(result_str);
-                if (response.UniqueIdentifier && response.UniqueIdentifier.length) {
-                    const mapped: LocatedRow[] = response.UniqueIdentifier.map((uuid: string) => ({
-                        object_id: uuid,
-                        attributes: { ObjectType: undefined },
-                        state: undefined,
-                        meta: undefined,
-                    }));
+            const idsGeneral = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
+            if (idsGeneral.length) {
+                const mapped: LocatedRow[] = idsGeneral.map((uuid: string) => ({
+                    object_id: uuid,
+                    attributes: { ObjectType: undefined },
+                    state: undefined,
+                    meta: undefined,
+                }));
 
                     setObjects(mapped);
 
                     // Enrich each object with Type and State using KMIP Get
                     try {
-                        const enriched = await Promise.all(
-                            mapped.map(async (row: LocatedRow) => {
-                                try {
-                                    const getReq = get_attributes_ttlv_request(row.object_id);
-                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                    if (getRespStr) {
-                                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
-                                            "object_type",
-                                            "state",
-                                            "tags",
-                                            "user_tags",
-                                            "cryptographic_algorithm",
-                                            "cryptographic_length",
-                                            "key_format_type",
-                                            "public_key_id",
-                                            "private_key_id",
-                                            "certificate_id",
-                                        ]);
-                                        const m = extractMeta(parsed);
-                                        // silently proceed if attributes are missing
-                                        return {
-                                            ...row,
-                                            attributes: { ObjectType: m["object_type"] as string | undefined },
-                                            state: stateEnumToName(m["state"]),
-                                            meta: m,
-                                        };
-                                    }
-                                } catch (e) {
-                                    console.error(`Error fetching Get for ${row.object_id}:`, e);
-                                }
-                                return row;
-                            })
-                        );
+                        const enriched = await enrichUids(mapped.map((r) => r.object_id), idToken, serverUrl);
 
                         // If no additional criteria and state is 'All', display enriched results directly
                         const hasOtherCriteria = Boolean(
@@ -345,47 +377,14 @@ const LocateForm: React.FC = () => {
                         );
                         if (!hasOtherCriteria && !stateVal) {
                             // Merge state labels from owned list for display, without filtering
-                            try {
-                                const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
-                                const stateById = new Map<string, string>();
-                                if (Array.isArray(owned)) {
-                                    (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
-                                        if (o.object_id) {
-                                            const s = stateEnumToName(o.state);
-                                            if (s) stateById.set(o.object_id, s);
-                                        }
-                                    });
-                                }
-                                const merged = enriched.map((row) => ({
-                                    ...row,
-                                    state: row.state || stateEnumToName(stateById.get(row.object_id)),
-                                }));
-                                setObjects(merged);
-                                setRes(`${merged.length} Object(s) located.`);
-
-                                return;
-                            } catch {
-                                setObjects(enriched);
-                                setRes(`${enriched.length} Object(s) located.`);
-                                return;
-                            }
+                            const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                            setObjects(merged);
+                            setRes(`${merged.length} Object(s) located.`);
+                            return;
                         }
                         // Try to supplement state from non-TTLV owned list when available
                         try {
-                            const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
-                            const stateById = new Map<string, string>();
-                            if (Array.isArray(owned)) {
-                                (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
-                                    if (o.object_id) {
-                                        const s = stateEnumToName(o.state);
-                                        if (s) stateById.set(o.object_id, s);
-                                    }
-                                });
-                            }
-                            let merged = enriched.map((row) => ({
-                                ...row,
-                                state: row.state || stateEnumToName(stateById.get(row.object_id)),
-                            }));
+                            let merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
                             // State filter if requested
                             if (stateVal) {
                                 const target = normalizeState(stateVal);
@@ -426,6 +425,18 @@ const LocateForm: React.FC = () => {
                         console.error("Error enriching locate results with Get:", e);
                     }
                 } else {
+                    // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
+                    const noCriteria = !((values.tags && values.tags.length) || values.cryptographicAlgorithm || values.cryptographicLength != null || values.keyFormatType || values.objectType || values.publicKeyId || values.privateKeyId || values.certificateId || stateVal);
+                    if (noCriteria) {
+                        try {
+                            const merged = await ownedFallbackNoCriteria(idToken, serverUrl);
+                            setObjects(merged);
+                            setRes(`${merged.length} Object(s) located.`);
+                            return;
+                        } catch (e) {
+                            /* owned fallback failed */
+                        }
+                    }
                     // No results returned by Locate: if Key Format Type filter is set, try fallback client-side filtering
                     if (keyFormatType) {
                         try {
@@ -515,7 +526,6 @@ const LocateForm: React.FC = () => {
                     setRes("0 Object(s) located.");
                 }
                 // set by post-filtering to reflect visible rows
-            }
         } catch (e) {
             setRes(`Error locating object: ${e}`);
             console.error("Error locating object:", e);
