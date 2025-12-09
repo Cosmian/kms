@@ -24,7 +24,7 @@ const ACCESS_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 #[tokio::test]
 pub(super) async fn test_aws_xks() -> KmsCliResult<()> {
     log_init(Some(
-        "info,cosmian_kms_server=trace,cosmian_kms_server_database=trace",
+        "info,cosmian_kms_server=debug,cosmian_kms_server_database=info",
     ));
 
     // plaintext no auth
