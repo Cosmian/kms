@@ -41,18 +41,18 @@ SHOW COLUMNS FROM objects LIKE 'attributes';
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
 (
-    id          VARCHAR(128),
-    userid      VARCHAR(255),
+    id          VARCHAR(128) NOT NULL,
+    userid      VARCHAR(255) NOT NULL,
     permissions json NOT NULL,
-    UNIQUE (id, userid)
+    PRIMARY KEY (id, userid)
 );
 
 -- name: create-table-tags
 CREATE TABLE IF NOT EXISTS tags
 (
-    id  VARCHAR(128),
-    tag VARCHAR(255),
-    UNIQUE (id, tag)
+    id  VARCHAR(128) NOT NULL,
+    tag VARCHAR(255) NOT NULL,
+    PRIMARY KEY (id, tag)
 );
 
 -- name: clean-table-objects

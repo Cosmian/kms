@@ -1,8 +1,7 @@
 By default, the server runs using a [SQLite](https://www.sqlite.org/) database, but it can be configured to use a choice
-of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [Maria DB](https://mariadb.org/),
-and [MySQL](https://www.mysql.com/), as well as [Redis](https://redis.io/), using
-the [Redis-with-Findex](#redis-with-findex)
-configuration.
+of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [MariaDB](https://mariadb.org/),
+[MySQL](https://www.mysql.com/), and [Percona XtraDB Cluster](https://www.percona.com/software/mysql-database/percona-xtradb-cluster),
+as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with-findex) configuration.
 
 <!-- TOC -->
 
@@ -11,7 +10,7 @@ configuration.
 - [Configuring the database](#configuring-the-database)
     - [SQLite](#sqlite)
         - [PostgreSQL](#postgresql)
-        - [MySQL or MariaDB](#mysql-or-mariadb)
+        - [MySQL, MariaDB, or Percona XtraDB Cluster](#mysql-mariadb-or-percona-xtradb-cluster)
         - [Redis with Findex](#redis-with-findex-1)
 - [Clearing the database](#clearing-the-database)
 - [Database migration](#database-migration)
@@ -109,7 +108,18 @@ These sample instructions create a database called `kms` owned by a user `kms_us
     create database kms owner=kms_user;
     ```
 
-#### MySQL or MariaDB
+#### MySQL, MariaDB, or Percona XtraDB Cluster
+
+The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.
+All use the same configuration with `database-type=mysql`.
+
+!!! note "Clustering Support"
+    As of version 5.13.0, the KMS schema includes PRIMARY KEY constraints on all tables,
+    making it fully compatible with:
+
+    - **Percona XtraDB Cluster** (with `pxc_strict_mode=ENFORCING`)
+    - **MariaDB Galera Cluster**
+    - Any MySQL clustering solution requiring PRIMARY KEYs for replication
 
 === "kms.toml"
 
@@ -123,7 +133,7 @@ These sample instructions create a database called `kms` owned by a user `kms_us
 
     ```sh
     --database-type=mysql \
-    --database-url=mysql://kms_user:kms_password@mariadb:3306/kms
+    --database-url=mysql://kms_user:kms_password@mysql-server:3306/kms
     ```
 
 !!!info "Using a certificate to authenticate to MySQL or MariaDB"
@@ -231,6 +241,34 @@ On every call to the database, a check is performed on the db state field to che
 calls fail.
 
 Upgrades resist being interrupted in the middle and resumed from the start if that happens.
+
+### MySQL schema update (5.13.0)
+
+As of version 5.13.0, the MySQL schema was updated to include PRIMARY KEY constraints on the `tags` and `read_access` tables to ensure compatibility with MySQL clustering solutions (e.g., Percona XtraDB Cluster with `pxc_strict_mode=ENFORCING`, MariaDB Galera).
+
+New installations of 5.13.0+ automatically create the corrected tables.
+
+Existing installations upgrading to 5.13.0 will keep the old table definitions if those tables already exist. If you rely on clustering/replication that requires PRIMARY KEYs, apply the following manual migration before starting the KMS:
+
+        -- Fix tags table
+        ALTER TABLE tags
+            DROP INDEX id,
+            MODIFY id VARCHAR(128) NOT NULL,
+            MODIFY tag VARCHAR(255) NOT NULL,
+            ADD PRIMARY KEY (id, tag);
+
+        -- Fix read_access table
+        ALTER TABLE read_access
+            DROP INDEX id,
+            MODIFY id VARCHAR(128) NOT NULL,
+            MODIFY userid VARCHAR(255) NOT NULL,
+            ADD PRIMARY KEY (id, userid);
+
+Notes:
+
+- Run these statements using a privileged MySQL user (e.g., `root`).
+- Ensure application access is paused during the migration.
+- No data loss occurs; this operation converts UNIQUE constraints to PRIMARY KEYs and enforces NOT NULL.
 
 ## The Unwrapped Objects Cache
 

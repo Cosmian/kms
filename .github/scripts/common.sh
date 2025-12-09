@@ -375,8 +375,27 @@ _run_workspace_tests() {
   # and some tests may require host/network capabilities that are restricted in CI/Nix sandboxes.
   local extra_args=()
 
+  # Database tests are marked with #[ignore] so they need --ignored flag
+  # We run only database-specific tests to avoid running other ignored tests (e.g., HSM, Google CSE)
+  local test_filter=""
+  local test_args="--nocapture"
+  case "$KMS_TEST_DB" in
+  postgresql)
+    test_filter="tests::test_db_postgresql"
+    test_args="$test_args --ignored --exact"
+    ;;
+  mysql)
+    test_filter="tests::test_db_mysql"
+    test_args="$test_args --ignored --exact"
+    ;;
+  redis-findex)
+    test_filter="tests::test_db_redis_with_findex"
+    test_args="$test_args --ignored --exact"
+    ;;
+  esac
+
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --exclude cosmian_kms_cli ${extra_args[@]+"${extra_args[@]}"} $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- --nocapture
+  cargo test --workspace --lib --exclude cosmian_kms_cli ${extra_args[@]+"${extra_args[@]}"} $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
 }
 
 # Public: run DB-specific tests with optional service checks

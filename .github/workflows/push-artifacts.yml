@@ -39,16 +39,16 @@ jobs:
         non-fips_dynamic_ubuntu-24.04-arm-${{ inputs.debug_or_release }}/result-*
         non-fips_static_macos-15-${{ inputs.debug_or_release }}/result-*
         non-fips_dynamic_macos-15-${{ inputs.debug_or_release }}/result-*
-        windows-release
+        target/release
 
     steps:
-      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian*
+      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target
       - uses: actions/download-artifact@v6
         with:
           pattern: '*fips*'
       - uses: actions/download-artifact@v6
         with:
-          pattern: windows-*
+          pattern: windows-release
       - uses: actions/download-artifact@v6
         with:
           pattern: hash-*
@@ -133,9 +133,9 @@ jobs:
           done
 
           # Windows EXE packages (kept separate because path differs from ARCHIVE_NAMES patterns)
-          if compgen -G "windows-release/*setup.exe" > /dev/null; then
+          if compgen -G "target/release/*setup.exe" > /dev/null; then
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              windows-release/*setup.exe \
+              target/release/*setup.exe \
               cosmian@package.cosmian.com:$DESTINATION_DIR/
           fi
 
@@ -160,7 +160,7 @@ jobs:
             non-fips_macos-15-*/result-*/*.dmg*
 
             # Windows EXE packages
-            windows-release/*.exe
+            target/release/*setup.exe
 
             # Hash artifacts from result-*/bin
             hash-ubuntu-24.04-*-*/result-*/bin/*.sha256

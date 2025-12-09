@@ -4,12 +4,6 @@ $PSNativeCommandUseErrorActionPreference = $true # might be true by default
 
 function BuildProject
 {
-    param (
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("debug", "release")]
-        [string]$BuildType
-    )
-
     # Add target
     rustup target add x86_64-pc-windows-msvc
 
@@ -20,22 +14,14 @@ function BuildProject
 
     # Build `server`
     Set-Location crate\server
-    if ($BuildType -eq "release")
-    {
-        cargo build --release --features "non-fips" --no-default-features
-        cargo packager --verbose --formats nsis --release
-    }
-    else
-    {
-        cargo build --features "non-fips" --no-default-features
-        cargo packager --verbose --formats nsis
-    }
+    cargo build --release --features "non-fips" --no-default-features
+    cargo packager --verbose --formats nsis --release
     Get-ChildItem ..\..
 
     # Check dynamic links
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
-    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\$BuildType\cosmian_kms.exe | Select-String "libcrypto"
+    $output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\dumpbin.exe" /dependents target\release\cosmian_kms.exe | Select-String "libcrypto"
     $ErrorActionPreference = $previousErrorActionPreference
     if ($output)
     {
@@ -48,5 +34,4 @@ function BuildProject
 
 
 # Example usage:
-# BuildProject -BuildType debug
-# BuildProject -BuildType release
+# BuildProject

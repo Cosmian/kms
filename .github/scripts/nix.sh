@@ -19,6 +19,8 @@ usage() {
       all                    Run all available tests (default)
       sqlite                 Run SQLite tests
       mysql                  Run MySQL tests (requires MySQL server)
+      percona                Run Percona XtraDB Cluster tests (requires Percona server)
+      mariadb                Run MariaDB tests (requires MariaDB server)
       psql                   Run PostgreSQL tests (requires PostgreSQL server)
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
@@ -48,6 +50,8 @@ usage() {
   For testing, also supports environment variables:
     REDIS_HOST, REDIS_PORT
     MYSQL_HOST, MYSQL_PORT
+    PERCONA_HOST, PERCONA_PORT
+    MARIADB_HOST, MARIADB_PORT
     POSTGRES_HOST, POSTGRES_PORT
     TEST_GOOGLE_OAUTH_CLIENT_ID, TEST_GOOGLE_OAUTH_CLIENT_SECRET
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
@@ -59,6 +63,8 @@ usage() {
     $0 test all
     $0 test sqlite
     $0 test mysql
+    $0 test percona
+    $0 test mariadb
     $0 --variant non-fips test redis
     $0 --variant non-fips test pykmip     # PyKMIP client tests
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
@@ -255,6 +261,12 @@ test)
     ;;
   mysql)
     SCRIPT="$REPO_ROOT/.github/scripts/test_mysql.sh"
+    ;;
+  percona)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_percona.sh"
+    ;;
+  mariadb)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_maria.sh"
     ;;
   psql)
     SCRIPT="$REPO_ROOT/.github/scripts/test_psql.sh"

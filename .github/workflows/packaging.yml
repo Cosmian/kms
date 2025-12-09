@@ -22,7 +22,6 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
-      debug_or_release: release
 
   docker:
     uses: ./.github/workflows/packaging-docker.yml
