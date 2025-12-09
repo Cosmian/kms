@@ -37,7 +37,7 @@ async fn rsa_digested_sign_verify() -> KmsCliResult<()> {
 
     let input_file = PathBuf::from("../../test_data/plain.txt");
     let digest_file = tmp_path.join("plain.sha256");
-    let sig_file = tmp_path.join("plain.sha256.sign");
+    let sig_file = tmp_path.join("plain.sha256.sig");
 
     // compute SHA-256 digest of input and write to digest_file
     let data = std::fs::read(&input_file)?;
@@ -86,7 +86,7 @@ async fn ecdsa_digested_sign_verify() -> KmsCliResult<()> {
 
     let input_file = PathBuf::from("../../test_data/plain.txt");
     let digest_file = tmp_path.join("plain.sha256");
-    let sig_file = tmp_path.join("plain.sha256.ec.sign");
+    let sig_file = tmp_path.join("plain.sha256.ec.sig");
 
     // compute SHA-256 digest of input and write to digest_file
     let data = std::fs::read(&input_file)?;

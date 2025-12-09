@@ -55,6 +55,8 @@ export const menuItems: MenuItem[] = [
             },
             {key: "rsa/encrypt", label: "Encrypt"},
             {key: "rsa/decrypt", label: "Decrypt"},
+            {key: "rsa/sign", label: "Sign"},
+            {key: "rsa/verify", label: "Verify"},
         ],
     },
     {
@@ -75,6 +77,8 @@ export const menuItems: MenuItem[] = [
             },
             {key: "ec/encrypt", label: "Encrypt"},
             {key: "ec/decrypt", label: "Decrypt"},
+            {key: "ec/sign", label: "Sign"},
+            {key: "ec/verify", label: "Verify"},
         ],
     },
     {

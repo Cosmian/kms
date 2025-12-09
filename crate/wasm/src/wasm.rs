@@ -37,7 +37,8 @@ use cosmian_kms_client_utils::{
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
                 DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
                 GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse,
-                SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
@@ -687,6 +688,183 @@ pub fn encrypt_ec_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<EncryptResponse>(response)
+}
+
+// Sign requests
+fn js_to_cryptographic_parameters(
+    alg: Option<JsValue>,
+) -> Result<Option<CryptographicParameters>, JsValue> {
+    if alg.is_none() {
+        return Ok(None);
+    }
+    let Some(v) = alg else {
+        return Ok(None);
+    };
+    if v.is_null() || v.is_undefined() {
+        return Ok(None);
+    }
+    if let Some(s) = v.as_string() {
+        let s_norm = s.trim().to_lowercase();
+        let cp = match s_norm.as_str() {
+            // RSA
+            "rsassapss" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: None,
+                ..Default::default()
+            },
+            // ECDSA variants
+            "ecdsa-with-sha256" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha256.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha384" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha384.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha512" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha512.into()),
+                ..Default::default()
+            },
+            _ => {
+                return Err(JsValue::from_str(&format!(
+                    "Unsupported signature algorithm: '{s}'"
+                )));
+            }
+        };
+        return Ok(Some(cp));
+    }
+    // Try to deserialize a full `CryptographicParameters` object
+    let cp: CryptographicParameters = serde_wasm_bindgen::from_value(v).map_err(|e| {
+        JsValue::from_str(&format!(
+            "Invalid CryptographicParameters value: {e}. Expect string algorithm or CP object."
+        ))
+    })?;
+    Ok(Some(cp))
+}
+
+#[wasm_bindgen]
+pub fn sign_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "sign_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest.into()),
+            digested_data: None,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    let objects = to_ttlv(&request).map_err(|e| {
+        JsValue::from_str(&format!(
+            "sign_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={}: {e}",
+            if digested { request.digested_data.as_ref().map_or(0, std::vec::Vec::len) } else { request.data.as_ref().map_or(0, |v| v.len()) }
+        ))
+    })?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn parse_sign_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<SignResponse>(response).map_err(|e| {
+        JsValue::from_str(&format!(
+            "parse_sign_ttlv_response: invalid response: {e:?}"
+        ))
+    })
+}
+
+#[wasm_bindgen]
+pub fn signature_verify_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    signature: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "signature_verify_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest),
+            digested_data: None,
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    let objects = to_ttlv(&request).map_err(|e| {
+        let payload_len = if digested {
+            request.digested_data.as_ref().map_or(0, std::vec::Vec::len)
+        } else {
+            request.data.as_ref().map_or(0, std::vec::Vec::len)
+        };
+        let sig_len = request.signature_data.as_ref().map_or(0, std::vec::Vec::len);
+        JsValue::from_str(&format!(
+            "signature_verify_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={payload_len}, signature_len={sig_len}: {e}"
+        ))
+    })?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn parse_signature_verify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<SignatureVerifyResponse>(response).map_err(|e| {
+        JsValue::from_str(&format!(
+            "parse_signature_verify_ttlv_response: invalid response: {e:?}"
+        ))
+    })
 }
 
 // Export request

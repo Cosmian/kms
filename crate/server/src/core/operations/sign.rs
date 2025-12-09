@@ -49,7 +49,7 @@ pub(crate) async fn sign(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("sign")?;
-    trace!("sign: candidate uids: {uids:?}");
+    trace!("candidate uids: {uids:?}");
 
     // Find a suitable private key for signing
     let mut selected_owm = None;
@@ -96,7 +96,7 @@ pub(crate) async fn sign(
                 continue;
             }
         }
-        trace!("sign: user: {user} is authorized to sign using: {uid}");
+        trace!("user: {user} is authorized to sign using: {uid}");
 
         // Only private keys can be used for signing
         if let Object::PrivateKey { .. } = owm.object() {
@@ -130,7 +130,7 @@ pub(crate) async fn sign(
     let res = match owm.object() {
         Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(
-            "sign: signing with keys of type: {} is not supported",
+            "signing with keys of type: {} is not supported",
             other.object_type()
         ))),
     }?;
@@ -166,7 +166,7 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             trace!(
-                "sign_with_private_key: matching on key format type: {:?}",
+                "matching on key format type: {:?}",
                 key_block.key_format_type
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
@@ -210,22 +210,89 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
                 }
             };
 
+            // Streaming support: if init or a correlation_value is present, accumulate data
+            if request.init_indicator == Some(true) || request.correlation_value.is_some() {
+                let mut req_for_stream = request.clone();
+                req_for_stream.cryptographic_parameters = Some(effective_cp);
+                return handle_streaming_sign(req_for_stream, &private_key, owm.id());
+            }
+
+            // One-shot signing
             let mut req_for_sign = request.clone();
             req_for_sign.cryptographic_parameters = Some(effective_cp);
-
             let signature = sign_with_pkey(req_for_sign, &private_key)?;
-
-            let response = SignResponse {
+            Ok(SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                signature_data: (!request.init_indicator.unwrap_or(false))
-                    .then_some(signature.clone()),
-                correlation_value: request.init_indicator.unwrap_or(false).then_some(signature),
-            };
-            Ok(response)
+                signature_data: Some(signature),
+                correlation_value: None,
+            })
         }
         other => Err(KmsError::NotSupported(format!(
             "signing with private keys of format: {other}"
         ))),
+    }
+}
+
+fn handle_streaming_sign(
+    request: Sign,
+    private_key: &PKey<Private>,
+    uid: &str,
+) -> KResult<SignResponse> {
+    // Extract or initialize correlation data
+    let correlation_data = if let Some(corr) = &request.correlation_value {
+        corr.clone()
+    } else if request.init_indicator == Some(true) {
+        Vec::new()
+    } else {
+        return Err(KmsError::InvalidRequest(
+            "Correlation value required for non-initial streaming operations".to_owned(),
+        ));
+    };
+
+    // Determine input chunk
+    let data_to_process = match (&request.data, &request.digested_data) {
+        (Some(data), None) => data.clone(),
+        (None, Some(_)) => {
+            return Err(KmsError::InvalidRequest(
+                "Streaming sign supports non-digested data only".to_owned(),
+            ));
+        }
+        (Some(_), Some(_)) => {
+            return Err(KmsError::InvalidRequest(
+                "Cannot provide both data and digested_data".to_owned(),
+            ));
+        }
+        (None, None) if request.final_indicator == Some(true) => Vec::new().into(),
+        (None, None) => {
+            return Err(KmsError::InvalidRequest(
+                "Must provide data for streaming sign".to_owned(),
+            ));
+        }
+    };
+
+    if request.final_indicator == Some(true) {
+        // Final call: sign accumulated data
+        let mut all_data = correlation_data;
+        all_data.extend_from_slice(data_to_process.as_ref());
+        let mut final_req = request;
+        final_req.data = Some(all_data.into());
+        final_req.digested_data = None;
+        final_req.correlation_value = None;
+        let signature = sign_with_pkey(final_req, private_key)?;
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: Some(signature),
+            correlation_value: None,
+        })
+    } else {
+        // Intermediate call: accumulate data and return as correlation_value
+        let mut accumulated = correlation_data;
+        accumulated.extend_from_slice(data_to_process.as_ref());
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: None,
+            correlation_value: Some(accumulated),
+        })
     }
 }
 
@@ -235,7 +302,7 @@ fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>
         Id::EC => sign_with_ecdsa(request, private_key)?,
         Id::ED25519 => sign_with_eddsa(request, private_key)?,
         other => {
-            kms_bail!("Sign: private key type not supported: {other:?}")
+            kms_bail!("sign_with_pkey: private key type not supported: {other:?}")
         }
     };
     Ok(signature)
@@ -330,10 +397,7 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
         signer.sign_oneshot_to_vec(&data_to_sign)
     }?;
 
-    debug!(
-        "sign_with_rsa: signed: message signature length: {}",
-        signature.len()
-    );
+    debug!("signed: message signature length: {}", signature.len());
 
     Ok(signature)
 }
@@ -371,10 +435,7 @@ fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
         signer.sign_oneshot_to_vec(&data_to_sign)
     }?;
 
-    debug!(
-        "sign_with_ecdsa: signed: message signature length: {}",
-        signature.len()
-    );
+    debug!("signed: message signature length: {}", signature.len());
 
     Ok(signature)
 }
@@ -393,10 +454,7 @@ fn sign_with_eddsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
         signer.sign_oneshot_to_vec(&data_to_sign)
     }?;
 
-    debug!(
-        "sign_with_eddsa: signed: message signature length: {}",
-        signature.len()
-    );
+    debug!("signed: message signature length: {}", signature.len());
 
     Ok(signature)
 }
