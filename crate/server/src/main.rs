@@ -249,6 +249,7 @@ mod tests {
                 aws_xks_service: Some("example".to_owned()),
                 aws_xks_uri_path_prefix: Some("/engineering/".to_owned()),
                 aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+                aws_xks_sigv4_access_key_user: Some("ak_user".to_owned()),
                 aws_xks_sigv4_secret_access_key: Some(
                     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
                 ),
@@ -342,6 +343,7 @@ aws_xks_region = "us-east-1"
 aws_xks_service = "example"
 aws_xks_uri_path_prefix = "/engineering/"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+aws_xks_sigv4_access_key_user = "ak_user"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 aws_xks_partition = "aws"
 aws_xks_account_id = "123456789012"

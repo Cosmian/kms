@@ -8,6 +8,14 @@
 //! Proxy Impl: <https://github.com/aws-samples/aws-kms-xks-proxy/tree/main>
 //! Testing client: <https://github.com/aws-samples/aws-kms-xksproxy-test-client>
 
+use std::{
+    pin::Pin,
+    rc::Rc,
+    str::FromStr,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
 use actix_service::{Service, Transform};
 use actix_web::dev::Payload;
 use actix_web::{
@@ -16,26 +24,27 @@ use actix_web::{
     dev::{ServiceRequest, ServiceResponse},
     error::InternalError,
 };
-use chrono::Duration;
+use chrono::Utc;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
 };
-use cosmian_logger::info;
+use cosmian_logger::trace;
 use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
 };
 use reqwest::StatusCode;
-use std::{
-    pin::Pin,
-    rc::Rc,
-    sync::Arc,
-    task::{Context, Poll},
-};
+use tower::BoxError;
 
 use scratchstack_aws_signature::{
-    Request as Sigv4Request, SigningKey, SigningKeyKind::KSecret, sigv4_verify,
+    GetSigningKeyRequest,
+    GetSigningKeyResponse,
+    KSecretKey,
+    NO_ADDITIONAL_SIGNED_HEADERS,
+    SignatureOptions,
+    service_for_signing_key_fn,
+    sigv4_validate_request, //principal::User,
 };
 use zeroize::Zeroizing;
 
@@ -132,6 +141,90 @@ where
     kms_server: Arc<KMS>,
 }
 
+impl<S, B> Sigv4Service<S, B>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S::Future: 'static,
+{
+    /// Extracts the signing key for AWS Sigv4 validation
+    ///
+    /// This function retrieves the signing key based on the provided access key ID.
+    fn get_signing_key_fn(
+        &self,
+    ) -> impl Fn(
+        GetSigningKeyRequest,
+    )
+        -> Pin<Box<dyn Future<Output = Result<GetSigningKeyResponse, BoxError>> + Send>>
+    + Send
+    + Clone
+    + 'static {
+        let aws_xks_params = self.kms_server.params.aws_xks_params.clone();
+
+        move |request: GetSigningKeyRequest| {
+            let aws_xks_params = aws_xks_params.clone();
+            Box::pin(async move {
+                let Some(aws_xks_params) = aws_xks_params.clone() else {
+                    return Err(Box::<dyn std::error::Error + Send + Sync>::from(
+                        "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
+                    ));
+                };
+                // async move {
+                let access_key_id = aws_xks_params.sigv4_access_key_id;
+                let secret_key = aws_xks_params.sigv4_secret_access_key;
+                //
+
+                if request.access_key() != access_key_id.as_str() {
+                    return Err(Box::<dyn std::error::Error + Send + Sync>::from(format!(
+                        "Access key ID '{}' not found",
+                        request.access_key()
+                    )));
+                }
+                trace!("Matched AWS access key ID '{}'", request.access_key());
+
+                let k_secret_key = KSecretKey::from_str(&secret_key)
+                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                let signing_key = k_secret_key.to_ksigning(
+                    request.request_date(),
+                    request.region(),
+                    request.service(),
+                );
+
+                trace!(
+                    "Generated signing key for access key ID '{}'",
+                    request.access_key()
+                );
+
+                // let account_id = aws_xks_params.account_id;
+                // let user_path = aws_xks_params.user_path;
+                // let user_name = aws_xks_params.user_name;
+                // let partition = aws_xks_params.partition;
+                // let _user = User::new(
+                //     partition.as_str(),
+                //     account_id.as_str(),
+                //     user_path.as_str(),
+                //     user_name.as_str(),
+                // )
+                // .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                // info!(
+                //     "Created principal user '{_user:#?}' for access key ID '{}'",
+                //     request.access_key()
+                // );
+
+                let resp = GetSigningKeyResponse::builder()
+                    // .principal(user)
+                    .signing_key(signing_key)
+                    .build()
+                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+
+                Ok(resp)
+                // }
+            })
+        }
+    }
+}
+
 /// Implementation of the Service trait, which defines how requests are processed
 ///
 /// This is where the actual API token authentication logic happens for each incoming request.
@@ -156,18 +249,17 @@ where
         let service = self.service.clone();
         let kms_server = self.kms_server.clone();
 
+        let get_signing_key_fn = self.get_signing_key_fn();
         Box::pin(async move {
-            let params = kms_server.params.aws_xks_params.clone().ok_or_else(||
-                actix_web::error::ErrorInternalServerError(
-                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
-                )
-            )?;
-            let access_key_id = params.sigv4_access_key_id;
-            let access_key = params.sigv4_secret_access_key;
+            // let _key_bytes = get_aws_key(
+            //     &kms_server,
+            //     &aws_xks_params.sigv4_access_key_id,
+            //     &aws_xks_params.sigv4_access_key_user,
+            // )
+            // .await?;
 
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
-
             let body_as_bytes = body
                 .map(Result::unwrap_or_default)
                 .fold(Vec::new(), |mut acc, chunk| async move {
@@ -176,102 +268,82 @@ where
                 })
                 .await;
 
-            let http_request = to_http_request(&actix_web_http_request, &body_as_bytes)?;
-            let (parts, body) = http_request.into_parts();
-            // let body_as_bytes: Option<Bytes> = hyper::body::to_bytes(body).await.ok();
-            // let body_as_vec_u8: Option<Vec<u8>> =
-            //     body_as_bytes.as_ref().map(|bytes| bytes.to_vec());
-            let sigv4_req = Sigv4Request::from_http_request_parts(&parts, Some(body));
-            let gsk_req = sigv4_req
-                .to_get_signing_key_request(
-                    KSecret,
-                    params.region.as_str(),
-                    params.service.as_str(),
+            let params = kms_server.params.aws_xks_params.clone().ok_or_else(||
+                actix_web::error::ErrorInternalServerError(
+                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
                 )
-                .map_err(|signature_err| {
-                    actix_web::error::ErrorUnauthorized(signature_err.to_string())
+            )?;
+
+            // Wrap `get_signing_key` in a `tower::Service`.
+            let mut get_signing_key_service = service_for_signing_key_fn(get_signing_key_fn);
+
+            let signature_options = SignatureOptions::default();
+
+            let method: http::Method =
+                actix_web_http_request
+                    .method()
+                    .as_str()
+                    .parse()
+                    .map_err(|e| {
+                        actix_web::error::ErrorBadRequest(format!(
+                            "Failed to parse HTTP method for Sigv4 validation: {e:?}"
+                        ))
+                    })?;
+            let uri: http::Uri = actix_web_http_request
+                .uri()
+                .to_string()
+                .parse()
+                .map_err(|e| {
+                    actix_web::error::ErrorBadRequest(format!(
+                        "Failed to parse HTTP URI for Sigv4 validation: {e:?}"
+                    ))
+                })?;
+            let version: http::Version = match actix_web_http_request.version() {
+                actix_web::http::Version::HTTP_09 => http::Version::HTTP_09,
+                actix_web::http::Version::HTTP_10 => http::Version::HTTP_10,
+                actix_web::http::Version::HTTP_2 => http::Version::HTTP_2,
+                actix_web::http::Version::HTTP_3 => http::Version::HTTP_3,
+                _ => http::Version::HTTP_11,
+            };
+            let mut http_request_builder = http::request::Builder::new()
+                .method(method)
+                .uri(uri)
+                .version(version);
+
+            for (header_name, header_value) in actix_web_http_request.headers() {
+                http_request_builder =
+                    http_request_builder.header(header_name.as_str(), header_value.as_bytes());
+            }
+
+            let http_request = http_request_builder
+                .body(body_as_bytes.clone())
+                .map_err(|e| {
+                    actix_web::error::ErrorBadRequest(format!(
+                        "Failed to rebuild request for Sigv4 validation: {e:?}"
+                    ))
                 })?;
 
-            if access_key_id != gsk_req.access_key {
-                return Err(actix_web::error::ErrorUnauthorized(format!(
-                    "Access key id {} not found",
-                    gsk_req.access_key
-                )));
-            }
-
-            let signing_key = SigningKey {
-                kind: KSecret,
-                key: access_key.as_bytes().to_vec(),
-            };
-            let allowed_mismatch = Some(Duration::minutes(5));
-            if let Err(signature_error) = sigv4_verify(
-                &sigv4_req,
-                &signing_key,
-                allowed_mismatch,
+            let (_parts, bytes, sign_auth_response) = sigv4_validate_request(
+                http_request,
                 params.region.as_str(),
                 params.service.as_str(),
-            ) {
-                tracing::warn!("SigV4 failure: {signature_error}");
-                return Err(actix_web::error::ErrorUnauthorized(format!(
-                    "Signature v4 verification failed: {signature_error}",
-                )));
-            }
+                &mut get_signing_key_service,
+                Utc::now(),
+                &NO_ADDITIONAL_SIGNED_HEADERS,
+                signature_options,
+            )
+            .await
+            .map_err(|e| {
+                actix_web::error::ErrorUnauthorized(format!("Sigv4 validation failed: {e:?}"))
+            })?;
 
+            let _principal = sign_auth_response.principal();
             // rebuild request with body_as_bytes and forward to next service
-            let req =
-                ServiceRequest::from_parts(actix_web_http_request, Payload::from(body_as_bytes));
+            let req = ServiceRequest::from_parts(actix_web_http_request, Payload::from(bytes));
             let res = service.call(req).await?;
             Ok(res.map_into_left_body())
         })
     }
-}
-
-fn to_http_request(
-    actix_req: &actix_web::HttpRequest,
-    body: &[u8],
-) -> Result<http::Request<Vec<u8>>, actix_web::error::Error> {
-    let method: http::Method = actix_req.method().as_str().parse().map_err(|e| {
-        actix_web::error::ErrorBadRequest(format!(
-            "Failed to parse HTTP method for Sigv4 validation: {e:?}"
-        ))
-    })?;
-    let uri: http::Uri = actix_req.uri().to_string().parse().map_err(|e| {
-        actix_web::error::ErrorBadRequest(format!(
-            "Failed to parse HTTP URI for Sigv4 validation: {e:?}"
-        ))
-    })?;
-    let version: http::Version = match actix_req.version() {
-        actix_web::http::Version::HTTP_09 => http::Version::HTTP_09,
-        actix_web::http::Version::HTTP_10 => http::Version::HTTP_10,
-        actix_web::http::Version::HTTP_2 => http::Version::HTTP_2,
-        actix_web::http::Version::HTTP_3 => http::Version::HTTP_3,
-        _ => http::Version::HTTP_11,
-    };
-
-    let mut http_request_builder = http::request::Builder::new()
-        .method(method)
-        .uri(uri)
-        .version(version);
-
-    for (header_name, header_value) in actix_req.headers() {
-        info!(
-            "Sigv4 Middleware - Header: {}: {:?}",
-            header_name.as_str(),
-            header_value
-        );
-        http_request_builder =
-            http_request_builder.header(header_name.as_str(), header_value.as_bytes());
-    }
-    http_request_builder =
-        http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());
-
-    let http_request = http_request_builder.body(body.to_vec()).map_err(|e| {
-        actix_web::error::ErrorBadRequest(format!(
-            "Failed to rebuild request for Sigv4 validation: {e:?}"
-        ))
-    })?;
-
-    Ok(http_request)
 }
 
 /// Retrieves the AWS XKS sigv4 signing key from the KMS server
