@@ -16,7 +16,6 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::{core::KMS, routes::aws_xks::AwsXksParams};
 use actix_service::{Service, Transform};
 use actix_web::dev::Payload;
 use actix_web::{
@@ -42,6 +41,8 @@ use scratchstack_aws_signature::{
     SignatureOptions, principal::User, service_for_signing_key_fn, sigv4_validate_request,
 };
 use zeroize::Zeroizing;
+
+use crate::core::KMS;
 
 // const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
 // const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
@@ -107,16 +108,15 @@ where
     /// that this middleware wraps. It passes the necessary configuration
     /// to the `Sigv4Service`.
     fn new_transform(&self, service: S) -> Self::Future {
-        let Some(aws_xks_params) = self.kms_server.params.aws_xks_params.clone() else {
+        if self.kms_server.params.aws_xks_params.is_none() {
             tracing::error!(
                 "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set"
             );
             return err(());
-        };
+        }
         ok(Sigv4Service {
             service: Rc::new(service),
             kms_server: self.kms_server.clone(),
-            aws_xks_params,
         })
     }
 }
@@ -133,8 +133,6 @@ where
     service: Rc<S>,
     /// Reference to the KMS server for API token authentication
     kms_server: Arc<KMS>,
-    /// AWS XKS parameters for sigv4 validation
-    aws_xks_params: AwsXksParams,
 }
 
 impl<S, B> Sigv4Service<S, B>
@@ -232,16 +230,15 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
         let kms_server = self.kms_server.clone();
-        let aws_xks_params = self.aws_xks_params.clone();
 
         let get_signing_key_fn = self.get_signing_key_fn();
         Box::pin(async move {
-            let _key_bytes = get_aws_key(
-                &kms_server,
-                &aws_xks_params.sigv4_access_key_id,
-                &aws_xks_params.sigv4_access_key_user,
-            )
-            .await?;
+            // let _key_bytes = get_aws_key(
+            //     &kms_server,
+            //     &aws_xks_params.sigv4_access_key_id,
+            //     &aws_xks_params.sigv4_access_key_user,
+            // )
+            // .await?;
 
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
@@ -331,6 +328,8 @@ where
     }
 }
 
+/// Retrieves the AWS XKS sigv4 signing key from the KMS server
+#[allow(dead_code)]
 async fn get_aws_key(
     kms_server: &Arc<KMS>,
     sigv4_access_key_id: &str,
