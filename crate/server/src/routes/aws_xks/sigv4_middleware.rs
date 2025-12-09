@@ -21,7 +21,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
 };
-use cosmian_logger::info;
+use cosmian_logger::debug;
 use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
@@ -253,17 +253,28 @@ fn to_http_request(
         .uri(uri)
         .version(version);
 
+    // If using the HTTP/2, the host header is missing in the request and must be added manually
+    // for the signature to match
+    let mut host_header_available = false;
     for (header_name, header_value) in actix_req.headers() {
-        info!(
-            "Sigv4 Middleware - Header: {}: {:?}",
-            header_name.as_str(),
-            header_value
-        );
+        if header_name.as_str() == http::header::HOST.as_str() {
+            host_header_available = true;
+        }
         http_request_builder =
             http_request_builder.header(header_name.as_str(), header_value.as_bytes());
     }
-    http_request_builder =
-        http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());
+    if !host_header_available {
+        debug!(
+            "Sigv4 Middleware - Adding missing HOST header: {}",
+            actix_req.connection_info().host()
+        );
+        http_request_builder = http_request_builder.header(
+            http::header::HOST,
+            actix_req.connection_info().host().as_bytes(),
+        );
+    }
+    // http_request_builder =
+    //     http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());
 
     let http_request = http_request_builder.body(body.to_vec()).map_err(|e| {
         actix_web::error::ErrorBadRequest(format!(
