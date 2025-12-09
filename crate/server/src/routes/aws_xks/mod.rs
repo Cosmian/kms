@@ -9,7 +9,7 @@ mod sigv4_middleware;
 
 use crate::{error::KmsError, result::KResultHelper};
 pub use aws_xks_config::AwsXksConfig;
-pub use health_status::get_health_status;
+pub(crate) use health_status::get_health_status;
 pub use sigv4_middleware::Sigv4MWare;
 
 // const METADATA: &str = "metadata";
