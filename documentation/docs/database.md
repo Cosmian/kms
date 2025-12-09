@@ -242,6 +242,34 @@ calls fail.
 
 Upgrades resist being interrupted in the middle and resumed from the start if that happens.
 
+### MySQL schema update (5.13.0)
+
+As of version 5.13.0, the MySQL schema was updated to include PRIMARY KEY constraints on the `tags` and `read_access` tables to ensure compatibility with MySQL clustering solutions (e.g., Percona XtraDB Cluster with `pxc_strict_mode=ENFORCING`, MariaDB Galera).
+
+New installations of 5.13.0+ automatically create the corrected tables.
+
+Existing installations upgrading to 5.13.0 will keep the old table definitions if those tables already exist. If you rely on clustering/replication that requires PRIMARY KEYs, apply the following manual migration before starting the KMS:
+
+        -- Fix tags table
+        ALTER TABLE tags
+            DROP INDEX id,
+            MODIFY id VARCHAR(128) NOT NULL,
+            MODIFY tag VARCHAR(255) NOT NULL,
+            ADD PRIMARY KEY (id, tag);
+
+        -- Fix read_access table
+        ALTER TABLE read_access
+            DROP INDEX id,
+            MODIFY id VARCHAR(128) NOT NULL,
+            MODIFY userid VARCHAR(255) NOT NULL,
+            ADD PRIMARY KEY (id, userid);
+
+Notes:
+
+- Run these statements using a privileged MySQL user (e.g., `root`).
+- Ensure application access is paused during the migration.
+- No data loss occurs; this operation converts UNIQUE constraints to PRIMARY KEYs and enforces NOT NULL.
+
 ## The Unwrapped Objects Cache
 
 The unwrapped cache is a memory cache, and it is not persistent. The unwrapped cache is used to store unwrapped objects
