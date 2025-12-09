@@ -327,3 +327,101 @@ async fn test_rsa_streaming_sign_and_verify() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+// Deterministic RSA-PSS with salt_length=0 via KMIP Sign
+#[tokio::test]
+async fn rsa_pss_zero_salt_deterministic_cli() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (private_key_id, _public_key_id) = CreateKeyPairAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+
+    let data = std::fs::read("../../test_data/plain.txt")?;
+
+    // KMIP Sign with RSASSA-PSS and SaltLength=0
+    let mut cp = CDigitalSignatureAlgorithmRSA::RSASSAPSS.to_cryptographic_parameters();
+    cp.hashing_algorithm = Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);
+    cp.mask_generator_hashing_algorithm =
+        Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);
+    cp.salt_length = Some(0);
+    let sign_req = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+        cryptographic_parameters: Some(cp),
+        data: Some(data.clone().into()),
+        digested_data: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let sig1 = ctx
+        .get_owner_client()
+        .sign(sign_req.clone())
+        .await?
+        .signature_data
+        .expect("signature_data");
+    let sig2 = ctx
+        .get_owner_client()
+        .sign(sign_req)
+        .await?
+        .signature_data
+        .expect("signature_data");
+
+    assert_eq!(sig1, sig2, "RSA-PSS with zero salt must be deterministic");
+    Ok(())
+}
+
+// Deterministic RSA PKCS#1 v1.5 via KMIP Sign
+#[tokio::test]
+async fn rsa_pkcs1_v15_deterministic_cli() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (private_key_id, _public_key_id) = CreateKeyPairAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+
+    let data = std::fs::read("../../test_data/plain.txt")?;
+
+    // Use fully qualified paths to avoid local `use` items after statements
+    let cp = CryptographicParameters {
+        cryptographic_algorithm: Some(
+            cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA,
+        ),
+        hashing_algorithm: Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256),
+        digital_signature_algorithm: Some(
+            cosmian_kmip::kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+        ),
+        ..Default::default()
+    };
+    let sign_req = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+        cryptographic_parameters: Some(cp),
+        data: Some(data.clone().into()),
+        digested_data: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let sig1 = ctx
+        .get_owner_client()
+        .sign(sign_req.clone())
+        .await?
+        .signature_data
+        .expect("signature_data");
+    let sig2 = ctx
+        .get_owner_client()
+        .sign(sign_req)
+        .await?
+        .signature_data
+        .expect("signature_data");
+
+    assert_eq!(
+        sig1, sig2,
+        "RSA PKCS#1 v1.5 signatures must be deterministic"
+    );
+    Ok(())
+}

@@ -2,30 +2,26 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm, PaddingMethod},
+        kmip_0::kmip_types::ErrorReason,
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
             kmip_operations::{SignatureVerify, SignatureVerifyResponse},
-            kmip_types::{
-                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                UniqueIdentifier, ValidityIndicator,
-            },
+            kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
         },
         time_normalize,
     },
     cosmian_kms_crypto::{
-        crypto::rsa::default_cryptographic_parameters, openssl::kmip_public_key_to_openssl,
+        crypto::{
+            elliptic_curves::verify::{ecdsa_verify, ed25519_verify},
+            rsa::{default_cryptographic_parameters, verify::rsa_verify},
+        },
+        openssl::kmip_public_key_to_openssl,
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_logger::{debug, trace};
-use openssl::{
-    hash::MessageDigest,
-    pkey::{Id, PKey, Public},
-    rsa::Padding,
-    sign::Verifier,
-};
+use cosmian_logger::debug;
+use openssl::pkey::{Id, PKey, Public};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -192,7 +188,7 @@ pub(crate) async fn signature_verify(
         &crypto_params,
         request.digested_data.is_some(),
     )
-    .context("signature_verify: OpenSSL verification failed")?;
+    .context("signature_verify: verification operation failed")?;
 
     debug!("Signature verification result: {validity_indicator:?}");
 
@@ -251,267 +247,28 @@ fn verify_signature(
     crypto_params: &CryptographicParameters,
     is_digested: bool,
 ) -> KResult<ValidityIndicator> {
-    // Resolve signature algorithm coherently from provided parameters
-    let algorithm = crypto_params.cryptographic_algorithm;
-    let padding = crypto_params.padding_method;
-    let signature_algorithm = if let Some(dsa) = crypto_params.digital_signature_algorithm {
-        dsa
-    } else {
-        match algorithm {
-            Some(CryptographicAlgorithm::ECDSA | CryptographicAlgorithm::EC) => match crypto_params
-                .hashing_algorithm
-                .unwrap_or(HashingAlgorithm::SHA256)
-            {
-                HashingAlgorithm::SHA256 => DigitalSignatureAlgorithm::ECDSAWithSHA256,
-                HashingAlgorithm::SHA384 => DigitalSignatureAlgorithm::ECDSAWithSHA384,
-                HashingAlgorithm::SHA512 => DigitalSignatureAlgorithm::ECDSAWithSHA512,
-                h => kms_bail!(KmsError::NotSupported(format!(
-                    "verify_signature: ECDSA unsupported hash: {h:?}"
-                ))),
-            },
-            Some(CryptographicAlgorithm::RSA) => {
-                // Respect explicit PSS padding request
-                if padding == Some(PaddingMethod::PSS) {
-                    DigitalSignatureAlgorithm::RSASSAPSS
-                } else {
-                    match crypto_params.hashing_algorithm {
-                        Some(HashingAlgorithm::SHA256) => {
-                            DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA384) => {
-                            DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA512) => {
-                            DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3256) => {
-                            DigitalSignatureAlgorithm::SHA3256WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3384) => {
-                            DigitalSignatureAlgorithm::SHA3384WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3512) => {
-                            DigitalSignatureAlgorithm::SHA3512WithRSAEncryption
-                        }
-                        _ => DigitalSignatureAlgorithm::RSASSAPSS,
-                    }
-                }
-            }
-            None => {
-                // No explicit algorithm provided; choose sensible default based on key type
-                match verification_key.id() {
-                    Id::RSA => match crypto_params.hashing_algorithm {
-                        Some(
-                            HashingAlgorithm::SHA256
-                            | HashingAlgorithm::SHA384
-                            | HashingAlgorithm::SHA512,
-                        ) if padding == Some(PaddingMethod::PSS) => {
-                            DigitalSignatureAlgorithm::RSASSAPSS
-                        }
-                        Some(HashingAlgorithm::SHA256) => {
-                            DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA384) => {
-                            DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA512) => {
-                            DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3256) => {
-                            DigitalSignatureAlgorithm::SHA3256WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3384) => {
-                            DigitalSignatureAlgorithm::SHA3384WithRSAEncryption
-                        }
-                        Some(HashingAlgorithm::SHA3512) => {
-                            DigitalSignatureAlgorithm::SHA3512WithRSAEncryption
-                        }
-                        _ => DigitalSignatureAlgorithm::RSASSAPSS,
-                    },
-                    Id::EC => match crypto_params
-                        .hashing_algorithm
-                        .unwrap_or(HashingAlgorithm::SHA256)
-                    {
-                        HashingAlgorithm::SHA256 => DigitalSignatureAlgorithm::ECDSAWithSHA256,
-                        HashingAlgorithm::SHA384 => DigitalSignatureAlgorithm::ECDSAWithSHA384,
-                        HashingAlgorithm::SHA512 => DigitalSignatureAlgorithm::ECDSAWithSHA512,
-                        h => kms_bail!(KmsError::NotSupported(format!(
-                            "verify_signature: ECDSA unsupported hash: {h:?}"
-                        ))),
-                    },
-                    _ => DigitalSignatureAlgorithm::ECDSAWithSHA256,
-                }
-            }
-            _ => DigitalSignatureAlgorithm::ECDSAWithSHA256,
-        }
-    };
-
-    // Choose the hashing algorithm to use: prefer explicit hashing_algorithm from CP when present
-    let message_digest = if let Some(h) = &crypto_params.hashing_algorithm {
-        match h {
-            HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-            HashingAlgorithm::SHA256 => MessageDigest::sha256(),
-            HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-            HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-            HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-            HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-            HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: hashing algorithm not supported: {h:?}"
-            ))),
-        }
-    } else {
-        match signature_algorithm {
-            DigitalSignatureAlgorithm::RSASSAPSS
-            | DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA256 => MessageDigest::sha256(),
-            DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA384 => MessageDigest::sha384(),
-            DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA512 => MessageDigest::sha512(),
-            DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
-            DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
-            DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: not supported: {signature_algorithm:?}"
-            ))),
-        }
-    };
-
-    // MGF1 digest: honor explicit mask_generator_hashing_algorithm when present, otherwise default to message_digest
-    let mgf1_digest = if let Some(h) = &crypto_params.mask_generator_hashing_algorithm {
-        match h {
-            HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-            HashingAlgorithm::SHA256 => MessageDigest::sha256(),
-            HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-            HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-            HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-            HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-            HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: MGF1 hashing algorithm not supported: {h:?}"
-            ))),
-        }
-    } else {
-        message_digest
-    };
-
-    let md_name = if message_digest == MessageDigest::sha1() {
-        "SHA1"
-    } else if message_digest == MessageDigest::sha256() {
-        "SHA256"
-    } else if message_digest == MessageDigest::sha384() {
-        "SHA384"
-    } else if message_digest == MessageDigest::sha512() {
-        "SHA512"
-    } else if message_digest == MessageDigest::sha3_256() {
-        "SHA3-256"
-    } else if message_digest == MessageDigest::sha3_384() {
-        "SHA3-384"
-    } else if message_digest == MessageDigest::sha3_512() {
-        "SHA3-512"
-    } else {
-        "OTHER"
-    };
-    let mgf1_name = if mgf1_digest == MessageDigest::sha1() {
-        "SHA1"
-    } else if mgf1_digest == MessageDigest::sha256() {
-        "SHA256"
-    } else if mgf1_digest == MessageDigest::sha384() {
-        "SHA384"
-    } else if mgf1_digest == MessageDigest::sha512() {
-        "SHA512"
-    } else if mgf1_digest == MessageDigest::sha3_256() {
-        "SHA3-256"
-    } else if mgf1_digest == MessageDigest::sha3_384() {
-        "SHA3-384"
-    } else if mgf1_digest == MessageDigest::sha3_512() {
-        "SHA3-512"
-    } else {
-        "OTHER"
-    };
-    debug!(
-        "verify_signature: algo={algorithm:?} sig_alg={signature_algorithm:?} pad={:?} digest={} mgf1={} digested_data={} data_len={} sig_len={}",
-        padding,
-        md_name,
-        mgf1_name,
-        is_digested,
-        data.len(),
-        signature.len()
-    );
-
-    let is_valid = match verification_key.id() {
-        Id::RSA | Id::EC => {
-            trace!("verify_signature: using RSA or EC key for verification");
-            // Specialize RSA-PSS path to always use no-digest verifier with explicit pre-hash
-            if DigitalSignatureAlgorithm::RSASSAPSS == signature_algorithm
-                && verification_key.id() == Id::RSA
-            {
-                // RSA-PSS verification with MGF1 fallback: if primary MGF1 MD fails, try SHA-1
-                let try_verify = |mgf: MessageDigest| -> KResult<bool> {
-                    if is_digested {
-                        let mut v = Verifier::new_without_digest(verification_key)
-                            .context("verify_signature: create RSA-PSS verifier without digest")?;
-                        v.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        v.set_rsa_mgf1_md(mgf)?;
-                        Ok(v.verify_oneshot(signature, data)
-                            .context("verify_signature: RSA-PSS oneshot failed (pre-hash)")?)
-                    } else {
-                        let mut v = Verifier::new(message_digest, verification_key)
-                            .context("verify_signature: create RSA-PSS verifier with digest")?;
-                        v.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        v.set_rsa_mgf1_md(mgf)?;
-                        Ok(v.verify_oneshot(signature, data)
-                            .context("verify_signature: RSA-PSS oneshot failed (digest path)")?)
-                    }
-                };
-
-                let primary = try_verify(mgf1_digest)?;
-                if primary {
-                    true
-                } else {
-                    // Fallback to SHA-1 for MGF1 if not already SHA-1
-                    let mgf1_sha1 = MessageDigest::sha1();
-                    if mgf1_sha1 == mgf1_digest {
-                        false
-                    } else {
-                        try_verify(mgf1_sha1)?
-                    }
-                }
-            } else {
-                // Non-PSS algorithms: use OpenSSL-managed digesting
-                let mut verifier = if is_digested {
-                    Verifier::new_without_digest(verification_key)
-                        .context("verify_signature: create verifier without digest")?
-                } else {
-                    Verifier::new(message_digest, verification_key)
-                        .context("verify_signature: create verifier with digest")?
-                };
-                verifier
-                    .verify_oneshot(signature, data)
-                    .context("verify_signature: oneshot failed")?
-            }
-        }
-        Id::ED25519 => {
-            trace!("verify_signature: using ED25519 key for verification");
-            // ED25519 verifies the signature directly on the data
-            let mut verifier = Verifier::new_without_digest(verification_key)
-                .context("verify_signature: create ED25519 verifier")?;
-            verifier
-                .verify_oneshot(signature, data)
-                .context("verify_signature: ED25519 oneshot failed")?
-        }
+    let res = match verification_key.id() {
+        Id::RSA => rsa_verify(
+            verification_key,
+            data,
+            signature,
+            crypto_params,
+            is_digested,
+        ),
+        Id::EC => ecdsa_verify(
+            verification_key,
+            data,
+            signature,
+            crypto_params,
+            is_digested,
+        ),
+        Id::ED25519 => ed25519_verify(verification_key, data, signature),
         _ => kms_bail!(KmsError::NotSupported(format!(
             "verify_signature: key type not supported: {:?}",
             verification_key.id()
         ))),
-    };
-
-    Ok(if is_valid {
-        ValidityIndicator::Valid
-    } else {
-        ValidityIndicator::Invalid
-    })
+    }?;
+    Ok(res)
 }
 
 /// Handle streaming signature verification operations.
@@ -610,6 +367,7 @@ fn handle_streaming_verification(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use hex::FromHex;
+    use openssl::{hash::MessageDigest, rsa::Padding, sign::Verifier};
 
     use super::*;
 
@@ -650,10 +408,11 @@ mod tests {
         let rsa = openssl::rsa::Rsa::public_key_from_der_pkcs1(&pk_der).unwrap();
         let pkey = PKey::from_rsa(rsa).unwrap();
 
+        // imports moved to module top to satisfy clippy::items-after-statements
         let cp = CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-            padding_method: Some(PaddingMethod::PSS),
-            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            cryptographic_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA),
+            padding_method: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod::PSS),
+            hashing_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256),
             digital_signature_algorithm: None,
             mask_generator: None,
             mask_generator_hashing_algorithm: None,

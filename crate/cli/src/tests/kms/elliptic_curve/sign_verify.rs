@@ -4,6 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
     kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
 };
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::Curve;
 use cosmian_logger::log_init;
 use sha2::Digest;
 use tempfile::TempDir;
@@ -18,6 +19,61 @@ use crate::{
     },
     error::result::KmsCliResult,
 };
+
+// Deterministic ECDSA under RFC6979 (non-fips): two signatures over same digest must match
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn ecdsa_deterministic_cli_rfc6979() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    let input_file = PathBuf::from("../../test_data/plain.txt");
+    let digest_file = tmp_path.join("plain.sha256");
+
+    // Pre-compute SHA-256 digest
+    let data = std::fs::read(&input_file)?;
+    let digest = sha2::Sha256::digest(&data);
+    std::fs::write(&digest_file, digest)?;
+
+    // Create P-256 key pair
+    let (private_key_id, _public_key_id) = CreateKeyPairAction::default()
+        .run(ctx.get_owner_client())
+        .await?;
+
+    // KMIP Sign on digested data twice
+    let cp = Some(CDigitalSignatureAlgorithmEC::ECDSAWithSHA256.to_cryptographic_parameters());
+    let sign_req = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+        cryptographic_parameters: cp,
+        data: None,
+        digested_data: Some(std::fs::read(&digest_file)?),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let sig1 = ctx
+        .get_owner_client()
+        .sign(sign_req.clone())
+        .await?
+        .signature_data
+        .expect("signature_data");
+    let sig2 = ctx
+        .get_owner_client()
+        .sign(sign_req)
+        .await?
+        .signature_data
+        .expect("signature_data");
+
+    assert_eq!(
+        sig1, sig2,
+        "ECDSA signatures must be deterministic under RFC6979 path"
+    );
+    Ok(())
+}
 
 // Additional coverage: end-to-end EC CLI digested sign and verify
 #[tokio::test]
@@ -252,5 +308,51 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
     .await?;
     assert_eq!(validity, ValidityIndicator::Valid);
 
+    Ok(())
+}
+
+// Deterministic Ed25519: two signatures over same data must match
+#[tokio::test]
+async fn ed25519_deterministic_cli() -> KmsCliResult<()> {
+    log_init(None);
+
+    let ctx = start_default_test_kms_server().await;
+
+    // Create Ed25519 key pair via CLI action
+    let (private_key_id, _public_key_id) = CreateKeyPairAction {
+        curve: Curve::Ed25519,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // Prepare raw data
+    let data = std::fs::read("../../test_data/plain.txt")?;
+
+    // Build KMIP Sign request; EDDSA is selected by key type, CP can be None
+    let sign_req = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+        cryptographic_parameters: None,
+        data: Some(data.clone().into()),
+        digested_data: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let sig1 = ctx
+        .get_owner_client()
+        .sign(sign_req.clone())
+        .await?
+        .signature_data
+        .expect("signature_data");
+    let sig2 = ctx
+        .get_owner_client()
+        .sign(sign_req)
+        .await?
+        .signature_data
+        .expect("signature_data");
+
+    assert_eq!(sig1, sig2, "Ed25519 signatures must be deterministic");
     Ok(())
 }

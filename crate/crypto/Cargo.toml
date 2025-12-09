@@ -28,6 +28,8 @@ non-fips = [
     "cosmian_cover_crypt",
     "aes-gcm-siv",
     "argon2",
+    "dep:sha2",
+    "dep:p256",
 ]
 
 [dependencies]
@@ -53,6 +55,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
+sha2 = { workspace = true, optional = true }
+p256 = { version = "0.13", features = ["ecdsa"], optional = true }
 
 [dev-dependencies]
 aes-kw = "0.3.0-rc.1"

@@ -14,7 +14,8 @@ use cosmian_kms_server_database::reexport::{
         time_normalize,
     },
     cosmian_kms_crypto::{
-        crypto::rsa::default_cryptographic_parameters, openssl::kmip_private_key_to_openssl,
+        crypto::{elliptic_curves::sign::ecdsa_sign, rsa::default_cryptographic_parameters},
+        openssl::kmip_private_key_to_openssl,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
@@ -299,7 +300,7 @@ fn handle_streaming_sign(
 fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let signature = match private_key.id() {
         Id::RSA => sign_with_rsa(request, private_key)?,
-        Id::EC => sign_with_ecdsa(request, private_key)?,
+        Id::EC => ecdsa_sign(&request, private_key)?,
         Id::ED25519 => sign_with_eddsa(request, private_key)?,
         other => {
             kms_bail!("sign_with_pkey: private key type not supported: {other:?}")
@@ -381,50 +382,20 @@ fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>>
             } else {
                 signer.set_rsa_mgf1_md(digest)?;
             }
+            // Deterministic signature option: if CP.salt_length is provided, honor it
+            // salt_length = 0 yields deterministic RSASSA-PSS signatures
+            if let Some(salt_len) = cp.salt_length {
+                signer.set_rsa_pss_saltlen(RsaPssSaltlen::custom(salt_len))?;
+            } else {
+                // Default (digest length) preserves current behavior
+                signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            }
         } else {
             signer.set_rsa_mgf1_md(digest)?;
+            // Set salt length to digest length for RSASSA-PSS compliance
+            signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
         }
-        // Set salt length to digest length for RSASSA-PSS compliance
-        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
     }
-    if let Some(corr) = request.correlation_value {
-        signer.update(&corr)?;
-    }
-    let signature = if let Some(digested_data) = &request.digested_data {
-        signer.sign_oneshot_to_vec(digested_data)
-    } else {
-        let data_to_sign = request.data.unwrap_or_default();
-        signer.sign_oneshot_to_vec(&data_to_sign)
-    }?;
-
-    debug!("signed: message signature length: {}", signature.len());
-
-    Ok(signature)
-}
-
-fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    let digital_signature_algorithm = request.cryptographic_parameters.as_ref().map_or_else(
-        || DigitalSignatureAlgorithm::ECDSAWithSHA256,
-        |cp| {
-            cp.digital_signature_algorithm
-                .unwrap_or(DigitalSignatureAlgorithm::ECDSAWithSHA256)
-        },
-    );
-
-    debug!("signing with ECDSA {digital_signature_algorithm}");
-
-    // For ECDSA signatures, we use the appropriate hash function
-    let digest = match digital_signature_algorithm {
-        DigitalSignatureAlgorithm::ECDSAWithSHA256 => MessageDigest::sha256(),
-        DigitalSignatureAlgorithm::ECDSAWithSHA384 => MessageDigest::sha384(),
-        DigitalSignatureAlgorithm::ECDSAWithSHA512 => MessageDigest::sha512(),
-        _ => kms_bail!(KmsError::NotSupported(format!(
-            "sign_with_ecdsa: not supported: {digital_signature_algorithm:?}"
-        ))),
-    };
-
-    let mut signer = Signer::new(digest, private_key)?;
-
     if let Some(corr) = request.correlation_value {
         signer.update(&corr)?;
     }
@@ -457,4 +428,146 @@ fn sign_with_eddsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
     debug!("signed: message signature length: {}", signature.len());
 
     Ok(signature)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
+
+    use super::*;
+
+    fn sign_twice_and_compare(sign_req: &Sign, pkey: &PKey<Private>) -> (Vec<u8>, Vec<u8>) {
+        let req1 = sign_req.clone();
+        let req2 = sign_req.clone();
+        let sig1_res = sign_with_pkey(req1, pkey);
+        assert!(
+            sig1_res.is_ok(),
+            "first signature failed: {:?}",
+            sig1_res.err()
+        );
+        let sig1 = sig1_res.unwrap();
+        let sig2_res = sign_with_pkey(req2, pkey);
+        assert!(
+            sig2_res.is_ok(),
+            "second signature failed: {:?}",
+            sig2_res.err()
+        );
+        let sig2 = sig2_res.unwrap();
+        (sig1, sig2)
+    }
+
+    #[test]
+    fn rsa_pkcs1_v15_deterministic() {
+        // Generate RSA key
+        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        // Prepare Sign request for PKCS#1 v1.5 with SHA-256
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA256WithRSAEncryption),
+            hashing_algorithm: Some(KmipHash::SHA256),
+            ..Default::default()
+        };
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"deterministic test".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
+        assert_eq!(sig1, sig2, "RSA PKCS#1 signatures must be deterministic");
+    }
+
+    #[test]
+    fn rsa_pss_zero_salt_deterministic() {
+        // Generate RSA key
+        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        // RSASSA-PSS with SHA-256 and salt_length = 0 should be deterministic
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            hashing_algorithm: Some(KmipHash::SHA256),
+            mask_generator_hashing_algorithm: Some(KmipHash::SHA256),
+            salt_length: Some(0),
+            ..Default::default()
+        };
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"deterministic PSS".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
+        assert_eq!(sig1, sig2, "RSA-PSS with zero salt must be deterministic");
+    }
+
+    #[test]
+    fn ed25519_deterministic() {
+        // Generate Ed25519 key
+        let pkey = PKey::generate_ed25519().unwrap_or_else(|e| panic!("ed25519 gen: {e}"));
+        let cp: CryptographicParameters = CryptographicParameters::default();
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"ed25519 deterministic".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
+        assert_eq!(sig1, sig2, "Ed25519 signatures must be deterministic");
+    }
+
+    #[test]
+    fn ecdsa_is_nondeterministic() {
+        // Generate ECDSA key on NIST P-256
+        let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
+            .unwrap_or_else(|e| panic!("ec group: {e}"));
+        let ec_key =
+            openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
+        let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        // Prepare ECDSA with SHA-256
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"ecdsa nondeterminism test".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
+        #[cfg(feature = "non-fips")]
+        {
+            assert_eq!(
+                sig1, sig2,
+                "ECDSA signatures must be deterministic under RFC6979 path"
+            );
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            assert_ne!(
+                sig1, sig2,
+                "ECDSA signatures should not be deterministic under OpenSSL"
+            );
+        }
+    }
 }

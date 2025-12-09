@@ -60,7 +60,7 @@ const RsaVerifyForm: React.FC = () => {
                     let decoded: Uint8Array | undefined;
                     try {
                         decoded = Uint8Array.from(atob(candidate), c => c.charCodeAt(0));
-                    } catch (_) {
+                    } catch {
                         decoded = undefined;
                     }
                     if (!decoded) {
@@ -76,7 +76,7 @@ const RsaVerifyForm: React.FC = () => {
                     if (decoded && decoded.byteLength > 0) {
                         sigBuf = decoded;
                     }
-                } catch (_) {
+                } catch {
                     // Ignore decode issues; keep original bytes
                 }
             }
@@ -95,7 +95,9 @@ const RsaVerifyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_signature_verify_ttlv_response(result_str);
-                const validity = (response as any).ValidityIndicator ?? (response as any).validity_indicator ?? (response as any).validityIndicator ?? "Unknown";
+                const respObj = response as unknown as Record<string, unknown>;
+                const validityRaw = respObj.ValidityIndicator ?? respObj.validity_indicator ?? respObj.validityIndicator;
+                const validity = typeof validityRaw === "string" ? validityRaw : String(validityRaw ?? "Unknown");
                 setRes(`Signature validity: ${validity}`);
             }
         } catch (e) {

@@ -123,7 +123,7 @@ pem = { workspace = true }
 [build-dependencies]
 actix-http = "3.10"
 time = { workspace = true, features = ["local-offset", "formatting"] }
-sha2 = "0.10"
+sha2 = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ["sha2"]

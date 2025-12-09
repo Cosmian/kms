@@ -41,7 +41,7 @@ impl CDigitalSignatureAlgorithmRSA {
         match self {
             Self::RSASSAPSS => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::None),
+                padding_method: Some(PaddingMethod::PSS),
                 hashing_algorithm: None,
                 ..Default::default()
             },
@@ -64,19 +64,19 @@ impl CDigitalSignatureAlgorithmEC {
         match self {
             Self::ECDSAWithSHA256 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: Some(PaddingMethod::None),
+                padding_method: None,
                 hashing_algorithm: Some(HashFn::Sha256.into()),
                 ..Default::default()
             },
             Self::ECDSAWithSHA384 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: Some(PaddingMethod::None),
+                padding_method: None,
                 hashing_algorithm: Some(HashFn::Sha384.into()),
                 ..Default::default()
             },
             Self::ECDSAWithSHA512 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: Some(PaddingMethod::None),
+                padding_method: None,
                 hashing_algorithm: Some(HashFn::Sha512.into()),
                 ..Default::default()
             },

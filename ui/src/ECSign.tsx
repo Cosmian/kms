@@ -58,17 +58,18 @@ const ECSignForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_sign_ttlv_response(result_str);
-                // Support different casings or encodings from wasm response
-                const sigAny: any = (response as any).SignatureData ?? (response as any).signature_data ?? (response as any).signatureData;
+                // Support different casings or encodings from wasm response without using `any`
+                const respObj = response as unknown as Record<string, unknown>;
+                const sigCandidate = respObj.SignatureData ?? respObj.signature_data ?? respObj.signatureData;
                 let signature: Uint8Array;
-                if (sigAny instanceof Uint8Array) {
-                    signature = sigAny;
-                } else if (Array.isArray(sigAny)) {
-                    signature = new Uint8Array(sigAny);
-                } else if (typeof sigAny === "string") {
+                if (sigCandidate instanceof Uint8Array) {
+                    signature = sigCandidate;
+                } else if (Array.isArray(sigCandidate)) {
+                    signature = new Uint8Array(sigCandidate as number[]);
+                } else if (typeof sigCandidate === "string") {
                     // Base64 string (e.g., from logs)
-                    const base64 = sigAny.trim();
-                    signature = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+                    const base64 = sigCandidate.trim();
+                    signature = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
                 } else {
                     signature = new Uint8Array();
                 }
