@@ -49,7 +49,7 @@ impl From<KmsError> for AzureEkmErrorReply {
         };
 
         Self {
-            code: code.to_string(),
+            code: code.to_owned(),
             message: "An Azure EKM request to the Cosmian KMS failed".to_owned(),
         }
     }
@@ -58,9 +58,9 @@ impl From<KmsError> for AzureEkmErrorReply {
 // bunch of constructors for known error replies
 impl AzureEkmErrorReply {
     /// API version not supported
-    pub fn unsupported_api_version(version: &str) -> Self {
+    pub(crate) fn unsupported_api_version(version: &str) -> Self {
         Self {
-            code: "UnsupportedApiVersion".to_string(),
+            code: "UnsupportedApiVersion".to_owned(),
             message: format!(
                 "API version '{}' not supported. Supported: {:?}",
                 version, SUPPORTED_API_VERSIONS
@@ -69,17 +69,17 @@ impl AzureEkmErrorReply {
     }
 
     /// Invalid request - malformed JSON, missing fields, invalid parameters
-    pub fn invalid_request(message: impl Into<String>) -> Self {
+    pub(crate) fn invalid_request(message: impl Into<String>) -> Self {
         Self {
-            code: "InvalidRequest".to_string(),
+            code: "InvalidRequest".to_owned(),
             message: message.into(),
         }
     }
 
     /// Algorithm not supported for this key type
-    pub fn unsupported_algorithm(algorithm: &str, key_type: &str) -> Self {
+    pub(crate) fn unsupported_algorithm(algorithm: &str, key_type: &str) -> Self {
         Self {
-            code: "UnsupportedAlgorithm".to_string(),
+            code: "UnsupportedAlgorithm".to_owned(),
             message: format!(
                 "Algorithm '{}' is not supported for key type '{}'",
                 algorithm, key_type
@@ -88,60 +88,58 @@ impl AzureEkmErrorReply {
     }
 
     /// Key not found in the External Key Management System
-    pub fn key_not_found(key_name: &str) -> Self {
+    pub(crate) fn key_not_found(key_name: &str) -> Self {
         Self {
-            code: "KeyNotFound".to_string(),
+            code: "KeyNotFound".to_owned(),
             message: format!("Key '{}' not found", key_name),
         }
     }
 
     /// Authentication failed (invalid mTLS certificate, etc.)
-    pub fn unauthorized(message: impl Into<String>) -> Self {
+    pub(crate) fn unauthorized(message: impl Into<String>) -> Self {
         Self {
-            code: "Unauthorized".to_string(),
+            code: "Unauthorized".to_owned(),
             message: message.into(),
         }
     }
 
     /// Access denied (authenticated but not authorized)
-    pub fn forbidden(message: impl Into<String>) -> Self {
+    pub(crate) fn forbidden(message: impl Into<String>) -> Self {
         Self {
-            code: "Forbidden".to_string(),
+            code: "Forbidden".to_owned(),
             message: message.into(),
         }
     }
 
     /// Key is disabled
-    pub fn key_disabled(key_name: &str) -> Self {
+    pub(crate) fn key_disabled(key_name: &str) -> Self {
         Self {
-            code: "KeyDisabled".to_string(),
+            code: "KeyDisabled".to_owned(),
             message: format!("Key '{}' is disabled", key_name),
         }
     }
 
     /// Operation not allowed on this key
-    pub fn operation_not_allowed(operation: &str, key_name: &str) -> Self {
+    pub(crate) fn operation_not_allowed(operation: &str, key_name: &str) -> Self {
         Self {
-            code: "OperationNotAllowed".to_string(),
-            message: format!(
-                "Operation '{}' is not allowed on key '{}'",
-                operation, key_name
-            ),
+            code: "OperationNotAllowed".to_owned(),
+            message: format!("Operation '{operation}' is not allowed on key '{key_name}'"),
         }
     }
 
     /// Rate limit exceeded
-    pub fn too_many_requests() -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn too_many_requests() -> Self {
         Self {
-            code: "TooManyRequests".to_string(),
-            message: "Too many requests. Please retry later.".to_string(),
+            code: "TooManyRequests".to_owned(),
+            message: "Too many requests. Please retry later.".to_owned(),
         }
     }
 
     /// Internal server error
-    pub fn internal_error(message: impl Into<String>) -> Self {
+    pub(crate) fn internal_error(message: impl Into<String>) -> Self {
         Self {
-            code: "InternalError".to_string(),
+            code: "InternalError".to_owned(),
             message: message.into(),
         }
     }

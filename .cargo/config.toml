@@ -27,3 +27,7 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 #   "-C",
 #   "target_cpu=native",
 # ]
+
+# [target.x86_64-unknown-linux-gnu] # TODO: uncomment this after dev is finished
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]

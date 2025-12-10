@@ -6,23 +6,22 @@ use actix_web::{
     web::{Data, Json, Path, Query},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-// TODO : do not import from client utiles, use cosmian_kms_server like below
-use cosmian_kms_client_utils::reexport::cosmian_kmip::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
-        kmip_operations::{Decrypt, Encrypt},
-        kmip_types::CryptographicParameters,
+        kmip_data_structures::{KeyBlock, KeyMaterial},
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, Encrypt, Get},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, LinkType::PublicKeyLink,
+            UniqueIdentifier,
+        },
     },
-};
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::{KeyBlock, KeyMaterial},
-    kmip_objects::Object,
-    kmip_operations::Get,
-    kmip_types::{CryptographicAlgorithm, LinkType::PublicKeyLink, UniqueIdentifier},
 };
 use cosmian_logger::{info, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::{
     core::KMS, error::KmsError, result::KResult, routes::azure_ekm::error::AzureEkmErrorReply,
@@ -33,14 +32,8 @@ pub(crate) mod error;
 /// List of API versions supported by this implementation
 pub(crate) const SUPPORTED_API_VERSIONS: [&str; 1] = [
     "0.1-preview",
-    // Add future versions here.
+    // Add future versions here, in order.
 ];
-
-pub(crate) const HIGHEST_API_VERSION: &str = "0.1-preview";
-
-pub(crate) fn is_api_version_supported(version: &str) -> bool {
-    SUPPORTED_API_VERSIONS.contains(&version)
-}
 
 /// Validate API version for all requests
 fn validate_api_version(version: &str) -> Result<(), AzureEkmErrorReply> {
@@ -80,17 +73,17 @@ struct ProxyInfoResponse {
 // Post request handlers below
 #[post("/info")]
 pub(crate) async fn get_proxy_info(
-    req: HttpRequest,
+    http_req: HttpRequest,
     query: Query<AzureEkmQueryParams>,
-    request: Json<ProxyInfoRequest>,
+    body: Json<ProxyInfoRequest>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     info!(
         "POST /ekm/info api-version={} user={}",
         query.api_version,
-        kms.get_user(&req)
+        kms.get_user(&http_req)
     );
-    trace!("Request: {:?}", request);
+    trace!("Request: {:?}", body.into_inner());
 
     if let Err(e) = validate_api_version(&query.api_version) {
         return e.into();
@@ -125,7 +118,7 @@ struct KeyMetadataResponse {
 impl KeyMetadataResponse {
     fn aes() -> Self {
         Self {
-            key_type: "oct".to_string(),
+            key_type: "oct".to_owned(),
             key_size: 256,
             key_ops: ["wrapKey", "unwrapKey"],
             n: None,
@@ -135,7 +128,7 @@ impl KeyMetadataResponse {
 
     fn rsa(key_size: i32, modulus_base64url: String, exponent_base64url: String) -> Self {
         Self {
-            key_type: "RSA".to_string(),
+            key_type: "RSA".to_owned(),
             key_size,
             key_ops: ["wrapKey", "unwrapKey"],
             n: Some(modulus_base64url),
@@ -148,18 +141,21 @@ const SUPPORTED_RSA_LENGTHS: [i32; 3] = [2048, 3072, 4096]; // the KMS key lengt
 
 #[post("/{key_name}/metadata")]
 pub(crate) async fn get_key_metadata(
-    req: HttpRequest,
+    http_req: HttpRequest,
     key_name: Path<String>,
     query: Query<AzureEkmQueryParams>,
+    body: Json<KeyMetadataRequest>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let key_name = key_name.into_inner();
-    let user = kms.get_user(&req);
+    let user = kms.get_user(&http_req);
 
     info!(
         "POST /ekm/{}/metadata api-version={} user={}",
         key_name, query.api_version, user,
     );
+    trace!("Request: {:?}", body.0);
+
     if let Err(e) = validate_api_version(&query.api_version) {
         return e.into();
     }
@@ -188,11 +184,11 @@ pub(crate) async fn get_key_metadata_from_kms(
                     let key_block = object.key_block()?;
 
                     let algorithm = key_block.cryptographic_algorithm().ok_or_else(|| {
-                        KmsError::ServerError("Cryptographic algorithm not set.".to_string())
+                        KmsError::ServerError("Cryptographic algorithm not set.".to_owned())
                     })?;
                     let key_length = key_block
                         .cryptographic_length
-                        .ok_or_else(|| KmsError::ServerError("Key length not set.".to_string()))?;
+                        .ok_or_else(|| KmsError::ServerError("Key length not set.".to_owned()))?;
                     // Check algorithm and build response
                     match algorithm {
                         CryptographicAlgorithm::AES => {
@@ -202,22 +198,20 @@ pub(crate) async fn get_key_metadata_from_kms(
                                 // It's indeed uncommon to see an error wrapped in an Ok() - this was done in purpose to reduce useless conversions
                                 // Returning an Err() will be interpreted as an internal server error by the caller, which is not what we want here
                                 // since the key exists but its length is unsupported. The specs is not very clear on this particular case.
-                                return Ok(AzureEkmErrorReply::operation_not_allowed(
+                                Ok(AzureEkmErrorReply::operation_not_allowed(
                                     &format!(
-                                        "AES key has length {}, only 256 is supported for now.",
-                                        key_length
+                                        "AES key has length {key_length}, only 256 is supported for now."
                                     ),
                                     &key_name,
                                 )
-                                .into());
+                                .into())
                             }
                         }
                         CryptographicAlgorithm::RSA => Ok({
                             if !SUPPORTED_RSA_LENGTHS.contains(&key_length) {
                                 return Ok(AzureEkmErrorReply::operation_not_allowed(
                                     &format!(
-                                        "RSA key has length {}. Only {:?} are supported for now.",
-                                        key_length, SUPPORTED_RSA_LENGTHS,
+                                        "RSA key has length {key_length}. Only {SUPPORTED_RSA_LENGTHS:?} are supported for now.",
                                     ),
                                     &key_name,
                                 )
@@ -248,26 +242,24 @@ pub(crate) async fn get_key_metadata_from_kms(
                                         // Fetch and store in outer scope
                                         // This function is not called in the other branches, which makes the cloning
                                         // mandatory - I do not think there's a more efficient way to this
-                                        let fetched = get_public_exponent_from_linked_key(
-                                            &key_block, &user, &kms,
-                                        )
-                                        .await?;
-                                        fetched.clone()
+
+                                        get_public_exponent_from_linked_key(key_block, &user, &kms)
+                                            .await?
                                     };
                                     public_exponent = pub_exp;
                                 }
                                 _ => {
                                     return Err(KmsError::ServerError(
-                                        "RSA key has missing metadata parameters".to_string(),
+                                        "RSA key has missing metadata parameters".to_owned(),
                                     ));
                                 }
-                            };
+                            }
 
                             let modulus_bytes = modulus.to_bytes_be().1; // .1 to skip sign
                             let exponent_bytes = &public_exponent.to_bytes_be().1;
 
                             let n_base64url = URL_SAFE_NO_PAD.encode(&modulus_bytes);
-                            let e_base64url = URL_SAFE_NO_PAD.encode(&exponent_bytes);
+                            let e_base64url = URL_SAFE_NO_PAD.encode(exponent_bytes);
                             HttpResponse::Ok().json(KeyMetadataResponse::rsa(
                                 key_length,
                                 n_base64url,
@@ -275,28 +267,19 @@ pub(crate) async fn get_key_metadata_from_kms(
                             ))
                         }),
                         _ => Err(KmsError::ServerError(format!(
-                            "Unsupported key algorithm: {:?}. Only AES and RSA are supported",
-                            algorithm
+                            "Unsupported key algorithm: {algorithm:?}. Only AES and RSA are supported"
                         ))),
                     }
                 }
-                _ => {
-                    return Ok(
-                        AzureEkmErrorReply::operation_not_allowed("metadata", &key_name).into(),
-                    );
-                }
+                _ => Ok(AzureEkmErrorReply::operation_not_allowed("metadata", &key_name).into()),
             }
         }
         Err(e) => {
-            if matches!(e, KmsError::ItemNotFound(_)) || e.to_string().contains("not found") {
+            if (matches!(e, KmsError::ItemNotFound(_)) || e.to_string().contains("not found")) {
                 return Ok(AzureEkmErrorReply::key_not_found(&key_name).into()); // as required by Azure EKM specs
             }
             // Otherwise, it's an internal error
-            return Ok(AzureEkmErrorReply::internal_error(format!(
-                "Failed to retrieve key: {}",
-                e
-            ))
-            .into());
+            Ok(AzureEkmErrorReply::internal_error(format!("Failed to retrieve key: {e}")).into())
         }
     }
 }
@@ -311,7 +294,7 @@ async fn get_public_exponent_from_linked_key(
         .get_linked_object_id(PublicKeyLink)?
         .ok_or_else(|| {
             KmsError::ServerError(
-                "RSA private key has no linked public key to get public exponent from.".to_string(),
+                "RSA private key has no linked public key to get public exponent from.".to_owned(),
             )
         })?;
 
@@ -332,18 +315,16 @@ async fn get_public_exponent_from_linked_key(
                 public_exponent, ..
             } => Ok(public_exponent.clone()),
             _ => Err(KmsError::ServerError(
-                "Failed to retrieve public exponent from linked public key".to_string(),
+                "Failed to retrieve public exponent from linked public key".to_owned(),
             )),
         },
         _ => Err(KmsError::ServerError(
-            "Failed to retrieve public exponent from linked public key".to_string(),
+            "Failed to retrieve public exponent from linked public key".to_owned(),
         )),
     }
 }
 
-// code above this line has been re-read and verified (not tested)
-
-// code below is incomplete and is a work going on
+// TODO: code below is incomplete and is a work going on
 
 #[derive(Debug, Deserialize)]
 pub(crate) enum WrapAlgorithm {
@@ -366,19 +347,20 @@ pub(crate) struct WrapKeyResponse {
 
 #[post("/{key_name}/wrapkey")]
 pub(crate) async fn wrap_key(
-    req: HttpRequest,
+    http_req: HttpRequest,
     key_name: Path<String>,
     query: Query<AzureEkmQueryParams>,
-    request: Json<WrapKeyRequest>,
+    body: Json<WrapKeyRequest>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let key_name = key_name.into_inner();
-    let user = kms.get_user(&req);
+    let user = kms.get_user(&http_req);
 
     info!(
         "POST /ekm/{}/wrapkey alg={:?} api-version={} user={}",
-        key_name, request.alg, query.api_version, user
+        key_name, body.alg, query.api_version, user
     );
+    trace!("Request: {:?}", body.0);
 
     // Validate API version
     if let Err(e) = validate_api_version(&query.api_version) {
@@ -386,24 +368,23 @@ pub(crate) async fn wrap_key(
     }
 
     // Call inner implementation
-    match wrap_key_handler(&kms, &key_name, &user, request.into_inner()).await {
+    match wrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => e.into(),
     }
 }
 
-async fn wrap_key_handler(
+/// Retrieve and validate a wrapping/unwrapping key from KMS (the kek)
+/// Simply refactored because we need it in both wrap and unwrap handlers
+///
+/// Returns the cryptographic algorithm after validation
+async fn get_and_validate_kek_algorithm(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    request: WrapKeyRequest,
-) -> Result<WrapKeyResponse, AzureEkmErrorReply> {
-    // Decode the input key from base64url
-    let dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|_| {
-        AzureEkmErrorReply::invalid_request("Invalid base64url encoding in 'value' field")
-    })?;
-
-    let wrapping_key_object = kms
+    request_alg: &WrapAlgorithm,
+) -> Result<CryptographicAlgorithm, AzureEkmErrorReply> {
+    let key_object = kms
         .get(
             Get {
                 unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
@@ -419,38 +400,76 @@ async fn wrap_key_handler(
         })?
         .object;
 
-    // Validation
-    match &wrapping_key_object {
-        Object::SymmetricKey(_) | Object::PublicKey(_) => {}
-        _ => {
-            return Err(AzureEkmErrorReply::operation_not_allowed(
-                "wrapkey", key_name,
-            ));
-        }
-    }
+    let kek_algorithm = *key_object
+        .key_block()
+        .map_err(KmsError::from)?
+        .cryptographic_algorithm()
+        .ok_or_else(|| {
+            AzureEkmErrorReply::internal_error("key has no cryptographic algorithm".to_owned())
+        })?;
 
-    let key_block = wrapping_key_object.key_block().unwrap(); // TODO no unwrap
-    let key_algorithm = key_block.cryptographic_algorithm().ok_or_else(|| {
-        AzureEkmErrorReply::internal_error("Wrapping key has no cryptographic algorithm")
+    match (&kek_algorithm, request_alg) {
+        (CryptographicAlgorithm::AES, WrapAlgorithm::A256KW | WrapAlgorithm::A256KWP) => {
+            Ok(kek_algorithm)
+        }
+        (CryptographicAlgorithm::RSA, WrapAlgorithm::RsaOaep256) => Ok(kek_algorithm),
+        (CryptographicAlgorithm::AES, _) => Err(AzureEkmErrorReply::unsupported_algorithm(
+            &format!("{request_alg:?}"),
+            "AES",
+        )),
+        (CryptographicAlgorithm::RSA, _) => Err(AzureEkmErrorReply::unsupported_algorithm(
+            &format!("{request_alg:?}"),
+            "RSA",
+        )),
+        _ => Err(AzureEkmErrorReply::internal_error(format!(
+            "Unsupported key algorithm: {kek_algorithm:?}",
+        ))),
+    }
+}
+
+async fn wrap_key_handler(
+    kms: &KMS,
+    key_name: &str,
+    user: &str,
+    request: WrapKeyRequest,
+) -> Result<WrapKeyResponse, AzureEkmErrorReply> {
+    // Decode the input key from base64url
+    let dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
+        AzureEkmErrorReply::invalid_request(format!(
+            "Invalid base64url encoding in 'value' field : {e}"
+        ))
     })?;
 
-    // Validate algorithm matches key type
-    validate_wrapping_algorithm(&request.alg, &key_algorithm)?;
+    let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
     // Perform the wrap operation based on key type
-    let wrapped_key_bytes = match key_algorithm {
+    let wrapped_key_bytes = match kek_algorithm {
         CryptographicAlgorithm::AES => {
             // AES Key Wrap using KMIP Encrypt operation
-            wrap_with_aes(kms, key_name, user, &dek_bytes, &request.alg).await?
+            wrap_with_aes(
+                kms,
+                key_name,
+                user,
+                dek_bytes,
+                &request.alg,
+                Some(request.request_context.correlation_id.into_bytes()),
+            )
+            .await?
         }
         CryptographicAlgorithm::RSA => {
-            // RSA-OAEP wrap using KMIP Encrypt operation
-            wrap_with_rsa(kms, key_name, user, &dek_bytes, &request.alg).await?
+            // RSA-OAEP-256 wrap using KMIP Encrypt operation
+            wrap_with_rsa(
+                kms,
+                key_name,
+                user,
+                dek_bytes,
+                Some(request.request_context.correlation_id.into_bytes()),
+            )
+            .await?
         }
         _ => {
             return Err(AzureEkmErrorReply::internal_error(format!(
-                "Unsupported key algorithm: {:?}",
-                key_algorithm
+                "Unsupported key algorithm: {kek_algorithm:?}",
             )));
         }
     };
@@ -463,38 +482,44 @@ async fn wrap_key_handler(
     })
 }
 
-/// Validate that the wrap algorithm is compatible with the key type
-fn validate_wrapping_algorithm(
-    alg: &WrapAlgorithm,
-    key_algorithm: &CryptographicAlgorithm,
-) -> Result<(), AzureEkmErrorReply> {
-    match (key_algorithm, alg) {
-        (CryptographicAlgorithm::AES, WrapAlgorithm::A256KW | WrapAlgorithm::A256KWP) => Ok(()),
-        (CryptographicAlgorithm::RSA, WrapAlgorithm::RsaOaep256) => Ok(()),
-        (CryptographicAlgorithm::AES, _) => Err(AzureEkmErrorReply::unsupported_algorithm(
-            &format!("{:?}", alg),
-            "AES",
-        )),
-        (CryptographicAlgorithm::RSA, _) => Err(AzureEkmErrorReply::unsupported_algorithm(
-            &format!("{:?}", alg),
-            "RSA",
-        )),
-        _ => Err(AzureEkmErrorReply::internal_error(format!(
-            "Unsupported key algorithm: {:?}",
-            key_algorithm
-        ))),
-    }
-}
-
 async fn wrap_with_aes(
-    _kms: &KMS,
-    _key_name: &str,
-    _user: &str,
-    _dek_bytes: &[u8],
-    _alg: &WrapAlgorithm,
+    kms: &KMS,
+    key_name: &str,
+    user: &str,
+    dek_bytes: Vec<u8>,
+    alg: &WrapAlgorithm,
+    correlation_id: Option<Vec<u8>>, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    todo!("Implement wrap_with_aes function")
-    // Ok(wrapped_data)
+    // Determine block cipher mode based on algorithm
+    let block_cipher_mode = match alg {
+        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
+        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
+        WrapAlgorithm::RsaOaep256 => {
+            // for some reason, the compiler complains about the wildcard pattern here
+            return Err(AzureEkmErrorReply::invalid_request(
+                "Invalid AES wrap algorithm",
+            ));
+        }
+    };
+
+    let encrypt_request = Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            block_cipher_mode: Some(block_cipher_mode),
+            ..Default::default()
+        }),
+        data: Some(dek_bytes.into()),
+        correlation_value: correlation_id,
+        ..Default::default()
+    };
+
+    let response = kms.encrypt(encrypt_request, user, None).await?;
+
+    let wrapped_data = response
+        .data
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data"))?;
+
+    Ok(wrapped_data)
 }
 
 /// Wrap DEK with RSA public key using KMIP Encrypt (OAEP padding)
@@ -502,16 +527,9 @@ async fn wrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    dek_bytes: &[u8],
-    _alg: &WrapAlgorithm,
+    dek_bytes: Vec<u8>,
+    correlation_id: Option<Vec<u8>>, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    // does not work ?
-    // if alg != WrapAlgorithm::RsaOaep256 {
-    //     return Err(AzureEkmErrorReply::internal_error(
-    //         "Invalid RSA wrap algorithm",
-    //     ));
-    // }
-
     let encrypt_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
         cryptographic_parameters: Some(CryptographicParameters {
@@ -520,12 +538,9 @@ async fn wrap_with_rsa(
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        data: Some(dek_bytes.to_vec().into()),
-        correlation_value: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: None,
-        i_v_counter_nonce: None,
+        data: Some(dek_bytes.into()),
+        correlation_value: correlation_id,
+        ..Default::default()
     };
 
     let response = kms.encrypt(encrypt_request, user, None).await?;
@@ -540,7 +555,7 @@ async fn wrap_with_rsa(
 #[derive(Debug, Deserialize)]
 pub(crate) struct UnwrapKeyRequest {
     request_context: RequestContext,
-    alg: WrapAlgorithm, // (A256KW, A256KWP, RSA-OAEP-256)
+    alg: WrapAlgorithm,
     value: String,
 }
 
@@ -551,19 +566,20 @@ pub(crate) struct UnwrapKeyResponse {
 
 #[post("/{key_name}/unwrapkey")]
 pub(crate) async fn unwrap_key(
-    req: HttpRequest,
+    http_req: HttpRequest,
     key_name: Path<String>,
     query: Query<AzureEkmQueryParams>,
-    request: Json<UnwrapKeyRequest>,
+    body: Json<UnwrapKeyRequest>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let key_name = key_name.into_inner();
-    let user = kms.get_user(&req);
+    let user = kms.get_user(&http_req);
 
     info!(
-        "POST /ekm/{}/unwrapkey alg={} api-version={} user={}",
-        key_name, request.alg, query.api_version, user
+        "POST /ekm/{}/unwrapkey alg={:?} api-version={} user={}",
+        key_name, body.alg, query.api_version, user
     );
+    trace!("Request: {:?}", body.0);
 
     // Validate API version
     if let Err(e) = validate_api_version(&query.api_version) {
@@ -571,7 +587,7 @@ pub(crate) async fn unwrap_key(
     }
 
     // Call inner implementation
-    match unwrap_key_handler(&kms, &key_name, &user, request.into_inner()).await {
+    match unwrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => e.into(),
     }
@@ -583,53 +599,39 @@ async fn unwrap_key_handler(
     user: &str,
     request: UnwrapKeyRequest,
 ) -> Result<UnwrapKeyResponse, AzureEkmErrorReply> {
-    let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|_| {
-        AzureEkmErrorReply::invalid_request("Invalid base64url encoding in 'value' field")
+    let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
+        AzureEkmErrorReply::invalid_request(format!(
+            "Invalid base64url encoding in 'value' field: {e}"
+        ))
     })?;
 
-    let unwrapping_key_object = kms
-        .get(
-            Get {
-                unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
-                ..Default::default()
-            },
-            user,
-            None,
-        )
-        .await
-        .map_err(|e| match e {
-            KmsError::ItemNotFound(_) => AzureEkmErrorReply::key_not_found(key_name),
-            _ => e.into(),
-        })?
-        .object;
-    match &unwrapping_key_object {
-        Object::SymmetricKey(_) | Object::PrivateKey(_) => {}
-        _ => {
-            return Err(AzureEkmErrorReply::operation_not_allowed(
-                "unwrapkey",
-                key_name,
-            ));
-        }
-    }
+    let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
-    let key_block = unwrapping_key_object.key_block()?;
-    let key_algorithm = key_block.cryptographic_algorithm().ok_or_else(|| {
-        AzureEkmErrorReply::internal_error("Unwrapping key has no cryptographic algorithm")
-    })?;
-
-    validate_wrapping_algorithm(&request.alg, &key_algorithm)?;
-
-    let unwrapped_dek_bytes = match key_algorithm {
+    let unwrapped_dek_bytes = match kek_algorithm {
         CryptographicAlgorithm::AES => {
-            unwrap_with_aes(kms, key_name, user, &wrapped_dek_bytes, &request.alg).await?
+            unwrap_with_aes(
+                kms,
+                key_name,
+                user,
+                wrapped_dek_bytes,
+                &request.alg,
+                Some(request.request_context.correlation_id.into_bytes()),
+            )
+            .await?
         }
         CryptographicAlgorithm::RSA => {
-            unwrap_with_rsa(kms, key_name, user, &wrapped_dek_bytes, &request.alg).await?
+            unwrap_with_rsa(
+                kms,
+                key_name,
+                user,
+                wrapped_dek_bytes,
+                Some(request.request_context.correlation_id.into_bytes()),
+            )
+            .await?
         }
         _ => {
             return Err(AzureEkmErrorReply::internal_error(format!(
-                "Unsupported key algorithm: {:?}",
-                key_algorithm
+                "Unsupported key algorithm: {kek_algorithm:?}",
             )));
         }
     };
@@ -639,21 +641,69 @@ async fn unwrap_key_handler(
     })
 }
 async fn unwrap_with_aes(
-    _kms: &KMS,
-    _key_name: &str,
-    _user: &str,
-    _wrapped_dek_bytes: &[u8],
-    _alg: &WrapAlgorithm,
-) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    todo!("Implement unwrap_with_aes function")
+    kms: &KMS,
+    key_name: &str,
+    user: &str,
+    wrapped_dek_bytes: Vec<u8>,
+    alg: &WrapAlgorithm,
+    correlation_id: Option<Vec<u8>>, // for logging purposes
+) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
+    let block_cipher_mode = match alg {
+        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap, // RFC 3394
+        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding, // RFC 5649
+        WrapAlgorithm::RsaOaep256 => {
+            return Err(AzureEkmErrorReply::invalid_request(
+                "Invalid AES unwrap algorithm",
+            ));
+        }
+    };
+
+    let decrypt_request = Decrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            block_cipher_mode: Some(block_cipher_mode),
+            ..Default::default()
+        }),
+        data: Some(wrapped_dek_bytes),
+        correlation_value: correlation_id,
+        ..Default::default()
+    };
+
+    let response = kms.decrypt(decrypt_request, user, None).await?;
+
+    let unwrapped_data = response
+        .data
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data"))?;
+
+    Ok(unwrapped_data)
 }
 
+/// Unwrap DEK with RSA private key using KMIP Decrypt (OAEP padding)
 async fn unwrap_with_rsa(
-    _kms: &KMS,
-    _key_name: &str,
-    _user: &str,
-    _wrapped_dek_bytes: &[u8],
-    _alg: &WrapAlgorithm,
-) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    todo!("Implement unwrap_with_rsa function")
+    kms: &KMS,
+    key_name: &str,
+    user: &str,
+    wrapped_dek_bytes: Vec<u8>,
+    correlation_id: Option<Vec<u8>>, // for logging purposes
+) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
+    let decrypt_request = Decrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        }),
+        data: Some(wrapped_dek_bytes),
+        correlation_value: correlation_id,
+        ..Default::default()
+    };
+
+    let response = kms.decrypt(decrypt_request, user, None).await?;
+
+    let unwrapped_data = response
+        .data
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data"))?;
+
+    Ok(unwrapped_data)
 }
