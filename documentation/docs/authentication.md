@@ -9,7 +9,7 @@ The KMS server offers flexible authentication options, supporting multiple authe
 By default, if no authentication methods are configured, the server operates in non-authenticated mode. All requests are mapped to the default user, which can be configured using:
 
 ```sh
---default-username <DEFAULT_USERNAME>
+    --default-username <DEFAULT_USERNAME>
     The default username to use when no authentication is configured
 
     [env: KMS_DEFAULT_USERNAME=]

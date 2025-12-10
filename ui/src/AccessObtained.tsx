@@ -88,9 +88,15 @@ const AccessObtainedList: React.FC = () => {
     }, [idToken, serverUrl]);
 
     useEffect(() => {
-        fetchAccessRights();
-        fetchCreatePermission();
-    }, [fetchAccessRights, fetchCreatePermission]);
+        // Avoid unauthenticated calls in JWT mode: wait for token
+        if (idToken) {
+            fetchAccessRights();
+            fetchCreatePermission();
+        } else {
+            setAccessRights([]);
+            setHasCreatePermission(undefined);
+        }
+    }, [fetchAccessRights, fetchCreatePermission, idToken]);
 
     return (
         <div className="p-6">
