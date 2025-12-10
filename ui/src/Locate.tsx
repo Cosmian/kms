@@ -2,9 +2,8 @@ import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag }
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import HashMapDisplay from "./HashMapDisplay";
-import { getNoTTLVRequest, sendKmipRequest } from "./utils";
-import { locate_ttlv_request, parse_locate_ttlv_response } from "./wasm/pkg";
-import { destroy_ttlv_request, get_attributes_ttlv_request, get_crypto_algorithms, get_key_format_types, get_object_states, get_object_types, parse_get_attributes_ttlv_response, revoke_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
+import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "./utils";
+import * as wasm from "./wasm/pkg";
 
 interface LocateFormData {
     tags?: string[];
@@ -55,6 +54,7 @@ const LocateForm: React.FC = () => {
     };
     // Details modal removed; tags are shown inline
     const {idToken, serverUrl} = useAuth();
+    const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
     const responseRef = useRef<HTMLDivElement>(null);
     const [detailsVisible, setDetailsVisible] = useState<boolean>(false);
     const [detailsData, setDetailsData] = useState<Map<string, unknown> | undefined>(undefined);
@@ -68,31 +68,39 @@ const LocateForm: React.FC = () => {
     }, [res]);
 
     useEffect(() => {
+        (async () => {
+            try {
+                const method = await fetchAuthMethod(serverUrl);
+                setAuthMethod(method);
+            } catch {
+                /* ignore */
+            }
+        })();
         try {
-            const algos = (get_crypto_algorithms() as unknown) as AlgoOption[];
+            const algos = (wasm.get_crypto_algorithms() as unknown) as AlgoOption[];
             if (Array.isArray(algos)) setCryptoAlgorithms(algos);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const kf = (get_key_format_types() as unknown) as AlgoOption[];
+            const kf = (wasm.get_key_format_types() as unknown) as AlgoOption[];
             if (Array.isArray(kf)) setKeyFormatTypes(kf);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const ot = (get_object_types() as unknown) as AlgoOption[];
+            const ot = (wasm.get_object_types() as unknown) as AlgoOption[];
             if (Array.isArray(ot)) setObjectTypes(ot);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const os = (get_object_states() as unknown) as AlgoOption[];
+            const os = (wasm.get_object_states() as unknown) as AlgoOption[];
             if (Array.isArray(os)) setObjectStates(os);
         } catch {
             /* ignore if WASM not ready */
         }
-    }, []);
+    }, [serverUrl]);
 
     // Utility: parse WASM/Get response into a plain record
     const extractMeta = (parsed: unknown): Record<string, unknown> => {
@@ -101,14 +109,14 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: enrich a list of UIDs via KMIP Get
-    const enrichUids = async (uids: string[], idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+    const enrichUids = async (uids: string[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
         const rows = await Promise.all(
             uids.map(async (uid) => {
                 try {
-                    const getReq = get_attributes_ttlv_request(uid);
+                    const getReq = wasm.get_attributes_ttlv_request(uid);
                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                     if (getRespStr) {
-                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
                             "object_type",
                             "state",
                             "tags",
@@ -138,7 +146,7 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: build state lookup from /access/owned
-    const getOwnedStateMap = async (idToken: string, serverUrl: string): Promise<Map<string, string>> => {
+    const getOwnedStateMap = async (idToken: string | null, serverUrl: string): Promise<Map<string, string>> => {
         const stateById = new Map<string, string>();
         const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
         if (Array.isArray(owned)) {
@@ -153,7 +161,7 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: supplement missing state from owned
-    const supplementStateFromOwned = async (rows: LocatedRow[], idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+    const supplementStateFromOwned = async (rows: LocatedRow[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
         try {
             const stateById = await getOwnedStateMap(idToken, serverUrl);
             return rows.map((row) => ({
@@ -171,10 +179,10 @@ const LocateForm: React.FC = () => {
         cryptographicAlgorithm: string | undefined,
         keyFormatType: string | undefined,
         objectType: string | undefined,
-        idToken: string,
+        idToken: string | null,
         serverUrl: string
     ): Promise<string[]> => {
-        const req = locate_ttlv_request(
+        const req = wasm.locate_ttlv_request(
             values.tags,
             cryptographicAlgorithm,
             values.cryptographicLength,
@@ -186,12 +194,12 @@ const LocateForm: React.FC = () => {
         );
         const respStr = await sendKmipRequest(req, idToken, serverUrl);
         if (!respStr) return [];
-        const resp = await parse_locate_ttlv_response(respStr);
+        const resp = await wasm.parse_locate_ttlv_response(respStr);
         return Array.isArray(resp.UniqueIdentifier) ? (resp.UniqueIdentifier as string[]) : [];
     };
 
     // Owned-fallback without criteria
-    const ownedFallbackNoCriteria = async (idToken: string, serverUrl: string): Promise<LocatedRow[]> => {
+    const ownedFallbackNoCriteria = async (idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
         const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
         const ids: string[] = Array.isArray(owned) ? (owned as Array<{ object_id: string }>).map((o) => o.object_id).filter(Boolean) : [];
         const enriched = await enrichUids(ids, idToken, serverUrl);
@@ -204,11 +212,11 @@ const LocateForm: React.FC = () => {
         setObjects(undefined);
         setCurrentPage(1);
         try {
-            if (!idToken) {
-                setRes("You must be authenticated to search. Please log in.");
-                setIsLoading(false);
+            if (authMethod === "JWT" && !idToken) {
+                setRes("Authentication required: please log in to search.");
                 return;
             }
+            // unauthenticated attempt allowed only when auth method is None
             const norm = (s?: string) => (s && s.trim() !== "" ? s : undefined);
             const keyFormatType = norm(values.keyFormatType);
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
@@ -245,10 +253,10 @@ const LocateForm: React.FC = () => {
                             ownedFiltered.map(async (o) => {
                                 const uid = o.id;
                                 try {
-                                    const getReq = get_attributes_ttlv_request(uid);
+                                    const getReq = wasm.get_attributes_ttlv_request(uid);
                                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                     if (getRespStr) {
-                                        const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
                                             "object_type",
                                             "state",
                                             "tags",
@@ -304,10 +312,10 @@ const LocateForm: React.FC = () => {
                     let enriched = await Promise.all(
                         intersection.map(async (uid: string) => {
                             try {
-                                const getReq = get_attributes_ttlv_request(uid);
+                                const getReq = wasm.get_attributes_ttlv_request(uid);
                                 const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                 if (getRespStr) {
-                                    const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
                                         "object_type",
                                         "state",
                                         "tags",
@@ -344,8 +352,7 @@ const LocateForm: React.FC = () => {
                     setObjects(enriched);
                     setRes(`${enriched.length} Object(s) located.`);
                     return;
-                } catch (e) {
-                    console.error("Owned+filter fallback failed:", e);
+                } catch {
                     // Fall back to Locate below
                 }
             }
@@ -421,8 +428,8 @@ const LocateForm: React.FC = () => {
                             setObjects(filtered);
                             setRes(`${filtered.length} Object(s) located.`);
                         }
-                    } catch (e) {
-                        console.error("Error enriching locate results with Get:", e);
+                    } catch {
+                        /* ignore */
                     }
                 } else {
                     // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
@@ -433,14 +440,14 @@ const LocateForm: React.FC = () => {
                             setObjects(merged);
                             setRes(`${merged.length} Object(s) located.`);
                             return;
-                        } catch (e) {
+                        } catch {
                             /* owned fallback failed */
                         }
                     }
                     // No results returned by Locate: if Key Format Type filter is set, try fallback client-side filtering
                     if (keyFormatType) {
                         try {
-                            const fallbackReq = locate_ttlv_request(
+                            const fallbackReq = wasm.locate_ttlv_request(
                                 values.tags,
                                 cryptographicAlgorithm,
                                 values.cryptographicLength,
@@ -452,16 +459,16 @@ const LocateForm: React.FC = () => {
                             );
                             const fallbackStr = await sendKmipRequest(fallbackReq, idToken, serverUrl);
                             if (fallbackStr) {
-                                const fb = await parse_locate_ttlv_response(fallbackStr);
+                                const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
                                 const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
                                 const target = kftNorm(keyFormatType);
                                 const enriched = await Promise.all(
                                     ids.map(async (uid: string) => {
                                         try {
-                                            const getReq = get_attributes_ttlv_request(uid);
+                                            const getReq = wasm.get_attributes_ttlv_request(uid);
                                             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                             if (getRespStr) {
-                                                const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                                                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
                                                     "object_type",
                                                     "state",
                                                     "tags",
@@ -517,8 +524,8 @@ const LocateForm: React.FC = () => {
                                 setRes(`${filtered.length} Object(s) located.`);
                                 return;
                             }
-                        } catch (e) {
-                            console.warn("KeyFormatType fallback failed:", e);
+                        } catch {
+                            /* ignore */
                         }
                     }
                     // Still nothing: show explicit 0 objects
@@ -527,8 +534,12 @@ const LocateForm: React.FC = () => {
                 }
                 // set by post-filtering to reflect visible rows
         } catch (e) {
-            setRes(`Error locating object: ${e}`);
-            console.error("Error locating object:", e);
+            const msg = String(e || "");
+            if (msg.startsWith("401:") || msg.startsWith("403:")) {
+                setRes("Authentication required or forbidden. Please log in or check permissions.");
+            } else {
+                setRes(`Error locating object: ${e}`);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -537,10 +548,10 @@ const LocateForm: React.FC = () => {
     const handleShowDetails = async (uid: string) => {
         setActionLoadingId(uid);
         try {
-            const getReq = get_attributes_ttlv_request(uid);
+            const getReq = wasm.get_attributes_ttlv_request(uid);
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
-                const parsed = await parse_get_attributes_ttlv_response(getRespStr, []);
+                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
                 if (parsed instanceof Map) {
                     setDetailsData(parsed);
                 } else if (parsed && typeof parsed === "object") {
@@ -553,8 +564,8 @@ const LocateForm: React.FC = () => {
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }
-        } catch (e) {
-            console.error("Error getting attributes:", e);
+        } catch {
+            /* ignore */
         } finally {
             setActionLoadingId(undefined);
         }
@@ -567,16 +578,17 @@ const LocateForm: React.FC = () => {
         if (!ok) return;
         setActionLoadingId(uid);
         try {
-            if (typeof revoke_ttlv_request === "function") {
-                const req = revoke_ttlv_request(uid, "User-initiated revoke");
+            const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+            if (typeof w.revoke_ttlv_request === "function") {
+                const req = w.revoke_ttlv_request(uid, "User-initiated revoke");
                 await sendKmipRequest(req, idToken, serverUrl);
                 await handleRefreshRow(uid);
                 setRes((prev) => (prev ? String(prev).replace(/\d+ Object\(s\) located\./, "Action completed.") : "Action completed."));
             } else {
                 console.warn("revoke_ttlv_request not available in WASM package");
             }
-        } catch (e) {
-            console.error("Error revoking object:", e);
+        } catch {
+            /* ignore */
         } finally {
             setActionLoadingId(undefined);
         }
@@ -588,16 +600,17 @@ const LocateForm: React.FC = () => {
         if (!ok) return;
         setActionLoadingId(uid);
         try {
-            if (typeof destroy_ttlv_request === "function") {
-                const req = destroy_ttlv_request(uid, true);
+            const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+            if (typeof w.destroy_ttlv_request === "function") {
+                const req = w.destroy_ttlv_request(uid, true);
                 await sendKmipRequest(req, idToken, serverUrl);
                 setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
                 setRes("Object destroyed.");
             } else {
-                console.warn("destroy_ttlv_request not available in WASM package");
+                /* destroy_ttlv_request not available in WASM package */
             }
-        } catch (e) {
-            console.error("Error destroying object:", e);
+        } catch {
+            /* ignore */
         } finally {
             setActionLoadingId(undefined);
         }
@@ -605,10 +618,10 @@ const LocateForm: React.FC = () => {
 
     const handleRefreshRow = async (uid: string) => {
         try {
-            const getReq = get_attributes_ttlv_request(uid);
+            const getReq = wasm.get_attributes_ttlv_request(uid);
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
-                const parsed = await parse_get_attributes_ttlv_response(getRespStr, [
+                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
                     "object_type",
                     "state",
                     "key_format_type",
@@ -628,8 +641,8 @@ const LocateForm: React.FC = () => {
                     );
                 });
             }
-        } catch (e) {
-            console.error("Error refreshing row via Get:", e);
+        } catch {
+            /* ignore */
         }
     };
 

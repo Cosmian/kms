@@ -1,106 +1,18 @@
-use std::{
-    fmt::{Display, Formatter, Result as FmtResult},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
-use clap::ValueEnum;
-use cosmian_kmip::{
-    kmip_0::kmip_types::PaddingMethod,
-    kmip_2_1::{
-        kmip_operations::Sign,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
-};
-use cosmian_kms_client::{
-    KmsClient, read_bytes_from_file, reexport::cosmian_kms_client_utils::rsa_utils::HashFn,
-    write_bytes_to_file,
-};
-use serde::Deserialize;
-use strum::EnumString;
+use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::UniqueIdentifier};
+use cosmian_kms_client::{KmsClient, read_bytes_from_file, write_bytes_to_file};
 
 use crate::{
     actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
-#[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
-pub enum CDigitalSignatureAlgorithmRSA {
-    RSASSAPSS,
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy, EnumString, Deserialize)]
-pub enum CDigitalSignatureAlgorithmEC {
-    ECDSAWithSHA256,
-    ECDSAWithSHA384,
-    ECDSAWithSHA512,
-}
-
-impl CDigitalSignatureAlgorithmRSA {
-    #[must_use]
-    pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
-        match self {
-            Self::RSASSAPSS => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::PSS),
-                hashing_algorithm: None,
-                ..Default::default()
-            },
-        }
-    }
-}
-
-impl Display for CDigitalSignatureAlgorithmRSA {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let s = match self {
-            Self::RSASSAPSS => "rsassapss",
-        };
-        f.write_str(s)
-    }
-}
-
-impl CDigitalSignatureAlgorithmEC {
-    #[must_use]
-    pub fn to_cryptographic_parameters(self) -> CryptographicParameters {
-        match self {
-            Self::ECDSAWithSHA256 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: None,
-                hashing_algorithm: Some(HashFn::Sha256.into()),
-                ..Default::default()
-            },
-            Self::ECDSAWithSHA384 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: None,
-                hashing_algorithm: Some(HashFn::Sha384.into()),
-                ..Default::default()
-            },
-            Self::ECDSAWithSHA512 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
-                padding_method: None,
-                hashing_algorithm: Some(HashFn::Sha512.into()),
-                ..Default::default()
-            },
-        }
-    }
-}
-
-impl Display for CDigitalSignatureAlgorithmEC {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let s = match self {
-            Self::ECDSAWithSHA256 => "ecdsa-with-sha256",
-            Self::ECDSAWithSHA384 => "ecdsa-with-sha384",
-            Self::ECDSAWithSHA512 => "ecdsa-with-sha512",
-        };
-        f.write_str(s)
-    }
-}
-
 pub(crate) async fn run_sign(
     kms_rest_client: KmsClient,
     input_file: PathBuf,
     key_id: Option<String>,
     tags: Option<Vec<String>>,
-    cp: CryptographicParameters,
     output_file: Option<PathBuf>,
     digested: bool,
 ) -> KmsCliResult<()> {
@@ -112,7 +24,7 @@ pub(crate) async fn run_sign(
     let sign_request = if digested {
         Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(id)),
-            cryptographic_parameters: Some(cp),
+            cryptographic_parameters: None,
             data: None,
             digested_data: Some(data),
             correlation_value: None,
@@ -122,7 +34,7 @@ pub(crate) async fn run_sign(
     } else {
         Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(id)),
-            cryptographic_parameters: Some(cp),
+            cryptographic_parameters: None,
             data: Some(data.into()),
             digested_data: None,
             correlation_value: None,

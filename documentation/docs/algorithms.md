@@ -188,7 +188,7 @@ and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 - `P-384`
 - `P-512`
 
-## Signature
+## Signature schemes
 
 Digital signature signing and verification are supported via both the `Certify` operation (for certificate signing) and the `Sign` operation (for direct data signing).
 

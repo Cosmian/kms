@@ -2,10 +2,7 @@ import { Button, Card, Form, Input, Select, Space, Switch, Upload } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import {
-    parse_signature_verify_ttlv_response,
-    signature_verify_ttlv_request,
-} from "./wasm/pkg/cosmian_kms_client_wasm";
+import * as wasmClient from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface ECVerifyFormData {
     dataFile: Uint8Array;
@@ -14,22 +11,8 @@ interface ECVerifyFormData {
     signatureFileName: string;
     keyId?: string;
     tags?: string[];
-    curve: "nist-p256" | "nist-p384" | "nist-p521";
-    signatureAlgorithm: "ecdsa-with-sha256" | "ecdsa-with-sha384" | "ecdsa-with-sha512";
     digested: boolean;
 }
-
-const CURVES = [
-    { label: "NIST P-256", value: "nist-p256" },
-    { label: "NIST P-384", value: "nist-p384" },
-    { label: "NIST P-521", value: "nist-p521" },
-];
-
-const SIGNATURE_ALGORITHMS = [
-    { label: "ECDSA with SHA-256", value: "ecdsa-with-sha256" },
-    { label: "ECDSA with SHA-384", value: "ecdsa-with-sha384" },
-    { label: "ECDSA with SHA-512", value: "ecdsa-with-sha512" },
-];
 
 const ECVerifyForm: React.FC = () => {
     const [form] = Form.useForm<ECVerifyFormData>();
@@ -94,16 +77,16 @@ const ECVerifyForm: React.FC = () => {
                 setRes("Error: signature file is empty or unreadable. Please re-upload the signature.");
                 throw Error("Empty signature file");
             }
-            const request = await signature_verify_ttlv_request(
+            const request = wasmClient.signature_verify_ttlv_request(
                 id,
                 dataBuf!,
                 sigBuf,
-                values.signatureAlgorithm,
+                undefined,
                 values.digested,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const response = await parse_signature_verify_ttlv_response(result_str);
+                const response = await wasmClient.parse_signature_verify_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;
                 const validityRaw = respObj.ValidityIndicator ?? respObj.validity_indicator ?? respObj.validityIndicator;
                 const validity = typeof validityRaw === "string" ? validityRaw : String(validityRaw ?? "Unknown");
@@ -130,7 +113,7 @@ const ECVerifyForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                initialValues={{ curve: "nist-p256", signatureAlgorithm: "ecdsa-with-sha256", digested: false }}
+                initialValues={{ digested: false }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
@@ -197,12 +180,7 @@ const ECVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <Form.Item name="curve" label="Elliptic Curve" rules={[{ required: true }]}>
-                            <Select options={CURVES} />
-                        </Form.Item>
-                        <Form.Item name="signatureAlgorithm" label="Signature Algorithm" rules={[{ required: true }]}>
-                            <Select options={SIGNATURE_ALGORITHMS} />
-                        </Form.Item>
+                        {/* Curve and signature algorithm are determined by key type (ECDSA). */}
                         <Form.Item name="digested" label="Data Is Digested" valuePropName="checked">
                             <Switch />
                         </Form.Item>

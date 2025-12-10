@@ -117,11 +117,6 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
         if display_norm == norm {
             return Ok(*v);
         }
-        let dbg = format!("{v:?}");
-        let dbg_norm = dbg.replace([' ', '-', '_'], "").to_lowercase();
-        if dbg_norm == norm {
-            return Ok(*v);
-        }
     }
     Err(JsValue::from("Invalid KeyFormatType"))
 }
@@ -157,14 +152,7 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         .into_iter()
         .map(|alg| {
             let value = alg.to_string();
-            let label = match alg {
-                CryptographicAlgorithm::SHA3224 => String::from("SHA3-224"),
-                CryptographicAlgorithm::SHA3256 => String::from("SHA3-256"),
-                CryptographicAlgorithm::SHA3384 => String::from("SHA3-384"),
-                CryptographicAlgorithm::SHA3512 => String::from("SHA3-512"),
-                CryptographicAlgorithm::ChaCha20Poly1305 => String::from("ChaCha20-Poly1305"),
-                _ => value.clone(),
-            };
+            let label = value.clone();
             AlgoOption { value, label }
         })
         .collect();
@@ -231,17 +219,7 @@ pub fn get_object_types() -> Result<JsValue, JsValue> {
         .iter()
         .map(|v| {
             let value = v.to_string();
-            let label = match v {
-                ObjectType::SymmetricKey => String::from("Symmetric Key"),
-                ObjectType::PublicKey => String::from("Public Key"),
-                ObjectType::PrivateKey => String::from("Private Key"),
-                ObjectType::SplitKey => String::from("Split Key"),
-                ObjectType::SecretData => String::from("Secret Data"),
-                ObjectType::OpaqueObject => String::from("Opaque Object"),
-                ObjectType::PGPKey => String::from("PGP Key"),
-                ObjectType::CertificateRequest => String::from("Certificate Request"),
-                ObjectType::Certificate => String::from("Certificate"),
-            };
+            let label = v.to_string();
             AlgoOption { value, label }
         })
         .collect();
@@ -262,16 +240,7 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
         kmip_0::kmip_types::State::Destroyed_Compromised,
     ];
     for s in variants {
-        let label = match s {
-            kmip_0::kmip_types::State::PreActive => String::from("Pre-Active"),
-            kmip_0::kmip_types::State::Active => String::from("Active"),
-            kmip_0::kmip_types::State::Deactivated => String::from("Deactivated"),
-            kmip_0::kmip_types::State::Compromised => String::from("Compromised"),
-            kmip_0::kmip_types::State::Destroyed => String::from("Destroyed"),
-            kmip_0::kmip_types::State::Destroyed_Compromised => {
-                String::from("Destroyed Compromised")
-            }
-        };
+        let label = s.to_string();
         // Use UI labels for value to keep client-side filtering stable
         states.push(AlgoOption {
             value: label.clone(),

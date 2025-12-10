@@ -2,34 +2,23 @@ import { Button, Card, Form, Input, Select, Space, Switch, Upload } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { downloadFile, sendKmipRequest } from "./utils";
-import { parse_sign_ttlv_response, sign_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
+import * as wasmClient from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface ECSignFormData {
     inputFile: Uint8Array;
     fileName: string;
     keyId?: string;
     tags?: string[];
-    curve: "nist-p256" | "nist-p384" | "nist-p521";
-    signatureAlgorithm: "ecdsa-with-sha256" | "ecdsa-with-sha384" | "ecdsa-with-sha512";
     digested: boolean;
 }
 
-const CURVES = [
-    { label: "NIST P-256", value: "nist-p256" },
-    { label: "NIST P-384", value: "nist-p384" },
-    { label: "NIST P-521", value: "nist-p521" },
-];
-
-const SIGNATURE_ALGORITHMS = [
-    { label: "ECDSA with SHA-256", value: "ecdsa-with-sha256" },
-    { label: "ECDSA with SHA-384", value: "ecdsa-with-sha384" },
-    { label: "ECDSA with SHA-512", value: "ecdsa-with-sha512" },
-];
+// No options types needed; algorithm handled by key type.
 
 const ECSignForm: React.FC = () => {
     const [form] = Form.useForm<ECSignFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
+    // Signature algorithm is inferred by key type; no explicit options
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
@@ -49,15 +38,15 @@ const ECSignForm: React.FC = () => {
                 throw Error("Missing key identifier");
             }
             // Use algorithm string like "ecdsa-with-sha256"
-            const request = await sign_ttlv_request(
+            const request = await wasmClient.sign_ttlv_request(
                 id,
                 values.inputFile,
-                values.signatureAlgorithm,
+                undefined,
                 values.digested,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const response = await parse_sign_ttlv_response(result_str);
+                const response = await wasmClient.parse_sign_ttlv_response(result_str);
                 // Support different casings or encodings from wasm response without using `any`
                 const respObj = response as unknown as Record<string, unknown>;
                 const sigCandidate = respObj.SignatureData ?? respObj.signature_data ?? respObj.signatureData;
@@ -99,7 +88,7 @@ const ECSignForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                initialValues={{ curve: "nist-p256", signatureAlgorithm: "ecdsa-with-sha256", digested: false }}
+                initialValues={{ digested: false }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
@@ -138,12 +127,7 @@ const ECSignForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <Form.Item name="curve" label="Elliptic Curve" rules={[{ required: true }]}>
-                            <Select options={CURVES} />
-                        </Form.Item>
-                        <Form.Item name="signatureAlgorithm" label="Signature Algorithm" rules={[{ required: true }]}>
-                            <Select options={SIGNATURE_ALGORITHMS} />
-                        </Form.Item>
+                        {/* Signature algorithm is determined by key type (ECDSA). */}
                         <Form.Item name="digested" label="Input Is Digested" valuePropName="checked">
                             <Switch />
                         </Form.Item>

@@ -9,12 +9,9 @@ use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::kms::{
-        rsa::{
-            keys::create_key_pair::CreateKeyPairAction, sign::SignAction,
-            signature_verify::SignatureVerifyAction,
-        },
-        shared::CDigitalSignatureAlgorithmRSA,
+    actions::kms::rsa::{
+        keys::create_key_pair::CreateKeyPairAction, sign::SignAction,
+        signature_verify::SignatureVerifyAction,
     },
     error::result::KmsCliResult,
 };
@@ -46,7 +43,7 @@ async fn rsa_digested_sign_verify_cli() -> KmsCliResult<()> {
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: Some(sig_file.clone()),
         digested: true,
     }
@@ -59,7 +56,7 @@ async fn rsa_digested_sign_verify_cli() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: None,
         digested: true,
     }
@@ -91,8 +88,6 @@ async fn rsa_streaming_sign_and_verify_cli() -> KmsCliResult<()> {
     let chunk_size: usize = 64;
     let mut offset: usize = 0;
     let mut correlation_value: Option<Vec<u8>> = None;
-    let cp: Option<CryptographicParameters> =
-        Some(CDigitalSignatureAlgorithmRSA::RSASSAPSS.to_cryptographic_parameters());
 
     while offset < data.len() {
         let end = (offset + chunk_size).min(data.len());
@@ -100,7 +95,7 @@ async fn rsa_streaming_sign_and_verify_cli() -> KmsCliResult<()> {
         let init_indicator = if offset == 0 { Some(true) } else { None };
         let final_indicator = if end == data.len() { Some(true) } else { None };
         let cp_chunk = if init_indicator == Some(true) {
-            cp.clone()
+            None
         } else {
             None
         };
@@ -127,7 +122,7 @@ async fn rsa_streaming_sign_and_verify_cli() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: None,
         digested: false,
     }
@@ -174,7 +169,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: Some(output_file.clone()),
         digested: true,
     }
@@ -187,7 +182,7 @@ async fn test_rsa_sign() -> KmsCliResult<()> {
         signature_file: output_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: Some(recovered_file.clone()),
         digested: true,
     }
@@ -226,7 +221,7 @@ async fn test_rsa_sign_with_digested_data() -> KmsCliResult<()> {
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: Some(sig_file.clone()),
         digested: true,
     }
@@ -239,7 +234,6 @@ async fn test_rsa_sign_with_digested_data() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
         output_file: None,
         digested: true,
     }
@@ -273,10 +267,6 @@ async fn test_rsa_streaming_sign_and_verify() -> KmsCliResult<()> {
     let mut offset: usize = 0;
     let mut correlation_value: Option<Vec<u8>> = None;
 
-    // Prepare cryptographic parameters for RSASSA-PSS
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        Some(CDigitalSignatureAlgorithmRSA::RSASSAPSS.to_cryptographic_parameters());
-
     // Stream: init, middle, final
     while offset < data.len() {
         let end = (offset + chunk_size).min(data.len());
@@ -285,7 +275,7 @@ async fn test_rsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         let final_indicator = if end == data.len() { Some(true) } else { None };
 
         let cp_chunk = if init_indicator == Some(true) {
-            cryptographic_parameters.clone()
+            None
         } else {
             None
         };
@@ -316,7 +306,7 @@ async fn test_rsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
+
         output_file: None,
         digested: false,
     }
@@ -341,7 +331,10 @@ async fn rsa_pss_zero_salt_deterministic_cli() -> KmsCliResult<()> {
     let data = std::fs::read("../../test_data/plain.txt")?;
 
     // KMIP Sign with RSASSA-PSS and SaltLength=0
-    let mut cp = CDigitalSignatureAlgorithmRSA::RSASSAPSS.to_cryptographic_parameters();
+    let mut cp = cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters::default();
+    cp.cryptographic_algorithm =
+        Some(cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA);
+    cp.padding_method = Some(cosmian_kmip::kmip_0::kmip_types::PaddingMethod::PSS);
     cp.hashing_algorithm = Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);
     cp.mask_generator_hashing_algorithm =
         Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);

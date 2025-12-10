@@ -9,13 +9,8 @@ interface RsaSignFormData {
     fileName: string;
     keyId?: string;
     tags?: string[];
-    signatureAlgorithm: "rsassapss";
     digested: boolean;
 }
-
-const SIGNATURE_ALGORITHMS = [
-    { label: "RSASSA-PSS", value: "rsassapss" },
-];
 
 const RsaSignForm: React.FC = () => {
     const [form] = Form.useForm<RsaSignFormData>();
@@ -39,7 +34,7 @@ const RsaSignForm: React.FC = () => {
                 setRes("Missing key identifier.");
                 throw Error("Missing key identifier");
             }
-            const request = await sign_ttlv_request(id, values.inputFile, values.signatureAlgorithm, values.digested);
+            const request = await sign_ttlv_request(id, values.inputFile, undefined, values.digested);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_sign_ttlv_response(result_str);
@@ -82,7 +77,7 @@ const RsaSignForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                initialValues={{ signatureAlgorithm: "rsassapss", digested: false }}
+                initialValues={{ digested: false }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
@@ -121,9 +116,6 @@ const RsaSignForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <Form.Item name="signatureAlgorithm" label="Signature Algorithm" rules={[{ required: true }]}>
-                            <Select options={SIGNATURE_ALGORITHMS} />
-                        </Form.Item>
                         <Form.Item name="digested" label="Input Is Digested" valuePropName="checked">
                             <Switch />
                         </Form.Item>

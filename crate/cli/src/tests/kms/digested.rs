@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
-    kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
+    kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_logger::log_init;
 // Curve no longer used since EcSignAction was removed
@@ -21,7 +21,6 @@ use crate::{
             sign::SignAction as RsaSignAction,
             signature_verify::SignatureVerifyAction as RsaVerifyAction,
         },
-        shared::{CDigitalSignatureAlgorithmEC, CDigitalSignatureAlgorithmRSA},
     },
     error::result::KmsCliResult,
 };
@@ -52,7 +51,6 @@ async fn rsa_digested_sign_verify() -> KmsCliResult<()> {
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
         output_file: Some(sig_file.clone()),
         digested: true,
     }
@@ -64,7 +62,6 @@ async fn rsa_digested_sign_verify() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmRSA::RSASSAPSS,
         output_file: None,
         digested: true,
     }
@@ -97,8 +94,7 @@ async fn ecdsa_digested_sign_verify() -> KmsCliResult<()> {
         .await?;
 
     // Build and send Sign operation directly
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        Some(CDigitalSignatureAlgorithmEC::ECDSAWithSHA256.to_cryptographic_parameters());
+    let cryptographic_parameters = None;
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
         cryptographic_parameters,
@@ -117,7 +113,6 @@ async fn ecdsa_digested_sign_verify() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmEC::ECDSAWithSHA256,
         output_file: None,
         digested: true,
     }

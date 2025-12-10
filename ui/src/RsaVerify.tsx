@@ -14,13 +14,8 @@ interface RsaVerifyFormData {
     signatureFileName: string;
     keyId?: string;
     tags?: string[];
-    signatureAlgorithm: "rsassapss";
     digested: boolean;
 }
-
-const SIGNATURE_ALGORITHMS = [
-    { label: "RSASSA-PSS", value: "rsassapss" },
-];
 
 const RsaVerifyForm: React.FC = () => {
     const [form] = Form.useForm<RsaVerifyFormData>();
@@ -89,7 +84,7 @@ const RsaVerifyForm: React.FC = () => {
                 id,
                 dataBuf!,
                 sigBuf,
-                values.signatureAlgorithm,
+                undefined,
                 values.digested,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -121,7 +116,7 @@ const RsaVerifyForm: React.FC = () => {
                 form={form}
                 onFinish={onFinish}
                 layout="vertical"
-                initialValues={{ signatureAlgorithm: "rsassapss", digested: false }}
+                initialValues={{ digested: false }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
@@ -188,9 +183,6 @@ const RsaVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <Form.Item name="signatureAlgorithm" label="Signature Algorithm" rules={[{ required: true }]}>
-                            <Select options={SIGNATURE_ALGORITHMS} />
-                        </Form.Item>
                         <Form.Item name="digested" label="Data Is Digested" valuePropName="checked">
                             <Switch />
                         </Form.Item>

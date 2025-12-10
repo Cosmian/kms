@@ -89,3 +89,211 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
     };
     Ok(signature)
 }
+
+/// `EdDSA` (e.g., `Ed25519`) signing helper. Uses OpenSSL's one-shot signer without digest.
+pub fn eddsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>, CryptoError> {
+    let mut signer = Signer::new_without_digest(private_key)?;
+
+    if let Some(corr) = request.correlation_value.clone() {
+        signer.update(&corr)?;
+    }
+    let signature = if let Some(digested_data) = &request.digested_data {
+        signer.sign_oneshot_to_vec(digested_data)?
+    } else {
+        let data_to_sign = request.data.clone().unwrap_or_default();
+        signer.sign_oneshot_to_vec(&data_to_sign)?
+    };
+    Ok(signature)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
+    use openssl::pkey::PKey;
+
+    use super::*;
+
+    fn sign_twice_and_compare<F>(sign_req: &Sign, pkey: &PKey<Private>, f: F) -> (Vec<u8>, Vec<u8>)
+    where
+        F: Fn(&Sign, &PKey<Private>) -> Result<Vec<u8>, CryptoError>,
+    {
+        let sig1 = f(&sign_req.clone(), pkey).expect("first signature");
+        let sig2 = f(&sign_req.clone(), pkey).expect("second signature");
+        (sig1, sig2)
+    }
+
+    #[test]
+    fn ed25519_deterministic() {
+        // Generate Ed25519 key
+        let pkey = PKey::generate_ed25519().unwrap_or_else(|e| panic!("ed25519 gen: {e}"));
+        let cp: CryptographicParameters = CryptographicParameters::default();
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"ed25519 deterministic".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
+        assert_eq!(sig1, sig2, "Ed25519 signatures must be deterministic");
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn ed448_deterministic() {
+        // Generate Ed448 key
+        let pkey = PKey::generate_ed448().unwrap_or_else(|e| panic!("ed448 gen: {e}"));
+        let cp: CryptographicParameters = CryptographicParameters::default();
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"ed448 deterministic".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
+        assert_eq!(sig1, sig2, "Ed448 signatures must be deterministic");
+    }
+
+    #[test]
+    fn ecdsa_is_nondeterministic() {
+        // Generate ECDSA key on NIST P-256
+        let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
+            .unwrap_or_else(|e| panic!("ec group: {e}"));
+        let ec_key =
+            openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
+        let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        // Prepare ECDSA with SHA-256
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+        let req = Sign {
+            unique_identifier: None,
+            data: Some(b"ecdsa nondeterminism test".to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, ecdsa_sign);
+        #[cfg(feature = "non-fips")]
+        {
+            assert_eq!(
+                sig1, sig2,
+                "ECDSA signatures must be deterministic under RFC6979 path"
+            );
+        }
+        #[cfg(not(feature = "non-fips"))]
+        {
+            assert_ne!(
+                sig1, sig2,
+                "ECDSA signatures should not be deterministic under OpenSSL"
+            );
+        }
+    }
+
+    #[test]
+    fn ecdsa_sign_supported_recommended_curves() {
+        // List of supported curves for signature in server sign path
+        #[allow(unused_mut)]
+        let mut curves = vec![
+            openssl::nid::Nid::SECP224R1,        // P224
+            openssl::nid::Nid::X9_62_PRIME256V1, // P256
+            openssl::nid::Nid::SECP384R1,        // P384
+            openssl::nid::Nid::SECP521R1,        // P521
+        ];
+        #[cfg(feature = "non-fips")]
+        {
+            // Additional non-FIPS curves
+            curves.push(openssl::nid::Nid::X9_62_PRIME192V1); // P192
+            curves.push(openssl::nid::Nid::SECP256K1); // SECP256K1
+            curves.push(openssl::nid::Nid::SECP224K1); // SECP224K1
+        }
+
+        for nid in curves {
+            let group = openssl::ec::EcGroup::from_curve_name(nid)
+                .unwrap_or_else(|e| panic!("group({nid:?}): {e}"));
+            let ec_key = openssl::ec::EcKey::generate(&group)
+                .unwrap_or_else(|e| panic!("ec_key({nid:?}): {e}"));
+            let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey({nid:?}): {e}"));
+
+            // Choose digest based on curve (SHA-256 works for all ECDSA here)
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            };
+            let req = Sign {
+                unique_identifier: None,
+                data: Some(b"supported curves signing".to_vec().into()),
+                digested_data: None,
+                cryptographic_parameters: Some(cp.clone()),
+                init_indicator: None,
+                final_indicator: None,
+                correlation_value: None,
+            };
+
+            let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
+            assert!(!sig.is_empty(), "signature must not be empty for {nid:?}");
+        }
+        // Mapping check removed to satisfy clippy pedantic (no-effect bindings)
+    }
+
+    #[test]
+    fn ecdsa_sign_prehashed_and_verify_sha256() {
+        // Generate ECDSA key on NIST P-256
+        let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
+            .unwrap_or_else(|e| panic!("ec group: {e}"));
+        let ec_key =
+            openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
+        let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        let message = b"ecdsa prehashed test";
+        let digest = openssl::hash::hash(MessageDigest::sha256(), message).expect("digest");
+
+        // Prepare ECDSA with SHA-256 using digested_data
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+        let req = Sign {
+            unique_identifier: None,
+            data: None,
+            digested_data: Some(digest.to_vec()),
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
+
+        // Verify signature using ecdsa_verify helper with prehashed input
+        use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm as KmipHash;
+
+        use crate::crypto::elliptic_curves::verify::ecdsa_verify;
+        let cp_verify = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            hashing_algorithm: Some(KmipHash::SHA256),
+            ..Default::default()
+        };
+        let public_key = PKey::public_key_from_pem(&pkey.public_key_to_pem().unwrap()).unwrap();
+        let valid =
+            ecdsa_verify(&public_key, &digest, &sig, &cp_verify, true).expect("ecdsa_verify");
+        assert_eq!(
+            valid,
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            "ECDSA signature must verify for prehashed SHA-256"
+        );
+    }
+}

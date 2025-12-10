@@ -1,13 +1,10 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicParameters, ValidityIndicator};
+use cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator;
 use cosmian_kms_client::KmsClient;
 
-use crate::{
-    actions::kms::{labels::KEY_ID, shared::CDigitalSignatureAlgorithmEC},
-    error::result::KmsCliResult,
-};
+use crate::{actions::kms::labels::KEY_ID, error::result::KmsCliResult};
 
 /// Verify an ECDSA signature for a given data file
 #[derive(Parser, Debug)]
@@ -31,10 +28,6 @@ pub struct SignatureVerifyAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
 
-    /// The signature algorithm
-    #[clap(long, short = 's', default_value = "ecdsa-with-sha256")]
-    pub(crate) signature_algorithm: CDigitalSignatureAlgorithmEC,
-
     /// Optional output file path
     #[clap(required = false, long, short = 'o')]
     pub(crate) output_file: Option<PathBuf>,
@@ -46,16 +39,13 @@ pub struct SignatureVerifyAction {
 
 impl SignatureVerifyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<ValidityIndicator> {
-        let cryptographic_parameters: Option<CryptographicParameters> =
-            Some(self.signature_algorithm.to_cryptographic_parameters());
-
         crate::actions::kms::shared::signature_verify::run_signature_verify(
             kms_rest_client,
             &self.data_file,
             &self.signature_file,
             &self.key_id,
             &self.tags,
-            cryptographic_parameters,
+            None,
             self.digested,
         )
         .await

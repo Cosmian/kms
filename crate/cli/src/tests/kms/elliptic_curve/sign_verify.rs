@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
-    kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
+    kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::Curve;
 use cosmian_logger::log_init;
@@ -11,11 +11,8 @@ use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::kms::{
-        elliptic_curves::{
-            keys::create_key_pair::CreateKeyPairAction, signature_verify::SignatureVerifyAction,
-        },
-        shared::CDigitalSignatureAlgorithmEC,
+    actions::kms::elliptic_curves::{
+        keys::create_key_pair::CreateKeyPairAction, signature_verify::SignatureVerifyAction,
     },
     error::result::KmsCliResult,
 };
@@ -44,7 +41,7 @@ async fn ecdsa_deterministic_cli_rfc6979() -> KmsCliResult<()> {
         .await?;
 
     // KMIP Sign on digested data twice
-    let cp = Some(CDigitalSignatureAlgorithmEC::ECDSAWithSHA256.to_cryptographic_parameters());
+    let cp = None;
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
         cryptographic_parameters: cp,
@@ -106,8 +103,6 @@ async fn ecdsa_digested_sign_verify_cli_end_to_end() -> crate::error::result::Km
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-        signature_algorithm:
-            crate::actions::kms::shared::CDigitalSignatureAlgorithmEC::ECDSAWithSHA256,
         output_file: Some(sig_file.clone()),
         digested: true,
     }
@@ -122,8 +117,6 @@ async fn ecdsa_digested_sign_verify_cli_end_to_end() -> crate::error::result::Km
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm:
-            crate::actions::kms::shared::CDigitalSignatureAlgorithmEC::ECDSAWithSHA256,
         output_file: None,
         digested: true,
     }
@@ -154,11 +147,6 @@ async fn ecdsa_sign_both_data_and_digest_should_fail() -> crate::error::result::
             .run(ctx.get_owner_client())
             .await?;
 
-    let cp = Some(
-        crate::actions::kms::shared::CDigitalSignatureAlgorithmEC::ECDSAWithSHA256
-            .to_cryptographic_parameters(),
-    );
-
     // Build invalid KMIP Sign request with both fields
     let sign_request = cosmian_kmip::kmip_2_1::kmip_operations::Sign {
         unique_identifier: Some(
@@ -166,7 +154,7 @@ async fn ecdsa_sign_both_data_and_digest_should_fail() -> crate::error::result::
                 private_key_id.to_string(),
             ),
         ),
-        cryptographic_parameters: cp,
+        cryptographic_parameters: None,
         data: Some(data.into()),
         digested_data: Some(digest),
         correlation_value: None,
@@ -207,11 +195,9 @@ async fn test_ecdsa_sign_with_digested_data() -> KmsCliResult<()> {
         .await?;
 
     // Sign the pre-digested data using direct KMIP Sign request
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        Some(CDigitalSignatureAlgorithmEC::ECDSAWithSHA256.to_cryptographic_parameters());
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
-        cryptographic_parameters,
+        cryptographic_parameters: None,
         data: None,
         digested_data: Some(std::fs::read(&digest_file)?),
         correlation_value: None,
@@ -228,7 +214,6 @@ async fn test_ecdsa_sign_with_digested_data() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmEC::ECDSAWithSHA256,
         output_file: None,
         digested: true,
     }
@@ -260,9 +245,6 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
     let mut offset: usize = 0;
     let mut correlation_value: Option<Vec<u8>> = None;
 
-    let cryptographic_parameters: Option<CryptographicParameters> =
-        Some(CDigitalSignatureAlgorithmEC::ECDSAWithSHA256.to_cryptographic_parameters());
-
     while offset < data.len() {
         let end = (offset + chunk_size).min(data.len());
         let chunk = data[offset..end].to_vec();
@@ -270,7 +252,7 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         let final_indicator = if end == data.len() { Some(true) } else { None };
 
         let cp_chunk = if init_indicator == Some(true) {
-            cryptographic_parameters.clone()
+            None
         } else {
             None
         };
@@ -300,7 +282,6 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-        signature_algorithm: CDigitalSignatureAlgorithmEC::ECDSAWithSHA256,
         output_file: None,
         digested: false,
     }
@@ -312,6 +293,7 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
 }
 
 // Deterministic Ed25519: two signatures over same data must match
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn ed25519_deterministic_cli() -> KmsCliResult<()> {
     log_init(None);
@@ -354,5 +336,97 @@ async fn ed25519_deterministic_cli() -> KmsCliResult<()> {
         .expect("signature_data");
 
     assert_eq!(sig1, sig2, "Ed25519 signatures must be deterministic");
+    Ok(())
+}
+
+// ECDSA sign/verify across supported curves (gated for non-FIPS extras)
+#[tokio::test]
+async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let data = std::fs::read("../../test_data/plain.txt")?;
+    let digest = sha2::Sha256::digest(&data);
+
+    // Build curve list according to feature gating
+    let mut curves = vec![
+        Curve::NistP224,
+        Curve::NistP256,
+        Curve::NistP384,
+        Curve::NistP521,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        curves.push(Curve::NistP192);
+        curves.push(Curve::Secp256k1);
+        curves.push(Curve::Secp224k1);
+    }
+
+    for curve in curves {
+        // Try to create the key pair; if the curve isn't supported in this build, skip it
+        let maybe_ids = CreateKeyPairAction {
+            curve,
+            ..Default::default()
+        }
+        .run(ctx.get_owner_client())
+        .await;
+        let (private_key_id, public_key_id) = match maybe_ids {
+            Ok(ids) => ids,
+            Err(e) => {
+                eprintln!("Skipping curve {:?} in ECDSA test: {}", curve, e);
+                continue;
+            }
+        };
+
+        // Sign digested
+        let cp = None;
+        let sign_req = Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(digest.clone().to_vec()),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        };
+        let signature = ctx
+            .get_owner_client()
+            .sign(sign_req)
+            .await?
+            .signature_data
+            .expect("signature_data");
+
+        // Verify digested
+        let validity = SignatureVerifyAction {
+            data_file: {
+                use std::{fs, io::Write};
+                let path = std::env::temp_dir()
+                    .join(format!("kms_cli_test_digest_{}.bin", uuid::Uuid::new_v4()));
+                let mut f = fs::File::create(&path)?;
+                f.write_all(&digest)?;
+                path
+            },
+            signature_file: {
+                use std::{fs, io::Write};
+                let path = std::env::temp_dir().join(format!(
+                    "kms_cli_test_signature_{}.bin",
+                    uuid::Uuid::new_v4()
+                ));
+                let mut f = fs::File::create(&path)?;
+                f.write_all(&signature)?;
+                path
+            },
+            key_id: Some(public_key_id.to_string()),
+            tags: None,
+            // Algorithm inferred by key type
+            output_file: None,
+            digested: true,
+        }
+        .run(ctx.get_owner_client())
+        .await?;
+
+        assert_eq!(validity, ValidityIndicator::Valid, "curve {:?}", curve);
+    }
+
     Ok(())
 }
