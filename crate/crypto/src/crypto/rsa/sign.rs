@@ -319,7 +319,6 @@ mod tests {
         let sig = sign_rsa_with_pkey(&req, &pkey).expect("signature");
 
         // Verify signature using rsa_verify helper for RSASSA-PSS
-        use crate::crypto::rsa::verify::rsa_verify;
         let public_key = PKey::public_key_from_pem(&pkey.public_key_to_pem().unwrap()).unwrap();
         let cp_verify = CryptographicParameters {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),

@@ -11,7 +11,6 @@ pub mod ckm_rsa_pkcs;
 pub mod ckm_rsa_pkcs_oaep;
 pub mod operation;
 pub mod sign;
-#[path = "verify.rs"]
 pub mod verify;
 
 // Re-export for simpler import paths

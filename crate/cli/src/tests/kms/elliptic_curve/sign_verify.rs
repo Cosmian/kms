@@ -251,14 +251,9 @@ async fn test_ecdsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         let init_indicator = if offset == 0 { Some(true) } else { None };
         let final_indicator = if end == data.len() { Some(true) } else { None };
 
-        let cp_chunk = if init_indicator == Some(true) {
-            None
-        } else {
-            None
-        };
         let sign_request = Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
-            cryptographic_parameters: cp_chunk,
+            cryptographic_parameters: None,
             data: Some(chunk.into()),
             digested_data: None,
             correlation_value: correlation_value.clone(),
@@ -373,7 +368,7 @@ async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
         let (private_key_id, public_key_id) = match maybe_ids {
             Ok(ids) => ids,
             Err(e) => {
-                eprintln!("Skipping curve {:?} in ECDSA test: {}", curve, e);
+                eprintln!("Skipping curve {curve:?} in ECDSA test: {e}");
                 continue;
             }
         };
@@ -425,7 +420,7 @@ async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-        assert_eq!(validity, ValidityIndicator::Valid, "curve {:?}", curve);
+        assert_eq!(validity, ValidityIndicator::Valid, "curve {curve:?}");
     }
 
     Ok(())

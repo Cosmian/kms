@@ -94,14 +94,9 @@ async fn rsa_streaming_sign_and_verify_cli() -> KmsCliResult<()> {
         let chunk = data[offset..end].to_vec();
         let init_indicator = if offset == 0 { Some(true) } else { None };
         let final_indicator = if end == data.len() { Some(true) } else { None };
-        let cp_chunk = if init_indicator == Some(true) {
-            None
-        } else {
-            None
-        };
         let sign_req = cosmian_kmip::kmip_2_1::kmip_operations::Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
-            cryptographic_parameters: cp_chunk,
+            cryptographic_parameters: None,
             data: Some(chunk.into()),
             digested_data: None,
             correlation_value: correlation_value.clone(),
@@ -274,14 +269,9 @@ async fn test_rsa_streaming_sign_and_verify() -> KmsCliResult<()> {
         let init_indicator = if offset == 0 { Some(true) } else { None };
         let final_indicator = if end == data.len() { Some(true) } else { None };
 
-        let cp_chunk = if init_indicator == Some(true) {
-            None
-        } else {
-            None
-        };
         let sign_request = Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
-            cryptographic_parameters: cp_chunk,
+            cryptographic_parameters: None,
             data: Some(chunk.into()),
             digested_data: None,
             correlation_value: correlation_value.clone(),
@@ -331,14 +321,18 @@ async fn rsa_pss_zero_salt_deterministic_cli() -> KmsCliResult<()> {
     let data = std::fs::read("../../test_data/plain.txt")?;
 
     // KMIP Sign with RSASSA-PSS and SaltLength=0
-    let mut cp = cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters::default();
-    cp.cryptographic_algorithm =
-        Some(cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA);
-    cp.padding_method = Some(cosmian_kmip::kmip_0::kmip_types::PaddingMethod::PSS);
-    cp.hashing_algorithm = Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);
-    cp.mask_generator_hashing_algorithm =
-        Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256);
-    cp.salt_length = Some(0);
+    let cp = cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters {
+        cryptographic_algorithm: Some(
+            cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA,
+        ),
+        padding_method: Some(cosmian_kmip::kmip_0::kmip_types::PaddingMethod::PSS),
+        hashing_algorithm: Some(cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256),
+        mask_generator_hashing_algorithm: Some(
+            cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256,
+        ),
+        salt_length: Some(0),
+        ..Default::default()
+    };
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
         cryptographic_parameters: Some(cp),

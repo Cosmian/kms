@@ -109,10 +109,14 @@ pub fn eddsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-    use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
+    use cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm as KmipHash,
+        kmip_2_1::kmip_types::CryptographicParameters,
+    };
     use openssl::pkey::PKey;
 
     use super::*;
+    use crate::crypto::elliptic_curves::verify::ecdsa_verify;
 
     fn sign_twice_and_compare<F>(sign_req: &Sign, pkey: &PKey<Private>, f: F) -> (Vec<u8>, Vec<u8>)
     where
@@ -279,9 +283,6 @@ mod tests {
         let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
 
         // Verify signature using ecdsa_verify helper with prehashed input
-        use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm as KmipHash;
-
-        use crate::crypto::elliptic_curves::verify::ecdsa_verify;
         let cp_verify = CryptographicParameters {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
             hashing_algorithm: Some(KmipHash::SHA256),
