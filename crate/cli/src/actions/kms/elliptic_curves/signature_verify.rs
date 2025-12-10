@@ -18,7 +18,7 @@ pub struct SignatureVerifyAction {
     pub(crate) data_file: PathBuf,
 
     /// The signature file
-    #[clap(required = true, name = "FILE")]
+    #[clap(required = true, name = "SIGNATURE_FILE")]
     pub(crate) signature_file: PathBuf,
 
     /// The private key unique identifier

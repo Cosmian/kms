@@ -21,7 +21,7 @@ pub enum RsaCommands {
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
     Sign(SignAction),
-    SignatureVerify(SignatureVerifyAction),
+    SignVerify(SignatureVerifyAction),
 }
 
 impl RsaCommands {
@@ -40,7 +40,7 @@ impl RsaCommands {
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
             Self::Sign(action) => action.run(kms_rest_client).await?,
-            Self::SignatureVerify(action) => {
+            Self::SignVerify(action) => {
                 action.run(kms_rest_client).await?;
                 return Ok(());
             }
