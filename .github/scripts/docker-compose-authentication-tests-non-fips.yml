@@ -14,6 +14,8 @@ services:
       - sqlite
       - --sqlite-path
       - /tmp/kms-data
+      - --port
+      - '9999'
       - --tls-p12-file
       - /data/certificates/client_server/server/kmserver.acme.com.p12
       - --tls-p12-password
@@ -28,8 +30,6 @@ services:
     ports:
       - 9999:9999
       - 5696:5696
-    environment:
-      - KMS_PORT=9999
   tls13-authentication:
     image: ${DOCKER_IMAGE_NAME}
     volumes:
@@ -39,6 +39,8 @@ services:
       - sqlite
       - --sqlite-path
       - /tmp/kms-data
+      - --port
+      - '10000'
       - --tls-p12-file
       - /data/certificates/client_server/server/kmserver.acme.com.p12
       - --tls-p12-password
@@ -55,5 +57,3 @@ services:
     ports:
       - 10000:10000
       - 5697:5697
-    environment:
-      - KMS_PORT=10000
