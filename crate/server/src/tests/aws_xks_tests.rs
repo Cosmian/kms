@@ -18,15 +18,10 @@ async fn test_xks() -> KResult<()> {
     clap_config.aws_xks_config = AwsXksConfig {
         aws_xks_enable: true,
         aws_xks_region: Some("us-west-2".to_owned()),
-        aws_xks_service: Some("kms".to_owned()),
-        aws_xks_uri_path_prefix: Some("/aws".to_owned()),
+        aws_xks_service: Some("xks-kms".to_owned()),
         aws_xks_sigv4_access_key_id: Some("test_access_key_id".to_owned()),
         aws_xks_sigv4_secret_access_key: Some("test_secret_access_key".to_owned()),
-        aws_xks_partition: Some("aws".to_owned()),
-        aws_xks_account_id: Some("123456789012".to_owned()),
-        aws_xks_user_path: Some("?".to_owned()),
-        aws_xks_user_name: Some("kms_xks_user".to_owned()),
-        aws_xks_sigv4_access_key_user: Some("admin".to_owned()),
+        aws_xks_kek_user: Some("admin".to_owned()),
     };
 
     let _kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
