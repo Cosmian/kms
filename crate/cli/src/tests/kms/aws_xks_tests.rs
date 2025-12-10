@@ -17,7 +17,7 @@ use test_kms_server::{
     start_test_kms_server_with_config,
 };
 
-const ACCESS_KEY_USER: &str = "ACCESS_KEY_USER";
+const KEK_USER: &str = "KEK_USER";
 const ACCESS_KEY_ID: &str = "AKIAIOSFODNN7EXAMPLE";
 const ACCESS_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
@@ -52,15 +52,10 @@ pub(super) async fn test_aws_xks() -> KmsCliResult<()> {
         aws_xks_config: AwsXksConfig {
             aws_xks_enable: true,
             aws_xks_region: Some("us-east-1".to_owned()),
-            aws_xks_service: Some("example".to_owned()),
-            aws_xks_uri_path_prefix: Some("/engineering/".to_owned()),
-            aws_xks_sigv4_access_key_user: Some(ACCESS_KEY_USER.to_owned()),
+            aws_xks_service: Some("xks-kms".to_owned()),
             aws_xks_sigv4_access_key_id: Some(ACCESS_KEY_ID.to_owned()),
             aws_xks_sigv4_secret_access_key: Some(ACCESS_KEY.to_owned()),
-            aws_xks_partition: Some("aws".to_owned()),
-            aws_xks_account_id: Some("123456789012".to_owned()),
-            aws_xks_user_path: Some("?".to_owned()),
-            aws_xks_user_name: Some("user".to_owned()),
+            aws_xks_kek_user: Some(KEK_USER.to_owned()),
         },
         ..Default::default()
     })
@@ -85,7 +80,7 @@ pub(super) async fn test_aws_xks() -> KmsCliResult<()> {
 
     GrantAccess {
         object_uid: Some(ACCESS_KEY_ID.to_owned()),
-        user: ACCESS_KEY_USER.to_owned(),
+        user: KEK_USER.to_owned(),
         operations: vec![KmipOperation::Get],
     }
     .run(ctx.get_owner_client())
