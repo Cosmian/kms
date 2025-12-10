@@ -1,15 +1,15 @@
-//! GetKeyMetaData
+//! `GetKeyMetaData`
 //! ----------------
 //! This API fetches metadata associated with the external key including its type,
 //! supported cryptographic operations and status.
 use std::sync::Arc;
 
 use actix_web::{
-    post,
+    HttpRequest, HttpResponse, post,
     web::{Data, Json, Path},
-    HttpRequest, HttpResponse,
 };
-use cosmian_kmip::kmip::{
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::GetAttributes,
     kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
 };
@@ -17,16 +17,16 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::{
-    routes::xks::{XksErrorName, XksErrorReply},
-    KMSServer,
+    core::KMS,
+    routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
 #[allow(dead_code)]
-pub struct RequestMetadata {
-    /// This is the ARN of the principal that invoked KMS CreateKey (see aws:PrincipalArn).
+pub(crate) struct RequestMetadata {
+    /// This is the ARN of the principal that invoked KMS `CreateKey` (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
     /// the service principal ending in amazonaws.com, such as ec2.amazonaws.com or
     /// “AWS Internal”. This field is REQUIRED.
@@ -40,7 +40,7 @@ pub struct RequestMetadata {
     /// When present, this field indicates the VPC endpoint used for the request (see aws:SourceVpce)
     pub awsSourceVpce: Option<String>,
     /// This is the KMS API call that resulted in the XKS Proxy API request,
-    /// e.g. CreateKey can result in a GetKeyMetadata call. This field is REQUIRED.
+    /// e.g. `CreateKey` can result in a `GetKeyMetadata` call. This field is REQUIRED.
     /// The XKS Proxy MUST NOT reject a request as invalid if it sees a kmsOperation
     /// other than those listed for this API call.
     /// In the future, KMS may introduce a new API that can be satisfied
@@ -50,9 +50,9 @@ pub struct RequestMetadata {
     /// It is easier for a customer to update their XKS Proxy authorization policy
     /// than to update their XKS Proxy software.
     pub kmsOperation: String,
-    /// This is the requestId of the call made to KMS which is visible in AWS CloudTrail.
+    /// This is the requestId of the call made to KMS which is visible in AWS `CloudTrail`.
     /// The XKS proxy SHOULD log this field to allow a customer
-    /// to correlate AWS CloudTrail entries with log entries in the XKS Proxy.
+    /// to correlate AWS `CloudTrail` entries with log entries in the XKS Proxy.
     /// This field typically follows the format for UUIDs
     /// but the XKS Proxy MUST treat this as an opaque string
     /// and MUST NOT perform any validation on its structure.
@@ -81,14 +81,14 @@ pub struct RequestMetadata {
 /// ```
 #[derive(Deserialize, Debug, Serialize)]
 #[allow(non_snake_case)]
-pub struct GetKeyMetadataRequest {
+pub(crate) struct GetKeyMetadataRequest {
     pub requestMetadata: RequestMetadata,
 }
 
 // Defined per XKS Proxy API spec.
 #[derive(Serialize, Debug, PartialEq, Deserialize)]
 #[allow(clippy::upper_case_acronyms)]
-pub enum KeyUsage {
+pub(crate) enum KeyUsage {
     ENCRYPT,
     DECRYPT,
     SIGN,
@@ -107,10 +107,10 @@ pub enum KeyUsage {
 /// ```
 #[derive(Serialize, Default, Deserialize)]
 #[allow(non_snake_case)]
-pub struct GetKeyMetadataResponse {
+pub(crate) struct GetKeyMetadataResponse {
     /// Specifies the type of external key.
     /// This field is REQUIRED.
-    /// The XKS Proxy must use the string AES_256 to indicate a 256-bit AES key.
+    /// The XKS Proxy must use the string `AES_256` to indicate a 256-bit AES key.
     pub keySpec: String,
     /// Specifies an array of cryptographic operations for which external key can be used.
     /// This field is REQUIRED.
@@ -128,11 +128,11 @@ pub struct GetKeyMetadataResponse {
 }
 
 #[post("/kms/xks/v1/keys/{key_id}/metadata")]
-pub async fn get_key_metadata(
+pub(crate) async fn get_key_metadata(
     req_http: HttpRequest,
     key_id: Path<String>,
     request: Json<GetKeyMetadataRequest>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let request = request.into_inner();
     let key_id = key_id.into_inner();
@@ -144,7 +144,7 @@ pub async fn get_key_metadata(
     );
     debug!("get metadata request: {:?}", request.requestMetadata);
     let kms = kms.into_inner();
-    match _get_key_metadata(req_http, request, key_id, &kms)
+    match get_key_metadata_inner(req_http, request, key_id, &kms)
         .await
         .map(Json)
     {
@@ -153,27 +153,21 @@ pub async fn get_key_metadata(
     }
 }
 
-async fn _get_key_metadata(
-    req_http: HttpRequest,
+async fn get_key_metadata_inner(
+    _req_http: HttpRequest,
     request: GetKeyMetadataRequest,
     key_id: String,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> Result<GetKeyMetadataResponse, XksErrorReply> {
     let user = request.requestMetadata.awsPrincipalArn;
-    let database_params = kms
-        .get_sqlite_enc_secrets(&req_http)
-        .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::InternalException,
-            errorMessage: Some(e.to_string()),
-        })?;
     let response = kms
         .get_attributes(
             GetAttributes {
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
-                attribute_references: None,
+                attribute_reference: None,
             },
             &user,
-            database_params.as_ref(),
+            None,
         )
         .await
         .map_err(|e| XksErrorReply {
@@ -186,18 +180,18 @@ async fn _get_key_metadata(
             .cryptographic_algorithm
             .ok_or_else(|| XksErrorReply {
                 errorName: XksErrorName::InternalException,
-                errorMessage: Some("No cryptographic algorithm found".to_string()),
+                errorMessage: Some("No cryptographic algorithm found".to_owned()),
             })?;
     let key_size = response
         .attributes
         .cryptographic_length
         .ok_or_else(|| XksErrorReply {
             errorName: XksErrorName::InternalException,
-            errorMessage: Some("No cryptographic length found".to_string()),
+            errorMessage: Some("No cryptographic length found".to_owned()),
         })?;
     let (key_spec, key_usage) = match cryptographic_algorithm {
         CryptographicAlgorithm::AES => (
-            format!("AES_{}", key_size),
+            format!("AES_{key_size}"),
             vec![
                 KeyUsage::ENCRYPT,
                 KeyUsage::DECRYPT,
@@ -206,7 +200,7 @@ async fn _get_key_metadata(
             ],
         ),
         CryptographicAlgorithm::RSA => {
-            let key_spec = format!("RSA_{}", key_size);
+            let key_spec = format!("RSA_{key_size}");
             if response.attributes.get_tags().contains("_sk") {
                 // a private key
                 (
@@ -223,12 +217,12 @@ async fn _get_key_metadata(
         xc => {
             return Err(XksErrorReply {
                 errorName: XksErrorName::UnsupportedOperationException,
-                errorMessage: Some(format!("Unsupported cryptographic algorithm: {:?}", xc)),
-            })
+                errorMessage: Some(format!("Unsupported cryptographic algorithm: {xc:?}")),
+            });
         }
     };
 
-    let key_status = "ENABLED".to_string();
+    let key_status = "ENABLED".to_owned();
     Ok(GetKeyMetadataResponse {
         keySpec: key_spec,
         keyUsage: key_usage,

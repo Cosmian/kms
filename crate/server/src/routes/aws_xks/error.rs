@@ -1,31 +1,22 @@
-use std::fmt::{Display, Formatter};
-
+#![allow(dead_code)]
 use actix_web::{
-    Error, HttpRequest, HttpResponse, ResponseError, dev::ServiceResponse, error::JsonPayloadError,
-    http, middleware::ErrorHandlerResponse,
+    // Error, HttpRequest,
+    HttpResponse,
+    ResponseError,
+    // dev::ServiceResponse, error::JsonPayloadError, http, middleware::ErrorHandlerResponse,
 };
-pub use encrypt_decrypt::{
-    CdivAlgorithm, DecryptRequest, DecryptResponse, EncryptRequest, EncryptResponse,
-    EncrytionAlgorithm, RequestMetadata, decrypt, encrypt,
-};
-pub use health_status::{
-    EkmFleetDetails, GetHealthStatusRequest, GetHealthStatusResponse,
-    RequestMetadata as HealthMetaData, get_health_status,
-};
-pub use key_metadata::{
-    GetKeyMetadataRequest, GetKeyMetadataResponse, KeyUsage, RequestMetadata as KeyRequestMetadata,
-    get_key_metadata,
-};
+use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use std::fmt::{Display, Formatter};
 
 /// Error Name for AWS XKS Error replies
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(non_camel_case_types)]
-enum XksErrorName {
+#[allow(clippy::enum_variant_names)]
+pub enum XksErrorName {
     /// The request was rejected because one
     /// or more input parameters is invalid.
-    /// 400: ALL except GetHealthStatus
+    /// 400: ALL except `GetHealthStatus`
     ValidationException,
 
     /// The request was rejected because the
@@ -49,19 +40,19 @@ enum XksErrorName {
     InvalidKeyUsageException,
 
     /// The request was rejected due to
-    /// invalid AWS SigV4 signature.
+    /// invalid AWS `SigV4` signature.
     /// 401: ALL
     AuthenticationFailedException,
 
     /// The request was rejected because the
     /// operation is not authorized based on
     /// request metadata.
-    /// 403: ALL except GetHealthStatus
+    /// 403: ALL except `GetHealthStatus`
     AccessDeniedException,
 
     /// The request was rejected because the
     /// specified external key is not found.
-    /// 404: ALL except GetHealthStatus
+    /// 404: ALL except `GetHealthStatus`
     KeyNotFoundException,
 
     /// The request was rejected because the
@@ -114,39 +105,26 @@ enum XksErrorName {
 /// ```
 #[derive(Serialize, Debug, Clone)]
 #[allow(non_snake_case)]
-struct XksErrorReply {
-    errorName: XksErrorName,
-    errorMessage: Option<String>,
+pub struct XksErrorReply {
+    pub errorName: XksErrorName,
+    pub errorMessage: Option<String>,
 }
 
-// impl XksErrorReply {
-//     fn from(e: KmsError) -> Self {
-//         // let error_name = match e.status_code().as_u16() {
-//         //     400 => XksErrorName::InvalidStateException,
-//         //     401 => XksErrorName::AuthenticationFailedException,
-//         //     403 => XksErrorName::AccessDeniedException,
-//         //     404 => XksErrorName::KeyNotFoundException,
-//         //     429 => XksErrorName::ThrottlingException,
-//         //     501 => XksErrorName::UnsupportedOperationException,
-//         //     503 => XksErrorName::DependencyTimeoutException,
-//         //     _ => XksErrorName::InternalException,
-//         // };
-//         Self {
-//             errorName: XksErrorName::InternalException,
-//             errorMessage: Some(e.to_string()),
-//         }
-//     }
-// }
+impl Display for XksErrorReply {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{self:?}"))
+    }
+}
 
 impl From<XksErrorReply> for HttpResponse {
     fn from(e: XksErrorReply) -> Self {
         debug!("Xks Error: {:?}", e);
         match e.errorName {
-            XksErrorName::ValidationException => Self::BadRequest().json(e),
-            XksErrorName::InvalidStateException => Self::BadRequest().json(e),
-            XksErrorName::InvalidCiphertextException => Self::BadRequest().json(e),
-            XksErrorName::InvalidKeyUsageException => Self::BadRequest().json(e),
-            XksErrorName::AuthenticationFailedException => Self::Unauthorized().json(e),
+            XksErrorName::ValidationException
+            | XksErrorName::InvalidStateException
+            | XksErrorName::InvalidCiphertextException
+            | XksErrorName::InvalidKeyUsageException
+            | XksErrorName::AuthenticationFailedException => Self::Unauthorized().json(e),
             XksErrorName::AccessDeniedException => Self::Forbidden().json(e),
             // We map to I am a teapot to avoid falling into the generic 404 error handler
             // and use another handler to convert it to 404
@@ -160,61 +138,55 @@ impl From<XksErrorReply> for HttpResponse {
     }
 }
 
-impl Display for XksErrorReply {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:?}", self))
-    }
-}
-
 impl ResponseError for XksErrorReply {
     fn error_response(&self) -> HttpResponse {
         HttpResponse::from(self.clone())
     }
 }
 
-// Custom error handler for JSON deserialization errors
-pub fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
-    let error_message = match &err {
-        JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {}", e),
-        _ => "Unknown error".to_string(),
-    };
-    XksErrorReply {
-        errorName: XksErrorName::ValidationException,
-        errorMessage: Some(error_message),
-    }
-    .into()
-}
+// // Custom error handler for JSON deserialization errors
+// pub(crate) fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
+//     let error_message = match &err {
+//         JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {e}"),
+//         _ => "Unknown error".to_owned(),
+//     };
+//     XksErrorReply {
+//         errorName: XksErrorName::ValidationException,
+//         errorMessage: Some(error_message),
+//     }
+//     .into()
+// }
 
-/// Custom error handler for 404 due to path errors
-pub fn xks_path_not_found_handler<B>(
-    res: ServiceResponse<B>,
-) -> actix_web::Result<ErrorHandlerResponse<B>> {
-    // split service response into request and response components
-    let (req, res) = res.into_parts();
+// /// Custom error handler for 404 due to path errors
+// pub(crate) fn xks_path_not_found_handler<B>(
+//     res: ServiceResponse<B>,
+// ) -> actix_web::Result<ErrorHandlerResponse<B>> {
+//     // split service response into request and response components
+//     let (req, res) = res.into_parts();
 
-    // set body of response to modified body
-    let res = res.set_body(serde_json::to_string(&XksErrorReply {
-        errorName: XksErrorName::InvalidUriPathException,
-        errorMessage: Some(format!("Resource not found: {}", req.path())),
-    })?);
+//     // set body of response to modified body
+//     let res = res.set_body(serde_json::to_string(&XksErrorReply {
+//         errorName: XksErrorName::InvalidUriPathException,
+//         errorMessage: Some(format!("Resource not found: {}", req.path())),
+//     })?);
 
-    // modified bodies need to be boxed and placed in the "right" slot
-    let res = ServiceResponse::new(req, res)
-        .map_into_boxed_body()
-        .map_into_right_body();
+//     // modified bodies need to be boxed and placed in the "right" slot
+//     let res = ServiceResponse::new(req, res)
+//         .map_into_boxed_body()
+//         .map_into_right_body();
 
-    Ok(ErrorHandlerResponse::Response(res))
-}
+//     Ok(ErrorHandlerResponse::Response(res))
+// }
 
-/// Custom error handler for "I am a teapot" which are "key not found" errors
-/// and must be reconverted to 404 to meet the spec
-pub fn xks_key_not_found_handler<B>(
-    mut service_response: ServiceResponse<B>,
-) -> actix_web::Result<ErrorHandlerResponse<B>> {
-    *service_response.response_mut().status_mut() = http::StatusCode::NOT_FOUND;
+// /// Custom error handler for "I am a teapot" which are "key not found" errors
+// /// and must be reconverted to 404 to meet the spec
+// pub(crate) fn xks_key_not_found_handler<B>(
+//     mut service_response: ServiceResponse<B>,
+// ) -> actix_web::Result<ErrorHandlerResponse<B>> {
+//     *service_response.response_mut().status_mut() = http::StatusCode::NOT_FOUND;
 
-    // body is unchanged, map to "left" slot
-    Ok(ErrorHandlerResponse::Response(
-        service_response.map_into_left_body(),
-    ))
-}
+//     // body is unchanged, map to "left" slot
+//     Ok(ErrorHandlerResponse::Response(
+//         service_response.map_into_left_body(),
+//     ))
+// }

@@ -2,7 +2,6 @@
 default-members = ["crate/server"]
 members = [
     # Common crates
-    "crate/aws_structs",
     "crate/kmip",
     # Client crates
     "crate/client_utils",
