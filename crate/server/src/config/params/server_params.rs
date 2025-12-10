@@ -360,15 +360,11 @@ impl fmt::Debug for ServerParams {
                 .field("aws_xks_params", &"configured")
                 .field("aws_xks_region", &aws_xks_params.region)
                 .field("aws_xks_service", &aws_xks_params.service)
-                .field("aws_xks_uri_path_prefix", &aws_xks_params.uri_path_prefix)
-                .field("aws_xks_partition", &aws_xks_params.partition)
-                .field("aws_xks_account_id", &aws_xks_params.account_id)
-                .field("aws_xks_user_path", &aws_xks_params.user_path)
-                .field("aws_xks_user_name", &aws_xks_params.user_name)
                 .field(
                     "aws_xks_sigv4_access_key_id",
                     &aws_xks_params.sigv4_access_key_id,
-                );
+                )
+                .field("aws_xks_kek_user", &aws_xks_params.kek_user);
         } else {
             debug_struct.field("aws_xks_params", &"not configured");
         }
