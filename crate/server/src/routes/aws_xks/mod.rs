@@ -1,15 +1,16 @@
 // use const_format::concatcp;
 
 // mod encrypt_decrypt;
-// mod error;
-mod health_status;
-// mod key_metadata;
 mod aws_xks_config;
+mod error;
+mod health_status;
+mod key_metadata;
 mod sigv4_middleware;
 
 use crate::{error::KmsError, result::KResultHelper};
 pub use aws_xks_config::AwsXksConfig;
 pub(crate) use health_status::get_health_status;
+pub(crate) use key_metadata::get_key_metadata;
 pub use sigv4_middleware::Sigv4MWare;
 
 #[derive(Debug, Clone)]

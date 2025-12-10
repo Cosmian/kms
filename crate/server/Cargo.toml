@@ -70,6 +70,7 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
+const_format = { workspace = true }
 cosmian_aws_structs = { path = "../aws_structs", version = "5.15.0" }
 cosmian_kms_access = { path = "../access", version = "5.15.0" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.15.0" }
