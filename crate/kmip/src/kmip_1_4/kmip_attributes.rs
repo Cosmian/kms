@@ -340,13 +340,34 @@ impl<'de> Deserialize<'de> for Attribute {
                 // TODO: Special case of Notify for which there is no attribute value
                 // This server cannot handle Notify for now
 
-                let Some(attribute_value_name) = map.next_key::<String>()? else {
+                // Some clients include an optional AttributeIndex (and/or VendorIdentification)
+                // between AttributeName and AttributeValue. Tolerate and skip these fields
+                // before reading the actual AttributeValue.
+                let mut next_key = map.next_key::<String>()?;
+                // Loop until we encounter AttributeValue, consuming tolerated intermediate fields.
+                while let Some(key) = next_key.as_ref() {
+                    match key.as_str() {
+                        "AttributeValue" => break,
+                        "AttributeIndex" => {
+                            // Consume the index value and move to next key
+                            let _index: i32 = map.next_value()?;
+                            next_key = map.next_key::<String>()?;
+                        }
+                        "VendorIdentification" => {
+                            // Consume vendor identification and move to next key
+                            let _vendor: String = map.next_value()?;
+                            next_key = map.next_key::<String>()?;
+                        }
+                        _ => {
+                            return Err(de::Error::custom(format!(
+                                "expected AttributeValue in attribute, found {key}"
+                            )));
+                        }
+                    }
+                }
+                // Ensure we stopped on AttributeValue
+                if next_key.as_deref() != Some("AttributeValue") {
                     return Err(de::Error::custom("No attribute value in attribute"));
-                };
-                if attribute_value_name != "AttributeValue" {
-                    return Err(de::Error::custom(format!(
-                        "expected AttributeValue in attribute, found {attribute_value_name}"
-                    )));
                 }
                 match attribute_name_value.as_str() {
                     "Unique Identifier" => {

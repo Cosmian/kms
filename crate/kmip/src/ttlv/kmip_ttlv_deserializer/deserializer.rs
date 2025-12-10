@@ -988,26 +988,32 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     if children.len() != 1 {
                         // KMIP Attribute structures in some vectors may encode as:
                         // Attribute -> AttributeName + <ActualAttributeValueStructure>
-                        // Accept this pattern by selecting the single non-AttributeName child.
-                        // Still error if pattern does not match this relaxed form.
-                        let mut candidate = None;
+                        // and may include an optional AttributeIndex.
+                        // Prefer AttributeValue if present; otherwise fall back to the single
+                        // non-AttributeName child.
+                        let mut attribute_value_child: Option<TTLV> = None;
+                        let mut non_name_candidate: Option<TTLV> = None;
                         for c in children {
-                            if c.tag != "AttributeName" {
-                                if candidate.is_some() {
+                            if c.tag == "AttributeValue" {
+                                attribute_value_child = Some(c.clone());
+                            } else if c.tag != "AttributeName" {
+                                if non_name_candidate.is_some() && attribute_value_child.is_none() {
                                     return Err(TtlvError::from(format!(
                                         "Deserializing an enum of tag: {}: unexpected multiple non-AttributeName children",
                                         element.tag
                                     )));
                                 }
-                                candidate = Some(c.clone());
+                                non_name_candidate = Some(c.clone());
                             }
                         }
-                        let selected = candidate.ok_or_else(|| {
-                            TtlvError::from(format!(
-                                "Deserializing an enum of tag: {}: could not locate attribute value child",
-                                element.tag
-                            ))
-                        })?;
+                        let selected = attribute_value_child
+                            .or(non_name_candidate)
+                            .ok_or_else(|| {
+                                TtlvError::from(format!(
+                                    "Deserializing an enum of tag: {}: could not locate attribute value child",
+                                    element.tag
+                                ))
+                            })?;
                         return visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
                             current: selected,
                             child_index: 0,
