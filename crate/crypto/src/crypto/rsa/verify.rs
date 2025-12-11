@@ -18,8 +18,9 @@ pub fn rsa_verify(
     crypto_params: &CryptographicParameters,
     is_digested: bool,
 ) -> CryptoResult<ValidityIndicator> {
-    let signature_algorithm = crypto_params.digital_signature_algorithm.map_or_else(
-        || {
+    let signature_algorithm = crypto_params
+        .digital_signature_algorithm
+        .unwrap_or_else(|| {
             if crypto_params.padding_method == Some(PaddingMethod::PSS) {
                 DigitalSignatureAlgorithm::RSASSAPSS
             } else {
@@ -33,9 +34,7 @@ pub fn rsa_verify(
                     _ => DigitalSignatureAlgorithm::RSASSAPSS,
                 }
             }
-        },
-        |dsa| dsa,
-    );
+        });
 
     let message_digest = match crypto_params.hashing_algorithm {
         Some(KmipHash::SHA1) => MessageDigest::sha1(),

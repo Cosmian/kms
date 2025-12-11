@@ -334,6 +334,53 @@ async fn ed25519_deterministic_cli() -> KmsCliResult<()> {
     Ok(())
 }
 
+// Deterministic Ed448: two signatures over same data must match
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn ed448_deterministic_cli() -> KmsCliResult<()> {
+    log_init(None);
+
+    let ctx = start_default_test_kms_server().await;
+
+    // Create Ed448 key pair via CLI action
+    let (private_key_id, _public_key_id) = CreateKeyPairAction {
+        curve: Curve::Ed448,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // Prepare raw data
+    let data = std::fs::read("../../test_data/plain.txt")?;
+
+    // Build KMIP Sign request; EDDSA is selected by key type, CP can be None
+    let sign_req = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(private_key_id.to_string())),
+        cryptographic_parameters: None,
+        data: Some(data.clone().into()),
+        digested_data: None,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let sig1 = ctx
+        .get_owner_client()
+        .sign(sign_req.clone())
+        .await?
+        .signature_data
+        .expect("signature_data");
+    let sig2 = ctx
+        .get_owner_client()
+        .sign(sign_req)
+        .await?
+        .signature_data
+        .expect("signature_data");
+
+    assert_eq!(sig1, sig2, "Ed448 signatures must be deterministic");
+    Ok(())
+}
+
 // ECDSA sign/verify across supported curves (gated for non-FIPS extras)
 #[tokio::test]
 async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {

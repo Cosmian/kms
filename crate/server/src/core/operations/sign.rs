@@ -298,7 +298,7 @@ fn sign_with_pkey(request: &Sign, private_key: &PKey<Private>) -> KResult<Vec<u8
         Id::RSA => sign_rsa_with_pkey(request, private_key)
             .map_err(|e| KmsError::NotSupported(format!("rsa sign error: {e}")))?,
         Id::EC => ecdsa_sign(request, private_key)?,
-        Id::ED25519 => eddsa_sign(request, private_key)?,
+        Id::ED25519 | Id::ED448 => eddsa_sign(request, private_key)?,
         other => {
             kms_bail!("sign_with_pkey: private key type not supported: {other:?}")
         }
