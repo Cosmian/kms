@@ -11,8 +11,9 @@ usage() {
   cat <<EOF
 
   Commands:
-    docker [--load] [--test]
+    docker [--force] [--load] [--test]
                        Build Docker image tarball (static OpenSSL)
+                       --force: Force rebuild image tarball, do not reuse cache
                        --load: Load image into Docker
                        --test: Run test_docker_image.sh after loading
     test [type] [args] Run tests inside nix-shell
@@ -59,6 +60,7 @@ usage() {
   Examples:
     $0 docker --variant non-fips --load
     $0 docker --variant fips --load --test
+    $0 --variant non-fips docker --force --load --test
     $0 test                    # defaults to all
     $0 test all
     $0 test sqlite
@@ -177,11 +179,16 @@ docker)
   DOCKER_LINK="static"
   DOCKER_LOAD=false
   DOCKER_TEST=false
+  DOCKER_FORCE=false
   while [ $# -gt 0 ]; do
     case "$1" in
     -v | --variant)
       DOCKER_VARIANT="${2:-}"
       shift 2 || true
+      ;;
+    --force)
+      DOCKER_FORCE=true
+      shift
       ;;
     --load)
       DOCKER_LOAD=true
@@ -220,9 +227,14 @@ docker)
   VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
 
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
-  # Reuse existing tarball if present unless FORCE_REBUILD is set
-  if [ -z "${FORCE_REBUILD:-}" ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" || true) && [ -f "$REAL_OUT" ]; then
-    echo "Reusing existing Docker image tarball at: $REAL_OUT (set FORCE_REBUILD=1 to rebuild)"
+  # Backward compatibility: environment variable still honored if set
+  if [ -n "${FORCE_REBUILD:-}" ]; then
+    DOCKER_FORCE=true
+  fi
+
+  # Reuse existing tarball if present unless forced rebuild is requested
+  if [ "$DOCKER_FORCE" != true ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" || true) && [ -f "$REAL_OUT" ]; then
+    echo "Reusing existing Docker image tarball at: $REAL_OUT (use --force to rebuild)"
   else
     echo "Building Docker image: attr=$ATTR -> $OUT_LINK"
     nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
