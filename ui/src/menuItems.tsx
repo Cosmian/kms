@@ -1,5 +1,4 @@
 import { SafetyCertificateOutlined, SearchOutlined, SolutionOutlined, ToolOutlined } from "@ant-design/icons";
-import * as wasm from "./wasm/pkg";
 
 export interface MenuItem {
     key: string;
@@ -12,18 +11,7 @@ export interface MenuItem {
     disabled?: boolean;
 }
 
-const isFips = (() => {
-    try {
-        const w = wasm as unknown as Record<string, unknown>;
-        const fn = w && typeof w === "object" ? (w["is_fips_mode"] as unknown) : undefined;
-        if (typeof fn === "function") {
-            return (fn as () => boolean)();
-        }
-    } catch {
-        // ignore and fall back to default
-    }
-    return true; // default to FIPS mode when unavailable
-})();
+// Covercrypt is always available in the menu: TODO: to be fixed
 
 const baseMenu: MenuItem[] = [
     {
@@ -95,7 +83,7 @@ const baseMenu: MenuItem[] = [
             {key: "ec/verify", label: "Verify"},
         ],
     },
-    // Covercrypt section will be conditionally appended below
+    // Covercrypt section appended below
     {
         key: "sd",
         label: "Secret Data",
@@ -201,4 +189,4 @@ const covercryptSection: MenuItem = {
     ],
 };
 
-export const menuItems: MenuItem[] = isFips ? baseMenu : [...baseMenu, covercryptSection];
+export const menuItems: MenuItem[] = [...baseMenu, covercryptSection];

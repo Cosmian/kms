@@ -68,8 +68,13 @@ impl actix_web::error::ResponseError for KmsError {
 pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req));
     Ok(Json(format!(
-        "{} ({})",
+        "{} ({}-{})",
         crate_version!().to_owned(),
-        openssl::version::version()
+        openssl::version::version(),
+        if cfg!(feature = "non-fips") {
+            "non-FIPS"
+        } else {
+            "FIPS"
+        }
     )))
 }
