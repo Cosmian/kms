@@ -92,7 +92,7 @@ pub struct MainDBConfig {
 
     /// Maximum number of connections for the relational database pool.
     /// When not provided, falls back to the current defaults:
-    /// - `PostgreSQL`/`MySQL`: 5
+    /// - `PostgreSQL`/`MySQL`: min(10, 2 × CPU cores), fallback 10
     /// - `SQLite`: number of CPUs
     #[clap(long, env = "KMS_DB_MAX_CONNECTIONS")]
     pub max_connections: Option<u32>,
