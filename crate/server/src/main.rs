@@ -166,9 +166,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
-        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
-        WorkspaceConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig,
+        LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
+        UiConfig, WorkspaceConfig,
     };
 
     #[test]
@@ -242,6 +242,7 @@ mod tests {
             },
             azure_ekm_config: AzureEkmConfig {
                 azure_ekm_enable: false,
+                ..Default::default()
             },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {

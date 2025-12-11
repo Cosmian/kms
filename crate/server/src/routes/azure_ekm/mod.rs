@@ -1,6 +1,3 @@
-#!allow(dead_code, unused_imports)]
-use std::sync::Arc;
-
 use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path, Query},
@@ -21,6 +18,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -52,7 +50,7 @@ struct AzureEkmQueryParams {
 #[derive(Debug, Deserialize, Serialize)]
 struct RequestContext {
     #[serde(default)]
-    request_id: String, // optional per spec
+    request_id: Option<String>, // optional per spec
     correlation_id: String,
     pool_name: String,
 }
@@ -280,6 +278,9 @@ pub(crate) async fn get_key_metadata_from_kms(
             if (matches!(e, KmsError::ItemNotFound(_)) || e.to_string().contains("not found")) {
                 return Ok(AzureEkmErrorReply::key_not_found(&key_name).into()); // as required by Azure EKM specs
             }
+            if matches!(e, KmsError::Unauthorized(_)) {
+                return Ok(AzureEkmErrorReply::unauthorized(&key_name).into());
+            }
             // Otherwise, it's an internal error
             Ok(AzureEkmErrorReply::internal_error(format!("Failed to retrieve key: {e}")).into())
         }
@@ -325,8 +326,6 @@ async fn get_public_exponent_from_linked_key(
         )),
     }
 }
-
-// TODO: code below is incomplete and is a work going on
 
 #[derive(Debug, Deserialize)]
 pub(crate) enum WrapAlgorithm {
@@ -519,7 +518,7 @@ async fn wrap_with_aes(
 
     let wrapped_data = response
         .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data"))?;
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))?;
 
     Ok(wrapped_data)
 }
@@ -549,7 +548,7 @@ async fn wrap_with_rsa(
 
     let wrapped_data = response
         .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data"))?;
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))?;
 
     Ok(wrapped_data)
 }
@@ -601,12 +600,11 @@ async fn unwrap_key_handler(
     user: &str,
     request: UnwrapKeyRequest,
 ) -> Result<UnwrapKeyResponse, AzureEkmErrorReply> {
-    let wrapped_dek_bytes =
-        Zeroizing::new(URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
-            AzureEkmErrorReply::invalid_request(format!(
-                "Invalid base64url encoding in 'value' field: {e}"
-            ))
-        })?);
+    let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
+        AzureEkmErrorReply::invalid_request(format!(
+            "Invalid base64url encoding in 'value' field: {e}"
+        ))
+    })?;
 
     let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
@@ -647,7 +645,7 @@ async fn unwrap_with_aes(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    wrapped_dek_bytes: Zeroizing<Vec<u8>>,
+    wrapped_dek_bytes: Vec<u8>,
     alg: &WrapAlgorithm,
     correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
@@ -667,7 +665,7 @@ async fn unwrap_with_aes(
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
         }),
-        data: Some(wrapped_dek_bytes.to_vec()),
+        data: Some(wrapped_dek_bytes),
         correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
@@ -676,7 +674,7 @@ async fn unwrap_with_aes(
 
     let unwrapped_data = response
         .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data"))?;
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))?;
 
     Ok(unwrapped_data)
 }
@@ -686,7 +684,7 @@ async fn unwrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    wrapped_dek_bytes: Zeroizing<Vec<u8>>,
+    wrapped_dek_bytes: Vec<u8>,
     correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let decrypt_request = Decrypt {
@@ -697,7 +695,7 @@ async fn unwrap_with_rsa(
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        data: Some(wrapped_dek_bytes.to_vec()),
+        data: Some(wrapped_dek_bytes),
         correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
@@ -706,7 +704,7 @@ async fn unwrap_with_rsa(
 
     let unwrapped_data = response
         .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data"))?;
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))?;
 
     Ok(unwrapped_data)
 }

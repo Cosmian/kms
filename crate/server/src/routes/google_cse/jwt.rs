@@ -320,7 +320,7 @@ pub(super) async fn validate_cse_authorization_token(
     trace!("authorization token headers: {jwt_headers:?}");
 
     #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(roles) = unusued_roles {
+    if let Some(roles) = _roles {
         let role = authorization_token.role.as_ref().ok_or_else(|| {
             KmsError::Unauthorized("Authorization token should contain a role".to_owned())
         })?;

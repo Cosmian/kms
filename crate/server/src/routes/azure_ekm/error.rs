@@ -92,7 +92,6 @@ impl AzureEkmErrorReply {
     }
 
     /// Authentication failed (invalid mTLS certificate, etc.)
-    #[allow(dead_code)] // specified so it should figure in the code, might be used later
     pub(crate) fn unauthorized(message: impl Into<String>) -> Self {
         Self {
             code: "Unauthorized".to_owned(),
