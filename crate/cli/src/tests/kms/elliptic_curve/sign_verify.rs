@@ -399,6 +399,8 @@ async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
     ];
     #[cfg(feature = "non-fips")]
     {
+        curves.push(Curve::Ed448);
+        curves.push(Curve::Ed25519);
         curves.push(Curve::NistP192);
         curves.push(Curve::Secp256k1);
         curves.push(Curve::Secp224k1);

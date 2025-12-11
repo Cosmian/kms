@@ -7,6 +7,7 @@ import Footer from "./Footer";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import { AuthMethod, getNoTTLVRequest } from "./utils";
+import * as wasm from "./wasm/pkg";
 
 type MainLayoutProps = {
     isDarkMode: boolean;
@@ -77,7 +78,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {loading ? <Spin size="large" /> : <Outlet />}
                     </Layout.Content>
-                    <Footer version={serverVersion} />
+                    <Footer
+                        version={serverVersion ? (() => {
+                            try {
+                                const w = wasm as unknown as Record<string, unknown>;
+                                const fn = w && typeof w === "object" ? (w["is_fips_mode"] as unknown) : undefined;
+                                const isFips = typeof fn === "function" ? (fn as () => boolean)() : true;
+                                return `${serverVersion} (${isFips ? "FIPS" : "non-FIPS"})`;
+                            } catch {
+                                return serverVersion;
+                            }
+                        })() : serverVersion}
+                    />
                 </Layout>
             </Layout>
         </Layout>

@@ -67,7 +67,7 @@ use x509_cert::{
 };
 use zeroize::Zeroizing;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct AlgoOption {
     value: String,
     label: String,
@@ -104,7 +104,9 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
         KeyFormatType::PKCS7,
         KeyFormatType::EnclaveECKeyPair,
         KeyFormatType::EnclaveECSharedKey,
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey,
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey,
     ];
     for v in candidates {
@@ -121,11 +123,103 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
     Err(JsValue::from("Invalid KeyFormatType"))
 }
 
+// Internal helpers to build algorithm option lists that reflect client_utils
+fn list_symmetric_algorithms() -> Vec<AlgoOption> {
+    // Build the list from client_utils' SymmetricAlgorithm enum and its Display impl
+    #[allow(unused_mut)]
+    let mut algs: Vec<SymmetricAlgorithm> = vec![
+        SymmetricAlgorithm::Aes,
+        SymmetricAlgorithm::Sha3,
+        SymmetricAlgorithm::Shake,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        algs.push(SymmetricAlgorithm::Chacha20);
+    }
+
+    algs.into_iter()
+        .map(|a| {
+            let s = a.to_string();
+            AlgoOption {
+                value: s.clone(),
+                label: s,
+            }
+        })
+        .collect()
+}
+
+fn list_ec_algorithms() -> Vec<AlgoOption> {
+    // Build from client_utils' Curve enum to ensure feature gating consistency
+    #[allow(unused_mut)]
+    let mut curves: Vec<Curve> = vec![
+        Curve::NistP224,
+        Curve::NistP256,
+        Curve::NistP384,
+        Curve::NistP521,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        curves.insert(0, Curve::NistP192);
+        curves.push(Curve::Secp224k1);
+        curves.push(Curve::Secp256k1);
+        curves.push(Curve::X25519);
+        curves.push(Curve::Ed25519);
+        curves.push(Curve::X448);
+        curves.push(Curve::Ed448);
+    }
+
+    curves
+        .into_iter()
+        .map(|c| {
+            // Value must be kebab-case identifier that `Curve::from_str` accepts
+            let value = match c {
+                #[cfg(feature = "non-fips")]
+                Curve::NistP192 => "nist-p192",
+                Curve::NistP224 => "nist-p224",
+                Curve::NistP256 => "nist-p256",
+                Curve::NistP384 => "nist-p384",
+                Curve::NistP521 => "nist-p521",
+                #[cfg(feature = "non-fips")]
+                Curve::X25519 => "x25519",
+                #[cfg(feature = "non-fips")]
+                Curve::Ed25519 => "ed25519",
+                #[cfg(feature = "non-fips")]
+                Curve::X448 => "x448",
+                #[cfg(feature = "non-fips")]
+                Curve::Ed448 => "ed448",
+                #[cfg(feature = "non-fips")]
+                Curve::Secp256k1 => "secp256k1",
+                #[cfg(feature = "non-fips")]
+                Curve::Secp224k1 => "secp224k1",
+            };
+            // Label uses Curve Display (human-friendly)
+            let label = c.to_string();
+            AlgoOption {
+                value: value.to_owned(),
+                label,
+            }
+        })
+        .collect()
+}
+
+#[wasm_bindgen]
+pub fn get_symmetric_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_symmetric_algorithms())
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn get_ec_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_ec_algorithms()).map_err(|e| JsValue::from(e.to_string()))
+}
+
 /// Returns the list of cryptographic algorithms available in this build.
-/// The content may vary depending on the `non-fips` feature.
+/// Now reuses EC and Symmetric lists for feature-driven consistency.
 #[wasm_bindgen]
 pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
-    // Build from Rust enum variants to avoid string literals
+    let sym = list_symmetric_algorithms();
+    let ec_list = list_ec_algorithms();
+
     #[allow(unused_mut)]
     let mut variants: Vec<CryptographicAlgorithm> = vec![
         CryptographicAlgorithm::AES,
@@ -137,13 +231,21 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         CryptographicAlgorithm::SHA3256,
         CryptographicAlgorithm::SHA3384,
         CryptographicAlgorithm::SHA3512,
-        CryptographicAlgorithm::Ed25519,
-        CryptographicAlgorithm::Ed448,
-        CryptographicAlgorithm::CoverCrypt,
-        CryptographicAlgorithm::CoverCryptBulk,
     ];
     #[cfg(feature = "non-fips")]
     {
+        variants.push(CryptographicAlgorithm::CoverCrypt);
+        variants.push(CryptographicAlgorithm::CoverCryptBulk);
+    }
+
+    if ec_list.iter().any(|o| o.value == "ed25519") {
+        variants.push(CryptographicAlgorithm::Ed25519);
+    }
+    if ec_list.iter().any(|o| o.value == "ed448") {
+        variants.push(CryptographicAlgorithm::Ed448);
+    }
+
+    if sym.iter().any(|o| o.value == "chacha20") {
         variants.push(CryptographicAlgorithm::ChaCha20);
         variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
     }
@@ -158,6 +260,97 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         .collect();
 
     serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of certificate key generation algorithms (RSA sizes and EC curves)
+/// mirroring `crate/client_utils/src/certificate_utils.rs` `Algorithm` variants.
+#[wasm_bindgen]
+pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
+    #[cfg(feature = "non-fips")]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (keep NIST P-192 first)
+        AlgoOption {
+            value: "nist-p192".into(),
+            label: "NIST P-192".into(),
+        },
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // Additional EC (non-FIPS)
+        AlgoOption {
+            value: "ed25519".into(),
+            label: "Ed25519".into(),
+        },
+        AlgoOption {
+            value: "ed448".into(),
+            label: "Ed448".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa1024".into(),
+            label: "RSA 1024".into(),
+        },
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+    ];
+    #[cfg(not(feature = "non-fips"))]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (FIPS subset)
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+    ];
+
+    serde_wasm_bindgen::to_value(&opts).map_err(|e| JsValue::from(e.to_string()))
 }
 
 /// Returns supported key format types for UI filters.
@@ -256,6 +449,15 @@ pub fn init_panic_hook() {
     // Improve error messages for panics in the browser console
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
+}
+
+/// Returns true when compiled in FIPS mode (default), false in non-FIPS builds.
+#[wasm_bindgen]
+#[allow(clippy::missing_const_for_fn)]
+#[must_use]
+pub fn is_fips_mode() -> bool {
+    // `non-fips` feature disables FIPS mode
+    !cfg!(feature = "non-fips")
 }
 
 fn parse_ttlv_response<T: DeserializeOwned + Serialize>(

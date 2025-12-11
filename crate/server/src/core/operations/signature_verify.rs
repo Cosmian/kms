@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::{
         crypto::{
-            elliptic_curves::verify::{ecdsa_verify, ed25519_verify},
+            elliptic_curves::verify::{ecdsa_verify, ed_verify},
             rsa::{default_cryptographic_parameters, verify::rsa_verify},
         },
         openssl::kmip_public_key_to_openssl,
@@ -262,7 +262,7 @@ fn verify_signature(
             crypto_params,
             is_digested,
         ),
-        Id::ED25519 => ed25519_verify(verification_key, data, signature),
+        Id::ED25519 | Id::ED448 => ed_verify(verification_key, data, signature),
         _ => kms_bail!(KmsError::NotSupported(format!(
             "verify_signature: key type not supported: {:?}",
             verification_key.id()

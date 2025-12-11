@@ -7,7 +7,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_crypto::crypto::{
-    elliptic_curves::verify::{ecdsa_verify, ed25519_verify},
+    elliptic_curves::verify::{ecdsa_verify, ed_verify},
     rsa::verify::rsa_verify,
 };
 use openssl::{
@@ -47,7 +47,7 @@ fn ed25519_verify_basic() {
         Ok(k) => k,
         Err(e) => panic!("pub from pem: {e}"),
     };
-    let res = match ed25519_verify(&pubkey, data, &sig) {
+    let res = match ed_verify(&pubkey, data, &sig) {
         Ok(v) => v,
         Err(e) => panic!("verify ed25519: {e}"),
     };

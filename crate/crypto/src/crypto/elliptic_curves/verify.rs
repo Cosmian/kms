@@ -56,7 +56,7 @@ pub fn ecdsa_verify(
     })
 }
 
-pub fn ed25519_verify(
+pub fn ed_verify(
     verification_key: &PKey<Public>,
     data: &[u8],
     signature: &[u8],

@@ -1,4 +1,5 @@
 import { SafetyCertificateOutlined, SearchOutlined, SolutionOutlined, ToolOutlined } from "@ant-design/icons";
+import * as wasm from "./wasm/pkg";
 
 export interface MenuItem {
     key: string;
@@ -11,7 +12,20 @@ export interface MenuItem {
     disabled?: boolean;
 }
 
-export const menuItems: MenuItem[] = [
+const isFips = (() => {
+    try {
+        const w = wasm as unknown as Record<string, unknown>;
+        const fn = w && typeof w === "object" ? (w["is_fips_mode"] as unknown) : undefined;
+        if (typeof fn === "function") {
+            return (fn as () => boolean)();
+        }
+    } catch {
+        // ignore and fall back to default
+    }
+    return true; // default to FIPS mode when unavailable
+})();
+
+const baseMenu: MenuItem[] = [
     {
         key: "locate",
         label: "Locate",
@@ -81,27 +95,7 @@ export const menuItems: MenuItem[] = [
             {key: "ec/verify", label: "Verify"},
         ],
     },
-    {
-        key: "cc",
-        label: "Covercrypt",
-        collapsedlabel: "CC",
-        children: [
-            {
-                key: "cc/keys",
-                label: "Keys",
-                children: [
-                    {key: "cc/keys/create-master-key-pair", label: "Create Master Key Pair"},
-                    {key: "cc/keys/create-user-key", label: "Create User Key"},
-                    {key: "cc/keys/export", label: "Export"},
-                    {key: "cc/keys/import", label: "Import"},
-                    {key: "cc/keys/revoke", label: "Revoke"},
-                    {key: "cc/keys/destroy", label: "Destroy"},
-                ],
-            },
-            {key: "cc/encrypt", label: "Encrypt"},
-            {key: "cc/decrypt", label: "Decrypt"},
-        ],
-    },
+    // Covercrypt section will be conditionally appended below
     {
         key: "sd",
         label: "Secret Data",
@@ -184,3 +178,27 @@ export const menuItems: MenuItem[] = [
         collapsedlabel: "CSE",
     },
 ];
+
+const covercryptSection: MenuItem = {
+    key: "cc",
+    label: "Covercrypt",
+    collapsedlabel: "CC",
+    children: [
+        {
+            key: "cc/keys",
+            label: "Keys",
+            children: [
+                { key: "cc/keys/create-master-key-pair", label: "Create Master Key Pair" },
+                { key: "cc/keys/create-user-key", label: "Create User Key" },
+                { key: "cc/keys/export", label: "Export" },
+                { key: "cc/keys/import", label: "Import" },
+                { key: "cc/keys/revoke", label: "Revoke" },
+                { key: "cc/keys/destroy", label: "Destroy" },
+            ],
+        },
+        { key: "cc/encrypt", label: "Encrypt" },
+        { key: "cc/decrypt", label: "Decrypt" },
+    ],
+};
+
+export const menuItems: MenuItem[] = isFips ? baseMenu : [...baseMenu, covercryptSection];
