@@ -69,6 +69,8 @@ Options:
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database [env: KMS_CLEAR_DATABASE=]
+      --max-connections <MAX_CONNECTIONS>
+          Maximum number of connections for the relational database pool. When not provided, falls back to the current defaults: - `PostgreSQL`/`MySQL`: min(10, 2 × number of CPU cores), with a fallback of 10 - `SQLite`: number of CPUs [env: KMS_DB_MAX_CONNECTIONS=]
       --unwrapped-cache-max-age <UNWRAPPED_CACHE_MAX_AGE>
           When a wrapped object is fetched from the database,
           it is unwrapped and stored in the unwrapped cache.

@@ -279,7 +279,7 @@ mod tests {
 
         let dir = TempDir::new()?;
 
-        let main_db_params = MainDbParams::Sqlite(dir.path().to_owned());
+        let main_db_params = MainDbParams::Sqlite(dir.path().to_owned(), None);
         let database = Database::instantiate(
             &main_db_params,
             true,

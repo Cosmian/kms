@@ -66,18 +66,23 @@ impl Database {
         cache_max_age: Duration,
     ) -> DbResult<Self> {
         Ok(match main_db_params {
-            MainDbParams::Sqlite(db_path) => {
+            MainDbParams::Sqlite(db_path, max_conns) => {
                 let db = Arc::new(
-                    SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start).await?,
+                    SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start, *max_conns)
+                        .await?,
                 );
                 Self::new(db.clone(), db, cache_max_age)
             }
-            MainDbParams::Postgres(url) => {
-                let db = Arc::new(PgPool::instantiate(url.as_str(), clear_db_on_start).await?);
+            MainDbParams::Postgres(url, max_conns) => {
+                let db = Arc::new(
+                    PgPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
+                );
                 Self::new(db.clone(), db, cache_max_age)
             }
-            MainDbParams::Mysql(url) => {
-                let db = Arc::new(MySqlPool::instantiate(url.as_str(), clear_db_on_start).await?);
+            MainDbParams::Mysql(url, max_conns) => {
+                let db = Arc::new(
+                    MySqlPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
+                );
                 Self::new(db.clone(), db, cache_max_age)
             }
             #[cfg(feature = "non-fips")]

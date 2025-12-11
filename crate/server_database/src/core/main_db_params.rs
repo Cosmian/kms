@@ -15,11 +15,12 @@ use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
 
 pub enum MainDbParams {
     /// contains the directory of the `SQLite` DB file (not the DB file itself)
-    Sqlite(PathBuf),
-    /// contains the `Postgres` connection URL
-    Postgres(Url),
-    /// contains the `MySQL` connection URL
-    Mysql(Url),
+    /// and an optional `max_connections` override
+    Sqlite(PathBuf, Option<u32>),
+    /// contains the `Postgres` connection URL and an optional `max_connections` override
+    Postgres(Url, Option<u32>),
+    /// contains the `MySQL` connection URL and an optional `max_connections` override
+    Mysql(Url, Option<u32>),
     /// contains
     /// - the `Redis` connection URL
     /// - the master key used to encrypt the DB and the Index
@@ -36,9 +37,9 @@ impl MainDbParams {
     #[must_use]
     pub const fn db_name(&self) -> &str {
         match &self {
-            Self::Sqlite(_) => "Sqlite",
-            Self::Postgres(_) => "PostgreSQL",
-            Self::Mysql(_) => "MySql/MariaDB",
+            Self::Sqlite(_, _) => "Sqlite",
+            Self::Postgres(_, _) => "PostgreSQL",
+            Self::Mysql(_, _) => "MySql/MariaDB",
             #[cfg(feature = "non-fips")]
             Self::RedisFindex(_, _, _) => "Redis-Findex",
         }
@@ -48,9 +49,9 @@ impl MainDbParams {
 impl Display for MainDbParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
-            Self::Postgres(url) => write!(f, "postgres: {}", redact_url(url)),
-            Self::Mysql(url) => write!(f, "mysql: {}", redact_url(url)),
+            Self::Sqlite(path, _) => write!(f, "sqlite: {}", path.display()),
+            Self::Postgres(url, _) => write!(f, "postgres: {}", redact_url(url)),
+            Self::Mysql(url, _) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
             Self::RedisFindex(url, _, _) => {
                 write!(f, "redis-findex: {}, master key: [****]", redact_url(url),)
