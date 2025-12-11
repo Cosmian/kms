@@ -30,7 +30,6 @@ let
     name = "kms-runtime-env";
     paths = [
       actualKmsServer
-      pkgs.cacert # CA certificates
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
@@ -190,18 +189,26 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p bin
     mkdir -p usr/local/bin
     mkdir -p usr/local/cosmian/ui
+    mkdir -p etc
+    mkdir -p etc/ssl/certs
 
-    echo "=== fakeRootCommands: Creating binary symlinks ==="
-    ln -sv ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms
-    ln -sv ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms
+    echo "=== fakeRootCommands: Installing binaries (no symlinks) ==="
+    cp -L ${actualKmsServer}/bin/cosmian_kms bin/cosmian_kms || echo "Failed to copy cosmian_kms to /bin"
+    cp -L ${actualKmsServer}/bin/cosmian_kms usr/local/bin/cosmian_kms || echo "Failed to copy cosmian_kms to /usr/local/bin"
 
-    echo "=== fakeRootCommands: Creating UI symlink ==="
-    ln -sv ${actualKmsServer}/usr/local/cosmian/ui/dist usr/local/cosmian/ui/dist
+    echo "=== fakeRootCommands: Installing UI (no symlinks) ==="
+    mkdir -p usr/local/cosmian/ui/dist
+    cp -r ${actualKmsServer}/usr/local/cosmian/ui/dist/* usr/local/cosmian/ui/dist/ 2>/dev/null || echo "UI dist copy skipped or empty"
 
-    echo "=== fakeRootCommands: Verifying symlinks created ==="
+    echo "=== fakeRootCommands: Bundling CA certificates locally ==="
+    cp -L ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt || echo "Failed to copy CA bundle"
+
+    echo "=== fakeRootCommands: Verifying installed files ==="
     ls -la bin/ || echo "ERROR: bin not found"
     ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
     ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
+    ls -la etc/ || echo "ERROR: etc not found"
+    ls -la etc/ssl/certs/ || echo "ERROR: etc/ssl/certs not found"
 
     # Provide system dynamic linker and glibc locations expected by the binary
     # Copy all files from glibc/lib to all possible locations
@@ -257,7 +264,7 @@ pkgs.dockerTools.buildLayeredImage {
     # Environment variables
     Env = [
       "PATH=/usr/local/bin:/bin:${runtimeEnv}/bin:${pkgs.busybox}/bin"
-      "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
       "TZDIR=${pkgs.tzdata}/share/zoneinfo"
     ];
 

@@ -2,15 +2,19 @@
 
 set -ex
 
-# Detect FIPS vs non-FIPS from image name
-# FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:*-fips
-# Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:*-non-fips
-if [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
+# Detect FIPS vs non-FIPS from image name robustly
+# FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:* -fips (not -non-fips)
+# Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:* -non-fips
+if [[ "${DOCKER_IMAGE_NAME:-}" == *"-non-fips"* ]]; then
+    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
+elif [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
     COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-fips.yml"
     echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
 else
+    # Default to non-FIPS if ambiguous
     COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
-    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
+    echo "Image variant ambiguous; defaulting to non-FIPS: ${DOCKER_IMAGE_NAME}"
 fi
 
 # Config paths
