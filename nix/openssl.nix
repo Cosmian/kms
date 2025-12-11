@@ -44,7 +44,8 @@ let
       builtins.seq hashValidation localTarball
     else
       fetchurl {
-        url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
+        # Should be from https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz but website may be down
+        url = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
         # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
         sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
       };
