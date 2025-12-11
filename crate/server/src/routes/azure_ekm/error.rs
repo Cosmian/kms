@@ -55,15 +55,14 @@ impl From<KmsError> for AzureEkmErrorReply {
     }
 }
 
-// bunch of constructors for known error replies
+// constructors for known error replies
 impl AzureEkmErrorReply {
     /// API version not supported
     pub(crate) fn unsupported_api_version(version: &str) -> Self {
         Self {
             code: "UnsupportedApiVersion".to_owned(),
             message: format!(
-                "API version '{}' not supported. Supported: {:?}",
-                version, SUPPORTED_API_VERSIONS
+                "API version '{version}' not supported. Supported: {SUPPORTED_API_VERSIONS:?}"
             ),
         }
     }
@@ -80,10 +79,7 @@ impl AzureEkmErrorReply {
     pub(crate) fn unsupported_algorithm(algorithm: &str, key_type: &str) -> Self {
         Self {
             code: "UnsupportedAlgorithm".to_owned(),
-            message: format!(
-                "Algorithm '{}' is not supported for key type '{}'",
-                algorithm, key_type
-            ),
+            message: format!("Algorithm '{algorithm}' is not supported for key type '{key_type}'"),
         }
     }
 
@@ -91,11 +87,12 @@ impl AzureEkmErrorReply {
     pub(crate) fn key_not_found(key_name: &str) -> Self {
         Self {
             code: "KeyNotFound".to_owned(),
-            message: format!("Key '{}' not found", key_name),
+            message: format!("Key '{key_name}' not found",),
         }
     }
 
     /// Authentication failed (invalid mTLS certificate, etc.)
+    #[allow(dead_code)] // specified so it should figure in the code, might be used later
     pub(crate) fn unauthorized(message: impl Into<String>) -> Self {
         Self {
             code: "Unauthorized".to_owned(),
@@ -104,6 +101,7 @@ impl AzureEkmErrorReply {
     }
 
     /// Access denied (authenticated but not authorized)
+    #[allow(dead_code)] // specified so it should figure in the code, might be used later
     pub(crate) fn forbidden(message: impl Into<String>) -> Self {
         Self {
             code: "Forbidden".to_owned(),
@@ -112,10 +110,11 @@ impl AzureEkmErrorReply {
     }
 
     /// Key is disabled
+    #[allow(dead_code)] // specified so it should figure in the code, might be used later
     pub(crate) fn key_disabled(key_name: &str) -> Self {
         Self {
             code: "KeyDisabled".to_owned(),
-            message: format!("Key '{}' is disabled", key_name),
+            message: format!("Key '{key_name}' is disabled"),
         }
     }
 

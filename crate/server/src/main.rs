@@ -240,6 +240,9 @@ mod tests {
                 ]),
                 google_cse_migration_key: None,
             },
+            azure_ekm_config: AzureEkmConfig {
+                azure_ekm_enable: false,
+            },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),

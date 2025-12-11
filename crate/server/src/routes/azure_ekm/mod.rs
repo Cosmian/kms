@@ -51,7 +51,8 @@ struct AzureEkmQueryParams {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct RequestContext {
-    request_id: String,
+    #[serde(default)]
+    request_id: String, // optional per spec
     correlation_id: String,
     pool_name: String,
 }
@@ -242,7 +243,8 @@ pub(crate) async fn get_key_metadata_from_kms(
                                         // Fetch and store in outer scope
                                         // This function is not called in the other branches, which makes the cloning
                                         // mandatory - I do not think there's a more efficient way to this
-
+                                        // TODO(review): This fallback mechanism is not explicitly mentioned in spec, and it's odd
+                                        // that the private key would not have the public exponent stored - double check this behavior...
                                         get_public_exponent_from_linked_key(key_block, &user, &kms)
                                             .await?
                                     };
@@ -434,11 +436,11 @@ async fn wrap_key_handler(
     request: WrapKeyRequest,
 ) -> Result<WrapKeyResponse, AzureEkmErrorReply> {
     // Decode the input key from base64url
-    let dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
+    let dek_bytes = Zeroizing::new(URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
         AzureEkmErrorReply::invalid_request(format!(
             "Invalid base64url encoding in 'value' field : {e}"
         ))
-    })?;
+    })?);
 
     let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
@@ -452,7 +454,7 @@ async fn wrap_key_handler(
                 user,
                 dek_bytes,
                 &request.alg,
-                Some(request.request_context.correlation_id.into_bytes()),
+                request.request_context.correlation_id,
             )
             .await?
         }
@@ -463,7 +465,7 @@ async fn wrap_key_handler(
                 key_name,
                 user,
                 dek_bytes,
-                Some(request.request_context.correlation_id.into_bytes()),
+                request.request_context.correlation_id,
             )
             .await?
         }
@@ -486,9 +488,9 @@ async fn wrap_with_aes(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    dek_bytes: Vec<u8>,
+    dek_bytes: Zeroizing<Vec<u8>>,
     alg: &WrapAlgorithm,
-    correlation_id: Option<Vec<u8>>, // for logging purposes
+    correlation_id: String, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     // Determine block cipher mode based on algorithm
     let block_cipher_mode = match alg {
@@ -508,8 +510,8 @@ async fn wrap_with_aes(
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
         }),
-        data: Some(dek_bytes.into()),
-        correlation_value: correlation_id,
+        data: Some(dek_bytes),
+        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
 
@@ -527,8 +529,8 @@ async fn wrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    dek_bytes: Vec<u8>,
-    correlation_id: Option<Vec<u8>>, // for logging purposes
+    dek_bytes: Zeroizing<Vec<u8>>,
+    correlation_id: String, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     let encrypt_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
@@ -538,8 +540,8 @@ async fn wrap_with_rsa(
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        data: Some(dek_bytes.into()),
-        correlation_value: correlation_id,
+        data: Some(dek_bytes),
+        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
 
@@ -599,11 +601,12 @@ async fn unwrap_key_handler(
     user: &str,
     request: UnwrapKeyRequest,
 ) -> Result<UnwrapKeyResponse, AzureEkmErrorReply> {
-    let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
-        AzureEkmErrorReply::invalid_request(format!(
-            "Invalid base64url encoding in 'value' field: {e}"
-        ))
-    })?;
+    let wrapped_dek_bytes =
+        Zeroizing::new(URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
+            AzureEkmErrorReply::invalid_request(format!(
+                "Invalid base64url encoding in 'value' field: {e}"
+            ))
+        })?);
 
     let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
@@ -615,7 +618,7 @@ async fn unwrap_key_handler(
                 user,
                 wrapped_dek_bytes,
                 &request.alg,
-                Some(request.request_context.correlation_id.into_bytes()),
+                request.request_context.correlation_id,
             )
             .await?
         }
@@ -625,7 +628,7 @@ async fn unwrap_key_handler(
                 key_name,
                 user,
                 wrapped_dek_bytes,
-                Some(request.request_context.correlation_id.into_bytes()),
+                request.request_context.correlation_id,
             )
             .await?
         }
@@ -644,9 +647,9 @@ async fn unwrap_with_aes(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    wrapped_dek_bytes: Vec<u8>,
+    wrapped_dek_bytes: Zeroizing<Vec<u8>>,
     alg: &WrapAlgorithm,
-    correlation_id: Option<Vec<u8>>, // for logging purposes
+    correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap, // RFC 3394
@@ -664,8 +667,8 @@ async fn unwrap_with_aes(
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
         }),
-        data: Some(wrapped_dek_bytes),
-        correlation_value: correlation_id,
+        data: Some(wrapped_dek_bytes.to_vec()),
+        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
 
@@ -683,8 +686,8 @@ async fn unwrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
-    wrapped_dek_bytes: Vec<u8>,
-    correlation_id: Option<Vec<u8>>, // for logging purposes
+    wrapped_dek_bytes: Zeroizing<Vec<u8>>,
+    correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
@@ -694,8 +697,8 @@ async fn unwrap_with_rsa(
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        data: Some(wrapped_dek_bytes),
-        correlation_value: correlation_id,
+        data: Some(wrapped_dek_bytes.to_vec()),
+        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
 
