@@ -90,6 +90,13 @@ pub struct MainDBConfig {
     #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
 
+    /// Maximum number of connections for the relational database pool.
+    /// When not provided, falls back to the current defaults:
+    /// - `PostgreSQL`/`MySQL`: 5
+    /// - `SQLite`: number of CPUs
+    #[clap(long, env = "KMS_DB_MAX_CONNECTIONS")]
+    pub max_connections: Option<u32>,
+
     /// When a wrapped object is fetched from the database,
     /// it is unwrapped and stored in the unwrapped cache.
     /// This option specifies the maximum age in minutes of the unwrapped objects in the cache
@@ -113,6 +120,7 @@ impl Default for MainDBConfig {
             database_type: None,
             database_url: None,
             clear_database: false,
+            max_connections: None,
             unwrapped_cache_max_age: 15,
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
@@ -195,18 +203,18 @@ impl MainDBConfig {
                 "postgresql" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")
                         .context("db:init")?;
-                    MainDbParams::Postgres(url)
+                    MainDbParams::Postgres(url, self.max_connections)
                 }
                 "mysql" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_MYSQL_URL")
                         .context("db:init")?;
-                    MainDbParams::Mysql(url)
+                    MainDbParams::Mysql(url, self.max_connections)
                 }
                 "sqlite" => {
                     let path = workspace
                         .finalize_directory(&self.sqlite_path)
                         .context("db:init")?;
-                    MainDbParams::Sqlite(path)
+                    MainDbParams::Sqlite(path, self.max_connections)
                 }
                 #[cfg(feature = "non-fips")]
                 #[allow(deprecated)]
@@ -244,7 +252,7 @@ impl MainDBConfig {
         let path = workspace
             .finalize_directory(&self.sqlite_path)
             .context("db:init; workspace finalize")?;
-        Ok(MainDbParams::Sqlite(path))
+        Ok(MainDbParams::Sqlite(path, self.max_connections))
     }
 }
 

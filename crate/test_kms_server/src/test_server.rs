@@ -272,6 +272,7 @@ fn redis_findex_db_config(port: u16) -> MainDBConfig {
         database_type: Some("redis-findex".to_owned()),
         clear_database: true,
         unwrapped_cache_max_age: 15,
+        max_connections: None,
         database_url: Some(url),
         sqlite_path: PathBuf::default(),
         redis_master_password: Some("password".to_owned()),

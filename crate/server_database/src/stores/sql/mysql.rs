@@ -93,7 +93,11 @@ impl HasDatabase for MySqlPool {
 }
 
 impl MySqlPool {
-    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> DbResult<Self> {
+    pub(crate) async fn instantiate(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+    ) -> DbResult<Self> {
         let options = MySqlConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -101,9 +105,15 @@ impl MySqlPool {
         // Default: reduce deadlocks by using READ COMMITTED isolation level per session
         // This is applied for every new connection.
         // Also set a reasonable lock wait timeout (seconds) to fail faster under contention
-
+        // Default rationale: conservative pool tuned to CPU. MySQL/MariaDB can suffer
+        // from too many concurrent connections (threads, buffer pool pressure). Using
+        // min(10, 2 × CPU cores) balances parallelism with stability for typical services.
+        let default_conns: u32 = u32::try_from(num_cpus::get())
+            .map(|c| c.saturating_mul(2).min(10))
+            .unwrap_or(10);
+        let max_conns: u32 = max_connections.unwrap_or(default_conns);
         let pool = MySqlPoolOptions::new()
-            .max_connections(5)
+            .max_connections(max_conns)
             .after_connect(move |conn, _meta| {
                 Box::pin(async move {
                     // Always set READ COMMITTED for this session

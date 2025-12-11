@@ -81,13 +81,25 @@ impl HasDatabase for PgPool {
 impl PgPool {
     /// Instantiate a new `Postgres` database
     /// and create the appropriate table(s) if need be
-    pub(crate) async fn instantiate(connection_url: &str, clear_database: bool) -> DbResult<Self> {
+    pub(crate) async fn instantiate(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+    ) -> DbResult<Self> {
         let options = PgConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
 
+        // Default rationale: small, CPU-aware pool. Postgres handles concurrency well,
+        // but oversized pools increase contention and idle resource usage. Using
+        // min(10, 2 × CPU cores) provides enough parallelism for typical APIs while
+        // staying below common server max_connections and avoiding oversubscription.
+        let default_conns: u32 = u32::try_from(num_cpus::get())
+            .map(|c| c.saturating_mul(2).min(10))
+            .unwrap_or(10);
+        let max_conns: u32 = max_connections.unwrap_or(default_conns);
         let pool = PgPoolOptions::new()
-            .max_connections(5)
+            .max_connections(max_conns)
             .connect_with(options)
             .await?;
 

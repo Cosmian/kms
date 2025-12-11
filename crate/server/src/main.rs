@@ -178,6 +178,7 @@ mod tests {
                 database_type: Some("[redis-findex, postgresql,...]".to_owned()),
                 database_url: Some("[redis urls]".to_owned()),
                 sqlite_path: PathBuf::from("[sqlite path]"),
+                max_connections: None,
                 #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
                 #[cfg(feature = "non-fips")]
