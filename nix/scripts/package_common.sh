@@ -132,7 +132,7 @@ one_shot_fetch_openssl() {
   if [ ! -f "$tarball" ]; then
     echo "OpenSSL 3.1.2 tarball missing at $OSSL_TARBALL_REL; downloading once so subsequent steps can run offline…"
     mkdir -p "$(dirname "$tarball")"
-    curl -fL --retry 3 -o "$tarball" "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz" || {
+    curl -fL --retry 3 -o "$tarball" "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz" || {
       echo "ERROR: Could not fetch OpenSSL tarball (network/offline?). Place it at $OSSL_TARBALL_REL and retry." >&2
       exit 1
     }

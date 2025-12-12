@@ -274,7 +274,7 @@ cargoHash = "sha256-xyz789...";  # Locks ALL Cargo dependencies
 # OpenSSL 3.1.2 pinned by nixpkgs hash
 openssl312 = pkgs.openssl_3_1.overrideAttrs {
   src = fetchurl {
-    url = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
+    url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
     sha256 = "sha256-abc123...";  # Exact tarball hash
   };
 };
