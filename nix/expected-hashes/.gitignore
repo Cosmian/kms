@@ -1,2 +1,2 @@
-server.fips.*
-server.non-fips.*
+cosmian-kms-server.fips.*
+cosmian-kms-server.non-fips.*

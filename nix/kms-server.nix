@@ -23,13 +23,13 @@ let
   isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
   baseVariant = if isFips then "fips" else "non-fips";
   # Combine base variant with suffix for hash file lookup
-  # Using -no-openssl for backward compatibility with existing hash files
-  variant-suffix = if static then "" else "-no-openssl";
+  # Using -static-openssl or -dynamic-openssl for backward compatibility with existing hash files
+  variant-suffix = if static then "-static-openssl" else "-dynamic-openssl";
   variant = if variant-suffix == "" then baseVariant else "${baseVariant}${variant-suffix}";
 
   # Expected deterministic sha256 of the final installed binary (cosmian_kms)
   # Naming convention (matches repository files):
-  #   server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
+  #   cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
   expectedHashPath =
     _unused:
     let
@@ -37,9 +37,9 @@ let
       parts = lib.splitString "-" sys;
       arch = builtins.elemAt parts 0;
       os = builtins.elemAt parts 1;
-      # Match binary expected-hash file naming: static => openssl, dynamic => no-openssl
-      impl = if static then "openssl" else "no-openssl";
-      file1 = ./expected-hashes + "/server.${baseVariant}.${impl}.${arch}.${os}.sha256";
+      # Match binary expected-hash file naming: static => static-openssl, dynamic => dynamic-openssl
+      impl = if static then "static-openssl" else "dynamic-openssl";
+      file1 = ./expected-hashes + "/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256";
     in
     if builtins.pathExists file1 then
       file1
@@ -47,7 +47,7 @@ let
       builtins.throw ''
         Expected hash file not found for variant ${baseVariant} (impl ${impl}) on system ${sys}.
         Missing tried paths:
-            - expected-hashes/server.${baseVariant}.${impl}.${arch}.${os}.sha256
+            - expected-hashes/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256
         Please add the appropriate file with the expected SHA-256 of the built binary.
       '';
 
@@ -184,8 +184,8 @@ let
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
       # Write the expected hash filename for easy copying
-      HASH_FILENAME="server.${baseVariant}.${
-        if static then "openssl" else "no-openssl"
+      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${
+        if static then "static-openssl" else "dynamic-openssl"
       }.x86_64.linux.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
       echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
@@ -213,8 +213,8 @@ let
 
       # Write the expected hash filename for easy copying
       ARCH="$(uname -m)"
-      HASH_FILENAME="server.${baseVariant}.${
-        if static then "openssl" else "no-openssl"
+      HASH_FILENAME="cosmian-kms-server.${baseVariant}.${
+        if static then "static-openssl" else "dynamic-openssl"
       }.$ARCH.darwin.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
       echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"

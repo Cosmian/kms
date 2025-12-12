@@ -86,7 +86,7 @@ ensure_expected_hashes() {
   fi
   arch="${sys%%-*}"
   os="${sys#*-}"
-  impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
+  impl=$([ "$LINK" = "dynamic" ] && echo dynamic-openssl || echo static-openssl)
 
   local hashes_dir="$REPO_ROOT/nix/expected-hashes"
   mkdir -p "$hashes_dir"
@@ -168,9 +168,9 @@ prewarm_store() {
   # Determine Nix attribute for server
   local server_attr
   if [ "$LINK" = "dynamic" ]; then
-    server_attr="kms-server-${VARIANT}-no-openssl"
+    server_attr="kms-server-${VARIANT}-dynamic-openssl"
   else
-    server_attr="kms-server-${VARIANT}"
+    server_attr="kms-server-${VARIANT}-static-openssl"
   fi
   [ $need_server -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" -A "$server_attr" --no-out-link >/dev/null || echo "Server derivation already present"
 }
@@ -249,7 +249,7 @@ build_or_reuse_ui() {
 # Enforce expected deterministic hash even on reuse path.
 resolve_expected_hash_file() {
   # Naming convention:
-  #   server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
+  #   cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
   # Backward-compatible fallbacks:
   #   <base>.<arch-os>.sha256 (legacy)
   #   <variant>.<arch-os>.sha256 (legacy)
@@ -278,15 +278,15 @@ resolve_expected_hash_file() {
   arch="${sys%%-*}"
   os="${sys#*-}"
   # Map link type to implementation tag:
-  # static => openssl, dynamic => no-openssl
+  # static => static-openssl, dynamic => dynamic-openssl
   if [ "$LINK" = "dynamic" ]; then
-    impl="no-openssl"
+    impl="dynamic-openssl"
   else
-    impl="openssl"
+    impl="static-openssl"
   fi
 
   # Try new scheme first - use variant extracted from base parameter
-  local new_path="$dir/server.${variant_for_hash}.$impl.$arch.$os.sha256"
+  local new_path="$dir/cosmian-kms-server.${variant_for_hash}.$impl.$arch.$os.sha256"
   if [ -f "$new_path" ]; then
     echo "$new_path"
     return 0
@@ -363,7 +363,7 @@ enforce_binary_hash() {
 }
 
 # Create or refresh the expected binary hash file under nix/expected-hashes
-# Naming: server.<fips|non-fips>.<openssl|no-openssl>.<arch>.<os>.sha256
+# Naming: cosmian-kms-server.<fips|non-fips>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
 write_binary_hash_file() {
   # Compute system triple
   local sys arch os impl out_dir out_file actual_hash
@@ -378,9 +378,9 @@ write_binary_hash_file() {
   fi
   arch="${sys%%-*}"
   os="${sys#*-}"
-  impl=$([ "$LINK" = "dynamic" ] && echo no-openssl || echo openssl)
+  impl=$([ "$LINK" = "dynamic" ] && echo dynamic-openssl || echo static-openssl)
   out_dir="$REPO_ROOT/nix/expected-hashes"
-  out_file="$out_dir/server.${VARIANT}.${impl}.${arch}.${os}.sha256"
+  out_file="$out_dir/cosmian-kms-server.${VARIANT}.${impl}.${arch}.${os}.sha256"
   mkdir -p "$out_dir"
   if [ ! -f "$BIN_OUT" ]; then
     echo "ERROR: Binary not found for hashing: $BIN_OUT" >&2
@@ -900,9 +900,9 @@ collect_deb() {
       b="${b%.deb}_${DEB_ARCH}.deb"
     fi
 
-    # Rename to new convention: cosmian-kms-server-<variant>-<static_openssl|dynamic_openssl>-version_<version>_<arch>.deb
+    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>-version_<version>_<arch>.deb
     local link_n
-    if [ "$LINK" = "static" ]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+    if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
     local new_name
     new_name="cosmian-kms-server-${VARIANT}-${link_n}_${VERSION_STR}_${DEB_ARCH}.deb"
     if [ "$b" != "$new_name" ]; then
@@ -1018,9 +1018,9 @@ collect_rpm() {
       b="${b%.rpm}.${RPM_ARCH}.rpm"
     fi
 
-    # Rename to new convention: cosmian-kms-server-<variant>-<static_openssl|dynamic_openssl>-version_<version>_<arch>.rpm
+    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>-version_<version>_<arch>.rpm
     local link_n
-    if [ "$LINK" = "static" ]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+    if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
     local new_name
     new_name="cosmian-kms-server-${VARIANT}-${link_n}_${VERSION_STR}_${RPM_ARCH}.rpm"
     if [ "$b" != "$new_name" ]; then

@@ -42,7 +42,7 @@ jobs:
         target/release
 
     steps:
-      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target
+      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target *osmian*
       - uses: actions/download-artifact@v6
         with:
           pattern: '*fips*'
@@ -134,7 +134,7 @@ jobs:
               pkg_type=$(map_type_from_ext "$f")
               arch=$(map_arch "$runner")
               # Normalize link name to *_openssl
-              if [[ "$link" == "static" ]]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+              if [[ "$link" == "static" ]]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
               remote_subdir="$DESTINATION_DIR/$pkg_type/$arch/$feat/$link_n"
               ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
               # Packages are already correctly named; upload without renaming
@@ -149,7 +149,7 @@ jobs:
             if [[ "$dir" =~ ^hash-(ubuntu-24\.04|ubuntu-24\.04-arm|macos-15)-(fips|non-fips)-(static|dynamic)$ ]]; then
               runner="${BASH_REMATCH[1]}"; feat="${BASH_REMATCH[2]}"; link="${BASH_REMATCH[3]}"
               arch=$(map_arch "$runner")
-              if [[ "$link" == "static" ]]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+              if [[ "$link" == "static" ]]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
               # Hash files
               for h in "$dir"/result-*/bin/*.sha256; do
                 [ -e "$h" ] || continue
@@ -182,9 +182,9 @@ jobs:
             fi
           done
 
-          # Windows EXE packages: non-fips static_openssl amd64
+          # Windows EXE packages: non-fips static-openssl amd64
           if compgen -G "target/release/*.exe" > /dev/null; then
-            arch="amd64"; feat="non-fips"; link_n="static_openssl"
+            arch="amd64"; feat="non-fips"; link_n="static-openssl"
             remote_subdir="$DESTINATION_DIR/windows/$arch/$feat/$link_n"
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
             for exe in target/release/*.exe; do
