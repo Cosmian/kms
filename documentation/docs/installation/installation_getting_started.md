@@ -113,7 +113,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
 
-        Note: the 5.13.0 DMG is provided for Apple Silicon (ARM64).
+        Note: The 5.13.0 DMG is provided for Apple Silicon (ARM64).
 
         After installation, run:
 
@@ -132,17 +132,21 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 Available dynamic packages for Debian-based distributions:
 
+    ```sh
     # Non-FIPS dynamic
     wget https://package.cosmian.com/kms/5.13.0/cosmian-kms-server-non-fips-dynamic_5.13.0-1_amd64.deb
     # FIPS dynamic
     wget https://package.cosmian.com/kms/5.13.0/cosmian-kms-server-fips-dynamic_5.13.0-1_amd64.deb
+    ```
 
 Available dynamic packages for Rocky Linux:
 
+    ```sh
     # Non-FIPS dynamic
     wget https://package.cosmian.com/kms/5.13.0/cosmian_kms_server_non_fips_dynamic-5.13.0-1.x86_64.rpm
     # FIPS dynamic
     wget https://package.cosmian.com/kms/5.13.0/cosmian_kms_server_fips_dynamic-5.13.0-1.x86_64.rpm
+    ```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
 shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
