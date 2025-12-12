@@ -42,7 +42,8 @@ jobs:
         target/release
 
     steps:
-      - run: rm -rf ${{ inputs.project-name }}_* fips_* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target *osmian*
+      # - run: rm -rf ${{ inputs.project-name }}_* fips* non-fips* windows* ubuntu* macos* rockylinux* debian* cargo-* hash-* *setup.exe target *osmian* *debug*
+      - run: rm -rf *
       - uses: actions/download-artifact@v6
         with:
           pattern: '*fips*'
@@ -148,22 +149,35 @@ jobs:
             # dir pattern: hash-<runner>-<features>-<link>
             if [[ "$dir" =~ ^hash-(ubuntu-24\.04|ubuntu-24\.04-arm|macos-15)-(fips|non-fips)-(static|dynamic)$ ]]; then
               runner="${BASH_REMATCH[1]}"; feat="${BASH_REMATCH[2]}"; link="${BASH_REMATCH[3]}"
-              arch=$(map_arch "$runner")
               if [[ "$link" == "static" ]]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
               # Hash files
               for h in "$dir"/result-*/bin/*.sha256; do
                 [ -e "$h" ] || continue
+                # Derive architecture from hash filename when possible
+                base=$(basename "$h")
+                arch_dir=""
+                if [[ "$base" =~ \.(x86_64|aarch64|arm64)\.(linux|darwin)\.sha256$ ]]; then
+                  arch_token="${BASH_REMATCH[1]}"
+                  case "$arch_token" in
+                    x86_64) arch_dir="amd64" ;;
+                    aarch64|arm64) arch_dir="arm64" ;;
+                  esac
+                fi
+                # Fallback to runner-based mapping if not detected
+                if [ -z "$arch_dir" ]; then
+                  arch_dir=$(map_arch "$runner")
+                fi
                 # Send to appropriate package type folders
                 case "$runner" in
                   ubuntu-24.04|ubuntu-24.04-arm)
                     for pkg_type in debian rpm; do
-                      remote_subdir="$DESTINATION_DIR/$pkg_type/$arch/$feat/$link_n"
+                      remote_subdir="$DESTINATION_DIR/$pkg_type/$arch_dir/$feat/$link_n"
                       ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
                       scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$h" "cosmian@package.cosmian.com:$remote_subdir/"
                     done
                     ;;
                   macos-15)
-                    remote_subdir="$DESTINATION_DIR/macos/$arch/$feat/$link_n"
+                    remote_subdir="$DESTINATION_DIR/macos/$arch_dir/$feat/$link_n"
                     ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
                     scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$h" "cosmian@package.cosmian.com:$remote_subdir/"
                     ;;
