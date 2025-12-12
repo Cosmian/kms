@@ -165,7 +165,14 @@ if [ "$VARIANT" = "fips" ]; then
     echo "Warning: OpenSSL store path not found; skipping FIPS asset embedding" >&2
   fi
 fi
-DMG_NAME="Cosmian KMS Server_${VERSION_STR}_$(uname -m).dmg"
+arch_raw="$(uname -m)"
+case "$arch_raw" in
+  x86_64) DMG_ARCH="amd64" ;;
+  aarch64|arm64) DMG_ARCH="arm64" ;;
+  *) DMG_ARCH="$arch_raw" ;;
+esac
+link_n=$([ "$LINK" = "static" ] && echo static_openssl || echo dynamic_openssl)
+DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"
 echo "Creating DMG $DMG_NAME from $APP_BUNDLE..."
 # Always recreate DMG to reflect updated app bundle resources (FIPS assets)
 rm -f "$RESULT_DIR/$DMG_NAME" 2>/dev/null || true

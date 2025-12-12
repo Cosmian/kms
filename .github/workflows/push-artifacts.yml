@@ -67,7 +67,7 @@ jobs:
             DEB_COUNT=$((DEB_COUNT + $(compgen -G "$archive_name/*.deb" | wc -l || true)))
             RPM_COUNT=$((RPM_COUNT + $(compgen -G "$archive_name/*.rpm" | wc -l || true)))
             DMG_COUNT=$((DMG_COUNT + $(compgen -G "$archive_name/*.dmg" | wc -l || true)))
-            EXE_COUNT=$((EXE_COUNT + $(compgen -G "$archive_name/*setup.exe" | wc -l || true)))
+            EXE_COUNT=$((EXE_COUNT + $(compgen -G "$archive_name/*.exe" | wc -l || true)))
           done
 
           if [ "$DEB_COUNT" -lt 8 ] && [ "$RPM_COUNT" -lt 8 ]; then
@@ -97,46 +97,101 @@ jobs:
           DESTINATION_DIR=/mnt/package/${{ inputs.destination }}/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
 
-          # Copy Debian, RPM, DMG, and EXE artifacts using ARCHIVE_NAMES patterns
+          map_arch() {
+            local runner="$1"
+            case "$runner" in
+              *ubuntu-24.04-arm*) echo "arm64" ;;
+              *ubuntu-24.04*) echo "amd64" ;;
+              *macos-15*) echo "arm64" ;;
+              *windows*) echo "amd64" ;;
+              *) echo "amd64" ;;
+            esac
+          }
+
+          map_type_from_ext() {
+            case "$1" in
+              *.deb*) echo "debian" ;;
+              *.rpm*) echo "rpm" ;;
+              *.dmg*) echo "macos" ;;
+              *.exe*) echo "windows" ;;
+              *) echo "unknown" ;;
+            esac
+          }
+
+          # Copy Debian, RPM, DMG artifacts, renaming and placing in new tree
           for dir in $ARCHIVE_NAMES; do
-            # Debian
-            if compgen -G "$dir/*.deb*" > /dev/null; then
-              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa $dir/*.deb* cosmian@package.cosmian.com:$DESTINATION_DIR/
+            # Extract feature/link/runner from directory name when present
+            base_dir=$(dirname "$dir")
+            feat=""; link=""; runner="";
+            if [[ "$base_dir" =~ ^(fips|non-fips)_(static|dynamic)_(ubuntu-24\.04|ubuntu-24\.04-arm|macos-15)- ]]; then
+              feat="${BASH_REMATCH[1]}"
+              link="${BASH_REMATCH[2]}"
+              runner="${BASH_REMATCH[3]}"
             fi
-            # RPM
-            if compgen -G "$dir/*.rpm*" > /dev/null; then
-              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa $dir/*.rpm* cosmian@package.cosmian.com:$DESTINATION_DIR/
-            fi
-            # DMG (macOS)
-            if compgen -G "$dir/*.dmg*" > /dev/null; then
-              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa $dir/*.dmg* cosmian@package.cosmian.com:$DESTINATION_DIR/
-            fi
+
+            for f in "$dir"/*.{deb,rpm,dmg}; do
+              [ -e "$f" ] || continue
+              pkg_type=$(map_type_from_ext "$f")
+              arch=$(map_arch "$runner")
+              # Normalize link name to *_openssl
+              if [[ "$link" == "static" ]]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+              remote_subdir="$DESTINATION_DIR/$pkg_type/$arch/$feat/$link_n"
+              ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
+              # Packages are already correctly named; upload without renaming
+              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$f" "cosmian@package.cosmian.com:$remote_subdir/"
+            done
           done
 
-          # Hash artifacts produced by packaging (result-*/bin/*.sha256)
+          # Hash artifacts produced by packaging: place into matching subfolders
           for dir in hash-*; do
-            if [ -d "$dir" ] && compgen -G "$dir/result-*/bin/*.sha256" > /dev/null; then
-              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-                $dir/result-*/bin/*.sha256 \
-                cosmian@package.cosmian.com:$DESTINATION_DIR/
+            [ -d "$dir" ] || continue
+            # dir pattern: hash-<runner>-<features>-<link>
+            if [[ "$dir" =~ ^hash-(ubuntu-24\.04|ubuntu-24\.04-arm|macos-15)-(fips|non-fips)-(static|dynamic)$ ]]; then
+              runner="${BASH_REMATCH[1]}"; feat="${BASH_REMATCH[2]}"; link="${BASH_REMATCH[3]}"
+              arch=$(map_arch "$runner")
+              if [[ "$link" == "static" ]]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+              # Hash files
+              for h in "$dir"/result-*/bin/*.sha256; do
+                [ -e "$h" ] || continue
+                # Send to appropriate package type folders
+                case "$runner" in
+                  ubuntu-24.04|ubuntu-24.04-arm)
+                    for pkg_type in debian rpm; do
+                      remote_subdir="$DESTINATION_DIR/$pkg_type/$arch/$feat/$link_n"
+                      ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
+                      scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$h" "cosmian@package.cosmian.com:$remote_subdir/"
+                    done
+                    ;;
+                  macos-15)
+                    remote_subdir="$DESTINATION_DIR/macos/$arch/$feat/$link_n"
+                    ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
+                    scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$h" "cosmian@package.cosmian.com:$remote_subdir/"
+                    ;;
+                esac
+              done
             fi
           done
 
-          # Include Cosmian public GPG key
+          # Include Cosmian public GPG key (keep at branch root)
           for dir in fips_*ubuntu-24.04-*${{ inputs.debug_or_release }}; do
             if [ -d "$dir" ] && compgen -G "$dir/result-deb-fips*/cosmian-kms-public.asc" > /dev/null; then
               scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
                 $dir/result-deb-fips*/cosmian-kms-public.asc \
                 cosmian@package.cosmian.com:$DESTINATION_DIR/
-              break  # Only need to copy once since the key is the same
+              break
             fi
           done
 
-          # Windows EXE packages (kept separate because path differs from ARCHIVE_NAMES patterns)
-          if compgen -G "target/release/*setup.exe" > /dev/null; then
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              target/release/*setup.exe \
-              cosmian@package.cosmian.com:$DESTINATION_DIR/
+          # Windows EXE packages: non-fips static_openssl amd64
+          if compgen -G "target/release/*.exe" > /dev/null; then
+            arch="amd64"; feat="non-fips"; link_n="static_openssl"
+            remote_subdir="$DESTINATION_DIR/windows/$arch/$feat/$link_n"
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
+            for exe in target/release/*.exe; do
+              [ -e "$exe" ] || continue
+              # Upload already-named installer without renaming
+              scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:$remote_subdir/"
+            done
           fi
 
       - name: Release on tags, attach asset on release
@@ -160,7 +215,7 @@ jobs:
             non-fips_macos-15-*/result-*/*.dmg*
 
             # Windows EXE packages
-            target/release/*setup.exe
+            target/release/*.exe
 
             # Hash artifacts from result-*/bin
             hash-ubuntu-24.04-*-*/result-*/bin/*.sha256

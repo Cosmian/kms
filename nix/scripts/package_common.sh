@@ -788,6 +788,8 @@ collect_deb() {
   rm -rf "$result_dir" 2>/dev/null || true
   mkdir -p "$result_dir"
   local found=0
+  local VERSION_STR
+  VERSION_STR=$("$REPO_ROOT/nix/scripts/get_version.sh")
 
   # Build the package name pattern based on variant and link type
   local pattern=""
@@ -892,12 +894,19 @@ collect_deb() {
     [ -e "$f" ] || continue
     local b
     b=$(basename "$f")
-    if echo "$b" | grep -Eq "_(all|${DEB_ARCH})\\.deb$"; then
-      : # already contains arch
-    else
-      local new
-      new="${b%.deb}_${DEB_ARCH}.deb"
-      mv -v "$result_dir/$b" "$result_dir/$new"
+    # Ensure arch suffix in Debian style
+    if ! echo "$b" | grep -Eq "_(all|${DEB_ARCH})\\.deb$"; then
+      mv -v "$result_dir/$b" "$result_dir/${b%.deb}_${DEB_ARCH}.deb"
+      b="${b%.deb}_${DEB_ARCH}.deb"
+    fi
+
+    # Rename to new convention: cosmian-kms-server-<variant>-<static_openssl|dynamic_openssl>-version_<version>_<arch>.deb
+    local link_n
+    if [ "$LINK" = "static" ]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+    local new_name
+    new_name="cosmian-kms-server-${VARIANT}-${link_n}_${VERSION_STR}_${DEB_ARCH}.deb"
+    if [ "$b" != "$new_name" ]; then
+      mv -v "$result_dir/$b" "$result_dir/$new_name"
     fi
   done
 
@@ -979,6 +988,8 @@ collect_rpm() {
   rm -rf "$result_dir" 2>/dev/null || true
   mkdir -p "$result_dir"
   local found=0
+  local VERSION_STR
+  VERSION_STR=$("$REPO_ROOT/nix/scripts/get_version.sh")
 
   for p in \
     "$REPO_ROOT/crate/server/target/$HOST_TRIPLE/generate-rpm" \
@@ -996,42 +1007,24 @@ collect_rpm() {
   fi
 
   # Rename packages based on variant and link type
-  # cargo-generate-rpm doesn't add variant suffixes automatically, so we handle it here
+  # Apply new naming convention
   for f in "$result_dir"/*.rpm; do
     [ -e "$f" ] || continue
     local b
     b=$(basename "$f")
-    local n="$b"
-
-    # Add variant/link suffixes to the package name
-    # Pattern: cosmian_kms_server-VERSION -> cosmian_kms_server[_variant][_link]-VERSION
-    if [ "$VARIANT" = "fips" ] && [ "$LINK" = "dynamic" ]; then
-      n="${b/cosmian_kms_server-/cosmian_kms_server_fips_dynamic-}"
-    elif [ "$VARIANT" = "fips" ] && [ "$LINK" = "static" ]; then
-      n="${b/cosmian_kms_server-/cosmian_kms_server_fips_static-}"
-    elif [ "$VARIANT" != "fips" ] && [ "$LINK" = "dynamic" ]; then
-      n="${b/cosmian_kms_server-/cosmian_kms_server_non_fips_dynamic-}"
-    elif [ "$LINK" = "static" ]; then
-      # non-fips static gets _static suffix only
-      n="${b/cosmian_kms_server-/cosmian_kms_server_static-}"
+    # Ensure RPM filenames include .<arch>.rpm
+    if ! echo "$b" | grep -Eq "\.(noarch|${RPM_ARCH})\.rpm$"; then
+      mv -v "$result_dir/$b" "$result_dir/${b%.rpm}.${RPM_ARCH}.rpm"
+      b="${b%.rpm}.${RPM_ARCH}.rpm"
     fi
 
-    if [ "$n" != "$b" ]; then
-      mv -v "$result_dir/$b" "$result_dir/$n"
-    fi
-  done
-
-  # Ensure RPM filenames include .<arch>.rpm
-  for f in "$result_dir"/*.rpm; do
-    [ -e "$f" ] || continue
-    local b
-    b=$(basename "$f")
-    if echo "$b" | grep -Eq "\.(noarch|${RPM_ARCH})\.rpm$"; then
-      : # already contains arch
-    else
-      local new
-      new="${b%.rpm}.${RPM_ARCH}.rpm"
-      mv -v "$result_dir/$b" "$result_dir/$new"
+    # Rename to new convention: cosmian-kms-server-<variant>-<static_openssl|dynamic_openssl>-version_<version>_<arch>.rpm
+    local link_n
+    if [ "$LINK" = "static" ]; then link_n="static_openssl"; else link_n="dynamic_openssl"; fi
+    local new_name
+    new_name="cosmian-kms-server-${VARIANT}-${link_n}_${VERSION_STR}_${RPM_ARCH}.rpm"
+    if [ "$b" != "$new_name" ]; then
+      mv -v "$result_dir/$b" "$result_dir/$new_name"
     fi
   done
 

@@ -76,6 +76,28 @@ jobs:
           . .\.github\scripts\cargo_build.ps1
           BuildProject
 
+      - name: Rename installer to new convention
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Extract version from workspace Cargo.toml
+          $cargoToml = Get-Content -Raw "Cargo.toml"
+          $inWorkspace = $false
+          $version = ""
+          foreach ($line in $cargoToml -split "`n") {
+            if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
+            if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
+            if ($inWorkspace -and $line -match '^\[') { break }
+          }
+          if (-not $version) { throw "Unable to parse version from Cargo.toml" }
+          $arch = "amd64"
+          Get-ChildItem -Path "target/release" -Filter "*setup.exe" | ForEach-Object {
+            $newName = "cosmian-kms-server-non-fips-static_openssl_${version}_${arch}.exe"
+            $dest = Join-Path $_.DirectoryName $newName
+            Move-Item -Force $_.FullName $dest
+            Write-Host "Renamed $($_.Name) -> $newName"
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
