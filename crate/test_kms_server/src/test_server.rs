@@ -152,6 +152,73 @@ fn ensure_openssl_env() {
     }
 }
 
+/// Ensure localhost bypasses any corporate proxy for tests.
+/// When `HTTP_PROXY`/`HTTPS_PROXY` are set, add standard loopback hosts
+/// to `NO_PROXY` so local test servers are reachable.
+#[allow(unsafe_code)]
+fn ensure_no_proxy_for_localhost() {
+    let has_http_proxy = env::var_os("HTTP_PROXY").is_some()
+        || env::var_os("http_proxy").is_some()
+        || env::var_os("HTTPS_PROXY").is_some()
+        || env::var_os("https_proxy").is_some();
+
+    if !has_http_proxy {
+        return;
+    }
+
+    // Existing NO_PROXY entries, normalized to a comma-separated list
+    let existing = env::var("NO_PROXY")
+        .ok()
+        .or_else(|| env::var("no_proxy").ok())
+        .unwrap_or_default();
+
+    // Always include common loopback hosts
+    let required = ["localhost", "127.0.0.1", "::1"];
+
+    // Build a normalized set
+    let mut parts: Vec<String> = existing
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    for &r in &required {
+        if !parts.iter().any(|p| p.eq_ignore_ascii_case(r)) {
+            parts.push(r.to_owned());
+        }
+    }
+
+    let updated = parts.join(",");
+    // Set both uppercase and lowercase to cover different libraries' expectations
+    unsafe {
+        env::set_var("NO_PROXY", &updated);
+        env::set_var("no_proxy", &updated);
+    }
+    trace!("Ensured NO_PROXY for localhost: {}", updated);
+}
+
+/// As a last resort for reliability, clear proxy env vars for the test process
+/// so localhost traffic is never sent through a corporate proxy.
+#[allow(unsafe_code)]
+fn disable_proxies_for_tests() {
+    // Only clear if a proxy is set; keep environment untouched otherwise.
+    let has_proxy = env::var_os("HTTP_PROXY").is_some()
+        || env::var_os("http_proxy").is_some()
+        || env::var_os("HTTPS_PROXY").is_some()
+        || env::var_os("https_proxy").is_some();
+    if !has_proxy {
+        return;
+    }
+    // Remove all common proxy variables to avoid library-specific behaviors.
+    unsafe {
+        env::remove_var("HTTP_PROXY");
+        env::remove_var("http_proxy");
+        env::remove_var("HTTPS_PROXY");
+        env::remove_var("https_proxy");
+    }
+    trace!("Disabled HTTP(S)_PROXY for test run to protect localhost");
+}
+
 // Small utilities to reduce repetition
 #[inline]
 fn root_dir() -> PathBuf {
@@ -304,6 +371,10 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     // Ensure OpenSSL env vars are present for tests (both FIPS and non-FIPS)
     ensure_openssl_env();
+    // Ensure corporate proxies do not intercept localhost requests in tests
+    ensure_no_proxy_for_localhost();
+    // If NO_PROXY is not sufficient for the HTTP stack, hard-disable proxies
+    disable_proxies_for_tests();
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
         match use_kek {
@@ -753,6 +824,9 @@ pub async fn start_test_server_with_options(
     non_revocable_key_id: Option<Vec<String>>,
     privileged_users: Option<Vec<String>>,
 ) -> Result<TestsContext, KmsClientError> {
+    // Protect local test connections from corporate proxies
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
     // Destructure options to avoid borrow/move conflicts
     let AuthenticationOptions {
         client,
@@ -1037,6 +1111,9 @@ fn generate_server_params(
 async fn start_from_server_params(
     server_params: ServerParams,
 ) -> Result<TestsContext, KmsClientError> {
+    // Protect local test connections from corporate proxies
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
     // Create a (object owner) conf
     let owner_client_config = generate_owner_conf(&server_params, &ClientAuthOptions::default())?;
 
