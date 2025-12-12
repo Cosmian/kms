@@ -184,9 +184,15 @@ let
       echo "Binary hash: $ACTUAL (saved to $out/bin/cosmian_kms.sha256)"
 
       # Write the expected hash filename for easy copying
+      ARCH_LINUX="$(uname -m)"
+      case "$ARCH_LINUX" in
+        x86_64) ARCH_TAG="x86_64" ;;
+        aarch64|arm64) ARCH_TAG="aarch64" ;;
+        *) ARCH_TAG="$ARCH_LINUX" ;;
+      esac
       HASH_FILENAME="cosmian-kms-server.${baseVariant}.${
         if static then "static-openssl" else "dynamic-openssl"
-      }.x86_64.linux.sha256"
+      }.$ARCH_TAG.linux.sha256"
       echo "$ACTUAL" > "$out/bin/$HASH_FILENAME"
       echo "Expected hash file saved to: $out/bin/$HASH_FILENAME"
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
