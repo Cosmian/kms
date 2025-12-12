@@ -132,7 +132,14 @@ let
     buildPhase = ''
       runHook preBuild
       unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
-      cargo build -j $(nproc) --frozen --profile release --target wasm32-unknown-unknown -p cosmian_kms_client_wasm
+      FEAT_ARGS=""
+      if [ "${toString (!isFips)}" = "true" ]; then
+        FEAT_ARGS="--features non-fips"
+        echo "Building WASM crate with non-fips features"
+      else
+        echo "Building WASM crate in FIPS mode (no non-fips features)"
+      fi
+      cargo build -j $(nproc) --frozen --profile release --target wasm32-unknown-unknown -p cosmian_kms_client_wasm $FEAT_ARGS
       runHook postBuild
     '';
 
