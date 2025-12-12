@@ -32,7 +32,7 @@ If the local tarball has an incorrect hash, the build will fail with an error me
 error: Local OpenSSL tarball hash mismatch!
 Expected: a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539
 Actual:   [actual_hash]
-Please verify the integrity of /path/to/openssl-3.1.2.tar.gz
+Please verify the integrity of ./resources/tarballs/openssl-3.1.2.tar.gz
 ```
 
 In this case, either:

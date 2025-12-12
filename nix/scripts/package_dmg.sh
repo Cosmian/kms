@@ -167,9 +167,9 @@ if [ "$VARIANT" = "fips" ]; then
 fi
 arch_raw="$(uname -m)"
 case "$arch_raw" in
-  x86_64) DMG_ARCH="amd64" ;;
-  aarch64|arm64) DMG_ARCH="arm64" ;;
-  *) DMG_ARCH="$arch_raw" ;;
+x86_64) DMG_ARCH="amd64" ;;
+aarch64 | arm64) DMG_ARCH="arm64" ;;
+*) DMG_ARCH="$arch_raw" ;;
 esac
 link_n=$([ "$LINK" = "static" ] && echo static_openssl || echo dynamic_openssl)
 DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"
