@@ -167,6 +167,11 @@ jobs:
                 if [ -z "$arch_dir" ]; then
                   arch_dir=$(map_arch "$runner")
                 fi
+                # For Linux runners, prefer runner-derived arch over filename token (Linux filenames may be x86_64 hardcoded)
+                case "$runner" in
+                  ubuntu-24.04) arch_dir="amd64" ;;
+                  ubuntu-24.04-arm) arch_dir="arm64" ;;
+                esac
                 # Send to appropriate package type folders
                 case "$runner" in
                   ubuntu-24.04|ubuntu-24.04-arm)
@@ -177,6 +182,10 @@ jobs:
                     done
                     ;;
                   macos-15)
+                    # Only publish macOS hashes for non-fips, since we do not ship FIPS DMGs
+                    if [ "$feat" != "non-fips" ]; then
+                      continue
+                    fi
                     remote_subdir="$DESTINATION_DIR/macos/$arch_dir/$feat/$link_n"
                     ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_subdir"
                     scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$h" "cosmian@package.cosmian.com:$remote_subdir/"
