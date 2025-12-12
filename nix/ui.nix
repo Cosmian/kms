@@ -11,14 +11,25 @@
 }:
 
 let
-  isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
-  variant = if isFips then "fips" else "non-fips";
+  # Normalize features: accept list or space-separated string; default to []
+  featuresList =
+    if builtins.isList features then
+      features
+    else if builtins.isString features then
+      lib.filter (s: s != "") (lib.splitString " " features)
+    else
+      [ ];
+
+  # Determine variant from features only
+  derivedIsFips = !(builtins.elem "non-fips" featuresList);
+  finalVariant = if derivedIsFips then "fips" else "non-fips";
+  isFips = derivedIsFips;
 
   # Determine cargo vendor hash for building the WASM crate via external file
   actualCargoHash =
     let
       placeholder = "sha256-CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-      hashFile = ../nix/expected-hashes + "/ui.vendor." + variant + ".sha256";
+      hashFile = ../nix/expected-hashes + "/ui.vendor." + finalVariant + ".sha256";
     in
     if builtins.pathExists hashFile then
       let
@@ -82,7 +93,7 @@ let
 
   # Build the WASM crate from source to avoid relying on prebuilt ui/src/wasm/pkg
   wasmPkg = rustPlatform.buildRustPackage {
-    pname = "cosmian-kms-ui-wasm-${variant}";
+    pname = "cosmian-kms-ui-wasm-${finalVariant}";
     inherit version;
 
     # Build from the whole workspace so path dependencies resolve
@@ -132,13 +143,14 @@ let
     buildPhase = ''
       runHook preBuild
       unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
-      FEAT_ARGS=""
-      if [ "${toString (!isFips)}" = "true" ]; then
-        FEAT_ARGS="--features non-fips"
-        echo "Building WASM crate with non-fips features"
-      else
-        echo "Building WASM crate in FIPS mode (no non-fips features)"
-      fi
+      FEAT_ARGS='${lib.optionalString (!isFips) "--features non-fips"}'
+      ${lib.optionalString (!isFips) ''
+        echo "Building WASM crate (variant=${finalVariant}) with non-fips features";
+      ''}
+      ${lib.optionalString isFips ''
+        echo "Building WASM crate (variant=${finalVariant}) in FIPS mode (no non-fips features)";
+      ''}
+      echo cargo build -j $(nproc) --frozen --profile release --target wasm32-unknown-unknown -p cosmian_kms_client_wasm $FEAT_ARGS
       cargo build -j $(nproc) --frozen --profile release --target wasm32-unknown-unknown -p cosmian_kms_client_wasm $FEAT_ARGS
       runHook postBuild
     '';
@@ -169,7 +181,7 @@ let
 
   # Build the UI using buildNpmPackage for proper dependency management
   uiBuild = pkgs.buildNpmPackage {
-    pname = "cosmian-kms-ui-deps-${variant}";
+    pname = "cosmian-kms-ui-deps-${finalVariant}";
     inherit version;
 
     src = lib.cleanSourceWith {
@@ -217,7 +229,7 @@ let
 
 in
 stdenv.mkDerivation {
-  pname = "cosmian-kms-ui-${variant}";
+  pname = "cosmian-kms-ui-${finalVariant}";
   inherit version;
 
   # Build from source with filtering (name = null disables gitignore filtering)
@@ -300,7 +312,7 @@ stdenv.mkDerivation {
   '';
 
   meta = with lib; {
-    description = "Cosmian KMS Web UI (${variant} variant)";
+    description = "Cosmian KMS Web UI (${finalVariant} variant)";
     homepage = "https://github.com/Cosmian/kms";
     platforms = platforms.unix;
   };
