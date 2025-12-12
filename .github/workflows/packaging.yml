@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
-          path: result*/bin/server.${{ matrix.features }}*.sha256
+          path: result*/bin/cosmian-kms-server.${{ matrix.features }}*.sha256
           retention-days: 1
           if-no-files-found: error
 

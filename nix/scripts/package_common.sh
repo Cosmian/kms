@@ -195,9 +195,9 @@ build_or_reuse_server() {
   # Determine Nix attribute based on LINK type
   local attr
   if [ "$LINK" = "dynamic" ]; then
-    attr="kms-server-${VARIANT}-dynamic"
+    attr="kms-server-${VARIANT}-dynamic-openssl"
   else
-    attr="kms-server-${VARIANT}"
+    attr="kms-server-${VARIANT}-static-openssl"
   fi
 
   OUT_LINK="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
