@@ -512,6 +512,9 @@ pub fn create_approved_ecc_key_pair(
     )
 }
 
+// Re-export sign helper from elliptic_curves module root
+pub use crate::crypto::elliptic_curves::sign::ecdsa_sign;
+
 #[expect(clippy::too_many_arguments)]
 fn create_ec_key_pair(
     private_key_bytes: &Zeroizing<Vec<u8>>,

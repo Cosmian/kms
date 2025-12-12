@@ -1,6 +1,8 @@
 #[cfg(feature = "non-fips")]
 pub mod ecies;
 pub mod operation;
+pub mod sign;
+pub mod verify;
 
 // Montgomery curves key length.
 pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;

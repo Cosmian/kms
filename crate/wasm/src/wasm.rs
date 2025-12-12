@@ -37,7 +37,8 @@ use cosmian_kms_client_utils::{
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
                 DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
                 GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse,
-                SetAttribute, SetAttributeResponse, Validate, ValidateResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
@@ -66,7 +67,7 @@ use x509_cert::{
 };
 use zeroize::Zeroizing;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct AlgoOption {
     value: String,
     label: String,
@@ -103,7 +104,9 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
         KeyFormatType::PKCS7,
         KeyFormatType::EnclaveECKeyPair,
         KeyFormatType::EnclaveECSharedKey,
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey,
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey,
     ];
     for v in candidates {
@@ -116,20 +119,107 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
         if display_norm == norm {
             return Ok(*v);
         }
-        let dbg = format!("{v:?}");
-        let dbg_norm = dbg.replace([' ', '-', '_'], "").to_lowercase();
-        if dbg_norm == norm {
-            return Ok(*v);
-        }
     }
     Err(JsValue::from("Invalid KeyFormatType"))
 }
 
+// Internal helpers to build algorithm option lists that reflect client_utils
+fn list_symmetric_algorithms() -> Vec<AlgoOption> {
+    // Build the list from client_utils' SymmetricAlgorithm enum and its Display impl
+    #[allow(unused_mut)]
+    let mut algs: Vec<SymmetricAlgorithm> = vec![
+        SymmetricAlgorithm::Aes,
+        SymmetricAlgorithm::Sha3,
+        SymmetricAlgorithm::Shake,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        algs.push(SymmetricAlgorithm::Chacha20);
+    }
+
+    algs.into_iter()
+        .map(|a| {
+            let s = a.to_string();
+            AlgoOption {
+                value: s.clone(),
+                label: s,
+            }
+        })
+        .collect()
+}
+
+fn list_ec_algorithms() -> Vec<AlgoOption> {
+    // Build from client_utils' Curve enum to ensure feature gating consistency
+    #[allow(unused_mut)]
+    let mut curves: Vec<Curve> = vec![
+        Curve::NistP224,
+        Curve::NistP256,
+        Curve::NistP384,
+        Curve::NistP521,
+    ];
+    #[cfg(feature = "non-fips")]
+    {
+        curves.insert(0, Curve::NistP192);
+        curves.push(Curve::Secp224k1);
+        curves.push(Curve::Secp256k1);
+        curves.push(Curve::X25519);
+        curves.push(Curve::Ed25519);
+        curves.push(Curve::X448);
+        curves.push(Curve::Ed448);
+    }
+
+    curves
+        .into_iter()
+        .map(|c| {
+            // Value must be kebab-case identifier that `Curve::from_str` accepts
+            let value = match c {
+                #[cfg(feature = "non-fips")]
+                Curve::NistP192 => "nist-p192",
+                Curve::NistP224 => "nist-p224",
+                Curve::NistP256 => "nist-p256",
+                Curve::NistP384 => "nist-p384",
+                Curve::NistP521 => "nist-p521",
+                #[cfg(feature = "non-fips")]
+                Curve::X25519 => "x25519",
+                #[cfg(feature = "non-fips")]
+                Curve::Ed25519 => "ed25519",
+                #[cfg(feature = "non-fips")]
+                Curve::X448 => "x448",
+                #[cfg(feature = "non-fips")]
+                Curve::Ed448 => "ed448",
+                #[cfg(feature = "non-fips")]
+                Curve::Secp256k1 => "secp256k1",
+                #[cfg(feature = "non-fips")]
+                Curve::Secp224k1 => "secp224k1",
+            };
+            // Label uses Curve Display (human-friendly)
+            let label = c.to_string();
+            AlgoOption {
+                value: value.to_owned(),
+                label,
+            }
+        })
+        .collect()
+}
+
+#[wasm_bindgen]
+pub fn get_symmetric_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_symmetric_algorithms())
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn get_ec_algorithms() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&list_ec_algorithms()).map_err(|e| JsValue::from(e.to_string()))
+}
+
 /// Returns the list of cryptographic algorithms available in this build.
-/// The content may vary depending on the `non-fips` feature.
+/// Now reuses EC and Symmetric lists for feature-driven consistency.
 #[wasm_bindgen]
 pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
-    // Build from Rust enum variants to avoid string literals
+    let sym = list_symmetric_algorithms();
+    let ec_list = list_ec_algorithms();
+
     #[allow(unused_mut)]
     let mut variants: Vec<CryptographicAlgorithm> = vec![
         CryptographicAlgorithm::AES,
@@ -141,13 +231,21 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         CryptographicAlgorithm::SHA3256,
         CryptographicAlgorithm::SHA3384,
         CryptographicAlgorithm::SHA3512,
-        CryptographicAlgorithm::Ed25519,
-        CryptographicAlgorithm::Ed448,
-        CryptographicAlgorithm::CoverCrypt,
-        CryptographicAlgorithm::CoverCryptBulk,
     ];
     #[cfg(feature = "non-fips")]
     {
+        variants.push(CryptographicAlgorithm::CoverCrypt);
+        variants.push(CryptographicAlgorithm::CoverCryptBulk);
+    }
+
+    if ec_list.iter().any(|o| o.value == "ed25519") {
+        variants.push(CryptographicAlgorithm::Ed25519);
+    }
+    if ec_list.iter().any(|o| o.value == "ed448") {
+        variants.push(CryptographicAlgorithm::Ed448);
+    }
+
+    if sym.iter().any(|o| o.value == "chacha20") {
         variants.push(CryptographicAlgorithm::ChaCha20);
         variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
     }
@@ -156,19 +254,103 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         .into_iter()
         .map(|alg| {
             let value = alg.to_string();
-            let label = match alg {
-                CryptographicAlgorithm::SHA3224 => String::from("SHA3-224"),
-                CryptographicAlgorithm::SHA3256 => String::from("SHA3-256"),
-                CryptographicAlgorithm::SHA3384 => String::from("SHA3-384"),
-                CryptographicAlgorithm::SHA3512 => String::from("SHA3-512"),
-                CryptographicAlgorithm::ChaCha20Poly1305 => String::from("ChaCha20-Poly1305"),
-                _ => value.clone(),
-            };
+            let label = value.clone();
             AlgoOption { value, label }
         })
         .collect();
 
     serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of certificate key generation algorithms (RSA sizes and EC curves)
+/// mirroring `crate/client_utils/src/certificate_utils.rs` `Algorithm` variants.
+#[wasm_bindgen]
+pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
+    #[cfg(feature = "non-fips")]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (keep NIST P-192 first)
+        AlgoOption {
+            value: "nist-p192".into(),
+            label: "NIST P-192".into(),
+        },
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // Additional EC (non-FIPS)
+        AlgoOption {
+            value: "ed25519".into(),
+            label: "Ed25519".into(),
+        },
+        AlgoOption {
+            value: "ed448".into(),
+            label: "Ed448".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa1024".into(),
+            label: "RSA 1024".into(),
+        },
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+    ];
+    #[cfg(not(feature = "non-fips"))]
+    let opts: Vec<AlgoOption> = vec![
+        // EC curves (FIPS subset)
+        AlgoOption {
+            value: "nist-p224".into(),
+            label: "NIST P-224".into(),
+        },
+        AlgoOption {
+            value: "nist-p256".into(),
+            label: "NIST P-256".into(),
+        },
+        AlgoOption {
+            value: "nist-p384".into(),
+            label: "NIST P-384".into(),
+        },
+        AlgoOption {
+            value: "nist-p521".into(),
+            label: "NIST P-521".into(),
+        },
+        // RSA sizes
+        AlgoOption {
+            value: "rsa2048".into(),
+            label: "RSA 2048".into(),
+        },
+        AlgoOption {
+            value: "rsa3072".into(),
+            label: "RSA 3072".into(),
+        },
+        AlgoOption {
+            value: "rsa4096".into(),
+            label: "RSA 4096".into(),
+        },
+    ];
+
+    serde_wasm_bindgen::to_value(&opts).map_err(|e| JsValue::from(e.to_string()))
 }
 
 /// Returns supported key format types for UI filters.
@@ -230,17 +412,7 @@ pub fn get_object_types() -> Result<JsValue, JsValue> {
         .iter()
         .map(|v| {
             let value = v.to_string();
-            let label = match v {
-                ObjectType::SymmetricKey => String::from("Symmetric Key"),
-                ObjectType::PublicKey => String::from("Public Key"),
-                ObjectType::PrivateKey => String::from("Private Key"),
-                ObjectType::SplitKey => String::from("Split Key"),
-                ObjectType::SecretData => String::from("Secret Data"),
-                ObjectType::OpaqueObject => String::from("Opaque Object"),
-                ObjectType::PGPKey => String::from("PGP Key"),
-                ObjectType::CertificateRequest => String::from("Certificate Request"),
-                ObjectType::Certificate => String::from("Certificate"),
-            };
+            let label = v.to_string();
             AlgoOption { value, label }
         })
         .collect();
@@ -261,16 +433,7 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
         kmip_0::kmip_types::State::Destroyed_Compromised,
     ];
     for s in variants {
-        let label = match s {
-            kmip_0::kmip_types::State::PreActive => String::from("Pre-Active"),
-            kmip_0::kmip_types::State::Active => String::from("Active"),
-            kmip_0::kmip_types::State::Deactivated => String::from("Deactivated"),
-            kmip_0::kmip_types::State::Compromised => String::from("Compromised"),
-            kmip_0::kmip_types::State::Destroyed => String::from("Destroyed"),
-            kmip_0::kmip_types::State::Destroyed_Compromised => {
-                String::from("Destroyed Compromised")
-            }
-        };
+        let label = s.to_string();
         // Use UI labels for value to keep client-side filtering stable
         states.push(AlgoOption {
             value: label.clone(),
@@ -286,6 +449,15 @@ pub fn init_panic_hook() {
     // Improve error messages for panics in the browser console
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
+}
+
+/// Returns true when compiled in FIPS mode (default), false in non-FIPS builds.
+#[wasm_bindgen]
+#[allow(clippy::missing_const_for_fn)]
+#[must_use]
+pub fn is_fips_mode() -> bool {
+    // `non-fips` feature disables FIPS mode
+    !cfg!(feature = "non-fips")
 }
 
 fn parse_ttlv_response<T: DeserializeOwned + Serialize>(
@@ -687,6 +859,183 @@ pub fn encrypt_ec_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<EncryptResponse>(response)
+}
+
+// Sign requests
+fn js_to_cryptographic_parameters(
+    alg: Option<JsValue>,
+) -> Result<Option<CryptographicParameters>, JsValue> {
+    if alg.is_none() {
+        return Ok(None);
+    }
+    let Some(v) = alg else {
+        return Ok(None);
+    };
+    if v.is_null() || v.is_undefined() {
+        return Ok(None);
+    }
+    if let Some(s) = v.as_string() {
+        let s_norm = s.trim().to_lowercase();
+        let cp = match s_norm.as_str() {
+            // RSA
+            "rsassapss" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: None,
+                ..Default::default()
+            },
+            // ECDSA variants
+            "ecdsa-with-sha256" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha256.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha384" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha384.into()),
+                ..Default::default()
+            },
+            "ecdsa-with-sha512" => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                padding_method: Some(kmip_0::kmip_types::PaddingMethod::None),
+                hashing_algorithm: Some(HashFn::Sha512.into()),
+                ..Default::default()
+            },
+            _ => {
+                return Err(JsValue::from_str(&format!(
+                    "Unsupported signature algorithm: '{s}'"
+                )));
+            }
+        };
+        return Ok(Some(cp));
+    }
+    // Try to deserialize a full `CryptographicParameters` object
+    let cp: CryptographicParameters = serde_wasm_bindgen::from_value(v).map_err(|e| {
+        JsValue::from_str(&format!(
+            "Invalid CryptographicParameters value: {e}. Expect string algorithm or CP object."
+        ))
+    })?;
+    Ok(Some(cp))
+}
+
+#[wasm_bindgen]
+pub fn sign_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "sign_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        Sign {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest.into()),
+            digested_data: None,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    let objects = to_ttlv(&request).map_err(|e| {
+        JsValue::from_str(&format!(
+            "sign_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={}: {e}",
+            if digested { request.digested_data.as_ref().map_or(0, std::vec::Vec::len) } else { request.data.as_ref().map_or(0, |v| v.len()) }
+        ))
+    })?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn parse_sign_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<SignResponse>(response).map_err(|e| {
+        JsValue::from_str(&format!(
+            "parse_sign_ttlv_response: invalid response: {e:?}"
+        ))
+    })
+}
+
+#[wasm_bindgen]
+pub fn signature_verify_ttlv_request(
+    key_unique_identifier: &str,
+    data_or_digest: Vec<u8>,
+    signature: Vec<u8>,
+    cryptographic_parameters: Option<JsValue>,
+    digested: bool,
+) -> Result<JsValue, JsValue> {
+    let cp = js_to_cryptographic_parameters(cryptographic_parameters).map_err(|e| {
+        JsValue::from_str(&format!(
+            "signature_verify_ttlv_request: invalid cryptographic parameters for key '{key_unique_identifier}': {e:?}"
+        ))
+    })?;
+    let request = if digested {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: None,
+            digested_data: Some(data_or_digest),
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    } else {
+        SignatureVerify {
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                key_unique_identifier.to_owned(),
+            )),
+            cryptographic_parameters: cp,
+            data: Some(data_or_digest),
+            digested_data: None,
+            signature_data: Some(signature),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+    };
+    let objects = to_ttlv(&request).map_err(|e| {
+        let payload_len = if digested {
+            request.digested_data.as_ref().map_or(0, std::vec::Vec::len)
+        } else {
+            request.data.as_ref().map_or(0, std::vec::Vec::len)
+        };
+        let sig_len = request.signature_data.as_ref().map_or(0, std::vec::Vec::len);
+        JsValue::from_str(&format!(
+            "signature_verify_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={payload_len}, signature_len={sig_len}: {e}"
+        ))
+    })?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn parse_signature_verify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<SignatureVerifyResponse>(response).map_err(|e| {
+        JsValue::from_str(&format!(
+            "parse_signature_verify_ttlv_response: invalid response: {e:?}"
+        ))
+    })
 }
 
 // Export request

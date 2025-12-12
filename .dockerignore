@@ -1,4 +1,0 @@
-**/target/
-**/.cargo_check/
-.git/
-.gitignore

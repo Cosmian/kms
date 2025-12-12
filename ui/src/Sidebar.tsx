@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
 import { MenuItem, menuItems } from "./menuItems.tsx";
-import { getNoTTLVRequest } from "./utils.ts";
+import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
 const { Sider } = Layout;
 
@@ -18,26 +18,28 @@ const Sidebar: React.FC = () => {
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
+    const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
 
     const fetchCreatePermission = useCallback(async () => {
         try {
             const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
             processMenuItems(response.has_create_permission);
-        } catch (e) {
-            console.error("Error fetching create permission:", e);
+        } catch {
             processMenuItems(false);
         }
     }, [idToken, serverUrl]);
 
     useEffect(() => {
-        // Only attempt fetching permissions when we have a JWT
-        if (idToken) {
-            fetchCreatePermission();
-        } else {
-            // Default: disable create/import when unauthenticated
-            processMenuItems(false);
-        }
-    }, [fetchCreatePermission, idToken]);
+        (async () => {
+            try {
+                const method = await fetchAuthMethod(serverUrl);
+                setAuthMethod(method);
+            } catch {
+                /* ignore */
+            }
+        })();
+        fetchCreatePermission();
+    }, [fetchCreatePermission, idToken, serverUrl]);
 
     // Process menu items to disable "Create" and "Import" options based on access rights
     const processMenuItems = (hasCreateAccess: boolean) => {
@@ -86,16 +88,16 @@ const Sidebar: React.FC = () => {
 
     const levelKeys = getLevelKeys(menuItems as LevelKeysProps[]);
 
-    const onOpenChange: MenuProps["onOpenChange"] = (openKeys) => {
+    const onOpenChange: MenuProps["onOpenChange"] = (openKeys: string[]) => {
         const currentOpenKey = openKeys.find((key) => stateOpenKeys.indexOf(key) === -1);
         // open
         if (currentOpenKey !== undefined) {
             const repeatIndex = openKeys
-                .filter((key) => key !== currentOpenKey)
-                .findIndex((key) => levelKeys[key] === levelKeys[currentOpenKey]);
+                .filter((key: string) => key !== currentOpenKey)
+                .findIndex((key: string) => levelKeys[key] === levelKeys[currentOpenKey]);
 
             setStateOpenKeys(
-                openKeys.filter((_, index) => index !== repeatIndex).filter((key) => levelKeys[key] <= levelKeys[currentOpenKey])
+                openKeys.filter((_, index: number) => index !== repeatIndex).filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
             );
         } else {
             // close
@@ -117,6 +119,11 @@ const Sidebar: React.FC = () => {
             theme="light"
             style={{ position: "sticky", top: 0, overflow: "auto" }}
         >
+            {authMethod === "JWT" && !idToken && (
+                <div style={{ padding: 8, background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: 4, margin: 8 }}>
+                    JWT authentication is enabled. Please log in to enable Create/Import.
+                </div>
+            )}
             <Menu
                 mode="inline"
                 defaultSelectedKeys={["1"]}
@@ -124,7 +131,7 @@ const Sidebar: React.FC = () => {
                 openKeys={stateOpenKeys}
                 onOpenChange={onOpenChange}
                 items={modifiedMenuItems}
-                onClick={({ key }) => navigate(key)}
+                onClick={({ key }: { key: string }) => navigate(key)}
                 className="h-full border-r-0"
                 style={{ fontWeight: "500", overflow: "auto" }}
             />

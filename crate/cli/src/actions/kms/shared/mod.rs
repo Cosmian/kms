@@ -2,6 +2,8 @@ pub(crate) mod export_key;
 mod get_key_uid;
 pub(crate) mod import_key;
 mod locate;
+pub(crate) mod sign;
+pub(crate) mod signature_verify;
 pub mod utils;
 
 mod wrap_key;

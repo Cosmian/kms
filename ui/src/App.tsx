@@ -25,6 +25,8 @@ import CseInfo from "./CseInfo";
 import ECDecryptForm from "./ECDecrypt";
 import ECEncryptForm from "./ECEncrypt";
 import ECKeyCreateForm from "./ECKeysCreate";
+import ECSignForm from "./ECSign";
+import ECVerifyForm from "./ECVerify";
 import KeyExportForm from "./KeysExport";
 import KeyImportForm from "./KeysImport";
 import LocateForm from "./Locate";
@@ -38,6 +40,8 @@ import OpaqueObjectForm from "./OpaqueObject";
 import RsaDecryptForm from "./RsaDecrypt";
 import RsaEncryptForm from "./RsaEncrypt";
 import RsaKeyCreateForm from "./RsaKeysCreate";
+import RsaSignForm from "./RsaSign";
+import RsaVerifyForm from "./RsaVerify";
 import SecretDataCreateForm from "./SecretDataCreate";
 import SymKeyCreateForm from "./SymKeysCreate";
 import SymmetricDecryptForm from "./SymmetricDecrypt";
@@ -123,6 +127,8 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                             <Route path="keys/destroy" element={<DestroyForm objectType="rsa"/>}/>
                             <Route path="encrypt" element={<RsaEncryptForm/>}/>
                             <Route path="decrypt" element={<RsaDecryptForm/>}/>
+                            <Route path="sign" element={<RsaSignForm/>}/>
+                            <Route path="verify" element={<RsaVerifyForm/>}/>
                         </Route>
                         <Route path="ec">
                             <Route path="keys/create" element={<ECKeyCreateForm/>}/>
@@ -132,6 +138,8 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                             <Route path="keys/destroy" element={<DestroyForm objectType="ec"/>}/>
                             <Route path="encrypt" element={<ECEncryptForm/>}/>
                             <Route path="decrypt" element={<ECDecryptForm/>}/>
+                            <Route path="sign" element={<ECSignForm/>}/>
+                            <Route path="verify" element={<ECVerifyForm/>}/>
                         </Route>
                         <Route path="cc">
                             <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm/>}/>

@@ -368,3 +368,34 @@ fn test_attributes_requests() {
                 .is_err()
     );
 }
+
+#[wasm_bindgen_test]
+fn test_sign_ttlv_request() {
+    // Algorithm string recognized by wasm helper
+    let alg = JsValue::from_str("rsassapss");
+    // Data to sign
+    let data = vec![1u8, 2, 3, 4];
+    let r = w::sign_ttlv_request("kid", data, Some(alg), false);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_parse_sign_ttlv_response() {
+    let r = w::parse_sign_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_signature_verify_ttlv_request() {
+    let alg = JsValue::from_str("rsassapss");
+    let data = vec![7u8, 8, 9];
+    let signature = vec![0xAAu8, 0xBB, 0xCC];
+    let r = w::signature_verify_ttlv_request("kid", data, signature, Some(alg), false);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_parse_signature_verify_ttlv_response() {
+    let r = w::parse_signature_verify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}

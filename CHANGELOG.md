@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.X.Y] - 2025-12-11
+
+### 🚀 Features
+
+- Sign and SignatureVerify support across CLI, and UI ([#522](https://github.com/Cosmian/kms/issues/522), [#606](https://github.com/Cosmian/kms/pull/606)):
+    - CLI: Added `sign` and `signature_verify` subcommands for RSA and Elliptic Curves (`crate/cli/src/actions/kms/.../sign.rs`, `.../signature_verify.rs`).
+    - UI: Added React pages for RSA and EC signing and verification (`ui/src/RsaSign.tsx`, `ui/src/RsaVerify.tsx`, `ui/src/ECSign.tsx`, `ui/src/ECVerify.tsx`), and surfaced object type in Locate.
+
+### 🚜 Refactor
+
+- Server: Consolidate KMIP operations `Sign` and `SignatureVerify` for RSA and Elliptic Curves (`crate/server/src/core/operations/sign.rs`, `signature_verify.rs`; routes updated). Supported signature schemes: RSASSA-PSS, ECDSA, EdDSA (Ed25519, Ed448).
+- Digest (pre-hashed) mode for signing and verification ([#619](https://github.com/Cosmian/kms/issues/619)):
+    - Introduced `digested=true` handling so inputs are treated as final digests (no implicit hashing) across RSA and EC paths (crypto + server).
+    - RSA: Added verify support using pre-hashed input, including PKCS#1 v1.5 and RSASSA-PSS flows (`crate/crypto/src/crypto/rsa/verify.rs`).
+    - EC: Added verify support using pre-hashed input (`crate/crypto/src/crypto/elliptic_curves/verify.rs`).
+- Non-FIPS EC deterministic behavior (RFC 6979-like) via RustCrypto P256 implementation in non-FIPS builds.
+- RSASSA-PSS: Server respects `salt_len` when specified (including `0`) during `Sign`.
+
+### 🧪 Testing
+
+- Added CLI and crypto tests for sign/verify flows, including digested mode
+
 ## [5.13.0] - 2025-12-07
 
 ### 🚀 Features
