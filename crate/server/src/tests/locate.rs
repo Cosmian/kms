@@ -38,14 +38,10 @@ async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let owner = "mt_owner";
-    let redis_url = get_redis_url();
-    // we start a fresh KMS, it finds the data in redis, and migrates it
     let mut clap_config = https_clap_config();
     clap_config.db = MainDBConfig {
-        database_type: Some("redis-findex".to_owned()),
-        database_url: Some(redis_url),
-        redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
+        database_type: Some("sqlite".to_owned()),
+        sqlite_path: crate::tests::test_utils::get_tmp_sqlite_path(),
         clear_database: true,
         ..Default::default()
     };
@@ -69,7 +65,7 @@ async fn test_locate() -> KResult<()> {
                 create_ec_key_pair_request(
                     None,
                     vec!["cat"], // changed this line
-                    RecommendedCurve::CURVE25519,
+                    RecommendedCurve::P256,
                     false,
                     None,
                 )?,
@@ -82,7 +78,7 @@ async fn test_locate() -> KResult<()> {
 
     // Verify specific individual keys can be retrieved
     let test_keys = vec![
-        (vec!["cat"], Some(ObjectType::Certificate), 0), // expect to find nothing, we didn't create any cert. For some reason, finds two keys
+        (vec!["cat"], Some(ObjectType::Certificate), 0), /* expect to find nothing, we didn't create any cert. For some reason, finds two keys */
         (
             vec!["cat"],
             Some(ObjectType::PublicKey),
@@ -105,14 +101,10 @@ async fn test_locate() -> KResult<()> {
         };
         let specific_response = kms.locate(locate_specific, owner, None).await?;
 
-        println!("found response: {specific_response:?}");
-
         let found_count = specific_response.located_items.unwrap();
 
-        println!(
-            "Found {found_count} keys with  object type \
-             {expected_object_type:?}"
-        );
+        drop(specific_response); // avoid clippy print-stdout
+        let _ = found_count; // ignore without printing
 
         assert_eq!(
             found_count, expected_result,
