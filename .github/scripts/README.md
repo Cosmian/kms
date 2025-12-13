@@ -313,7 +313,7 @@ bash .github/scripts/nix.sh update-hashes [options]
 2. **Binary Hashes** (`--binary-only` or default):
    - Builds FIPS and/or non-FIPS variants (static and dynamic)
    - Computes SHA-256 of resulting `cosmian_kms` binary
-   - Updates `nix/expected-hashes/<variant>.<openssl|no-openssl>.<arch>.<os>.sha256`
+   - Updates `nix/expected-hashes/cosmian-kms-server.<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256`
 
 **Examples:**
 
@@ -349,11 +349,11 @@ bash .github/scripts/nix.sh update-hashes --variant fips
 
 All commands support these flags:
 
-| Flag              | Values             | Default                                     | Effect                    |
-| ----------------- | ------------------ | ------------------------------------------- | ------------------------- |
+| Flag              | Values             | Default                               | Effect                    |
+| ----------------- | ------------------ | ------------------------------------- | ------------------------- |
 | `-p`, `--profile` | `debug`, `release` | `debug` (test)<br>`release` (package) | Cargo build profile       |
-| `-v`, `--variant` | `fips`, `non-fips` | `fips`                                      | Cryptographic feature set |
-| `-h`, `--help`    | —                  | —                                           | Show usage and exit       |
+| `-v`, `--variant` | `fips`, `non-fips` | `fips`                                | Cryptographic feature set |
+| `-h`, `--help`    | —                  | —                                     | Show usage and exit       |
 
 **Feature Set Differences:**
 
@@ -481,14 +481,14 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 #### `nix/scripts/`
 
-| Script                 | Purpose                               | Invocation Context         |
-| ---------------------- | ------------------------------------- | -------------------------- |
-| `package_deb.sh`   | Debian package build                  | Via `nix.sh package deb`  |
-| `package_rpm.sh`   | RPM package build                     | Via `nix.sh package rpm`  |
-| `package_dmg.sh`   | macOS DMG build                       | Via `nix.sh package dmg`  |
-| `generate_sbom.sh` | SBOM generation orchestrator          | Via `nix.sh sbom`         |
-| `get_version.sh`   | Extract version from `Cargo.toml`     | Packaging scripts         |
-| `package_common.sh`| Shared packaging helpers              | Sourced by `package_*.sh` |
+| Script              | Purpose                           | Invocation Context        |
+| ------------------- | --------------------------------- | ------------------------- |
+| `package_deb.sh`    | Debian package build              | Via `nix.sh package deb`  |
+| `package_rpm.sh`    | RPM package build                 | Via `nix.sh package rpm`  |
+| `package_dmg.sh`    | macOS DMG build                   | Via `nix.sh package dmg`  |
+| `generate_sbom.sh`  | SBOM generation orchestrator      | Via `nix.sh sbom`         |
+| `get_version.sh`    | Extract version from `Cargo.toml` | Packaging scripts         |
+| `package_common.sh` | Shared packaging helpers          | Sourced by `package_*.sh` |
 
 ### Test Scripts Detailed
 
@@ -806,11 +806,11 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
         │    error message     │   │ For each platform:   │
         │ 3. Update            │   │  • x86_64-linux      │
         │    kms-server.nix    │   │  • aarch64-linux     │
-        │    cargoHash field   │   │  • aarch64-darwin    │
+        │    cargoHash field    │   │  • aarch64-darwin    │
         └──────────────────────┘   │                      │
                                    │ Update files in:     │
                                    │ nix/expected-hashes/ │
-                                   │ <variant>.<openssl\|no-openssl>.<arch>.<os>.sha256 │
+                                   │ cosmian-kms-server.<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256 │
                                    └──────────────────────┘
                                               │
                                               ▼
@@ -1200,9 +1200,9 @@ Source Code                  Build Outputs              Distribution
 bash .github/scripts/nix.sh update-hashes [--vendor-only | --binary-only]
 
 # Manual (for verification):
-nix-build -A kms-server-fips
+nix-build -A kms-server-fips-static-openssl
 sha256sum result/bin/cosmian_kms
-# Update nix/expected-hashes/fips.<openssl|no-openssl>.<arch>.<os>.sha256
+# Update nix/expected-hashes/cosmian-kms-server.fips.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
 ```
 
 **Review checklist:**

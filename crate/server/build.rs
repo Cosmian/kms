@@ -17,7 +17,7 @@ const DEMO_TIMEOUT: i64 = 90; // 3 months in days
 // OpenSSL FIPS build parameters (must mirror nix/openssl-3_1_2.nix)
 const OPENSSL_VERSION: &str = "3.1.2";
 const OPENSSL_TARBALL: &str = "openssl-3.1.2.tar.gz";
-const OPENSSL_URL: &str = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz"; // pinned historic URL
+const OPENSSL_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz"; // pinned historic URL
 const OPENSSL_SHA256: &str = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"; // expected hash (same as nix derivation)
 
 fn main() {

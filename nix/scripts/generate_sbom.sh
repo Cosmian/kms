@@ -82,8 +82,8 @@ echo ""
 cd "$REPO_ROOT"
 
 # Determine the derivation to analyze
-DERIVATION="kms-server-${VARIANT}"
-NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}"
+DERIVATION="kms-server-${VARIANT}-static-openssl"
+NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
 
 # Helper function to run sbomnix commands via nix-shell if sbomnix is not available
 run_sbomnix() {
