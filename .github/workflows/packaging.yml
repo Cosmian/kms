@@ -138,7 +138,7 @@ jobs:
           }
 
           ARCH=$(map_arch "${{ matrix.runner }}")
-          # Find all regular files (including hashes/signatures) within the result dirs
+          # Find all regular files (packages + hashes/signatures) within the result dirs
           while IFS= read -r -d '' file; do
             # Skip non-regular files (e.g., directories like bin)
             if [[ ! -f "$file" ]]; then
@@ -149,6 +149,11 @@ jobs:
             # Skip bundled public key files present in result directories
             if [[ "$filename" == "cosmian-kms-public.asc" ]]; then
               echo "Skipping repository public key artifact: $filename"
+              continue
+            fi
+            # Only consider expected artifact names: package + asc + sha256
+            if [[ ! "$filename" =~ ^cosmian-kms-server.*\.(deb|rpm|dmg|asc|sha256)$ ]]; then
+              echo "Skipping non-artifact file: $filename"
               continue
             fi
             type=$(map_type_from_ext "$filename")
