@@ -86,3 +86,67 @@ fn test_mysql_kmip_11_create_request() -> KmipResult<()> {
     from_ttlv::<RequestMessage>(ttlv)?;
     Ok(())
 }
+
+#[test]
+fn test_mysql_kmip_11_storage_status_mask_integer() -> KmipResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // Reproduces MySQL client sending Storage Status Mask as Integer
+    // Expect deserialization to fail with type mismatch for StorageStatusMask.
+    let json = r#"
+        {
+            "tag": "RequestMessage",
+            "type": "Structure",
+            "value": [
+                {
+                    "tag": "RequestHeader",
+                    "type": "Structure",
+                    "value": [
+                        {
+                            "tag": "ProtocolVersion",
+                            "type": "Structure",
+                            "value": [
+                                { "tag": "ProtocolVersionMajor", "type": "Integer", "value": 1 },
+                                { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
+                            ]
+                        },
+                        { "tag": "MaximumResponseSize", "type": "Integer", "value": 280000 },
+                        { "tag": "BatchCount", "type": "Integer", "value": 1 }
+                    ]
+                },
+                {
+                    "tag": "BatchItem",
+                    "type": "Structure",
+                    "value": [
+                        { "tag": "Operation", "type": "Enumeration", "value": "0x00000001" },
+                        {
+                            "tag": "RequestPayload",
+                            "type": "Structure",
+                            "value": [
+                                { "tag": "ObjectType", "type": "Enumeration", "value": "0x00000002" },
+                                {
+                                    "tag": "TemplateAttribute",
+                                    "type": "Structure",
+                                    "value": [
+                                        {
+                                            "tag": "Attribute",
+                                            "type": "Structure",
+                                            "value": [
+                                                { "tag": "AttributeName", "type": "TextString", "value": "Storage Status Mask" },
+                                                { "tag": "AttributeIndex", "type": "Integer", "value": 0 },
+                                                { "tag": "AttributeValue", "type": "Integer", "value": 1 }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+
+    let ttlv: TTLV = serde_json::from_str(json)?;
+    from_ttlv::<RequestMessage>(ttlv)?;
+    Ok(())
+}

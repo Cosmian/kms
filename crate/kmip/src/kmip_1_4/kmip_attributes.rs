@@ -21,6 +21,7 @@ pub use crate::{
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, Digest,
             DigitalSignatureAlgorithm, Link, Name, ObjectType, RandomNumberGenerator,
+            StorageStatusMask,
         },
     },
     kmip_2_1::{
@@ -51,6 +52,7 @@ pub enum Attribute {
     CryptographicLength(i32),
     CryptographicParameters(CryptographicParameters),
     CryptographicUsageMask(CryptographicUsageMask),
+    StorageStatusMask(StorageStatusMask),
     CustomAttribute(CustomAttribute),
     DeactivationDate(OffsetDateTime),
     Description(String),
@@ -167,6 +169,10 @@ impl Serialize for Attribute {
             }
             Self::CryptographicUsageMask(value) => {
                 st.serialize_field("AttributeName", "Cryptographic Usage Mask")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::StorageStatusMask(value) => {
+                st.serialize_field("AttributeName", "Storage Status Mask")?;
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::LeaseTime(value) => {
@@ -487,6 +493,10 @@ impl<'de> Deserialize<'de> for Attribute {
                         let value: CryptographicUsageMask = map.next_value()?;
                         Ok(Attribute::CryptographicUsageMask(value))
                     }
+                    "Storage Status Mask" => {
+                        let value: StorageStatusMask = map.next_value()?;
+                        Ok(Attribute::StorageStatusMask(value))
+                    }
                     "Lease Time" => {
                         let value: u32 = map.next_value()?;
                         Ok(Attribute::LeaseTime(value))
@@ -660,6 +670,10 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
+            Attribute::StorageStatusMask(_v) => {
+                warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
+            }
             Attribute::CustomAttribute(ca) => {
                 if ca.name.starts_with("x-") {
                     Self::VendorAttribute(VendorAttribute {
@@ -1046,6 +1060,10 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 | Attribute::OperationPolicyName(_)
                 | Attribute::Pkcs12FriendlyName(_) => {
                     // Not supported in KMIP 2.1
+                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                }
+                Attribute::StorageStatusMask(_v) => {
+                    // Not supported in KMIP 2.1 attribute set; this is typically a Locate payload field.
                     warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
                 }
                 Attribute::DigitalSignatureAlgorithm(v) => {
