@@ -138,7 +138,8 @@ jobs:
           }
 
           ARCH=$(map_arch "${{ matrix.runner }}")
-          for file in result-*-${{ matrix.features }}-${{ matrix.link }}/*; do
+          # Find all regular files (including hashes/signatures) within the result dirs
+          while IFS= read -r -d '' file; do
             # Skip non-regular files (e.g., directories like bin)
             if [[ ! -f "$file" ]]; then
               echo "Skipping non-regular file: $file"
@@ -161,7 +162,7 @@ jobs:
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
             echo "Uploading $file to $remote_path"
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$file" "cosmian@package.cosmian.com:$remote_path"
-          done
+          done < <(find result-*-${{ matrix.features }}-${{ matrix.link }} -type f -print0)
 
           # Include Cosmian public GPG key for package verification
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ./nix/signing-keys/cosmian-kms-public.asc "cosmian@package.cosmian.com:${DESTINATION_DIR}"
