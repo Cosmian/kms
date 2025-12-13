@@ -116,6 +116,8 @@ pub(crate) async fn create(
             PreActive
         };
         attributes.state = Some(desired_state);
+        // Ensure ObjectType is set by the server at creation
+        attributes.object_type = Some(request.object_type);
         // Do not auto-set AlwaysSensitive; PyKMIP clients may not support this tag.
         // Keep client-provided value if present, otherwise leave it unset.
         // update the digest
