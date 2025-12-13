@@ -137,7 +137,7 @@ jobs:
           for file in result-*-${{ matrix.features }}-${{ matrix.link }}/*; do
             filename=$(basename "$file")
             type=$(map_type_from_ext "$filename")
-            remote_dir="${DESTINATION_DIR}/${type}/${ARCH}/${{ matrix.features }}/${{ matrix.link }}/${filename}"
+            remote_dir="${DESTINATION_DIR}/${type}/${ARCH}/${{ matrix.features }}/${{ matrix.link }}"
             remote_path="${remote_dir}/${filename}"
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
             echo "Uploading $file to $remote_path"
@@ -145,7 +145,7 @@ jobs:
           done
 
           # Include Cosmian public GPG key for package verification
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ./nix/signing-keys/cosmian-kms-public.asc "cosmian@package.cosmian.com:$DESTINATION_DIR"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ./nix/signing-keys/cosmian-kms-public.asc "cosmian@package.cosmian.com:${DESTINATION_DIR}"
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
