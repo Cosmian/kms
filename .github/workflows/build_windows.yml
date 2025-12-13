@@ -150,7 +150,9 @@ jobs:
 
       - name: List downloaded files
         run: |
-          dir
+          set -ex
+          ls -la
+          find . -maxdepth 3 -type f -print
 
       - name: Push installer to package.cosmian.com
         shell: bash
@@ -164,7 +166,7 @@ jobs:
           fi
           DEST_DIR="/mnt/package/kms/${BRANCH}/windows/amd64/non-fips/static-openssl"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
-          for exe in cosmian-kms-server*.exe; do
+          for exe in windows-release/target/release/cosmian-kms-server*.exe; do
             echo "Uploading ${exe} to ${DEST_DIR}"
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
           done
@@ -174,4 +176,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            cosmian-kms-server*.exe
+            windows-release/target/release/cosmian-kms-server*.exe
+            ./nix/signing-keys/cosmian-kms-public.asc

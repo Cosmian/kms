@@ -111,7 +111,7 @@ jobs:
           else
             BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
           fi
-          DESTINATION_DIR=/mnt/package/kms/$BRANCH/
+          DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
 
           map_arch() {
@@ -125,18 +125,37 @@ jobs:
           }
 
           map_type_from_ext() {
-            case "$1" in
-              *.deb*) echo "debian" ;;
-              *.rpm*) echo "rpm" ;;
-              *.dmg*) echo "macos" ;;
+            local name="$1"
+            # Normalize signatures and hashes to base artifact extension
+            name="${name%.sha256}"
+            name="${name%.asc}"
+            case "$name" in
+              *.deb) echo "debian" ;;
+              *.rpm) echo "rpm" ;;
+              *.dmg) echo "macos" ;;
               *) echo "unknown" ;;
             esac
           }
 
           ARCH=$(map_arch "${{ matrix.runner }}")
           for file in result-*-${{ matrix.features }}-${{ matrix.link }}/*; do
+            # Skip non-regular files (e.g., directories like bin)
+            if [[ ! -f "$file" ]]; then
+              echo "Skipping non-regular file: $file"
+              continue
+            fi
             filename=$(basename "$file")
+            # Skip bundled public key files present in result directories
+            if [[ "$filename" == "cosmian-kms-public.asc" ]]; then
+              echo "Skipping repository public key artifact: $filename"
+              continue
+            fi
             type=$(map_type_from_ext "$filename")
+            # Avoid creating 'unknown' folder trees
+            if [[ "$type" == "unknown" ]]; then
+              echo "Skipping unclassified file: $filename"
+              continue
+            fi
             remote_dir="${DESTINATION_DIR}/${type}/${ARCH}/${{ matrix.features }}/${{ matrix.link }}"
             remote_path="${remote_dir}/${filename}"
             ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
