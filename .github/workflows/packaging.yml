@@ -135,7 +135,7 @@ jobs:
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
 
           # Upload package files
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$RESULT_DIR/*" "$RESULT_SERVER_DIR/cosmian-kms-server*" "cosmian@package.cosmian.com:${remote_dir}/"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa $RESULT_DIR/* $RESULT_SERVER_DIR/cosmian-kms-server* cosmian@package.cosmian.com:${remote_dir}/
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')

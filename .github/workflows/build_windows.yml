@@ -90,7 +90,7 @@ jobs:
             if ($inWorkspace -and $line -match '^\[') { break }
           }
           if (-not $version) { throw "Unable to parse version from Cargo.toml" }
-          $arch = "amd64"
+          $arch = "x86_64"
           Get-ChildItem -Path "target/release" -Filter "*setup.exe" | ForEach-Object {
             $newName = "cosmian-kms-server-non-fips-static-openssl_${version}_${arch}.exe"
             $dest = Join-Path $_.DirectoryName $newName
@@ -165,7 +165,7 @@ jobs:
             HEAD_REF="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
             BRANCH="last_build/${HEAD_REF}"
           fi
-          DEST_DIR="/mnt/package/kms/${BRANCH}/windows/amd64/non-fips/static-openssl"
+          DEST_DIR="/mnt/package/kms/${BRANCH}/windows/x86_64/non-fips/static-openssl"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
           while IFS= read -r -d '' exe; do
             echo "Uploading ${exe} to ${DEST_DIR}"
