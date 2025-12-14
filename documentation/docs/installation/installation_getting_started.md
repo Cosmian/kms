@@ -53,7 +53,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 === "Debian-based distributions"
 
-    Download the package and install it (works all Debian distributions from Debian 10):
+    Download the package and install it (works on all Debian distributions from Debian 10):
 
     ```sh
     sudo apt update && sudo apt install -y wget

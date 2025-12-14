@@ -900,7 +900,7 @@ collect_deb() {
       b="${b%.deb}_${DEB_ARCH}.deb"
     fi
 
-    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>-version_<version>_<arch>.deb
+    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>_<version>_<arch>.deb
     local link_n
     if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
     local new_name
@@ -1018,7 +1018,7 @@ collect_rpm() {
       b="${b%.rpm}.${RPM_ARCH}.rpm"
     fi
 
-    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>-version_<version>_<arch>.rpm
+    # Rename to new convention: cosmian-kms-server-<variant>-<static-openssl|dynamic-openssl>_<version>_<arch>.rpm
     local link_n
     if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
     local new_name
