@@ -84,13 +84,17 @@ jobs:
       matrix:
         features: [fips, non-fips]
         link: [static, dynamic]
-        include:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        package-type: [deb, rpm, dmg]
+        exclude:
           - runner: ubuntu-24.04
-            arch: amd64
+            package-type: dmg
           - runner: ubuntu-24.04-arm
-            arch: arm64
+            package-type: dmg
           - runner: macos-15
-            arch: arm64
+            package-type: deb
+          - runner: macos-15
+            package-type: rpm
     steps:
       - name: Checkout repository (for public key file)
         uses: actions/checkout@v6
@@ -120,51 +124,18 @@ jobs:
           DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
 
-          # Loop on types deb, rpm and dmg
-          for type in deb rpm dmg; do
-              # Upload exactly the three expected artifacts from the known result directory
-              RESULT_DIR="result-$type-${{ matrix.features }}-${{ matrix.link }}"
-              RESULT_SERVER_DIR="result-server-${{ matrix.features }}-${{ matrix.link }}/bin"
-              remote_dir="${DESTINATION_DIR}/$type/${{ matrix.arch }}/${{ matrix.features }}/${{ matrix.link }}"
-              ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
+          ARCH=$(uname -m)
 
-              pkg_file=$(ls -1 "$RESULT_DIR/cosmian-kms-server*.$type" 2>/dev/null | head -n1 || true)
-              asc_file=$(ls -1 "$RESULT_DIR/cosmian-kms-server*.asc" 2>/dev/null | head -n1 || true)
-              sha_file=$(ls -1 "$RESULT_DIR/cosmian-kms-server*.sha256" 2>/dev/null | head -n1 || true)
-              server_sha_file=$(ls -1 "$RESULT_SERVER_DIR/cosmian-kms-server*.sha256" 2>/dev/null | head -n1 || true)
+          # Upload artifacts from the known result directory
+          RESULT_DIR="result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}"
+          RESULT_SERVER_DIR="result-server-${{ matrix.features }}-${{ matrix.link }}/bin"
 
-              # Upload present files; warn if missing
-              if [[ -n "$pkg_file" ]]; then
-                echo "Uploading package: $pkg_file"
-                scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$pkg_file" "cosmian@package.cosmian.com:${remote_dir}/$(basename "$pkg_file")"
-              else
-                echo "Warning: package file not found in $RESULT_DIR"
-              fi
+          # Create remote directory
+          remote_dir="${DESTINATION_DIR}/${{ matrix.package-type }}/${ARCH}/${{ matrix.features }}/${{ matrix.link }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
 
-              if [[ -n "$asc_file" ]]; then
-                echo "Uploading signature: $asc_file"
-                scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$asc_file" "cosmian@package.cosmian.com:${remote_dir}/$(basename "$asc_file")"
-              else
-                echo "Warning: signature (.asc) not found in $RESULT_DIR"
-              fi
-
-              if [[ -n "$sha_file" ]]; then
-                echo "Uploading hash: $sha_file"
-                scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$sha_file" "cosmian@package.cosmian.com:${remote_dir}/$(basename "$sha_file")"
-              else
-                echo "Warning: hash (.sha256) not found in $RESULT_DIR"
-              fi
-
-              if [[ -n "$server_sha_file" ]]; then
-                echo "Uploading hash: $server_sha_file"
-                scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$server_sha_file" "cosmian@package.cosmian.com:${remote_dir}/$(basename "$server_sha_file")"
-              else
-                echo "Warning: hash (.sha256) not found in $RESULT_SERVER_DIR"
-              fi
-          done
-
-          # Include Cosmian public GPG key for package verification
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa ./nix/signing-keys/cosmian-kms-public.asc "cosmian@package.cosmian.com:${DESTINATION_DIR}"
+          # Upload package files
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$RESULT_DIR/*" "$RESULT_SERVER_DIR/cosmian-kms-server*" "cosmian@package.cosmian.com:${remote_dir}/"
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')

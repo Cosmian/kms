@@ -58,7 +58,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo apt update && sudo apt install -y wget
     # Standard build (non-FIPS, static OpenSSL)
-    wget https://package.cosmian.com/kms/5.13.0/debian/amd64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.13.0_amd64.deb
     sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.13.0_amd64.deb
     sudo cosmian_kms --version
     ```
@@ -66,7 +66,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     Or install the FIPS build:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.13.0/debian/amd64/fips/static-openssl/cosmian-kms-server-fips-static-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/fips/static-openssl/cosmian-kms-server-fips-static-openssl_5.13.0_amd64.deb
     sudo apt install ./cosmian-kms-server-fips-static-openssl_5.13.0_amd64.deb
     sudo cosmian_kms --version
     ```
@@ -134,9 +134,9 @@ Available dynamic packages for Debian-based distributions:
 
     ```sh
     # Non-FIPS dynamic (OpenSSL linked dynamically)
-    wget https://package.cosmian.com/kms/5.13.0/debian/amd64/non-fips/dynamic-openssl/cosmian-kms-server-non-fips-dynamic-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/non-fips/dynamic-openssl/cosmian-kms-server-non-fips-dynamic-openssl_5.13.0_amd64.deb
     # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.13.0/debian/amd64/fips/dynamic-openssl/cosmian-kms-server-fips-dynamic-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/fips/dynamic-openssl/cosmian-kms-server-fips-dynamic-openssl_5.13.0_amd64.deb
     ```
 
 Available dynamic packages for Rocky Linux:
