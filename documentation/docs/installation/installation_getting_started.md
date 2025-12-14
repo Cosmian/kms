@@ -53,7 +53,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 === "Debian-based distributions"
 
-    Download the package and install it (works for Debian 10, Ubuntu 22.04/24.04):
+    Download the package and install it (works all Debian distributions from Debian 10):
 
     ```sh
     sudo apt update && sudo apt install -y wget
@@ -83,7 +83,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 === "Rocky Linux distributions"
 
-    Download the package and install it (works for Rocky Linux 8/9):
+    Download the package and install it (works for Rocky Linux 8/9/10):
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
@@ -108,7 +108,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
         - Apple Silicon (ARM64):
 
             ```sh
-            open "https://package.cosmian.com/kms/5.13.0/macos/arm64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.13.0_arm64.dmg"
+            open "https://package.cosmian.com/kms/5.13.0/dmg/arm64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.13.0_arm64.dmg"
             ```
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
