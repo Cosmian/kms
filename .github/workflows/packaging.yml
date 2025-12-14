@@ -139,19 +139,18 @@ jobs:
           remote_dir="${DESTINATION_DIR}/${{ matrix.package-type }}/${{ matrix.cpu-arch }}/${{ matrix.features }}/${{ matrix.link }}"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
 
-          # If CPU arch is arm64, then create variable = aarch64 for file matching
-          if [ "${{ matrix.cpu-arch }}" = "arm64" ]; then
-            arch_label="aarch64"
+          # If Linux runner
+          if [[ "${{ matrix.runner }}" == ubuntu* ]]; then
+            BINARY_PATTERN=linux
           else
-            arch_label="x86_64"
+            BINARY_PATTERN=darwin
           fi
 
           # Upload package files
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             ./nix/signing-keys/cosmian-kms-public.asc \
             $RESULT_DIR/*${{ matrix.cpu-arch }}*${{ matrix.package-type}}* \
-            $RESULT_SERVER_DIR/*${arch_label}* \
-            $RESULT_SERVER_DIR/*${{ matrix.cpu-arch }}* \
+            $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
             cosmian@package.cosmian.com:${remote_dir}/
 
       - name: Publish GitHub Release assets
