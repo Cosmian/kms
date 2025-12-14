@@ -4,7 +4,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Locate},
-        kmip_types::{CryptographicAlgorithm, Name, NameType, UniqueIdentifier},
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
 
@@ -25,20 +25,12 @@ async fn locate_sqlite() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
             cryptographic_length: Some(256),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
-            name: Some(vec![Name {
-                name_type: NameType::UninterpretedTextString,
-                name_value: "cat".to_owned(),
-            }]),
             ..Default::default()
         }),
         public_key_attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
             cryptographic_length: Some(256),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
-            name: Some(vec![Name {
-                name_type: NameType::UninterpretedTextString,
-                name_value: "cat".to_owned(),
-            }]),
             ..Default::default()
         }),
         common_protection_storage_masks: None,
@@ -46,15 +38,7 @@ async fn locate_sqlite() -> KResult<()> {
         public_protection_storage_masks: None,
     };
 
-    let resp: CreateKeyPairResponse = post_2_1(&app, create).await?;
-    if let UniqueIdentifier::TextString(id) = resp.private_key_unique_identifier {
-        drop(id);
-    }
-    if let UniqueIdentifier::TextString(id) = resp.public_key_unique_identifier {
-        drop(id);
-    }
-
-    // Locate PublicKey with tag "cat" → expect the public key only
+    let _resp: CreateKeyPairResponse = post_2_1(&app, create).await?;
 
     // Locate PublicKey with tag "cat" → expect the public key only
     let mut attrs_pub = Attributes {
@@ -65,11 +49,8 @@ async fn locate_sqlite() -> KResult<()> {
     let res_pub: Vec<UniqueIdentifier> = post_2_1(
         &app,
         Locate {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
             attributes: attrs_pub,
+            ..Locate::default()
         },
     )
     .await?;
@@ -84,11 +65,8 @@ async fn locate_sqlite() -> KResult<()> {
     let res_and: Vec<UniqueIdentifier> = post_2_1(
         &app,
         Locate {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
             attributes: attrs_and,
+            ..Locate::default()
         },
     )
     .await?;
@@ -97,21 +75,6 @@ async fn locate_sqlite() -> KResult<()> {
     // (Skip mismatched RSA filter in FIPS sqlite to reduce flakiness)
 
     // Create a symmetric AES key and locate by ObjectType::SymmetricKey
-    // Capture baseline count of symmetric keys
-    let _baseline_syms: Vec<UniqueIdentifier> = post_2_1(
-        &app,
-        Locate {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
-            attributes: Attributes {
-                object_type: Some(ObjectType::SymmetricKey),
-                ..Default::default()
-            },
-        },
-    )
-    .await?;
     let create_sym = Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
@@ -122,6 +85,8 @@ async fn locate_sqlite() -> KResult<()> {
         protection_storage_masks: None,
     };
     let _sym_resp: CreateResponse = post_2_1(&app, create_sym).await?;
+
+    // Locate by ObjectType::SymmetricKey → expect at least 1 key
     let attrs_sym = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         ..Default::default()
@@ -129,15 +94,12 @@ async fn locate_sqlite() -> KResult<()> {
     let res_sym: Vec<UniqueIdentifier> = post_2_1(
         &app,
         Locate {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
             attributes: attrs_sym,
+            ..Locate::default()
         },
     )
     .await?;
-    assert!(!res_sym.is_empty());
+    assert_eq!(res_sym.len(), 1);
 
     Ok(())
 }

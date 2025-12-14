@@ -48,20 +48,34 @@ async fn locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     };
 
     // Baseline counts for PrivateKey/PublicKey
-    let baseline_priv: Vec<UniqueIdentifier> = post_2_1(&app, Locate {
-        maximum_items: None,
-        offset_items: None,
-        storage_status_mask: None,
-        object_group_member: None,
-        attributes: Attributes { object_type: Some(ObjectType::PrivateKey), ..Default::default() },
-    }).await?;
-    let baseline_pub: Vec<UniqueIdentifier> = post_2_1(&app, Locate {
-        maximum_items: None,
-        offset_items: None,
-        storage_status_mask: None,
-        object_group_member: None,
-        attributes: Attributes { object_type: Some(ObjectType::PublicKey), ..Default::default() },
-    }).await?;
+    let baseline_priv: Vec<UniqueIdentifier> = post_2_1(
+        &app,
+        Locate {
+            maximum_items: None,
+            offset_items: None,
+            storage_status_mask: None,
+            object_group_member: None,
+            attributes: Attributes {
+                object_type: Some(ObjectType::PrivateKey),
+                ..Default::default()
+            },
+        },
+    )
+    .await?;
+    let baseline_pub: Vec<UniqueIdentifier> = post_2_1(
+        &app,
+        Locate {
+            maximum_items: None,
+            offset_items: None,
+            storage_status_mask: None,
+            object_group_member: None,
+            attributes: Attributes {
+                object_type: Some(ObjectType::PublicKey),
+                ..Default::default()
+            },
+        },
+    )
+    .await?;
 
     // Locate by ObjectType = PrivateKey: expect +1 vs baseline
     let locate_private = Locate {

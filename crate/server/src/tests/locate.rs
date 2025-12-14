@@ -14,26 +14,14 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate;
 use cosmian_logger::log_init;
 
-#[allow(clippy::all, unused, unused_imports, clippy::print_stdout)]
 use crate::{
     config::{MainDBConfig, ServerParams},
     core::KMS,
-    error::KmsError,
     result::KResult,
     tests::test_utils::https_clap_config,
 };
 
-fn get_redis_url() -> String {
-    option_env!("KMS_REDIS_URL")
-        .unwrap_or(&std::env::var("REDIS_HOST").map_or_else(
-            |_| "redis://localhost:6379".to_owned(),
-            |var_env| format!("redis://{var_env}:6379"),
-        ))
-        .to_owned()
-}
-
 #[tokio::test]
-#[allow(deprecated, clippy::all, unused)]
 async fn test_locate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
@@ -73,21 +61,17 @@ async fn test_locate() -> KResult<()> {
         )],
     };
 
-    let response = kms.message(request, &owner, None).await?;
+    let response = kms.message(request, owner, None).await?;
     assert_eq!(response.response_header.batch_count, 1);
 
     // Verify specific individual keys can be retrieved
     let test_keys = vec![
-        (vec!["cat"], Some(ObjectType::Certificate), 0), /* expect to find nothing, we didn't create any cert. For some reason, finds two keys */
-        (
-            vec!["cat"],
-            Some(ObjectType::PublicKey),
-            1, // expect to find 1 key, for some reason, it finds the private key as well
-        ),
+        (vec!["cat"], Some(ObjectType::Certificate), 0), // expect to find nothing
+        (vec!["cat"], Some(ObjectType::PublicKey), 1),   // expect to find 1 key
+        (vec!["cat"], Some(ObjectType::PrivateKey), 1),  // expect to find 1 key
     ];
 
     // Tip : if you have redis-cli installed use `redis-cli KEYS "do::*"` to see all objects stored
-
     for (expected_tags, expected_object_type, expected_result) in test_keys {
         let mut key_attrs = Attributes {
             object_type: expected_object_type,
@@ -100,12 +84,7 @@ async fn test_locate() -> KResult<()> {
             ..Locate::default()
         };
         let specific_response = kms.locate(locate_specific, owner, None).await?;
-
         let found_count = specific_response.located_items.unwrap();
-
-        drop(specific_response); // avoid clippy print-stdout
-        let _ = found_count; // ignore without printing
-
         assert_eq!(
             found_count, expected_result,
             "Should find {expected_result} keys... found {found_count} keys",
