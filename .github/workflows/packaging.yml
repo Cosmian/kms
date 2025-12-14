@@ -155,7 +155,7 @@ jobs:
               PACKAGE_PATTERN="x86_64"
             fi
           else
-            PACKAGE_PATTERN="${{ matrix.package-type }}"
+            PACKAGE_PATTERN="${{ matrix.cpu-arch }}"
           fi
 
           # Upload package files
