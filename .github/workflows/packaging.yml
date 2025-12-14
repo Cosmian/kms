@@ -146,10 +146,22 @@ jobs:
             BINARY_PATTERN=darwin
           fi
 
+          # If rpm package, adjust binary pattern
+          if [[ "${{ matrix.package-type }}" == "rpm" ]]; then
+            # if ubuntu arm64 runner
+            if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
+              PACKAGE_PATTERN="aarch64"
+            else
+              PACKAGE_PATTERN="x86_64"
+            fi
+          else
+            PACKAGE_PATTERN="${{ matrix.package-type }}"
+          fi
+
           # Upload package files
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             ./nix/signing-keys/cosmian-kms-public.asc \
-            $RESULT_DIR/*${{ matrix.cpu-arch }}*${{ matrix.package-type}}* \
+            $RESULT_DIR/*${PACKAGE_PATTERN}*${{ matrix.package-type }}* \
             $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
             cosmian@package.cosmian.com:${remote_dir}/
 
