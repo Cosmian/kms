@@ -464,10 +464,6 @@ _run_workspace_tests() {
     ;;
   esac
 
-  # By default, skip CLI crate tests in Nix-driven suites because the CLI is primarily a binary crate
-  # and some tests may require host/network capabilities that are restricted in CI/Nix sandboxes.
-  local extra_args=()
-
   # Database tests are marked with #[ignore] so they need --ignored flag
   # We run only database-specific tests to avoid running other ignored tests (e.g., HSM, Google CSE)
   local test_filter=""
@@ -488,7 +484,9 @@ _run_workspace_tests() {
   esac
 
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --exclude cosmian_kms_cli ${extra_args[@]+"${extra_args[@]}"} $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+  cargo test --workspace --lib --exclude cosmian_kms_cli $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+  # shellcheck disable=SC2086
+  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
 }
 
 # Public: run DB-specific tests with optional service checks
