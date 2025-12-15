@@ -73,6 +73,9 @@ jobs:
   publish-release:
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
+    concurrency:
+      group: publish-release
+      cancel-in-progress: false
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -81,6 +84,7 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         features: [fips, non-fips]
         link: [static, dynamic]
