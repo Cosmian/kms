@@ -652,7 +652,6 @@ const LocateForm: React.FC = () => {
 
             <div className="mb-8 space-y-2">
                 <p>Search for cryptographic objects in the KMS using various criteria.</p>
-                <p>The HSM, if any, will not be searched</p>
             </div>
 
 
