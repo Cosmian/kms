@@ -16,7 +16,7 @@ The OpenSSL FIPS provider is certified under
   when used on Red Hat Enterprise Linux 9 (RHEL 9)
 
 Cosmian
-produces [pre-built Ubuntu 22.04 FIPS mode binaries](https://package.cosmian.com/kms/5.13.0/ubuntu-22.04/)
+produces [pre-built Ubuntu 22.04 FIPS mode binaries](https://package.cosmian.com/kms/5.14.0/ubuntu-22.04/)
 and docker containers of the KMS (on gcr.io).
 
 By default, the Cosmian KMS is built with FIPS compliance enabled.

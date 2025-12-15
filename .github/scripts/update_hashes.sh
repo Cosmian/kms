@@ -10,7 +10,7 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/packaging_$(date +%s).log"
 
 # As requested, start by removing all existing expected-hash files
-echo "Cleaning existing expected hashes in $EXPECTED_DIR…"
+echo "Cleaning existing expected hashes in $EXPECTED_DIR"
 find "$EXPECTED_DIR" -maxdepth 1 -type f -name '*.sha256' -print -delete || true
 
 run_package() {
