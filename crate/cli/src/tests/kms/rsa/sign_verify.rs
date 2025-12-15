@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
-    kmip_types::{UniqueIdentifier, ValidityIndicator},
+    kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
