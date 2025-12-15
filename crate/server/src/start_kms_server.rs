@@ -37,7 +37,7 @@ use cosmian_kms_server_database::{
         cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, error, info, trace};
+use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::ssl::SslAcceptorBuilder;
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
@@ -700,6 +700,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
+    if enable_azure_ekm
+        && !kms_server.params.azure_ekm.azure_ekm_disable_client_auth
+        && !use_cert_auth
+    {
+        return Err(KmsError::ServerError(
+            "Azure EKM requires mTLS authentication but the KMS server is not configured with client certificate authentication.".to_owned()
+        ));
+    }
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
@@ -772,6 +780,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         if enable_azure_ekm {
+            if kms_server.params.azure_ekm.azure_ekm_disable_client_auth {
+                warn!(
+                    "Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments."
+                );
+            }
+
             let base_path = kms_server
                 .params
                 .azure_ekm

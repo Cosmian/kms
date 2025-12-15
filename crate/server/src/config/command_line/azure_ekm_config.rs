@@ -18,7 +18,11 @@ pub struct AzureEkmConfig {
     pub azure_ekm_path_prefix: Option<String>,
 
     /// WARNING: This bypasses mTLS authentication entirely. Only use for testing!
-    #[clap(long, env = "KMS_AZURE_EKM_DISABLE_CLIENT_AUTH")]
+    #[clap(
+        long,
+        env = "KMS_AZURE_EKM_DISABLE_CLIENT_AUTH",
+        default_value = "false"
+    )]
     pub azure_ekm_disable_client_auth: bool,
 
     /// Proxy vendor name to report in /info endpoint.
