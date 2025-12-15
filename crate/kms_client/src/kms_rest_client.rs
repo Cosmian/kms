@@ -547,12 +547,30 @@ impl KmsClient {
             .await
     }
 
-    /// Compute a signature over provided data with a Managed Object key.
+    /// This operation requests the server to perform a signature operation on the provided data using a Managed Cryptographic Object as the key for the signature operation.
+    ///
+    /// The request contains information about the cryptographic parameters (digital signature algorithm or cryptographic algorithm and hash algorithm) and the data to be signed. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+    ///
+    /// If the Managed Cryptographic Object referenced has a Usage Limits attribute then the server SHALL obtain an allocation from the current Usage Limits value prior to performing the signing operation. If the allocation is unable to be obtained the operation SHALL return with a result status of Operation Failed and result reason of Permission Denied.
+    ///
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the signature operation.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
     pub async fn sign(&self, request: Sign) -> Result<SignResponse, KmsClientError> {
         self.post_ttlv_2_1::<Sign, SignResponse>(&request).await
     }
 
-    /// Verify a signature over provided data.
+    /// This operation requests the server to perform a signature verify operation on the provided data using a Managed Cryptographic Object as the key for the signature verification operation.
+    ///
+    /// The request contains information about the cryptographic parameters (digital signature algorithm or cryptographic algorithm and hash algorithm) and the signature to be verified and MAY contain the data that was passed to the signing operation (for those algorithms which need the original data to verify a signature).
+    ///
+    /// The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object.
+    ///
+    /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the OPTIONAL data recovered from the signature (for those signature algorithms where data recovery from the signature is supported). The validity of the signature is indicated by the Validity Indicator field.
+    ///
+    /// The response message SHALL include the Validity Indicator for single-part Signature Verify operations and for the final part of a multi-part Signature Verify operation. Non-Final parts of multi-part Signature Verify operations SHALL NOT include the Validity Indicator.
+    ///
+    /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
     pub async fn signature_verify(
         &self,
         request: SignatureVerify,

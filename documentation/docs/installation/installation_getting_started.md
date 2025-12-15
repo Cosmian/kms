@@ -51,22 +51,23 @@ For high availability and scalability, refer to the [High Availability Guide](./
     --name kms ghcr.io/cosmian/kms:latest
     ```
 
-=== "Debian 10 - Buster"
+=== "Debian-based distributions"
 
-    Download the package and install it:
+    Download the package and install it (works on all Debian distributions from Debian 10):
 
     ```sh
     sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/debian10/cosmian-kms-server_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.13.0-1_amd64.deb
+    # Standard build (non-FIPS, static OpenSSL)
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
-    Or install the FIPS version:
+    Or install the FIPS build:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.13.0/debian10/cosmian-kms-server-fips_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.13.0-1_amd64.deb
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -80,92 +81,14 @@ For high availability and scalability, refer to the [High Availability Guide](./
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
-=== "Ubuntu 22.04"
+=== "Rocky Linux distributions"
 
-    Download the package and install it:
-
-    ```sh
-    sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/ubuntu-22.04/cosmian-kms-server_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.13.0-1_amd64.deb
-    sudo cosmian_kms --version
-    ```
-
-    Or install the FIPS version:
-
-    ```sh
-    wget https://package.cosmian.com/kms/5.13.0/ubuntu-22.04/cosmian-kms-server-fips_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.13.0-1_amd64.deb
-    sudo cosmian_kms --version
-    ```
-
-    A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
-    To start the KMS, run:
-
-    ```sh
-    sudo systemctl start cosmian_kms
-    ```
-
-    - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
-    - The KMS UI is available at `http://localhost:9998/ui`.
-
-=== "Ubuntu 24.04"
-
-    Download the package and install it:
-
-    ```sh
-    sudo apt update && sudo apt install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/ubuntu-24.04/cosmian-kms-server_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server_5.13.0-1_amd64.deb
-    sudo cosmian_kms --version
-    ```
-
-    Or install the FIPS version:
-
-    ```sh
-    wget https://package.cosmian.com/kms/5.13.0/ubuntu-24.04/cosmian-kms-server-fips_5.13.0-1_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips_5.13.0-1_amd64.deb
-    sudo cosmian_kms --version
-    ```
-
-    A `cosmian_kms` service will be configured; the service file is located at `/etc/systemd/system/cosmian_kms.service`.
-    To start the KMS, run:
-
-    ```sh
-    sudo systemctl start cosmian_kms
-    ```
-
-    - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
-    - The KMS UI is available at `http://localhost:9998/ui`.
-
-=== "Rocky Linux 8"
-
-    Download the package and install it:
+    Download the package and install it (works for Rocky Linux 8/9/10):
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/rockylinux8/cosmian_kms_server-5.13.0-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.13.0-1.x86_64.rpm
-    sudo cosmian_kms --version
-    ```
-
-    To start the KMS, run:
-
-    ```sh
-    sudo systemctl start cosmian_kms
-    ```
-
-    - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
-    - The KMS UI is available at `http://localhost:9998/ui`.
-
-=== "Rocky Linux 9"
-
-    Download the package and install it:
-
-    ```sh
-    sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/rockylinux9/cosmian_kms_server-5.13.0-1.x86_64.rpm
-    sudo dnf install ./cosmian_kms_server-5.13.0-1.x86_64.rpm
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
+    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -185,10 +108,12 @@ For high availability and scalability, refer to the [High Availability Guide](./
         - Apple Silicon (ARM64):
 
             ```sh
-            open https://package.cosmian.com/kms/5.13.0/macos/cosmian-kms-server_5.13.0_arm64.dmg
+            open "https://package.cosmian.com/kms/5.14.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.14.0_arm64.dmg"
             ```
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
+
+        Note: The 5.14.0 DMG is provided for Apple Silicon (ARM64).
 
         After installation, run:
 
@@ -200,12 +125,38 @@ For high availability and scalability, refer to the [High Availability Guide](./
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
+#### Static vs Dynamic builds
+
+- Static builds: ship with OpenSSL statically linked into the binary. Simplest to deploy; no external crypto libraries required; consistent behavior across environments.
+- Dynamic builds: link OpenSSL dynamically. This allows replacing the OpenSSL shared library at runtime to use custom or system-provided crypto. On Linux, replace the relevant `.so` files; on macOS, replace the `.dylib` files, ensuring ABI compatibility.
+
+Available dynamic packages for Debian-based distributions:
+
+    ```sh
+    # Non-FIPS dynamic (OpenSSL linked dynamically)
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_amd64.deb
+    # FIPS dynamic
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_amd64.deb
+    ```
+
+Available dynamic packages for Rocky Linux:
+
+    ```sh
+    # Non-FIPS dynamic
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_x86_64.rpm
+    # FIPS dynamic
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_x86_64.rpm
+    ```
+
+To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
+shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
+
 === "Windows"
 
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.13.0/cosmian-kms-server_5.13.0_x64_en-US.exe
+    https://package.cosmian.com/kms/5.14.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.exe
     ```
 
     Run the installer to install Cosmian KMS Server. The installer will:
@@ -216,12 +167,6 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     cosmian_kms --version
-    ```
-
-    To start the KMS server:
-
-    ```sh
-    cosmian_kms --database-type sqlite --sqlite-path %LOCALAPPDATA%\Cosmian KMS Server\data
     ```
 
     - The KMS UI is available at `http://localhost:9998/ui`

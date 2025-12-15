@@ -85,7 +85,11 @@ impl HasDatabase for SqlitePool {
 impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
-    pub(crate) async fn instantiate(path: &Path, clear_database: bool) -> DbResult<Self> {
+    pub(crate) async fn instantiate(
+        path: &Path,
+        clear_database: bool,
+        max_connections: Option<u32>,
+    ) -> DbResult<Self> {
         trace!("Instantiating SQLite database at path: {path:?}, clear_database: {clear_database}");
         let options = SqliteConnectOptions::new()
             .filename(path)
@@ -95,13 +99,13 @@ impl SqlitePool {
             // disable logging of each query
             .disable_statement_logging();
 
+        // Default rationale: SQLite serializes writes; large pools do not increase throughput
+        // and can amplify lock waits. Using ~num_cpus keeps concurrent readers without
+        // excessive contention. Fall back to 8 on conversion issues to stay conservative.
+        let default_conns: u32 = u32::try_from(num_cpus::get()).unwrap_or(8);
+        let max_conns: u32 = max_connections.unwrap_or(default_conns);
         let pool = SqlitePoolOptions::new()
-            .max_connections(
-                // SAFETY: num_cpus::get() returns a reasonable value that fits in u32
-                #[expect(clippy::expect_used)]
-                u32::try_from(num_cpus::get())
-                    .expect("this conversion cannot fail (or I want that machine)"),
-            )
+            .max_connections(max_conns)
             .connect_with(options)
             .await?;
 

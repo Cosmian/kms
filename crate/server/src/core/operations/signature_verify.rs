@@ -2,30 +2,26 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
+        kmip_0::kmip_types::ErrorReason,
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
             kmip_operations::{SignatureVerify, SignatureVerifyResponse},
-            kmip_types::{
-                CryptographicParameters, DigitalSignatureAlgorithm, UniqueIdentifier,
-                ValidityIndicator,
-            },
+            kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
         },
         time_normalize,
     },
     cosmian_kms_crypto::{
-        crypto::rsa::default_cryptographic_parameters, openssl::kmip_public_key_to_openssl,
+        crypto::{
+            elliptic_curves::verify::{ecdsa_verify, ed_verify},
+            rsa::{default_cryptographic_parameters, verify::rsa_verify},
+        },
+        openssl::kmip_public_key_to_openssl,
     },
     cosmian_kms_interfaces::SessionParams,
 };
-use cosmian_logger::{debug, trace};
-use openssl::{
-    hash::MessageDigest,
-    pkey::{Id, PKey, Public},
-    rsa::Padding,
-    sign::Verifier,
-};
+use cosmian_logger::debug;
+use openssl::pkey::{Id, PKey, Public};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -33,14 +29,6 @@ use crate::{
     kms_bail,
     result::{KResult, KResultHelper},
 };
-
-/// This operation requests the server to verify a signature on data using a managed object.
-///
-/// The request contains information about the verification key, the signature algorithm,
-/// the data that was signed, and the signature to be verified.
-///
-/// # Arguments
-///
 /// * `kms` - A reference to the KMS (Key Management Service) instance.
 /// * `request` - The `SignatureVerify` request containing the verification parameters.
 /// * `user` - A string slice representing the user requesting the verification.
@@ -199,7 +187,8 @@ pub(crate) async fn signature_verify(
         signature_data,
         &crypto_params,
         request.digested_data.is_some(),
-    )?;
+    )
+    .context("signature_verify: verification operation failed")?;
 
     debug!("Signature verification result: {validity_indicator:?}");
 
@@ -258,146 +247,28 @@ fn verify_signature(
     crypto_params: &CryptographicParameters,
     is_digested: bool,
 ) -> KResult<ValidityIndicator> {
-    // Determine the message digest algorithm
-    let (algorithm, _padding, _hashing, signature_algorithm) =
-        default_cryptographic_parameters(Some(crypto_params));
-
-    // Choose the hashing algorithm to use: prefer explicit hashing_algorithm from CP when present
-    let message_digest = if let Some(h) = &crypto_params.hashing_algorithm {
-        match h {
-            HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-            HashingAlgorithm::SHA256 => MessageDigest::sha256(),
-            HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-            HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-            HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-            HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-            HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: hashing algorithm not supported: {h:?}"
-            ))),
-        }
-    } else {
-        match signature_algorithm {
-            DigitalSignatureAlgorithm::RSASSAPSS
-            | DigitalSignatureAlgorithm::SHA256WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA256 => MessageDigest::sha256(),
-            DigitalSignatureAlgorithm::SHA384WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA384 => MessageDigest::sha384(),
-            DigitalSignatureAlgorithm::SHA512WithRSAEncryption
-            | DigitalSignatureAlgorithm::ECDSAWithSHA512 => MessageDigest::sha512(),
-            DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
-            DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
-            DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: not supported: {signature_algorithm:?}"
-            ))),
-        }
-    };
-
-    // MGF1 digest: honor explicit mask_generator_hashing_algorithm when present, otherwise default to message_digest
-    let mgf1_digest = if let Some(h) = &crypto_params.mask_generator_hashing_algorithm {
-        match h {
-            HashingAlgorithm::SHA1 => MessageDigest::sha1(),
-            HashingAlgorithm::SHA256 => MessageDigest::sha256(),
-            HashingAlgorithm::SHA384 => MessageDigest::sha384(),
-            HashingAlgorithm::SHA512 => MessageDigest::sha512(),
-            HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
-            HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
-            HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-            _ => kms_bail!(KmsError::NotSupported(format!(
-                "verify_signature: MGF1 hashing algorithm not supported: {h:?}"
-            ))),
-        }
-    } else {
-        message_digest
-    };
-
-    let md_name = if message_digest == MessageDigest::sha256() {
-        "SHA256"
-    } else if message_digest == MessageDigest::sha384() {
-        "SHA384"
-    } else if message_digest == MessageDigest::sha512() {
-        "SHA512"
-    } else if message_digest == MessageDigest::sha3_256() {
-        "SHA3-256"
-    } else if message_digest == MessageDigest::sha3_384() {
-        "SHA3-384"
-    } else if message_digest == MessageDigest::sha3_512() {
-        "SHA3-512"
-    } else {
-        "OTHER"
-    };
-    debug!(
-        "verify_signature: algo={algorithm:?} sig_alg={signature_algorithm:?} digest={} digested_data={} data_len={} sig_len={}",
-        md_name,
-        is_digested,
-        data.len(),
-        signature.len()
-    );
-
-    let is_valid = match verification_key.id() {
-        Id::RSA | Id::EC => {
-            trace!("verify_signature: using RSA or EC key for verification");
-            // Specialize RSA-PSS path to always use no-digest verifier with explicit pre-hash
-            if DigitalSignatureAlgorithm::RSASSAPSS == signature_algorithm
-                && verification_key.id() == Id::RSA
-            {
-                if is_digested {
-                    // Pre-hashed input path: verify against digest directly
-                    let mut verifier = Verifier::new_without_digest(verification_key)?;
-                    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                    verifier.set_rsa_mgf1_md(mgf1_digest)?;
-                    let mut ok = verifier.verify_oneshot(signature, data)?;
-                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
-                        // Fallback: retry with MGF1=SHA1, which some toolchains use by default
-                        let mut verifier = Verifier::new_without_digest(verification_key)?;
-                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
-                        ok = verifier.verify_oneshot(signature, data)?;
-                    }
-                    ok
-                } else {
-                    // Use OpenSSL-managed digesting so the PSS MD is set correctly
-                    let mut verifier = Verifier::new(message_digest, verification_key)?;
-                    verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                    verifier.set_rsa_mgf1_md(mgf1_digest)?;
-                    let mut ok = verifier.verify_oneshot(signature, data)?;
-                    if !ok && crypto_params.mask_generator_hashing_algorithm.is_none() {
-                        // Fallback: retry with MGF1=SHA1 when unspecified
-                        let mut verifier = Verifier::new(message_digest, verification_key)?;
-                        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-                        verifier.set_rsa_mgf1_md(MessageDigest::sha1())?;
-                        ok = verifier.verify_oneshot(signature, data)?;
-                    }
-                    ok
-                }
-            } else {
-                // Non-PSS algorithms: use OpenSSL-managed digesting
-                let mut verifier = if is_digested {
-                    Verifier::new_without_digest(verification_key)?
-                } else {
-                    Verifier::new(message_digest, verification_key)?
-                };
-                verifier.verify_oneshot(signature, data)?
-            }
-        }
-        Id::ED25519 => {
-            trace!("verify_signature: using ED25519 key for verification");
-            // ED25519 verifies the signature directly on the data
-            let mut verifier = Verifier::new_without_digest(verification_key)?;
-            verifier.verify_oneshot(signature, data)?
-        }
+    let res = match verification_key.id() {
+        Id::RSA => rsa_verify(
+            verification_key,
+            data,
+            signature,
+            crypto_params,
+            is_digested,
+        ),
+        Id::EC => ecdsa_verify(
+            verification_key,
+            data,
+            signature,
+            crypto_params,
+            is_digested,
+        ),
+        Id::ED25519 | Id::ED448 => ed_verify(verification_key, data, signature),
         _ => kms_bail!(KmsError::NotSupported(format!(
             "verify_signature: key type not supported: {:?}",
             verification_key.id()
         ))),
-    };
-
-    Ok(if is_valid {
-        ValidityIndicator::Valid
-    } else {
-        ValidityIndicator::Invalid
-    })
+    }?;
+    Ok(res)
 }
 
 /// Handle streaming signature verification operations.
@@ -496,6 +367,7 @@ fn handle_streaming_verification(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use hex::FromHex;
+    use openssl::{hash::MessageDigest, rsa::Padding, sign::Verifier};
 
     use super::*;
 
@@ -522,5 +394,34 @@ mod tests {
             v2.set_rsa_mgf1_md(MessageDigest::sha1()).unwrap();
             assert!(v2.verify_oneshot(&sig, &data).unwrap());
         }
+    }
+
+    #[test]
+    fn verify_cs_ac_m_2_21_step1_kms_path() {
+        let pk_hex = "3082010a0282010100ab7f161c0042496ccd6c6d4dadb919973435357776003acf54b7af1e440afb80b64a8755f8002cfeba6b184540a2d66086d74648346d75b8d71812b205387c0f6583bc4d7dc7ec114f3b176b7957c422e7d03fc6267fa2a6f89b9bee9e60a1d7c2d833e5a5f4bb0b1434f4e795a41100f8aa214900df8b65089f98135b1c67b701675abdbc7d5721aac9d14a7f081fcec80b64e8a0ecc8295353c795328abf70e1b42e7bb8b7f4e8ac8c810cdb66e3d21126eba8da7d0ca34142cb76f91f013da809e9c1b7ae64c54130fbc21d80e9c2cb06c5c8d7cce8946a9ac99b1c2815c3612a29a82d73a1f99374fe30e54951662a6eda29c6fc411335d5dc7426b0f6050203010001";
+        let sig_hex = "2925ebf8c6c9d0585c36a44491dd28f8ffd1098d2275a505a0eba7af452e9496472fd5c4a515d1c0db16c7c59ef76863b571cbf498fb8178ffeb75667e6e51b9b9bbf09d55bba54b42acb947aa5a81dc62751727d7cad4616c0c0bf1dd666f8266f24262c5fa9cbbdc424ef5f5e345e633d111e66eb4afc4001bb02e158b2d5d4573c614655f21a688bee0e9dbde6a58324c08f42ae69697e0c51803f9de6b3df242d2915d9b1a8110ad28143ab7855ef92ede48971b484172de3b0b8957f493a74b3372ee2200f2233607735f90d0b180968ab20d74841fd3dba4fb1f225ea5c6c87f99c2a238db72a536e68be202a092cd032337d451477e568f9a48b638cb";
+        let data = <[u8; 16]>::from_hex("01020304050607080910111213141516").unwrap();
+
+        let pk_der = Vec::from_hex(pk_hex).unwrap();
+        let sig = Vec::from_hex(sig_hex).unwrap();
+
+        let rsa = openssl::rsa::Rsa::public_key_from_der_pkcs1(&pk_der).unwrap();
+        let pkey = PKey::from_rsa(rsa).unwrap();
+
+        // imports moved to module top to satisfy clippy::items-after-statements
+        let cp = CryptographicParameters {
+            cryptographic_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::RSA),
+            padding_method: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod::PSS),
+            hashing_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm::SHA256),
+            digital_signature_algorithm: None,
+            mask_generator: None,
+            mask_generator_hashing_algorithm: None,
+            p_source: None,
+            // other fields default
+            ..Default::default()
+        };
+
+        let v = super::verify_signature(&pkey, &data, &sig, &cp, false).unwrap();
+        assert!(matches!(v, ValidityIndicator::Valid));
     }
 }

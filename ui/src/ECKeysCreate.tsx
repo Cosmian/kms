@@ -2,7 +2,7 @@ import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { create_ec_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg";
+import * as wasm from "./wasm/pkg";
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -23,6 +23,7 @@ const ECKeyCreateForm: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const [curveOptions, setCurveOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -30,11 +31,31 @@ const ECKeyCreateForm: React.FC = () => {
         }
     }, [res]);
 
+    useEffect(() => {
+        try {
+            const w = wasm as unknown as { get_ec_algorithms?: () => { value: string; label: string }[] };
+            const opts = w.get_ec_algorithms ? w.get_ec_algorithms() : [];
+            setCurveOptions(opts);
+        } catch (e) {
+            console.error("Error loading EC algorithms from WASM:", e);
+        }
+    }, []);
+
+    // When curve options load, set the default curve automatically
+    useEffect(() => {
+        if (curveOptions.length > 0) {
+            const current = form.getFieldValue("curve");
+            if (!current) {
+                form.setFieldsValue({ curve: curveOptions[0].value });
+            }
+        }
+    }, [curveOptions, form]);
+
     const onFinish = async (values: ECKeyCreateFormData) => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const request = create_ec_key_pair_ttlv_request(
+            const request = wasm.create_ec_key_pair_ttlv_request(
                 values.privateKeyId,
                 values.tags,
                 values.curve,
@@ -43,7 +64,7 @@ const ECKeyCreateForm: React.FC = () => {
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str);
+                const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 setRes(
                     `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
                 );
@@ -73,7 +94,7 @@ const ECKeyCreateForm: React.FC = () => {
                 onFinish={onFinish}
                 layout="vertical"
                 initialValues={{
-                    curve: "nist-p256",
+                    // curve set via useEffect when options are available
                     tags: [],
                     sensitive: false,
                 }}
@@ -86,17 +107,7 @@ const ECKeyCreateForm: React.FC = () => {
                             help="Select the elliptic curve to use"
                             rules={[{ required: true, message: "Please select a curve" }]}
                         >
-                            <Select>
-                                <Select.Option value="nist-p192">NIST P-192</Select.Option>
-                                <Select.Option value="nist-p224">NIST P-224</Select.Option>
-                                <Select.Option value="nist-p256">NIST P-256</Select.Option>
-                                <Select.Option value="nist-p384">NIST P-384</Select.Option>
-                                <Select.Option value="nist-p521">NIST P-521</Select.Option>
-                                <Select.Option value="secp224k1">SECP224k1</Select.Option>
-                                <Select.Option value="secp256k1">SECP256k1</Select.Option>
-                                <Select.Option value="ed25519">Ed25519</Select.Option>
-                                <Select.Option value="ed448">Ed448</Select.Option>
-                            </Select>
+                            <Select options={curveOptions} />
                         </Form.Item>
 
                         <Form.Item

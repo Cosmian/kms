@@ -5,6 +5,9 @@ Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Manageme
 ## Quick start
 
 ```bash
+# Initialize git submodules (required after clone)
+git submodule update --init --recursive
+
 # Build the project (FIPS mode is default)
 cargo build --release
 

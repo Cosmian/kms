@@ -46,7 +46,7 @@ pub(crate) fn get_redis_url() -> String {
 }
 
 async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
-    SqlitePool::instantiate(db_file, true).await
+    SqlitePool::instantiate(db_file, true, None).await
 }
 
 // To run local tests with a Postgres in Docker, run
@@ -54,7 +54,7 @@ async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
 async fn get_pgsql() -> DbResult<PgPool> {
     let postgres_url =
         option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
-    let pg = PgPool::instantiate(postgres_url, true).await?;
+    let pg = PgPool::instantiate(postgres_url, true, None).await?;
     Ok(pg)
 }
 
@@ -63,7 +63,7 @@ async fn get_pgsql() -> DbResult<PgPool> {
 // docker run --name mysql --env MYSQL_DATABASE=kms  --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
 async fn get_mysql() -> DbResult<MySqlPool> {
     let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
-    let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
+    let my_sql = MySqlPool::instantiate(mysql_url, true, None).await?;
     Ok(my_sql)
 }
 

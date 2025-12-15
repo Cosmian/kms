@@ -7,6 +7,7 @@ mod certificates;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;
 mod derive_key;
+pub(crate) mod digested;
 mod discover_versions;
 mod elliptic_curve;
 mod error_messages;

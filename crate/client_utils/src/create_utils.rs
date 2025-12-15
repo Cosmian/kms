@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use base64::{Engine as _, engine::general_purpose};
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, RecommendedCurve};
@@ -64,18 +62,6 @@ pub enum SymmetricAlgorithm {
     Aes,
     Sha3,
     Shake,
-}
-
-impl Display for SymmetricAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "non-fips")]
-            Self::Chacha20 => write!(f, "chacha20"),
-            Self::Aes => write!(f, "aes"),
-            Self::Sha3 => write!(f, "sha3"),
-            Self::Shake => write!(f, "shake"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, EnumString, ValueEnum)]

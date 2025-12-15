@@ -11,6 +11,7 @@ pub mod ckm_rsa_pkcs;
 pub mod ckm_rsa_pkcs_oaep;
 pub mod operation;
 pub mod sign;
+pub mod verify;
 
 // Re-export for simpler import paths
 pub use sign::sign_rsa_digest_with_algorithm;

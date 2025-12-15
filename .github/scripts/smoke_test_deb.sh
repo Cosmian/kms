@@ -8,7 +8,7 @@
 #   ./smoke_test_deb.sh <path-to-deb-file>
 #
 # Example:
-#   ./smoke_test_deb.sh result-deb-fips-static/cosmian-kms-server-fips-static_X.Y.Z-1_amd64.deb
+#   ./smoke_test_deb.sh result-deb-fips-static/cosmian-kms-server-fips-static-openssl_X.Y.Z-1_amd64.deb
 
 set -euo pipefail
 

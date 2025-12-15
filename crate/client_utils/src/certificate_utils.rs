@@ -1,5 +1,3 @@
-use std::fmt::{Display, Formatter};
-
 use clap::ValueEnum;
 use cosmian_kmip::{
     kmip_2_1::{
@@ -37,28 +35,6 @@ pub enum Algorithm {
     RSA2048,
     RSA3072,
     RSA4096,
-}
-
-impl Display for Algorithm {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "non-fips")]
-            Self::NistP192 => write!(f, "nist-p192"),
-            Self::NistP224 => write!(f, "nist-p224"),
-            Self::NistP256 => write!(f, "nist-p256"),
-            Self::NistP384 => write!(f, "nist-p384"),
-            Self::NistP521 => write!(f, "nist-p521"),
-            #[cfg(feature = "non-fips")]
-            Self::Ed25519 => write!(f, "ed25519"),
-            #[cfg(feature = "non-fips")]
-            Self::Ed448 => write!(f, "ed448"),
-            #[cfg(feature = "non-fips")]
-            Self::RSA1024 => write!(f, "rsa1024"),
-            Self::RSA2048 => write!(f, "rsa2048"),
-            Self::RSA3072 => write!(f, "rsa3072"),
-            Self::RSA4096 => write!(f, "rsa4096"),
-        }
-    }
 }
 
 #[expect(clippy::too_many_arguments)]

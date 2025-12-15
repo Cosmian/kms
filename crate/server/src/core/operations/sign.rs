@@ -2,29 +2,26 @@ use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{
-            CryptographicUsageMask, ErrorReason, HashingAlgorithm as KmipHash, State,
-        },
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
         kmip_2_1::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{DigitalSignatureAlgorithm, KeyFormatType, UniqueIdentifier},
+            kmip_types::{KeyFormatType, UniqueIdentifier},
         },
         time_normalize,
     },
     cosmian_kms_crypto::{
-        crypto::rsa::default_cryptographic_parameters, openssl::kmip_private_key_to_openssl,
+        crypto::{
+            elliptic_curves::sign::{ecdsa_sign, eddsa_sign},
+            rsa::sign::sign_rsa_with_pkey,
+        },
+        openssl::kmip_private_key_to_openssl,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
 };
 use cosmian_logger::{debug, info, trace};
-use openssl::{
-    hash::MessageDigest,
-    pkey::{Id, PKey, Private},
-    rsa::Padding,
-    sign::Signer,
-};
+use openssl::pkey::{Id, PKey, Private};
 
 use crate::{
     core::{KMS, uid_utils::uids_from_unique_identifier},
@@ -49,7 +46,7 @@ pub(crate) async fn sign(
     let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
         .await
         .context("sign")?;
-    trace!("sign: candidate uids: {uids:?}");
+    trace!("candidate uids: {uids:?}");
 
     // Find a suitable private key for signing
     let mut selected_owm = None;
@@ -96,7 +93,7 @@ pub(crate) async fn sign(
                 continue;
             }
         }
-        trace!("sign: user: {user} is authorized to sign using: {uid}");
+        trace!("user: {user} is authorized to sign using: {uid}");
 
         // Only private keys can be used for signing
         if let Object::PrivateKey { .. } = owm.object() {
@@ -130,7 +127,7 @@ pub(crate) async fn sign(
     let res = match owm.object() {
         Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(
-            "sign: signing with keys of type: {} is not supported",
+            "signing with keys of type: {} is not supported",
             other.object_type()
         ))),
     }?;
@@ -166,7 +163,7 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             trace!(
-                "sign_with_private_key: matching on key format type: {:?}",
+                "matching on key format type: {:?}",
                 key_block.key_format_type
             );
             let private_key = kmip_private_key_to_openssl(owm.object())?;
@@ -210,18 +207,22 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
                 }
             };
 
+            // Streaming support: if init or a correlation_value is present, accumulate data
+            if request.init_indicator == Some(true) || request.correlation_value.is_some() {
+                let mut req_for_stream = request.clone();
+                req_for_stream.cryptographic_parameters = Some(effective_cp);
+                return handle_streaming_sign(req_for_stream, &private_key, owm.id());
+            }
+
+            // One-shot signing
             let mut req_for_sign = request.clone();
             req_for_sign.cryptographic_parameters = Some(effective_cp);
-
-            let signature = sign_with_pkey(req_for_sign, &private_key)?;
-
-            let response = SignResponse {
+            let signature = sign_with_pkey(&req_for_sign, &private_key)?;
+            Ok(SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                signature_data: (!request.init_indicator.unwrap_or(false))
-                    .then_some(signature.clone()),
-                correlation_value: request.init_indicator.unwrap_or(false).then_some(signature),
-            };
-            Ok(response)
+                signature_data: Some(signature),
+                correlation_value: None,
+            })
         }
         other => Err(KmsError::NotSupported(format!(
             "signing with private keys of format: {other}"
@@ -229,167 +230,78 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
     }
 }
 
-fn sign_with_pkey(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
+fn handle_streaming_sign(
+    request: Sign,
+    private_key: &PKey<Private>,
+    uid: &str,
+) -> KResult<SignResponse> {
+    // Extract or initialize correlation data
+    let correlation_data = if let Some(corr) = &request.correlation_value {
+        corr.clone()
+    } else if request.init_indicator == Some(true) {
+        Vec::new()
+    } else {
+        return Err(KmsError::InvalidRequest(
+            "Correlation value required for non-initial streaming operations".to_owned(),
+        ));
+    };
+
+    // Determine input chunk
+    let data_to_process = match (&request.data, &request.digested_data) {
+        (Some(data), None) => data.clone(),
+        (None, Some(_)) => {
+            return Err(KmsError::InvalidRequest(
+                "Streaming sign supports non-digested data only".to_owned(),
+            ));
+        }
+        (Some(_), Some(_)) => {
+            return Err(KmsError::InvalidRequest(
+                "Cannot provide both data and digested_data".to_owned(),
+            ));
+        }
+        (None, None) if request.final_indicator == Some(true) => Vec::new().into(),
+        (None, None) => {
+            return Err(KmsError::InvalidRequest(
+                "Must provide data for streaming sign".to_owned(),
+            ));
+        }
+    };
+
+    if request.final_indicator == Some(true) {
+        // Final call: sign accumulated data
+        let mut all_data = correlation_data;
+        all_data.extend_from_slice(data_to_process.as_ref());
+        let mut final_req = request;
+        final_req.data = Some(all_data.into());
+        final_req.digested_data = None;
+        final_req.correlation_value = None;
+        let signature = sign_with_pkey(&final_req, private_key)?;
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: Some(signature),
+            correlation_value: None,
+        })
+    } else {
+        // Intermediate call: accumulate data and return as correlation_value
+        let mut accumulated = correlation_data;
+        accumulated.extend_from_slice(data_to_process.as_ref());
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: None,
+            correlation_value: Some(accumulated),
+        })
+    }
+}
+
+fn sign_with_pkey(request: &Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let signature = match private_key.id() {
-        Id::RSA => sign_with_rsa(request, private_key)?,
-        Id::EC => sign_with_ecdsa(request, private_key)?,
-        Id::ED25519 => sign_with_eddsa(request, private_key)?,
+        Id::RSA => sign_rsa_with_pkey(request, private_key)
+            .map_err(|e| KmsError::NotSupported(format!("rsa sign error: {e}")))?,
+        Id::EC => ecdsa_sign(request, private_key)?,
+        Id::ED25519 | Id::ED448 => eddsa_sign(request, private_key)?,
         other => {
-            kms_bail!("Sign: private key type not supported: {other:?}")
+            kms_bail!("sign_with_pkey: private key type not supported: {other:?}")
         }
     };
-    Ok(signature)
-}
-
-fn sign_with_rsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    let (_algorithm, _padding, default_hash, digital_signature_algorithm) =
-        default_cryptographic_parameters(request.cryptographic_parameters.as_ref());
-    debug!("signing with {digital_signature_algorithm}");
-
-    // Determine message digest from CP.hashing_algorithm when present, otherwise infer from DSA/default
-    let digest = if let Some(cp) = request.cryptographic_parameters.as_ref() {
-        if let Some(h) = &cp.hashing_algorithm {
-            match h {
-                KmipHash::SHA1 => MessageDigest::sha1(),
-                KmipHash::SHA256 => MessageDigest::sha256(),
-                KmipHash::SHA384 => MessageDigest::sha384(),
-                KmipHash::SHA512 => MessageDigest::sha512(),
-                KmipHash::SHA3256 => MessageDigest::sha3_256(),
-                KmipHash::SHA3384 => MessageDigest::sha3_384(),
-                KmipHash::SHA3512 => MessageDigest::sha3_512(),
-                _ => kms_bail!(KmsError::NotSupported(
-                    "sign_with_rsa: hashing algorithm not supported".to_owned()
-                )),
-            }
-        } else {
-            match digital_signature_algorithm {
-                DigitalSignatureAlgorithm::RSASSAPSS
-                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
-                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),
-                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => MessageDigest::sha512(),
-                DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
-                DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
-                DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
-                _ => kms_bail!(KmsError::NotSupported(format!(
-                    "sign_with_rsa: not supported: {digital_signature_algorithm:?}"
-                ))),
-            }
-        }
-    } else {
-        match default_hash {
-            KmipHash::SHA1 => MessageDigest::sha1(),
-            KmipHash::SHA384 => MessageDigest::sha384(),
-            KmipHash::SHA512 => MessageDigest::sha512(),
-            KmipHash::SHA3256 => MessageDigest::sha3_256(),
-            KmipHash::SHA3384 => MessageDigest::sha3_384(),
-            KmipHash::SHA3512 => MessageDigest::sha3_512(),
-            _ => MessageDigest::sha256(),
-        }
-    };
-
-    let mut signer = Signer::new(digest, private_key)?;
-
-    if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
-        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
-        // Align MGF1 digest with CP when provided; otherwise use the message digest
-        if let Some(cp) = request.cryptographic_parameters.as_ref() {
-            if let Some(h) = &cp.mask_generator_hashing_algorithm {
-                let mgf1 = match h {
-                    KmipHash::SHA1 => MessageDigest::sha1(),
-                    KmipHash::SHA384 => MessageDigest::sha384(),
-                    KmipHash::SHA512 => MessageDigest::sha512(),
-                    KmipHash::SHA3256 => MessageDigest::sha3_256(),
-                    KmipHash::SHA3384 => MessageDigest::sha3_384(),
-                    KmipHash::SHA3512 => MessageDigest::sha3_512(),
-                    _ => MessageDigest::sha256(),
-                };
-                signer.set_rsa_mgf1_md(mgf1)?;
-            } else {
-                signer.set_rsa_mgf1_md(digest)?;
-            }
-        } else {
-            signer.set_rsa_mgf1_md(digest)?;
-        }
-        // Use digest length for salt length per KMIP profile vectors
-        signer.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
-    }
-    if let Some(corr) = request.correlation_value {
-        signer.update(&corr)?;
-    }
-    let signature = if let Some(digested_data) = &request.digested_data {
-        signer.sign_oneshot_to_vec(digested_data)
-    } else {
-        let data_to_sign = request.data.unwrap_or_default();
-        signer.sign_oneshot_to_vec(&data_to_sign)
-    }?;
-
-    debug!(
-        "sign_with_rsa: signed: message signature length: {}",
-        signature.len()
-    );
-
-    Ok(signature)
-}
-
-fn sign_with_ecdsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    let digital_signature_algorithm = request.cryptographic_parameters.as_ref().map_or_else(
-        || DigitalSignatureAlgorithm::ECDSAWithSHA256,
-        |cp| {
-            cp.digital_signature_algorithm
-                .unwrap_or(DigitalSignatureAlgorithm::ECDSAWithSHA256)
-        },
-    );
-
-    debug!("signing with ECDSA {digital_signature_algorithm}");
-
-    // For ECDSA signatures, we use the appropriate hash function
-    let digest = match digital_signature_algorithm {
-        DigitalSignatureAlgorithm::ECDSAWithSHA256 => MessageDigest::sha256(),
-        DigitalSignatureAlgorithm::ECDSAWithSHA384 => MessageDigest::sha384(),
-        DigitalSignatureAlgorithm::ECDSAWithSHA512 => MessageDigest::sha512(),
-        _ => kms_bail!(KmsError::NotSupported(format!(
-            "sign_with_ecdsa: not supported: {digital_signature_algorithm:?}"
-        ))),
-    };
-
-    let mut signer = Signer::new(digest, private_key)?;
-
-    if let Some(corr) = request.correlation_value {
-        signer.update(&corr)?;
-    }
-    let signature = if let Some(digested_data) = &request.digested_data {
-        signer.sign_oneshot_to_vec(digested_data)
-    } else {
-        let data_to_sign = request.data.unwrap_or_default();
-        signer.sign_oneshot_to_vec(&data_to_sign)
-    }?;
-
-    debug!(
-        "sign_with_ecdsa: signed: message signature length: {}",
-        signature.len()
-    );
-
-    Ok(signature)
-}
-
-fn sign_with_eddsa(request: Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
-    debug!("signing with EDDSA");
-    let mut signer = Signer::new_without_digest(private_key)?;
-
-    if let Some(corr) = request.correlation_value {
-        signer.update(&corr)?;
-    }
-    let signature = if let Some(digested_data) = &request.digested_data {
-        signer.sign_oneshot_to_vec(digested_data)
-    } else {
-        let data_to_sign = request.data.unwrap_or_default();
-        signer.sign_oneshot_to_vec(&data_to_sign)
-    }?;
-
-    debug!(
-        "sign_with_eddsa: signed: message signature length: {}",
-        signature.len()
-    );
-
     Ok(signature)
 }

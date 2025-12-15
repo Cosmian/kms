@@ -2,15 +2,19 @@
 
 set -ex
 
-# Detect FIPS vs non-FIPS from image name
-# FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:*-fips
-# Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:*-non-fips
-if [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
+# Detect FIPS vs non-FIPS from image name robustly
+# FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:* -fips (not -non-fips)
+# Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:* -non-fips
+if [[ "${DOCKER_IMAGE_NAME:-}" == *"-non-fips"* ]]; then
+    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
+elif [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
     COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-fips.yml"
     echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
 else
+    # Default to non-FIPS if ambiguous
     COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
-    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
+    echo "Image variant ambiguous; defaulting to non-FIPS: ${DOCKER_IMAGE_NAME}"
 fi
 
 # Config paths
@@ -62,6 +66,11 @@ accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
+
+# Ensure any previous stacks are down to avoid port conflicts
+docker compose -f .github/scripts/docker-compose-with-conf.yml down || true
+docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down || true
+docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down || true
 
 # Run docker containers
 docker compose -f "$COMPOSE_FILE" up -d
@@ -185,3 +194,31 @@ openssl_test "127.0.0.1:5697" "tls1_3"
 curl -I http://127.0.0.1:9998/ui/index.html
 curl --insecure -I https://127.0.0.1:9999/ui/index.html
 curl --insecure -I https://127.0.0.1:10000/ui/index.html
+
+# === Config-file based compose test ===
+# Use COSMIAN_KMS_CONF with mounted pkg/kms.toml and verify UI
+echo "Running config-based compose test (.github/scripts/docker-compose-with-conf.yml)"
+docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down || true
+docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down || true
+docker compose -f .github/scripts/docker-compose-with-conf.yml up -d --force-recreate --remove-orphans
+
+# Probe UI on 9998
+for i in {1..30}; do
+    if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
+        echo "Config-based KMS server on port 9998 is ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Config-based KMS server on port 9998 failed to start"
+        docker compose -f .github/scripts/docker-compose-with-conf.yml ps -a || true
+        docker compose -f .github/scripts/docker-compose-with-conf.yml logs || true
+        exit 1
+    fi
+    sleep 1
+done
+
+# Show brief logs for verification
+docker compose -f .github/scripts/docker-compose-with-conf.yml logs --tail=120 || true
+
+# Tear down config-based stack
+docker compose -f .github/scripts/docker-compose-with-conf.yml down || true

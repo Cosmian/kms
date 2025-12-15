@@ -24,7 +24,7 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 [dependencies]
 cosmian_crypto_core = { workspace = true }
 cosmian_http_client = "0.6"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.13.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.14.0" }
 cosmian_logger = { workspace = true }
 der = { workspace = true }
 pem = { workspace = true }

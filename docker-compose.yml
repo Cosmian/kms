@@ -19,6 +19,26 @@ services:
       - MYSQL_PASSWORD=kms
       - MYSQL_DATABASE=kms
       - MYSQL_ROOT_PASSWORD=kms
+  percona:
+    image: percona/percona-xtradb-cluster:8.0
+    ports:
+      - 3307:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=kms
+      - MYSQL_DATABASE=kms
+      - MYSQL_USER=kms
+      - MYSQL_PASSWORD=kms
+      - CLUSTER_NAME=test-cluster
+      - PXC_STRICT_MODE=ENFORCING
+  mariadb:
+    image: mariadb:latest
+    ports:
+      - 3308:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=kms
+      - MYSQL_DATABASE=kms
+      - MYSQL_USER=kms
+      - MYSQL_PASSWORD=kms
   redis:
     image: redis:latest
     ports:

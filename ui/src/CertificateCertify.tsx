@@ -2,7 +2,7 @@ import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, S
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { certify_ttlv_request, parse_certify_ttlv_response } from "./wasm/pkg";
+import * as wasm from "./wasm/pkg";
 
 interface CertificateCertifyFormData {
     certificateId?: string;
@@ -20,21 +20,7 @@ interface CertificateCertifyFormData {
     tags: string[];
 }
 
-const ALGORITHM_OPTIONS = [
-    { label: "RSA 1024", value: "rsa1024" },
-    { label: "RSA 2048", value: "rsa2048" },
-    { label: "RSA 3072", value: "rsa3072" },
-    { label: "RSA 4096", value: "rsa4096" },
-    { label: "NIST P-192", value: "nist-p192" },
-    { label: "NIST P-224", value: "nist-p224" },
-    { label: "NIST P-256", value: "nist-p256" },
-    { label: "NIST P-384", value: "nist-p384" },
-    { label: "NIST P-521", value: "nist-p521" },
-    { label: "SECP224k1", value: "secp224k1" },
-    { label: "SECP256k1", value: "secp256k1" },
-    { label: "Ed25519", value: "ed25519" },
-    { label: "Ed448", value: "ed448" },
-];
+type AlgoOption = { label: string; value: string };
 
 const CertificateCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateCertifyFormData>();
@@ -43,12 +29,23 @@ const CertificateCertifyForm: React.FC = () => {
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
 
     useEffect(() => {
         if (res && responseRef.current) {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        try {
+            const w = wasm as unknown as { get_certificate_algorithms?: () => AlgoOption[] };
+            const opts = w.get_certificate_algorithms ? w.get_certificate_algorithms() : [];
+            setAlgorithmOptions(opts);
+        } catch (e) {
+            console.error("Error loading certificate algorithms from WASM:", e);
+        }
+    }, []);
 
     const onCertifyMethodChange = (e: RadioChangeEvent) => {
         setCertifyMethod(e.target.value);
@@ -72,7 +69,7 @@ const CertificateCertifyForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const request = certify_ttlv_request(
+            const request = wasm.certify_ttlv_request(
                 values.certificateId,
                 values.csrFormat,
                 values.certificateSigningRequest,
@@ -89,7 +86,7 @@ const CertificateCertifyForm: React.FC = () => {
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const response = await parse_certify_ttlv_response(result_str);
+                const response = await wasm.parse_certify_ttlv_response(result_str);
                 setRes(`Certificate successfully created with ID: ${response.UniqueIdentifier}`);
             }
         } catch (e) {
@@ -236,7 +233,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Key Algorithm"
                                     rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
-                                    <Select options={ALGORITHM_OPTIONS} />
+                                    <Select options={algorithmOptions} />
                                 </Form.Item>
                             </div>
                         )}

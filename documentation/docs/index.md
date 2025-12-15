@@ -76,11 +76,11 @@ complete [supported algorithms list](./algorithms.md).
 
 The **Cosmian KMS** is available as:
 
-- Package: [Debian](https://package.cosmian.com/kms/5.13.0/ubuntu-22.04/)
-  or [RPM](https://package.cosmian.com/kms/5.13.0/rockylinux9/)
+- Package: [Debian](https://package.cosmian.com/kms/5.14.0/ubuntu-22.04/)
+  or [RPM](https://package.cosmian.com/kms/5.14.0/rockylinux9/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms)
   and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
-- [Pre-built binaries](https://package.cosmian.com/kms/5.13.0/) for Linux, Windows, and macOS
+- [Pre-built binaries](https://package.cosmian.com/kms/5.14.0/) for Linux, Windows, and macOS
 
 ## User Interface
 
@@ -97,8 +97,8 @@ operating systems.
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.13.0/ubuntu-22.04/)
-  or [RPM](https://package.cosmian.com/kms/5.13.0/rockylinux9/) package
+- [Debian](https://package.cosmian.com/kms/5.14.0/ubuntu-22.04/)
+  or [RPM](https://package.cosmian.com/kms/5.14.0/rockylinux9/) package
 - [Pre-built binaries](https://package.cosmian.com/cli/) for Linux, Windows, and macOS
 
 **Note:** `ckms` has been replaced by [Cosmian CLI](../cosmian_cli/index.md) to manage other Cosmian products.

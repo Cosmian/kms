@@ -6,19 +6,25 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/common.sh"
 
+# Ensure SDKROOT is set on macOS for link steps.
+ensure_macos_sdk_env
+
 # Display usage information
 usage() {
   cat <<EOF
 
   Commands:
-    docker [--load] [--test]
+    docker [--force] [--load] [--test]
                        Build Docker image tarball (static OpenSSL)
+                       --force: Force rebuild image tarball, do not reuse cache
                        --load: Load image into Docker
                        --test: Run test_docker_image.sh after loading
     test [type] [args] Run tests inside nix-shell
       all                    Run all available tests (default)
       sqlite                 Run SQLite tests
       mysql                  Run MySQL tests (requires MySQL server)
+      percona                Run Percona XtraDB Cluster tests (requires Percona server)
+      mariadb                Run MariaDB tests (requires MariaDB server)
       psql                   Run PostgreSQL tests (requires PostgreSQL server)
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
@@ -48,6 +54,8 @@ usage() {
   For testing, also supports environment variables:
     REDIS_HOST, REDIS_PORT
     MYSQL_HOST, MYSQL_PORT
+    PERCONA_HOST, PERCONA_PORT
+    MARIADB_HOST, MARIADB_PORT
     POSTGRES_HOST, POSTGRES_PORT
     TEST_GOOGLE_OAUTH_CLIENT_ID, TEST_GOOGLE_OAUTH_CLIENT_SECRET
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
@@ -55,10 +63,13 @@ usage() {
   Examples:
     $0 docker --variant non-fips --load
     $0 docker --variant fips --load --test
+    $0 --variant non-fips docker --force --load --test
     $0 test                    # defaults to all
     $0 test all
     $0 test sqlite
     $0 test mysql
+    $0 test percona
+    $0 test mariadb
     $0 --variant non-fips test redis
     $0 --variant non-fips test pykmip     # PyKMIP client tests
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
@@ -171,11 +182,16 @@ docker)
   DOCKER_LINK="static"
   DOCKER_LOAD=false
   DOCKER_TEST=false
+  DOCKER_FORCE=false
   while [ $# -gt 0 ]; do
     case "$1" in
     -v | --variant)
       DOCKER_VARIANT="${2:-}"
       shift 2 || true
+      ;;
+    --force)
+      DOCKER_FORCE=true
+      shift
       ;;
     --load)
       DOCKER_LOAD=true
@@ -214,9 +230,14 @@ docker)
   VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
 
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
-  # Reuse existing tarball if present unless FORCE_REBUILD is set
-  if [ -z "${FORCE_REBUILD:-}" ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" || true) && [ -f "$REAL_OUT" ]; then
-    echo "Reusing existing Docker image tarball at: $REAL_OUT (set FORCE_REBUILD=1 to rebuild)"
+  # Backward compatibility: environment variable still honored if set
+  if [ -n "${FORCE_REBUILD:-}" ]; then
+    DOCKER_FORCE=true
+  fi
+
+  # Reuse existing tarball if present unless forced rebuild is requested
+  if [ "$DOCKER_FORCE" != true ] && [ -L "$OUT_LINK" ] && REAL_OUT=$(readlink -f "$OUT_LINK" || true) && [ -f "$REAL_OUT" ]; then
+    echo "Reusing existing Docker image tarball at: $REAL_OUT (use --force to rebuild)"
   else
     echo "Building Docker image: attr=$ATTR -> $OUT_LINK"
     nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
@@ -255,6 +276,12 @@ test)
     ;;
   mysql)
     SCRIPT="$REPO_ROOT/.github/scripts/test_mysql.sh"
+    ;;
+  percona)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_percona.sh"
+    ;;
+  mariadb)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_maria.sh"
     ;;
   psql)
     SCRIPT="$REPO_ROOT/.github/scripts/test_psql.sh"

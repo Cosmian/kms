@@ -2,11 +2,11 @@ import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from 
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { create_sym_key_ttlv_request, parse_create_ttlv_response } from "./wasm/pkg";
+import * as wasm from "./wasm/pkg";
 
 interface SymKeyCreateFormData {
     keyId?: string;
-    algorithm: "Aes" | "Chacha20" | "Sha3" | "Shake";
+    algorithm: string; // options provided by WASM get_symmetric_algorithms()
     numberOfBits?: number;
     bytesB64?: string;
     tags: string[];
@@ -25,6 +25,7 @@ const SymKeyCreateForm: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
+    const [algoOptions, setAlgoOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -32,21 +33,32 @@ const SymKeyCreateForm: React.FC = () => {
         }
     }, [res]);
 
+    useEffect(() => {
+        try {
+            const w = wasm as unknown as { get_symmetric_algorithms?: () => { value: string; label: string }[] };
+            const opts = w.get_symmetric_algorithms ? w.get_symmetric_algorithms() : [];
+            setAlgoOptions(opts);
+        } catch (e) {
+            console.error("Error loading symmetric algorithms from WASM:", e);
+        }
+    }, []);
+
     const onFinish = async (values: SymKeyCreateFormData) => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const request = create_sym_key_ttlv_request(
+            const request = wasm.create_sym_key_ttlv_request(
                 values.keyId,
                 values.tags,
                 values.numberOfBits,
                 values.algorithm,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
+                values.bytesB64
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: CreateResponse = await parse_create_ttlv_response(result_str);
+                const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
                 setRes(`${result.UniqueIdentifier} has been created.`);
             }
         } catch (e) {
@@ -84,12 +96,7 @@ const SymKeyCreateForm: React.FC = () => {
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item name="algorithm" label="Algorithm" rules={[{ required: true, message: "Please select an algorithm" }]}>
-                            <Select>
-                                <Select.Option value="Aes">Aes</Select.Option>
-                                <Select.Option value="Chacha20">ChaCha20</Select.Option>
-                                <Select.Option value="Sha3">SHA3</Select.Option>
-                                <Select.Option value="Shake">SHAKE</Select.Option>
-                            </Select>
+                            <Select options={algoOptions} />
                         </Form.Item>
 
                         <Form.Item name="numberOfBits" label="Number of Bits" help="The length of the generated random key in bits">

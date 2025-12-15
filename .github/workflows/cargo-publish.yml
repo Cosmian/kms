@@ -41,7 +41,7 @@ jobs:
           df -h
 
       - name: Dump context for debug
-        uses: crazy-max/ghaction-dump-context@v1
+        uses: crazy-max/ghaction-dump-context@v2
 
       - uses: actions/checkout@v6
         with:
