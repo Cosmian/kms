@@ -76,13 +76,35 @@ jobs:
           . .\.github\scripts\cargo_build.ps1
           BuildProject
 
+      - name: Rename installer to new convention
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Extract version from workspace Cargo.toml
+          $cargoToml = Get-Content -Raw "Cargo.toml"
+          $inWorkspace = $false
+          $version = ""
+          foreach ($line in $cargoToml -split "`n") {
+            if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
+            if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
+            if ($inWorkspace -and $line -match '^\[') { break }
+          }
+          if (-not $version) { throw "Unable to parse version from Cargo.toml" }
+          $arch = "x86_64"
+          Get-ChildItem -Path "target/release" -Filter "*setup.exe" | ForEach-Object {
+            $newName = "cosmian-kms-server-non-fips-static-openssl_${version}_${arch}.exe"
+            $dest = Join-Path $_.DirectoryName $newName
+            Move-Item -Force $_.FullName $dest
+            Write-Host "Renamed $($_.Name) -> $newName"
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
           name: ${{ inputs.archive-name }}-release
           path: |
             README.md
-            target/release/*.exe
+            target/release/*server*.exe
           retention-days: 1
           if-no-files-found: error
 
@@ -105,3 +127,55 @@ jobs:
             Write-Host "Testing $_..."
             & $_.FullName -V
           }
+
+  publish-windows-release:
+    name: Publish Windows assets (self-hosted container)
+    needs: cargo-build
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Checkout repository (for release metadata)
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ inputs.archive-name }}-release
+          path: .
+
+      - name: List downloaded files
+        run: |
+          set -ex
+          ls -la
+          find . -maxdepth 3 -type f -print
+
+      - name: Push installer to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ refs/tags/(.+) ]]; then
+            BRANCH="${BASH_REMATCH[1]}"
+          else
+            HEAD_REF="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+            BRANCH="last_build/${HEAD_REF}"
+          fi
+          DEST_DIR="/mnt/package/kms/${BRANCH}/windows/x86_64/non-fips/static-openssl"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
+          while IFS= read -r -d '' exe; do
+            echo "Uploading ${exe} to ${DEST_DIR}"
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
+          done < <(find . -maxdepth 3 -type f -name 'cosmian-kms-server*.exe' -print0)
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cosmian-kms-server*.exe
+            ./nix/signing-keys/cosmian-kms-public.asc

@@ -245,15 +245,15 @@ This purely functional approach means:
 
 ```bash
 # Developer build on laptop (Linux x86_64)
-nix-build -A kms-server-fips -o result-server-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # SHA256: abc123...
 
 # CI build on GitHub Actions (same platform)
-nix-build -A kms-server-fips -o result-server-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # SHA256: abc123... ✅ IDENTICAL
 
 # Security team rebuild 6 months later (same commit)
-nix-build -A kms-server-fips -o result-server-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # SHA256: abc123... ✅ STILL IDENTICAL
 ```
 
@@ -274,7 +274,7 @@ cargoHash = "sha256-xyz789...";  # Locks ALL Cargo dependencies
 # OpenSSL 3.1.2 pinned by nixpkgs hash
 openssl312 = pkgs.openssl_3_1.overrideAttrs {
   src = fetchurl {
-    url = "https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz";
+    url = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
     sha256 = "sha256-abc123...";  # Exact tarball hash
   };
 };
@@ -382,7 +382,7 @@ INPUT LAYER (All Cryptographically Pinned)
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Cleaned Source Tree                                                     │
-│  • cleanSourceWith filters: result-*, sbom/, target/                     │
+│  • cleanSourceWith filters: result-*, sbom/, target/                      │
 │  • Only source code + Cargo.toml/lock included                           │
 │  • No artifacts = no non-determinism from previous builds                │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -440,10 +440,10 @@ OUTPUT LAYER (Hash Verification)
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  installCheckPhase (Native Hash Verification)                            │
+│  installCheckPhase (Native Hash Verification)                             │
 │                                                                          │
 │  Computed: sha256($out/bin/cosmian_kms)                                  │
-│  Expected: nix/expected-hashes/<variant>.<openssl|no-openssl>.<arch>.<os>.sha256 │
+│  Expected: nix/expected-hashes/<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256 │
 │                                                                          │
 │  FIPS on Linux:                                                          │
 │    ✅ Hashes MUST match (bit-for-bit deterministic)                      │
@@ -461,11 +461,11 @@ OUTPUT LAYER (Hash Verification)
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Verified Binary Output                                                  │
+│  Verified Binary Output                                                   │
 │  /nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms                    │
 │                                                                          │
 │  Properties:                                                             │
-│  • Hash-verified (FIPS: bit-for-bit reproducible)                        │
+│  • Hash-verified (FIPS: bit-for-bit reproducible)                         │
 │  • Statically linked OpenSSL                                             │
 │  • Portable across Linux distributions (GLIBC ≥ 2.28)                    │
 │  • No /nix/store runtime dependencies                                    │
@@ -481,7 +481,7 @@ REPRODUCIBILITY GUARANTEES
 ├────────────────────┼──────────────────────────────────────────────────┤
 │  Linux x86_64 FIPS │  ✅ Bit-for-bit deterministic                    │
 │                    │  Same inputs → IDENTICAL binary hash             │
-│                    │  Cryptographically verifiable                    │
+│                    │  Cryptographically verifiable                     │
 ├────────────────────┼──────────────────────────────────────────────────┤
 │  Linux ARM64 FIPS  │  ✅ Bit-for-bit deterministic                    │
 │                    │  (cross-compilation from x86_64)                 │
@@ -514,17 +514,17 @@ Use case: FIPS for compliance/audits, non-FIPS for general deployment
 
 All hashes are committed in the repository and verified during builds:
 
-| Hash Type             | Purpose                                                 | Location                                           | Example (x86_64-linux FIPS)                                        |
-| --------------------- | ------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
-| **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix:122`                           | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
-| **OpenSSL source**    | FIPS 140-3 certified crypto library                     | `nix/openssl-3_1_2.nix:14`                         | `sha256-BPedCZMRpt6FvPc3WDopPx8DAag0Gbu6N6hqdHvomso=`              |
+| Hash Type             | Purpose                                                 | Location                                                   | Example (x86_64-linux FIPS)                                        |
+| --------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix:122`                                   | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
+| **OpenSSL source**    | FIPS 140-3 certified crypto library                     | `nix/openssl-3_1_2.nix:14`                                 | `sha256-BPedCZMRpt6FvPc3WDopPx8DAag0Gbu6N6hqdHvomso=`              |
 | **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/fips.openssl.x86_64.linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
 | **Binary (non-FIPS)** | Non-FIPS server (tracked hash, not fully deterministic) | `nix/expected-hashes/non-fips.openssl.x86_64.linux.sha256` | `2eb034667cde901bb85b195d58b48a32ff4028f785bd977acdb689ea42268f1b` |
 
 Platform-specific binary hashes:
 
-| Platform       | Variant  | Hash File                                            | Enforced At          | Deterministic?                 |
-| -------------- | -------- | ---------------------------------------------------- | -------------------- | ------------------------------ |
+| Platform       | Variant  | Hash File                                                    | Enforced At          | Deterministic?                 |
+| -------------- | -------- | ------------------------------------------------------------ | -------------------- | ------------------------------ |
 | x86_64-linux   | FIPS     | `nix/expected-hashes/fips.openssl.x86_64.linux.sha256`       | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
 | x86_64-linux   | non-FIPS | `nix/expected-hashes/non-fips.openssl.x86_64.linux.sha256`   | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
 | aarch64-linux  | FIPS     | `nix/expected-hashes/fips.openssl.aarch64.linux.sha256`      | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
@@ -722,11 +722,11 @@ bash .github/scripts/nix.sh update-hashes --binary-only
 bash .github/scripts/nix.sh --variant non-fips build
 
 # Hash update method - Example for x86_64 Linux
-nix-build -A kms-server-fips -o result-server-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # Check the installCheckPhase output for the hash and update command
 
 # Linux x86_64 example
-nix-build -A kms-server-non-fips -o result-server-non-fips
+nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
 sha256sum result-server-non-fips/bin/cosmian_kms | cut -d' ' -f1 > nix/expected-hashes/non-fips.x86_64-linux.sha256
 ```
 
@@ -738,14 +738,14 @@ The `update-hashes` command is integrated into the main `nix.sh` script for conv
 
 ```bash
 # Two identical FIPS builds - hashes MUST match
-nix-build -A kms-server-fips -o result-server-fips
-nix-build -A kms-server-fips -o result-server-fips-2
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips-2
 sha256sum result-server-fips/bin/cosmian_kms result-server-fips-2/bin/cosmian_kms
 # Expected: Identical SHA-256 hashes
 
 # Non-FIPS builds - hashes MAY differ across builds
-nix-build -A kms-server-non-fips -o result-server-non-fips
-nix-build -A kms-server-non-fips -o result-server-non-fips-2
+nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
+nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips-2
 sha256sum result-server-non-fips/bin/cosmian_kms result-server-non-fips-2/bin/cosmian_kms
 # Warning: Hashes may not match even with identical source
 ```
@@ -957,8 +957,8 @@ bash .github/scripts/nix.sh package deb      # Defaults to FIPS
 bash .github/scripts/nix.sh --variant non-fips package deb
 
 # Or explicitly prewarm both variants without packaging
-nix-build -A kms-server-fips -o result-server-fips
-nix-build -A kms-server-non-fips -o result-server-non-fips
+nix-build -A kms-server-fips-static-openssl -o result-server-fips
+nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
 
 # Prewarm Cargo registry for offline cargo-deb/cargo-generate-rpm
 cd /home/manu/Cosmian/core/cli_alt/kms
@@ -1183,12 +1183,12 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 ### Scripts Overview
 
-| Category      | Scripts                                                                   | Purpose                                 |
-| ------------- | ------------------------------------------------------------------------- | --------------------------------------- |
-| **Build**     | `build.sh`                                                                | Core server compilation with OpenSSL    |
-| **Packaging** | `package_common.sh`, `package_deb.sh`, `package_rpm.sh`, `package_dmg.sh` | Distribution package creation           |
-| **SBOM**      | `generate_sbom.sh`                                                        | Software Bill of Materials generation   |
-| **Utilities** | `get_version.sh`, `generate_signing_key.sh`                               | Version extraction, GPG key generation  |
+| Category      | Scripts                                                                   | Purpose                                |
+| ------------- | ------------------------------------------------------------------------- | -------------------------------------- |
+| **Build**     | `build.sh`                                                                | Core server compilation with OpenSSL   |
+| **Packaging** | `package_common.sh`, `package_deb.sh`, `package_rpm.sh`, `package_dmg.sh` | Distribution package creation          |
+| **SBOM**      | `generate_sbom.sh`                                                        | Software Bill of Materials generation  |
+| **Utilities** | `get_version.sh`, `generate_signing_key.sh`                               | Version extraction, GPG key generation |
 
 ### Quick Reference
 

@@ -29,7 +29,7 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
 
   packages:
-    name: ${{ matrix.runner }} - ${{ matrix.features }} - ${{ matrix.link }}
+    name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -62,14 +62,6 @@ jobs:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
-      - name: Upload hash artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: hash-${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
-          path: result*/bin/server.${{ matrix.features }}*.sha256
-          retention-days: 1
-          if-no-files-found: error
-
       - name: Upload package
         uses: actions/upload-artifact@v5
         with:
@@ -78,20 +70,112 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  publish-release:
+    name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
+    needs: packages
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        link: [static, dynamic]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        package-type: [deb, rpm, dmg]
+        cpu-arch: [amd64, arm64]
+        exclude:
+          - runner: ubuntu-24.04
+            package-type: dmg
+          - runner: ubuntu-24.04-arm
+            package-type: dmg
+          - runner: macos-15
+            package-type: deb
+          - runner: macos-15
+            package-type: rpm
+          - runner: ubuntu-24.04
+            cpu-arch: arm64
+          - runner: ubuntu-24.04-arm
+            cpu-arch: amd64
+          - runner: macos-15
+            cpu-arch: amd64
+    steps:
+      - name: Checkout repository (for public key file)
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Download packaged artifact for this matrix
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+
+      - name: List downloaded assets
+        run: |
+          set -ex
+          ls -la
+          find . -type f -print
+
+      - name: Push to package.cosmian.com (self-hosted)
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          DESTINATION_DIR=/mnt/package/kms/$BRANCH
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
+
+          # Upload artifacts from the known result directory
+          RESULT_DIR="result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}"
+          RESULT_SERVER_DIR="result-server-${{ matrix.features }}-${{ matrix.link }}/bin"
+
+          # Create remote directory
+          remote_dir="${DESTINATION_DIR}/${{ matrix.package-type }}/${{ matrix.cpu-arch }}/${{ matrix.features }}/${{ matrix.link }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
+
+          # If Linux runner
+          if [[ "${{ matrix.runner }}" == ubuntu* ]]; then
+            BINARY_PATTERN=linux
+          else
+            BINARY_PATTERN=darwin
+          fi
+
+          # If rpm package, adjust binary pattern
+          if [[ "${{ matrix.package-type }}" == "rpm" ]]; then
+            # if ubuntu arm64 runner
+            if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
+              PACKAGE_PATTERN="aarch64"
+            else
+              PACKAGE_PATTERN="x86_64"
+            fi
+          else
+            PACKAGE_PATTERN="${{ matrix.cpu-arch }}"
+          fi
+
+          # Upload package files
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            ./nix/signing-keys/cosmian-kms-public.asc \
+            $RESULT_DIR/*${PACKAGE_PATTERN}*${{ matrix.package-type }}* \
+            $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
+            cosmian@package.cosmian.com:${remote_dir}/
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
+            result-server-${{ matrix.features }}-${{ matrix.link }}/bin/cosmian-kms-server*
+            ./nix/signing-keys/cosmian-kms-public.asc
+
   tests:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     with:
       toolchain: ${{ inputs.toolchain }}
-
-  push-artifacts:
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
-    needs:
-      - windows-package
-      - tests
-      - docker
-    uses: ./.github/workflows/push-artifacts.yml
-    with:
-      project-name: kms
-      destination: kms
-      debug_or_release: release
