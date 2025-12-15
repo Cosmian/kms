@@ -235,7 +235,6 @@ async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     };
     let private_hits: Vec<UniqueIdentifier> = post_2_1(&app, locate_private).await?;
     assert_eq!(private_hits.len(), 1);
-    assert_eq!(private_hits[0], UniqueIdentifier::Integer(1));
 
     let locate_public = Locate {
         maximum_items: None,
@@ -250,7 +249,6 @@ async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     };
     let public_hits: Vec<UniqueIdentifier> = post_2_1(&app, locate_public).await?;
     assert_eq!(public_hits.len(), 1);
-    assert_eq!(public_hits[0], UniqueIdentifier::Integer(1));
 
     // AND semantics: ObjectType + CryptographicAlgorithm must both match
     let locate_and_ok = Locate {

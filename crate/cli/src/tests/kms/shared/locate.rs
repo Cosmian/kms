@@ -212,8 +212,9 @@ pub(crate) async fn test_locate_key_pair_and_sym_key() -> KmsCliResult<()> {
     .await?;
     assert_eq!(ids.len(), 0);
 
-    // Locate PrivateKey with AND CryptographicAlgorithm => expect 1
+    // Locate PrivateKey with tag AND CryptographicAlgorithm => expect 1
     let ids = LocateObjectsAction {
+        tags: Some(vec![base_tag.clone()]),
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         ..Default::default()
