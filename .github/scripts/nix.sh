@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/common.sh"
 
+# Ensure SDKROOT is set on macOS for link steps.
+ensure_macos_sdk_env
+
 # Display usage information
 usage() {
   cat <<EOF

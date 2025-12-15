@@ -17,6 +17,7 @@ use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
 }};
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation, SessionParams};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    kmip_objects::ObjectType,
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
@@ -129,6 +130,8 @@ pub(crate) async fn create_key_pair(
             attributes.activation_date = Some(now);
         }
 
+        // Ensure ObjectType is set for private key
+        attributes.object_type = Some(ObjectType::PrivateKey);
         // update original creation date
         attributes.original_creation_date = Some(now);
         // update the last change date
@@ -174,6 +177,8 @@ pub(crate) async fn create_key_pair(
         if state == Active {
             attributes.activation_date = Some(now_stored);
         }
+        // Ensure ObjectType is set for public key
+        attributes.object_type = Some(ObjectType::PublicKey);
         // update original creation date
         attributes.original_creation_date = Some(now);
         // update the last change date

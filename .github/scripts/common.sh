@@ -3,6 +3,98 @@
 
 set -euo pipefail
 
+# Ensure macOS SDK path is available for the linker.
+# Some build steps (notably during Rust linking) invoke `xcrun --sdk macosx --show-sdk-path`.
+# On machines where `xcrun` isn't found (or isn't on PATH), linking fails because the SDK
+# location cannot be discovered.
+ensure_macos_sdk_env() {
+  # No-op on non-macOS
+  if [ "$(uname -s)" != "Darwin" ]; then
+    return 0
+  fi
+
+  # Prefer Command Line Tools as a consistent developer root.
+  # This also makes it much more likely that `xcrun` is discoverable.
+  : "${DEVELOPER_DIR:=/Library/Developer/CommandLineTools}"
+  export DEVELOPER_DIR
+  if [ -d "${DEVELOPER_DIR}/usr/bin" ]; then
+    case ":${PATH}:" in
+    *":${DEVELOPER_DIR}/usr/bin:"*)
+      :
+      ;;
+    *)
+      export PATH="${DEVELOPER_DIR}/usr/bin:${PATH}"
+      ;;
+    esac
+  fi
+
+  # Respect caller-provided SDKROOT
+  if [ -n "${SDKROOT:-}" ] && [ -d "${SDKROOT}" ]; then
+    :
+  else
+    # Prefer xcrun when available
+    if command -v xcrun >/dev/null 2>&1; then
+      local sdk
+      sdk="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+      if [ -n "$sdk" ] && [ -d "$sdk" ]; then
+        export SDKROOT="$sdk"
+      fi
+    fi
+
+    # Fallback: Command Line Tools SDK location (common on CI and minimal macOS setups)
+    if [ -z "${SDKROOT:-}" ]; then
+      local clt_sdk="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+      if [ -d "$clt_sdk" ]; then
+        export SDKROOT="$clt_sdk"
+      fi
+    fi
+  fi
+
+  # If we have an SDKROOT, ensure native C builds use it.
+  # This is important for build scripts invoking clang directly (e.g., aws-lc-sys),
+  # otherwise system headers like CoreServices may not be found.
+  if [ -n "${SDKROOT:-}" ] && [ -d "${SDKROOT}" ]; then
+    # When building inside a Nix shell on macOS, Nix may inject headers from its own
+    # libSystem (e.g. via NIX_CFLAGS_COMPILE/CPATH). That can conflict with the Apple SDK
+    # headers (CoreFoundation uses API_AVAILABLE macros), causing compilation failures.
+    # For this repository, prefer the Apple SDK headers consistently.
+    unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH
+    unset NIX_CFLAGS_COMPILE NIX_CFLAGS_LINK NIX_LDFLAGS
+
+    local sysroot_flag
+    sysroot_flag="-isysroot ${SDKROOT}"
+
+    local framework_dir
+    framework_dir="${SDKROOT}/System/Library/Frameworks"
+    local framework_flags=""
+    if [ -d "${framework_dir}" ]; then
+      # Some C dependencies include Apple framework headers (e.g. <CoreServices/CoreServices.h>).
+      # Ensure clang can resolve those by providing framework search paths.
+      framework_flags="-F${framework_dir} -iframework ${framework_dir}"
+    fi
+
+    if [ -n "${CFLAGS:-}" ]; then
+      export CFLAGS="${sysroot_flag} ${framework_flags} ${CFLAGS}"
+    else
+      export CFLAGS="${sysroot_flag} ${framework_flags}"
+    fi
+
+    if [ -n "${CPPFLAGS:-}" ]; then
+      export CPPFLAGS="${sysroot_flag} ${framework_flags} ${CPPFLAGS}"
+    else
+      export CPPFLAGS="${sysroot_flag} ${framework_flags}"
+    fi
+
+    if [ -n "${CXXFLAGS:-}" ]; then
+      export CXXFLAGS="${sysroot_flag} ${framework_flags} ${CXXFLAGS}"
+    else
+      export CXXFLAGS="${sysroot_flag} ${framework_flags}"
+    fi
+
+    return 0
+  fi
+}
+
 # Unified nixpkgs pin (used by all scripts)
 # Keep a single source of truth for the pinned nixpkgs URL.
 export PIN_URL="https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz"
@@ -140,6 +232,7 @@ init_build_env() {
     FEATURES_FLAG=(--features non-fips)
   fi
 
+  ensure_macos_sdk_env
   export VARIANT VARIANT_NAME BUILD_PROFILE RELEASE_FLAG LINK
 }
 
@@ -371,10 +464,6 @@ _run_workspace_tests() {
     ;;
   esac
 
-  # By default, skip CLI crate tests in Nix-driven suites because the CLI is primarily a binary crate
-  # and some tests may require host/network capabilities that are restricted in CI/Nix sandboxes.
-  local extra_args=()
-
   # Database tests are marked with #[ignore] so they need --ignored flag
   # We run only database-specific tests to avoid running other ignored tests (e.g., HSM, Google CSE)
   local test_filter=""
@@ -382,20 +471,22 @@ _run_workspace_tests() {
   case "$KMS_TEST_DB" in
   postgresql)
     test_filter="tests::test_db_postgresql"
-    test_args="$test_args --ignored --exact"
+    test_args="$test_args --ignored"
     ;;
   mysql)
     test_filter="tests::test_db_mysql"
-    test_args="$test_args --ignored --exact"
+    test_args="$test_args --ignored"
     ;;
   redis-findex)
     test_filter="tests::test_db_redis_with_findex"
-    test_args="$test_args --ignored --exact"
+    test_args="$test_args --ignored"
     ;;
   esac
 
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --exclude cosmian_kms_cli ${extra_args[@]+"${extra_args[@]}"} $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+  cargo test --workspace --lib --exclude cosmian_kms_cli $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+  # shellcheck disable=SC2086
+  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
 }
 
 # Public: run DB-specific tests with optional service checks
