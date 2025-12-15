@@ -113,7 +113,7 @@ jobs:
     name: windows-2022 - test on clean env. ${{ inputs.archive-name }}
     runs-on: windows-2022
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
 
@@ -144,7 +144,7 @@ jobs:
           submodules: false
 
       - name: Download Windows build artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.archive-name }}-release
           path: .
