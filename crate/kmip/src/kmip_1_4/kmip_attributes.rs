@@ -21,6 +21,7 @@ pub use crate::{
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, Digest,
             DigitalSignatureAlgorithm, Link, Name, ObjectType, RandomNumberGenerator,
+            StorageStatusMask,
         },
     },
     kmip_2_1::{
@@ -51,6 +52,7 @@ pub enum Attribute {
     CryptographicLength(i32),
     CryptographicParameters(CryptographicParameters),
     CryptographicUsageMask(CryptographicUsageMask),
+    StorageStatusMask(StorageStatusMask),
     CustomAttribute(CustomAttribute),
     DeactivationDate(OffsetDateTime),
     Description(String),
@@ -167,6 +169,10 @@ impl Serialize for Attribute {
             }
             Self::CryptographicUsageMask(value) => {
                 st.serialize_field("AttributeName", "Cryptographic Usage Mask")?;
+                st.serialize_field("AttributeValue", value)?;
+            }
+            Self::StorageStatusMask(value) => {
+                st.serialize_field("AttributeName", "Storage Status Mask")?;
                 st.serialize_field("AttributeValue", value)?;
             }
             Self::LeaseTime(value) => {
@@ -340,13 +346,34 @@ impl<'de> Deserialize<'de> for Attribute {
                 // TODO: Special case of Notify for which there is no attribute value
                 // This server cannot handle Notify for now
 
-                let Some(attribute_value_name) = map.next_key::<String>()? else {
+                // Some clients include an optional AttributeIndex (and/or VendorIdentification)
+                // between AttributeName and AttributeValue. Tolerate and skip these fields
+                // before reading the actual AttributeValue.
+                let mut next_key = map.next_key::<String>()?;
+                // Loop until we encounter AttributeValue, consuming tolerated intermediate fields.
+                while let Some(key) = next_key.as_ref() {
+                    match key.as_str() {
+                        "AttributeValue" => break,
+                        "AttributeIndex" => {
+                            // Consume the index value and move to next key
+                            let _index: i32 = map.next_value()?;
+                            next_key = map.next_key::<String>()?;
+                        }
+                        "VendorIdentification" => {
+                            // Consume vendor identification and move to next key
+                            let _vendor: String = map.next_value()?;
+                            next_key = map.next_key::<String>()?;
+                        }
+                        _ => {
+                            return Err(de::Error::custom(format!(
+                                "expected AttributeValue in attribute, found {key}"
+                            )));
+                        }
+                    }
+                }
+                // Ensure we stopped on AttributeValue
+                if next_key.as_deref() != Some("AttributeValue") {
                     return Err(de::Error::custom("No attribute value in attribute"));
-                };
-                if attribute_value_name != "AttributeValue" {
-                    return Err(de::Error::custom(format!(
-                        "expected AttributeValue in attribute, found {attribute_value_name}"
-                    )));
                 }
                 match attribute_name_value.as_str() {
                     "Unique Identifier" => {
@@ -465,6 +492,10 @@ impl<'de> Deserialize<'de> for Attribute {
                     "Cryptographic Usage Mask" => {
                         let value: CryptographicUsageMask = map.next_value()?;
                         Ok(Attribute::CryptographicUsageMask(value))
+                    }
+                    "Storage Status Mask" => {
+                        let value: StorageStatusMask = map.next_value()?;
+                        Ok(Attribute::StorageStatusMask(value))
                     }
                     "Lease Time" => {
                         let value: u32 = map.next_value()?;
@@ -639,6 +670,10 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::CryptographicLength(v) => Self::CryptographicLength(v),
             Attribute::CryptographicParameters(v) => Self::CryptographicParameters(v.into()),
             Attribute::CryptographicUsageMask(v) => Self::CryptographicUsageMask(v),
+            Attribute::StorageStatusMask(_v) => {
+                warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                Self::Comment("Unsupported KMIP 1.4 attribute".to_owned())
+            }
             Attribute::CustomAttribute(ca) => {
                 if ca.name.starts_with("x-") {
                     Self::VendorAttribute(VendorAttribute {
@@ -1025,6 +1060,10 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 | Attribute::OperationPolicyName(_)
                 | Attribute::Pkcs12FriendlyName(_) => {
                     // Not supported in KMIP 2.1
+                    warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                }
+                Attribute::StorageStatusMask(_v) => {
+                    // Not supported in KMIP 2.1 attribute set; this is typically a Locate payload field.
                     warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
                 }
                 Attribute::DigitalSignatureAlgorithm(v) => {

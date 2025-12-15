@@ -12,7 +12,7 @@ use super::{Result, array_deserializer::ArrayDeserializer, structure_walker::Str
 use crate::{
     KmipResultHelper, kmip_1_4, kmip_2_1,
     ttlv::{
-        TTLV, TTLValue, TtlvError,
+        KmipEnumerationVariant, TTLV, TTLValue, TtlvError,
         kmip_ttlv_deserializer::{
             adjacently_tagged_structure::AdjacentlyTaggedStructure,
             byte_string_deserializer::ByteStringDeserializer, enum_walker::EnumWalker,
@@ -144,12 +144,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         );
         // fetch the element
         // If the deserializer is at the root, the current TTLV is the root TTLV
-        // If the deserializer is not at the root, the current TTLV is the child at the current child index
-        // `deserialize_any` may be called from the root when deserializing an untagged enum for instance
         let element = self.fetch_element()?;
-
-        // if the self.map_state is Key, the deserializer is deserializing the key of a map
-        // which is the tag of the TTLV
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
             trace!(
@@ -182,11 +177,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     at_root: RwLock::new(false),
                 }))
             }
-            TTLValue::Integer(i) => {
-                // if the TTLV value is an Integer, the deserializer is attempting to deserialize the value
-                // by converting the integer to i32
-                visitor.visit_i32(*i)
-            }
+            TTLValue::Integer(v) => u32::try_from(*v).map_or_else(
+                |_| {
+                    Err(TtlvError::from(
+                        "negative Integer is invalid for KMIP Enumeration",
+                    ))
+                },
+                |n| visitor.visit_u32(n),
+            ),
             TTLValue::LongInteger(i) => {
                 // if the TTLV value is a LongInteger, the deserializer is attempting to deserialize the value
                 // by converting the integer to i64
@@ -546,6 +544,45 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     element.tag, actual
                 )))
             }
+        } else if let TTLValue::Enumeration(e) = &element.value {
+            // KMIP 2.1 allows Unique Identifier (and Linked Object Identifier) to be
+            // Text String, Enumeration or Integer. If the target expects a string,
+            // coerce the enumeration to a string using the name if present, else the code.
+            if element.tag == "UniqueIdentifier" || element.tag == "LinkedObjectIdentifier" {
+                if e.name.is_empty() {
+                    trace!(
+                        "... coerced {} Enumeration(code={}) -> string",
+                        element.tag, e.value
+                    );
+                    return visitor.visit_string(e.value.to_string());
+                }
+                trace!(
+                    "... coerced {} Enumeration(name={}) -> string",
+                    element.tag, e.name
+                );
+                return visitor.visit_string(e.name.clone());
+            }
+            let actual = if e.name.is_empty() {
+                "Enumeration(code)"
+            } else {
+                "Enumeration(name)"
+            };
+            Err(TtlvError::from(format!(
+                "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
+                element.tag, actual
+            )))
+        } else if let TTLValue::Integer(i) = &element.value {
+            // KMIP 2.1 allows Unique Identifier (and Linked Object Identifier) to be Integer.
+            // If the target expects a string, coerce by rendering the integer.
+            if element.tag == "UniqueIdentifier" || element.tag == "LinkedObjectIdentifier" {
+                trace!("... coerced {} Integer({}) -> string", element.tag, i);
+                return visitor.visit_string(i.to_string());
+            }
+            let actual = "Integer";
+            Err(TtlvError::from(format!(
+                "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
+                element.tag, actual
+            )))
         } else {
             let actual = match &element.value {
                 TTLValue::Integer(_) => "Integer",
@@ -953,6 +990,28 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             match &element.value {
                 // if the TTLV value is an Enumeration, we will deserialize it using the EnumWalker
                 TTLValue::Enumeration(_) => visitor.visit_enum(EnumWalker::new(self)),
+                // Accept Integer as enumeration numeric value (interop: MySQL sends Integer
+                // for some enum AttributeValues like Storage Status Mask in KMIP 1.1)
+                TTLValue::Integer(v) => {
+                    let n = u32::try_from(*v).map_err(|e| {
+                        TtlvError::from(format!(
+                            "negative Integer is invalid for KMIP Enumeration: {e}"
+                        ))
+                    })?;
+                    let enum_ttlv = TTLV {
+                        tag: element.tag.clone(),
+                        value: TTLValue::Enumeration(KmipEnumerationVariant {
+                            value: n,
+                            name: String::new(),
+                        }),
+                    };
+                    visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
+                        current: enum_ttlv,
+                        child_index: 0,
+                        map_state: MapAccessState::None,
+                        at_root: RwLock::new(true),
+                    }))
+                }
                 // if the TTLV value is a Structure, we will deserialize the single child
                 // using the EnumWalker
                 TTLValue::Structure(children) => {
@@ -988,26 +1047,32 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     if children.len() != 1 {
                         // KMIP Attribute structures in some vectors may encode as:
                         // Attribute -> AttributeName + <ActualAttributeValueStructure>
-                        // Accept this pattern by selecting the single non-AttributeName child.
-                        // Still error if pattern does not match this relaxed form.
-                        let mut candidate = None;
+                        // and may include an optional AttributeIndex.
+                        // Prefer AttributeValue if present; otherwise fall back to the single
+                        // non-AttributeName child.
+                        let mut attribute_value_child: Option<TTLV> = None;
+                        let mut non_name_candidate: Option<TTLV> = None;
                         for c in children {
-                            if c.tag != "AttributeName" {
-                                if candidate.is_some() {
+                            if c.tag == "AttributeValue" {
+                                attribute_value_child = Some(c.clone());
+                            } else if c.tag != "AttributeName" {
+                                if non_name_candidate.is_some() && attribute_value_child.is_none() {
                                     return Err(TtlvError::from(format!(
                                         "Deserializing an enum of tag: {}: unexpected multiple non-AttributeName children",
                                         element.tag
                                     )));
                                 }
-                                candidate = Some(c.clone());
+                                non_name_candidate = Some(c.clone());
                             }
                         }
-                        let selected = candidate.ok_or_else(|| {
-                            TtlvError::from(format!(
-                                "Deserializing an enum of tag: {}: could not locate attribute value child",
-                                element.tag
-                            ))
-                        })?;
+                        let selected = attribute_value_child
+                            .or(non_name_candidate)
+                            .ok_or_else(|| {
+                                TtlvError::from(format!(
+                                    "Deserializing an enum of tag: {}: could not locate attribute value child",
+                                    element.tag
+                                ))
+                            })?;
                         return visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
                             current: selected,
                             child_index: 0,
