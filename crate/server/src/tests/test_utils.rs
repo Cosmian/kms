@@ -14,7 +14,10 @@ use actix_web::{
     test::{self, call_service, read_body},
     web::{self, Data},
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{TTLV, from_ttlv, to_ttlv};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_2_1::{kmip_operations::LocateResponse, kmip_types::UniqueIdentifier},
+    ttlv::{TTLV, from_ttlv, to_ttlv},
+};
 use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
@@ -177,7 +180,7 @@ pub(crate) async fn test_app(
 pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
-    R: DeserializeOwned,
+    R: DeserializeOwned + 'static,
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
@@ -195,8 +198,20 @@ where
     }
     let body = read_body(res).await;
     let ttlv: TTLV = serde_json::from_slice(&body)?;
-    let result: R = from_ttlv(ttlv)?;
-    Ok(result)
+
+    // Some KMIP operations (e.g., Locate) return a structured response payload.
+    // Tests historically deserialize `LocateResponse` directly into `Vec<UniqueIdentifier>`.
+    // Prefer decoding the proper response type and extracting the list.
+    if std::any::TypeId::of::<R>() == std::any::TypeId::of::<Vec<UniqueIdentifier>>() {
+        let locate: LocateResponse = from_ttlv(ttlv)?;
+        // Safety: guarded by TypeId check.
+        let v: Vec<UniqueIdentifier> = locate.unique_identifier.unwrap_or_default();
+        // Convert Vec<UniqueIdentifier> -> R without requiring R: From<_>
+        let boxed: Box<dyn std::any::Any> = Box::new(v);
+        return Ok(*boxed.downcast::<R>().expect("TypeId matched"));
+    }
+
+    Ok(from_ttlv(ttlv)?)
 }
 
 pub(crate) async fn post_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>

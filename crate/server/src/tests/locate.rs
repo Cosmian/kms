@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_operations::{Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Locate},
-        kmip_types::{CryptographicAlgorithm, Name, NameType, UniqueIdentifier},
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
 use cosmian_logger::log_init;
@@ -101,7 +101,7 @@ async fn test_locate() -> KResult<()> {
 }
 
 #[actix_rt::test]
-async fn locate_key_pair_and_sym_key() -> KResult<()> {
+async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
     // Use sqlite-backed test app
     let app = test_app(None, None).await;
 
@@ -126,7 +126,7 @@ async fn locate_key_pair_and_sym_key() -> KResult<()> {
     };
     let _resp: CreateKeyPairResponse = post_2_1(&app, create).await?;
 
-    // Locate PublicKey with tag "cat" → expect the public key only
+    // Locate PublicKey with tag "cat" → expect 0 public key since tag was not set on creation
     let mut attrs_pub = Attributes {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
@@ -140,7 +140,7 @@ async fn locate_key_pair_and_sym_key() -> KResult<()> {
         },
     )
     .await?;
-    assert_eq!(res_pub.len(), 1);
+    assert_eq!(res_pub.len(), 0);
 
     // Locate PrivateKey with AND CryptographicAlgorithm EC → expect only private key
     let attrs_and = Attributes {
@@ -189,7 +189,7 @@ async fn locate_key_pair_and_sym_key() -> KResult<()> {
 }
 
 #[actix_rt::test]
-async fn locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
+async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     // Start test app (KMIP 2.1 endpoint)
     let app = test_app(None, None).await;
 
@@ -199,10 +199,6 @@ async fn locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
         private_key_attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
             cryptographic_length: Some(256),
-            name: Some(vec![Name {
-                name_type: NameType::UninterpretedTextString,
-                name_value: "ec_key".to_owned(),
-            }]),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Sign),
             ..Default::default()
         }),

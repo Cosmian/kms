@@ -103,6 +103,9 @@ jobs:
           - runner: macos-15
             cpu-arch: amd64
     steps:
+      - name: Remove existing old artifacts
+        run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+
       - name: Checkout repository (for public key file)
         uses: actions/checkout@v6
         with:

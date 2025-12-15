@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
 use cosmian_kms_client::{
     kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     reexport::cosmian_kms_client_utils::create_utils::Curve,
@@ -174,6 +175,69 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     .await?;
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_public_key_id));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_locate_key_pair_and_sym_key() -> KmsCliResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    // Generate unique tags to avoid cross-test collisions when tests run concurrently.
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_nanos();
+    let base_tag = format!("test_locate_kp_{ts}");
+
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
+
+    // Create an EC keypair WITHOUT the "cat" tag
+    let (_private_key_id, _public_key_id) = CreateEcKeyPairAction {
+        curve: Curve::NistP256,
+        tags: vec![base_tag.clone()],
+        sensitive: false,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // Locate PublicKey with tag "cat" => expect 0 (tag wasn't set on creation)
+    let ids = LocateObjectsAction {
+        tags: Some(vec!["cat".to_string()]),
+        object_type: Some(ObjectType::PublicKey),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert_eq!(ids.len(), 0);
+
+    // Locate PrivateKey with AND CryptographicAlgorithm => expect 1
+    let ids = LocateObjectsAction {
+        object_type: Some(ObjectType::PrivateKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert_eq!(ids.len(), 1);
+
+    // Create a symmetric AES key and locate by ObjectType::SymmetricKey
+    let _sym_id = CreateKeyAction {
+        tags: vec![base_tag.clone()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    let ids = LocateObjectsAction {
+        object_type: Some(ObjectType::SymmetricKey),
+        tags: Some(vec![base_tag]),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+    assert!(!ids.is_empty());
 
     Ok(())
 }
