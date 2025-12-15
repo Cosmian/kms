@@ -58,16 +58,16 @@ For high availability and scalability, refer to the [High Availability Guide](./
     ```sh
     sudo apt update && sudo apt install -y wget
     # Standard build (non-FIPS, static OpenSSL)
-    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.13.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS build:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.13.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.14.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -87,8 +87,8 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.13.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.13.0_x86_64.rpm
-    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.13.0_x86_64.rpm
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
+    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -108,12 +108,12 @@ For high availability and scalability, refer to the [High Availability Guide](./
         - Apple Silicon (ARM64):
 
             ```sh
-            open "https://package.cosmian.com/kms/5.13.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.13.0_arm64.dmg"
+            open "https://package.cosmian.com/kms/5.14.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.14.0_arm64.dmg"
             ```
 
         Then drag-and-drop the app to Applications or follow the DMG instructions.
 
-        Note: The 5.13.0 DMG is provided for Apple Silicon (ARM64).
+        Note: The 5.14.0 DMG is provided for Apple Silicon (ARM64).
 
         After installation, run:
 
@@ -134,18 +134,18 @@ Available dynamic packages for Debian-based distributions:
 
     ```sh
     # Non-FIPS dynamic (OpenSSL linked dynamically)
-    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_amd64.deb
     # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.13.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.13.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_amd64.deb
     ```
 
 Available dynamic packages for Rocky Linux:
 
     ```sh
     # Non-FIPS dynamic
-    wget https://package.cosmian.com/kms/5.13.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.13.0_x86_64.rpm
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_x86_64.rpm
     # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.13.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.13.0_x86_64.rpm
+    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_x86_64.rpm
     ```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
@@ -156,7 +156,7 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.13.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.13.0_x86_64.exe
+    https://package.cosmian.com/kms/5.14.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.14.0_x86_64.exe
     ```
 
     Run the installer to install Cosmian KMS Server. The installer will:

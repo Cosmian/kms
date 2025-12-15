@@ -30,7 +30,7 @@ base64 = { workspace = true }
 bitflags = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.13.0" }
+kmip-derive = { path = "../kmip-derive", version = "5.14.0" }
 leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
