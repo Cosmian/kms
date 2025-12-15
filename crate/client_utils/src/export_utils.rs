@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use clap::ValueEnum;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
@@ -34,7 +32,7 @@ pub enum ExportKeyFormat {
     Raw,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumString)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum WrappingAlgorithm {
     NistKeyWrap,
@@ -45,27 +43,6 @@ pub enum WrappingAlgorithm {
     RsaOaep,
     RsaAesKeyWrapSha1,
     RsaAesKeyWrap,
-}
-
-impl WrappingAlgorithm {
-    pub(crate) const fn as_str(&self) -> &'static str {
-        match self {
-            Self::NistKeyWrap => "nist-key-wrap",
-            Self::AesGCM => "aes-gcm",
-            Self::RsaPkcsV15 => "rsa-pkcs-v15",
-            Self::RsaPkcsV15Sha1 => "rsa-pkcs-v15-sha1",
-            Self::RsaOaep => "rsa-oaep",
-            Self::RsaOaepSha1 => "rsa-oaep-sha1",
-            Self::RsaAesKeyWrap => "rsa-aes-key-wrap",
-            Self::RsaAesKeyWrapSha1 => "rsa-aes-key-wrap-sha1",
-        }
-    }
-}
-
-impl Display for WrappingAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 #[must_use]

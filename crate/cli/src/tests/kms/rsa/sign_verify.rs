@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
-    kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
+    kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_logger::{log_init, trace};
 use tempfile::TempDir;
@@ -16,7 +16,11 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-// RSA digested sign/verify end-to-end via CLI actions
+// RSA digested sign/verify end-to-end via CLI actions.
+//
+// This test exercises the internal SignAction / SignatureVerifyAction directly
+// instead of shelling out through the cosmian binary. The previous
+// shell-based variant was brittle with respect to CLI flag changes.
 #[tokio::test]
 async fn rsa_digested_sign_verify_cli() -> KmsCliResult<()> {
     log_init(None);
@@ -38,12 +42,11 @@ async fn rsa_digested_sign_verify_cli() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-    // Sign digested input
+    // Sign digested input using the CLI action
     SignAction {
         input_file: digest_file.clone(),
         key_id: Some(private_key_id.to_string()),
         tags: None,
-
         output_file: Some(sig_file.clone()),
         digested: true,
     }
@@ -56,7 +59,6 @@ async fn rsa_digested_sign_verify_cli() -> KmsCliResult<()> {
         signature_file: sig_file.clone(),
         key_id: Some(public_key_id.to_string()),
         tags: None,
-
         output_file: None,
         digested: true,
     }
