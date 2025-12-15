@@ -242,7 +242,12 @@ mod tests {
             },
             azure_ekm_config: AzureEkmConfig {
                 azure_ekm_enable: false,
-                ..Default::default()
+                azure_ekm_path_prefix: None,
+                azure_ekm_disable_client_auth: "",
+                azure_ekm_proxy_vendor: "",
+                azure_ekm_proxy_name: "",
+                azure_ekm_ekm_vendor: "",
+                azure_ekm_ekm_product: "",
             },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
@@ -340,6 +345,9 @@ ui_oidc_logout_url = "[logout url]"
 google_cse_enable = false
 google_cse_disable_tokens_validation = false
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
+
+[azure_ekm_config]
+azure_ekm_enable = false
 
 [workspace]
 root_data_path = "[root data path]"
