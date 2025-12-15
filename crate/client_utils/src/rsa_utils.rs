@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use clap::ValueEnum;
 use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
@@ -17,12 +15,6 @@ pub enum RsaEncryptionAlgorithm {
     CkmRsaPkcsOaep,
     // CKM_RSA_AES_KEY_WRAP
     CkmRsaAesKeyWrap,
-}
-
-impl Display for RsaEncryptionAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 impl RsaEncryptionAlgorithm {
@@ -73,22 +65,6 @@ pub enum HashFn {
     Sha3_256,
     Sha3_384,
     Sha3_512,
-}
-
-impl Display for HashFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Sha1 => write!(f, "sha1"),
-            Self::Sha224 => write!(f, "sha224"),
-            Self::Sha256 => write!(f, "sha256"),
-            Self::Sha384 => write!(f, "sha384"),
-            Self::Sha512 => write!(f, "sha512"),
-            Self::Sha3_224 => write!(f, "sha3-224"),
-            Self::Sha3_256 => write!(f, "sha3-256"),
-            Self::Sha3_384 => write!(f, "sha3-384"),
-            Self::Sha3_512 => write!(f, "sha3-512"),
-        }
-    }
 }
 
 impl From<HashFn> for HashingAlgorithm {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
@@ -61,27 +61,6 @@ pub enum CLinkType {
     /// For wrapped objects: the object that was used to wrap this object.
     WrappingKey,
     // Extensions 8XXXXXXX
-}
-
-impl Display for CLinkType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Certificate => write!(f, "certificate"),
-            Self::PublicKey => write!(f, "public-key"),
-            Self::PrivateKey => write!(f, "private-key"),
-            Self::DerivationBaseObject => write!(f, "derivation-base-object"),
-            Self::DerivedKey => write!(f, "derived-key"),
-            Self::ReplacementObject => write!(f, "replacement-object"),
-            Self::ReplacedObject => write!(f, "replaced-object"),
-            Self::Parent => write!(f, "parent"),
-            Self::Child => write!(f, "child"),
-            Self::Previous => write!(f, "previous"),
-            Self::Next => write!(f, "next"),
-            Self::PKCS12Certificate => write!(f, "pkcs12-certificate"),
-            Self::PKCS12Password => write!(f, "pkcs12-password"),
-            Self::WrappingKey => write!(f, "wrapping-key"),
-        }
-    }
 }
 
 impl From<CLinkType> for LinkType {

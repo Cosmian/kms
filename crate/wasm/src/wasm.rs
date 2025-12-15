@@ -125,24 +125,31 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
 
 // Internal helpers to build algorithm option lists that reflect client_utils
 fn list_symmetric_algorithms() -> Vec<AlgoOption> {
-    // Build the list from client_utils' SymmetricAlgorithm enum and its Display impl
+    // Provide UI labels independent of Display, with values matching `SymmetricAlgorithm::from_str`
     #[allow(unused_mut)]
-    let mut algs: Vec<SymmetricAlgorithm> = vec![
-        SymmetricAlgorithm::Aes,
-        SymmetricAlgorithm::Sha3,
-        SymmetricAlgorithm::Shake,
+    let mut algs: Vec<(SymmetricAlgorithm, &'static str)> = vec![
+        (SymmetricAlgorithm::Aes, "AES"),
+        (SymmetricAlgorithm::Sha3, "SHA3"),
+        (SymmetricAlgorithm::Shake, "SHAKE"),
     ];
     #[cfg(feature = "non-fips")]
     {
-        algs.push(SymmetricAlgorithm::Chacha20);
+        algs.push((SymmetricAlgorithm::Chacha20, "ChaCha20"));
     }
 
     algs.into_iter()
-        .map(|a| {
-            let s = a.to_string();
+        .map(|(a, label)| {
+            // Values use PascalCase variant names expected by `from_str`
+            let value = match a {
+                SymmetricAlgorithm::Aes => "Aes",
+                #[cfg(feature = "non-fips")]
+                SymmetricAlgorithm::Chacha20 => "Chacha20",
+                SymmetricAlgorithm::Sha3 => "Sha3",
+                SymmetricAlgorithm::Shake => "Shake",
+            };
             AlgoOption {
-                value: s.clone(),
-                label: s,
+                value: value.to_owned(),
+                label: label.to_owned(),
             }
         })
         .collect()
@@ -172,31 +179,29 @@ fn list_ec_algorithms() -> Vec<AlgoOption> {
         .into_iter()
         .map(|c| {
             // Value must be kebab-case identifier that `Curve::from_str` accepts
-            let value = match c {
+            let (value, label): (&'static str, &'static str) = match c {
                 #[cfg(feature = "non-fips")]
-                Curve::NistP192 => "nist-p192",
-                Curve::NistP224 => "nist-p224",
-                Curve::NistP256 => "nist-p256",
-                Curve::NistP384 => "nist-p384",
-                Curve::NistP521 => "nist-p521",
+                Curve::NistP192 => ("nist-p192", "NIST P-192"),
+                Curve::NistP224 => ("nist-p224", "NIST P-224"),
+                Curve::NistP256 => ("nist-p256", "NIST P-256"),
+                Curve::NistP384 => ("nist-p384", "NIST P-384"),
+                Curve::NistP521 => ("nist-p521", "NIST P-521"),
                 #[cfg(feature = "non-fips")]
-                Curve::X25519 => "x25519",
+                Curve::X25519 => ("x25519", "X25519"),
                 #[cfg(feature = "non-fips")]
-                Curve::Ed25519 => "ed25519",
+                Curve::Ed25519 => ("ed25519", "Ed25519"),
                 #[cfg(feature = "non-fips")]
-                Curve::X448 => "x448",
+                Curve::X448 => ("x448", "X448"),
                 #[cfg(feature = "non-fips")]
-                Curve::Ed448 => "ed448",
+                Curve::Ed448 => ("ed448", "Ed448"),
                 #[cfg(feature = "non-fips")]
-                Curve::Secp256k1 => "secp256k1",
+                Curve::Secp256k1 => ("secp256k1", "SECP256k1"),
                 #[cfg(feature = "non-fips")]
-                Curve::Secp224k1 => "secp224k1",
+                Curve::Secp224k1 => ("secp224k1", "SECP224k1"),
             };
-            // Label uses Curve Display (human-friendly)
-            let label = c.to_string();
             AlgoOption {
                 value: value.to_owned(),
-                label,
+                label: label.to_owned(),
             }
         })
         .collect()
@@ -245,7 +250,7 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         variants.push(CryptographicAlgorithm::Ed448);
     }
 
-    if sym.iter().any(|o| o.value == "chacha20") {
+    if sym.iter().any(|o| o.value.eq_ignore_ascii_case("chacha20")) {
         variants.push(CryptographicAlgorithm::ChaCha20);
         variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
     }

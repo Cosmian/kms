@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use base64::{Engine as _, engine::general_purpose};
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, RecommendedCurve};
@@ -29,31 +27,6 @@ pub enum Curve {
     Secp256k1,
     #[cfg(feature = "non-fips")]
     Secp224k1,
-}
-
-impl Display for Curve {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "non-fips")]
-            Self::NistP192 => write!(f, "NIST P-192"),
-            Self::NistP224 => write!(f, "NIST P-224"),
-            Self::NistP256 => write!(f, "NIST P-256"),
-            Self::NistP384 => write!(f, "NIST P-384"),
-            Self::NistP521 => write!(f, "NIST P-521"),
-            #[cfg(feature = "non-fips")]
-            Self::X25519 => write!(f, "X25519"),
-            #[cfg(feature = "non-fips")]
-            Self::Ed25519 => write!(f, "Ed25519"),
-            #[cfg(feature = "non-fips")]
-            Self::X448 => write!(f, "X448"),
-            #[cfg(feature = "non-fips")]
-            Self::Ed448 => write!(f, "Ed448"),
-            #[cfg(feature = "non-fips")]
-            Self::Secp256k1 => write!(f, "SECP256k1"),
-            #[cfg(feature = "non-fips")]
-            Self::Secp224k1 => write!(f, "SECP224k1"),
-        }
-    }
 }
 
 impl From<Curve> for RecommendedCurve {
@@ -89,18 +62,6 @@ pub enum SymmetricAlgorithm {
     Aes,
     Sha3,
     Shake,
-}
-
-impl Display for SymmetricAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "non-fips")]
-            Self::Chacha20 => write!(f, "Chacha20"),
-            Self::Aes => write!(f, "Aes"),
-            Self::Sha3 => write!(f, "Sha3"),
-            Self::Shake => write!(f, "Shake"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, EnumString, ValueEnum)]
