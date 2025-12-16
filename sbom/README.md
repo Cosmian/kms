@@ -101,14 +101,6 @@ spdx-tools validate bom.spdx.json
 # Upload to https://tools.spdx.org/app/validate/
 ```
 
-### Analyze in Spreadsheet
-
-```bash
-libreoffice --calc sbom.csv
-# or
-excel sbom.csv
-```
-
 ### Query with jq
 
 ```bash
