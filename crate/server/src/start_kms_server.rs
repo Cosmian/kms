@@ -765,7 +765,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .wrap(Cors::permissive())
                 .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
                 .service(aws_xks::get_health_status)
-                .service(aws_xks::get_key_metadata);
+                .service(aws_xks::get_key_metadata)
+                .service(aws_xks::encrypt)
+                .service(aws_xks::decrypt);
 
             app = app.service(aws_xks_scope);
         }
