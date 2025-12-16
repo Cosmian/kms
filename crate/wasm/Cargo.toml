@@ -22,12 +22,12 @@ doctest = false
 
 [features]
 non-fips = ["cosmian_kms_client_utils/non-fips"]
-default = ["getrandom/js"]
+default = ["getrandom"]
 
 [dependencies]
 base64 = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.14.0" }
-getrandom = { version = "0.2", features = ["js"], optional = true }
+getrandom = { version = "0.3", optional = true }
 js-sys = "0.3.83"
 pem = { workspace = true }
 serde = { workspace = true }

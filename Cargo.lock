@@ -1437,7 +1437,7 @@ dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
  "cosmian_kms_client_utils",
- "getrandom 0.2.16",
+ "getrandom 0.3.4",
  "js-sys",
  "pem",
  "serde",
