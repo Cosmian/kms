@@ -133,7 +133,6 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-const_format = "0.2"
 cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "10.3", default-features = false, features = [
     "ser",
@@ -173,7 +172,6 @@ tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
 toml = "0.9"
-tower = { version = "0.5" }
 tracing = "0.1"
 url = "2.5"
 uuid = "=1.11.1"

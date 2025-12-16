@@ -110,7 +110,6 @@ thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
-tower = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.15.0" }
