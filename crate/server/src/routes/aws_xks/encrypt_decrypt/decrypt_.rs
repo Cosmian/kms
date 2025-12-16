@@ -19,7 +19,10 @@ use crate::{
     core::KMS,
     error::KmsError,
     result::KResult,
-    routes::aws_xks::encrypt_decrypt::{EncryptionAlgorithm, RequestMetadata},
+    routes::aws_xks::{
+        encrypt_decrypt::{EncryptionAlgorithm, RequestMetadata},
+        error::{XksErrorName, XksErrorReply},
+    },
 };
 
 /// KMS uses this API to encrypt data using a key in an external key manager.
@@ -143,7 +146,27 @@ pub(crate) async fn decrypt(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => HttpResponse::from_error(e),
+        Err(e) => match e {
+            KmsError::Unauthorized(msg) => XksErrorReply {
+                errorName: XksErrorName::InvalidKeyUsageException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            KmsError::ItemNotFound(msg) => XksErrorReply {
+                errorName: XksErrorName::KeyNotFoundException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            KmsError::CryptographicError(msg) => XksErrorReply {
+                errorName: XksErrorName::InvalidCiphertextException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            _ => {
+                info!("Decrypt error: {:?}", e);
+                HttpResponse::from_error(e)
+            }
+        },
     }
 }
 

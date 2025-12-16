@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, PaddingMethod, State},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -84,6 +84,7 @@ pub(crate) async fn decrypt(
     // for each uid. This is also based on the high probability that there is still a single object
     // in the candidates' list.
     let mut selected_owm = None;
+    let mut found_but_no_permission = false;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
             if !kms
@@ -114,10 +115,7 @@ pub(crate) async fn decrypt(
             .await?
             .ok_or_else(|| {
                 debug!("failed to retrieve the key: {uid}");
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    format!("Decrypt: failed to retrieve the key: {uid}"),
-                )
+                KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {uid}"))
             })?;
         // Check effective state (PreActive with past activation_date counts as Active)
         if get_effective_state(&owm)? != State::Active {
@@ -145,6 +143,7 @@ pub(crate) async fn decrypt(
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
                 debug!("{user} is not authorized to decrypt using: {uid}");
+                found_but_no_permission = true;
                 continue;
             }
         }
@@ -169,10 +168,13 @@ pub(crate) async fn decrypt(
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("Decrypt: no valid key for id: {unique_identifier}"),
-        )
+        if found_but_no_permission {
+            KmsError::Unauthorized(format!(
+                "Decrypt: invalid key usage for: {unique_identifier}"
+            ))
+        } else {
+            KmsError::ItemNotFound(format!("Decrypt: key id: {unique_identifier}, not found"))
+        }
     })?;
 
     // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when

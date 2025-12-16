@@ -8,6 +8,7 @@ mod sigv4_middleware;
 use crate::{error::KmsError, result::KResultHelper};
 pub use aws_xks_config::AwsXksConfig;
 pub(crate) use encrypt_decrypt::{decrypt, encrypt};
+pub(crate) use error::{xks_json_error_handler, xks_path_not_found_handler};
 pub(crate) use health_status::get_health_status;
 pub(crate) use key_metadata::get_key_metadata;
 pub use sigv4_middleware::Sigv4MWare;

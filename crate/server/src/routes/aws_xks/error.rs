@@ -1,8 +1,13 @@
 #![allow(dead_code)]
 use actix_web::{
     // Error, HttpRequest,
+    Error,
+    HttpRequest,
     HttpResponse,
     ResponseError,
+    // dev::ServiceResponse,
+    error::JsonPayloadError,
+    // middleware::ErrorHandlerResponse,
     // dev::ServiceResponse, error::JsonPayloadError, http, middleware::ErrorHandlerResponse,
 };
 use cosmian_logger::debug;
@@ -144,39 +149,29 @@ impl ResponseError for XksErrorReply {
     }
 }
 
-// // Custom error handler for JSON deserialization errors
-// pub(crate) fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
-//     let error_message = match &err {
-//         JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {e}"),
-//         _ => "Unknown error".to_owned(),
-//     };
-//     XksErrorReply {
-//         errorName: XksErrorName::ValidationException,
-//         errorMessage: Some(error_message),
-//     }
-//     .into()
-// }
+// Custom error handler for JSON deserialization errors
+#[allow(clippy::needless_pass_by_value)]
+pub(crate) fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
+    let error_message = match &err {
+        JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {e}"),
+        _ => "Unknown error".to_owned(),
+    };
+    XksErrorReply {
+        errorName: XksErrorName::ValidationException,
+        errorMessage: Some(error_message),
+    }
+    .into()
+}
 
-// /// Custom error handler for 404 due to path errors
-// pub(crate) fn xks_path_not_found_handler<B>(
-//     res: ServiceResponse<B>,
-// ) -> actix_web::Result<ErrorHandlerResponse<B>> {
-//     // split service response into request and response components
-//     let (req, res) = res.into_parts();
-
-//     // set body of response to modified body
-//     let res = res.set_body(serde_json::to_string(&XksErrorReply {
-//         errorName: XksErrorName::InvalidUriPathException,
-//         errorMessage: Some(format!("Resource not found: {}", req.path())),
-//     })?);
-
-//     // modified bodies need to be boxed and placed in the "right" slot
-//     let res = ServiceResponse::new(req, res)
-//         .map_into_boxed_body()
-//         .map_into_right_body();
-
-//     Ok(ErrorHandlerResponse::Response(res))
-// }
+pub(crate) async fn xks_path_not_found_handler(
+    req: HttpRequest,
+) -> Result<HttpResponse, XksErrorReply> {
+    debug!("XKS Proxy - Path not found: {}", req.path());
+    Err(XksErrorReply {
+        errorName: XksErrorName::InvalidUriPathException,
+        errorMessage: Some(format!("Resource not found: {}", req.path())),
+    })
+}
 
 // /// Custom error handler for "I am a teapot" which are "key not found" errors
 // /// and must be reconverted to 404 to meet the spec
