@@ -1,7 +1,5 @@
-// use const_format::concatcp;
-
-// mod encrypt_decrypt;
 mod aws_xks_config;
+mod encrypt_decrypt;
 mod error;
 mod health_status;
 mod key_metadata;

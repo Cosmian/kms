@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::{
-    KMSServer,
+    KMS,
     error::KmsError,
     result::KResult,
     routes::xks::encrypt_decrypt::{EncrytionAlgorithm, RequestMetadata},
