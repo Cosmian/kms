@@ -40,6 +40,7 @@ use scratchstack_aws_signature::{
 use zeroize::Zeroizing;
 
 use crate::core::KMS;
+use crate::routes::aws_xks::error::{XksErrorName, XksErrorReply};
 
 // const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
 // const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
@@ -193,10 +194,12 @@ where
                 })?;
 
             if access_key_id != gsk_req.access_key {
-                return Err(actix_web::error::ErrorUnauthorized(format!(
-                    "Access key id {} not found",
-                    gsk_req.access_key
-                )));
+                let err: Self::Error = XksErrorReply {
+                    errorName: XksErrorName::AuthenticationFailedException,
+                    errorMessage: Some(format!("Access key id {} not found", gsk_req.access_key)),
+                }
+                .into();
+                return Err(err);
             }
 
             let signing_key = SigningKey {
@@ -212,9 +215,14 @@ where
                 params.service.as_str(),
             ) {
                 tracing::warn!("SigV4 failure: {signature_error}");
-                return Err(actix_web::error::ErrorUnauthorized(format!(
-                    "Signature v4 verification failed: {signature_error}",
-                )));
+                let err: Self::Error = XksErrorReply {
+                    errorName: XksErrorName::AuthenticationFailedException,
+                    errorMessage: Some(format!(
+                        "Signature v4 verification failed: {signature_error}",
+                    )),
+                }
+                .into();
+                return Err(err);
             }
 
             // rebuild request with body_as_bytes and forward to next service

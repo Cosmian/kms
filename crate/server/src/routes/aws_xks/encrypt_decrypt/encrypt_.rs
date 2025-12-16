@@ -24,7 +24,10 @@ use crate::{
     core::KMS,
     error::KmsError,
     result::KResult,
-    routes::aws_xks::encrypt_decrypt::{CdivAlgorithm, EncryptionAlgorithm, RequestMetadata},
+    routes::aws_xks::{
+        encrypt_decrypt::{CdivAlgorithm, EncryptionAlgorithm, RequestMetadata},
+        error::{XksErrorName, XksErrorReply},
+    },
     // routes::xks::encrypt_decrypt::{CdivAlgorithm, EncrytionAlgorithm, RequestMetadata},
 };
 
@@ -198,7 +201,24 @@ pub(crate) async fn encrypt(
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => HttpResponse::from_error(e),
+        Err(e) => match e {
+            KmsError::Unauthorized(msg) => XksErrorReply {
+                errorName: XksErrorName::InvalidKeyUsageException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            KmsError::ItemNotFound(msg) => XksErrorReply {
+                errorName: XksErrorName::KeyNotFoundException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            KmsError::CryptographicError(msg) => XksErrorReply {
+                errorName: XksErrorName::ValidationException,
+                errorMessage: Some(msg),
+            }
+            .into(),
+            _ => HttpResponse::from_error(e),
+        },
     }
 }
 
