@@ -4,17 +4,16 @@
 use std::sync::Arc;
 
 use actix_web::{
-    post,
+    HttpRequest, HttpResponse, post,
     web::{Data, Json, Path},
-    HttpRequest, HttpResponse,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
-use cosmian_kmip::{
-    crypto::symmetric::AES_256_GCM_IV_LENGTH,
-    kmip::{
+use base64::{Engine, engine::general_purpose::STANDARD};
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
         kmip_operations::Encrypt,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_IV_LENGTH,
 };
 use openssl::{rand::rand_bytes, sha::Sha256};
 use serde::{Deserialize, Serialize};
@@ -22,10 +21,11 @@ use tracing::{debug, info};
 use zeroize::Zeroizing;
 
 use crate::{
+    core::KMS,
     error::KmsError,
     result::KResult,
-    routes::xks::encrypt_decrypt::{CdivAlgorithm, EncrytionAlgorithm, RequestMetadata},
-    KMSServer,
+    routes::aws_xks::encrypt_decrypt::{EncrytionAlgorithm, RequestMetadata},
+    // routes::xks::encrypt_decrypt::{CdivAlgorithm, EncrytionAlgorithm, RequestMetadata},
 };
 
 /// KMS uses this API to encrypt data using a key in an external key manager.
@@ -181,7 +181,7 @@ pub async fn encrypt(
     req_http: HttpRequest,
     key_id: Path<String>,
     request: Json<EncryptRequest>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let request = request.into_inner();
     let key_id = key_id.into_inner();
@@ -203,7 +203,7 @@ async fn _encrypt(
     req_http: HttpRequest,
     request: EncryptRequest,
     key_id_or_tags: String,
-    kms: &Arc<KMSServer>,
+    kms: &Arc<KMS>,
 ) -> KResult<EncryptResponse> {
     let user = request.requestMetadata.awsPrincipalArn;
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
@@ -230,7 +230,7 @@ async fn _encrypt(
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id_or_tags.clone())),
                 cryptographic_parameters: Some(cryptographic_parameters),
                 data: Some(data),
-                iv_counter_nonce: Some(nonce.to_vec()),
+                i_v_counter_nonce: Some(nonce.to_vec()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
@@ -251,7 +251,7 @@ async fn _encrypt(
         None
     };
     let nonce = response
-        .iv_counter_nonce
+        .i_v_counter_nonce
         .ok_or_else(|| KmsError::ServerError("Missing AES GCM nonce".to_owned()))?;
     let tag = response.authenticated_encryption_tag.ok_or_else(|| {
         KmsError::ServerError("Missong AeS GCM authenticated encryption tag".to_owned())

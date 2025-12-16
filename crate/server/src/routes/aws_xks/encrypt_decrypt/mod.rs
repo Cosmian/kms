@@ -1,9 +1,8 @@
-pub use decrypt_::{decrypt, DecryptRequest, DecryptResponse};
-pub use encrypt_::{encrypt, EncryptRequest, EncryptResponse};
+mod decrypt;
+mod encrypt;
+pub use decrypt::{DecryptRequest, DecryptResponse, decrypt};
+pub use encrypt::{EncryptRequest, EncryptResponse, encrypt};
 use serde::{Deserialize, Serialize};
-
-mod decrypt_;
-mod encrypt_;
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
