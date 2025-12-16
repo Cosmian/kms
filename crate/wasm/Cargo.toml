@@ -28,12 +28,12 @@ default = ["getrandom/js"]
 base64 = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.14.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
-js-sys = "0.3.77"
+js-sys = "0.3.83"
 pem = { workspace = true }
 serde = { workspace = true }
 serde-wasm-bindgen = "0.6.5"
 serde_json = { workspace = true }
-wasm-bindgen = "0.2.100"
+wasm-bindgen = "0.2.106"
 console_error_panic_hook = "0.1"
 x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }

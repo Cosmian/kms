@@ -69,9 +69,9 @@ zeroize = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.1"
 openssl = { workspace = true }
-serial_test = "3.0"
-tempfile = "3.19"
+serial_test = "3.2"
+tempfile = "3.23"
 test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }

@@ -124,12 +124,12 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
-actix-rt = "2.10"
-actix-server = { version = "2.5", default-features = false }
-actix-web = { version = "4.10", default-features = false }
+actix-rt = "2.11"
+actix-server = { version = "2.6", default-features = false }
+actix-web = { version = "4.12", default-features = false }
 async-trait = "0.1"
 base64 = "0.22"
-bitflags = "2.9"
+bitflags = "2.10"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_config_utils = "0.3.1"
@@ -145,7 +145,7 @@ leb128 = "0.2"
 libloading = "0.8"
 lru = "0.12"
 native-tls = { version = "0.2", default-features = false }
-num_cpus = "1.16"
+num_cpus = "1.17"
 num-format = "0.4"
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
@@ -166,11 +166,11 @@ strum_macros = { version = "0.27", default-features = false }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"
-tempfile = "3.19"
-tokio = { version = "1.44", default-features = false }
+tempfile = "3.23"
+tokio = { version = "1.48", default-features = false }
 tracing = "0.1"
 url = "2.5"
-uuid = "=1.11.1"
+uuid = { version = "1.19.0", default-features = false, features = ["js"] }
 x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17"
 zeroize = { version = "1.8", default-features = false }
