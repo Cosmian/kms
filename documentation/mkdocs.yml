@@ -87,6 +87,7 @@ nav:
           - Migrating existing email to Gmail CSE: google_cse/migrating_gmail.md
       - Microsoft 365 Double Key Encryption (DKE): ms_dke/index.md
       - MongoDB: mongodb.md
+      - MySQL Enterprise Edition: mysql.md
       - Postgresql Percona Database: percona.md
       - PyKMIP: pykmip.md
       - S/MIME Email encryption: pki/smime.md
