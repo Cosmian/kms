@@ -49,6 +49,7 @@ server application written in [**Rust**](https://www.rust-lang.org/) with unique
     - [VMware](./vcenter.md)
     - [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md),
     - [MongoDB](./mongodb.md),
+    - [Mysql Enterprise](./mysql.md)
     - [PostgreSQL](./percona.md)
     - and more
 - **Big Data encryption**:
