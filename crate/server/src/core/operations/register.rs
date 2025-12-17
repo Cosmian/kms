@@ -1,17 +1,12 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        self,
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{Register, RegisterResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    self,
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Register, RegisterResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::SessionParams,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
@@ -34,7 +29,7 @@ pub(crate) async fn register(
     kms: &KMS,
     mut request: Register,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     privileged_users: Option<Vec<String>>,
 ) -> KResult<RegisterResponse> {
     trace!("{request}");
@@ -50,7 +45,6 @@ pub(crate) async fn register(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
-            params.clone(),
         )
         .await?;
 
@@ -101,42 +95,12 @@ pub(crate) async fn register(
     // Process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => {
-            Box::pin(process_symmetric_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
+            Box::pin(process_symmetric_key(kms, request.into(), owner)).await?
         }
         ObjectType::Certificate => process_certificate(request.into())?,
-        ObjectType::PublicKey => {
-            Box::pin(process_public_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
-        ObjectType::PrivateKey => {
-            Box::pin(process_private_key(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
-        ObjectType::SecretData => {
-            Box::pin(process_secret_data(
-                kms,
-                request.into(),
-                owner,
-                params.clone(),
-            ))
-            .await?
-        }
+        ObjectType::PublicKey => Box::pin(process_public_key(kms, request.into(), owner)).await?,
+        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request.into(), owner)).await?,
+        ObjectType::SecretData => Box::pin(process_secret_data(kms, request.into(), owner)).await?,
         ObjectType::OpaqueObject => {
             // Reuse the import path logic (no unwrap/wrap for opaque objects)
             let (uid, ops) = process_opaque_object(request.into())?;
@@ -148,7 +112,7 @@ pub(crate) async fn register(
             )));
         }
     };
-    kms.database.atomic(owner, &operations, params).await?;
+    kms.database.atomic(owner, &operations).await?;
     debug!("Registered object with uid: {}", uid);
     Ok(RegisterResponse {
         unique_identifier: UniqueIdentifier::TextString(uid),

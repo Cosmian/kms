@@ -136,6 +136,9 @@ done
 # Validate command argument
 [ -z "${COMMAND:-}" ] && usage
 
+# Export variables so they can be kept by nix-shell --keep
+export PROFILE VARIANT LINK
+
 # Handle test subcommand
 TEST_TYPE=""
 if [ "$COMMAND" = "test" ]; then
@@ -362,7 +365,10 @@ test)
         --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
         --keep WITH_WGET \
         --keep WITH_HSM \
-          --keep WITH_PYTHON"
+          --keep WITH_PYTHON \
+          --keep VARIANT \
+          --keep LINK \
+          --keep BUILD_PROFILE"
   ;;
 package)
   # Prefer Nix derivations (nix/package.nix) over shell scripts
@@ -807,12 +813,6 @@ if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "
   echo "Note: Running without --pure mode on macOS for DMG packaging (requires system utilities)"
 fi
 
-# For HSM tests we need access to system libraries (e.g., vendor PKCS#11, OpenSSL)
-if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; }; then
-  USE_PURE=false
-  echo "Note: Running without --pure mode for HSM tests to allow system PKCS#11/runtime libraries"
-fi
-
 {
   # Decide purity and extra packages once, then run a single nix-shell
   PURE_FLAG="--pure"
@@ -845,10 +845,11 @@ fi
   fi
 
   # Build command to run inside nix-shell
+  # Export VARIANT, LINK, and BUILD_PROFILE before the command so shellHook can see them
   if [ "$COMMAND" = "sbom" ]; then
-    CMD="bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
   else
-    CMD="bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
 
   # shellcheck disable=SC2086

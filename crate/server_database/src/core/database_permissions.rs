@@ -1,10 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
-use cosmian_kms_interfaces::SessionParams;
 
 use super::Database;
 use crate::error::DbResult;
@@ -19,12 +15,8 @@ impl Database {
     pub async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        Ok(self
-            .permissions
-            .list_user_operations_granted(user, params)
-            .await?)
+        Ok(self.permissions.list_user_operations_granted(user).await?)
     }
 
     /// List all the KMIP operations granted per `user` on the given object
@@ -32,12 +24,8 @@ impl Database {
     pub async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(self
-            .permissions
-            .list_object_operations_granted(uid, params)
-            .await?)
+        Ok(self.permissions.list_object_operations_granted(uid).await?)
     }
 
     /// Grant the ability to `user` to perform the KMIP `operations`
@@ -47,11 +35,10 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         Ok(self
             .permissions
-            .grant_operations(uid, user, operations, params)
+            .grant_operations(uid, user, operations)
             .await?)
     }
 
@@ -62,11 +49,10 @@ impl Database {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         Ok(self
             .permissions
-            .remove_operations(uid, user, operations, params)
+            .remove_operations(uid, user, operations)
             .await?)
     }
 
@@ -79,11 +65,10 @@ impl Database {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashSet<KmipOperation>> {
         Ok(self
             .permissions
-            .list_user_operations_on_object(uid, user, no_inherited_access, params)
+            .list_user_operations_on_object(uid, user, no_inherited_access)
             .await?)
     }
 }

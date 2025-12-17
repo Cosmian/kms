@@ -103,7 +103,6 @@ pub async fn handle_google_cse_rsa_keypair(
                 attribute_reference: None,
             },
             &server_params.default_username,
-            None,
         )
         .await
     {
@@ -134,7 +133,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username, None, None)
+                .create_key_pair(create_request, &server_params.default_username, None)
                 .await
                 .map(|cr| {
                     (
@@ -161,7 +160,6 @@ pub async fn handle_google_cse_rsa_keypair(
                     attribute_reference: None,
                 },
                 &server_params.default_username,
-                None,
             )
             .await
         {
@@ -287,12 +285,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(
-            import_request_sk,
-            &server_params.default_username,
-            None,
-            None,
-        )
+        kms_server.import(import_request_sk, &server_params.default_username, None)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -304,12 +297,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(
-            import_request_pk,
-            &server_params.default_username,
-            None,
-            None,
-        )
+        kms_server.import(import_request_pk, &server_params.default_username, None)
     };
 
     try_join!(import_sk_fut, import_pk_fut)

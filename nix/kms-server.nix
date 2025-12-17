@@ -252,7 +252,7 @@ rustPlatform.buildRustPackage rec {
   inherit version;
   # Disable cargo-auditable wrapper; it doesn't understand edition=2024 yet
   auditable = false;
-  # Run tests only for static builds; skip for dynamic to avoid runtime libssl issues
+  # Run tests only for static builds (self-contained OpenSSL); dynamic builds may lack runtime libssl in sandbox
   doCheck = static;
 
   # Provide the whole workspace but filtered; build only the server crate.
@@ -410,7 +410,7 @@ rustPlatform.buildRustPackage rec {
     license = {
       shortName = "BUSL-1.1";
       fullName = "Business Source License 1.1";
-      url = "https://mariadb.com/bsl11/";
+      url = "https://github.com/Cosmian/kms/blob/develop/LICENSE";
       free = false;
     };
     platforms = [
@@ -462,7 +462,20 @@ rustPlatform.buildRustPackage rec {
   dontInstallCheck = false;
   cargoCheckHook = "";
   cargoNextestHook = "";
-  checkPhase = ":";
+  checkPhase = ''
+    runHook preCheck
+    echo "== cargo test cosmian_kms_server (release) =="
+    export RUST_BACKTRACE=1
+    export OPENSSL_DIR="${openssl312}"
+    export OPENSSL_LIB_DIR="${openssl312}/lib"
+    export OPENSSL_INCLUDE_DIR="${openssl312}/include"
+    export OPENSSL_NO_VENDOR=1
+
+    cargo test --release -p cosmian_kms_server --no-default-features \
+      ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"}
+
+    runHook postCheck
+  '';
   configurePhase = ''
     export CARGO_HOME="$(pwd)/.cargo-home"
   '';

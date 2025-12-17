@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -20,7 +18,7 @@ use cosmian_kms_server_database::reexport::{
             cosmian_crypto_core::bytes_ser_de::Serializable,
         },
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
 
@@ -35,7 +33,6 @@ pub(crate) async fn create_user_decryption_key(
     cover_crypt: Covercrypt,
     create_request: &Create,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     sensitive: bool,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<Object> {
@@ -51,7 +48,7 @@ pub(crate) async fn create_user_decryption_key(
 
     for owm in kmip_server
         .database
-        .retrieve_objects(&msk_uid_or_tags, params.clone())
+        .retrieve_objects(&msk_uid_or_tags)
         .await?
         .into_values()
     {
@@ -96,7 +93,7 @@ pub(crate) async fn create_user_decryption_key(
         };
 
         kmip_server
-            .import(import_request, owner, params.clone(), privileged_users)
+            .import(import_request, owner, privileged_users)
             .await?;
 
         return Ok(usk_obj);

@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
@@ -15,7 +14,7 @@ use cosmian_kms_server_database::reexport::{cosmian_kmip, cosmian_kms_crypto::cr
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
     cover_crypt::master_keys::create_master_keypair
 }};
-use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation, SessionParams};
+use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_objects::ObjectType,
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
@@ -38,7 +37,7 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
@@ -51,7 +50,6 @@ pub(crate) async fn create_key_pair(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
-            params.clone(),
         )
         .await?;
 
@@ -148,7 +146,6 @@ pub(crate) async fn create_key_pair(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params.clone(),
         &UniqueIdentifier::TextString(sk_uid.clone()),
         &mut private_key,
     ))
@@ -193,7 +190,6 @@ pub(crate) async fn create_key_pair(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params.clone(),
         &UniqueIdentifier::TextString(pk_uid.clone()),
         &mut public_key,
     ))
@@ -213,7 +209,7 @@ pub(crate) async fn create_key_pair(
             public_key_tags,
         )),
     ];
-    let ids = kms.database.atomic(owner, &operations, params).await?;
+    let ids = kms.database.atomic(owner, &operations).await?;
 
     let sk_uid = ids
         .first()

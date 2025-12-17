@@ -1,4 +1,4 @@
-use std::{ops::AsyncFn, sync::Arc};
+use std::ops::AsyncFn;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -20,7 +20,6 @@ use cosmian_kms_server_database::reexport::{
         },
         reexport::cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt},
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::trace;
 
@@ -36,14 +35,12 @@ use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KR
 /// - `AddAttribute`: Add new attributes to the access structure.
 /// - `RenameAttribute`: Rename attributes in the access structure.
 #[expect(clippy::large_futures)]
-#[expect(clippy::too_many_arguments)]
 pub(crate) async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     msk_uid: String,
     owner: &str,
     action: RekeyEditAction,
-    params: Option<Arc<dyn SessionParams>>,
     _sensitive: bool,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
@@ -53,7 +50,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params.clone(),
                 &msk_uid,
                 async |msk, mpk| {
                     let ap = deserialize_access_policy(&access_policy)?;
@@ -64,7 +60,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         &msk_uid,
                         msk,
                         owner,
-                        params.clone(),
                         &privileged_users,
                     )
                     .await?;
@@ -78,7 +73,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params.clone(),
                 &msk_uid,
                 async |msk, _mpk| {
                     let ap = deserialize_access_policy(&access_policy)?;
@@ -89,7 +83,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         &msk_uid,
                         msk,
                         owner,
-                        params.clone(),
                         &privileged_users,
                     )
                     .await?;
@@ -103,7 +96,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params.clone(),
                 &msk_uid,
                 async |msk, mpk| {
                     attrs
@@ -116,7 +108,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                         &msk_uid,
                         msk,
                         owner,
-                        params.clone(),
                         &privileged_users,
                     )
                     .await?;
@@ -130,7 +121,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params,
                 &msk_uid,
                 async |msk, mpk| {
                     attrs
@@ -147,7 +137,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params,
                 &msk_uid,
                 async |msk, mpk| {
                     pairs_attr_name
@@ -167,7 +156,6 @@ pub(crate) async fn rekey_keypair_cover_crypt(
             update_master_keys(
                 kmip_server,
                 owner,
-                params,
                 &msk_uid,
                 async |msk, mpk| {
                     attrs_properties
@@ -197,13 +185,11 @@ pub(crate) async fn rekey_keypair_cover_crypt(
 pub(super) async fn update_master_keys(
     server: &KMS,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     msk_uid: &String,
     mutator: impl AsyncFn(&mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
     privileged_users: &Option<Vec<String>>,
 ) -> KResult<String> {
-    let (msk_obj, (mpk_uid, mpk_obj)) =
-        get_master_keys(server, msk_uid, owner, params.clone()).await?;
+    let (msk_obj, (mpk_uid, mpk_obj)) = get_master_keys(server, msk_uid, owner).await?;
 
     let (mut msk, mut mpk) = cc_master_keypair_from_kmip_objects(&msk_obj, &mpk_obj)?;
 
@@ -214,7 +200,6 @@ pub(super) async fn update_master_keys(
     import_rekeyed_master_keys(
         server,
         owner,
-        params,
         (msk_uid.clone(), msk_obj),
         (mpk_uid.clone(), mpk_obj),
         privileged_users,
@@ -228,12 +213,8 @@ async fn get_master_keys(
     kmip_server: &KMS,
     msk_uid: &String,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<(Object, KmipKeyUidObject)> {
-    let msk_obj = kmip_server
-        .get(Get::from(msk_uid), owner, params.clone())
-        .await?
-        .object;
+    let msk_obj = kmip_server.get(Get::from(msk_uid), owner).await?.object;
 
     if msk_obj.key_wrapping_data().is_some() {
         kms_bail!(KmsError::InconsistentOperation(
@@ -251,10 +232,7 @@ async fn get_master_keys(
             )
         })?;
 
-    let mpk_obj = kmip_server
-        .get(Get::from(&mpk_uid), owner, params)
-        .await?
-        .object;
+    let mpk_obj = kmip_server.get(Get::from(&mpk_uid), owner).await?.object;
 
     Ok((msk_obj, (mpk_uid, mpk_obj)))
 }
@@ -263,7 +241,6 @@ async fn get_master_keys(
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
     privileged_users: &Option<Vec<String>>,
@@ -278,12 +255,7 @@ async fn import_rekeyed_master_keys(
     };
 
     kmip_server
-        .import(
-            import_request,
-            owner,
-            params.clone(),
-            privileged_users.clone(),
-        )
+        .import(import_request, owner, privileged_users.clone())
         .await?;
 
     let import_request = Import {
@@ -296,7 +268,7 @@ async fn import_rekeyed_master_keys(
     };
 
     kmip_server
-        .import(import_request, owner, params, privileged_users.clone())
+        .import(import_request, owner, privileged_users.clone())
         .await?;
 
     Ok(())
@@ -309,31 +281,14 @@ async fn update_all_active_usk(
     msk_uid: &str,
     msk: &mut MasterSecretKey,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     privileged_users: &Option<Vec<String>>,
 ) -> KResult<()> {
-    let res = locate_usk(
-        kmip_server,
-        msk_uid,
-        None,
-        Some(State::Active),
-        owner,
-        params.clone(),
-    )
-    .await?;
+    let res = locate_usk(kmip_server, msk_uid, None, Some(State::Active), owner).await?;
 
     if let Some(uids) = &res {
         let mut handler = UserDecryptionKeysHandler::instantiate(cover_crypt, msk);
         for usk_uid in uids {
-            update_usk(
-                &mut handler,
-                usk_uid,
-                kmip_server,
-                owner,
-                params.clone(),
-                privileged_users,
-            )
-            .await?;
+            update_usk(&mut handler, usk_uid, kmip_server, owner, privileged_users).await?;
         }
     }
 
@@ -346,12 +301,9 @@ async fn update_usk(
     usk_uid: &str,
     kmip_server: &KMS,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     privileged_users: &Option<Vec<String>>,
 ) -> KResult<()> {
-    let res = kmip_server
-        .get(Get::from(usk_uid), owner, params.clone())
-        .await?;
+    let res = kmip_server.get(Get::from(usk_uid), owner).await?;
 
     let usk_obj = handler.refresh_usk_object(&res.object, true)?;
 
@@ -368,7 +320,7 @@ async fn update_usk(
     };
 
     kmip_server
-        .import(req, owner, params, privileged_users.clone())
+        .import(req, owner, privileged_users.clone())
         .await?;
 
     Ok(())
