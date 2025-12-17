@@ -18,7 +18,7 @@ The default value is set to `info`.
 Example of setting the log level using the `RUST_LOG` environment variable:
 
 ```bash
-RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
+RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=info,mysql=info"
 ```
 
 The first `info` specifies the default log level for the crates (packages) that compose
@@ -29,13 +29,13 @@ To get detailed logs of user requests, set the log level of `cosmian_kms_server`
 `debug`:
 
 ```bash
-RUST_LOG=info,cosmian=info,cosmian_kms_server=debug,actix_web=info,sqlx::query=error,mysql=info"
+RUST_LOG=info,cosmian=info,cosmian_kms_server=debug,actix_web=info,mysql=info"
 ```
 
 To debug HTTP issues, set the log level of `actix_web` to `debug`:
 
 ```bash
-RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=debug,sqlx::query=error,mysql=info"
+RUST_LOG=info,cosmian=info,cosmian_kms_server=info,actix_web=debug,mysql=info"
 ```
 
 **WARNING**: Setting the log level to `debug` or `trace` may leak sensitive information in the

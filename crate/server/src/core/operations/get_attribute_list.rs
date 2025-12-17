@@ -1,12 +1,7 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_operations::{GetAttributeList, GetAttributeListResponse},
-        kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
-    },
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    KmipOperation,
+    kmip_operations::{GetAttributeList, GetAttributeListResponse},
+    kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
 };
 use cosmian_logger::trace;
 
@@ -21,7 +16,6 @@ pub(super) async fn get_attribute_list(
     kms: &KMS,
     request: GetAttributeList,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<GetAttributeListResponse> {
     let uid = request
         .unique_identifier
@@ -37,7 +31,6 @@ pub(super) async fn get_attribute_list(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
 

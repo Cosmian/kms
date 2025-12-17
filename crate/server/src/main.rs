@@ -19,8 +19,7 @@ mod expiry;
 
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
-    "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
-        .to_owned()
+    "info,cosmian=info,cosmian_kms_server=info,actix_web=info".to_owned()
 }
 
 /// Get the appropriate `rust_log` value, preferring config over environment

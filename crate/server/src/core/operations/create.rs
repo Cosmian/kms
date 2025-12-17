@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip,
     cosmian_kmip::{
@@ -11,7 +9,6 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
@@ -30,7 +27,6 @@ pub(crate) async fn create(
     kms: &KMS,
     request: Create,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateResponse> {
     trace!("{request}");
@@ -46,7 +42,6 @@ pub(crate) async fn create(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
-            params.clone(),
         )
         .await?;
 
@@ -60,7 +55,7 @@ pub(crate) async fn create(
     let (unique_identifier, mut object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => {
-            kms.create_private_key_and_tags(&request, owner, params.clone(), privileged_users)
+            kms.create_private_key_and_tags(&request, owner, privileged_users)
                 .await?
         }
         ObjectType::SecretData => KMS::create_secret_data_and_tags(&request)?,
@@ -149,14 +144,7 @@ pub(crate) async fn create(
         &attributes,
     );
     // Wrap the object if requested by the user or on the server params
-    Box::pin(wrap_and_cache(
-        kms,
-        owner,
-        params.clone(),
-        &unique_identifier,
-        &mut object,
-    ))
-    .await?;
+    Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
 
     // create the object in the database
     let uid = kms
@@ -167,7 +155,6 @@ pub(crate) async fn create(
             &object,
             &attributes,
             &tags,
-            params,
         )
         .await?;
     info!(

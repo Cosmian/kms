@@ -58,7 +58,7 @@ async fn test_curve_25519() -> KResult<()> {
         false,
         None,
     )?;
-    let response = kms.create_key_pair(request, &owner, None, None).await?;
+    let response = kms.create_key_pair(request, &owner, None).await?;
     // check that the private and public keys exist
     // check secret key
     let sk_response = kms
@@ -70,7 +70,6 @@ async fn test_curve_25519() -> KResult<()> {
                     .context("no string for the private_key_unique_identifier")?,
             ),
             &owner,
-            None,
         )
         .await?;
     let sk_uid = sk_response
@@ -131,7 +130,6 @@ async fn test_curve_25519() -> KResult<()> {
                     .context("no string for the public_key_unique_identifier")?,
             ),
             &owner,
-            None,
         )
         .await?;
     let pk = &pk_response.object;
@@ -198,10 +196,7 @@ async fn test_curve_25519() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let new_uid = kms
-        .import(request, &owner, None, None)
-        .await?
-        .unique_identifier;
+    let new_uid = kms.import(request, &owner, None).await?.unique_identifier;
     // update
     let request = Import {
         unique_identifier: new_uid.clone(),
@@ -214,7 +209,7 @@ async fn test_curve_25519() -> KResult<()> {
         },
         object: pk,
     };
-    let update_response = kms.import(request, &owner, None, None).await?;
+    let update_response = kms.import(request, &owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }
@@ -252,7 +247,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, &owner, None).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 2);
 
     let request = RequestMessage {
@@ -305,7 +300,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         ],
     };
 
-    let response = kms.message(request, &owner, None).await?;
+    let response = kms.message(request, &owner).await?;
     assert_eq!(response.response_header.batch_count, 4);
     assert_eq!(response.batch_item.len(), 4);
 

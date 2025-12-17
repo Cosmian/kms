@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -11,7 +9,7 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::trace;
 
@@ -55,7 +53,6 @@ pub(crate) async fn activate(
     kms: &KMS,
     request: Activate,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ActivateResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
@@ -70,7 +67,6 @@ pub(crate) async fn activate(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     trace!("Retrieved object for: {}", owm.object());
@@ -150,19 +146,11 @@ pub(crate) async fn activate(
 
     // Update the object in the database
     kms.database
-        .update_object(
-            owm.id(),
-            owm.object(),
-            owm.attributes(),
-            None,
-            params.clone(),
-        )
+        .update_object(owm.id(), owm.object(), owm.attributes(), None)
         .await?;
 
     // Update the state in the database (separate column)
-    kms.database
-        .update_state(owm.id(), State::Active, params.clone())
-        .await?;
+    kms.database.update_state(owm.id(), State::Active).await?;
 
     // All Objects are activated by default on the KMS, so simply answer OK
     Ok(ActivateResponse {

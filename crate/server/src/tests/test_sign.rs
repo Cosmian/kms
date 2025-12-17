@@ -37,7 +37,7 @@ async fn test_single_signature(
         data: Some(Zeroizing::new(TEST_DATA.to_vec())),
         ..Default::default()
     };
-    let sign_response: SignResponse = kms.sign(sign_request, owner, None).await?;
+    let sign_response: SignResponse = kms.sign(sign_request, owner).await?;
     assert_eq!(sign_response.unique_identifier, *private_key_id);
     assert!(sign_response.signature_data.is_some());
 
@@ -50,7 +50,7 @@ async fn test_single_signature(
         signature_data: Some(signature.clone()),
         ..Default::default()
     };
-    let verify_response = kms.signature_verify(verify_request, owner, None).await?;
+    let verify_response = kms.signature_verify(verify_request, owner).await?;
     // Verify the signature verification response
     assert_eq!(verify_response.unique_identifier, public_key_id.clone());
     assert_eq!(
@@ -64,7 +64,7 @@ async fn test_single_signature(
         digested_data: Some(hex::decode(TEST_DATA_DIGESTED).unwrap()),
         ..Default::default()
     };
-    let sign_response: SignResponse = kms.sign(sign_request, owner, None).await?;
+    let sign_response: SignResponse = kms.sign(sign_request, owner).await?;
     assert_eq!(sign_response.unique_identifier, *private_key_id);
     assert!(sign_response.signature_data.is_some());
 
@@ -77,7 +77,7 @@ async fn test_single_signature(
         signature_data: Some(signature.clone()),
         ..Default::default()
     };
-    let verify_response = kms.signature_verify(verify_request, owner, None).await?;
+    let verify_response = kms.signature_verify(verify_request, owner).await?;
     // Verify the signature verification response
     assert_eq!(verify_response.unique_identifier, public_key_id.clone());
     assert_eq!(
@@ -107,7 +107,7 @@ async fn _test_streaming_signature(
         ..Default::default()
     };
 
-    let init_response: SignResponse = kms.sign(init_request, owner, None).await?;
+    let init_response: SignResponse = kms.sign(init_request, owner).await?;
     assert_eq!(init_response.unique_identifier, *private_key_id);
     let mut correlation_value = init_response.correlation_value;
 
@@ -122,7 +122,7 @@ async fn _test_streaming_signature(
             ..Default::default()
         };
 
-        let continue_response: SignResponse = kms.sign(continue_request, owner, None).await?;
+        let continue_response: SignResponse = kms.sign(continue_request, owner).await?;
         assert_eq!(continue_response.unique_identifier, *private_key_id);
         correlation_value = continue_response.signature_data;
     }
@@ -136,7 +136,7 @@ async fn _test_streaming_signature(
         final_indicator: Some(true),
         ..Default::default()
     };
-    let final_response: SignResponse = kms.sign(final_request, owner, None).await?;
+    let final_response: SignResponse = kms.sign(final_request, owner).await?;
 
     assert_eq!(final_response.unique_identifier, *private_key_id);
     assert!(final_response.signature_data.is_some());
@@ -157,7 +157,7 @@ async fn test_streaming_signature_verification(
         data: Some(Zeroizing::new(TEST_DATA.to_vec())),
         ..Default::default()
     };
-    let sign_response: SignResponse = kms.sign(sign_request, owner, None).await?;
+    let sign_response: SignResponse = kms.sign(sign_request, owner).await?;
     let signature = sign_response.signature_data.unwrap();
 
     // Now test streaming verification
@@ -175,7 +175,7 @@ async fn test_streaming_signature_verification(
         ..Default::default()
     };
 
-    let init_response = kms.signature_verify(init_request, owner, None).await?;
+    let init_response = kms.signature_verify(init_request, owner).await?;
     assert_eq!(init_response.unique_identifier, public_key_id.clone());
     assert!(init_response.validity_indicator.is_none()); // No result yet
     let mut correlation_value = init_response.correlation_value;
@@ -193,7 +193,7 @@ async fn test_streaming_signature_verification(
             ..Default::default()
         };
 
-        let continue_response = kms.signature_verify(continue_request, owner, None).await?;
+        let continue_response = kms.signature_verify(continue_request, owner).await?;
         assert_eq!(continue_response.unique_identifier, public_key_id.clone());
         assert!(continue_response.validity_indicator.is_none()); // No result yet
         correlation_value = continue_response.correlation_value;
@@ -210,7 +210,7 @@ async fn test_streaming_signature_verification(
         final_indicator: Some(true),
         ..Default::default()
     };
-    let final_response = kms.signature_verify(final_request, owner, None).await?;
+    let final_response = kms.signature_verify(final_request, owner).await?;
 
     assert_eq!(final_response.unique_identifier, public_key_id.clone());
     assert_eq!(
@@ -239,7 +239,7 @@ async fn test_sign_rsa() -> KResult<()> {
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
 
     // Test single-call signature
     test_single_signature(
@@ -276,7 +276,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
 
     // Test single-call signature
     test_single_signature(

@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{Create, Import, ReKey, ReKeyResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, Import, ReKey, ReKeyResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{debug, trace};
 
@@ -20,12 +15,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(crate) async fn rekey(
-    kms: &KMS,
-    request: ReKey,
-    owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<ReKeyResponse> {
+pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
 
     if request.protection_storage_masks.is_some() {
@@ -44,7 +34,7 @@ pub(crate) async fn rekey(
 
     for owm in kms
         .database
-        .retrieve_objects(uid_or_tags, params.clone())
+        .retrieve_objects(uid_or_tags)
         .await?
         .into_values()
     {
@@ -74,18 +64,10 @@ pub(crate) async fn rekey(
             attributes: new_object.attributes()?.clone(),
             object: new_object,
         };
-        let (uid, operations) = Box::pin(process_symmetric_key(
-            kms,
-            import_request,
-            owner,
-            params.clone(),
-        ))
-        .await?;
+        let (uid, operations) = Box::pin(process_symmetric_key(kms, import_request, owner)).await?;
 
         // execute the operations
-        kms.database
-            .atomic(owner, &operations, params.clone())
-            .await?;
+        kms.database.atomic(owner, &operations).await?;
 
         // return the uid
         debug!("Re-key symmetric key with uid: {uid}");

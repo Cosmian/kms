@@ -394,7 +394,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
             },
             owner,
             None,
-            None,
         )
         .await?;
 
@@ -403,7 +402,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         .create_key_pair(
             create_rsa_key_pair_request(None, Vec::<String>::new(), 4096, false, None)?,
             owner,
-            None,
             None,
         )
         .await?;
@@ -430,7 +428,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 None,
             ),
             owner,
-            None,
         )
         .await?
         .object
@@ -463,7 +460,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         attributes,
         object: private_key,
     };
-    let intermediate_cert = kms.import(import_request, owner, None, None).await?;
+    let intermediate_cert = kms.import(import_request, owner, None).await?;
 
     // Certify the public key: sign created public key with issuer private key
     let attributes = Attributes {
@@ -492,7 +489,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
     };
 
     let certificate_unique_identifier = kms
-        .certify(certify_request, owner, None, None)
+        .certify(certify_request, owner, None)
         .await?
         .unique_identifier;
 
@@ -506,7 +503,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 Some(KeyFormatType::PKCS7),
             ),
             owner,
-            None,
         )
         .await?;
 
@@ -530,7 +526,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 None,
             ),
             owner,
-            None,
         )
         .await?;
 

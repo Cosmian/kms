@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
@@ -18,7 +16,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
-    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
@@ -51,7 +49,6 @@ pub(crate) async fn export_get(
     request: impl Into<Export>,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
     trace!(target: "kmip", "[diag-export_get] enter export_get op={:?} req={}", operation_type, request);
@@ -67,7 +64,6 @@ pub(crate) async fn export_get(
         operation_type,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
 
@@ -114,7 +110,6 @@ pub(crate) async fn export_get(
                 kms,
                 operation_type,
                 user,
-                params.clone(),
                 &request,
                 &mut owm,
             ))
@@ -149,7 +144,6 @@ pub(crate) async fn export_get(
                                     updated_attrs,
                                     None,
                                 ))],
-                                params.clone(),
                             )
                             .await?;
                         // Mirror change in-memory for immediate consistency
@@ -187,7 +181,6 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
             }
@@ -212,7 +205,6 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
                 trace!(target: "kmip", "[diag-export_get] post-process symmetric key uid={} final_format={:?}", owm.id(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
@@ -247,7 +239,6 @@ pub(crate) async fn export_get(
                                         updated_attrs,
                                         None,
                                     ))],
-                                    params.clone(),
                                 )
                                 .await?;
                             // Mirror change in-memory for immediate consistency
@@ -289,14 +280,12 @@ pub(crate) async fn export_get(
                         operation_type,
                         kms,
                         user,
-                        params.clone(),
                     )
                     .await?;
                     Box::pin(post_process_private_key(
                         kms,
                         operation_type,
                         user,
-                        params.clone(),
                         &Export {
                             unique_identifier: Some(UniqueIdentifier::TextString(
                                 owm.id().to_owned(),
@@ -310,8 +299,7 @@ pub(crate) async fn export_get(
                     ))
                     .await?;
                 } else if *key_format_type == KeyFormatType::PKCS7 {
-                    owm = Box::pin(post_process_pkcs7(kms, operation_type, user, params, owm))
-                        .await?;
+                    owm = Box::pin(post_process_pkcs7(kms, operation_type, user, owm)).await?;
                 }
 
                 #[cfg(not(feature = "non-fips"))]
@@ -359,7 +347,6 @@ pub(crate) async fn export_get(
                     &request.key_wrapping_specification,
                     kms,
                     user,
-                    params.clone(),
                 ))
                 .await?;
             }
@@ -402,7 +389,7 @@ async fn post_process_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -452,7 +439,6 @@ async fn post_process_private_key(
             },
             kms,
             user,
-            params.clone(),
         ))
         .await?;
     }
@@ -462,7 +448,6 @@ async fn post_process_private_key(
             kms,
             operation_type,
             user,
-            params,
             request,
             owm,
         ))
@@ -482,7 +467,6 @@ async fn post_process_active_private_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     trace!("key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
@@ -491,7 +475,6 @@ async fn post_process_active_private_key(
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::PrivateKey,
     )
     .await?;
@@ -521,7 +504,6 @@ async fn post_process_active_private_key(
             key_format_type,
             kms,
             user,
-            params.clone(),
         ))
         .await;
     }
@@ -569,12 +551,11 @@ async fn post_process_active_private_key(
                 key_wrap_type,
                 kms,
                 user,
-                params.clone(),
                 ObjectType::PrivateKey,
             )
             .await?; // ensure unwrapped first
             let mut cloned = object_with_metadata.object().clone();
-            wrap_object(&mut cloned, kws, kms, user, params.clone()).await?;
+            wrap_object(&mut cloned, kws, kms, user).await?;
             *object_with_metadata.object_mut() = cloned;
         } else {
             // Just ensure unwrapped if requested (normal path); no format conversion applied
@@ -583,7 +564,6 @@ async fn post_process_active_private_key(
                 key_wrap_type,
                 kms,
                 user,
-                params.clone(),
                 ObjectType::PrivateKey,
             )
             .await?;
@@ -662,7 +642,6 @@ async fn post_process_active_private_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
         // reassign the wrapped key
@@ -755,7 +734,6 @@ async fn process_public_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // perform any necessary unwrapping
     unwrap_if_requested(
@@ -763,7 +741,6 @@ async fn process_public_key(
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::PublicKey,
     )
     .await?;
@@ -794,7 +771,6 @@ async fn process_public_key(
                 key_format_type,
                 kms,
                 user,
-                params.clone(),
             ))
             .await;
         }
@@ -846,7 +822,6 @@ async fn process_public_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
         // reassign the wrapped key
@@ -901,7 +876,7 @@ async fn unwrap_if_requested(
     key_wrap_type: &Option<KeyWrapType>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     object_type: ObjectType,
 ) -> Result<(), KmsError> {
     let mut key_wrap_type = *key_wrap_type;
@@ -921,7 +896,6 @@ async fn unwrap_if_requested(
                     object_with_metadata.id(),
                     object_with_metadata.object(),
                     user,
-                    params,
                 )
                 .await?;
             // If we have lost attributes on the unwrapped object, we need to restore them
@@ -947,7 +921,6 @@ async fn process_covercrypt_key(
     key_format_type: &Option<KeyFormatType>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
@@ -963,7 +936,6 @@ async fn process_covercrypt_key(
             key_wrapping_specification,
             kms,
             user,
-            params,
         ))
         .await?;
     }
@@ -1024,7 +996,6 @@ async fn process_symmetric_key(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     trace!(
         "process_symmetric_key: object_with_metadata: {}",
@@ -1040,7 +1011,6 @@ async fn process_symmetric_key(
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::SymmetricKey,
     )
     .await?;
@@ -1074,7 +1044,6 @@ async fn process_symmetric_key(
                         object_with_metadata.id(),
                         object_with_metadata.object(),
                         user,
-                        params.clone(),
                     )
                     .await?;
 
@@ -1151,14 +1120,7 @@ async fn process_symmetric_key(
             inner.key_format_type = Some(KeyFormatType::Raw);
         }
         // wrap the key
-        Box::pin(wrap_object(
-            object,
-            key_wrapping_specification,
-            kms,
-            user,
-            params,
-        ))
-        .await?;
+        Box::pin(wrap_object(object, key_wrapping_specification, kms, user)).await?;
         return Ok(());
     }
 
@@ -1198,7 +1160,7 @@ async fn build_pkcs12_for_private_key(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     request: &Export,
     private_key_owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
@@ -1208,14 +1170,8 @@ async fn build_pkcs12_for_private_key(
         request.key_format_type
     );
 
-    let mut cert_owm = retrieve_certificate_for_private_key(
-        private_key_owm,
-        operation_type,
-        kms,
-        user,
-        params.clone(),
-    )
-    .await?;
+    let mut cert_owm =
+        retrieve_certificate_for_private_key(private_key_owm, operation_type, kms, user).await?;
     let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
 
     trace!("building chain from leaf certificate:  {}", cert_owm.id());
@@ -1234,7 +1190,6 @@ async fn build_pkcs12_for_private_key(
             operation_type,
             kms,
             user,
-            params.clone(),
         ))
         .await?;
         let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
@@ -1301,7 +1256,6 @@ async fn post_process_pkcs7(
     kms: &KMS,
     operation_type: KmipOperation,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     owm: ObjectWithMetadata,
 ) -> KResult<ObjectWithMetadata> {
     // convert the cert to openssl
@@ -1322,7 +1276,6 @@ async fn post_process_pkcs7(
         operation_type,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     let private_key_id = public_key_owm
@@ -1334,7 +1287,6 @@ async fn post_process_pkcs7(
             operation_type,
             kms,
             user,
-            params.clone(),
         ))
         .await?;
         let pkey = kmip_private_key_to_openssl(private_key_owm.object())
@@ -1355,7 +1307,6 @@ async fn post_process_pkcs7(
                 operation_type,
                 kms,
                 user,
-                params.clone(),
             ))
             .await?;
             let certificate = kmip_certificate_to_openssl(cert_owm.object())
@@ -1390,7 +1341,6 @@ async fn process_secret_data(
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     trace!(
         "process_secret_data: object_with_metadata: {}",
@@ -1403,7 +1353,6 @@ async fn process_secret_data(
         key_wrap_type,
         kms,
         user,
-        params.clone(),
         ObjectType::SecretData,
     )
     .await?;
@@ -1459,14 +1408,7 @@ async fn process_secret_data(
             inner.key_format_type = Some(KeyFormatType::Raw);
         }
         // wrap the key
-        Box::pin(wrap_object(
-            object,
-            key_wrapping_specification,
-            kms,
-            user,
-            params,
-        ))
-        .await?;
+        Box::pin(wrap_object(object, key_wrapping_specification, kms, user)).await?;
         return Ok(());
     }
 

@@ -59,7 +59,6 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
             attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
         USER,
-        None,
     )
     .await
 }
@@ -71,14 +70,13 @@ async fn set_attribute(kms: &Arc<KMS>, uid: &str, attribute: Attribute) -> KResu
             new_attribute: attribute,
         },
         USER,
-        None,
     )
     .await?;
     Ok(())
 }
 
 async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KResult<()> {
-    kms.delete_attribute(delete_request, USER, None).await?;
+    kms.delete_attribute(delete_request, USER).await?;
     Ok(())
 }
 
@@ -110,7 +108,6 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
             &sym_key_object,
             sym_key_object.attributes()?,
             &HashSet::new(),
-            None,
         )
         .await?;
 
@@ -204,7 +201,6 @@ async fn set_link_attribute_and_remove_it(
             ..DeleteAttribute::default()
         },
         USER,
-        None,
     )
     .await?;
 

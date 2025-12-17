@@ -220,8 +220,6 @@ impl MainDBConfig {
                 #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => {
-                    use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
                         .context("db:init")?;
                     // Check if a Redis master password was provided
@@ -233,17 +231,7 @@ impl MainDBConfig {
                     // Generate the symmetric key from the master password
                     let master_key = redis_master_key_from_password(&redis_master_password)
                         .context("db:init")?;
-                    let old_label = self.redis_findex_label.as_deref().map_or_else(
-                        || {
-                            use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
-                            std::env::var("KMS_REDIS_FINDEX_LABEL")
-                                .ok()
-                                .map(|s| Label::from(s.as_bytes()))
-                        },
-                        |value| Some(Label::from(value.as_bytes())),
-                    );
-                    MainDbParams::RedisFindex(url, master_key, old_label)
+                    MainDbParams::RedisFindex(url, master_key)
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });

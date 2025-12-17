@@ -1,18 +1,15 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType, State},
-        kmip_2_1::{
-            KmipOperation,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
-            kmip_operations::{DeriveKey, DeriveKeyResponse},
-            kmip_types::{DerivationMethod, KeyFormatType, LinkType, UniqueIdentifier},
-        },
-        time_normalize,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
+        kmip_operations::{DeriveKey, DeriveKeyResponse},
+        kmip_types::{DerivationMethod, KeyFormatType, LinkType, UniqueIdentifier},
     },
-    cosmian_kms_interfaces::SessionParams,
+    time_normalize,
 };
 use cosmian_logger::debug;
 use openssl::{
@@ -38,7 +35,6 @@ pub(crate) async fn derive_key(
     kms: &KMS,
     request: DeriveKey,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DeriveKeyResponse> {
     debug!("DeriveKey operation starting");
 
@@ -86,25 +82,15 @@ pub(crate) async fn derive_key(
     let base_key_id = request.object_unique_identifier.to_string();
 
     // Retrieve the base key from the database
-    let Some(mut base_key_owm) = kms
-        .database
-        .retrieve_object(&base_key_id, params.clone())
-        .await?
-    else {
+    let Some(mut base_key_owm) = kms.database.retrieve_object(&base_key_id).await? else {
         kms_bail!(KmsError::InvalidRequest(format!(
             "DeriveKey: failed to retrieve base object {base_key_id}"
         )))
     };
 
     // Check that the user has permission to derive from the base key
-    let has_permission = user_has_permission(
-        user,
-        Some(&base_key_owm),
-        &KmipOperation::DeriveKey,
-        kms,
-        params.clone(),
-    )
-    .await?;
+    let has_permission =
+        user_has_permission(user, Some(&base_key_owm), &KmipOperation::DeriveKey, kms).await?;
 
     if !has_permission {
         kms_bail!(KmsError::Unauthorized(format!(
@@ -114,19 +100,14 @@ pub(crate) async fn derive_key(
 
     // Unwrap the base key if it's wrapped
     base_key_owm.set_object(
-        kms.get_unwrapped(
-            base_key_owm.id(),
-            base_key_owm.object(),
-            user,
-            params.clone(),
-        )
-        .await
-        .with_context(|| {
-            format!(
-                "DeriveKey: the base key: {}, cannot be unwrapped.",
-                base_key_owm.id()
-            )
-        })?,
+        kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user)
+            .await
+            .with_context(|| {
+                format!(
+                    "DeriveKey: the base key: {}, cannot be unwrapped.",
+                    base_key_owm.id()
+                )
+            })?,
     );
 
     let base_key_object = base_key_owm.object();
@@ -310,7 +291,6 @@ pub(crate) async fn derive_key(
             &derived_object,
             &attributes,
             &tags,
-            params.clone(),
         )
         .await
         .map_err(|e| {
@@ -323,7 +303,7 @@ pub(crate) async fn derive_key(
     // Add the link to the base object's attributes (need to retrieve and update)
     let mut base_object_owm = kms
         .database
-        .retrieve_object(&base_key_id, params.clone())
+        .retrieve_object(&base_key_id)
         .await?
         .ok_or_else(|| KmsError::InvalidRequest("Failed to retrieve base object".to_owned()))?;
 
@@ -338,7 +318,6 @@ pub(crate) async fn derive_key(
             base_object_owm.object(),
             base_object_owm.attributes(),
             None, // tags
-            params.clone(),
         )
         .await
         .map_err(|e| {
@@ -348,11 +327,10 @@ pub(crate) async fn derive_key(
         })?;
 
     // For the derived object: create Link attribute of Link Type Derivation Base Object pointing to the base object
-    let mut derived_object_owm = kms
-        .database
-        .retrieve_object(&uid, params.clone())
-        .await?
-        .ok_or_else(|| KmsError::InvalidRequest("Failed to retrieve derived object".to_owned()))?;
+    let mut derived_object_owm =
+        kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+            KmsError::InvalidRequest("Failed to retrieve derived object".to_owned())
+        })?;
 
     derived_object_owm.attributes_mut().set_link(
         LinkType::DerivationBaseObjectLink,
@@ -365,7 +343,6 @@ pub(crate) async fn derive_key(
             derived_object_owm.object(),
             derived_object_owm.attributes(),
             None, // tags
-            params,
         )
         .await
         .map_err(|e| {

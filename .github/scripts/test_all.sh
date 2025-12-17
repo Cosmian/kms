@@ -30,15 +30,6 @@ run_step() {
 # 1) SQLite (always)
 run_step "SQLite" "$SCRIPT_DIR/test_sqlite.sh"
 
-# In debug builds, only run SQLite (per repo policy). Release builds run all enabled DBs.
-if [ "$BUILD_PROFILE" = "debug" ]; then
-  echo "Debug mode: skipping PostgreSQL, MySQL, Redis-findex, Google CSE, and HSM tests."
-  echo "========================================="
-  echo "All test categories executed."
-  echo "========================================="
-  exit 0
-fi
-
 # 2) PostgreSQL (requires server)
 run_step "PostgreSQL" "$SCRIPT_DIR/test_psql.sh"
 

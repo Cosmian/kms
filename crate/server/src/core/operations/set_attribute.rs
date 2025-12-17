@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
@@ -8,7 +6,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
 
@@ -22,7 +20,6 @@ pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SetAttributeResponse> {
     debug!("{request}");
 
@@ -39,7 +36,6 @@ pub(crate) async fn set_attribute(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     trace!("Set Attribute: Retrieved target object");
@@ -371,7 +367,7 @@ pub(crate) async fn set_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+    let tags = kms.database.retrieve_tags(owm.id()).await?;
 
     match owm.object().object_type() {
         ObjectType::PublicKey
@@ -394,7 +390,7 @@ pub(crate) async fn set_attribute(
 
     debug!("Set Attribute: {}", attributes);
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
+        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
         .await?;
 
     Ok(SetAttributeResponse {

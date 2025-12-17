@@ -97,6 +97,36 @@ mkdir -p "$CARGO_HOME"
 # Ensure macOS system tools are available
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+# Prefer locally installed cargo subcommands in CARGO_HOME/bin
+export PATH="$CARGO_HOME/bin:$PATH"
+
+# Ensure cargo-packager 0.11.7 is available (hardcoded, no env overrides)
+ensure_packager() {
+  REQUIRED="0.11.7"
+  CURRENT=""
+  if command -v cargo-packager >/dev/null 2>&1; then
+    CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  fi
+  if [ "$CURRENT" = "$REQUIRED" ]; then
+    return 0
+  fi
+
+  echo "Installing cargo-packager $REQUIRED via cargo…"
+  cargo install cargo-packager --locked --version "$REQUIRED" --force
+  export PATH="$CARGO_HOME/bin:$PATH"
+  if ! command -v cargo-packager >/dev/null 2>&1; then
+    echo "Error: cargo-packager installation failed or not in PATH" >&2
+    exit 1
+  fi
+  CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  if [ "$CURRENT" != "$REQUIRED" ]; then
+    echo "Error: cargo-packager version mismatch (have $CURRENT, need $REQUIRED)" >&2
+    exit 1
+  fi
+}
+
+ensure_packager
+
 APP_PATH_EXISTING="target/release/Cosmian KMS Server.app"
 skip_packager=false
 if [ -z "${FORCE_REBUILD:-}" ] && [ -d "$APP_PATH_EXISTING" ]; then

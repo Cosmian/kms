@@ -1,46 +1,56 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    str::FromStr,
-    sync::Arc,
 };
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
+use mysql_async::{Pool, Transaction, prelude::*};
 use rawsql::Loader;
 use serde_json::Value;
-use sqlx::{
-    ConnectOptions, Executor, MySql, Pool, Row, Transaction,
-    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
-};
 use uuid::Uuid;
 
 // Default MySQL lock wait timeout (seconds) applied to every new session.
 // MySQL default is ~50s; 10s is more appropriate for tests and reduces long stalls.
-const DEFAULT_LOCK_WAIT_TIMEOUT_SECS: u32 = 10;
-
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
     stores::{
         MYSQL_QUERIES,
-        migrate::HasDatabase,
         sql::{
             database::SqlDatabase,
             locate_query::{MySqlPlaceholder, query_from_attributes},
-            main_store::SqlMainStore,
         },
     },
 };
+
+// Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
+const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+fn is_mysql_deadlock(msg: &str) -> bool {
+    // Match common forms from MySQL/MariaDB drivers and servers
+    // Examples:
+    // - "Deadlock found when trying to get lock; try restarting transaction"
+    // - "ERROR 40001 (1213): Deadlock found when trying to get lock; ..."
+    // - "ER_LOCK_DEADLOCK"
+    msg.contains("Deadlock found when trying to get lock")
+        || msg.contains("(1213)")
+        || msg.contains("ER_LOCK_DEADLOCK")
+}
+
+fn mysql_deadlock_backoff_ms(attempt: u32) -> u64 {
+    // Exponential-ish backoff: 50, 100, 200, 400, 800, 1600ms
+    50_u64.saturating_mul(1_u64 << attempt.min(10))
+}
 
 #[macro_export]
 macro_rules! get_mysql_query {
@@ -67,17 +77,18 @@ macro_rules! get_mysql_query {
 /// * If the deserialization of the object or the attributes fails
 /// * If the state is not a valid `StateEnumeration`
 /// * If the conversion fails
-fn my_sql_row_to_owm(row: &MySqlRow) -> Result<ObjectWithMetadata, DbError> {
-    let id = row.get::<String, _>(0);
-    let object: Object = serde_json::from_str(&row.get::<String, _>(1))
-        .context("failed deserializing the object")?;
+fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbError> {
+    let id: String = row.get(0).context("missing id")?;
+    let object_json: String = row.get(1).context("missing object")?;
+    let attrs_json: Value = row.get(2).context("missing attributes")?;
+    let owner: String = row.get(3).context("missing owner")?;
+    let state_str: String = row.get(4).context("missing state")?;
+    let object: Object =
+        serde_json::from_str(&object_json).context("failed deserializing the object")?;
     let object = migrate_block_cipher_mode_if_needed(object);
-    let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
-        .context("failed deserializing the Attributes")?;
-    let owner = row.get::<String, _>(3);
-    let state = State::try_from(row.get::<String, _>(4).as_str()).map_err(|e| {
-        DbError::ConversionError(format!("failed converting the state: {e}").into())
-    })?;
+    let attributes: Attributes =
+        serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
+    let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
     Ok(ObjectWithMetadata::new(
         id, object, owner, state, attributes,
     ))
@@ -87,11 +98,7 @@ fn my_sql_row_to_owm(row: &MySqlRow) -> Result<ObjectWithMetadata, DbError> {
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
-    pool: Pool<MySql>,
-}
-
-impl HasDatabase for MySqlPool {
-    type Database = MySql;
+    pool: Pool,
 }
 
 impl MySqlPool {
@@ -100,9 +107,8 @@ impl MySqlPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let options = MySqlConnectOptions::from_str(connection_url)?
-            // disable logging of each query
-            .disable_statement_logging();
+        let opts = mysql_async::Opts::from_url(connection_url)
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
 
         // Default: reduce deadlocks by using READ COMMITTED isolation level per session
         // This is applied for every new connection.
@@ -110,53 +116,49 @@ impl MySqlPool {
         // Default rationale: conservative pool tuned to CPU. MySQL/MariaDB can suffer
         // from too many concurrent connections (threads, buffer pool pressure). Using
         // min(10, 2 × CPU cores) balances parallelism with stability for typical services.
-        let default_conns: u32 = u32::try_from(num_cpus::get())
-            .map(|c| c.saturating_mul(2).min(10))
-            .unwrap_or(10);
-        let max_conns: u32 = max_connections.unwrap_or(default_conns);
-        let pool = MySqlPoolOptions::new()
-            .max_connections(max_conns)
-            .after_connect(move |conn, _meta| {
-                Box::pin(async move {
-                    // Always set READ COMMITTED for this session
-                    sqlx::query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                        .execute(&mut *conn)
-                        .await?;
-                    // Best effort: may require privileges depending on server config
-                    match sqlx::query(&format!(
-                        "SET SESSION innodb_lock_wait_timeout = {DEFAULT_LOCK_WAIT_TIMEOUT_SECS}"
-                    ))
-                    .execute(&mut *conn)
-                    .await
-                    {
-                        Ok(_) => (),
-                        Err(e) => {
-                            debug!(
-                                "Could not set innodb_lock_wait_timeout to {}s: {e}",
-                                DEFAULT_LOCK_WAIT_TIMEOUT_SECS
-                            );
-                        }
-                    }
-                    Ok(())
-                })
-            })
-            .connect_with(options)
-            .await?;
+        let default_conns: usize = num_cpus::get().saturating_mul(2).min(10);
+        let max_conns: usize = max_connections
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(default_conns);
 
-        // Create the tables if they don't exist
-        let mysql_pool = Self { pool };
+        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts);
+        let pool_constraints = mysql_async::PoolConstraints::new(0, max_conns)
+            .ok_or_else(|| DbError::DatabaseError("Invalid pool constraints".to_owned()))?;
+        opts_builder = opts_builder
+            .pool_opts(mysql_async::PoolOpts::default().with_constraints(pool_constraints));
+        let pool = Pool::new(opts_builder);
 
-        // Blanket implementation of SqlMainStore for SqlDatabase
-        mysql_pool.start(clear_database).await?;
-        Ok(mysql_pool)
+        // Bootstrap: create tables if they don't exist
+        let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+        ] {
+            let sql = MYSQL_QUERIES
+                .get(name)
+                .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
+            conn.query_drop(sql).await.map_err(DbError::from)?;
+        }
+
+        // Optional: clear database content for tests to ensure isolation
+        if clear_database {
+            for name in [
+                "clean-table-objects",
+                "clean-table-read_access",
+                "clean-table-tags",
+            ] {
+                if let Some(sql) = MYSQL_QUERIES.get(name) {
+                    conn.query_drop(sql).await.map_err(DbError::from)?;
+                }
+            }
+        }
+        Ok(Self { pool })
     }
 }
 
-impl SqlDatabase<MySql> for MySqlPool {
-    fn get_pool(&self) -> &Pool<MySql> {
-        &self.pool
-    }
-
+impl SqlDatabase for MySqlPool {
     fn get_loader(&self) -> &Loader {
         &MYSQL_QUERIES
     }
@@ -179,41 +181,73 @@ impl ObjectsStore for MySqlPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
-            Ok(uid) => uid,
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                return Err(InterfaceError::Db(format!(
-                    "creation of object failed: {e}"
-                )));
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        let mut attempt = 0_u32;
+        loop {
+            let mut conn = self
+                .pool
+                .get_conn()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
+            // Reduce deadlocks and long stalls: use READ COMMITTED and a shorter lock wait timeout
+            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
+            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            let uid_res = create_(uid.clone(), owner, object, attributes, tags, &mut tx).await;
+            let uid = match uid_res {
+                Ok(u) => u,
+                Err(e) => {
+                    tx.rollback().await.map_err(|re| {
+                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
+                    })?;
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!(
+                        "creation of object failed: {e}"
+                    )));
+                }
+            };
+            match tx.commit().await {
+                Ok(()) => return Ok(uid),
+                Err(e) => {
+                    let msg = e.to_string();
+                    let is_deadlock = is_mysql_deadlock(&msg);
+                    if is_deadlock && attempt < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!(
+                        "Failed to commit the transaction: {e}"
+                    )));
+                }
             }
-        };
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to commit the transaction: {e}")))?;
-        Ok(uid)
+        }
     }
 
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(retrieve_(uid, &self.pool).await?)
     }
 
-    async fn retrieve_tags(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(retrieve_tags_(uid, &self.pool).await?)
     }
 
@@ -223,74 +257,175 @@ impl ObjectsStore for MySqlPool {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_object_(uid, object, attributes, tags, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("update of object failed: {e}")))
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        let mut attempt = 0_u32;
+        loop {
+            let mut conn = self
+                .pool
+                .get_conn()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
+            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
+            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            match update_object_(uid, object, attributes, tags, &mut tx).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            attempt += 1;
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::Db(format!(
+                            "Failed to commit the transaction: {e}"
+                        )));
+                    }
+                },
+                Err(e) => {
+                    tx.rollback().await.map_err(|re| {
+                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
+                    })?;
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!("update of object failed: {e}")));
+                }
             }
         }
     }
 
-    async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_state_(uid, state, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!(
-                    "update of the state of object {uid} failed: {e}"
-                )))
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        let mut attempt = 0_u32;
+        loop {
+            let mut conn = self
+                .pool
+                .get_conn()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
+            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
+            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            match update_state_(uid, state, &mut tx).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            attempt += 1;
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::Db(format!(
+                            "Failed to commit the transaction: {e}"
+                        )));
+                    }
+                },
+                Err(e) => {
+                    tx.rollback().await.map_err(|re| {
+                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
+                    })?;
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!(
+                        "update of the state of object {uid} failed: {e}"
+                    )));
+                }
             }
         }
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match delete_(uid, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("delete of object failed: {e}")))
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        let mut attempt = 0_u32;
+        loop {
+            let mut conn = self
+                .pool
+                .get_conn()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
+            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
+            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+            match delete_(uid, &mut tx).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            attempt += 1;
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::Db(format!(
+                            "Failed to commit the transaction: {e}"
+                        )));
+                    }
+                },
+                Err(e) => {
+                    tx.rollback().await.map_err(|re| {
+                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
+                    })?;
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!("delete of object failed: {e}")));
+                }
             }
         }
     }
@@ -299,41 +434,70 @@ impl ObjectsStore for MySqlPool {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match atomic_(user, operations, &mut tx).await {
-            Ok(v) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(v)
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
+        // Retry on MySQL deadlocks (ER_LOCK_DEADLOCK = 1213) with small backoff
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        let mut attempt = 0_u32;
+        loop {
+            let mut conn = self
+                .pool
+                .get_conn()
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
+            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
+            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+
+            match atomic_(user, operations, &mut tx).await {
+                Ok(v) => {
+                    tx.commit().await.map_err(|e| {
+                        InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
+                    })?;
+                    return Ok(v);
+                }
+                Err(e) => {
+                    // Always attempt to rollback before deciding to retry or return the error
+                    if let Err(re) = tx.rollback().await {
+                        return Err(InterfaceError::Db(format!(
+                            "transaction rollback failed: {re}"
+                        )));
+                    }
+
+                    // Detect MySQL deadlock (1213) via normalized error text
+                    // The inner operations may wrap SQL errors using `db_bail!`,
+                    // which produces a `DatabaseError` variant. Handle both.
+                    let is_deadlock = match &e {
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg) => {
+                            is_mysql_deadlock(msg)
+                        }
+                        _ => false,
+                    };
+                    if is_deadlock && attempt < max_retries {
+                        // Exponential-ish backoff: 50, 100, 200, 400, 800, 1600ms
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        attempt += 1;
+                        #[allow(clippy::disallowed_methods)]
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::Db(format!("atomic operation failed: {e}")));
+                }
             }
         }
     }
 
-    async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         Ok(list_uids_for_tags_(tags, &self.pool).await?)
     }
 
@@ -343,7 +507,6 @@ impl ObjectsStore for MySqlPool {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         Ok(find_(
             researched_attributes,
@@ -361,7 +524,6 @@ impl PermissionsStore for MySqlPool {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         Ok(list_user_granted_access_rights_(user, &self.pool).await?)
     }
@@ -369,7 +531,6 @@ impl PermissionsStore for MySqlPool {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(list_accesses_(uid, &self.pool).await?)
     }
@@ -379,7 +540,6 @@ impl PermissionsStore for MySqlPool {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         Ok(insert_access_(uid, user, operations, &self.pool).await?)
     }
@@ -389,7 +549,6 @@ impl PermissionsStore for MySqlPool {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         Ok(remove_access_(uid, user, operations, &self.pool).await?)
     }
@@ -399,7 +558,6 @@ impl PermissionsStore for MySqlPool {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
     }
@@ -411,76 +569,55 @@ pub(super) async fn create_(
     object: &Object,
     attributes: &Attributes,
     tags: &HashSet<String>,
-    executor: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_>,
 ) -> DbResult<String> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    // If the uid is not provided, generate a new one
+    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
+    })?;
+    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
+    })?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-
-    // Try to insert the object
-    match sqlx::query(get_mysql_query!("insert-objects"))
-        .bind(uid.clone())
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(attributes.state.unwrap_or(State::PreActive).to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await
-    {
-        Ok(_) => {}
-        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            return Err(DbError::Kmip21Error(
-                ErrorReason::Object_Already_Exists,
-                format!("Object with UID '{uid}' already exists"),
-            ));
-        }
-        Err(e) => return Err(e.into()),
-    }
-
-    // Insert the tags
+    tx.exec_drop(
+        get_mysql_query!("insert-objects"),
+        (
+            uid.clone(),
+            object_json,
+            attributes_json,
+            attributes.state.unwrap_or(State::PreActive).to_string(),
+            owner.to_owned(),
+        ),
+    )
+    .await
+    .map_err(DbError::from)?;
     for tag in tags {
-        sqlx::query(get_mysql_query!("insert-tags"))
-            .bind(uid.clone())
-            .bind(tag)
-            .execute(&mut **executor)
-            .await?;
+        tx.exec_drop(get_mysql_query!("insert-tags"), (uid.clone(), tag.as_str()))
+            .await
+            .map_err(DbError::from)?;
     }
-
     trace!("Created in DB: {uid} / {owner}");
     Ok(uid)
 }
 
-pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let row = sqlx::query(get_mysql_query!("select-object"))
-        .bind(uid)
-        .fetch_optional(executor)
-        .await?;
-
-    if let Some(row) = row {
-        return Ok(Some(my_sql_row_to_owm(&row)?));
-    }
-    Ok(None)
+pub(super) async fn retrieve_(uid: &str, pool: &Pool) -> DbResult<Option<ObjectWithMetadata>> {
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let row_opt: Option<mysql_async::Row> = conn
+        .exec_first(get_mysql_query!("select-object"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    row_opt.map(|r| my_sql_row_to_owm(&r)).transpose()
 }
 
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let rows: Vec<MySqlRow> = sqlx::query(get_mysql_query!("select-tags"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-
-    let tags = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-
+async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let rows: Vec<mysql_async::Row> = conn
+        .exec(get_mysql_query!("select-tags"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    let tags = rows
+        .iter()
+        .map(|r| r.get::<String, _>(0).unwrap_or_default())
+        .collect::<HashSet<String>>();
     Ok(tags)
 }
 
@@ -489,35 +626,34 @@ pub(super) async fn update_object_(
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
-    executor: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
+    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
+    })?;
 
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
+    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
+    })?;
 
-    sqlx::query(get_mysql_query!("update-object-with-object"))
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
+    tx.exec_drop(
+        get_mysql_query!("update-object-with-object"),
+        (object_json, attributes_json, uid),
+    )
+    .await
+    .map_err(DbError::from)?;
 
     // Insert the new tags if any
     if let Some(tags) = tags {
         // delete the existing tags
-        sqlx::query(get_mysql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
+        tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
+            .await
+            .map_err(DbError::from)?;
 
         for tag in tags {
-            sqlx::query(get_mysql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
+            tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
+                .await
+                .map_err(DbError::from)?;
         }
     }
 
@@ -528,29 +664,28 @@ pub(super) async fn update_object_(
 pub(super) async fn update_state_(
     uid: &str,
     state: State,
-    executor: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    sqlx::query(get_mysql_query!("update-object-with-state"))
-        .bind(state.to_string())
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
+    tx.exec_drop(
+        get_mysql_query!("update-object-with-state"),
+        (state.to_string(), uid),
+    )
+    .await
+    .map_err(DbError::from)?;
     trace!("Updated in DB: {uid}");
     Ok(())
 }
 
-pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, MySql>) -> DbResult<()> {
+pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {
     // delete the object
-    sqlx::query(get_mysql_query!("delete-object"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
+    tx.exec_drop(get_mysql_query!("delete-object"), (uid,))
+        .await
+        .map_err(DbError::from)?;
 
     // delete the tags
-    sqlx::query(get_mysql_query!("delete-tags"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
+    tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
+        .await
+        .map_err(DbError::from)?;
 
     trace!("Deleted in DB: {uid}");
     Ok(())
@@ -563,37 +698,32 @@ pub(super) async fn upsert_(
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
     state: State,
-    executor: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    sqlx::query(get_mysql_query!("upsert-object"))
-        .bind(uid)
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(state.to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await?;
+    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
+    })?;
+    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
+    })?;
+    tx.exec_drop(
+        get_mysql_query!("upsert-object"),
+        (uid, object_json, attributes_json, state.to_string(), owner),
+    )
+    .await
+    .map_err(DbError::from)?;
 
     // Insert the new tags if present
     if let Some(tags) = tags {
         // delete the existing tags
-        sqlx::query(get_mysql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
+        tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
+            .await
+            .map_err(DbError::from)?;
         // insert the new ones
         for tag in tags {
-            sqlx::query(get_mysql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
+            tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
+                .await
+                .map_err(DbError::from)?;
         }
     }
 
@@ -601,257 +731,242 @@ pub(super) async fn upsert_(
     Ok(())
 }
 
-pub(super) async fn list_uids_for_tags_<'e, E>(
+pub(super) async fn list_uids_for_tags_(
     tags: &HashSet<String>,
-    executor: E,
-) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
+    pool: &Pool,
+) -> DbResult<HashSet<String>> {
     let tags_params = tags.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-
-    // Build the raw SQL query
     let raw_sql = get_mysql_query!("select-uids-from-tags").replace("@TAGS", &tags_params);
-
-    // Bind the tags params
-    let mut query = sqlx::query::<MySql>(&raw_sql);
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let mut params: Vec<mysql_async::Value> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
-        query = query.bind(tag);
+        params.push(mysql_async::Value::Bytes(tag.clone().into_bytes()));
     }
-
-    // Bind the tags len
-    query = query.bind(i16::try_from(tags.len())?);
-    let rows = query.fetch_all(executor).await?;
-    let uids = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
+    params.push(mysql_async::Value::Int(i64::from(i16::try_from(
+        tags.len(),
+    )?)));
+    let rows: Vec<mysql_async::Row> = conn.exec(raw_sql, params).await.map_err(DbError::from)?;
+    let uids = rows
+        .iter()
+        .map(|r| r.get::<String, _>(0).unwrap_or_default())
+        .collect::<HashSet<String>>();
     Ok(uids)
 }
 
-pub(super) async fn list_accesses_<'e, E>(
+pub(super) async fn list_accesses_(
     uid: &str,
-    executor: E,
-) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
+    pool: &Pool,
+) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
     debug!("Uid = {}", uid);
-
-    let list = sqlx::query(get_mysql_query!("select-rows-read_access-with-object-id"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-    let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            // userid
-            row.get::<String, _>(0),
-            // permissions
-            serde_json::from_value(row.get::<Value, _>(1))?,
-        );
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let rows: Vec<mysql_async::Row> = conn
+        .exec(
+            get_mysql_query!("select-rows-read_access-with-object-id"),
+            (uid,),
+        )
+        .await
+        .map_err(DbError::from)?;
+    let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let userid: String = row
+            .get(0)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing userid").into()))?;
+        let perms_val: Value = row
+            .get(1)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing permissions").into()))?;
+        let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val).map_err(|e| {
+            DbError::ConversionError(format!("failed deserializing operations: {e}").into())
+        })?;
+        ids.insert(userid, perms);
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(super) async fn list_user_granted_access_rights_<'e, E>(
+pub(super) async fn list_user_granted_access_rights_(
     user: &str,
-    executor: E,
-) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
+    pool: &Pool,
+) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
     debug!("Owner = {}", user);
-    let list = sqlx::query(get_mysql_query!("select-objects-access-obtained"))
-        .bind(user)
-        .fetch_all(executor)
-        .await?;
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let rows: Vec<mysql_async::Row> = conn
+        .exec(get_mysql_query!("select-objects-access-obtained"), (user,))
+        .await
+        .map_err(DbError::from)?;
     let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
-        HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            row.get::<String, _>(0),
-            (
-                row.get::<String, _>(1),
-                State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}").into())
-                })?,
-                serde_json::from_value(
-                    row.try_get::<Value, _>(3)
-                        .context("failed deserializing the operations")?,
-                )?,
-            ),
-        );
+        HashMap::with_capacity(rows.len());
+    for row in rows {
+        let uid: String = row
+            .get(0)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing uid").into()))?;
+        let owner: String = row
+            .get(1)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing owner").into()))?;
+        let state_str: String = row
+            .get(2)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing state").into()))?;
+        let state = State::try_from(state_str.as_str()).map_err(|e| {
+            DbError::ConversionError(format!("failed converting the state: {e}").into())
+        })?;
+        let ops_val: Value = row
+            .get(3)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing operations").into()))?;
+        let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
+            DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
+        })?;
+        ids.insert(uid, (owner, state, ops));
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(super) async fn list_user_access_rights_on_object_<'e, E>(
+pub(super) async fn list_user_access_rights_on_object_(
     uid: &str,
     userid: &str,
     no_inherited_access: bool,
-    executor: E,
-) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let mut user_perms = perms(uid, userid, executor).await?;
+    pool: &Pool,
+) -> DbResult<HashSet<KmipOperation>> {
+    let mut user_perms = perms(pool, uid, userid).await?;
     if no_inherited_access || userid == "*" {
         return Ok(user_perms);
     }
-    user_perms.extend(perms(uid, "*", executor).await?);
+    user_perms.extend(perms(pool, uid, "*").await?);
     Ok(user_perms)
 }
 
-async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let row: Option<MySqlRow> = sqlx::query(get_mysql_query!("select-user-accesses-for-object"))
-        .bind(uid)
-        .bind(userid)
-        .fetch_optional(executor)
-        .await?;
-
-    row.map_or(Ok(HashSet::new()), |row| {
-        let perms_raw = row.get::<Value, _>(0);
-        serde_json::from_value(perms_raw).context("failed deserializing the permissions")
-    })
+async fn perms(pool: &Pool, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let row_opt: Option<mysql_async::Row> = conn
+        .exec_first(
+            get_mysql_query!("select-user-accesses-for-object"),
+            (uid, userid),
+        )
+        .await
+        .map_err(DbError::from)?;
+    if let Some(row) = row_opt {
+        let perms_raw: Value = row
+            .get(0)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing permissions").into()))?;
+        serde_json::from_value(perms_raw).map_err(|e| {
+            DbError::ConversionError(format!("failed deserializing the permissions: {e}").into())
+        })
+    } else {
+        Ok(HashSet::new())
+    }
 }
 
-pub(super) async fn insert_access_<'e, E>(
+pub(super) async fn insert_access_(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    // Retrieve existing permissions if any
-    let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
+    pool: &Pool,
+) -> DbResult<()> {
+    let mut perms = list_user_access_rights_on_object_(uid, userid, false, pool).await?;
     if operation_types.is_subset(&perms) {
-        // permissions are already setup
         return Ok(());
     }
-    perms.extend(operation_types.iter());
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Upsert the DB
-    sqlx::query(get_mysql_query!("upsert-row-read_access"))
-        .bind(uid)
-        .bind(userid)
-        .bind(json)
-        .execute(executor)
-        .await?;
+    perms.extend(operation_types.iter().copied());
+    let json = serde_json::to_value(&perms).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
+    })?;
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    conn.exec_drop(
+        get_mysql_query!("upsert-row-read_access"),
+        (uid, userid, json),
+    )
+    .await
+    .map_err(DbError::from)?;
     trace!("Insert read access right in DB: {uid} / {userid}");
     Ok(())
 }
 
-pub(super) async fn remove_access_<'e, E>(
+pub(super) async fn remove_access_(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    // Retrieve existing permissions if any
-    let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
+    pool: &Pool,
+) -> DbResult<()> {
+    let perms = list_user_access_rights_on_object_(uid, userid, true, pool)
         .await?
         .difference(&operation_types)
         .copied()
         .collect::<HashSet<_>>();
-
-    // No remaining permissions, delete the row
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     if perms.is_empty() {
-        sqlx::query(get_mysql_query!("delete-rows-read_access"))
-            .bind(uid)
-            .bind(userid)
-            .execute(executor)
-            .await?;
+        conn.exec_drop(get_mysql_query!("delete-rows-read_access"), (uid, userid))
+            .await
+            .map_err(DbError::from)?;
         return Ok(());
     }
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Update the DB
-    sqlx::query(get_mysql_query!("update-rows-read_access-with-permission"))
-        .bind(json)
-        .bind(uid)
-        .bind(userid)
-        .execute(executor)
-        .await?;
+    let json = serde_json::to_value(&perms).map_err(|e| {
+        DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
+    })?;
+    conn.exec_drop(
+        get_mysql_query!("update-rows-read_access-with-permission"),
+        (json, uid, userid),
+    )
+    .await
+    .map_err(DbError::from)?;
     Ok(())
 }
 
-pub(super) async fn is_object_owned_by_<'e, E>(
-    uid: &str,
-    owner: &str,
-    executor: E,
-) -> DbResult<bool>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let row: Option<MySqlRow> = sqlx::query(get_mysql_query!("has-row-objects"))
-        .bind(uid)
-        .bind(owner)
-        .fetch_optional(executor)
-        .await?;
-    Ok(row.is_some())
+pub(super) async fn is_object_owned_by_(uid: &str, owner: &str, pool: &Pool) -> DbResult<bool> {
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let row_opt: Option<mysql_async::Row> = conn
+        .exec_first(get_mysql_query!("has-row-objects"), (uid, owner))
+        .await
+        .map_err(DbError::from)?;
+    Ok(row_opt.is_some())
 }
 
-pub(super) async fn find_<'e, E>(
+pub(super) async fn find_(
     researched_attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
-    executor: E,
-) -> DbResult<Vec<(String, State, Attributes)>>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
-    let query = query_from_attributes::<MySqlPlaceholder>(
+    pool: &Pool,
+) -> DbResult<Vec<(String, State, Attributes)>> {
+    let sql = query_from_attributes::<MySqlPlaceholder>(
         researched_attributes,
         state,
         user,
         user_must_be_owner,
     );
-    trace!("find_: {query:?}");
-
-    let mut query = sqlx::query(&query);
-    // Bind user-provided values to the ? placeholders
-    query = if user_must_be_owner {
-        query.bind(user)
+    trace!("find_: {sql:?}");
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    let params: Vec<mysql_async::Value> = if user_must_be_owner {
+        vec![mysql_async::Value::Bytes(user.as_bytes().to_vec())]
     } else {
-        query.bind(user).bind(user).bind(user)
+        vec![
+            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
+            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
+            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
+        ]
     };
-
-    let rows = query.fetch_all(executor).await?;
-
+    let rows: Vec<mysql_async::Row> = conn.exec(sql, params).await.map_err(DbError::from)?;
     to_qualified_uids(&rows)
 }
 
 /// Convert a list of rows into a list of qualified uids
-fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, State, Attributes)>> {
+fn to_qualified_uids(rows: &[mysql_async::Row]) -> DbResult<Vec<(String, State, Attributes)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw = row.get::<Value, _>(2);
-        let attrs: Attributes =
-            serde_json::from_value(raw).context("failed deserializing attributes")?;
-
-        uids.push((
-            row.get::<String, _>(0),
-            State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}").into())
-            })?,
-            attrs,
-        ));
+        let raw = row
+            .get::<Value, _>(2)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing attributes").into()))?;
+        let attrs: Attributes = serde_json::from_value(raw).map_err(|e| {
+            DbError::ConversionError(format!("failed deserializing attributes: {e}").into())
+        })?;
+        let uid: String = row
+            .get::<String, _>(0)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing uid").into()))?;
+        let state_str: String = row
+            .get::<String, _>(1)
+            .ok_or_else(|| DbError::ConversionError(String::from("missing state").into()))?;
+        let state = State::try_from(state_str.as_str()).map_err(|e| {
+            DbError::ConversionError(format!("failed converting the state: {e}").into())
+        })?;
+        uids.push((uid, state, attrs));
     }
     Ok(uids)
 }
@@ -859,7 +974,7 @@ fn to_qualified_uids(rows: &[MySqlRow]) -> DbResult<Vec<(String, State, Attribut
 pub(super) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
-    tx: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_>,
 ) -> DbResult<Vec<String>> {
     let mut uids = Vec::with_capacity(operations.len());
     for operation in operations {

@@ -1,11 +1,6 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm,
-        kmip_2_1::kmip_operations::{Hash, HashResponse},
-    },
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::kmip_operations::{Hash, HashResponse},
 };
 use cosmian_logger::trace;
 use openssl::hash::{Hasher, MessageDigest};
@@ -41,7 +36,6 @@ pub(crate) async fn hash_operation(
     _kms: &KMS,
     request: Hash,
     _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<HashResponse> {
     trace!("Hash: {}", serde_json::to_string(&request)?);
 
@@ -107,7 +101,7 @@ mod tests {
                 init_indicator,
                 final_indicator,
             };
-            let response = kms.hash(request, "test", None).await.unwrap();
+            let response = kms.hash(request, "test").await.unwrap();
             assert_eq!(response.data, Some(expected_hash.clone()));
             assert_eq!(response.correlation_value, None);
         }
@@ -133,7 +127,7 @@ mod tests {
             init_indicator: Some(true),
             final_indicator: Some(true),
         };
-        kms.hash(request, "test", None).await.unwrap_err();
+        kms.hash(request, "test").await.unwrap_err();
 
         // Test different hashing algorithms
         for algorithm in [
@@ -153,7 +147,7 @@ mod tests {
                 init_indicator: None,
                 final_indicator: None,
             };
-            let response = kms.hash(request, "test", None).await.unwrap();
+            let response = kms.hash(request, "test").await.unwrap();
             assert!(response.data.is_some());
             assert_eq!(response.correlation_value, None);
         }
@@ -169,7 +163,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        let response = kms.hash(request, "test", None).await?;
+        let response = kms.hash(request, "test").await?;
         assert!(response.data.is_some());
         assert!(response.correlation_value.is_none());
 
@@ -184,7 +178,7 @@ mod tests {
             init_indicator: None,
             final_indicator: None,
         };
-        kms.hash(request, "test", None).await.unwrap_err();
+        kms.hash(request, "test").await.unwrap_err();
 
         Ok(())
     }

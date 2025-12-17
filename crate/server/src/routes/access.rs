@@ -31,7 +31,7 @@ pub(crate) async fn list_owned_objects(
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/owned {user}");
 
-    let list = kms.list_owned_objects(&user, None).await?;
+    let list = kms.list_owned_objects(&user).await?;
 
     Ok(Json(list))
 }
@@ -49,7 +49,7 @@ pub(crate) async fn list_access_rights_obtained(
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/obtained {user}");
 
-    let list = kms.list_access_rights_obtained(&user, None).await?;
+    let list = kms.list_access_rights_obtained(&user).await?;
 
     Ok(Json(list))
 }
@@ -68,7 +68,7 @@ pub(crate) async fn list_accesses(
     let user = kms.get_user(&req);
     info!(user = user, "GET /access/list/{object_id} {user}");
 
-    let list = kms.list_accesses(&object_id, &user, None).await?;
+    let list = kms.list_accesses(&object_id, &user).await?;
 
     Ok(Json(list))
 }
@@ -92,7 +92,7 @@ pub(crate) async fn grant_access(
         "POST /access/grant"
     );
 
-    kms.grant_access(&access, &user, None, privileged_users.as_ref().clone())
+    kms.grant_access(&access, &user, privileged_users.as_ref().clone())
         .await?;
     debug!("Access granted on {}", access.user_id);
 
@@ -120,7 +120,7 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke"
     );
 
-    kms.revoke_access(&access, &user, None, privileged_users.as_ref().clone())
+    kms.revoke_access(&access, &user, privileged_users.as_ref().clone())
         .await?;
     debug!("Access revoke for {}", access.user_id);
 
@@ -149,7 +149,6 @@ pub(crate) async fn get_create_access(
                 None,
                 &cosmian_kmip::kmip_2_1::KmipOperation::Create,
                 &kms,
-                None,
             )
             .await?
         }

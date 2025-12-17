@@ -48,110 +48,6 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
-/// Ensure OpenSSL environment variables are set for tests (both FIPS and non-FIPS).
-/// If already defined in the environment, do nothing.
-#[allow(unsafe_code)]
-fn ensure_openssl_env() {
-    let conf_is_set = env::var_os("OPENSSL_CONF").is_some();
-    let modules_is_set = env::var_os("OPENSSL_MODULES").is_some();
-    if conf_is_set && modules_is_set {
-        return;
-    }
-
-    #[cfg(feature = "non-fips")]
-    {
-        // Non-FIPS mode: Check for custom OpenSSL provided via OPENSSL_DIR (e.g., from Nix)
-        if let Ok(dir) = env::var("OPENSSL_DIR") {
-            let openssl_dir = PathBuf::from(&dir);
-            let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
-            let modules_dir = openssl_dir.join("lib").join("ossl-modules");
-
-            if conf_path.exists() {
-                if !conf_is_set {
-                    unsafe {
-                        env::set_var("OPENSSL_CONF", &conf_path);
-                    }
-                    info!("Set OPENSSL_CONF to {} (non-FIPS)", conf_path.display());
-                }
-                if !modules_is_set && modules_dir.exists() {
-                    unsafe {
-                        env::set_var("OPENSSL_MODULES", &modules_dir);
-                    }
-                    info!("Set OPENSSL_MODULES to {}", modules_dir.display());
-                }
-                return;
-            }
-        }
-
-        // Fall back to system OpenSSL for non-FIPS builds (no custom config needed)
-        // The default and legacy providers should be available via system OpenSSL
-        info!("Using system OpenSSL for non-FIPS tests");
-    }
-
-    #[cfg(not(feature = "non-fips"))]
-    {
-        // Compute workspace root from the current crate path
-        // `test_server.rs` lives under `crate/test_kms_server`, so go up two levels
-        let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let workspace_root = crate_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .unwrap_or(&crate_dir)
-            .to_path_buf();
-
-        // FIPS mode: prefer an existing OPENSSL_DIR (e.g. provided by Nix shell) if it contains
-        // FIPS artifacts. This avoids falling back to a locally built OpenSSL that
-        // may have been compiled against an incompatible glibc version.
-        if let Ok(dir) = env::var("OPENSSL_DIR") {
-            let openssl_dir = PathBuf::from(&dir);
-            let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
-            let modules_dir = openssl_dir.join("lib").join("ossl-modules");
-            // Detect fips module (Linux .so / macOS .dylib)
-            let fips_so = modules_dir.join("fips.so");
-            let fips_dylib = modules_dir.join("fips.dylib");
-            if conf_path.exists() && (fips_so.exists() || fips_dylib.exists()) {
-                unsafe {
-                    if !conf_is_set {
-                        env::set_var("OPENSSL_CONF", &conf_path);
-                    }
-                    if !modules_is_set {
-                        env::set_var("OPENSSL_MODULES", &modules_dir);
-                    }
-                }
-                info!("Using FIPS OpenSSL from OPENSSL_DIR={}", dir);
-                return;
-            }
-        }
-
-        // Fall back to locally built FIPS OpenSSL (built by build.rs in crate/server)
-        // The build folder already contains everything needed:
-        // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/openssl.cnf
-        // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/fipsmodule.cnf
-        // - target/openssl-fips-3.1.2-{os}-{arch}/lib/ossl-modules/fips.so (or .dylib on macOS)
-        let os = std::env::consts::OS;
-        let arch = std::env::consts::ARCH;
-
-        let target_dir = workspace_root
-            .join("target")
-            .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
-        let openssl_conf = target_dir.join("ssl").join("openssl.cnf");
-        let modules_dir = target_dir.join("lib").join("ossl-modules");
-
-        if !conf_is_set {
-            unsafe {
-                env::set_var("OPENSSL_CONF", &openssl_conf);
-            }
-            info!("Set OPENSSL_CONF to {}", openssl_conf.display());
-        }
-        if !modules_is_set {
-            unsafe {
-                env::set_var("OPENSSL_MODULES", &modules_dir);
-            }
-            info!("Set OPENSSL_MODULES to {}", modules_dir.display());
-        }
-    }
-}
-
 // Small utilities to reduce repetition
 #[inline]
 fn root_dir() -> PathBuf {
@@ -302,8 +198,6 @@ fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
 #[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
-    // Ensure OpenSSL env vars are present for tests (both FIPS and non-FIPS)
-    ensure_openssl_env();
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
         match use_kek {
@@ -329,6 +223,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
         std::process::abort();
     })
 }
+
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     trace!("Starting test server with cert auth");
@@ -875,7 +770,7 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
     }
     let clients_ca = mode
         .use_known_ca_list()
-        .then(|| root_dir().join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"));
+        .then(|| root_dir().join("../../test_data/certificates/client_server/ca/ca.crt"));
     #[cfg(feature = "non-fips")]
     {
         TlsConfig {
@@ -902,10 +797,8 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
                     "../../test_data/certificates/client_server/server/kmserver.acme.com.key",
                 ),
             ),
-            // Provide chain explicitly for FIPS tests
-            tls_chain_file: Some(
-                root_dir().join("../../test_data/certificates/client_server/ca/stack_of_ca.pem"),
-            ),
+            // Server cert is directly signed by root CA, no intermediate chain needed
+            tls_chain_file: None,
             clients_ca_cert_file: clients_ca,
             tls_cipher_suites: server_tls_cipher_suites,
         }
