@@ -272,9 +272,6 @@ async fn encrypt_inner(
         // The encryption is likely perform using tags; key track of the actual key used
         Some(returned_key_id.as_bytes().to_vec())
     };
-    let nonce = response
-        .i_v_counter_nonce
-        .ok_or_else(|| KmsError::ServerError("Missing AES GCM nonce".to_owned()))?;
     let tag = response.authenticated_encryption_tag.ok_or_else(|| {
         KmsError::ServerError("Missing AES GCM authenticated encryption tag".to_owned())
     })?;
