@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, PaddingMethod, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,

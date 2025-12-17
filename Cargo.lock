@@ -973,6 +973,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "const_format"
+version = "0.2.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7faa7469a93a566e9ccc1c73fe783b4a65c274c5ace346038dca9c39fe0030ad"
+dependencies = [
+ "const_format_proc_macros",
+]
+
+[[package]]
+name = "const_format_proc_macros"
+version = "0.2.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d57c2eccfb16dbac1f4e61e206105db5820c9d26c3c472bc17c774259ef7744"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,6 +1344,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "const_format",
  "cosmian_kms_access",
  "cosmian_kms_base_hsm",
  "cosmian_kms_client_utils",
@@ -1344,7 +1365,7 @@ dependencies = [
  "opentelemetry_sdk 0.27.1",
  "pem",
  "proteccio_pkcs11_loader",
- "reqwest 0.11.27",
+ "reqwest",
  "scratchstack-aws-signature",
  "serde",
  "serde_json",
@@ -3881,17 +3902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qualifier_attr"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e2e25ee72f5b24d773cae88422baddefff7714f97aab68d96fe2b6fc4a28fb2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4270,7 +4280,12 @@ version = "0.103.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ffdfa2f5286e2247234e03f680868ac2815974dc39e00ea15adc445d0aafe52"
 dependencies = [
+<<<<<<< HEAD
  "ring",
+=======
+ "aws-lc-rs",
+ "ring 0.17.14",
+>>>>>>> f25158f0 (rebased onto develop)
  "rustls-pki-types",
  "untrusted 0.9.0",
 ]
@@ -4336,114 +4351,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "scratchstack-arn"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1bb205e940ee4657fdadfb0debf1d7ce2fda467d8fe0c2e856d80bbbc67706"
-dependencies = [
- "regex",
- "regex-syntax",
- "serde",
-]
-
-[[package]]
 name = "scratchstack-aws-principal"
-version = "0.4.9"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0606c0d2cee5413066630400a0e7131c92750706af797f11bd3d277648ddbd6e"
+checksum = "b9bc5a143f43c1be0f0ea1e3093ed0ba5981ca53594eab4dcfed3d83e59158b4"
 dependencies = [
- "base64 0.22.1",
- "chrono",
- "scratchstack-arn",
+ "log",
 ]
 
 [[package]]
 name = "scratchstack-aws-signature"
-version = "0.11.3"
+version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e6ed6b6552a4cd123601d26fbd06448e5474b1c87ad2aa5d360556d43786f2f"
+checksum = "66ca7b4792cf02b7d4e2f4e68da7cdbdc8d841c21ec3780c527507fc947a5273"
 dependencies = [
- "bytes",
+ "async-trait",
  "chrono",
- "derive_builder",
- "encoding",
  "hex",
- "hmac",
  "http 1.4.0",
  "lazy_static",
  "log",
- "qualifier_attr",
  "regex",
+ "ring 0.16.20",
  "scratchstack-aws-principal",
- "scratchstack-errors",
- "sha2",
  "subtle",
- "tower 0.5.2",
+ "tower 0.4.13",
 ]
 
 [[package]]
-name = "scratchstack-errors"
-version = "0.4.9"
+name = "scrypt"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39baab39902866e15878cb1ea147a266e92f589f7f85ec3193027bb520efd844"
+checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
 dependencies = [
- "http 1.4.0",
-]
-
-[[package]]
-name = "scratchstack-arn"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1bb205e940ee4657fdadfb0debf1d7ce2fda467d8fe0c2e856d80bbbc67706"
-dependencies = [
- "regex",
- "regex-syntax",
- "serde",
-]
-
-[[package]]
-name = "scratchstack-aws-principal"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0606c0d2cee5413066630400a0e7131c92750706af797f11bd3d277648ddbd6e"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "scratchstack-arn",
-]
-
-[[package]]
-name = "scratchstack-aws-signature"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e6ed6b6552a4cd123601d26fbd06448e5474b1c87ad2aa5d360556d43786f2f"
-dependencies = [
- "bytes",
- "chrono",
- "derive_builder",
- "encoding",
- "hex",
- "hmac",
- "http 1.3.1",
- "lazy_static",
- "log",
- "qualifier_attr",
- "regex",
- "scratchstack-aws-principal",
- "scratchstack-errors",
+ "pbkdf2",
+ "salsa20",
  "sha2",
- "subtle",
- "tower 0.5.2",
-]
-
-[[package]]
-name = "sct"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
-dependencies = [
- "ring 0.17.14",
- "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -5256,7 +5199,7 @@ version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0dc8b1fb61449e27716ec0e1bdf0f6b8f3e8f6b05391e8497b8b6d7804ea6d8"
 dependencies = [
- "indexmap 2.12.0",
+ "indexmap 2.12.1",
  "serde_core",
  "serde_spanned 1.0.3",
  "toml_datetime 0.7.3",

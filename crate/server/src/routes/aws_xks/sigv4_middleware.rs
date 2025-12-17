@@ -8,13 +8,15 @@
 //! Proxy Impl: <https://github.com/aws-samples/aws-kms-xks-proxy/tree/main>
 //! Testing client: <https://github.com/aws-samples/aws-kms-xksproxy-test-client>
 
-use actix_service::{Service, Transform};
+use crate::core::KMS;
+use crate::routes::aws_xks::error::{XksErrorName, XksErrorReply};
 use actix_web::dev::Payload;
 use actix_web::{
     Error,
     body::{BoxBody, EitherBody},
-    dev::{ServiceRequest, ServiceResponse},
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
     error::InternalError,
+    http::StatusCode,
 };
 use chrono::Duration;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -26,21 +28,16 @@ use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
 };
-use reqwest::StatusCode;
+use scratchstack_aws_signature::{
+    Request as Sigv4Request, SigningKey, SigningKeyKind::KSecret, sigv4_verify,
+};
 use std::{
     pin::Pin,
     rc::Rc,
     sync::Arc,
     task::{Context, Poll},
 };
-
-use scratchstack_aws_signature::{
-    Request as Sigv4Request, SigningKey, SigningKeyKind::KSecret, sigv4_verify,
-};
 use zeroize::Zeroizing;
-
-use crate::core::KMS;
-use crate::routes::aws_xks::error::{XksErrorName, XksErrorReply};
 
 // const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
 // const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
