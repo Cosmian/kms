@@ -1,6 +1,7 @@
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::trivially_copy_pass_by_ref)] // this is required by serde
 fn is_false(b: &bool) -> bool {
     !b
 }
