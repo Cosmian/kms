@@ -28,8 +28,6 @@ resources/tarballs/openssl-3.1.2.tar.gz
 *.xz*
 result*
 crate/server/Cargo.toml.bak
-sbom/*.json
-sbom/*.csv
-sbom/*.png
 crate/server/ui*
 vendor/
+http_cache.sqlite

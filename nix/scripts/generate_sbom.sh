@@ -133,14 +133,14 @@ echo ""
 # Note: "Failed reading nix meta information" warning is expected when scanning store paths
 # The SBOM still includes all package information, just without Nixpkgs-specific metadata
 echo "Generating CycloneDX SBOM..."
-run_sbomnix "$NIX_RESULT" --impure --cdx="$OUTPUT_DIR/bom.cdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
-echo "  ✓ bom.cdx.json"
+run_sbomnix "$NIX_RESULT" --impure --cdx="$OUTPUT_DIR/sbom.cdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
+echo "  ✓ sbom.cdx.json"
 echo ""
 
 # Generate SPDX SBOM (JSON format - ISO standard)
 echo "Generating SPDX SBOM..."
-run_sbomnix "$NIX_RESULT" --impure --spdx="$OUTPUT_DIR/bom.spdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
-echo "  ✓ bom.spdx.json"
+run_sbomnix "$NIX_RESULT" --impure --spdx="$OUTPUT_DIR/sbom.spdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
+echo "  ✓ sbom.spdx.json"
 echo ""
 
 # Generate CSV format
