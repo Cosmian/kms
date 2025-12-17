@@ -243,11 +243,11 @@ mod tests {
             azure_ekm_config: AzureEkmConfig {
                 azure_ekm_enable: false,
                 azure_ekm_path_prefix: None,
-                azure_ekm_disable_client_auth: "",
-                azure_ekm_proxy_vendor: "",
-                azure_ekm_proxy_name: "",
-                azure_ekm_ekm_vendor: "",
-                azure_ekm_ekm_product: "",
+                azure_ekm_disable_client_auth: false,
+                azure_ekm_proxy_vendor: String::new(),
+                azure_ekm_proxy_name: String::new(),
+                azure_ekm_ekm_vendor: String::new(),
+                azure_ekm_ekm_product: String::new(),
             },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {

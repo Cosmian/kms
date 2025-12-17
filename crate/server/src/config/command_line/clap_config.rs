@@ -162,6 +162,9 @@ pub struct ClapConfig {
     pub google_cse_config: GoogleCseConfig,
 
     #[clap(flatten)]
+    pub azure_ekm_config: AzureEkmConfig,
+
+    #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
     #[clap(flatten)]
@@ -175,9 +178,6 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
-
-    #[clap(flatten)]
-    pub azure_ekm_config: AzureEkmConfig,
 }
 
 impl ClapConfig {
