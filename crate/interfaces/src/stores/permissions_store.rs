@@ -1,12 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 
-use crate::{InterfaceResult, stores::SessionParams};
+use crate::InterfaceResult;
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]
@@ -19,7 +16,6 @@ pub trait PermissionsStore {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>;
 
     /// List all the KMIP operations granted per `user`
@@ -27,7 +23,6 @@ pub trait PermissionsStore {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>>;
 
     /// Grant to `user` the ability to perform the KMIP `operations`
@@ -37,7 +32,6 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// Remove to `user` the ability to perform the KMIP `operations`
@@ -47,7 +41,6 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()>;
 
     /// List all the KMIP operations that have been granted to a user on an object
@@ -59,6 +52,5 @@ pub trait PermissionsStore {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
 }

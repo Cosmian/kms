@@ -136,7 +136,7 @@ async fn internal_get_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms.get(op, &user, None).await?;
+    let resp = kms.get(op, &user).await?;
     match resp.object {
         Object::PublicKey(PublicKey { key_block, .. }) => {
             let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
@@ -241,7 +241,7 @@ async fn internal_decrypt(
         }),
         ..Decrypt::default()
     };
-    let response = kms.decrypt(decrypt_request, &user, None).await?;
+    let response = kms.decrypt(decrypt_request, &user).await?;
     Ok(DecryptedData {
         value: STANDARD.encode(
             response

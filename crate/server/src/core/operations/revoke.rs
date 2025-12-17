@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use async_recursion::async_recursion;
 #[cfg(feature = "non-fips")]
@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, info, trace};
 use time::OffsetDateTime;
@@ -35,7 +35,6 @@ pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<RevokeResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -65,7 +64,6 @@ pub(crate) async fn revoke_operation(
         request.cascade,
         kms,
         user,
-        params,
         HashSet::new(),
     )
     .await?;
@@ -85,11 +83,10 @@ pub(crate) async fn recursively_revoke_key(
     cascade: bool,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("Revoke")?;
 
@@ -100,14 +97,10 @@ pub(crate) async fn recursively_revoke_key(
         // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
         if let Some(prefix) = has_prefix(&uid) {
             // ensure user can revoke
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
+            if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
+                    .list_user_operations_on_object(&uid, user, false)
                     .await?;
                 if !ops.iter().any(|p| KmipOperation::Revoke == *p) {
                     continue;
@@ -115,7 +108,7 @@ pub(crate) async fn recursively_revoke_key(
             }
             if kms
                 .database
-                .update_state(&uid, State::Deactivated, params.clone())
+                .update_state(&uid, State::Deactivated)
                 .await
                 .is_ok()
             {
@@ -131,7 +124,7 @@ pub(crate) async fn recursively_revoke_key(
             )));
         }
         // retrieve the object
-        let Some(owm) = kms.database.retrieve_object(&uid, params.clone()).await? else {
+        let Some(owm) = kms.database.retrieve_object(&uid).await? else {
             continue;
         };
 
@@ -170,7 +163,7 @@ pub(crate) async fn recursively_revoke_key(
         if user != owm.owner() {
             let permissions = kms
                 .database
-                .list_user_operations_on_object(owm.id(), user, false, params.clone())
+                .list_user_operations_on_object(owm.id(), user, false)
                 .await?;
             if !permissions.contains(&KmipOperation::Revoke) {
                 continue;
@@ -190,7 +183,6 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params.clone(),
                 )
                 .await?;
             }
@@ -206,7 +198,6 @@ pub(crate) async fn recursively_revoke_key(
                         compromise_occurrence_date,
                         kms,
                         user,
-                        params.clone(),
                         ids_to_skip.clone(),
                     )
                     .await?;
@@ -228,7 +219,6 @@ pub(crate) async fn recursively_revoke_key(
                                 cascade,
                                 kms,
                                 user,
-                                params.clone(),
                                 ids_to_skip.clone(),
                             )
                             .await?;
@@ -240,7 +230,6 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params.clone(),
                 )
                 .await?;
             }
@@ -263,7 +252,6 @@ pub(crate) async fn recursively_revoke_key(
                                 cascade,
                                 kms,
                                 user,
-                                params.clone(),
                                 ids_to_skip.clone(),
                             )
                             .await?;
@@ -275,7 +263,6 @@ pub(crate) async fn recursively_revoke_key(
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                    params.clone(),
                 )
                 .await?;
             }
@@ -315,7 +302,6 @@ async fn revoke_key_core(
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<OffsetDateTime>,
     kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Update the state of the object to Active and activation date
     let now = time_normalize()?;
@@ -347,16 +333,10 @@ async fn revoke_key_core(
     }
 
     kms.database
-        .update_object(
-            owm.id(),
-            owm.object(),
-            owm.attributes(),
-            None,
-            params.clone(),
-        )
+        .update_object(owm.id(), owm.object(), owm.attributes(), None)
         .await?;
 
-    kms.database.update_state(owm.id(), state, params).await?;
+    kms.database.update_state(owm.id(), state).await?;
 
     debug!("Object with unique identifier: {} revoked", owm.id());
 

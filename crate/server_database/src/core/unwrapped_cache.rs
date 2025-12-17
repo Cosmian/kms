@@ -312,7 +312,6 @@ mod tests {
                 &symmetric_key,
                 symmetric_key.attributes()?,
                 &HashSet::new(),
-                None,
             )
             .await?;
         assert_eq!(&uid, &uid_);
@@ -321,7 +320,7 @@ mod tests {
         assert!(database.unwrapped_cache().peek(&uid).await.is_none());
 
         // fetch the key
-        let owm = database.retrieve_object(&uid, None).await?;
+        let owm = database.retrieve_object(&uid).await?;
         match owm {
             Some(obj) => assert_eq!(obj.id(), &uid),
             None => assert!(false, "expected object to be present"),

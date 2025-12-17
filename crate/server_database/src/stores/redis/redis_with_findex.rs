@@ -5,7 +5,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof_findex::Label;
 use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -17,9 +16,8 @@ use cosmian_kms_crypto::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
-    SessionParams,
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
@@ -34,7 +32,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate, MigrateTo5_12_0Parameters, MigrationParams, RedisMigrate},
+        migrate::{DbState, Migrate},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
@@ -98,7 +96,6 @@ impl RedisWithFindex {
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
-        label: Option<&[u8]>,
     ) -> DbResult<Self> {
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
@@ -144,26 +141,11 @@ impl RedisWithFindex {
                 .await?;
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
-            warn!("Non-empty Redis database detected. Starting migration routine.");
-            let label = label.unwrap_or_else(|| {
-                warn!(
-                    "Label parameter not provided. Ignore this warning if this was \
-                    intentional. Otherwise, abort the migration and provide the correct \
-                    label."
-                );
-                b""
-            });
-            redis_with_findex
-                .migrate({
-                    MigrationParams {
-                        migrate_to_5_12_0_parameters: Some(MigrateTo5_12_0Parameters {
-                            redis_url: redis_url.to_owned(),
-                            master_key: &master_key,
-                            label: Label::from(label),
-                        }),
-                    }
-                })
-                .await?;
+            return Err(DbError::DatabaseError(
+                "Legacy Redis/Findex migration support has been removed. \
+                Please export your data from the legacy KMS and reimport into the current version."
+                    .to_owned(),
+            ));
         }
 
         Ok(redis_with_findex)
@@ -180,13 +162,12 @@ impl RedisWithFindex {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: State,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<RedisDbObject> {
         // replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {
-            self.retrieve_tags(uid, params).await?
+            self.retrieve_tags(uid).await?
         };
         // the database object to index and store
         let db_object = RedisDbObject::new(
@@ -227,7 +208,6 @@ impl RedisWithFindex {
                 attributes,
                 Some(tags),
                 attributes.state.unwrap_or(State::PreActive),
-                None,
             )
             .await?;
         Ok((uid, db_object))
@@ -296,7 +276,6 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         let (uid, db_object) = self
             .prepare_object_for_create(uid, owner, object, attributes, tags)
@@ -312,11 +291,7 @@ impl ObjectsStore for RedisWithFindex {
     ///
     /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {
             o.map(|o| {
                 ObjectWithMetadata::new(
@@ -331,11 +306,7 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Retrieve the tags of the object with the given `uid`
-    async fn retrieve_tags(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(self
             .objects_db
             .object_get(uid)
@@ -353,7 +324,6 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         let db_object = self
             .prepare_object_for_update(uid, object, attributes, tags)
@@ -362,22 +332,13 @@ impl ObjectsStore for RedisWithFindex {
         Ok(())
     }
 
-    async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         if let Some(_db_object) = self.objects_db.object_get(uid).await? {
             self.objects_db.object_delete(uid).await?;
         }
@@ -388,7 +349,6 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
@@ -403,7 +363,6 @@ impl ObjectsStore for RedisWithFindex {
                             attributes,
                             tags.as_ref(),
                             *state,
-                            params.clone(),
                         )
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
@@ -441,12 +400,7 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
@@ -455,11 +409,7 @@ impl ObjectsStore for RedisWithFindex {
         Ok(object.owner == owner)
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         let tag_keywords = tags
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
@@ -501,7 +451,6 @@ impl ObjectsStore for RedisWithFindex {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
@@ -599,7 +548,6 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         let permissions = self
             .permission_db
@@ -635,7 +583,6 @@ impl PermissionsStore for RedisWithFindex {
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         Ok(self
             .permission_db
@@ -653,7 +600,6 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
@@ -674,7 +620,6 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         for operation in &operations {
             self.permission_db
@@ -693,7 +638,6 @@ impl PermissionsStore for RedisWithFindex {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(self
             .permission_db

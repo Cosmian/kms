@@ -3,6 +3,4 @@
 
 [advisories]
 # List of advisory IDs to ignore (extracted from deny.toml)
-ignore = [
-    "RUSTSEC-2023-0071", # Marvin Attack timing vulnerability in rsa crate v0.9.8 - no patched version available yet
-]
+ignore = []

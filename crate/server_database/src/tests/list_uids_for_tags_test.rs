@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
@@ -8,14 +8,13 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, SessionParams};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use uuid::Uuid;
 
 use crate::error::DbResult;
 
 pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
@@ -44,7 +43,6 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone()]),
-        db_params.clone(),
     )
     .await?;
 
@@ -67,27 +65,26 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone(), tag2.clone()]),
-        db_params.clone(),
     )
     .await?;
 
     // List yids for tag "tag1"
     let uids = db
-        .list_uids_for_tags(&HashSet::from([tag1.clone()]), db_params.clone())
+        .list_uids_for_tags(&HashSet::from([tag1.clone()]))
         .await?;
     assert_eq!(uids.len(), 2);
     assert!(uids.contains(&uid1));
 
     // List uids for tag2
     let uids = db
-        .list_uids_for_tags(&HashSet::from([tag2.clone()]), db_params.clone())
+        .list_uids_for_tags(&HashSet::from([tag2.clone()]))
         .await?;
     assert_eq!(uids.len(), 1);
     assert!(uids.contains(&uid2));
 
     // List uids for tag1 and tag2
     let uids = db
-        .list_uids_for_tags(&HashSet::from([tag1.clone(), tag2.clone()]), db_params)
+        .list_uids_for_tags(&HashSet::from([tag1.clone(), tag2.clone()]))
         .await?;
     assert_eq!(uids.len(), 1);
     assert!(uids.contains(&uid2));

@@ -8,7 +8,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore, SessionParams};
+use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
 
 use crate::{
     Database,
@@ -150,14 +150,11 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<String> {
         let db = self
-            .get_object_store(uid.clone().unwrap_or_default().as_str())
+            .get_object_store(uid.as_deref().unwrap_or_default())
             .await?;
-        let uid = db
-            .create(uid, owner, object, attributes, tags, params)
-            .await?;
+        let uid = db.create(uid, owner, object, attributes, tags).await?;
         // Clear the cache for the unwrapped key (if any)
         self.unwrapped_cache.validate_cache(&uid, object).await;
         Ok(uid)
@@ -189,18 +186,17 @@ impl Database {
     pub async fn retrieve_objects(
         &self,
         uid_or_tags: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
         let uids = if uid_or_tags.starts_with('[') {
             // tags
             let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-            self.list_uids_for_tags(&tags, params.clone()).await?
+            self.list_uids_for_tags(&tags).await?
         } else {
             HashSet::from([uid_or_tags.to_owned()])
         };
         let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
         for uid in &uids {
-            let owm = self.retrieve_object(uid, params.clone()).await?;
+            let owm = self.retrieve_object(uid).await?;
             if let Some(owm) = owm {
                 results.insert(uid.to_owned(), owm);
             }
@@ -226,24 +222,16 @@ impl Database {
     /// * `DbResult<Option<ObjectWithMetadata>>` - A result containing an optional `ObjectWithMetadata`.
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
-    pub async fn retrieve_object(
-        &self,
-        uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<Option<ObjectWithMetadata>> {
+    pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
         // retrieve the object
         let db = self.get_object_store(uid).await?;
-        Ok(db.retrieve(uid, params).await?)
+        Ok(db.retrieve(uid).await?)
     }
 
     /// Retrieve the tags of the object with the given `uid`
-    pub async fn retrieve_tags(
-        &self,
-        uid: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<HashSet<String>> {
+    pub async fn retrieve_tags(&self, uid: &str) -> DbResult<HashSet<String>> {
         let db = self.get_object_store(uid).await?;
-        Ok(db.retrieve_tags(uid, params).await?)
+        Ok(db.retrieve_tags(uid).await?)
     }
 
     /// This method updates the specified object identified by its `uid` in the database.
@@ -271,54 +259,38 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
-        db.update_object(uid, object, attributes, tags, params)
-            .await?;
+        db.update_object(uid, object, attributes, tags).await?;
         self.unwrapped_cache.validate_cache(uid, object).await;
         Ok(())
     }
 
     /// Update the state of an object in the database.
-    pub async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<()> {
+    pub async fn update_state(&self, uid: &str, state: State) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
-        Ok(db.update_state(uid, state, params).await?)
+        Ok(db.update_state(uid, state).await?)
     }
 
     /// Delete an object from the database.
-    pub async fn delete(&self, uid: &str, params: Option<Arc<dyn SessionParams>>) -> DbResult<()> {
+    pub async fn delete(&self, uid: &str) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
-        db.delete(uid, params).await?;
+        db.delete(uid).await?;
         self.unwrapped_cache.clear_cache(uid).await;
         Ok(())
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    pub async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<bool> {
+    pub async fn is_object_owned_by(&self, uid: &str, owner: &str) -> DbResult<bool> {
         let db = self.get_object_store(uid).await?;
-        Ok(db.is_object_owned_by(uid, owner, params).await?)
+        Ok(db.is_object_owned_by(uid, owner).await?)
     }
 
-    pub async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> DbResult<HashSet<String>> {
+    pub async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> DbResult<HashSet<String>> {
         let db_map = self.objects.read().await;
         let mut results = HashSet::new();
         for (_prefix, db) in db_map.iter() {
-            results.extend(db.list_uids_for_tags(tags, params.clone()).await?);
+            results.extend(db.list_uids_for_tags(tags).await?);
         }
         Ok(results)
     }
@@ -331,21 +303,14 @@ impl Database {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for (_prefix, db) in map.iter() {
             results.extend(
-                db.find(
-                    researched_attributes,
-                    state,
-                    user,
-                    user_must_be_owner,
-                    params.clone(),
-                )
-                .await
-                .unwrap_or(vec![]),
+                db.find(researched_attributes, state, user, user_must_be_owner)
+                    .await
+                    .unwrap_or(vec![]),
             );
         }
         Ok(results)
@@ -374,7 +339,6 @@ impl Database {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        params: Option<Arc<dyn SessionParams>>,
     ) -> DbResult<Vec<String>> {
         if operations.is_empty() {
             return Ok(vec![]);
@@ -383,7 +347,7 @@ impl Database {
         let first_op = &operations[0];
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
-        let ids = db.atomic(user, operations, params).await?;
+        let ids = db.atomic(user, operations).await?;
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
