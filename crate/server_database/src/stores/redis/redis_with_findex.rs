@@ -17,6 +17,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
@@ -31,6 +32,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+        migrate::{DbState, Migrate},
         migrate::{DbState, Migrate},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
@@ -182,6 +184,7 @@ impl RedisWithFindex {
             tags.clone()
         } else {
             self.retrieve_tags(uid).await?
+            self.retrieve_tags(uid).await?
         };
         // the database object to index and store
         let db_object = RedisDbObject::new(
@@ -302,6 +305,7 @@ impl ObjectsStore for RedisWithFindex {
     /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {
             o.map(|o| {
                 ObjectWithMetadata::new(
@@ -316,6 +320,7 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     /// Retrieve the tags of the object with the given `uid`
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(self
             .objects_db
@@ -343,11 +348,13 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
         let db_object = self.prepare_object_for_state_update(uid, state).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         if let Some(_db_object) = self.objects_db.object_get(uid).await? {
             self.objects_db.object_delete(uid).await?;
@@ -411,6 +418,7 @@ impl ObjectsStore for RedisWithFindex {
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
         let object = self
             .objects_db
             .object_get(uid)
@@ -419,6 +427,7 @@ impl ObjectsStore for RedisWithFindex {
         Ok(object.owner == owner)
     }
 
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         let tag_keywords = tags
             .iter()

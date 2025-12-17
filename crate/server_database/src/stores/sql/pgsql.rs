@@ -3,10 +3,12 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
+    kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore,
     PermissionsStore,
 };
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
@@ -61,6 +63,7 @@ macro_rules! get_pgsql_query {
 
 #[derive(Clone)]
 pub(crate) struct PgPool {
+    pool: Pool,
     pool: Pool,
 }
 

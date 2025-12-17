@@ -465,6 +465,14 @@ _run_workspace_tests() {
     # shellcheck disable=SC2086
     cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
   fi
+  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+
+  # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
+  # For sqlite, skip this step since all non-ignored tests already ran above
+  if [ "$KMS_TEST_DB" != "sqlite" ]; then
+    # shellcheck disable=SC2086
+    cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
+  fi
 }
 
 # Public: run DB-specific tests with optional service checks
