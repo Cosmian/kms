@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-51pkrnk49rlxm7i9a9zzb547ni8zddrq-cosmian-kms-server-rebuild-1-5.14.0.drv",
-  "documentNamespace": "sbomnix://5bbb9765-3feb-4600-8dec-e9476a0b0989",
+  "name": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
+  "documentNamespace": "sbomnix://46e33a8b-204a-4666-93cd-bbfbbcd780f0",
   "creationInfo": {
-    "created": "2025-12-17T07:36:03.369098+01:00",
+    "created": "2025-12-18T06:28:36.875056+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -77,7 +77,7 @@
     },
     {
       "name": "cosmian-kms-server-rebuild-1",
-      "SPDXID": "SPDXRef-nix-store-51pkrnk49rlxm7i9a9zzb547ni8zddrq-cosmian-kms-server-rebuild-1-5.14.0.drv",
+      "SPDXID": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
       "versionInfo": "5.14.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -161,7 +161,7 @@
     },
     {
       "name": "openssl",
-      "SPDXID": "SPDXRef-nix-store-6i3n6g1m26plpi346igr9nksqrcxf873-openssl-3.1.2.drv",
+      "SPDXID": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
       "versionInfo": "3.1.2",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -255,14 +255,9 @@
       "relatedSpdxElement": "SPDXRef-nix-store-iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-51pkrnk49rlxm7i9a9zzb547ni8zddrq-cosmian-kms-server-rebuild-1-5.14.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-nix-store-6i3n6g1m26plpi346igr9nksqrcxf873-openssl-3.1.2.drv"
-    },
-    {
-      "spdxElementId": "SPDXRef-nix-store-51pkrnk49rlxm7i9a9zzb547ni8zddrq-cosmian-kms-server-rebuild-1-5.14.0.drv",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-nix-store-srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv"
+      "relatedSpdxElement": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv"
     },
     {
       "spdxElementId": "SPDXRef-nix-store-srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv",
@@ -280,17 +275,17 @@
       "relatedSpdxElement": "SPDXRef-nix-store-3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-6i3n6g1m26plpi346igr9nksqrcxf873-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-6i3n6g1m26plpi346igr9nksqrcxf873-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-6i3n6g1m26plpi346igr9nksqrcxf873-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv"
     },

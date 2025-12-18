@@ -39,6 +39,8 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
+                       Options:
+                         --target <openssl|server>  Choose SBOM target (default: openssl)
     update-hashes [options]
                Update expected hashes for current platform (release profile mandatory)
       --variant <fips|non-fips>  Update specific variant (default: fips)
@@ -81,8 +83,9 @@ usage() {
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate SBOM for FIPS variant
-    $0 --variant non-fips sbom              # Generate SBOM for non-FIPS variant
+    $0 sbom                                 # Generate SBOM (OpenSSL by default)
+    $0 sbom --target openssl                # SBOM for OpenSSL 3.1.2
+    $0 sbom --target server                 # SBOM for KMS server (fips, static OpenSSL)
     $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
 EOF
   exit 1
@@ -418,7 +421,7 @@ sbom)
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
   echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
-  bash "$SCRIPT" --variant "$VARIANT" "$@"
+  bash "$SCRIPT" "$@"
   exit $?
   ;;
 update-hashes)
