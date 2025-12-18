@@ -689,7 +689,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         if enable_aws_xks {
-            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            // The scope for the AWS XKS (External Key Store) endpoints served from /aws
             let aws_xks_scope = web::scope("/aws")
                 .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))
                 .wrap(Cors::permissive())

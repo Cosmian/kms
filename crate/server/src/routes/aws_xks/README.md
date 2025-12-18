@@ -41,4 +41,4 @@ PATH=<HOMEBREW>/bin:$PATH XKS_PROXY_HOST="localhost:9998" VERBOSE=-iv SCHEME= UR
 KEY_ID=df1d7317-85b2-4db8-9462-50b9be6dc3d1 ./test-xks-proxy
 ```
 
-... wherre `<HOMEBREW>` is the path to the homebrew installation directory (on MacOS).
+... where `<HOMEBREW>` is the path to the homebrew installation directory (on MacOS).
