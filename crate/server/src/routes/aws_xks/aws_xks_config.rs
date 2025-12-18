@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 #[allow(clippy::struct_field_names)]
 pub struct AwsXksConfig {
-    /// This setting turns on endpoints handling Google CSE feature
+    /// This setting turns on endpoints handling the AWS XKS feature
     #[clap(long, env = "KMS_AWX_XKS_ENABLE", default_value = "false")]
     pub aws_xks_enable: bool,
 

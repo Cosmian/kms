@@ -62,9 +62,9 @@ pub(crate) struct RequestMetadata {
 
     /// This is the KMS API call that resulted in the XKS Proxy API request.
     /// This field is REQUIRED.
-    /// The kmsOperation is set to `CreateCustomKeyStore``ConnectCustomKeyStore`re
-    /// or `UpdateCustomKeyStore` when th`GetHealthStatus`us API is called as part of those KMS APIs.
-    /// This field is set to `KmsHealthCheck` whe`GetHealthStatus`us is called periodically
+    /// The kmsOperation is set to `CreateCustomKeyStore`, `ConnectCustomKeyStore`,
+    /// or `UpdateCustomKeyStore` when the `GetHealthStatus` API is called as part of those KMS APIs.
+    /// This field is set to `KmsHealthCheck` when `GetHealthStatus` is called periodically
     /// to get health status for publishing to `CloudWatch` metrics.
     /// The XKS Proxy MUST NOT reject a request as invalid if it sees a kmsOperation
     /// other than those listed for this API call.
