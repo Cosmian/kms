@@ -12,8 +12,8 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 # - server:  scans the KMS server derivation
 TARGET="openssl"
 # Variant and link are only relevant for 'server' target
-VARIANT="fips"          # fips | non-fips
-LINK="static"           # static | dynamic (static by default)
+VARIANT="fips" # fips | non-fips
+LINK="static"  # static | dynamic (static by default)
 OUTPUT_DIR="$REPO_ROOT/sbom"
 
 usage() {
@@ -26,7 +26,9 @@ Options:
   --target TARGET      One of: openssl | server (default: openssl)
   --variant VARIANT    One of: fips | non-fips (server target only; default: fips)
   --link LINK          One of: static | dynamic (server target only; default: static)
-  --output DIR         Output directory for SBOM files (default: ./sbom)
+  --output DIR         Output directory for SBOM files (default:
+                       - openssl: ./sbom/openssl
+                       - server:  ./sbom/server/<variant>/<link>)
   -h, --help           Show this help message
 
 Examples:
@@ -78,7 +80,57 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Create output directory
+# Determine the derivation to analyze based on target
+case "$TARGET" in
+openssl)
+  DERIVATION="openssl312"
+  NIX_RESULT="$REPO_ROOT/result-openssl-312"
+  ;;
+server)
+  # Validate variant/link values
+  case "$VARIANT" in
+  fips | non-fips) : ;;
+  *)
+    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+    exit 1
+    ;;
+  esac
+  case "$LINK" in
+  static | dynamic) : ;;
+  *)
+    echo "Error: --link must be 'static' or 'dynamic'" >&2
+    exit 1
+    ;;
+  esac
+
+  # Scan the exact server derivation (build chain) to verify toolchain CVEs
+  if [ "$LINK" = "dynamic" ]; then
+    DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
+    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
+  else
+    DERIVATION="kms-server-${VARIANT}-static-openssl"
+    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
+  fi
+  ;;
+*)
+  echo "Error: Unknown --target '$TARGET'. Use 'openssl' or 'server'." >&2
+  exit 1
+  ;;
+esac
+
+# Adjust default output directory to include target/variant/link structure
+if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
+  case "$TARGET" in
+  server)
+    OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
+    ;;
+  openssl)
+    OUTPUT_DIR="$REPO_ROOT/sbom/openssl"
+    ;;
+  esac
+fi
+
+# Create output directory (after adjusting default path)
 mkdir -p "$OUTPUT_DIR"
 
 echo "========================================="
@@ -92,38 +144,6 @@ echo "========================================="
 echo ""
 
 cd "$REPO_ROOT"
-
-# Determine the derivation to analyze based on target
-case "$TARGET" in
-  openssl)
-    DERIVATION="openssl312"
-    NIX_RESULT="$REPO_ROOT/result-openssl-312"
-    ;;
-  server)
-    # Validate variant/link values
-    case "$VARIANT" in
-      fips|non-fips) : ;;
-      *) echo "Error: --variant must be 'fips' or 'non-fips'" >&2; exit 1 ;;
-    esac
-    case "$LINK" in
-      static|dynamic) : ;;
-      *) echo "Error: --link must be 'static' or 'dynamic'" >&2; exit 1 ;;
-    esac
-
-    # Scan the exact server derivation (build chain) to verify toolchain CVEs
-    if [ "$LINK" = "dynamic" ]; then
-      DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
-      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
-    else
-      DERIVATION="kms-server-${VARIANT}-static-openssl"
-      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
-    fi
-    ;;
-  *)
-    echo "Error: Unknown --target '$TARGET'. Use 'openssl' or 'server'." >&2
-    exit 1
-    ;;
-esac
 
 # Helper function to run sbomnix commands via nix-shell if sbomnix is not available
 run_sbomnix() {
@@ -247,11 +267,11 @@ runtime_filter() {
   declare -A fam
   for lib in "${needed_libs[@]}"; do
     case "$lib" in
-      libgcc_s.so.*) fam[gcc]=1 ;;
-      libc.so.*|libm.so.*|ld-linux*.so*|librt.so.*|libdl.so.*|libpthread.so.*|libresolv.so.*|libnss_*.so*) fam[glibc]=1 ;;
-      libssl.so.*|libcrypto.so.*) fam[openssl]=1 ;;
-      libz.so.*) fam[zlib]=1 ;;
-      *) : ;;
+    libgcc_s.so.*) fam[gcc]=1 ;;
+    libc.so.* | libm.so.* | ld-linux*.so* | librt.so.* | libdl.so.* | libpthread.so.* | libresolv.so.* | libnss_*.so*) fam[glibc]=1 ;;
+    libssl.so.* | libcrypto.so.*) fam[openssl]=1 ;;
+    libz.so.*) fam[zlib]=1 ;;
+    *) : ;;
     esac
   done
 
@@ -268,7 +288,7 @@ runtime_filter() {
 
   # Filter vulns.csv where the 3rd column is 'package'
   if [ -f "$OUTPUT_DIR/vulns.csv" ]; then
-    awk -F',' -v OFS=',' -v rx="$pkg_regex" 'NR==1{print; next} { col=$3; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/vulns.csv" > "$OUTPUT_DIR/vulns.runtime.csv" || true
+    awk -F',' -v OFS=',' -v rx="$pkg_regex" 'NR==1{print; next} { col=$3; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/vulns.csv" >"$OUTPUT_DIR/vulns.runtime.csv" || true
     if [ -s "$OUTPUT_DIR/vulns.runtime.csv" ]; then
       echo "  ✓ vulns.runtime.csv"
     else
@@ -278,7 +298,7 @@ runtime_filter() {
 
   # Filter sbom.csv where the 2nd column is 'pname'
   if [ -f "$OUTPUT_DIR/sbom.csv" ]; then
-    awk -F',' -v OFS=',' -v rx="$pname_regex" 'NR==1{print; next} { col=$2; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/sbom.csv" > "$OUTPUT_DIR/sbom.runtime.csv" || true
+    awk -F',' -v OFS=',' -v rx="$pname_regex" 'NR==1{print; next} { col=$2; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/sbom.csv" >"$OUTPUT_DIR/sbom.runtime.csv" || true
     if [ -s "$OUTPUT_DIR/sbom.runtime.csv" ]; then
       echo "  ✓ sbom.runtime.csv"
     else

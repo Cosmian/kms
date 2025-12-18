@@ -31,3 +31,4 @@ crate/server/Cargo.toml.bak
 crate/server/ui*
 vendor/
 http_cache.sqlite
+sbom.*
