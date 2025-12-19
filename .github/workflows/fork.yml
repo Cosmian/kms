@@ -1,0 +1,34 @@
+---
+name: Fork PR CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  fork-ci:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+          components: rustfmt, clippy
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test (FIPS default)
+        run: |
+          set -ex
+          cargo test --workspace --lib -- --nocapture
+
+      - name: Optional Test (non-fips)
+        if: false
+        run: |
+          set -ex
+          cargo test --workspace --lib --features non-fips -- --nocapture
