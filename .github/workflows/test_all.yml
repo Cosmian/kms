@@ -88,47 +88,6 @@ jobs:
           set -ex
           bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
 
-  test:
-    name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        type:
-          - sqlite
-        features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
-
-    steps:
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
-
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Test
-        run: |
-          set -ex
-          bash .github/scripts/test_${{ matrix.type }}.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }}
-
-      - name: With cargo only
-        run: |
-          set -ex
-          if [ "${{ inputs.debug_or_release }}" = "release" ]; then
-            export RELEASE_FLAG="--release"
-          else
-            export RELEASE_FLAG=""
-          fi
-          if [ "${{ matrix.features }}" = "non-fips" ]; then
-            export FEATURES_FLAG="--features non-fips";
-          else
-            export FEATURES_FLAG="";
-          fi
-          cargo test --workspace --lib $RELEASE_FLAG $FEATURES_FLAG -- --nocapture
-
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
@@ -178,7 +137,6 @@ jobs:
   cleanup:
     needs:
       - test-nix
-      - test
       - hsm
       - windows-2022
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop

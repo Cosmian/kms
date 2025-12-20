@@ -132,21 +132,21 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 Available dynamic packages for Debian-based distributions:
 
-    ```sh
-    # Non-FIPS dynamic (OpenSSL linked dynamically)
-    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_amd64.deb
-    # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_amd64.deb
-    ```
+        ```sh
+        # Non-FIPS dynamic (OpenSSL linked dynamically)
+        wget https://package.cosmian.com/kms/5.14.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_amd64.deb
+        # FIPS dynamic
+        wget https://package.cosmian.com/kms/5.14.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_amd64.deb
+        ```
 
 Available dynamic packages for Rocky Linux:
 
-    ```sh
-    # Non-FIPS dynamic
-    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_x86_64.rpm
-    # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_x86_64.rpm
-    ```
+        ```sh
+        # Non-FIPS dynamic
+        wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.14.0_x86_64.rpm
+        # FIPS dynamic
+        wget https://package.cosmian.com/kms/5.14.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.14.0_x86_64.rpm
+        ```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
 shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
