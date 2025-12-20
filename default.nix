@@ -91,7 +91,7 @@ let
     targets = [ "wasm32-unknown-unknown" ];
   };
 
-  # For Linux, we need glibc <= 2.28. Import older nixpkgs to get its stdenv.
+  # For Linux, we need glibc <= 2.28. Import older nixpkgs to get its stdenv (2.28).
   pkgs228 =
     if pkgs.stdenv.isLinux then
       (
@@ -103,7 +103,7 @@ let
             if nixpkgs1903 != "" then
               nixpkgs1903
             else
-              # Pin to a stable tag tarball (avoid moving branch head to prevent hash drift)
+              # Pin to a stable tag tarball (glibc 2.28 lives in 19.03)
               "https://github.com/NixOS/nixpkgs/archive/nixos-19.03.tar.gz";
         }) { config.allowUnfree = true; }
       )

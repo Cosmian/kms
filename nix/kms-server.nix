@@ -436,10 +436,15 @@ rustPlatform.buildRustPackage rec {
         "--remap-path-prefix"
         "${toString ../.}=/cosmian-src"
       ];
-      linuxOnly = lib.concatStringsSep " " [
-        "-C link-arg=-Wl,--build-id=none"
-        "-C link-arg=-Wl,--hash-style=gnu"
-      ];
+      linuxOnly = lib.concatStringsSep " " (
+        [
+          "-C link-arg=-Wl,--build-id=none"
+          "-C link-arg=-Wl,--hash-style=gnu"
+          "-C debuginfo=0"
+          "-C strip=symbols"
+        ]
+        ++ lib.optionals static [ ]
+      );
       # For dynamic builds, set RPATH to /usr/local/cosmian/lib where the .so files will be installed
       dynamicOnly = lib.optionalString (
         !static && pkgs.stdenv.isLinux

@@ -98,6 +98,7 @@ stdenv.mkDerivation rec {
     # During build, we'll create this directory structure in $out for FIPS module generation
     perl ./Configure \
       ${if static then "no-shared" else "shared"} \
+      no-zlib \
       enable-fips \
       --prefix=$out \
       --openssldir=/usr/local/cosmian/lib/ssl \
