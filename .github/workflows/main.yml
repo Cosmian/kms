@@ -12,6 +12,7 @@ on:
 jobs:
   # Run tests in release mode for tags and scheduled runs
   main:
+    if: github.repository == 'Cosmian/kms'
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
