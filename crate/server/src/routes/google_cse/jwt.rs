@@ -93,9 +93,9 @@ fn jwt_authorization_config_application(
         })
     };
 
-    let jwt_audience = Some(
+    let jwt_audience = Some(vec![
         std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or_else(|_| "cse-authorization".to_owned()),
-    );
+    ]);
 
     Arc::new(JwtConfig {
         jwt_issuer_uri,
@@ -133,23 +133,9 @@ pub(super) fn decode_jwt_authorization_token(
         &jwt_config.jwt_issuer_uri
     );
 
-    let validations = vec![
-        #[cfg(all(not(test), not(feature = "insecure")))]
-        alcoholic_jwt::Validation::Audience(
-            jwt_config
-                .jwt_audience
-                .as_ref()
-                .ok_or_else(|| {
-                    KmsError::ServerError(
-                        "JWT audience should be configured with Google Workspace client-side \
-                         encryption"
-                            .to_owned(),
-                    )
-                })?
-                .to_owned(),
-        ),
-        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.clone()),
-    ];
+    let validations = vec![alcoholic_jwt::Validation::Issuer(
+        jwt_config.jwt_issuer_uri.clone(),
+    )];
 
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.
@@ -179,8 +165,36 @@ pub(super) fn decode_jwt_authorization_token(
     trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
     trace!("valid_jwt headers: {:?}", valid_jwt.headers);
 
-    let user_claims = serde_json::from_value(valid_jwt.claims)
+    let user_claims: UserClaim = serde_json::from_value(valid_jwt.claims)
         .map_err(|err| KmsError::Unauthorized(format!("JWT claims are malformed: {err:?}")))?;
+
+    // Audience post-check in non-test, non-insecure builds
+    #[cfg(all(not(test), not(feature = "insecure")))]
+    {
+        let configured = jwt_config.jwt_audience.as_ref().ok_or_else(|| {
+            KmsError::ServerError(
+                "JWT audience should be configured with Google Workspace client-side encryption"
+                    .to_owned(),
+            )
+        })?;
+        if !configured.is_empty() {
+            let token_auds = user_claims.aud.clone().unwrap_or_default();
+            let matches_any = token_auds
+                .iter()
+                .any(|aud| configured.iter().any(|allowed| allowed == aud));
+            if !matches_any {
+                let expected = format!("{configured:?}");
+                let got = if token_auds.is_empty() {
+                    "<empty>".to_owned()
+                } else {
+                    format!("{token_auds:?}")
+                };
+                return Err(KmsError::Unauthorized(format!(
+                    "Authorization token audience not allowed. expected one of: {expected}, got: {got}"
+                )));
+            }
+        }
+    }
 
     let jwt_headers = serde_json::from_value(valid_jwt.headers)
         .map_err(|err| KmsError::Unauthorized(format!("JWT headers is malformed: {err:?}")))?;
@@ -249,19 +263,23 @@ pub async fn validate_cse_authentication_token(
     if let Some(resource_name) = &is_priv_unwrap {
         if resource_name.to_lowercase().contains("/drive/") {
             if let Some(cfg) = working_jwt_config {
-                if let Some(allowed_audience) = &cfg.jwt_audience {
+                if let Some(allowed_audiences) = &cfg.jwt_audience {
                     let token_audiences = authentication_token.aud.clone().unwrap_or_default();
-                    let matches_any = token_audiences.iter().any(|aud| aud == allowed_audience);
-                    let err_msg = if token_audiences.is_empty() {
-                        format!(
-                            "Authentication token audience not allowed. expected: {allowed_audience}, got: <empty>"
-                        )
+                    let matches_any = token_audiences
+                        .iter()
+                        .any(|aud| allowed_audiences.iter().any(|a| a == aud));
+                    let expected = format!("{allowed_audiences:?}");
+                    let got = if token_audiences.is_empty() {
+                        "<empty>".to_owned()
                     } else {
-                        format!(
-                            "Authentication token audience not allowed. expected: {allowed_audience}, got: {token_audiences:?}"
-                        )
+                        format!("{token_audiences:?}")
                     };
-                    kms_ensure!(matches_any, KmsError::Unauthorized(err_msg));
+                    kms_ensure!(
+                        matches_any,
+                        KmsError::Unauthorized(format!(
+                            "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
+                        ))
+                    );
                 }
             }
         }
@@ -487,10 +505,7 @@ mod tests {
         let jwt_authentication_config = JwtConfig {
             jwt_issuer_uri: idp_configs[0].jwt_issuer_uri.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: idp_configs[0]
-                .jwt_audience
-                .as_ref()
-                .and_then(|v| v.first().cloned()),
+            jwt_audience: idp_configs[0].jwt_audience.clone(),
         };
 
         let authentication_token = jwt_authentication_config

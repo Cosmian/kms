@@ -879,7 +879,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
     let cse_config = GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
-            jwt_audience: Some("kacls-migration".to_owned()),
+            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             jwks: Arc::new(jwks_manager),
         }]),
         authorization: HashMap::new(),
@@ -901,5 +901,179 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
         result.err()
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
+    unsafe {
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+    };
+
+    log_init(None);
+
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
+
+    let resource_name = "resource_name_test".to_owned();
+    let kacls_url = "https://127.0.0.1:9998/google_cse";
+
+    // Retrieve RSA Private Key
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+    let response: GetResponse = post_2_1(&app, get_request).await?;
+    let private_key_bytes = match response.object_type {
+        ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
+            Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                ..
+            }) => bytes,
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Expected ByteString key material for RSA private key.".to_owned(),
+                ));
+            }
+        },
+        _ => {
+            return Err(KmsError::InvalidRequest(
+                "Provided ID is not an RSA private key.".to_owned(),
+            ));
+        }
+    };
+
+    // Generate JWT with aud = "kacls-migration"
+    let jwt_token = create_jwt(private_key_bytes, kacls_url, kacls_url, &resource_name)
+        .expect("Failed to create JWT");
+
+    // Retrieve JWKS inner exposed
+    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
+
+    // Prepare JWKS Manager
+    let mut jwks_map = HashMap::new();
+    jwks_map.insert(kacls_url.to_owned(), jwks);
+    let jwks_manager = JwksManager {
+        uris: vec![kacls_url.to_owned()],
+        jwks: RwLock::new(jwks_map),
+        last_update: RwLock::new(None),
+        proxy_params: None,
+    };
+
+    // Configure multiple allowed audiences, including the correct one
+    let cse_config = GoogleCseConfig {
+        authentication: Arc::new(vec![JwtConfig {
+            jwt_issuer_uri: kacls_url.to_owned(),
+            jwt_audience: Some(vec!["wrong-aud".to_owned(), "kacls-migration".to_owned()]),
+            jwks: Arc::new(jwks_manager),
+        }]),
+        authorization: HashMap::new(),
+    };
+
+    // Validate custom JWT
+    let result = validate_cse_authentication_token(
+        &jwt_token,
+        &Some(cse_config),
+        kacls_url,
+        "admin",
+        Some(resource_name),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "Expected JWT validation to succeed with any-of audience match"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
+    unsafe {
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+    };
+
+    log_init(None);
+
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
+    let resource_name = "resource_name_test".to_owned();
+    let kacls_url = "https://127.0.0.1:9998/google_cse";
+
+    // Retrieve RSA Private Key
+    let get_request = Get {
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{GOOGLE_CSE_ID}_rsa"))),
+        key_format_type: Some(KeyFormatType::PKCS1),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        key_compression_type: None,
+        key_wrapping_specification: None,
+    };
+    let response: GetResponse = post_2_1(&app, get_request).await?;
+    let private_key_bytes = match response.object_type {
+        ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
+            Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                ..
+            }) => bytes,
+            _ => {
+                return Err(KmsError::InvalidRequest(
+                    "Expected ByteString key material for RSA private key.".to_owned(),
+                ));
+            }
+        },
+        _ => {
+            return Err(KmsError::InvalidRequest(
+                "Provided ID is not an RSA private key.".to_owned(),
+            ));
+        }
+    };
+
+    // Generate JWT with aud = "kacls-migration"
+    let jwt_token = create_jwt(private_key_bytes, kacls_url, kacls_url, &resource_name)
+        .expect("Failed to create JWT");
+
+    // Retrieve JWKS inner exposed
+    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
+
+    // Prepare JWKS Manager
+    let mut jwks_map = HashMap::new();
+    jwks_map.insert(kacls_url.to_owned(), jwks);
+    let jwks_manager = JwksManager {
+        uris: vec![kacls_url.to_owned()],
+        jwks: RwLock::new(jwks_map),
+        last_update: RwLock::new(None),
+        proxy_params: None,
+    };
+
+    // Configure multiple allowed audiences, none matching token aud
+    let cse_config = GoogleCseConfig {
+        authentication: Arc::new(vec![JwtConfig {
+            jwt_issuer_uri: kacls_url.to_owned(),
+            jwt_audience: Some(vec!["wrong1".to_owned(), "wrong2".to_owned()]),
+            jwks: Arc::new(jwks_manager),
+        }]),
+        authorization: HashMap::new(),
+    };
+
+    // Validate custom JWT should fail
+    let result = validate_cse_authentication_token(
+        &jwt_token,
+        &Some(cse_config),
+        kacls_url,
+        "admin",
+        Some(resource_name),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Expected JWT validation to fail without audience match"
+    );
     Ok(())
 }

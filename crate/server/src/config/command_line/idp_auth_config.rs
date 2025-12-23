@@ -38,8 +38,9 @@ impl IdpAuthConfig {
     /// Each provider configuration string is parsed in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
     /// where `JWKS_URI` and `JWT_AUDIENCE_*` are optional and can be empty.
     ///
-    /// Duplicate configurations (same JWT issuer URI, JWKS URI, and audience triple) are automatically
-    /// deduplicated, with the last one taking precedence.
+    /// Duplicate configurations (same JWT issuer URI, JWKS URI, and audience list) are automatically
+    /// deduplicated, with the last one taking precedence. The entire audience list is compared
+    /// for equality when determining duplicates.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfigStruct>>, KmsError> {
         self.jwt_auth_provider
             .map(|provider_configs| {
