@@ -21,7 +21,7 @@ use crate::{
 
 pub(crate) mod error;
 pub(crate) mod handlers;
-mod models;
+pub(crate) mod models;
 
 /// The proxy is expected to respond to API calls within 250 milliseconds. If Managed HSM
 /// does not receive a response within this period, it will time out.

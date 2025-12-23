@@ -396,6 +396,7 @@ pub fn encrypt(
             aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
         }
         SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => {
+            trace!("Using RFC 5649 key wrapping");
             Ok((rfc5649_wrap(plaintext, key)?, vec![]))
         }
         _ => {
