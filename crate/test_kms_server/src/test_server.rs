@@ -908,6 +908,7 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
             tls_p12_password: Some("password".to_owned()),
             clients_ca_cert_file: clients_ca,
             tls_cipher_suites: server_tls_cipher_suites,
+            ..Default::default()
         }
     }
     #[cfg(not(feature = "non-fips"))]

@@ -14,8 +14,7 @@ pub struct TlsConfig {
     #[clap(
         long,
         env = "KMS_TLS_P12_FILE",
-        group = "tls",
-        requires("tls-p12-password"),
+        requires = "tls_p12_password",
         verbatim_doc_comment
     )]
     pub tls_p12_file: Option<PathBuf>,
@@ -30,13 +29,7 @@ pub struct TlsConfig {
     /// optionally followed by intermediate certificates (full chain). When provided along with
     /// `--tls-key-file`, the servers will start in TLS mode.
     /// Do not use in combination with `--tls-p12-file`.
-    #[clap(
-        long,
-        env = "KMS_TLS_CERT_FILE",
-        group = "tls",
-        requires("tls-key-file"),
-        verbatim_doc_comment
-    )]
+    #[clap(long, env = "KMS_TLS_CERT_FILE", verbatim_doc_comment)]
     pub tls_cert_file: Option<PathBuf>,
 
     /// The server's private key in PEM format (PKCS#8 or traditional format).
