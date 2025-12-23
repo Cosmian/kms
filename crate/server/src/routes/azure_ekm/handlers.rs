@@ -1,3 +1,5 @@
+#![allow(clippy::panic)]
+
 use actix_web::{HttpResponse, web::Data};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -218,6 +220,33 @@ pub(crate) async fn wrap_key_handler(
         ))
     })?);
 
+    // Validate input length - this is critical because the KMS panics if handed non valid data !
+    if dek_bytes.is_empty() {
+        return Err(AzureEkmErrorReply::invalid_request(
+            "Cannot wrap empty key data",
+        ));
+    }
+    match request.alg {
+        WrapAlgorithm::A256KW | WrapAlgorithm::A256KWP => {
+            // NIST Key Wrap requires at least 8 bytes (64 bits)
+            if dek_bytes.len() < 8 {
+                return Err(AzureEkmErrorReply::invalid_request(format!(
+                    "Key data too short for AES Key Wrap: {} bytes (minimum 8 bytes required)",
+                    dek_bytes.len()
+                )));
+            }
+        }
+        WrapAlgorithm::RsaOaep256 => {
+            // We only check for reasonable bounds here
+            if dek_bytes.len() > 512 {
+                return Err(AzureEkmErrorReply::invalid_request(format!(
+                    "Key data too large for RSA wrapping: {} bytes (maximum ~512 bytes)",
+                    dek_bytes.len()
+                )));
+            }
+        }
+    }
+
     let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
     // Perform the wrap operation based on key type
@@ -268,12 +297,11 @@ async fn wrap_with_aes(
     alg: &WrapAlgorithm,
     correlation_id: String, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    // Determine block cipher mode based on algorithm
+    // Determine block cipher mode and IV/nonce based on algorithm
     let block_cipher_mode = match alg {
-        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
-        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
+        WrapAlgorithm::A256KWP => BlockCipherMode::NISTKeyWrap,
+        WrapAlgorithm::A256KW => panic!("not now, working on it."),
         WrapAlgorithm::RsaOaep256 => {
-            // for some reason, the compiler complains about the wildcard pattern here
             return Err(AzureEkmErrorReply::invalid_request(
                 "Invalid AES wrap algorithm",
             ));
@@ -320,6 +348,8 @@ async fn wrap_with_rsa(
         correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
+
+    // let rep = kms.
 
     let response = kms.encrypt(encrypt_request, user, None).await?;
 
@@ -386,12 +416,13 @@ async fn unwrap_with_aes(
     alg: &WrapAlgorithm,
     correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
+    // Determine block cipher mode and IV/nonce based on algorithm
     let block_cipher_mode = match alg {
-        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap, // RFC 3394
-        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding, // RFC 5649
+        WrapAlgorithm::A256KWP => BlockCipherMode::NISTKeyWrap,
+        WrapAlgorithm::A256KW => panic!("not now, working on it."), // the right value is probably Block
         WrapAlgorithm::RsaOaep256 => {
             return Err(AzureEkmErrorReply::invalid_request(
-                "Invalid AES unwrap algorithm",
+                "Invalid AES wrap algorithm",
             ));
         }
     };

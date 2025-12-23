@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct RequestContext {
     #[serde(default)]
-    request_id: Option<String>, // optional per spec
+    pub(crate) request_id: Option<String>, // optional per spec
     pub(crate) correlation_id: String,
-    pool_name: String,
+    pub(crate) pool_name: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
