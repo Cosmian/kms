@@ -38,6 +38,7 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                     ec_key.group().curve_name(),
                     Some(openssl::nid::Nid::X9_62_PRIME256V1)
                 ) {
+                    use cosmian_crypto_core::reexport::signature::hazmat::PrehashSigner;
                     use p256::ecdsa::{Signature, SigningKey, signature::DigestSigner};
                     use sha2::{Digest, Sha256};
 
@@ -66,9 +67,19 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                         CryptoError::NotSupported(format!("p256 SigningKey error: {e}"))
                     })?;
 
-                    let mut hasher = Sha256::new();
-                    hasher.update(&msg_bytes);
-                    let signature: Signature = signing_key.sign_digest(hasher);
+                    let signature: Signature = if request.digested_data.is_some() {
+                        signing_key.sign_prehash(&msg_bytes).map_err(|e| {
+                            CryptoError::NotSupported(format!("Sign data pre hash error: {e}"))
+                        })?
+                    } else if request.data.is_some() {
+                        let mut hasher = Sha256::new();
+                        hasher.update(&msg_bytes);
+                        signing_key.sign_digest(hasher)
+                    } else {
+                        return Err(CryptoError::NotSupported(
+                            "Request data not supported".to_owned(),
+                        ));
+                    };
                     let sig_der = signature.to_der();
                     return Ok(sig_der.as_bytes().to_vec());
                 }
@@ -295,6 +306,54 @@ mod tests {
             valid,
             cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
             "ECDSA signature must verify for prehashed SHA-256"
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn ecdsa_sign_raw_digest_sha256() {
+        let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
+            .unwrap_or_else(|e| panic!("ec group: {e}"));
+        let ec_key =
+            openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
+        let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        let message = b"banana";
+        let message_digest = openssl::hash::hash(MessageDigest::sha256(), message).expect("digest");
+
+        // Prepare ECDSA with SHA-256 using digested_data
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+        let req_raw = Sign {
+            unique_identifier: None,
+            data: Some(message.to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp.clone()),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+        let req_digest = Sign {
+            unique_identifier: None,
+            data: None,
+            digested_data: Some(message_digest.to_vec()),
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+
+        // raw data -> sha256(raw data)
+        let sig_raw = ecdsa_sign(&req_raw, &pkey).expect("ecdsa signature raw");
+        // sha256 is provided
+        let sig_digest = ecdsa_sign(&req_digest, &pkey).expect("ecdsa signature digest");
+
+        // Verify signature - signature must be same raw data and digest data
+        assert_eq!(
+            sig_raw, sig_digest,
+            "ECDSA signature must be same for raw and digest data"
         );
     }
 }
