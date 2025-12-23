@@ -67,17 +67,17 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                         CryptoError::NotSupported(format!("p256 SigningKey error: {e}"))
                     })?;
 
-                    let signature: Signature = if let Some(_) = &request.digested_data {
+                    let signature: Signature = if request.digested_data.is_some() {
                         signing_key.sign_prehash(&msg_bytes).map_err(|e| {
                             CryptoError::NotSupported(format!("Sign data pre hash error: {e}"))
                         })?
-                    } else if let Some(_) = &request.data {
+                    } else if request.data.is_some() {
                         let mut hasher = Sha256::new();
                         hasher.update(&msg_bytes);
                         signing_key.sign_digest(hasher)
                     } else {
                         return Err(CryptoError::NotSupported(
-                            "Request data not supported".to_string(),
+                            "Request data not supported".to_owned(),
                         ));
                     };
                     let sig_der = signature.to_der();
@@ -309,6 +309,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn ecdsa_sign_raw_digest_sha256() {
         let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)

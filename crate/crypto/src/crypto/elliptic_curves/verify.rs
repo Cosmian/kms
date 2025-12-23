@@ -122,10 +122,13 @@ pub fn ed_verify(
 #[cfg(test)]
 mod test {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-    use super::*;
-    use crate::crypto::elliptic_curves::operation::ecdsa_sign;
-    use cosmian_kmip::kmip_2_1::kmip_operations::Sign;
+    #[cfg(feature = "non-fips")]
+    use {
+        super::*, crate::crypto::elliptic_curves::operation::ecdsa_sign,
+        cosmian_kmip::kmip_2_1::kmip_operations::Sign,
+    };
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn ecdsa_sign_verify_raw_digest_sha256() {
         let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
@@ -180,7 +183,7 @@ mod test {
         let public_key = PKey::public_key_from_pem(&pkey.public_key_to_pem().unwrap()).unwrap();
         let valid_raw = ecdsa_verify(
             &public_key,
-            &message.to_vec(),
+            message.as_ref(),
             &signature_raw,
             &cp_verify,
             false,
@@ -189,7 +192,7 @@ mod test {
 
         let valid_digest = ecdsa_verify(
             &public_key,
-            &message_digest.to_vec(),
+            &message_digest,
             &signature_digest,
             &cp_verify,
             true,
