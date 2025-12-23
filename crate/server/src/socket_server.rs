@@ -28,13 +28,10 @@ pub struct SocketServerParams<'a> {
     pub port: u16,
     /// Server certificate and private key (PKCS#12 format) - non-fips
     #[cfg(feature = "non-fips")]
-    pub p12: &'a openssl::pkcs12::ParsedPkcs12_2,
+    pub p12: Option<&'a openssl::pkcs12::ParsedPkcs12_2>,
     /// Server certificate and private key (PEM) - FIPS mode
-    #[cfg(not(feature = "non-fips"))]
     pub server_cert_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_key_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_chain_pem: Option<&'a [u8]>,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
@@ -56,28 +53,17 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
                 "The Socket server cannot be started: Client CA certificate is not set".to_owned(),
             ));
         };
-        #[cfg(feature = "non-fips")]
-        {
-            Ok(Self {
-                host: params.socket_server_hostname.clone(),
-                port: params.socket_server_port,
-                p12: &tls_params.p12,
-                client_ca_cert_pem,
-                cipher_suites: tls_params.cipher_suites.as_ref(),
-            })
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            Ok(Self {
-                host: params.socket_server_hostname.clone(),
-                port: params.socket_server_port,
-                server_cert_pem: &tls_params.server_cert_pem,
-                server_key_pem: &tls_params.server_key_pem,
-                server_chain_pem: tls_params.server_chain_pem.as_deref(),
-                client_ca_cert_pem,
-                cipher_suites: tls_params.cipher_suites.as_ref(),
-            })
-        }
+        Ok(Self {
+            host: params.socket_server_hostname.clone(),
+            port: params.socket_server_port,
+            #[cfg(feature = "non-fips")]
+            p12: tls_params.p12.as_ref(),
+            client_ca_cert_pem,
+            cipher_suites: tls_params.cipher_suites.as_ref(),
+            server_cert_pem: &tls_params.server_cert_pem,
+            server_key_pem: &tls_params.server_key_pem,
+            server_chain_pem: tls_params.server_chain_pem.as_deref(),
+        })
     }
 }
 
@@ -426,25 +412,14 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
     trace!("Creating OpenSSL SslAcceptor for socket server");
 
     // Use the common TLS configuration
-    let tls_config = {
+    let tls_config = TlsConfig {
         #[cfg(feature = "non-fips")]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
-                p12: server_config.p12,
-                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
-            }
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
-                server_cert_pem: server_config.server_cert_pem,
-                server_key_pem: server_config.server_key_pem,
-                server_chain_pem: server_config.server_chain_pem,
-                client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
-            }
-        }
+        p12: server_config.p12,
+        cipher_suites: server_config.cipher_suites.map(std::string::String::as_str),
+        server_cert_pem: server_config.server_cert_pem,
+        server_key_pem: server_config.server_key_pem,
+        server_chain_pem: server_config.server_chain_pem,
+        client_ca_cert_pem: Some(server_config.client_ca_cert_pem),
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "socket server")?;

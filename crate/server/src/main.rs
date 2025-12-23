@@ -178,6 +178,7 @@ mod tests {
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
                 clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
                 tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256".to_owned()),
+                ..Default::default()
             },
             http: HttpConfig {
                 port: 443,
