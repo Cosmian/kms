@@ -34,11 +34,41 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  # ml-kem-0.2.1 does not build on toolchain 1.90.0 and cargo-semver v0.44.0.
-  # cargo-semver:
-  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-semver.yml@develop
-  #   with:
-  #     toolchain: ${{ inputs.toolchain }}
+  cargo-test:
+    name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - sqlite
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+
+    steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+          components: rustfmt, clippy
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: With bash test script
+        run: |
+          set -ex
+          bash .github/scripts/test_${{ matrix.type }}.sh --profile debug --variant ${{ matrix.features }}
+
+      - name: With cargo only
+        run: |
+          set -ex
+          if [ "${{ matrix.features }}" = "non-fips" ]; then
+            export FEATURES_FLAG="--features non-fips";
+          else
+            export FEATURES_FLAG="";
+          fi
+          cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
 
   cargo-publish:
     name: Cargo Publish Workspace
@@ -49,6 +79,7 @@ jobs:
       token: ${{ secrets.CRATES_IO }}
 
   test: # Run all tests
+    if: github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
     with:
@@ -56,7 +87,7 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
 
   public_documentation:
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
