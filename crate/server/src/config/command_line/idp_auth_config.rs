@@ -13,11 +13,11 @@ use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
 pub struct IdpAuthConfig {
     /// JWT authentication provider configuration
     ///
-    /// Each provider configuration should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE`"
+    /// Each provider configuration should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
     /// where:
     /// - `JWT_ISSUER_URI`: The issuer URI of the JWT token (required)
     /// - `JWKS_URI`: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
-    /// - `JWT_AUDIENCE`: The audience of the JWT token (optional, can be empty)
+    /// - `JWT_AUDIENCE_1..N`: One or more audience values for the JWT token (optional)
     ///
     /// Examples:
     /// - "<https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience>"
@@ -35,18 +35,17 @@ pub struct IdpAuthConfig {
 impl IdpAuthConfig {
     /// Parse this configuration into one identity provider configuration per JWT authentication provider.
     ///
-    /// Each provider configuration string is parsed in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE`"
-    /// where `JWKS_URI` and `JWT_AUDIENCE` are optional and can be empty.
+    /// Each provider configuration string is parsed in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
+    /// where `JWKS_URI` and `JWT_AUDIENCE_*` are optional and can be empty.
     ///
     /// Duplicate configurations (same JWT issuer URI, JWKS URI, and audience triple) are automatically
     /// deduplicated, with the last one taking precedence.
     pub(crate) fn extract_idp_configs(self) -> Result<Option<Vec<IdpConfigStruct>>, KmsError> {
         self.jwt_auth_provider
             .map(|provider_configs| {
-                let mut configs: HashMap<
-                    (String, Option<String>, Option<String>),
-                    IdpConfigStruct,
-                > = HashMap::new();
+                // Key the map by the full triple to handle exact duplicates (last one wins)
+                type IdpKey = (String, Option<String>, Option<Vec<String>>);
+                let mut configs: HashMap<IdpKey, IdpConfigStruct> = HashMap::new();
 
                 for provider_config in provider_configs {
                     let parts: Vec<&str> = provider_config.split(',').collect();
@@ -69,11 +68,15 @@ impl IdpAuthConfig {
                         .filter(|s| !s.trim().is_empty())
                         .map(|s| s.trim().to_owned());
 
-                    // Extract JWT audience (third part, optional)
-                    let jwt_audience = parts
-                        .get(2)
-                        .filter(|s| !s.trim().is_empty())
-                        .map(|s| s.trim().to_owned());
+                    // Extract JWT audiences (third and subsequent parts, optional)
+                    let jwt_audience = parts.get(2..).and_then(|slice| {
+                        let audiences: Vec<String> = slice
+                            .iter()
+                            .map(|s| s.trim().to_owned())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        (!audiences.is_empty()).then_some(audiences)
+                    });
 
                     let idp_config = IdpConfigStruct {
                         jwt_issuer_uri: jwt_issuer_uri.clone(),

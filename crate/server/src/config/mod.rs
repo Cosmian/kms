@@ -8,5 +8,5 @@ pub use params::{ProxyParams, ServerParams, TlsParams};
 pub struct IdpConfig {
     pub jwt_issuer_uri: String,
     pub jwks_uri: Option<String>,
-    pub jwt_audience: Option<String>,
+    pub jwt_audience: Option<Vec<String>>, // Optional list of allowed audiences
 }

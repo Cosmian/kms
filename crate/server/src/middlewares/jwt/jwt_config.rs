@@ -7,7 +7,7 @@
 use std::{fmt, sync::Arc};
 
 use alcoholic_jwt::token_kid;
-use cosmian_logger::{debug, trace};
+use cosmian_logger::trace;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
@@ -129,11 +129,11 @@ impl JwtConfig {
         let token: &str = bearer.get(1).ok_or_else(|| {
             KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
         })?;
-        self.decode_authentication_token(token, true)
+        self.validate_authentication_token(token, true)
     }
 
-    /// Decode a json web token (JWT)
-    pub(crate) fn decode_authentication_token(
+    /// Decode and validate a json web token (JWT)
+    pub(crate) fn validate_authentication_token(
         &self,
         token: &str,
         validate_subject: bool,
@@ -181,8 +181,6 @@ impl JwtConfig {
 
         let payload = serde_json::from_value(valid_jwt.claims)
             .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
-
-        debug!("JWT payload: {payload:?}");
 
         Ok(payload)
     }

@@ -107,7 +107,8 @@ impl JwtAuthConfig {
                     .map(|((jwt_issuer_uri, jwks_uri), jwt_audience)| IdpConfig {
                         jwt_issuer_uri,
                         jwks_uri,
-                        jwt_audience,
+                        // Legacy path supports a single audience per provider; wrap into a Vec
+                        jwt_audience: jwt_audience.map(|s| vec![s]),
                     })
                     .collect())
             })

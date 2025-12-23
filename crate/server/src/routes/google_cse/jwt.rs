@@ -71,7 +71,7 @@ pub fn list_jwt_configurations(
         .map(|url| JwtConfig {
             jwt_issuer_uri: url.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: Some("kacls-migration".to_owned()),
+            jwt_audience: None, // audience will be validated post-decode against configured lists
         })
         .collect::<Vec<_>>()
 }
@@ -218,10 +218,12 @@ pub async fn validate_cse_authentication_token(
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
     let mut decoded_token = None;
+    let mut working_jwt_config: Option<&JwtConfig> = None;
     for idp_config in cse_config.authentication.iter() {
-        if let Ok(token) = idp_config.decode_authentication_token(authentication_token, false) {
+        if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false) {
             // store the decoded claim and break the loop if decoding succeeds
             decoded_token = Some(token);
+            working_jwt_config = Some(idp_config);
             break;
         }
     }
@@ -243,24 +245,29 @@ pub async fn validate_cse_authentication_token(
     // When the authentication token contains the optional `google_email` claim, it must be compared against the email claim in the authorization token using a case-insensitive approach.
     // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
-    let authentication_email = if let Some(resource_name) = is_priv_unwrap {
-        //  For 'Drive CSE PrivilegedUnwrap' Operation, this should be 'kacls-migration'
-        // 'drive' should be in the resource name e.g. //googleapis.com/drive/files/1234567890
+    // Post-validation audience membership check under Google Drive resources only
+    if let Some(resource_name) = &is_priv_unwrap {
         if resource_name.to_lowercase().contains("/drive/") {
-            if let Some(migration_audience) = authentication_token.aud {
-                kms_ensure!(
-                    migration_audience == vec!["kacls-migration"],
-                    KmsError::Unauthorized(format!(
-                        "Audience should match: expected: kacls-migration, got: {:?}",
-                        migration_audience.join(", ")
-                    ))
-                );
-            } else {
-                return Err(KmsError::Unauthorized(
-                    "Invalid token for Google Drive migration".to_owned(),
-                ));
+            if let Some(cfg) = working_jwt_config {
+                if let Some(allowed_audience) = &cfg.jwt_audience {
+                    let token_audiences = authentication_token.aud.clone().unwrap_or_default();
+                    let matches_any = token_audiences.iter().any(|aud| aud == allowed_audience);
+                    let err_msg = if token_audiences.is_empty() {
+                        format!(
+                            "Authentication token audience not allowed. expected: {allowed_audience}, got: <empty>"
+                        )
+                    } else {
+                        format!(
+                            "Authentication token audience not allowed. expected: {allowed_audience}, got: {token_audiences:?}"
+                        )
+                    };
+                    kms_ensure!(matches_any, KmsError::Unauthorized(err_msg));
+                }
             }
         }
+    }
+
+    let authentication_email = if let Some(_resource_name) = is_priv_unwrap {
         // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
         kms_default_username.to_owned()
     } else {
@@ -480,11 +487,14 @@ mod tests {
         let jwt_authentication_config = JwtConfig {
             jwt_issuer_uri: idp_configs[0].jwt_issuer_uri.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: Some(idp_configs[0].jwt_audience.clone().unwrap_or_default()),
+            jwt_audience: idp_configs[0]
+                .jwt_audience
+                .as_ref()
+                .and_then(|v| v.first().cloned()),
         };
 
         let authentication_token = jwt_authentication_config
-            .decode_authentication_token(&wrap_request.authentication, true)
+            .validate_authentication_token(&wrap_request.authentication, true)
             .unwrap();
         info!("AUTHENTICATION token: {:?}", authentication_token);
         assert_eq!(

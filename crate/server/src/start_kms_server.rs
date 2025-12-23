@@ -547,7 +547,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .map(|idp_config| JwtConfig {
                 jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                 jwks: jwks_manager.clone(),
-                jwt_audience: idp_config.jwt_audience.clone(),
+                jwt_audience: idp_config
+                    .jwt_audience
+                    .as_ref()
+                    .and_then(|v| v.first().cloned()),
             })
             .collect::<Vec<_>>();
 
