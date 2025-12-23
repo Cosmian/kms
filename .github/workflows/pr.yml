@@ -11,8 +11,7 @@ on:
 jobs:
   # Run packaging for PRs
   packaging:
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name
-      == github.repository
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:

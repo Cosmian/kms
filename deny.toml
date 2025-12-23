@@ -97,17 +97,14 @@ allow = [
   "OpenSSL",
   "ISC",
   "Zlib",
-  "MPL-2.0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "Unicode-3.0",
   "CC0-1.0",
   "BUSL-1.1",
-  "AGPL-3.0",
-  "GPL-3.0",
+  "AGPL-3.0-or-later",
   "CDLA-Permissive-2.0",
   "GPL-3.0-or-later", # alcoholic_jwt-4091.0.0
-  "AGPL-3.0-only", # synthesized
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

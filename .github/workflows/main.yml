@@ -8,11 +8,12 @@ on:
     tags:
       - '**'
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   # Run tests in release mode for tags and scheduled runs
   main:
-    if: github.repository == 'Cosmian/kms'
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
