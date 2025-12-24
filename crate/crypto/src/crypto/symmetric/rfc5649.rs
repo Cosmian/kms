@@ -47,7 +47,11 @@ fn check_iv(iv: u64, data: &[u8]) -> CryptoResult<bool> {
         return Ok(false);
     }
 
-    Ok(data[real_data_size..].iter().all(|&x| x == 0))
+    Ok(data
+        .get(real_data_size..)
+        .ok_or_else(|| CryptoError::IndexingSlicing("Block index issue".to_owned()))?
+        .iter()
+        .all(|&x| x == 0))
 }
 
 /// Wrap a plain text of variable length following RFC 5649.
@@ -71,6 +75,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
         // (C[0] | C[1]) = ENC(K, A | P[1]).
         let iv_and_key = [
             &build_iv(n)?.to_be_bytes(),
+            #[expect(clippy::indexing_slicing)] // complicated to do otherwise
             &padded_plain[0..AES_WRAP_PAD_BLOCK_SIZE],
         ]
         .concat();
@@ -88,7 +93,10 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
             }
         };
 
-        Ok(ciphertext[..AES_BLOCK_SIZE].to_vec())
+        Ok(ciphertext
+            .get(..AES_BLOCK_SIZE)
+            .ok_or_else(|| CryptoError::IndexingSlicing("Block index issue".to_owned()))?
+            .to_vec())
     } else {
         wrap_64(&padded_plain, kek, Some(build_iv(n)?))
     }
@@ -98,6 +106,7 @@ pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
+#[expect(clippy::indexing_slicing)] // safe indexing, and the .get() syntax makes the code unreadable here
 pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let n = ciphertext.len();
 
@@ -196,6 +205,8 @@ fn wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoE
     };
 
     for j in 0..6 {
+        #[expect(clippy::indexing_slicing)]
+        // safe indexing, and the .get() syntax makes the code unreadable here
         for (i, block) in blocks.iter_mut().enumerate().take(n) {
             // B = AES(K, A | R[i])
             let plaintext_block = ((u128::from(icr) << 64) | u128::from(*block)).to_be_bytes();
@@ -239,6 +250,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     }
 
     // ICR stands for Integrity Check Register initially containing the IV.
+    #[expect(clippy::indexing_slicing)]
     let mut icr = blocks[0];
 
     // Encrypt block using AES with ECB mode i.e. raw AES as specified in
@@ -257,6 +269,7 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     };
     decrypt_cipher.pad(false);
 
+    #[expect(clippy::indexing_slicing)]
     for j in (0..6).rev() {
         for (i, block) in blocks[1..].iter_mut().rev().enumerate().take(n) {
             let t = u64::try_from((n * j) + (n - i))?;
@@ -271,7 +284,16 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
             plaintext.truncate(dec_len);
 
             // A = MSB(64, B)
-            icr = u64::from_be_bytes(plaintext[0..AES_WRAP_PAD_BLOCK_SIZE].try_into()?);
+            icr = u64::from_be_bytes(
+                plaintext
+                    .get(0..AES_WRAP_PAD_BLOCK_SIZE)
+                    .ok_or_else(|| {
+                        CryptoError::InvalidSize(
+                            "Decryption output too short for IV extraction".to_owned(),
+                        )
+                    })?
+                    .try_into()?,
+            );
 
             // R[i] = LSB(64, B)
             *block = u64::from_be_bytes(
@@ -281,14 +303,17 @@ fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>),
     }
 
     let mut unwrapped_key = Zeroizing::from(Vec::with_capacity((blocks.len() - 1) * 8));
-    for block in &blocks[1..] {
+    for block in blocks
+        .get(1..)
+        .ok_or_else(|| CryptoError::IndexingSlicing("Block index issue".to_owned()))?
+    {
         unwrapped_key.extend(block.to_be_bytes());
     }
 
     Ok((icr, unwrapped_key))
 }
 
-#[expect(clippy::unwrap_used, clippy::expect_used)]
+#[expect(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use aes_kw::KeyInit;
