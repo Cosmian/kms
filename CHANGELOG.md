@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.14.1] - 2025-12-24
+
+### 🚀 Features
+
+- Add IDP multiple audiences configuration on [idp_auth] (#656). Dehardcode `kacls-migration` audience for Google CSE migration and allow alternative audiences (e.g. for Google Decrypter use)
+
+### 🐛 Bug Fixes
+
+- Allow explicitly AGPL-3.0-or-later license
+
+### ⚙️ Miscellaneous Tasks
+
+- Make Github release sequential - fix cargo publish (#642)
+
+### ⚠️ WARNING
+
+**Server TOML configuration - kms.toml:** The deprecated [auth] section has been fully removed in favor of [idp_auth].
+
 ## [5.14.0] - 2025-12-15
 
 ### 🚀 Features

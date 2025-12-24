@@ -33,6 +33,19 @@ pub struct IdpAuthConfig {
 }
 
 impl IdpAuthConfig {
+    /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.
+    pub(crate) fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
+        jwks_uri.as_ref().map_or_else(
+            || {
+                format!(
+                    "{}/.well-known/jwks.json",
+                    jwt_issuer_uri.trim_end_matches('/')
+                )
+            },
+            std::string::ToString::to_string,
+        )
+    }
+
     /// Parse this configuration into one identity provider configuration per JWT authentication provider.
     ///
     /// Each provider configuration string is parsed in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"

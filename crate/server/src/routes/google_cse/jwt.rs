@@ -178,16 +178,16 @@ pub(super) fn decode_jwt_authorization_token(
             )
         })?;
         if !configured.is_empty() {
-            let token_auds = user_claims.aud.clone().unwrap_or_default();
-            let matches_any = token_auds
+            let token_audiences = user_claims.aud.clone().unwrap_or_default();
+            let matches_any = token_audiences
                 .iter()
                 .any(|aud| configured.iter().any(|allowed| allowed == aud));
             if !matches_any {
                 let expected = format!("{configured:?}");
-                let got = if token_auds.is_empty() {
+                let got = if token_audiences.is_empty() {
                     "<empty>".to_owned()
                 } else {
-                    format!("{token_auds:?}")
+                    format!("{token_audiences:?}")
                 };
                 return Err(KmsError::Unauthorized(format!(
                     "Authorization token audience not allowed. expected one of: {expected}, got: {got}"
@@ -450,7 +450,7 @@ mod tests {
     use cosmian_logger::{debug, info, log_init, trace};
 
     use crate::{
-        config::{IdpAuthConfig, JwtAuthConfig},
+        config::IdpAuthConfig,
         middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
             self,
@@ -484,7 +484,7 @@ mod tests {
 
         let uris = {
             let mut uris = google_cse::list_jwks_uri(None);
-            uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
+            uris.push(IdpAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
         let jwks_manager = Arc::new(JwksManager::new(uris, None).await.unwrap());
