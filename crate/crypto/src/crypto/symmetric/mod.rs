@@ -1,6 +1,5 @@
 pub mod symmetric_ciphers;
 
-pub mod rfc3394;
 #[expect(clippy::indexing_slicing)]
 pub mod rfc5649;
 

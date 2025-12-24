@@ -51,7 +51,6 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
-// TODO: test invalid keks
 // INFO: this test passes
 #[tokio::test]
 async fn test_wrap_unwrap_error_cases() -> KResult<()> {
