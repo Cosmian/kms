@@ -344,13 +344,13 @@ impl SymCipher {
                              {key_size} bytes",
                         ))),
                     },
-                    BlockCipherMode::NISTKeyWrap => match key_size {
-                        RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
-                        RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
-                        _ => crypto_bail!(CryptoError::NotSupported(format!(
-                            "RFC5649 key must be 16 or 32 bytes long. Found {key_size} bytes",
-                        ))),
-                    },
+                    // BlockCipherMode::NISTKeyWrap => match key_size {
+                    //     RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
+                    //     RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
+                    //     _ => crypto_bail!(CryptoError::NotSupported(format!(
+                    //         "RFC5649 key must be 16 or 32 bytes long. Found {key_size} bytes",
+                    //     ))),
+                    // },
                     mode => {
                         crypto_bail!(CryptoError::NotSupported(format!(
                             "AES is not supported with mode: {mode:?}"
