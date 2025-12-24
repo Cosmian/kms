@@ -130,12 +130,6 @@ Options:
           Set the Proxy-Authorization header to a specified value. [env: KMS_PROXY_CUSTOM_AUTH_HEADER=]
       --proxy-exclusion-list <PROXY_EXCLUSION_LIST>
           The No Proxy exclusion list to this Proxy [env: KMS_PROXY_NO_PROXY=]
-      --jwt-issuer-uri <JWT_ISSUER_URI>...
-          DEPRECATED: use the Idp config section instead. The issuer URI of the JWT token [env: KMS_JWT_ISSUER_URI=]
-      --jwks-uri <JWKS_URI>...
-          DEPRECATED: use the Idp config section instead. The JWKS (JSON Web Key Set) URI of the JWT token [env: KMS_JWKS_URI=]
-      --jwt-audience <JWT_AUDIENCE>...
-          DEPRECATED: use the Idp config section instead. The audience of the JWT token [env: KMS_JWT_AUDIENCE=]
       --jwt-auth-provider <JWT_AUTH_PROVIDER>
           JWT authentication provider configuration [env: KMS_JWT_AUTH_PROVIDER=]
   -u, --ui-index-html-folder <UI_INDEX_HTML_FOLDER>
