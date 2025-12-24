@@ -13,6 +13,7 @@ use crate::{
     },
     error::KmsError,
     result::{KResult, KResultHelper},
+    routes::aws_xks::AwsXksParams,
 };
 
 /// This structure is the context used by the server
@@ -116,6 +117,9 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// AWS XKS parameters, if any
+    pub aws_xks_params: Option<AwsXksParams>,
 }
 
 /// Represents the server parameters.
@@ -284,7 +288,13 @@ impl ServerParams {
             privileged_users: conf.privileged_users,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            aws_xks_params: if conf.aws_xks_config.aws_xks_enable {
+                Some(conf.aws_xks_config.try_into()?)
+            } else {
+                None
+            },
         };
+
         debug!("{res:#?}");
 
         Ok(res)
@@ -362,6 +372,20 @@ impl fmt::Debug for ServerParams {
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+        }
+
+        if let Some(aws_xks_params) = &self.aws_xks_params {
+            debug_struct
+                .field("aws_xks_params", &"configured")
+                .field("aws_xks_region", &aws_xks_params.region)
+                .field("aws_xks_service", &aws_xks_params.service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &aws_xks_params.sigv4_access_key_id,
+                )
+                .field("aws_xks_kek_user", &aws_xks_params.kek_user);
+        } else {
+            debug_struct.field("aws_xks_params", &"not configured");
         }
 
         if self.hsm_model.is_some() {
