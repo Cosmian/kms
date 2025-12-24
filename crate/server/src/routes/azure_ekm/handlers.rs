@@ -207,6 +207,7 @@ async fn get_and_validate_kek_algorithm(
     }
 }
 
+// TODO: refuse keks that are not 256
 pub(crate) async fn wrap_key_handler(
     kms: &KMS,
     key_name: &str,
