@@ -18,7 +18,18 @@ All notable changes to this project will be documented in this file.
 
 ### ⚠️ WARNING
 
-**Server TOML configuration - kms.toml:** The deprecated [auth] section has been fully removed in favor of [idp_auth].
+**Server TOML configuration - kms.toml:** The deprecated [auth] section has been fully removed in favor of [idp_auth]. Usage is:
+
+```toml
+...
+[idp_auth]
+jwt_auth_provider = [
+  "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience,another_client_id",
+  "https://auth0.example.com,,my-app",
+  "https://keycloak.example.com/auth/realms/myrealm,,audience_1,audience_2"
+]
+...
+```
 
 ## [5.14.0] - 2025-12-15
 
