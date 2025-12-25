@@ -609,4 +609,17 @@ mod tests {
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
     }
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn test_server_idp() {
+        let mut conf = ClapConfig::default();
+        conf.idp_auth.jwt_auth_provider = Some(vec![
+            "https://issuer1.example.com,jwks_uri_1,audience1,audience2".to_owned(),
+            "https://issuer2.example.com,,audience3".to_owned(),
+            "https://issuer3.example.com".to_owned(),
+        ]);
+        let conf_str = toml::to_string_pretty(&conf).unwrap();
+        debug!("Configuration TOML: {conf_str}");
+    }
 }

@@ -13,20 +13,20 @@ use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
 pub struct IdpAuthConfig {
     /// JWT authentication provider configuration
     ///
-    /// Each provider configuration should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
+    /// The expected argument is --jwt-auth-provider="`PROVIDER_CONFIG_1`" --jwt-auth-provider="`PROVIDER_CONFIG_2`" ...
+    /// where each `PROVIDER_CONFIG_N` defines one identity provider configuration.
+    ///
+    /// Each provider configuration `PROVIDER_CONFIG_N` should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
     /// where:
     /// - `JWT_ISSUER_URI`: The issuer URI of the JWT token (required)
     /// - `JWKS_URI`: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
     /// - `JWT_AUDIENCE_1..N`: One or more audience values for the JWT token (optional)
     ///
     /// Examples:
-    /// - "<https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience>"
-    /// - "<https://auth0.example.com,,my-app>"  (JWKS URI will default)
-    /// - "<https://keycloak.example.com/auth/realms/myrealm>,," (no audience, JWKS URI will default)
-    ///
-    /// For Auth0, the issuer would be like: `https://<your-tenant>.<region>.auth0.com/`
-    /// For Google, this would be: `https://accounts.google.com`
-    ///
+    /// --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs, kacls-migration, another-audience"
+    /// --jwt-auth-provider="https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
+    /// --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/""
+    //
     /// This argument can be repeated to configure multiple identity providers.
     #[clap(long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
     pub jwt_auth_provider: Option<Vec<String>>,
@@ -107,5 +107,29 @@ impl IdpAuthConfig {
                 Ok(configs.into_values().collect())
             })
             .transpose()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_logger::{info, log_init};
+
+    use crate::config::IdpAuthConfig;
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_idp_extraction() {
+        log_init(None);
+        let idp_list = IdpAuthConfig {
+            jwt_auth_provider: Some(vec![
+                "https://issuer1.com,https://jwks1.com,key1,key2".to_owned(),
+                "https://issuer2.com,,key3".to_owned(),
+                "https://issuer1.com,https://jwks1.com,key1,key2".to_owned(), // Duplicate
+                "https://issuer3.com,,".to_owned(),
+            ]),
+        };
+        let extracted = idp_list.extract_idp_configs().unwrap().unwrap();
+        assert_eq!(extracted.len(), 3); // One duplicate should be removed
+        info!("Extracted IDP Configs: {:#?}", extracted);
     }
 }
