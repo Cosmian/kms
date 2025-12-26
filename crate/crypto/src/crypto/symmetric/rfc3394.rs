@@ -20,9 +20,9 @@ const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 
 fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
-        16 => Cipher::aes_128_wrap(),
-        24 => Cipher::aes_192_wrap(),
-        32 => Cipher::aes_256_wrap(),
+        16 => Cipher::aes_128_wrap_pad(),
+        24 => Cipher::aes_192_wrap_pad(),
+        32 => Cipher::aes_256_wrap_pad(),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The KEK size should be 16, 24 or 32 bytes".to_owned(),
