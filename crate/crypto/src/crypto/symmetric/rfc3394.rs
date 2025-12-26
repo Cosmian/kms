@@ -1,5 +1,5 @@
 //! AES Key Wrap (RFC 3394) without padding (KW)
-//! Implements wrapping/unwrapping using raw AES-ECB via rust-openssl.
+//! Implements wrapping/unwrapping via rust-openssl.
 //!
 //! Spec references:
 //! - RFC 3394: <https://datatracker.ietf.org/doc/html/rfc3394>
@@ -7,23 +7,22 @@
 //!
 //! Notes:
 //! - Input must be a multiple of 8 bytes and at least 16 bytes (n >= 2 blocks).
-//! - Uses the default IV (A) = 0xA6A6A6A6A6A6A6A6.
 //! - No padding is performed; for non-8-byte input lengths, use RFC 5649 (KWP).
-
-use openssl::symm::{Cipher, Crypter, Mode, encrypt};
+use openssl::cipher::{Cipher, CipherRef};
+use openssl::cipher_ctx::{CipherCtx, CipherCtxFlags};
 use zeroize::Zeroizing;
 
-use crate::error::{CryptoError, result::CryptoResult};
+use crate::error::CryptoError;
+use crate::error::result::CryptoResult;
 
-const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
-const AES_WRAP_BLOCK_SIZE: usize = 0x8; // 64-bit
-const AES_BLOCK_SIZE: usize = 0x10; // 128-bit
+const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
+const AES_BLOCK_SIZE: usize = 16; // 128-bit
 
-fn select_cipher(kek: &[u8]) -> CryptoResult<Cipher> {
+fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
-        16 => Cipher::aes_128_ecb(),
-        24 => Cipher::aes_192_ecb(),
-        32 => Cipher::aes_256_ecb(),
+        16 => Cipher::aes_128_wrap(),
+        24 => Cipher::aes_192_wrap(),
+        32 => Cipher::aes_256_wrap(),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The KEK size should be 16, 24 or 32 bytes".to_owned(),
@@ -32,180 +31,159 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<Cipher> {
     })
 }
 
-/// Wrap a plaintext key using AES Key Wrap (RFC 3394).
-pub fn rfc3394_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    let n_bytes = plain.len();
+pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
+    let n_bytes = plaintext.len();
 
+    // RFC 3394 requires plaintext to be at least 16 bytes and a multiple of 8 bytes
     if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 2 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The plaintext size should be >= 16 and a multiple of 8".to_owned(),
         ));
     }
 
-    let n_blocks = n_bytes / AES_WRAP_BLOCK_SIZE;
     let cipher = select_cipher(kek)?;
 
-    // Initialize A (ICR) with default IV and load R[i]
-    let mut a: u64 = DEFAULT_IV;
-    let mut r: Vec<u64> = Vec::with_capacity(n_blocks);
-    for chunk in plain.chunks(AES_WRAP_BLOCK_SIZE) {
-        r.push(u64::from_be_bytes(chunk.try_into()?));
-    }
+    // Initialize cipher context for encryption
+    let mut ctx = CipherCtx::new()?;
+    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should should anyway
+    ctx.encrypt_init(Some(cipher), Some(kek), None)?;
 
-    // 6 rounds
-    for j in 0..6 {
-        for (i, block) in r.iter_mut().enumerate() {
-            // B = AES(K, A | R[i])
-            let plaintext_block = ((u128::from(a) << 64) | u128::from(*block)).to_be_bytes();
-            let b = encrypt(cipher, kek, None, &plaintext_block)?;
+    // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final
+    // The extra blocs will not propagate to the result as its truncated to the actual size. Due to how the openssl library is programmed,
+    // not adding at least 1 extra bloc results in a panic. We chose to add two because that's how openssl library operates when using this cypher
+    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + cipher.block_size() * 2];
 
-            // A = MSB(64, B) ^ t, where t = (n*j)+i+1
-            let t = u64::try_from((n_blocks * j) + (i + 1))?;
-            a = u64::from_be_bytes(
-                b.get(0..AES_WRAP_BLOCK_SIZE)
-                    .ok_or_else(|| {
-                        CryptoError::InvalidSize(
-                            "Encryption output too short for IV extraction".to_owned(),
-                        )
-                    })?
-                    .try_into()?,
-            ) ^ t;
+    // Perform the key wrap operation
+    let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
+    written += ctx.cipher_final(ciphertext.get_mut(written..).ok_or_else(|| {
+        CryptoError::IndexingSlicing("Buffer too small for cipher_final".to_owned())
+    })?)?;
 
-            // R[i] = LSB(64, B)
-            *block = u64::from_be_bytes(
-                b.get(AES_WRAP_BLOCK_SIZE..AES_BLOCK_SIZE)
-                    .ok_or_else(|| {
-                        CryptoError::InvalidSize(
-                            "Encryption output too short for block extraction".to_owned(),
-                        )
-                    })?
-                    .try_into()?,
-            );
-        }
-    }
+    // Truncate to actual output size
+    ciphertext.truncate(written);
 
-    // Output C[0] = A, C[1..n] = R[1..n]
-    let mut out = Vec::with_capacity(AES_WRAP_BLOCK_SIZE * (n_blocks + 1));
-    out.extend_from_slice(&a.to_be_bytes());
-    for block in r {
-        out.extend_from_slice(&block.to_be_bytes());
-    }
-    Ok(out)
+    Ok(ciphertext)
 }
 
-/// Unwrap a ciphertext produced by AES Key Wrap (RFC 3394).
-pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 
-    // Minimum ciphertext length: 24 bytes (16 for key + 8 for IV) and multiple of 8
-    if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < (AES_WRAP_BLOCK_SIZE * 3) {
+    // RFC 3394 requires ciphertext to be at least 24 bytes (16 bytes plaintext + 8 bytes IV) and a multiple of 8
+    if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 3 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 24 and a multiple of 8".to_owned(),
         ));
     }
 
-    let n_blocks = (n_bytes / AES_WRAP_BLOCK_SIZE) - 1; // exclude C[0]
     let cipher = select_cipher(kek)?;
 
-    // Load C[0] into A, and remainder into R[i]
-    let mut blocks = Zeroizing::from(Vec::with_capacity(n_blocks + 1));
-    for chunk in ciphertext.chunks(AES_WRAP_BLOCK_SIZE) {
-        blocks.push(u64::from_be_bytes(chunk.try_into()?));
-    }
+    // Initialize cipher context for decryption
+    let mut ctx = CipherCtx::new()?;
+    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this flag, but let's set it anyway
+    ctx.decrypt_init(Some(cipher), Some(kek), None)?;
 
-    // bonds are guaranteed by earlier validation, and using `get` causes ownership issues
-    #[expect(clippy::indexing_slicing)]
-    let mut a = blocks[0];
+    // Allocate output buffer: unwrapped size is ciphertext - 8 bytes (IV) + extra blocks for cipher_final. Same comments as above.
+    let mut plaintext = Zeroizing::new(vec![
+        0_u8;
+        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
+    ]);
 
-    // Initialize AES-ECB decrypter without padding
-    let mut decrypt_cipher = Crypter::new(cipher, Mode::Decrypt, kek, None)?;
-    decrypt_cipher.pad(false);
+    // Perform the key unwrap operation
+    let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;
+    written += ctx.cipher_final(plaintext.get_mut(written..).ok_or_else(|| {
+        CryptoError::IndexingSlicing("Buffer too small for cipher_final".to_owned())
+    })?)?;
 
-    // 6 rounds in reverse
-    for j in (0..6).rev() {
-        #[expect(clippy::indexing_slicing)]
-        // bonds are garanteed by earlier validation, and using `get` causes ownership issues
-        for (i_rev, block) in blocks[1..].iter_mut().rev().enumerate() {
-            // t = (n*j) + (n - i), with i in 1..=n; here i_rev enumerates 0..n-1 from end
-            let t = u64::try_from((n_blocks * j) + (n_blocks - i_rev))?;
+    // Truncate to actual output size
+    plaintext.truncate(written);
 
-            // B = AES-1(K, (A ^ t) | R[i])
-            let big_i = ((u128::from(a ^ t) << 64) | u128::from(*block)).to_be_bytes();
-            let mut plaintext = Zeroizing::from(vec![0; AES_BLOCK_SIZE * 2]);
-            let mut dec_len = decrypt_cipher.update(&big_i, &mut plaintext)?;
-            dec_len += decrypt_cipher.finalize(&mut plaintext)?;
-            plaintext.truncate(dec_len);
-
-            // A = MSB(64, B)
-            a = u64::from_be_bytes(
-                plaintext
-                    .get(0..AES_WRAP_BLOCK_SIZE)
-                    .ok_or_else(|| {
-                        CryptoError::InvalidSize(
-                            "Decryption output too short for IV extraction".to_owned(),
-                        )
-                    })?
-                    .try_into()?,
-            );
-
-            // R[i] = LSB(64, B)
-            *block = u64::from_be_bytes(
-                plaintext
-                    .get(AES_WRAP_BLOCK_SIZE..AES_WRAP_BLOCK_SIZE * 2)
-                    .ok_or_else(|| {
-                        CryptoError::InvalidSize(
-                            "Decryption output too short for block extraction".to_owned(),
-                        )
-                    })?
-                    .try_into()?,
-            );
-        }
-    }
-
-    // Validate A equals default IV
-    if a != DEFAULT_IV {
-        return Err(CryptoError::InvalidSize(
-            "The ciphertext is invalid. Unwrapped IV does not match RFC 3394".to_owned(),
-        ));
-    }
-
-    // Collect R[1..n]
-    let mut unwrapped = Zeroizing::from(Vec::with_capacity(n_blocks * AES_WRAP_BLOCK_SIZE));
-    for block in blocks
-        .get(1..)
-        .ok_or_else(|| CryptoError::IndexingSlicing("Block index issue".to_owned()))?
-    {
-        unwrapped.extend_from_slice(&block.to_be_bytes());
-    }
-
-    Ok(unwrapped)
+    Ok(plaintext)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
+    use super::*;
     use zeroize::Zeroizing;
 
-    use crate::crypto::symmetric::rfc3394::{rfc3394_unwrap, rfc3394_wrap};
+    /// Helper to run wrap/unwrap roundtrip test
+    fn test_wrap_unwrap(kek_hex: &str, plaintext_hex: &str, expected_ciphertext_hex: &str) {
+        let kek = hex::decode(kek_hex).unwrap();
+        let p = hex::decode(plaintext_hex).unwrap();
+        let c_expected = hex::decode(expected_ciphertext_hex).unwrap();
 
-    // Test vectors from RFC 3394 (AES-128 KEK, 128-bit key)
-    // KEK = 000102030405060708090A0B0C0D0E0F
-    // P   = 00112233445566778899AABBCCDDEEFF
-    // C   = 1FA68B0A8112B447AEF34BD8FB5A7B829D3E862371D2CFE5
+        let c = rfc3394_wrap(&p, &kek).unwrap();
+        assert_eq!(c, c_expected, "Wrap output mismatch");
+
+        let p_unwrapped = rfc3394_unwrap(&c, &kek).unwrap();
+        assert_eq!(p_unwrapped, Zeroizing::from(p), "Unwrap output mismatch");
+    }
+
+    // RFC 3394 test vectors with AES-128 KEK
     #[test]
-    fn test_rfc3394_vector_aes128() {
+    fn test_rfc3394_aes128_kek() {
         #[cfg(not(feature = "non-fips"))]
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let kek = hex::decode("000102030405060708090A0B0C0D0E0F").unwrap();
-        let p = hex::decode("00112233445566778899AABBCCDDEEFF").unwrap();
-        let c_expected = hex::decode("1FA68B0A8112B447AEF34BD8FB5A7B829D3E862371D2CFE5").unwrap();
+        // Section 4.1: 128-bit plaintext
+        test_wrap_unwrap(
+            "000102030405060708090A0B0C0D0E0F",
+            "00112233445566778899AABBCCDDEEFF",
+            "1FA68B0A8112B447AEF34BD8FB5A7B829D3E862371D2CFE5",
+        );
+    }
 
-        let c = rfc3394_wrap(&p, &kek).unwrap();
-        assert_eq!(c, c_expected);
+    // RFC 3394 test vectors with AES-192 KEK
+    #[test]
+    fn test_rfc3394_aes192_kek() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let p_unwrapped = rfc3394_unwrap(&c, &kek).unwrap();
-        assert_eq!(p_unwrapped, Zeroizing::from(p));
+        let kek = "000102030405060708090A0B0C0D0E0F1011121314151617";
+
+        // Section 4.2: 128-bit plaintext
+        test_wrap_unwrap(
+            kek,
+            "00112233445566778899AABBCCDDEEFF",
+            "96778B25AE6CA435F92B5B97C050AED2468AB8A17AD84E5D",
+        );
+
+        // Section 4.4: 192-bit plaintext
+        test_wrap_unwrap(
+            kek,
+            "00112233445566778899AABBCCDDEEFF0001020304050607",
+            "031D33264E15D33268F24EC260743EDCE1C6C7DDEE725A936BA814915C6762D2",
+        );
+    }
+
+    // RFC 3394 test vectors with AES-256 KEK
+    #[test]
+    fn test_rfc3394_aes256_kek() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let kek = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
+
+        // Section 4.3: 128-bit plaintext
+        test_wrap_unwrap(
+            kek,
+            "00112233445566778899AABBCCDDEEFF",
+            "64E8C3F9CE0F5BA263E9777905818A2A93C8191E7D6E8AE7",
+        );
+
+        // Section 4.5: 192-bit plaintext
+        test_wrap_unwrap(
+            kek,
+            "00112233445566778899AABBCCDDEEFF0001020304050607",
+            "A8F9BC1612C68B3FF6E6F4FBE30E71E4769C8B80A32CB8958CD5D17D6B254DA1",
+        );
+
+        // Section 4.6: 256-bit plaintext
+        test_wrap_unwrap(
+            kek,
+            "00112233445566778899AABBCCDDEEFF000102030405060708090A0B0C0D0E0F",
+            "28C9F404C4B810F4CBCCB35CFB87F8263F5786E2D80ED326CBC7F0E71A99F43BFB988B9B7A02DD21",
+        );
     }
 
     // Additional sanity: error cases
