@@ -188,17 +188,9 @@ impl ServerParams {
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                if let Some(idp_configs) = conf
-                    .idp_auth
+                conf.idp_auth
                     .extract_idp_configs()
                     .context("failed initializing IdPs from idp_auth")?
-                {
-                    Some(idp_configs)
-                } else {
-                    conf.auth
-                        .extract_idp_configs()
-                        .context("failed initializing IdPs from auth")?
-                }
             },
             ui_index_html_folder,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,

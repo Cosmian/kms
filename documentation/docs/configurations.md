@@ -35,7 +35,8 @@ JWT authentication using Google as the identity provider.
 ```toml
 # JWT authentication configuration using idp_auth format
 [idp_auth]
-jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"]
+# issuer,jwks[,aud1[,aud2...]] (jwks & audiences optional; any-of when multiple)
+jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms,another_client_id"]
 ```
 
 **Use case:** Authenticate users with Google Identity tokens, suitable for organizations using Google Workspace.
@@ -96,7 +97,7 @@ tls_p12_password = "password"
 clients_ca_cert_file = "certificates/ca.crt"
 
 [idp_auth]
-# Empty audience example: trailing comma after JWKS URL
+# Empty audience example: no audiences after JWKS URL (audience check skipped)
 jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
 ```
 
@@ -111,7 +112,8 @@ Multi-factor authentication combining JWT tokens and API token authentication.
 ```toml
 # Multi-factor JWT + API token authentication (idp_auth format)
 [idp_auth]
-jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
+# Multiple audiences example (any-of)
+jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,frontend,cli"]
 
 [http]
 api_token_id = "test-symmetric-key-id"

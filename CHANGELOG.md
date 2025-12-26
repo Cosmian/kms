@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.14.1] - 2025-12-26
+
+### 🚀 Features
+
+- Add IDP multiple audiences configuration on [idp_auth] [#656](https://github.com/Cosmian/kms/pull/656). Dehardcode `kacls-migration` audience for Google CSE migration and allow alternative audiences (e.g. for Google Decrypter use)
+
+### ⚠️ WARNING
+
+**Server TOML configuration - kms.toml:** The deprecated [auth] section has been fully removed in favor of [idp_auth]. Usage is:
+
+```toml
+...
+[idp_auth]
+jwt_auth_provider = [
+  "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience,another_client_id",
+  "https://auth0.example.com,,my-app",
+  "https://keycloak.example.com/auth/realms/myrealm,,audience_1,audience_2"
+]
+...
+```
+
+### 📚 Documentation
+
+- Publish SBOM and vulnerability reports ([#648](https://github.com/Cosmian/kms/pull/648))
+- Improve readme ([#645](https://github.com/Cosmian/kms/pull/645))
+
+### 🐛 Bug Fixes
+
+- Sign and verify for raw and digest data - rfc6979 ([#654](https://github.com/Cosmian/kms/pull/654))
+- Allow explicitly AGPL-3.0-or-later license
+
+### ⚙️ Miscellaneous Tasks
+
+- Make Github release sequential - fix cargo publish ([#642](https://github.com/Cosmian/kms/pull/642))
+
 ## [5.14.0] - 2025-12-15
 
 ### 🚀 Features

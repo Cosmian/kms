@@ -39,7 +39,7 @@ use openssl::ssl::SslAcceptorBuilder;
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
-    config::{JwtAuthConfig, ServerParams, TlsParams},
+    config::{IdpAuthConfig, ServerParams, TlsParams},
     core::KMS,
     cron,
     error::KmsError,
@@ -524,7 +524,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let mut all_jwks_uris: Vec<_> = identity_provider_configurations
             .iter()
             .map(|idp_config| {
-                JwtAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
+                IdpAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
             })
             .collect();
         // Add the one from Google if CSE is enabled.

@@ -105,21 +105,22 @@ The server supports JWT tokens compatible with [OpenID Connect](https://openid.n
 
     ```toml
     [idp_auth]
-    # issuer,jwks,audience (jwks & audience optional)
-    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms"]
+    # issuer,jwks[,aud1[,aud2...]]  (jwks & audiences optional; any-of match when multiple)
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms,another_client_id"]
     ```
 
-The JWT authentication provider configuration uses the format: `"JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE"` where:
+The JWT authentication provider configuration uses the format: `"JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,..."` where:
 
 - **JWT_ISSUER_URI**: The issuer URI of the JWT token (required)
 - **JWKS_URI**: The JWKS (JSON Web Key Set) URI (optional, defaults to `<JWT_ISSUER_URI>/.well-known/jwks.json`)
-- **JWT_AUDIENCE**: The audience of the JWT token (optional, can be empty)
+- **JWT_AUDIENCE_n**: Zero or more allowed audiences (optional). If multiple are provided, validation succeeds if the token `aud` contains any of them (any-of). If omitted, audience validation is skipped.
 
 Examples:
 
 - `"https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"`
 - `"https://auth0.example.com,,my-app"` (JWKS URI will default)
 - `"https://keycloak.example.com/auth/realms/myrealm,,"` (no audience, JWKS URI will default)
+- `"https://issuer.example.com,https://issuer.example.com/jwks.json,frontend,cli"` (multi-audience)
 
 JWT tokens must be passed in the HTTP Authorization header:
 
@@ -149,7 +150,7 @@ For detailed information about implementing PKCE authentication with the KMS, se
 To support multiple identity providers, repeat the JWT authentication provider parameter:
 
 ```sh
---jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms" \
+--jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,cosmian_kms,another_client_id" \
 --jwt-auth-provider="https://login.microsoftonline.com/<TENANT_ID>/v2.0,https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys,<CLIENT_ID>"
 ```
 

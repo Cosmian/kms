@@ -149,22 +149,27 @@ proxy_exclusion_list = ["domain1", "domain2"]
 [idp_auth]
 # JWT authentication provider configuration
 #
-# Each provider configuration should be in the format: "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE"
+# Each provider configuration uses the format:
+#   "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,..."
 # where:
 # - JWT_ISSUER_URI: The issuer URI of the JWT token (required)
 # - JWKS_URI: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
-# - JWT_AUDIENCE: The audience of the JWT token (optional, can be empty)
+# - JWT_AUDIENCE_n: Zero or more allowed audiences (optional). If multiple are provided,
+#                   validation succeeds if the token "aud" contains any of them (any-of).
+#                   If no audiences are provided, audience validation is skipped.
 #
 # Examples:
 # - "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"
-# - "https://auth0.example.com,,my-app"  (JWKS URI will default)
-# - "https://keycloak.example.com/auth/realms/myrealm,,"  (no audience, JWKS URI will default)
+# - "https://auth0.example.com,,my-app"          (JWKS URI defaults)
+# - "https://keycloak.example.com/auth/realms/myrealm,," (no audience; JWKS URI defaults)
+# - "https://issuer.example.com,https://issuer.example.com/jwks.json,app-frontend,app-cli"
+#     (multi-audience: either app-frontend or app-cli will pass)
 #
 # For Auth0, the issuer would be like: https://<your-tenant>.<region>.auth0.com/
 # For Google, this would be: https://accounts.google.com
 #
 # This argument can be repeated to configure multiple identity providers.
-jwt_auth_provider = ["<jwt issuer uri>,<jwks uri>,<jwt audience>"]
+jwt_auth_provider = ["<jwt issuer uri>,<jwks uri>,<aud1>,<aud2>"]
 
 [workspace]
 # The root folder where the KMS will store its data

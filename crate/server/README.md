@@ -96,11 +96,11 @@ The KMS server relies on an OAuth2 authentication provided by Auth0 to authentic
 Example of how to run for test authentication:
 
 ```sh
-KMS_JWT_ISSUER_URI="demo-kms.eu.auth0.com" cargo run
+KMS_JWT_AUTH_PROVIDER="https://demo-kms.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.
-If there is no `KMS_JWT_ISSUER_URI` provided, the KMS disables the authentication. Only one user is allowed.
+If there is no `KMS_JWT_AUTH_PROVIDER` provided, the KMS disables the authentication. Only one user is allowed.
 If so, `admin` will be the user id.
 
 ## In-depth understanding

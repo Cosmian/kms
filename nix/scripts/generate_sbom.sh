@@ -7,7 +7,13 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 # Parse arguments
-VARIANT="fips"
+# Target: what to generate SBOM for. Supported: 'openssl' or 'server'.
+# - openssl: scans the OpenSSL 3.1.2 derivation from nix/openssl.nix
+# - server:  scans the KMS server derivation
+TARGET="openssl"
+# Variant and link are only relevant for 'server' target
+VARIANT="fips" # fips | non-fips
+LINK="static"  # static | dynamic (static by default)
 OUTPUT_DIR="$REPO_ROOT/sbom"
 
 usage() {
@@ -17,13 +23,20 @@ Generate SBOM (Software Bill of Materials) using sbomnix standard tools
 Usage: $0 [OPTIONS]
 
 Options:
-  --variant VARIANT    Build variant to analyze: fips or non-fips (default: fips)
-  --output DIR         Output directory for SBOM files (default: ./sbom)
+  --target TARGET      One of: openssl | server (default: openssl)
+  --variant VARIANT    One of: fips | non-fips (server target only; default: fips)
+  --link LINK          One of: static | dynamic (server target only; default: static)
+  --output DIR         Output directory for SBOM files (default:
+                       - openssl: ./sbom/openssl
+                       - server:  ./sbom/server/<variant>/<link>)
   -h, --help           Show this help message
 
 Examples:
-  $0                           # Generate SBOM for fips variant
-  $0 --variant non-fips        # Generate SBOM for non-fips variant
+  $0                           # Generate SBOM for OpenSSL (default)
+  $0 --target openssl          # Explicitly target OpenSSL 3.1.2
+  $0 --target server           # Target KMS server (fips, static OpenSSL)
+  $0 --target server --variant non-fips    # Target KMS server (non-fips)
+  $0 --target server --link dynamic        # Target KMS server (dynamic link, if available)
   $0 --output /tmp/sbom        # Use custom output directory
 
 Generated files:
@@ -39,8 +52,16 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
+  --target)
+    TARGET="${2:-}"
+    shift 2
+    ;;
   --variant)
     VARIANT="${2:-}"
+    shift 2
+    ;;
+  --link)
+    LINK="${2:-}"
     shift 2
     ;;
   --output)
@@ -59,31 +80,70 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Validate variant
-case "$VARIANT" in
-fips | non-fips) ;;
+# Determine the derivation to analyze based on target
+case "$TARGET" in
+openssl)
+  DERIVATION="openssl312"
+  NIX_RESULT="$REPO_ROOT/result-openssl-312"
+  ;;
+server)
+  # Validate variant/link values
+  case "$VARIANT" in
+  fips | non-fips) : ;;
+  *)
+    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+    exit 1
+    ;;
+  esac
+  case "$LINK" in
+  static | dynamic) : ;;
+  *)
+    echo "Error: --link must be 'static' or 'dynamic'" >&2
+    exit 1
+    ;;
+  esac
+
+  # Scan the exact server derivation (build chain) to verify toolchain CVEs
+  if [ "$LINK" = "dynamic" ]; then
+    DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
+    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
+  else
+    DERIVATION="kms-server-${VARIANT}-static-openssl"
+    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
+  fi
+  ;;
 *)
-  echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+  echo "Error: Unknown --target '$TARGET'. Use 'openssl' or 'server'." >&2
   exit 1
   ;;
 esac
 
-# Create output directory
+# Adjust default output directory to include target/variant/link structure
+if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
+  case "$TARGET" in
+  server)
+    OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
+    ;;
+  openssl)
+    OUTPUT_DIR="$REPO_ROOT/sbom/openssl"
+    ;;
+  esac
+fi
+
+# Create output directory (after adjusting default path)
 mkdir -p "$OUTPUT_DIR"
 
 echo "========================================="
 echo "SBOM Generation"
 echo "========================================="
+echo "Target:   $TARGET"
 echo "Variant:  $VARIANT"
+echo "Link:     $LINK"
 echo "Output:   $OUTPUT_DIR"
 echo "========================================="
 echo ""
 
 cd "$REPO_ROOT"
-
-# Determine the derivation to analyze
-DERIVATION="kms-server-${VARIANT}-static-openssl"
-NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
 
 # Helper function to run sbomnix commands via nix-shell if sbomnix is not available
 run_sbomnix() {
@@ -177,6 +237,76 @@ else
 fi
 echo ""
 
+# Optionally filter to runtime-only dependencies for the server target
+runtime_filter() {
+  local bin
+  bin="$(readlink -f "$NIX_RESULT")/bin/cosmian_kms"
+  if [ ! -x "$bin" ]; then
+    echo "  ⚠ Runtime filter: binary not found at $bin, skipping"
+    return 0
+  fi
+
+  if ! command -v readelf >/dev/null 2>&1; then
+    echo "  ⚠ Runtime filter: 'readelf' not available, skipping"
+    return 0
+  fi
+
+  # Collect DT_NEEDED shared library basenames
+  mapfile -t needed_libs < <(readelf -d "$bin" 2>/dev/null | awk '/NEEDED/ {gsub(/\[|\]/,"",$5); print $5}')
+
+  if [ ${#needed_libs[@]} -eq 0 ]; then
+    echo "  ⚠ Runtime filter: no DT_NEEDED entries found, skipping"
+    return 0
+  fi
+
+  # Map library basenames to package families for CSV filtering
+  # - glibc: libc.so.6 libm.so.6 ld-linux* librt.so.1 libdl.so.2 libpthread.so.0 libresolv.so.2 libnss_*.so*
+  # - gcc:   libgcc_s.so.*
+  # - openssl: libssl.so.* libcrypto.so.*
+  # - zlib:  libz.so.*
+  declare -A fam
+  for lib in "${needed_libs[@]}"; do
+    case "$lib" in
+    libgcc_s.so.*) fam[gcc]=1 ;;
+    libc.so.* | libm.so.* | ld-linux*.so* | librt.so.* | libdl.so.* | libpthread.so.* | libresolv.so.* | libnss_*.so*) fam[glibc]=1 ;;
+    libssl.so.* | libcrypto.so.*) fam[openssl]=1 ;;
+    libz.so.*) fam[zlib]=1 ;;
+    *) : ;;
+    esac
+  done
+
+  if [ ${#fam[@]} -eq 0 ]; then
+    echo "  ⚠ Runtime filter: no mapped families from DT_NEEDED, skipping"
+    return 0
+  fi
+
+  # Build regex for package name matching
+  local families pkg_regex pname_regex
+  families=$(printf "%s|" "${!fam[@]}" | sed 's/|$//')
+  pkg_regex="^(${families})$"
+  pname_regex="^(${families})"
+
+  # Filter vulns.csv where the 3rd column is 'package'
+  if [ -f "$OUTPUT_DIR/vulns.csv" ]; then
+    awk -F',' -v OFS=',' -v rx="$pkg_regex" 'NR==1{print; next} { col=$3; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/vulns.csv" >"$OUTPUT_DIR/vulns.runtime.csv" || true
+    if [ -s "$OUTPUT_DIR/vulns.runtime.csv" ]; then
+      echo "  ✓ vulns.runtime.csv"
+    else
+      echo "  ⚠ Runtime filter: produced empty vulns.runtime.csv"
+    fi
+  fi
+
+  # Filter sbom.csv where the 2nd column is 'pname'
+  if [ -f "$OUTPUT_DIR/sbom.csv" ]; then
+    awk -F',' -v OFS=',' -v rx="$pname_regex" 'NR==1{print; next} { col=$2; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/sbom.csv" >"$OUTPUT_DIR/sbom.runtime.csv" || true
+    if [ -s "$OUTPUT_DIR/sbom.runtime.csv" ]; then
+      echo "  ✓ sbom.runtime.csv"
+    else
+      echo "  ⚠ Runtime filter: produced empty sbom.runtime.csv"
+    fi
+  fi
+}
+
 # Generate build metadata
 echo "Generating metadata..."
 cat >"$OUTPUT_DIR/meta.json" <<EOF
@@ -225,3 +355,9 @@ echo "  - Review: cat $OUTPUT_DIR/README.md"
 echo "  - Import to Dependency-Track or other SBOM platform"
 echo "  - Integrate into CI/CD pipeline"
 echo ""
+
+# Invoke runtime filter if requested and applicable
+if [ "$TARGET" = "server" ]; then
+  echo "Applying runtime-only filter based on DT_NEEDED..."
+  runtime_filter
+fi

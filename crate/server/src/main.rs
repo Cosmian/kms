@@ -164,9 +164,8 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, LoggingConfig,
-        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
-        WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, LoggingConfig, MainDBConfig,
+        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
     };
 
     #[cfg(feature = "non-fips")]
@@ -209,11 +208,6 @@ mod tests {
                 proxy_basic_auth_password: Some("[proxy password]".to_owned()),
                 proxy_custom_auth_header: None,
                 proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
-            },
-            auth: JwtAuthConfig {
-                jwt_issuer_uri: Some(vec!["[jwt issuer uri]".to_owned()]),
-                jwks_uri: Some(vec!["[jwks uri]".to_owned()]),
-                jwt_audience: Some(vec!["[jwt audience]".to_owned()]),
             },
             idp_auth: IdpAuthConfig {
                 jwt_auth_provider: Some(vec![
@@ -313,11 +307,6 @@ proxy_url = "https://proxy.example.com:8080"
 proxy_basic_auth_username = "[proxy username]"
 proxy_basic_auth_password = "[proxy password]"
 proxy_exclusion_list = ["domain1", "domain2"]
-
-[auth]
-jwt_issuer_uri = ["[jwt issuer uri]"]
-jwks_uri = ["[jwks uri]"]
-jwt_audience = ["[jwt audience]"]
 
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]

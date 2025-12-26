@@ -24,12 +24,14 @@ jobs:
       archive-name: windows
 
   docker:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/packaging-docker.yml
     with:
       toolchain: ${{ inputs.toolchain }}
 
   packages:
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -71,8 +73,12 @@ jobs:
           if-no-files-found: error
 
   publish-release:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
+    concurrency:
+      group: publish-release
+      cancel-in-progress: false
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -81,6 +87,7 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         features: [fips, non-fips]
         link: [static, dynamic]

@@ -1,85 +1,127 @@
 # Cosmian KMS
 
-![Build status](https://github.com/Cosmian/kms/actions/workflows/main.yml/badge.svg?branch=main)
-![Build status](https://github.com/Cosmian/kms/actions/workflows/main_release.yml/badge.svg?branch=main)
+<p>
+  <a href="https://github.com/Cosmian/kms/actions/workflows/main.yml">
+    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github" />
+  </a>
+  <a href="https://github.com/Cosmian/kms/actions/workflows/pr.yml">
+    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/Cosmian/kms/pr.yml?branch=develop&label=Packaging&logo=github" />
+  </a>
+  <a href="https://github.com/Cosmian/kms/releases">
+    <img alt="Release" src="https://img.shields.io/github/v/release/Cosmian/kms" />
+  </a>
+  <a href="https://docs.cosmian.com/key_management_system/">
+    <img alt="Docs" src="https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white" />
+  </a>
+  <a href="https://github.com/Cosmian/kms/pkgs/container/kms">
+    <img alt="Container" src="https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white" />
+  </a>
+  <a href="SECURITY.md">
+    <img alt="Security" src="https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white" />
+  </a>
+  <a href="LICENSE">
+    <img alt="License" src="https://img.shields.io/badge/License-BSL%201.1-blue" />
+  </a>
+  <a href="./documentation/docs/fips.md">
+    <img alt="FIPS" src="https://img.shields.io/badge/FIPS%20140--3-Mode-blue" />
+  </a>
+</p>
 
-The **Cosmian KMS** is a high-performance,
-source-available [FIPS 140-3 compliant](./documentation/docs/fips.md) server application
-written in [Rust](https://www.rust-lang.org/).
+The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/fips.md) server application written in [Rust](https://www.rust-lang.org/).
 
-Online [documentation](https://docs.cosmian.com/key_management_system/)
+Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 ![KMS WebUI](./documentation/docs/images/kms-ui.png)
+<p align="center"><em>Built-in Web UI for administration and operations.</em></p>
 
 The Cosmian KMS presents some unique features, such as:
 
-- large-scale encryption and decryption of
-  data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
-- the ability to confidentially run in a public cloud, or any zero-trust environment, using
-  Cosmian VM. See our cloud-ready confidential KMS on the
-  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
-  our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
-- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
-- out-of-the-box support of
-  [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
-- out-of-the-box support
-  of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)
-  and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
-- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
-- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
-- MongoDB (./documentation/docs/mongodb.md)
-- Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
-- Percona Postgresql DB (./documentation/docs/percona.md)
-- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
-- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
-- a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
-- a support of Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
-  on [Cosmian Github](https://github.com/Cosmian))
-- integrated with [OpenTelemetry](https://opentelemetry.io/)
+- 🔐 Large-scale encryption and decryption of data — [documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- ☁️ Confidential execution in public clouds and zero-trust environments via Cosmian VM - [Azure, GCP, AWS marketplaces](https://cosmian.com/marketplaces/) and [deployment guide](./documentation/docs/installation/marketplace_guide.md)
+- 🛡️ Advanced authentication mechanisms — see [authentication](./documentation/docs/authentication.md)
+- 🔵 Google Workspace Client-Side Encryption (CSE) — [guide](./documentation/docs/google_cse/index.md)
+- 🪟 Microsoft Double Key Encryption (DKE) — [guide](./documentation/docs/ms_dke/index.md)
+- 🧱 HSM integrations (CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco, …) with KMS keys wrapped by the HSM — [HSM docs](./documentation/docs/hsms/index.md)
+- 💽 Disk encryption support — [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/)
+- ✅ [FIPS 140-3](./documentation/docs/fips.md) mode gated behind feature `fips`
+- 🔗 KMIP interface (binary and JSON) for versions 1.0-1.4 and 2.0-2.1 — [KMIP docs](./documentation/docs/kmip/index.md)
+- 🍃 [MongoDB](./documentation/docs/mongodb.md)
+- 🏛️ Oracle DB TDE — [guide](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
+- 🐘 [Percona PostgreSQL](./documentation/docs/percona.md)
+- 🏢 VMware vCenter Trust Authority / Trust Key Provider — [integration](./documentation/docs/vcenter.md)
+- 🧮 Big Data UDFs — [Python UDF](./documentation/docs/python_udf/index.md) and [Snowflake](./documentation/docs/snowflake/index.md)
+- 🖥️ Full-featured client — [command-line and GUI](https://docs.cosmian.com/cosmian_cli/)
+- 📈 High-availability mode with simple horizontal scaling — [guide](documentation/docs/installation/high_availability_mode.md)
+- 🧪 Multi-language client support — Python, JavaScript, Dart, Rust, C/C++, Java (see `cloudproof` libraries on [GitHub](https://github.com/Cosmian))
+- 📊 Integrated observability with [OpenTelemetry](https://opentelemetry.io/)
 
-The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure.
-As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic
-services such as on-the-fly key generation, encryption, and decryption operations.
+The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
-The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum
-cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
-Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
+The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
 
-As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use
-their public keys to encrypt and decrypt data.
+As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use their public keys to encrypt and decrypt data.
 Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor,
 to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The KMS has extensive online [documentation](https://docs.cosmian.com/key_management_system/)
 
+## ⭐ Why Cosmian KMS
+
+- Performance: built in Rust for low-latency crypto and high throughput.
+- Trust by design: FIPS 140-3 mode by default; non-FIPS for broader algorithm access when needed.
+- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, and rich client tooling.
+- HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
+- Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
+- End-to-end: server, CLI, and web UI for a complete developer and operator experience.
+
+## 🎯 Top Use Cases
+
+- Application‑level encryption at scale (files, objects, datasets) with centralized key lifecycle.
+- Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
+- Enterprise integrations: Google Workspace CSE and Microsoft DKE.
+- HSM-backed key protection and policy‑driven access controls.
+- PKI operations: issue, sign, validate, and automate certificate lifecycles.
+
+## 🔒 Security & Compliance
+
+- FIPS 140-3 mode on by default; switch to `--features non-fips` for extended algorithms.
+- Reproducible builds via Nix; release artifacts ship with SHA-256 checksums.
+- Software Bill of Materials (SBOM) and vulnerability reports:
+    - CycloneDX: [`sbom/bom.cdx.json`](sbom/bom.cdx.json)
+    - SPDX: [`sbom/bom.spdx.json`](sbom/bom.spdx.json)
+    - Vulnerabilities: [`sbom/vulns.csv`](sbom/vulns.csv)
+    - Overview: [`sbom/README.md`](sbom/README.md)
+-
+  Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
+
 - [Cosmian KMS](#cosmian-kms)
-    - [Quick start](#quick-start)
-        - [Example](#example)
-    - [Repository content](#repository-content)
-        - [Binaries](#binaries)
-        - [Core Crates](#core-crates)
-            - [Server Infrastructure](#server-infrastructure)
-            - [Client Libraries](#client-libraries)
-            - [Cryptographic Components](#cryptographic-components)
-            - [Hardware Security Module (HSM) Support](#hardware-security-module-hsm-support)
-            - [Database Interfaces](#database-interfaces)
-            - [Development and Testing](#development-and-testing)
-        - [Additional Directories](#additional-directories)
-    - [Building and running the KMS](#building-and-running-the-kms)
-        - [Features](#features)
-        - [Linux or macOS](#linux-or-macos)
-        - [Windows](#windows)
-        - [Build the Docker Ubuntu container](#build-the-docker-ubuntu-container)
-        - [Packaging (DEB/RPM/DMG) and hashes](#packaging-debrpmdmg-and-hashes)
-    - [Running the unit and integration tests](#running-the-unit-and-integration-tests)
-    - [Development: running the server with cargo](#development-running-the-server-with-cargo)
-    - [Server parameters](#server-parameters)
-    - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [Releases](#releases)
-    - [Benchmarks](#benchmarks)
+    - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
+    - [🎯 Top Use Cases](#-top-use-cases)
+    - [🔒 Security & Compliance](#-security--compliance)
+    - [🚀 Quick start](#-quick-start)
+        - [▶️ Example](#️-example)
+    - [📦 Repository content](#-repository-content)
+        - [🧰 Binaries](#-binaries)
+        - [🧱 Core Crates](#-core-crates)
+            - [🖧 Server Infrastructure](#-server-infrastructure)
+            - [🧑‍💻 Client Libraries](#-client-libraries)
+            - [🔐 Cryptographic Components](#-cryptographic-components)
+            - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
+            - [🗄️ Database Interfaces](#️-database-interfaces)
+            - [🧪 Development and Testing](#-development-and-testing)
+        - [📁 Additional Directories](#-additional-directories)
+    - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
+        - [✨ Features](#-features)
+        - [🖥️ Linux or macOS](#️-linux-or-macos)
+        - [🪟 Windows](#-windows)
+        - [🐳 Build the Docker Ubuntu container](#-build-the-docker-ubuntu-container)
+        - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
+    - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
+    - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
+    - [🔧 Server parameters](#-server-parameters)
+    - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+    - [🏷️ Releases](#️-releases)
+    - [📈 Benchmarks](#-benchmarks)
     - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
         - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
         - [KMIP Coverage](#kmip-coverage)
@@ -91,15 +133,11 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
             - [Transparent Key Structures](#transparent-key-structures)
             - [Attributes](#attributes)
 
-## Quick start
+## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.14.0/)
-for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be
-available in your path (see "building the KMS" below for details); other binaries do not have this
-requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.14.1/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
-Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
-inside the container, run the following command:
+Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
 ```sh
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
@@ -115,7 +153,7 @@ Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can b
     cargo build --bin cosmian
     ```
 
-### Example
+### ▶️ Example
 
 1. Create a 256-bit symmetric key
 
@@ -147,35 +185,35 @@ Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can b
 
 See the [documentation](https://docs.cosmian.com/key_management_system/) for more.
 
-## Repository content
+## 📦 Repository content
 
 The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organized as a Cargo workspace with multiple crates. The repository contains the following main components:
 
-### Binaries
+### 🧰 Binaries
 
 - **KMS Server** (`cosmian_kms`) - The main KMS server binary built from `crate/server`
 
-### Core Crates
+### 🧱 Core Crates
 
-#### Server Infrastructure
+#### 🖧 Server Infrastructure
 
 - **`server`** - Main KMS server implementation with REST API, KMIP protocol support, and web UI
 - **`server_database`** - Database abstraction layer supporting SQLite, PostgreSQL, MySQL, and Redis
 - **`access`** - Permission and access control management system
 
-#### Client Libraries
+#### 🧑‍💻 Client Libraries
 
 - **`kms_client`** - High-level Rust client library for KMS server communication
 - **`client_utils`** - Shared utilities for client implementations
 - **`wasm`** - WebAssembly bindings for browser-based clients
 
-#### Cryptographic Components
+#### 🔐 Cryptographic Components
 
 - **`crypto`** - Core cryptographic operations and algorithm implementations
 - **`kmip`** - Complete implementation of the KMIP (Key Management Interoperability Protocol) standard versions 1.0-2.1
 - **`kmip-derive`** - Procedural macros for KMIP protocol serialization/deserialization
 
-#### Hardware Security Module (HSM) Support
+#### 🔐 Hardware Security Module (HSM) Support
 
 - **`hsm/base_hsm`** - Base HSM abstraction layer
 - **`hsm/smartcardhsm`** - Nitrokey HSM 2 resp. CardContact SmartCard-HSM
@@ -185,16 +223,16 @@ The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organiz
 - **`hsm/utimaco`** - Utimaco HSM integration
 - **`hsm/other`** - Other HSMs support
 
-#### Database Interfaces
+#### 🗄️ Database Interfaces
 
 - **`interfaces`** - Database and storage backend abstractions
 
-#### Development and Testing
+#### 🧪 Development and Testing
 
 - **`test_kms_server`** - Library for programmatic KMS server instantiation in tests
 - **`cli`** - Legacy CLI crate (now primarily used for testing)
 
-### Additional Directories
+### 📁 Additional Directories
 
 - **`documentation/`** - Comprehensive project documentation built with MkDocs
 - **`examples/`** - Code examples and integration samples
@@ -208,7 +246,7 @@ The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organiz
 Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
 directory.
 
-## Building and running the KMS
+## 🏗️ Building and running the KMS
 
 Two paths are supported:
 
@@ -216,7 +254,7 @@ Two paths are supported:
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
-### Features
+### ✨ Features
 
 From version 5.4.0, the KMS runs in FIPS mode by default.
 The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `cargo build` or `cargo run`.
@@ -226,7 +264,7 @@ These operations should only be enabled during testing: `cargo build --features 
 
 OpenSSL v3.2.0 is required to build the KMS.
 
-### Linux or macOS
+### 🖥️ Linux or macOS
 
 Nix-based (reproducible FIPS builds):
 
@@ -246,7 +284,7 @@ cargo test --lib --workspace
 cargo test --lib --workspace --features non-fips
 ```
 
-### Windows
+### 🪟 Windows
 
 Follow the prerequisites below, or use the provided PowerShell helpers.
 
@@ -279,7 +317,7 @@ BuildProject -BuildType release   # or debug
 TestProject -BuildType release    # or debug
 ```
 
-### Build the Docker Ubuntu container
+### 🐳 Build the Docker Ubuntu container
 
 You can build a Docker image that contains the KMS server as follows:
 
@@ -293,7 +331,7 @@ Or, with FIPS support:
 docker buildx build --build-arg FIPS="true" -t kms .
 ```
 
-### Packaging (DEB/RPM/DMG) and hashes
+### 📦 Packaging (DEB/RPM/DMG) and hashes
 
 Use the Nix entrypoint to build packages:
 
@@ -310,7 +348,7 @@ bash .github/scripts/nix.sh package dmg
 On success, a SHA-256 checksum file (.sha256) is written next to each generated package
 (.deb/.rpm/.dmg) to ease verification and artifact distribution.
 
-## Running the unit and integration tests
+## 🧪 Running the unit and integration tests
 
 Pull the test data using:
 
@@ -347,7 +385,7 @@ set_var("KMS_TEST_DB", "redis-findex");
 log_init(option_env!("RUST_LOG"));
 ```
 
-## Development: running the server with cargo
+## ⚙️ Development: running the server with cargo
 
 To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
 log level and select the correct backend (which defaults to `sqlite`).
@@ -359,7 +397,7 @@ cargo run --bin cosmian_kms --features non-fips -- \
 --redis-master-password secret --redis-findex-label label
 ```
 
-## Server parameters
+## 🔧 Server parameters
 
 If a configuration file is provided, parameters are set following this order:
 
@@ -372,15 +410,15 @@ Otherwise, the parameters are set following this order:
 - env var
 - default (set on struct)
 
-## Use the KMS inside a Cosmian VM on SEV/TDX
+## ☁️ Use the KMS inside a Cosmian VM on SEV/TDX
 
 See the [Marketplace guide](documentation/docs/installation/marketplace_guide.md) for more details about Cosmian VM.
 
-## Releases
+## 🏷️ Releases
 
 All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
 
-## Benchmarks
+## 📈 Benchmarks
 
 To run benchmarks, go to the `crate/test_kms_server` directory and run:
 
@@ -417,6 +455,14 @@ Typical values for single-threaded HTTP KMIP 2.1 requests
     -  2048 bits: 33 milliseconds
     -  4096 bits: 322 milliseconds
 ```
+
+## 🤝 Community & Support
+
+- Docs: `documentation/` and online docs at <https://docs.cosmian.com/key_management_system/>
+- Issues: use GitHub Issues to report bugs and request features
+- Contributing: see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security disclosures: see [`SECURITY.md`](SECURITY.md)
+- License: see [`LICENSE`](LICENSE)
 
 <!-- KMIP_SUPPORT_START -->
 <!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->

@@ -320,3 +320,9 @@ async fn test_sign_secp256k1() -> KResult<()> {
 async fn test_sign_secp224r1() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P224, "secp224r1").await
 }
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_sign_secp256k1_rfc6979() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P256, "secp256k1_rfc6979").await
+}

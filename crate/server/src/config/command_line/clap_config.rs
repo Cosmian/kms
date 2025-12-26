@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig, WorkspaceConfig,
+    logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{ProxyConfig, SocketServerConfig, TlsConfig},
@@ -45,7 +45,6 @@ impl Default for ClapConfig {
             http: HttpConfig::default(),
             proxy: ProxyConfig::default(),
             kms_public_url: None,
-            auth: JwtAuthConfig::default(),
             idp_auth: IdpAuthConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
@@ -139,15 +138,6 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub proxy: ProxyConfig,
-
-    /// DEPRECATED: use the idp-auth instead.
-    /// JWT authentication configuration
-    ///
-    /// This field is deprecated. Use `idp_auth` with the `--jwt-auth-provider` option instead.
-    /// The new format allows specifying multiple providers in a single comma-separated format:
-    /// `--jwt-auth-provider "ISSUER_URI,JWKS_URI,AUDIENCE"`
-    #[clap(flatten)]
-    pub auth: JwtAuthConfig,
 
     #[clap(flatten)]
     pub idp_auth: IdpAuthConfig,
@@ -277,11 +267,6 @@ impl fmt::Debug for ClapConfig {
         let mut x = f.debug_struct("");
         let x = x.field("config_path", &self.config_path);
         let x = x.field("db", &self.db);
-        let x = if self.auth.jwt_issuer_uri.is_some() {
-            x.field("auth", &self.auth)
-        } else {
-            x
-        };
         let x = if self.idp_auth.jwt_auth_provider.is_some() {
             x.field("idp_auth", &self.idp_auth)
         } else {
@@ -621,6 +606,19 @@ mod tests {
     #[expect(clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
+        let conf_str = toml::to_string_pretty(&conf).unwrap();
+        debug!("Configuration TOML: {conf_str}");
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn test_server_idp() {
+        let mut conf = ClapConfig::default();
+        conf.idp_auth.jwt_auth_provider = Some(vec![
+            "https://issuer1.example.com,jwks_uri_1,audience1,audience2".to_owned(),
+            "https://issuer2.example.com,,audience3".to_owned(),
+            "https://issuer3.example.com".to_owned(),
+        ]);
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
     }

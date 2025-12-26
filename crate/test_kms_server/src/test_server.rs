@@ -31,7 +31,7 @@ use cosmian_kms_server::{
 use cosmian_logger::{error, info, trace, warn};
 use tokio::sync::OnceCell;
 
-use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_auth0_jwt_config};
+use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};
 
 /// To run most tests in parallel,
 /// We use that to avoid trying to start N KMS servers (one per test)
@@ -931,7 +931,7 @@ pub fn build_server_params_full(
 
     let idp_auth = if opts.jwt.is_enabled() {
         // Issuer must match the JWTs embedded in test_kms_server::test_jwt
-        get_auth0_jwt_config()
+        get_multiple_jwt_config()
     } else {
         IdpAuthConfig::default()
     };
