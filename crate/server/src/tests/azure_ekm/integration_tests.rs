@@ -310,7 +310,8 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
         false,
         true,
         EMPTY_TAGS,
-    );
+    )
+    .unwrap();
 
     let import_response = kms.import(import_request, owner, None, None).await?;
     let kek_id = import_response.unique_identifier.to_string();
