@@ -11,7 +11,7 @@ use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
 #[derive(Debug, Default, Args, Deserialize, Serialize)]
 #[serde(default)]
 pub struct IdpAuthConfig {
-    /// JWT authentication provider configuration
+    /// JWT authentication provider configuration.
     ///
     /// The expected argument is --jwt-auth-provider="`PROVIDER_CONFIG_1`" --jwt-auth-provider="`PROVIDER_CONFIG_2`" ...
     /// where each `PROVIDER_CONFIG_N` defines one identity provider configuration.
@@ -28,7 +28,7 @@ pub struct IdpAuthConfig {
     /// --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/""
     //
     /// This argument can be repeated to configure multiple identity providers.
-    #[clap(long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
+    #[clap(verbatim_doc_comment, long, env = "KMS_JWT_AUTH_PROVIDER", action = clap::ArgAction::Append)]
     pub jwt_auth_provider: Option<Vec<String>>,
 }
 
