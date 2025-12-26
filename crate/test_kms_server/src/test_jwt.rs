@@ -7,19 +7,15 @@ pub(crate) const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZC
 // This user token is used to test privileged user functionalities, it belongs to a non-privileged user.
 pub(crate) const AUTH0_TOKEN_USER: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjdTbW5SbV9NbmM0YVo0bVNQR19uVSJ9.eyJlbWFpbCI6InVzZXIuY2xpZW50QGFjbWUuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczovL2RlbW8ta21zLmV1LmF1dGgwLmNvbS8iLCJhdWQiOiJLd25vQm9tdjA0VnRDczJqajFJNjJnckZ3eDhMTkRPbCIsInN1YiI6ImF1dGgwfDY4N2U1MDM4YWFkNmJlNmZhOGEyYjI0OCIsImlhdCI6MTc1MzEwODU1NCwiZXhwIjozMTU1MzUzMTA4NTU0LCJzaWQiOiJmaFpMcWRXNkxIdmxhU0tyeG5kckZIbzNneFpTUDZGWiIsIm5vbmNlIjoiNTA4SjRub29hRU45WUptSFdUdl9xdyJ9.kA4BBNF2C8tTCtAIi84yMIOUiASkT0oAHICxXbPCnCb6C9Tuv1wG-oqhuNXg7_Btq-iO0gxd5iVDBE2JC8FpJipWSouT_NhNufopPL3n6PHIhXrdiZMRX676WcDY7h7chTNAX7KjQevc0ei-udecVvx96k8Dh362XHaVRVdSjcLJdl2IvWLyYBOlCU93dOSXKHRgs60TOi-JL0FevrkwQz-LCIFuWU7TEgzNRlL5gqzcRs5X25NBjIljzyIWg7yvdS_Yry2LR7blrO1IKkCwRuBgrhrX-w9aSX1qSy_hy6GCSuy_fpO8lP0FCynuENm2eIZKyZ6uRUbxILOqY5_q8w";
 
-pub(crate) fn get_auth0_jwt_config() -> IdpAuthConfig {
+pub(crate) fn get_multiple_jwt_config() -> IdpAuthConfig {
     // Other examples of JWT issuers and JWKS URIs:
-    // --jwt-issuer-uri=https://accounts.google.com \
-    // --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
-    // --jwt-issuer-uri=https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0 \
-    // --jwks-uri=https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys \
-    // --jwt-issuer-uri=https://demo-kms.eu.auth0.com/ \
-    // --jwks-uri=https://demo-kms.eu.auth0.com/.well-known/jwks.json \
+    // --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,kacls-migration,996739510374-2tauakcggau7kvk37784k0s2lmveb9c9.apps.googleusercontent.com"
+    // --jwt-auth-provider="https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
+    // --jwt-auth-provider=https://demo-kms.eu.auth0.com/,https://demo-kms.eu.auth0.com/.well-known/jwks.json"
     IdpAuthConfig {
         jwt_auth_provider: Some(vec![
-            format!("{AUTH0_JWT_ISSUER_URI},{AUTH0_JWT_ISSUER_URI}.well-known/jwks.json"),
             format!(
-                "{},{}",
+                "{},{},kacls-migration,996739510374-2tauakcggau7kvk37784k0s2lmveb9c9.apps.googleusercontent.com",
                 "https://accounts.google.com", "https://www.googleapis.com/oauth2/v3/certs"
             ),
             format!(
@@ -27,6 +23,7 @@ pub(crate) fn get_auth0_jwt_config() -> IdpAuthConfig {
                 "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0",
                 "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
             ),
+            format!("{AUTH0_JWT_ISSUER_URI},{AUTH0_JWT_ISSUER_URI}.well-known/jwks.json"),
         ]),
     }
 }

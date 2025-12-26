@@ -4,7 +4,7 @@
 
 set -e
 
-./result-server-non-fips-static/bin/cosmian_kms -h | tail -n +2 | {
+./result-server-non-fips-static/bin/cosmian_kms --help | tail -n +2 | {
   printf '```text\n'
   cat
   printf '```\n'

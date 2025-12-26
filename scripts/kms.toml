@@ -120,24 +120,29 @@ hostname = "0.0.0.0"
 # Check the Authenticating Users documentation pages for more information.
 [idp_auth]
 # JWT authentication provider configuration
-# Each provider configuration should be in the format: "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE" where:
+# Each provider configuration uses the format:
+#   "JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,..." where:
 # - JWT_ISSUER_URI: The issuer URI of the JWT token (required)
 # - JWKS_URI: The JWKS (JSON Web Key Set) URI (optional; defaults to <JWT_ISSUER_URI>/.well-known/jwks.json if empty or omitted)
-# - JWT_AUDIENCE: The audience of the JWT token (optional; can be empty)
+# - JWT_AUDIENCE_n: Zero or more allowed audiences (optional). If multiple are provided,
+#                   validation succeeds if the token "aud" contains any of them (any-of).
+#                   If no audiences are provided, audience validation is skipped.
 # Examples:
 # - "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"
 # - "https://auth0.example.com,,my-app"  (JWKS URI will default)
 # - "https://keycloak.example.com/auth/realms/myrealm,," (no audience, JWKS URI will default)
+# - "https://issuer.example.com,https://issuer.example.com/jwks.json,frontend,cli" (multi-audience)
 # This array can contain multiple identity provider configurations. Duplicate configurations are deduplicated; last wins.
 # jwt_auth_provider = [
-#   "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience",
+#   "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience,another_client_id",
 #   "https://auth0.example.com,,my-app",
 #   "https://keycloak.example.com/auth/realms/myrealm,,"
 # ]
 
-# The audience of the JWT token
-# Optional: The server will validate the JWT `aud` claim against this value if set
-# jwt_audience = ["<jwt audience>"]
+# DEPRECATED: use audiences within `idp_auth.jwt_auth_provider` entries instead.
+# The audience of the JWT token (legacy option)
+# Optional: The server will validate the JWT `aud` claim against these values if set
+# jwt_audience = ["<aud1>", "<aud2>"]
 
 [workspace]
 # The root folder where the KMS will store its data

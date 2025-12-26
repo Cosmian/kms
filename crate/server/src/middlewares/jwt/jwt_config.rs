@@ -7,7 +7,7 @@
 use std::{fmt, sync::Arc};
 
 use alcoholic_jwt::token_kid;
-use cosmian_logger::{debug, trace};
+use cosmian_logger::trace;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
@@ -110,7 +110,7 @@ pub(crate) struct JwtTokenHeaders {
 #[derive(Debug)]
 pub struct JwtConfig {
     pub jwt_issuer_uri: String,
-    pub jwt_audience: Option<String>,
+    pub jwt_audience: Option<Vec<String>>,
     pub jwks: Arc<JwksManager>,
 }
 
@@ -129,11 +129,11 @@ impl JwtConfig {
         let token: &str = bearer.get(1).ok_or_else(|| {
             KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
         })?;
-        self.decode_authentication_token(token, true)
+        self.validate_authentication_token(token, true)
     }
 
-    /// Decode a json web token (JWT)
-    pub(crate) fn decode_authentication_token(
+    /// Decode and validate a json web token (JWT)
+    pub(crate) fn validate_authentication_token(
         &self,
         token: &str,
         validate_subject: bool,
@@ -153,8 +153,15 @@ impl JwtConfig {
             #[cfg(all(not(test), not(feature = "insecure")))]
             alcoholic_jwt::Validation::NotExpired,
         ];
-        if let Some(jwt_audience) = &self.jwt_audience {
-            validations.push(alcoholic_jwt::Validation::Audience(jwt_audience.clone()));
+        // When only a single audience is configured, we can leverage the validator's Audience check.
+        // For multiple audiences, we'll validate post-decode against any-of configured audiences.
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        if let Some(audiences) = &self.jwt_audience {
+            if audiences.len() == 1 {
+                if let Some(single) = audiences.first() {
+                    validations.push(alcoholic_jwt::Validation::Audience(single.clone()));
+                }
+            }
         }
         if validate_subject {
             validations.push(alcoholic_jwt::Validation::SubjectPresent);
@@ -179,10 +186,30 @@ impl JwtConfig {
         let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
             .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
-        let payload = serde_json::from_value(valid_jwt.claims)
+        let payload: UserClaim = serde_json::from_value(valid_jwt.claims)
             .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
-
-        debug!("JWT payload: {payload:?}");
+        // Post-decode audience check when multiple audiences are configured (any-of semantics)
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        if let Some(configured_audiences) = &self.jwt_audience {
+            if !configured_audiences.is_empty() {
+                // If we already validated a single audience via alcoholic_jwt, this is redundant but safe.
+                let token_audiences = payload.aud.clone().unwrap_or_default();
+                let matches_any = token_audiences
+                    .iter()
+                    .any(|aud| configured_audiences.iter().any(|allowed| allowed == aud));
+                if !matches_any {
+                    let expected = format!("{configured_audiences:?}");
+                    let got = if token_audiences.is_empty() {
+                        "<empty>".to_owned()
+                    } else {
+                        format!("{token_audiences:?}")
+                    };
+                    return Err(KmsError::Unauthorized(format!(
+                        "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
+                    )));
+                }
+            }
+        }
 
         Ok(payload)
     }

@@ -119,6 +119,7 @@ For example, if you are using the docker image, you can run the following comman
     
     # JWT authentication with Google
     [idp_auth]
+    # issuer,jwks[,aud1[,aud2...]]; audiences optional (any-of when multiple)
     jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
     
     # Google CSE configuration

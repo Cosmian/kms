@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.14.1] - 2025-12-24
+
+### 🚀 Features
+
+- Add IDP multiple audiences configuration on [idp_auth] (#656). Dehardcode `kacls-migration` audience for Google CSE migration and allow alternative audiences (e.g. for Google Decrypter use)
+
+### 🐛 Bug Fixes
+
+- Allow explicitly AGPL-3.0-or-later license
+
+### ⚙️ Miscellaneous Tasks
+
+- Make Github release sequential - fix cargo publish (#642)
+
+### ⚠️ WARNING
+
+**Server TOML configuration - kms.toml:** The deprecated [auth] section has been fully removed in favor of [idp_auth]. Usage is:
+
+```toml
+...
+[idp_auth]
+jwt_auth_provider = [
+  "https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience,another_client_id",
+  "https://auth0.example.com,,my-app",
+  "https://keycloak.example.com/auth/realms/myrealm,,audience_1,audience_2"
+]
+...
+```
+
 ## [5.14.0] - 2025-12-15
 
 ### 🚀 Features
