@@ -1,5 +1,5 @@
-//! AES Key Wrap (RFC 3394) without padding (KW)
-//! Implements wrapping/unwrapping via rust-openssl.
+//! AES Key Wrap (RFC 3394) without padding (KW)  via rust-openssl.
+//! Please prefer using the RFC 5649, as it's the current standard. This implementation is only made available to comply with API that still support legacy encryption standards.
 //!
 //! Spec references:
 //! - RFC 3394: <https://datatracker.ietf.org/doc/html/rfc3394>
@@ -20,9 +20,9 @@ const AES_BLOCK_SIZE: usize = 16; // 128-bit
 
 fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
-        16 => Cipher::aes_128_wrap(),
-        24 => Cipher::aes_192_wrap(),
-        32 => Cipher::aes_256_wrap(),
+        16 => Cipher::aes_128_wrap_pad(),
+        24 => Cipher::aes_192_wrap_pad(),
+        32 => Cipher::aes_256_wrap_pad(),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The KEK size should be 16, 24 or 32 bytes".to_owned(),
