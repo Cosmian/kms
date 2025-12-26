@@ -45,7 +45,7 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
 
     // Initialize cipher context for encryption
     let mut ctx = CipherCtx::new()?;
-    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should should anyway
+    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should be set anyway
     ctx.encrypt_init(Some(cipher), Some(kek), None)?;
 
     // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final
