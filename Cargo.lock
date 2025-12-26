@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_crypto_core 10.3.0",
  "cosmian_http_client",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1480,7 +1480,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1493,7 +1493,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "async-trait",
  "cloudproof_findex",
@@ -1709,7 +1709,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypt2pay_pkcs11_loader"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "quote",
  "syn",
@@ -4068,7 +4068,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -4916,7 +4916,7 @@ dependencies = [
 
 [[package]]
 name = "smartcardhsm_pkcs11_loader"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -4955,7 +4955,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -5318,7 +5318,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
@@ -5891,7 +5891,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]

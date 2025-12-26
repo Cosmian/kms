@@ -18,7 +18,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.14.0" }
+cosmian_kmip = { path = "../kmip", version = "5.14.1" }
 cosmian_logger = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
