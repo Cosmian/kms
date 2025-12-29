@@ -66,7 +66,7 @@ pub fn rfc5649_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     };
 
     // Allocate output buffer with extra space for cipher_final
-    let mut ciphertext = vec![0_u8; padded_len + (AES_BLOCK_SIZE * 2)];
+    let mut ciphertext = vec![0_u8; padded_len + AES_BLOCK_SIZE];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -93,15 +93,11 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     // Initialize cipher context for decryption
     let mut ctx = CipherCtx::new()?;
-    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should should anyway
     ctx.decrypt_init(Some(cipher), Some(kek), None)?;
 
     // Allocate output buffer: maximum plaintext size is ciphertext - 8 bytes (AIV)
     // Add extra space for cipher_final
-    let mut plaintext = Zeroizing::new(vec![
-        0_u8;
-        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
-    ]);
+    let mut plaintext = Zeroizing::new(vec![0_u8; n_bytes - AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE]);
 
     // Perform the key unwrap operation
     let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;
