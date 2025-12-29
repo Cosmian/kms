@@ -15,8 +15,8 @@ use zeroize::Zeroizing;
 use crate::error::CryptoError;
 use crate::error::result::CryptoResult;
 
-const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 const AES_BLOCK_SIZE: usize = 16; // 128-bit
+const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 
 fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
@@ -31,6 +31,9 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     })
 }
 
+#[deprecated(
+    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
+)]
 pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let n_bytes = plaintext.len();
 
@@ -51,7 +54,7 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final
     // The extra blocs will not propagate to the result as its truncated to the actual size. Due to how the openssl library is programmed,
     // not adding at least 1 extra bloc results in a panic. We chose to add two because that's how openssl library operates when using this cypher
-    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + cipher.block_size() * 2];
+    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -65,6 +68,9 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     Ok(ciphertext)
 }
 
+#[deprecated(
+    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
+)]
 pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 
