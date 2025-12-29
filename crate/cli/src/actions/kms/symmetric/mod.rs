@@ -51,6 +51,7 @@ pub enum KeyEncryptionAlgorithm {
     AesXts,
     #[cfg(feature = "non-fips")]
     AesGcmSiv,
+    RFC3394,
     RFC5649,
 }
 
@@ -79,6 +80,11 @@ impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
                 ..Self::default()
             },
             KeyEncryptionAlgorithm::RFC5649 => Self {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+                ..Self::default()
+            },
+            KeyEncryptionAlgorithm::RFC3394 => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
                 ..Self::default()

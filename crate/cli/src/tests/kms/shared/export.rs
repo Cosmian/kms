@@ -193,7 +193,6 @@ pub(crate) async fn test_export_wrapped() -> KmsCliResult<()> {
         key_id: Some(private_key_id.to_string()),
         key_file: tmp_path.join("output.export"),
         wrap_key_id: Some(sym_key_id.to_string()),
-        wrapping_algorithm: Some(WrappingAlgorithm::NistKeyWrap),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

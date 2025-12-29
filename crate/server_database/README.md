@@ -77,7 +77,7 @@ ENC_Findex v8(u:userid)     → ENC_Findex v8(permission_triplet)
 ENC_Findex v8(object_uid)   → ENC_Findex v8(metadata)
 ```
 
-A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542](github.com/Cosmian/kms/pull/542).
+A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542](https://github.com/Cosmian/kms/pull/542).
 
 ### Environment Variables
 
