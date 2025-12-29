@@ -31,6 +31,9 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     })
 }
 
+#[deprecated(
+    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
+)]
 pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let n_bytes = plaintext.len();
 
@@ -64,6 +67,9 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     Ok(ciphertext)
 }
 
+#[deprecated(
+    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
+)]
 pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 
