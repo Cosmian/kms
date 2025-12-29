@@ -9,7 +9,7 @@
 //! - Input must be a multiple of 8 bytes and at least 16 bytes (n >= 2 blocks).
 //! - No padding is performed; for non-8-byte input lengths, use RFC 5649 (KWP).
 use openssl::cipher::{Cipher, CipherRef};
-use openssl::cipher_ctx::{CipherCtx, CipherCtxFlags};
+use openssl::cipher_ctx::CipherCtx;
 use zeroize::Zeroizing;
 
 use crate::error::CryptoError;
@@ -20,9 +20,9 @@ const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 
 fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
-        16 => Cipher::aes_128_wrap_pad(),
-        24 => Cipher::aes_192_wrap_pad(),
-        32 => Cipher::aes_256_wrap_pad(),
+        16 => Cipher::aes_128_wrap(),
+        24 => Cipher::aes_192_wrap(),
+        32 => Cipher::aes_256_wrap(),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The KEK size should be 16, 24 or 32 bytes".to_owned(),
@@ -31,9 +31,6 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     })
 }
 
-#[deprecated(
-    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
-)]
 pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let n_bytes = plaintext.len();
 
@@ -48,13 +45,12 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
 
     // Initialize cipher context for encryption
     let mut ctx = CipherCtx::new()?;
-    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should be set anyway
     ctx.encrypt_init(Some(cipher), Some(kek), None)?;
 
     // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final
     // The extra blocs will not propagate to the result as its truncated to the actual size. Due to how the openssl library is programmed,
     // not adding at least 1 extra bloc results in a panic. We chose to add two because that's how openssl library operates when using this cypher
-    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)];
+    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -68,9 +64,6 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     Ok(ciphertext)
 }
 
-#[deprecated(
-    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
-)]
 pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 
@@ -85,14 +78,10 @@ pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     // Initialize cipher context for decryption
     let mut ctx = CipherCtx::new()?;
-    ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this flag, but let's set it anyway
     ctx.decrypt_init(Some(cipher), Some(kek), None)?;
 
     // Allocate output buffer: unwrapped size is ciphertext - 8 bytes (IV) + extra blocks for cipher_final. Same comments as above.
-    let mut plaintext = Zeroizing::new(vec![
-        0_u8;
-        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
-    ]);
+    let mut plaintext = Zeroizing::new(vec![0_u8; n_bytes - AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE]);
 
     // Perform the key unwrap operation
     let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;
@@ -114,6 +103,8 @@ mod tests {
 
     /// Helper to run wrap/unwrap roundtrip test
     fn test_wrap_unwrap(kek_hex: &str, plaintext_hex: &str, expected_ciphertext_hex: &str) {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
         let kek = hex::decode(kek_hex).unwrap();
         let p = hex::decode(plaintext_hex).unwrap();
         let c_expected = hex::decode(expected_ciphertext_hex).unwrap();
@@ -128,9 +119,6 @@ mod tests {
     // RFC 3394 test vectors with AES-128 KEK
     #[test]
     fn test_rfc3394_aes128_kek() {
-        #[cfg(not(feature = "non-fips"))]
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         // Section 4.1: 128-bit plaintext
         test_wrap_unwrap(
             "000102030405060708090A0B0C0D0E0F",
@@ -142,9 +130,6 @@ mod tests {
     // RFC 3394 test vectors with AES-192 KEK
     #[test]
     fn test_rfc3394_aes192_kek() {
-        #[cfg(not(feature = "non-fips"))]
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let kek = "000102030405060708090A0B0C0D0E0F1011121314151617";
 
         // Section 4.2: 128-bit plaintext
@@ -165,9 +150,6 @@ mod tests {
     // RFC 3394 test vectors with AES-256 KEK
     #[test]
     fn test_rfc3394_aes256_kek() {
-        #[cfg(not(feature = "non-fips"))]
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let kek = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
 
         // Section 4.3: 128-bit plaintext

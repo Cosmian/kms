@@ -152,7 +152,7 @@ impl ObjectsDB {
             })?;
             Nonce::new(&mut *rng)
         };
-        let ct = self.dem.encrypt(
+        let ct: Vec<u8> = self.dem.encrypt(
             &nonce,
             &serde_json::to_vec(redis_db_object)?,
             Some(uid.as_bytes()),

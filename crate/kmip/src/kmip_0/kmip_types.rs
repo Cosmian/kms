@@ -780,7 +780,7 @@ pub enum BlockCipherMode {
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
     AESKeyWrapPadding = 0x0000_000C,
-    NISTKeyWrap = 0x8000_000D,
+    NISTKeyWrap = 0x8000_000D, // FIXME
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
