@@ -1,8 +1,3 @@
-#![allow(
-    clippy::manual_div_ceil,
-    clippy::cast_possible_truncation,
-    clippy::as_conversions
-)]
 //! AES Key Wrap (RFC 5649) with padding (KWP) via rust-openssl.
 //! This is the current standard for AES key wrapping according to the NIST SP 800-38F.
 //!
@@ -19,6 +14,9 @@ use openssl::cipher_ctx::{CipherCtx, CipherCtxFlags};
 use zeroize::Zeroizing;
 
 use crate::error::{CryptoError, result::CryptoResult};
+
+const AES_BLOCK_SIZE: usize = 16; // 128-bit
+const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 
 fn select_cipher_pad(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
@@ -44,14 +42,13 @@ pub fn rfc5649_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     }
 
     // Check maximum length (2^32 - 1 bytes as per NIST SP 800-38F Section 5.3.1)
-    if n_bytes >= (1_u64 << 32) as usize {
+    if n_bytes >= (1_usize << 32) {
         return Err(CryptoError::InvalidSize(
             "The plaintext size should be less than 2^32 bytes".to_owned(),
         ));
     }
 
     let cipher = select_cipher_pad(kek)?;
-    let bloc_size = cipher.block_size();
 
     let mut ctx = CipherCtx::new()?;
     ctx.set_flags(CipherCtxFlags::FLAG_WRAP_ALLOW); // For some reason the code works without this, but it should should anyway
@@ -60,16 +57,16 @@ pub fn rfc5649_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     // Calculate output size: for KWP, output is always a multiple of 8 bytes
     // Minimum output is 16 bytes (2 semi-blocks)
     // The wrapped size includes the AIV (8 bytes) plus padded plaintext
-    let padded_len = if n_bytes <= bloc_size {
-        cipher.block_size() // Special case: single block encryption
+    let padded_len = if n_bytes <= AES_WRAP_BLOCK_SIZE {
+        AES_WRAP_BLOCK_SIZE // Special case: single block encryption
     } else {
         // Calculate padding: round up to next multiple of 8, then add 8 for AIV
-        let padded_plaintext_len = ((n_bytes + bloc_size - 1) / bloc_size) * bloc_size;
-        padded_plaintext_len + bloc_size
+        let padded_plaintext_len = ((n_bytes + 8 - 1) / 8) * 8;
+        padded_plaintext_len + 8
     };
 
     // Allocate output buffer with extra space for cipher_final
-    let mut ciphertext = vec![0_u8; padded_len + (cipher.block_size() * 2)];
+    let mut ciphertext = vec![0_u8; padded_len + (AES_BLOCK_SIZE * 2)];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -85,12 +82,10 @@ pub fn rfc5649_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
 
 pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let cipher = select_cipher_pad(kek)?;
-    let bloc_size = cipher.block_size();
-
     let n_bytes = ciphertext.len();
 
-    // RFC 5649 requires ciphertext to be at least 16 bytes and a multiple of 8 bytes (complete blocs)
-    if !n_bytes.is_multiple_of(bloc_size) || n_bytes < 2 * (bloc_size * 2) {
+    // RFC 5649 requires ciphertext to be at least 2 semi-blocks (so 1 bloc) and a multiple of 8 bytes (complete blocs)
+    if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 2 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_owned(),
         ));
@@ -103,7 +98,10 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     // Allocate output buffer: maximum plaintext size is ciphertext - 8 bytes (AIV)
     // Add extra space for cipher_final
-    let mut plaintext = Zeroizing::new(vec![0_u8; n_bytes - bloc_size + (bloc_size * 2)]);
+    let mut plaintext = Zeroizing::new(vec![
+        0_u8;
+        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
+    ]);
 
     // Perform the key unwrap operation
     let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;
@@ -126,30 +124,15 @@ mod tests {
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
-    pub(super) fn test_wrap_unwrap() {
+    pub(super) fn test_wrap_unwrap_minimal() {
         const TEST_SIZE_LIMIT: usize = 100;
-        #[cfg(not(feature = "non-fips"))]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        let kek = b"\x58\x40\xdf\x6e\x29\xb0\x2a\xf1\xab\x49\x3b\x70\x5b\xf1\x6e\xa1\xae\x83\x38\xf4\xdc\xc1\x76\xa8";
 
-        let kek = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F";
-        let key_to_wrap =
-             b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F";
-        let wrapped_key = [
-            199, 131, 191, 63, 110, 233, 156, 72, 218, 187, 196, 16, 226, 132, 197, 44, 191, 117,
-            133, 120, 152, 157, 225, 138, 50, 148, 201, 164, 209, 151, 200, 162, 98, 112, 72, 139,
-            28, 233, 128, 22,
-        ];
+        // Empty plaintext should fail
+        let empty: &[u8] = &[];
+        rfc5649_wrap(empty, kek).unwrap_err();
 
-        assert_eq!(
-            rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap"),
-            wrapped_key
-        );
-        assert_eq!(
-            rfc5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
-            Zeroizing::from(key_to_wrap.to_vec())
-        );
-
+        // The rest of the round-trips shouldsucceedd, including the single byte one
         for size in 1..=TEST_SIZE_LIMIT {
             let key_to_wrap = &[0_u8; TEST_SIZE_LIMIT][..size];
             let ciphertext = rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap");
@@ -163,10 +146,6 @@ mod tests {
     // This test uses the vectors provided by the official RFC paper
     #[test]
     pub(super) fn test_rfc_test_vectors() {
-        #[cfg(not(feature = "non-fips"))]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let kek = b"\x58\x40\xdf\x6e\x29\xb0\x2a\xf1\xab\x49\x3b\x70\x5b\xf1\x6e\xa1\xae\x83\x38\xf4\xdc\xc1\x76\xa8";
 
         // 7 bytes of data
@@ -206,10 +185,6 @@ mod tests {
 
     #[test]
     pub(super) fn test_wrap_bad_key_size() {
-        #[cfg(not(feature = "non-fips"))]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         // Small input
         let kek = b"\x00";
         let key_to_wrap = b"\x46\x6f\x72\x50\x61\x73\x69";
@@ -237,10 +212,6 @@ mod tests {
 
     #[test]
     pub(super) fn test_wrap_bad_input_size() {
-        #[cfg(not(feature = "non-fips"))]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let kek = b"\x58\x40\xdf\x6e\x29\xb0\x2a\xf1\xab\x49\x3b\x70\x5b\xf1\x6e\xa1\xae\x83\x38\xf4\xdc\xc1\x76\xa8";
         let wrapped_key = [
             0xaf, 0xbe, 0xb0, 0xf0, 0x7d, 0xfb, 0xf5, 0x41, 0x92, 0x0, 0xf2, 0xcc, 0xb5, 0xb, 0xb2,
@@ -251,10 +222,6 @@ mod tests {
 
     #[test]
     pub(super) fn test_wrap_bad_input_content() {
-        #[cfg(not(feature = "non-fips"))]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let kek = b"\x58\x40\xdf\x6e\x29\xb0\x2a\xf1\xab\x49\x3b\x70\x5b\xf1\x6e\xa1\xae\x83\x38\xf4\xdc\xc1\x76\xa8";
         let wrapped_key = [
             0xaf, 0xbe, 0xb0, 0xf0, 0x7d, 0xfb, 0xf5, 0x41, 0x92, 0x0, 0xf2, 0xcc, 0xb5, 0xb, 0xb2,
@@ -332,7 +299,6 @@ mod tests {
     #[test]
     fn test_aes_kw_compat() {
         // Test the compatibility with AES_KEY_WRAP_PAD (RFC 5649) implemented by the aes_kw crate.
-
         let kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
         let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
 
