@@ -116,6 +116,10 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    pub session_salt: Option<String>,
 }
 
 /// Represents the server parameters.
@@ -274,6 +278,7 @@ impl ServerParams {
             },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
+            session_salt: conf.session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -397,6 +402,11 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref users) = self.privileged_users {
             debug_struct.field("privileged_users", users);
+        }
+
+        // Mask the session salt for security (it's a secret)
+        if self.session_salt.is_some() {
+            debug_struct.field("session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information

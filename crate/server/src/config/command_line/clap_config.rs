@@ -45,6 +45,7 @@ impl Default for ClapConfig {
             http: HttpConfig::default(),
             proxy: ProxyConfig::default(),
             kms_public_url: None,
+            session_salt: None,
             idp_auth: IdpAuthConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
@@ -123,6 +124,12 @@ pub struct ClapConfig {
     /// The URL is also used during the authentication flow initiated from the KMS UI.
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
+
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// If not provided, a default will be used (not recommended for production).
+    #[clap(verbatim_doc_comment, long, env = "KMS_SESSION_SALT")]
+    pub session_salt: Option<String>,
 
     #[clap(flatten)]
     pub db: MainDBConfig,
@@ -291,6 +298,11 @@ impl fmt::Debug for ClapConfig {
         };
         let x = x.field("KMS http", &self.http);
         let x = x.field("KMS public URL", &self.kms_public_url);
+        let x = if self.session_salt.is_some() {
+            x.field("session_salt", &"***")
+        } else {
+            x
+        };
 
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
