@@ -38,7 +38,7 @@ use cosmian_kms_server_database::reexport::{
     },
 };
 use cosmian_logger::{debug, error, info, trace};
-use openssl::ssl::SslAcceptorBuilder;
+use openssl::{hash::{Hasher, MessageDigest}, ssl::SslAcceptorBuilder};
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
@@ -498,6 +498,19 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 /// - In FIPS mode: PBKDF2 with SHA-512
 /// - In non-FIPS mode: Argon2
 ///
+/// # Security Considerations
+///
+/// The salt is derived from the URL itself (with a version prefix) to ensure:
+/// 1. Different KMS deployments get different keys
+/// 2. Determinism - same URL always produces the same key
+/// 3. No need for shared secret distribution in load-balanced setups
+///
+/// # Versioning
+///
+/// The version string (v1) allows for future algorithm changes. If the derivation
+/// algorithm needs to change, increment the version to ensure backward compatibility
+/// during rolling upgrades.
+///
 /// # Arguments
 ///
 /// * `public_url` - The public URL of the KMS server
@@ -510,18 +523,32 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 ///
 /// Returns `KmsError` if key derivation fails.
 fn derive_session_key_from_url(public_url: &str) -> KResult<Key> {
-    // Use a fixed salt derived from a constant string
-    // This ensures all instances derive the same key from the same URL
-    const SALT_SEED: &[u8] = b"cosmian_kms_session_cookie_key_v1";
+    // Version prefix allows for future algorithm changes
+    const VERSION: &str = "v1";
+    const SALT_PREFIX: &[u8] = b"cosmian_kms_session_cookie_key_";
     
-    // Create a 16-byte salt from the seed by copying the first FIPS_MIN_SALT_SIZE bytes
+    // Create a URL-specific salt by combining prefix, version, and URL
+    // This ensures different URLs get different salts while maintaining determinism
+    let salt_input = format!("{}{}{}", 
+        std::str::from_utf8(SALT_PREFIX).unwrap_or("cosmian_kms_session_cookie_key_"),
+        VERSION,
+        public_url
+    );
+    
+    // Hash the salt input to get a fixed-size salt
+    // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
+    let mut hasher = Hasher::new(MessageDigest::sha256())
+        .map_err(|e| KmsError::ServerError(format!("Failed to create hasher: {e}")))?;
+    hasher.update(salt_input.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to hash salt input: {e}")))?;
+    let hash = hasher.finish()
+        .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
+    
+    // Extract first FIPS_MIN_SALT_SIZE bytes as salt
     let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
-    let len = SALT_SEED.len().min(FIPS_MIN_SALT_SIZE);
-    
-    // Safe to index here because len is guaranteed to be <= FIPS_MIN_SALT_SIZE
     #[allow(clippy::indexing_slicing)]
     {
-        salt[..len].copy_from_slice(&SALT_SEED[..len]);
+        salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
     }
     
     // Derive a 64-byte key from the public URL
