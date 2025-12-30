@@ -525,15 +525,11 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 fn derive_session_key_from_url(public_url: &str) -> KResult<Key> {
     // Version prefix allows for future algorithm changes
     const VERSION: &str = "v1";
-    const SALT_PREFIX: &[u8] = b"cosmian_kms_session_cookie_key_";
+    const SALT_PREFIX: &str = "cosmian_kms_session_cookie_key_";
     
     // Create a URL-specific salt by combining prefix, version, and URL
     // This ensures different URLs get different salts while maintaining determinism
-    let salt_input = format!("{}{}{}", 
-        std::str::from_utf8(SALT_PREFIX).unwrap_or("cosmian_kms_session_cookie_key_"),
-        VERSION,
-        public_url
-    );
+    let salt_input = format!("{SALT_PREFIX}{VERSION}{public_url}");
     
     // Hash the salt input to get a fixed-size salt
     // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
@@ -545,7 +541,9 @@ fn derive_session_key_from_url(public_url: &str) -> KResult<Key> {
         .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
     
     // Extract first FIPS_MIN_SALT_SIZE bytes as salt
+    // SHA-256 produces 32 bytes and FIPS_MIN_SALT_SIZE is 16, so this is always safe
     let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
+    // This indexing is safe because SHA-256 always produces 32 bytes >= FIPS_MIN_SALT_SIZE (16)
     #[allow(clippy::indexing_slicing)]
     {
         salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
