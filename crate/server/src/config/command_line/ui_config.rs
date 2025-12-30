@@ -32,6 +32,12 @@ pub struct UiConfig {
     #[arg(short, env = "COSMIAN_UI_DIST_PATH", long)]
     pub ui_index_html_folder: Option<String>,
 
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory when the UI is configured.
+    #[clap(verbatim_doc_comment, long, env = "KMS_SESSION_SALT")]
+    pub session_salt: String,
+
     #[clap(flatten)]
     pub ui_oidc_auth: OidcConfig,
 }
