@@ -514,10 +514,15 @@ fn derive_session_key_from_url(public_url: &str) -> KResult<Key> {
     // This ensures all instances derive the same key from the same URL
     const SALT_SEED: &[u8] = b"cosmian_kms_session_cookie_key_v1";
     
-    // Create a 16-byte salt from the seed
-    let mut salt = [0u8; FIPS_MIN_SALT_SIZE];
+    // Create a 16-byte salt from the seed by copying the first FIPS_MIN_SALT_SIZE bytes
+    let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
     let len = SALT_SEED.len().min(FIPS_MIN_SALT_SIZE);
-    salt[..len].copy_from_slice(&SALT_SEED[..len]);
+    
+    // Safe to index here because len is guaranteed to be <= FIPS_MIN_SALT_SIZE
+    #[allow(clippy::indexing_slicing)]
+    {
+        salt[..len].copy_from_slice(&SALT_SEED[..len]);
+    }
     
     // Derive a 64-byte key from the public URL
     let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
