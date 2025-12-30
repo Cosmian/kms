@@ -119,7 +119,8 @@ pub struct ServerParams {
 
     /// A secret salt used to derive the session cookie encryption key.
     /// This MUST be identical across all KMS instances behind the same load balancer.
-    pub session_salt: Option<String>,
+    /// This is mandatory when the UI is configured.
+    pub session_salt: String,
 }
 
 /// Represents the server parameters.
@@ -278,7 +279,7 @@ impl ServerParams {
             },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
-            session_salt: conf.session_salt,
+            session_salt: conf.ui_config.session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -405,7 +406,7 @@ impl fmt::Debug for ServerParams {
         }
 
         // Mask the session salt for security (it's a secret)
-        if self.session_salt.is_some() {
+        if !self.session_salt.is_empty() {
             debug_struct.field("session_salt", &"***");
         }
 

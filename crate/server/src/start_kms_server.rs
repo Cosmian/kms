@@ -505,8 +505,6 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 /// 2. Identical across all KMS instances behind the same load balancer
 /// 3. Kept confidential to prevent key derivation attacks
 ///
-/// If no salt is provided, a default constant is used, which is NOT recommended for production.
-///
 /// # Versioning
 ///
 /// The version string (v1) allows for future algorithm changes. If the derivation
@@ -516,7 +514,7 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 /// # Arguments
 ///
 /// * `public_url` - The public URL of the KMS server
-/// * `user_salt` - An optional user-provided secret salt. If None, a default is used.
+/// * `user_salt` - A user-provided secret salt (must not be empty)
 ///
 /// # Returns
 ///
@@ -525,17 +523,13 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 /// # Errors
 ///
 /// Returns `KmsError` if key derivation fails.
-fn derive_session_key_from_url(public_url: &str, user_salt: Option<&str>) -> KResult<Key> {
+fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key> {
     // Version prefix allows for future algorithm changes
     const VERSION: &str = "v1";
-    const DEFAULT_SALT: &str = "cosmian_kms_default_session_salt_DO_NOT_USE_IN_PRODUCTION";
-    
-    // Use the user-provided salt or fall back to default
-    let salt_seed = user_salt.unwrap_or(DEFAULT_SALT);
     
     // Create a URL-specific salt by combining salt seed, version, and URL
     // This ensures different URLs get different salts while maintaining determinism
-    let salt_input = format!("{salt_seed}{VERSION}{public_url}");
+    let salt_input = format!("{user_salt}{VERSION}{public_url}");
     
     // Hash the salt input to get a fixed-size salt
     // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
@@ -707,7 +701,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // This ensures all instances in a load-balanced setup generate the same key
     let secret_key: Key = derive_session_key_from_url(
         &kms_public_url,
-        kms_server.params.session_salt.as_deref(),
+        &kms_server.params.session_salt,
     )?;
 
     // Clone kms_server for HttpServer closure
@@ -953,7 +947,7 @@ mod tests {
         let url1 = "https://kms.example.com:9998";
         let url2 = "https://kms.example.com:9998";
         let url3 = "https://kms.different.com:9998";
-        let salt = Some("test_secret_salt");
+        let salt = "test_secret_salt";
 
         // Same URL and salt should generate the same key
         let key1 = derive_session_key_from_url(url1, salt).expect("Failed to derive key 1");
@@ -978,7 +972,7 @@ mod tests {
         );
 
         // Different salt should generate different key
-        let key4 = derive_session_key_from_url(url1, Some("different_salt")).expect("Failed to derive key 4");
+        let key4 = derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
         let key4_bytes = key4.master();
         
         assert_ne!(
@@ -1000,13 +994,13 @@ mod tests {
         }
 
         // Even an empty URL should successfully derive a key
-        let key = derive_session_key_from_url("", None).expect("Failed to derive key from empty URL");
+        let key = derive_session_key_from_url("", "test_salt").expect("Failed to derive key from empty URL");
         assert_eq!(key.master().len(), 64, "Key should be 64 bytes");
     }
 
     #[test]
     #[expect(clippy::unwrap_used)]
-    fn test_derive_session_key_with_no_salt() {
+    fn test_derive_session_key_determinism() {
         // Load the appropriate provider if available
         #[cfg(not(feature = "non-fips"))]
         {
@@ -1014,16 +1008,17 @@ mod tests {
         }
 
         let url = "https://kms.example.com:9998";
+        let salt = "my_secret_salt";
         
-        // No salt provided should use default
-        let key1 = derive_session_key_from_url(url, None).expect("Failed to derive key 1");
-        let key2 = derive_session_key_from_url(url, None).expect("Failed to derive key 2");
+        // Same URL and salt should always produce the same key
+        let key1 = derive_session_key_from_url(url, salt).expect("Failed to derive key 1");
+        let key2 = derive_session_key_from_url(url, salt).expect("Failed to derive key 2");
         
-        // Should be deterministic even with default salt
+        // Should be deterministic
         assert_eq!(
             key1.master(),
             key2.master(),
-            "Keys with default salt should be identical"
+            "Keys with same URL and salt should be identical"
         );
     }
 }
