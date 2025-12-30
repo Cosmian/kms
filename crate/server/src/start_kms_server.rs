@@ -32,7 +32,10 @@ use cosmian_kms_server_database::reexport::{
         kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         requests::{create_rsa_key_pair_request, import_object_request},
     },
-    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
+    cosmian_kms_crypto::{
+        crypto::password_derivation::{derive_key_from_password, FIPS_MIN_SALT_SIZE},
+        openssl::kmip_private_key_to_openssl,
+    },
 };
 use cosmian_logger::{debug, error, info, trace};
 use openssl::ssl::SslAcceptorBuilder;
@@ -485,6 +488,45 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
     }
 }
 
+/// Derive a session cookie encryption key from the public URL.
+///
+/// This function creates a deterministic key from the public URL to ensure that
+/// multiple server instances in a load-balanced setup can decrypt session cookies
+/// created by any instance.
+///
+/// The key derivation uses:
+/// - In FIPS mode: PBKDF2 with SHA-512
+/// - In non-FIPS mode: Argon2
+///
+/// # Arguments
+///
+/// * `public_url` - The public URL of the KMS server
+///
+/// # Returns
+///
+/// Returns a 64-byte `Key` suitable for actix-web session cookie encryption.
+///
+/// # Errors
+///
+/// Returns `KmsError` if key derivation fails.
+fn derive_session_key_from_url(public_url: &str) -> KResult<Key> {
+    // Use a fixed salt derived from a constant string
+    // This ensures all instances derive the same key from the same URL
+    const SALT_SEED: &[u8] = b"cosmian_kms_session_cookie_key_v1";
+    
+    // Create a 16-byte salt from the seed
+    let mut salt = [0u8; FIPS_MIN_SALT_SIZE];
+    let len = SALT_SEED.len().min(FIPS_MIN_SALT_SIZE);
+    salt[..len].copy_from_slice(&SALT_SEED[..len]);
+    
+    // Derive a 64-byte key from the public URL
+    let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
+    
+    // Convert the derived key to an actix-web Key
+    Ok(Key::from(derived_key.as_ref()))
+}
+
 /// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
@@ -615,9 +657,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
-    // Generate key for actix session cookie encryption and elements for UI exposure
-    let secret_key: Key = Key::generate();
-
+    // Compute the public URL first so we can use it to derive the session key
     let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
         format!(
             "http{}://{}:{}",
@@ -626,6 +666,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             &kms_server.params.http_port
         )
     });
+
+    // Derive key for actix session cookie encryption from the public URL
+    // This ensures all instances in a load-balanced setup generate the same key
+    let secret_key: Key = derive_session_key_from_url(&kms_public_url)?;
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -852,4 +896,62 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     }
 
     Ok(builder)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn test_derive_session_key_deterministic() {
+        // Load the appropriate provider if available
+        #[cfg(not(feature = "non-fips"))]
+        {
+            let _ = openssl::provider::Provider::load(None, "fips");
+        }
+
+        let url1 = "https://kms.example.com:9998";
+        let url2 = "https://kms.example.com:9998";
+        let url3 = "https://kms.different.com:9998";
+
+        // Same URL should generate the same key
+        let key1 = derive_session_key_from_url(url1).expect("Failed to derive key 1");
+        let key2 = derive_session_key_from_url(url2).expect("Failed to derive key 2");
+        
+        // Extract the key bytes for comparison
+        let key1_bytes = key1.master();
+        let key2_bytes = key2.master();
+        
+        assert_eq!(
+            key1_bytes, key2_bytes,
+            "Same URL should generate identical keys"
+        );
+
+        // Different URL should generate different key
+        let key3 = derive_session_key_from_url(url3).expect("Failed to derive key 3");
+        let key3_bytes = key3.master();
+        
+        assert_ne!(
+            key1_bytes, key3_bytes,
+            "Different URLs should generate different keys"
+        );
+
+        // Verify key length is 64 bytes
+        assert_eq!(key1_bytes.len(), 64, "Key should be 64 bytes");
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn test_derive_session_key_from_empty_url() {
+        // Load the appropriate provider if available
+        #[cfg(not(feature = "non-fips"))]
+        {
+            let _ = openssl::provider::Provider::load(None, "fips");
+        }
+
+        // Even an empty URL should successfully derive a key
+        let key = derive_session_key_from_url("").expect("Failed to derive key from empty URL");
+        assert_eq!(key.master().len(), 64, "Key should be 64 bytes");
+    }
 }
