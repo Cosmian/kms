@@ -1,22 +1,17 @@
-use std::sync::Arc;
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+        kmip_types::KeyFormatType,
+    },
+};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
     reexport::cosmian_cover_crypt::api::Covercrypt,
-};
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-            kmip_types::KeyFormatType,
-        },
-    },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::trace;
 
@@ -33,7 +28,7 @@ pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     _user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     _privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
@@ -55,7 +50,7 @@ pub(crate) async fn rekey_keypair(
     // retrieve from tags or use passed identifier
     let owm_s = kms
         .database
-        .retrieve_objects(uid_or_tags, params.clone())
+        .retrieve_objects(uid_or_tags)
         .await?
         .into_values();
 
@@ -86,7 +81,6 @@ pub(crate) async fn rekey_keypair(
                 owm.id().to_owned(),
                 _user,
                 action,
-                params,
                 owm.attributes().sensitive.unwrap_or(false),
                 _privileged_users,
             ))

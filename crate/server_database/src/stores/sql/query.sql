@@ -22,7 +22,7 @@ DELETE FROM parameters WHERE name=$1;
 CREATE TABLE IF NOT EXISTS objects (
         id VARCHAR(128) PRIMARY KEY,
         object VARCHAR NOT NULL,
-        attributes json NOT NULL,
+        attributes jsonb NOT NULL,
         state VARCHAR(32),
         owner VARCHAR(255)
 );

@@ -1,3 +1,5 @@
+use core::fmt::Write as _;
+
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
@@ -11,6 +13,7 @@ use cosmian_kmip::{
 /// This trait contains default naming overridden
 /// by implementation if needed
 pub(super) trait PlaceholderTrait {
+    const NEEDS_INTEGER_CAST: bool = true;
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -110,7 +113,8 @@ impl PlaceholderTrait for MySqlPlaceholder {
     const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
     const JSON_TEXT_NAME_TYPE: &'static str = "'$[*].NameType'";
     const JSON_TEXT_NAME_VALUE: &'static str = "'$[*].NameValue'";
-    const TYPE_INTEGER: &'static str = "SIGNED";
+    const NEEDS_INTEGER_CAST: bool = false;
+    const TYPE_INTEGER: &'static str = "UNSIGNED INTEGER";
 
     fn binder(_param_number: usize) -> String {
         "?".to_owned()
@@ -122,6 +126,14 @@ impl PlaceholderTrait for MySqlPlaceholder {
 
     fn names_additional_rq_from() -> Option<String> {
         None
+    }
+
+    fn extract_attribute_path(attribute_names: &[&str]) -> String {
+        // Use JSON_UNQUOTE(JSON_EXTRACT(...)) for broad MySQL/MariaDB compatibility
+        format!(
+            "JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '{}'))",
+            Self::format_json_path(attribute_names)
+        )
     }
 
     fn link_evaluation(node_name: &str, node_value: &str) -> String {
@@ -154,12 +166,24 @@ impl PlaceholderTrait for MySqlPlaceholder {
         )
     }
 }
+
+/// PostgreSQL-specific placeholder implementation.
+///
+/// Uses JSONB (binary JSON) instead of JSON for better performance:
+/// - **Indexing**: JSONB supports GIN indexes for fast queries on JSON fields
+/// - **Query performance**: Binary format allows direct access without reparsing
+/// - **Operators**: Rich set of optimized operators (`->`, `->>`, `@>`, `?`, etc.)
+/// - **Storage**: Normalized format removes duplicate keys automatically
+///
+/// While JSONB has slightly slower inserts (due to binary conversion), the query
+/// performance improvement is substantial, especially for complex JSON operations
+/// like those used in attribute searches and link/name evaluations.
 pub(super) enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
-    const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
-    const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
-    const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
+    const JSON_ARRAY_LENGTH: &'static str = "jsonb_array_length";
+    const JSON_FN_EACH_ELEMENT: &'static str = "jsonb_array_elements";
+    const JSON_FN_EXTRACT_PATH: &'static str = "jsonb_extract_path";
+    const JSON_FN_EXTRACT_TEXT: &'static str = "jsonb_extract_path_text";
     const JSON_NODE_LINK: &'static str = "'Link'";
     const JSON_NODE_NAME: &'static str = "'Name'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
@@ -174,27 +198,26 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     /// Override `extract_attribute_path` to build a call with multiple quoted args instead
     /// of a single comma-joined string.
     fn extract_attribute_path(attribute_names: &[&str]) -> String {
-        let args = attribute_names
-            .iter()
-            .map(|s| format!("'{s}'"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!(
-            "{}(objects.attributes, {})",
-            Self::JSON_FN_EXTRACT_TEXT,
-            args
-        )
+        // Use -> and ->> operators for robust JSONB path extraction, casting to jsonb
+        if attribute_names.is_empty() {
+            return "(objects.attributes)::jsonb".to_owned();
+        }
+        let mut path = String::from("(objects.attributes)::jsonb");
+        if let Some((last, heads)) = attribute_names.split_last() {
+            for key in heads {
+                let _ = write!(path, " -> '{key}'");
+            }
+            let _ = write!(path, " ->> '{last}'");
+        }
+        path
     }
 
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     fn extract_object_type() -> String {
-        // Equivalent to json_extract_path_text(objects.attributes, 'ObjectType')
-        format!(
-            "{}(objects.attributes, 'ObjectType')",
-            Self::JSON_FN_EXTRACT_TEXT
-        )
+        "(objects.attributes)::jsonb ->> 'ObjectType'".to_owned()
     }
 }
+
 pub(super) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
 
@@ -208,9 +231,10 @@ pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     _user: &str,
     user_must_be_owner: bool,
 ) -> String {
-    let mut query = "SELECT objects.id as id, objects.state as state, objects.attributes as attrs \
+    let mut query =
+        "SELECT DISTINCT objects.id as id, objects.state as state, objects.attributes as attrs \
                      FROM objects"
-        .to_owned();
+            .to_owned();
 
     if let Some(attributes) = attributes {
         // tags
@@ -314,11 +338,19 @@ ON objects.id = matched_tags.id"
 
         // CryptographicLength
         if let Some(cryptographic_length) = attributes.cryptographic_length {
-            query = format!(
-                "{query} AND CAST ({} AS {}) = {cryptographic_length}",
-                P::extract_attribute_path(&["CryptographicLength"]),
-                P::TYPE_INTEGER
-            );
+            if P::NEEDS_INTEGER_CAST {
+                query = format!(
+                    "{query} AND CAST ({} AS {}) = {cryptographic_length}",
+                    P::extract_attribute_path(&["CryptographicLength"]),
+                    P::TYPE_INTEGER
+                );
+            } else {
+                // For MySQL/MariaDB, rely on implicit conversion of unquoted value
+                query = format!(
+                    "{query} AND {} = {cryptographic_length}",
+                    P::extract_attribute_path(&["CryptographicLength"])
+                );
+            }
         }
 
         // KeyFormatType

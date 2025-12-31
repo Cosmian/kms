@@ -55,8 +55,9 @@ pub fn ecdsa_verify(
                     )
                 {
                     use openssl::bn::BigNumContext;
-                    use p256::ecdsa::signature::hazmat::PrehashVerifier;
-                    use p256::ecdsa::{Signature, VerifyingKey};
+                    use p256::ecdsa::{
+                        Signature, VerifyingKey, signature::hazmat::PrehashVerifier,
+                    };
 
                     let mut ctx = BigNumContext::new()?;
                     let pub_key_sec1 = ec_key.public_key().to_bytes(

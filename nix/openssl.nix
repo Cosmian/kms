@@ -208,6 +208,38 @@ stdenv.mkDerivation rec {
       # Uncomment the fips provider line
       sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"
 
+      # Ensure providers section is enabled and includes provider_sect
+      if ! grep -q "^providers[[:space:]]*=" "$conf_dir/openssl.cnf"; then
+        # Add providers = provider_sect under [openssl_init]
+        awk '
+          BEGIN{in_init=0}
+          /^\[ *openssl_init *\]/{in_init=1; print; next}
+          in_init && /^[[:space:]]*#?[[:space:]]*providers[[:space:]]*=/{in_init=0}
+          in_init && NF==0{print "providers = provider_sect"; in_init=0}
+          {print}
+        ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
+      fi
+
+      # Ensure provider_sect exists and references both fips and base
+      if ! grep -q "^\[ *provider_sect *\]" "$conf_dir/openssl.cnf"; then
+        {
+          echo "";
+          echo "[ provider_sect ]";
+          echo "fips = fips_sect";
+          echo "base = base_sect";
+        } >> "$conf_dir/openssl.cnf"
+      else
+        # If provider_sect exists, ensure base reference is present
+        if ! awk 'f&&/^[[:space:]]*base[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /provider_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
+          awk '
+            BEGIN{in_prov=0}
+            /^\[ *provider_sect *\]/{in_prov=1; print; next}
+            in_prov && NF==0{print "base = base_sect"; in_prov=0}
+            {print}
+          ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
+        fi
+      fi
+
       # Add base provider (for non-FIPS algorithms still needed)
       # First check if base_sect already exists to avoid duplication
       if ! grep -q "^base = base_sect" "$conf_dir/openssl.cnf"; then

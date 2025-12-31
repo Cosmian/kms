@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_operations::{RNGSeed, RNGSeedResponse},
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+    RNGSeed, RNGSeedResponse,
 };
 use cosmian_logger::trace;
 
@@ -21,7 +18,6 @@ pub(crate) async fn rng_seed(
     _kms: &KMS,
     request: RNGSeed,
     _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<RNGSeedResponse> {
     trace!("{request}");
 

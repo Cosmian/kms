@@ -32,7 +32,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
     // Retrieve the object from the database
     let owm = kms
         .database
-        .retrieve_object(api_token_id, None)
+        .retrieve_object(api_token_id)
         .await?
         .ok_or_else(|| {
             KmsError::Kmip21Error(

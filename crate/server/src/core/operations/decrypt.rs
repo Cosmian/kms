@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
@@ -32,7 +32,7 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
@@ -51,12 +51,7 @@ use crate::{
 
 const EMPTY_SLICE: &[u8] = &[];
 
-pub(crate) async fn decrypt(
-    kms: &KMS,
-    request: Decrypt,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<DecryptResponse> {
+pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
     trace!("{}", serde_json::to_string(&request)?);
     let data = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
@@ -67,7 +62,7 @@ pub(crate) async fn decrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("Decrypt")?;
     debug!("candidate uids: {uids:?}");
@@ -86,14 +81,10 @@ pub(crate) async fn decrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
+            if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
+                    .list_user_operations_on_object(&uid, user, false)
                     .await?;
                 if !ops
                     .iter()
@@ -108,17 +99,13 @@ pub(crate) async fn decrypt(
         }
 
         // Default database
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                debug!("failed to retrieve the key: {uid}");
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    format!("Decrypt: failed to retrieve the key: {uid}"),
-                )
-            })?;
+        let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+            debug!("failed to retrieve the key: {uid}");
+            KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("Decrypt: failed to retrieve the key: {uid}"),
+            )
+        })?;
         // Check effective state (PreActive with past activation_date counts as Active)
         if get_effective_state(&owm)? != State::Active {
             debug!("{uid} is not active");
@@ -138,7 +125,7 @@ pub(crate) async fn decrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
+                .list_user_operations_on_object(&uid, user, false)
                 .await?;
             if !ops
                 .iter()
@@ -194,7 +181,7 @@ pub(crate) async fn decrypt(
 
     // if the key is wrapped, we need to unwrap it
     owm.set_object(
-        kms.get_unwrapped(owm.id(), owm.object(), user, params)
+        kms.get_unwrapped(owm.id(), owm.object(), user)
             .await
             .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
     );

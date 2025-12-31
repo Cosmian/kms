@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            KmipOperation,
-            kmip_operations::{Check, CheckResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_operations::{Check, CheckResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces,
 };
 use cosmian_logger::trace;
 
@@ -23,12 +18,7 @@ use crate::{
 /// - Retrieves the target object
 /// - If a `cryptographic_usage_mask` is supplied, ensure all requested bits are permitted by object usage mask
 /// - Succeeds (returns unique identifier) if compatible; otherwise returns `IncompatibleCryptographicUsageMask`
-pub(crate) async fn check(
-    kms: &KMS,
-    request: Check,
-    owner: &str,
-    params: Option<Arc<dyn cosmian_kms_interfaces::SessionParams>>,
-) -> KResult<CheckResponse> {
+pub(crate) async fn check(kms: &KMS, request: Check, owner: &str) -> KResult<CheckResponse> {
     trace!("{request}");
     // Unique Identifier is optional per spec; use ID Placeholder if missing (not yet supported here).
     let uid = request
@@ -54,7 +44,6 @@ pub(crate) async fn check(
         KmipOperation::Get,
         kms,
         owner,
-        params.clone(),
     ))
     .await?;
     let attributes = owm

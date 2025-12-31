@@ -51,7 +51,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None, None)
+        kms.create(symmetric_key_request, owner, None)
             .await?
             .unique_identifier,
     );
@@ -89,7 +89,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
         batch_item: items,
     };
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, owner).await?;
     assert_eq!(response.response_header.batch_count, items_number);
     // Check that all operations succeeded
     for item in &response.batch_item {
@@ -131,7 +131,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None, None)
+        kms.create(symmetric_key_request, owner, None)
             .await?
             .unique_identifier,
     );
@@ -171,7 +171,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
         batch_item: items,
     };
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, owner).await?;
     assert_eq!(response.response_header.batch_count, items_number);
     assert_eq!(
         response.batch_item.len(),
@@ -240,7 +240,7 @@ async fn test_kmip_messages() -> KResult<()> {
     };
     debug!("message_request: {:#?}", to_ttlv(&message_request));
 
-    let response = kms.message(message_request, owner, None).await?;
+    let response = kms.message(message_request, owner).await?;
     assert_eq!(response.response_header.batch_count, 3);
     assert_eq!(response.batch_item.len(), 3);
 

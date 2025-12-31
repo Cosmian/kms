@@ -1,25 +1,20 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::{
-            kmip_messages::{RequestMessage, ResponseMessage},
-            kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        },
-        kmip_2_1::kmip_operations::{
-            Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
-            CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-            DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
-            DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash,
-            HashResponse, Import, ImportResponse, Locate, LocateResponse, MAC, MACResponse, PKCS11,
-            PKCS11Response, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
-            RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
-            RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
-            SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::{
+        kmip_messages::{RequestMessage, ResponseMessage},
+        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     },
-    cosmian_kms_interfaces::SessionParams,
+    kmip_2_1::kmip_operations::{
+        Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
+        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
+        DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
+        DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
+        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+        LocateResponse, MAC, MACResponse, PKCS11, PKCS11Response, Query, QueryResponse,
+        RNGRetrieve, RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair,
+        ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse,
+        SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+        SignatureVerifyResponse, Validate, ValidateResponse,
+    },
 };
 
 use crate::{
@@ -32,12 +27,11 @@ impl KMS {
         &self,
         request: Activate,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ActivateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "activate");
         let _enter = span.enter();
 
-        Box::pin(operations::activate(self, request, user, params)).await
+        Box::pin(operations::activate(self, request, user)).await
     }
 
     /// This operation requests the server to add a new attribute instance to be associated with a
@@ -51,12 +45,11 @@ impl KMS {
         &self,
         request: AddAttribute,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<AddAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "add_attribute");
         let _enter = span.enter();
 
-        Box::pin(operations::add_attribute(self, request, user, params)).await
+        Box::pin(operations::add_attribute(self, request, user)).await
     }
 
     /// This request is used to generate a Certificate object for a public key.
@@ -86,20 +79,12 @@ impl KMS {
         &self,
         request: Certify,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CertifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "certify");
         let _enter = span.enter();
 
-        Box::pin(operations::certify(
-            self,
-            request,
-            user,
-            params,
-            privileged_users,
-        ))
-        .await
+        Box::pin(operations::certify(self, request, user, privileged_users)).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -114,17 +99,9 @@ impl KMS {
         &self,
         request: Create,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateResponse> {
-        Box::pin(operations::create(
-            self,
-            request,
-            user,
-            params,
-            privileged_users,
-        ))
-        .await
+        Box::pin(operations::create(self, request, user, privileged_users)).await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -146,7 +123,6 @@ impl KMS {
         &self,
         request: CreateKeyPair,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
@@ -156,7 +132,6 @@ impl KMS {
             self,
             request,
             user,
-            params,
             privileged_users,
         ))
         .await
@@ -182,7 +157,6 @@ impl KMS {
         &self,
         request: DiscoverVersions,
         _user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> DiscoverVersionsResponse {
         let span = tracing::span!(tracing::Level::ERROR, "discover_versions");
         let _enter = span.enter();
@@ -208,16 +182,11 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn decrypt(
-        &self,
-        request: Decrypt,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<DecryptResponse> {
+    pub(crate) async fn decrypt(&self, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "decrypt");
         let _enter = span.enter();
 
-        Box::pin(operations::decrypt(self, request, user, params)).await
+        Box::pin(operations::decrypt(self, request, user)).await
     }
 
     /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
@@ -225,12 +194,11 @@ impl KMS {
         &self,
         request: DeleteAttribute,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DeleteAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "encrypt");
         let _enter = span.enter();
 
-        Box::pin(operations::delete_attribute(self, request, user, params)).await
+        Box::pin(operations::delete_attribute(self, request, user)).await
     }
 
     /// This request is used to derive a Symmetric Key or Secret Data object from keys or Secret Data objects that are already known to the key management system. The request SHALL only apply to Managed Objects that have the Derive Key bit set in the Cryptographic Usage Mask attribute of the specified Managed Object (i.e., are able to be used for key derivation). If the operation is issued for an object that does not have this bit set, then the server SHALL return an error. For all derivation methods, the client SHALL specify the desired length of the derived key or Secret Data object using the Cryptographic Length attribute. If a key is created, then the client SHALL specify both its Cryptographic Length and Cryptographic Algorithm. If the specified length exceeds the output of the derivation method, then the server SHALL return an error. Clients MAY derive multiple keys and IVs by requesting the creation of a Secret Data object and specifying a Cryptographic Length that is the total length of the derived object. If the specified length exceeds the output of the derivation method, then the server SHALL return an error.
@@ -244,12 +212,11 @@ impl KMS {
         &self,
         request: DeriveKey,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<DeriveKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "derive_key");
         let _enter = span.enter();
 
-        Box::pin(operations::derive_key(self, request, user, params)).await
+        Box::pin(operations::derive_key(self, request, user)).await
     }
 
     /// This operation is used to indicate to the server that the key material
@@ -257,16 +224,11 @@ impl KMS {
     /// inaccessible. The meta-data for the key material SHALL be retained by
     /// the server.  Objects SHALL only be destroyed if they are in either
     /// Pre-Active or Deactivated state.
-    pub(crate) async fn destroy(
-        &self,
-        request: Destroy,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<DestroyResponse> {
+    pub(crate) async fn destroy(&self, request: Destroy, user: &str) -> KResult<DestroyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "destroy");
         let _enter = span.enter();
 
-        operations::destroy_operation(self, request, user, params).await
+        operations::destroy_operation(self, request, user).await
     }
 
     /// This operation requests the server to perform an encryption operation on
@@ -297,16 +259,11 @@ impl KMS {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure is the Result Reason) in the response header.
-    pub(crate) async fn encrypt(
-        &self,
-        request: Encrypt,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<EncryptResponse> {
+    pub(crate) async fn encrypt(&self, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "encrypt");
         let _enter = span.enter();
 
-        Box::pin(operations::encrypt(self, request, user, params)).await
+        Box::pin(operations::encrypt(self, request, user)).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -317,16 +274,11 @@ impl KMS {
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operation
     /// into the ID Placeholder variable.
-    pub(crate) async fn export(
-        &self,
-        request: Export,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<ExportResponse> {
+    pub(crate) async fn export(&self, request: Export, user: &str) -> KResult<ExportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "export");
         let _enter = span.enter();
 
-        operations::export(self, request, user, params).await
+        operations::export(self, request, user).await
     }
 
     /// This operation requests that the server returns the Managed Object
@@ -350,16 +302,11 @@ impl KMS {
     /// corresponding public key (where relevant), and then using that
     /// public key's PKCS#12 Certificate Link to get the base certificate, and
     /// then using each certificate's Certificate Link to get the next.
-    pub(crate) async fn get(
-        &self,
-        request: Get,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<GetResponse> {
+    pub(crate) async fn get(&self, request: Get, user: &str) -> KResult<GetResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "get");
         let _enter = span.enter();
 
-        operations::get(self, request, user, params).await
+        operations::get(self, request, user).await
     }
 
     /// This operation requests one or more attributes associated with a Managed
@@ -376,12 +323,11 @@ impl KMS {
         &self,
         request: GetAttributes,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<GetAttributesResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "get_attributes");
         let _enter = span.enter();
 
-        Box::pin(operations::get_attributes(self, request, user, params)).await
+        Box::pin(operations::get_attributes(self, request, user)).await
     }
 
     /// This operation requests the server to perform a hash operation on the data provided.
@@ -390,16 +336,11 @@ impl KMS {
     /// The response contains the result of the hash operation.
     ///
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn hash(
-        &self,
-        request: Hash,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<HashResponse> {
+    pub(crate) async fn hash(&self, request: Hash, user: &str) -> KResult<HashResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "hash");
         let _enter = span.enter();
 
-        operations::hash_operation(self, request, user, params).await
+        operations::hash_operation(self, request, user).await
     }
 
     /// This operation requests the server to return cryptographically secure random data.
@@ -407,25 +348,19 @@ impl KMS {
         &self,
         request: RNGRetrieve,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<RNGRetrieveResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rng_retrieve");
         let _enter = span.enter();
 
-        operations::rng_retrieve(self, request, user, params).await
+        operations::rng_retrieve(self, request, user).await
     }
 
     /// This operation requests the server to seed an RNG instance with provided data.
-    pub(crate) async fn rng_seed(
-        &self,
-        request: RNGSeed,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<RNGSeedResponse> {
+    pub(crate) async fn rng_seed(&self, request: RNGSeed, user: &str) -> KResult<RNGSeedResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rng_seed");
         let _enter = span.enter();
 
-        operations::rng_seed(self, request, user, params).await
+        operations::rng_seed(self, request, user).await
     }
 
     /// This operation enables the server to perform a PKCS#11 operation.
@@ -440,16 +375,11 @@ impl KMS {
     /// - PKCS#11 Return Code: REQUIRED - The PKCS#11 return code
     /// - Correlation Value: Optional - Server-defined value for client to return next
     /// - PKCS#11 Output Parameters: Optional - Parameters output from the function
-    pub(crate) async fn pkcs11(
-        &self,
-        request: PKCS11,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<PKCS11Response> {
+    pub(crate) async fn pkcs11(&self, request: PKCS11, user: &str) -> KResult<PKCS11Response> {
         let span = tracing::span!(tracing::Level::ERROR, "pkcs11");
         let _enter = span.enter();
 
-        operations::pkcs11(self, request, user, params).await
+        operations::pkcs11(self, request, user).await
     }
 
     /// This operation requests the server to Import a Managed Object specified
@@ -470,21 +400,13 @@ impl KMS {
         &self,
         request: Import,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<ImportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "import");
         let _enter = span.enter();
 
         // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
-        Box::pin(operations::import(
-            self,
-            request,
-            user,
-            params,
-            privileged_users,
-        ))
-        .await
+        Box::pin(operations::import(self, request, user, privileged_users)).await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -577,18 +499,13 @@ impl KMS {
     /// server SHALL NOT return unique identifiers for objects that are archived
     /// unless the Storage Status Mask field includes the Archived Storage
     /// indicator.
-    pub(crate) async fn locate(
-        &self,
-        request: Locate,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<LocateResponse> {
+    pub(crate) async fn locate(&self, request: Locate, user: &str) -> KResult<LocateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "locate");
         let _enter = span.enter();
 
         // Do not over-constrain Locate by state here; filtering is handled in the
         // operation layer to include both PreActive and Active by default.
-        operations::locate(self, request, None, user, params).await
+        operations::locate(self, request, None, user).await
     }
 
     /// This operation is used by the client to interrogate the server
@@ -622,49 +539,35 @@ impl KMS {
     /// The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the MAC operation.
     ///
     /// The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
-    pub(crate) async fn mac(
-        &self,
-        request: MAC,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<MACResponse> {
+    pub(crate) async fn mac(&self, request: MAC, user: &str) -> KResult<MACResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac");
         let _enter = span.enter();
 
-        Box::pin(operations::mac(self, request, user, params)).await
+        Box::pin(operations::mac(self, request, user)).await
     }
 
     pub(crate) async fn message(
         &self,
         request: RequestMessage,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ResponseMessage> {
         let span = tracing::span!(tracing::Level::ERROR, "message");
         let _enter = span.enter();
 
         // This is a large future, hence pinning
-        Box::pin(operations::message(self, request, user, params)).await
+        Box::pin(operations::message(self, request, user)).await
     }
 
     pub(crate) async fn register(
         &self,
         request: Register,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
         privileged_users: Option<Vec<String>>,
     ) -> KResult<RegisterResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "register");
         let _enter = span.enter();
 
-        Box::pin(operations::register(
-            self,
-            request,
-            user,
-            params,
-            privileged_users,
-        ))
-        .await
+        Box::pin(operations::register(self, request, user, privileged_users)).await
     }
 
     // This request is used to generate a replacement key pair for an existing
@@ -696,7 +599,7 @@ impl KMS {
         &self,
         request: ReKeyKeyPair,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
+
         privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
@@ -706,7 +609,6 @@ impl KMS {
             self,
             request,
             user,
-            params,
             privileged_users,
         ))
         .await
@@ -721,16 +623,11 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    pub(crate) async fn rekey(
-        &self,
-        request: ReKey,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<ReKeyResponse> {
+    pub(crate) async fn rekey(&self, request: ReKey, user: &str) -> KResult<ReKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
         let _enter = span.enter();
 
-        Box::pin(operations::rekey(self, request, user, params)).await
+        Box::pin(operations::rekey(self, request, user)).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
@@ -738,26 +635,20 @@ impl KMS {
         &self,
         request: SetAttribute,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<SetAttributeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "set_attribute");
         let _enter = span.enter();
 
-        Box::pin(operations::set_attribute(self, request, user, params)).await
+        Box::pin(operations::set_attribute(self, request, user)).await
     }
 
     /// This operation requests the server to perform a signature operation on the provided data
     /// using a Managed Object specified by its Unique Identifier. The signature is returned to the client.
-    pub(crate) async fn sign(
-        &self,
-        request: Sign,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<SignResponse> {
+    pub(crate) async fn sign(&self, request: Sign, user: &str) -> KResult<SignResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "sign");
         let _enter = span.enter();
 
-        Box::pin(operations::sign(self, request, user, params)).await
+        Box::pin(operations::sign(self, request, user)).await
     }
 
     /// This operation requests the server to perform a signature verify operation on the provided data using a Managed Cryptographic Object as the key for the signature verification operation.
@@ -775,12 +666,11 @@ impl KMS {
         &self,
         request: SignatureVerify,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<SignatureVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "signature_verify");
         let _enter = span.enter();
 
-        Box::pin(operations::signature_verify(self, request, user, params)).await
+        Box::pin(operations::signature_verify(self, request, user)).await
     }
 
     /// This operation requests the server to validate a certificate chain and return information on its validity. Only a single certificate chain SHALL be included in each request.
@@ -792,12 +682,11 @@ impl KMS {
         &self,
         request: Validate,
         user: &str,
-        params: Option<Arc<dyn SessionParams>>,
     ) -> KResult<ValidateResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "validate");
         let _enter = span.enter();
 
-        Box::pin(operations::validate_operation(self, request, user, params)).await
+        Box::pin(operations::validate_operation(self, request, user)).await
     }
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -812,15 +701,10 @@ impl KMS {
     /// object. If the revocation reason is neither "key compromise" nor "CA
     /// compromise", the object is placed into the "deactivated" state, and the
     /// Deactivation Date is set to the current date and time.
-    pub(crate) async fn revoke(
-        &self,
-        request: Revoke,
-        user: &str,
-        params: Option<Arc<dyn SessionParams>>,
-    ) -> KResult<RevokeResponse> {
+    pub(crate) async fn revoke(&self, request: Revoke, user: &str) -> KResult<RevokeResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "revoke");
         let _enter = span.enter();
 
-        Box::pin(operations::revoke_operation(self, request, user, params)).await
+        Box::pin(operations::revoke_operation(self, request, user)).await
     }
 }
