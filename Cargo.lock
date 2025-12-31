@@ -1052,6 +1052,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f12eb7e96555b6b8841966fa264e7a6dfe5e39ad0733317c088c52259e99993c"
 dependencies = [
  "cosmian_crypto_core",
+ "cosmian_crypto_core",
  "ml-kem",
  "serde",
  "serde_json",
@@ -1091,6 +1092,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0b68f0bc9f2fdcdd01cbe32e2061c0a7c670a39b66d4178f394fa108ffbcfe5"
 dependencies = [
  "aes 0.8.4",
+ "cosmian_crypto_core",
  "cosmian_crypto_core",
  "cosmian_sse_memories",
  "xts-mode",
@@ -1218,6 +1220,7 @@ version = "5.15.0"
 version = "5.15.0"
 dependencies = [
  "cosmian_crypto_core",
+ "cosmian_crypto_core",
  "cosmian_http_client",
  "cosmian_kms_client_utils",
  "cosmian_logger",
@@ -1279,6 +1282,7 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "cosmian_cover_crypt",
+ "cosmian_crypto_core",
  "cosmian_crypto_core",
  "cosmian_kmip",
  "cosmian_logger",
@@ -1377,6 +1381,7 @@ version = "5.15.0"
 dependencies = [
  "async-trait",
  "cosmian_findex",
+ "cosmian_findex",
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
@@ -1392,6 +1397,7 @@ dependencies = [
  "openssl",
  "postgres-openssl",
  "rawsql",
+ "redis",
  "redis",
  "rusqlite",
  "serde",
@@ -1434,6 +1440,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f21de5515e966a676e8d85097960e9c69c134eafdb6044b381d7ffff60c6b8c1"
 dependencies = [
  "agnostic-lite",
+ "cosmian_crypto_core",
+ "redis",
  "cosmian_crypto_core",
  "redis",
 ]
@@ -4093,6 +4101,7 @@ version = "0.32.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "014cc767fefab6a3e798ca45112bccad9c6e0e218fbd49720042716c73cfef44"
 dependencies = [
+ "ahash",
  "ahash",
  "arc-swap",
  "backon",
