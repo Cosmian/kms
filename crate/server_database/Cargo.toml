@@ -57,18 +57,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 url = { workspace = true }
 uuid = { workspace = true }
-version-compare = "0.2"
-zeroize = { workspace = true }
-
-# Deprecates dependencies : should be removed once support for versions anterior to 5.14.0 is dropped
-cloudproof_findex = { version = "5.0", optional = true }
-redis_for_migrations = { package = "redis", version = "0.23", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
-], optional = true }
 strum = { workspace = true }
 
 [dev-dependencies]
