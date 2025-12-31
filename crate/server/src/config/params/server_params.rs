@@ -116,6 +116,11 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory only if the UI is configured.
+    pub session_salt: Option<String>,
 }
 
 /// Represents the server parameters.
@@ -166,6 +171,15 @@ impl ServerParams {
                 "The UI index HTML folder does not contain an index.html file: \
                  {ui_index_html_folder:#?}"
             );
+        }
+
+        // Validate session_salt: if ui_index_html_folder is explicitly defined, session_salt is mandatory
+        if conf.ui_config.ui_index_html_folder.is_some() && conf.ui_config.session_salt.is_none() {
+            return Err(KmsError::ServerError(
+                "session_salt is mandatory when ui_index_html_folder is configured. \
+                 Please provide a session salt via --session-salt, KMS_SESSION_SALT env var, \
+                 or in the configuration file.".to_owned()
+            ));
         }
 
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
@@ -274,6 +288,7 @@ impl ServerParams {
             },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
+            session_salt: conf.ui_config.session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -397,6 +412,11 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref users) = self.privileged_users {
             debug_struct.field("privileged_users", users);
+        }
+
+        // Mask the session salt for security (it's a secret)
+        if self.session_salt.is_some() {
+            debug_struct.field("session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information
