@@ -119,8 +119,8 @@ pub struct ServerParams {
 
     /// A secret salt used to derive the session cookie encryption key.
     /// This MUST be identical across all KMS instances behind the same load balancer.
-    /// This is mandatory when the UI is configured.
-    pub session_salt: String,
+    /// This is mandatory only if the UI is configured.
+    pub session_salt: Option<String>,
 }
 
 /// Represents the server parameters.
@@ -171,6 +171,15 @@ impl ServerParams {
                 "The UI index HTML folder does not contain an index.html file: \
                  {ui_index_html_folder:#?}"
             );
+        }
+
+        // Validate session_salt: if ui_index_html_folder is explicitly defined, session_salt is mandatory
+        if conf.ui_config.ui_index_html_folder.is_some() && conf.ui_config.session_salt.is_none() {
+            return Err(KmsError::ServerError(
+                "session_salt is mandatory when ui_index_html_folder is configured. \
+                 Please provide a session salt via --session-salt, KMS_SESSION_SALT env var, \
+                 or in the configuration file.".to_owned()
+            ));
         }
 
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
@@ -406,7 +415,7 @@ impl fmt::Debug for ServerParams {
         }
 
         // Mask the session salt for security (it's a secret)
-        if !self.session_salt.is_empty() {
+        if self.session_salt.is_some() {
             debug_struct.field("session_salt", &"***");
         }
 
