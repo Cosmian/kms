@@ -48,7 +48,11 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
         .to_string();
 
     // Export and import the key with different block cipher modes
-    for wrapping_algorithm in [WrappingAlgorithm::AesGCM, WrappingAlgorithm::NistKeyWrap] {
+    for wrapping_algorithm in [
+        WrappingAlgorithm::AesGCM,
+        WrappingAlgorithm::NistKeyWrap,
+        WrappingAlgorithm::AESKeyWrapPadding,
+    ] {
         debug!("wrapping algorithm: {wrapping_algorithm:?}",);
         ExportSecretDataOrKeyAction {
             key_id: Some(dek_id.clone()),
