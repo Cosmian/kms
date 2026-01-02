@@ -145,7 +145,11 @@ pub(crate) async fn test_secret_data_export_with_different_wrapping_algorithms()
     .await?;
 
     // Test different wrapping algorithms
-    let wrapping_algorithms = [WrappingAlgorithm::NistKeyWrap, WrappingAlgorithm::AesGCM];
+    let wrapping_algorithms = [
+        WrappingAlgorithm::AESKeyWrapPadding, // RFC 5649
+        WrappingAlgorithm::NistKeyWrap,       // RFC 3394
+        WrappingAlgorithm::AesGCM,
+    ];
 
     for (i, algorithm) in wrapping_algorithms.iter().enumerate() {
         let wrapped_file = tmp_path.join(format!("wrapped_secret_{i}.json"));
