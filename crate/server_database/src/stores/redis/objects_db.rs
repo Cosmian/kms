@@ -182,6 +182,8 @@ impl ObjectsDB {
                 Some(uid.as_bytes()),
             )
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
+        // TODO: load the old version of the cosmian_kmip to support migration from old serialized objects*
+        // then, write using the new one
         let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
         Ok(redis_db_object)
