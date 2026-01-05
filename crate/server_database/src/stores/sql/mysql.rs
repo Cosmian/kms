@@ -380,6 +380,7 @@ impl ObjectsStore for MySqlPool {
                         continue;
                     }
                     return Err(InterfaceError::from(e));
+                    return Err(InterfaceError::from(e));
                 }
             }
         }
@@ -432,6 +433,7 @@ impl ObjectsStore for MySqlPool {
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
@@ -448,6 +450,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
+                    return Err(InterfaceError::from(e));
                     return Err(InterfaceError::from(e));
                 }
             }
@@ -480,6 +483,7 @@ impl ObjectsStore for MySqlPool {
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
@@ -496,6 +500,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
+                    return Err(InterfaceError::from(e));
                     return Err(InterfaceError::from(e));
                 }
             }
@@ -528,6 +533,7 @@ impl ObjectsStore for MySqlPool {
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
@@ -544,6 +550,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
+                    return Err(InterfaceError::from(e));
                     return Err(InterfaceError::from(e));
                 }
             }
@@ -600,6 +607,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
+                    return Err(InterfaceError::from(e));
                     return Err(InterfaceError::from(e));
                 }
             }

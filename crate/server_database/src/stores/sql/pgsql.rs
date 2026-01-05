@@ -169,6 +169,7 @@ impl PgPool {
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
         }
         // Ensure attributes column is jsonb (and convert if needed)
         client
@@ -176,6 +177,7 @@ impl PgPool {
                 "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
             )
             .await
+            .map_err(DbError::from)?;
             .map_err(DbError::from)?;
 
         // Optionally clear any existing data (useful for tests)
@@ -187,6 +189,7 @@ impl PgPool {
                 "clean-table-objects",
             ] {
                 let sql = tmp_loader.get_query(name)?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
             }
             let tmp = Self { pool: pool.clone() };
@@ -289,26 +292,33 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-object"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
             .query(&stmt, &[&uid])
+            .query(&stmt, &[&uid])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         if let Some(row) = rows.first() {
             let id: String = row.get(0);
             let object_json: String = row.get(1);
             let object: Object = serde_json::from_str(&object_json)
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let object = migrate_block_cipher_mode_if_needed(object);
             let attributes_val: Value = row.get(2);
             let attributes: Attributes = serde_json::from_value(attributes_val)
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let owner: String = row.get(3);
             let state_str: String = row.get(4);
             let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(Some(ObjectWithMetadata::new(
                 id, object, owner, state, attributes,
@@ -324,13 +334,17 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-tags"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
             .query(&stmt, &[&uid])
+            .query(&stmt, &[&uid])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
     }
@@ -421,11 +435,17 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("update-object-with-state"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let s = state.to_string();
+        client
+            .execute(&stmt, &[&s, &uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         client
             .execute(&stmt, &[&s, &uid])
             .await
@@ -657,13 +677,17 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("has-row-objects"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let row = client
             .query_opt(&stmt, &[&uid, &owner])
+            .query_opt(&stmt, &[&uid, &owner])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(row.is_some())
     }
@@ -673,6 +697,7 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // Use ANY($1) with text[] to avoid dynamic placeholder lifetimes
         let sql = "SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int";
@@ -684,6 +709,7 @@ impl ObjectsStore for PgPool {
         let rows = client
             .query(sql, &[&&tag_refs[..], &len_i32])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut out = HashSet::new();
         for r in rows {
@@ -704,6 +730,7 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let query = crate::stores::sql::locate_query::query_from_attributes::<
             crate::stores::sql::locate_query::PgSqlPlaceholder,
         >(researched_attributes, state, user, user_must_be_owner);
@@ -711,6 +738,7 @@ impl ObjectsStore for PgPool {
         let stmt = client
             .prepare(&query)
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let params: Vec<&(dyn ToSql + Sync)> = if user_must_be_owner {
             vec![&user]
@@ -721,13 +749,17 @@ impl ObjectsStore for PgPool {
             .query(&stmt, &params)
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut out = Vec::new();
         for row in rows {
             let uid: String = row.get(0);
             let state_str: String = row.get(1);
             let state = State::try_from(state_str.as_str())
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let attrs_val: Value = row.get(2);
+            let attrs: Attributes = serde_json::from_value(attrs_val)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let attrs: Attributes = serde_json::from_value(attrs_val)
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             out.push((uid, state, attrs));
@@ -796,13 +828,17 @@ impl PermissionsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-objects-access-obtained"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
             .query(&stmt, &[&user])
+            .query(&stmt, &[&user])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut map = HashMap::with_capacity(rows.len());
         for row in rows {
@@ -828,13 +864,17 @@ impl PermissionsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-rows-read_access-with-object-id"))
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
             .query(&stmt, &[&uid])
+            .query(&stmt, &[&uid])
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut map = HashMap::with_capacity(rows.len());
         for row in rows {
@@ -858,15 +898,22 @@ impl PermissionsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // Merge with existing permissions
         let existing = self.list_user_operations_on_object(uid, user, true).await?;
         let mut combined = existing;
         combined.extend(operations);
         let json =
             serde_json::to_value(&combined).map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            serde_json::to_value(&combined).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("upsert-row-read_access"))
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&stmt, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         client
             .execute(&stmt, &[&uid, &user, &json])
@@ -886,6 +933,7 @@ impl PermissionsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let current = self.list_user_operations_on_object(uid, user, true).await?;
         let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
         if remaining.is_empty() {
@@ -897,13 +945,24 @@ impl PermissionsStore for PgPool {
                 .execute(&d, &[&uid, &user])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&d, &[&uid, &user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             return Ok(());
         }
         let json =
             serde_json::to_value(&remaining).map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            serde_json::to_value(&remaining).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let u = client
             .prepare(get_pgsql_query!("update-rows-read_access-with-permission"))
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&u, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         client
             .execute(&u, &[&uid, &user, &json])
@@ -923,17 +982,21 @@ impl PermissionsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-user-accesses-for-object"))
             .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut perms: HashSet<KmipOperation> = match client
             .query_opt(&stmt, &[&uid, &user])
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?
         {
             Some(row) => {
                 let v: Value = row.get(0);
+                serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
                 serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
             }
             None => HashSet::new(),
@@ -943,8 +1006,11 @@ impl PermissionsStore for PgPool {
                 .query_opt(&stmt, &[&uid, &"*"])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?
             {
                 let v: Value = row.get(0);
+                let all: HashSet<KmipOperation> = serde_json::from_value(v)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 let all: HashSet<KmipOperation> = serde_json::from_value(v)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 perms.extend(all);
