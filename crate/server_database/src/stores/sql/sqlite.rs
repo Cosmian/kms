@@ -1,7 +1,7 @@
 // SQLite backend implementation using tokio-rusqlite
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use async_trait::async_trait;
@@ -136,10 +136,6 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
 
 #[async_trait(?Send)]
 impl ObjectsStore for SqlitePool {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     async fn create(
         &self,
         uid: Option<String>,

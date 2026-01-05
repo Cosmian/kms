@@ -1,7 +1,7 @@
 //! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
 //! It is the link between the database and the HSM.
 
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
@@ -39,10 +39,6 @@ impl HsmStore {
 
 #[async_trait(?Send)]
 impl ObjectsStore for HsmStore {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM

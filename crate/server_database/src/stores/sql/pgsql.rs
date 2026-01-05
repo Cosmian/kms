@@ -67,10 +67,7 @@ impl PgPool {
             "create-table-tags",
         ] {
             let sql = tmp_loader.get_query(name)?;
-            client
-                .batch_execute(sql)
-                .await
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
         }
         // Ensure attributes column is jsonb (and convert if needed)
         client
@@ -78,7 +75,7 @@ impl PgPool {
                 "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
             )
             .await
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+            .map_err(DbError::from)?;
 
         // Optionally clear any existing data (useful for tests)
         if clear_database {
@@ -89,10 +86,7 @@ impl PgPool {
                 "clean-table-objects",
             ] {
                 let sql = tmp_loader.get_query(name)?;
-                client
-                    .batch_execute(sql)
-                    .await
-                    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
             }
         }
         Ok(Self { pool })
@@ -107,10 +101,6 @@ impl SqlDatabase for PgPool {
 
 #[async_trait(?Send)]
 impl ObjectsStore for PgPool {
-    fn filename(&self, _group_id: u128) -> Option<std::path::PathBuf> {
-        None
-    }
-
     async fn create(
         &self,
         uid: Option<String>,
@@ -123,44 +113,39 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let tx = client
             .transaction()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let object_json =
-            serde_json::to_string(object).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_string(object).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let attributes_json =
-            serde_json::to_value(attributes).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_value(attributes).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let state = attributes.state.unwrap_or(State::PreActive).to_string();
         let stmt = tx
             .prepare(get_pgsql_query!("insert-objects"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let attrs_param = Json(&attributes_json);
-        {
-            let params: &[&(dyn ToSql + Sync)] =
-                &[&uid, &object_json, &attrs_param, &state, &owner];
-            tx.execute(&stmt, params)
-                .await
-                .map_err(|e| InterfaceError::Db(crate::error::DbError::from(e).to_string()))?;
-        }
+        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &owner])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         if !tags.is_empty() {
             let transaction_stmt = tx
                 .prepare(get_pgsql_query!("insert-tags"))
                 .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             for tag in tags {
-                let params: &[&(dyn ToSql + Sync)] = &[&uid, tag];
-                tx.execute(&transaction_stmt, params)
+                tx.execute(&transaction_stmt, &[&uid, tag])
                     .await
-                    .map_err(|e| InterfaceError::Db(crate::error::DbError::from(e).to_string()))?;
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             }
         }
         tx.commit()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(uid)
     }
 
@@ -169,29 +154,28 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-object"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        let params: &[&(dyn ToSql + Sync)] = &[&uid];
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
-            .query(&stmt, params)
+            .query(&stmt, &[&uid])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         if let Some(row) = rows.first() {
             let id: String = row.get(0);
             let object_json: String = row.get(1);
             let object: Object = serde_json::from_str(&object_json)
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let object = migrate_block_cipher_mode_if_needed(object);
             let attributes_val: Value = row.get(2);
             let attributes: Attributes = serde_json::from_value(attributes_val)
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let owner: String = row.get(3);
             let state_str: String = row.get(4);
             let state = State::try_from(state_str.as_str())
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(Some(ObjectWithMetadata::new(
                 id, object, owner, state, attributes,
             )))
@@ -205,16 +189,15 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-tags"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        let params: &[&(dyn ToSql + Sync)] = &[&uid];
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
-            .query(&stmt, params)
+            .query(&stmt, &[&uid])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
     }
 
@@ -229,51 +212,44 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let tx = client
             .transaction()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let object_json =
-            serde_json::to_string(object).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_string(object).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let attributes_json =
-            serde_json::to_value(attributes).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_value(attributes).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = tx
             .prepare(get_pgsql_query!("update-object-with-object"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let attrs_param = Json(&attributes_json);
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&object_json, &attrs_param, &uid];
-            tx.execute(&stmt, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+        tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         if let Some(tags) = tags {
             let delete_stmt = tx
                 .prepare(get_pgsql_query!("delete-tags"))
                 .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-            {
-                let params: &[&(dyn ToSql + Sync)] = &[&uid];
-                tx.execute(&delete_stmt, params)
-                    .await
-                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
-            }
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            tx.execute(&delete_stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let insert_stmt = tx
                 .prepare(get_pgsql_query!("insert-tags"))
                 .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             for tag in tags {
-                let params: &[&(dyn ToSql + Sync)] = &[&uid, tag];
-                tx.execute(&insert_stmt, params)
+                tx.execute(&insert_stmt, &[&uid, tag])
                     .await
-                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             }
         }
         tx.commit()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
@@ -282,19 +258,16 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("update-object-with-state"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let s = state.to_string();
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&s, &uid];
-            client
-                .execute(&stmt, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+        client
+            .execute(&stmt, &[&s, &uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
@@ -303,34 +276,28 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let tx = client
             .transaction()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let d1 = tx
             .prepare(get_pgsql_query!("delete-object"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&uid];
-            tx.execute(&d1, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.execute(&d1, &[&uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let d2 = tx
             .prepare(get_pgsql_query!("delete-tags"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&uid];
-            tx.execute(&d2, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        tx.execute(&d2, &[&uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         tx.commit()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
@@ -343,11 +310,11 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let tx = client
             .transaction()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut uids = Vec::with_capacity(operations.len());
         for op in operations {
             match op {
@@ -369,42 +336,34 @@ impl ObjectsStore for PgPool {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
                     // emulate upsert via object upsert query
                     let object_json = serde_json::to_string(object)
-                        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                     let attributes_json = serde_json::to_value(attributes)
-                        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                     let stmt = tx
                         .prepare(get_pgsql_query!("upsert-object"))
                         .await
-                        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                     let st = state.to_string();
                     let attrs_param = Json(&attributes_json);
-                    {
-                        let params: &[&(dyn ToSql + Sync)] =
-                            &[&uid, &object_json, &attrs_param, &st, &user];
-                        tx.execute(&stmt, params)
-                            .await
-                            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                    }
+                    tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &st, &user])
+                        .await
+                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                     if let Some(tags) = tags {
                         let delete_stmt = tx
                             .prepare(get_pgsql_query!("delete-tags"))
                             .await
-                            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                        {
-                            let params: &[&(dyn ToSql + Sync)] = &[&uid];
-                            tx.execute(&delete_stmt, params)
-                                .await
-                                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                        }
+                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                        tx.execute(&delete_stmt, &[&uid])
+                            .await
+                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                         let insert_stmt = tx
                             .prepare(get_pgsql_query!("insert-tags"))
                             .await
-                            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                         for tag in tags {
-                            let params: &[&(dyn ToSql + Sync)] = &[&uid, tag];
-                            tx.execute(&insert_stmt, params)
+                            tx.execute(&insert_stmt, &[&uid, tag])
                                 .await
-                                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                         }
                     }
                     uids.push(uid.clone());
@@ -417,7 +376,7 @@ impl ObjectsStore for PgPool {
         }
         tx.commit()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(uids)
     }
 
@@ -426,16 +385,15 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("has-row-objects"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        let params: &[&(dyn ToSql + Sync)] = &[&uid, &owner];
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let row = client
-            .query_opt(&stmt, params)
+            .query_opt(&stmt, &[&uid, &owner])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(row.is_some())
     }
 
@@ -444,7 +402,7 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // Use ANY($1) with text[] to avoid dynamic placeholder lifetimes
         let sql = "SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int";
         let mut tag_vec: Vec<String> = tags.iter().cloned().collect();
@@ -455,7 +413,7 @@ impl ObjectsStore for PgPool {
         let rows = client
             .query(sql, &[&&tag_refs[..], &len_i32])
             .await
-            .map_err(|e| InterfaceError::Db(format!("tags query exec failed: {e}")))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut out = HashSet::new();
         for r in rows {
             out.insert(r.get::<_, String>(0));
@@ -474,7 +432,7 @@ impl ObjectsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let query = crate::stores::sql::locate_query::query_from_attributes::<
             crate::stores::sql::locate_query::PgSqlPlaceholder,
         >(researched_attributes, state, user, user_must_be_owner);
@@ -482,7 +440,7 @@ impl ObjectsStore for PgPool {
         let stmt = client
             .prepare(&query)
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let params: Vec<&(dyn ToSql + Sync)> = if user_must_be_owner {
             vec![&user]
         } else {
@@ -491,16 +449,16 @@ impl ObjectsStore for PgPool {
         let rows = client
             .query(&stmt, &params)
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut out = Vec::new();
         for row in rows {
             let uid: String = row.get(0);
             let state_str: String = row.get(1);
             let state = State::try_from(state_str.as_str())
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let attrs_val: Value = row.get(2);
-            let attrs: Attributes =
-                serde_json::from_value(attrs_val).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            let attrs: Attributes = serde_json::from_value(attrs_val)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             out.push((uid, state, attrs));
         }
         Ok(out)
@@ -517,16 +475,15 @@ impl PermissionsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-objects-access-obtained"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        let params: &[&(dyn ToSql + Sync)] = &[&user];
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
-            .query(&stmt, params)
+            .query(&stmt, &[&user])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut map = HashMap::with_capacity(rows.len());
         for row in rows {
             let id: String = row.get(0);
@@ -550,16 +507,15 @@ impl PermissionsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-rows-read_access-with-object-id"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        let params: &[&(dyn ToSql + Sync)] = &[&uid];
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let rows = client
-            .query(&stmt, params)
+            .query(&stmt, &[&uid])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut map = HashMap::with_capacity(rows.len());
         for row in rows {
             let userid: String = row.get(0);
@@ -581,24 +537,21 @@ impl PermissionsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // Merge with existing permissions
         let existing = self.list_user_operations_on_object(uid, user, true).await?;
         let mut combined = existing;
         combined.extend(operations);
         let json =
-            serde_json::to_value(&combined).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_value(&combined).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("upsert-row-read_access"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&uid, &user, &json];
-            client
-                .execute(&stmt, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&stmt, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
@@ -612,36 +565,30 @@ impl PermissionsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let current = self.list_user_operations_on_object(uid, user, true).await?;
         let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
         if remaining.is_empty() {
             let d = client
                 .prepare(get_pgsql_query!("delete-rows-read_access"))
                 .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-            {
-                let params: &[&(dyn ToSql + Sync)] = &[&uid, &user];
-                client
-                    .execute(&d, params)
-                    .await
-                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
-            }
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&d, &[&uid, &user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             return Ok(());
         }
         let json =
-            serde_json::to_value(&remaining).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            serde_json::to_value(&remaining).map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let u = client
             .prepare(get_pgsql_query!("update-rows-read_access-with-permission"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        {
-            let params: &[&(dyn ToSql + Sync)] = &[&uid, &user, &json];
-            client
-                .execute(&u, params)
-                .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?;
-        }
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&u, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
     }
 
@@ -655,19 +602,19 @@ impl PermissionsStore for PgPool {
             .pool
             .get()
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let stmt = client
             .prepare(get_pgsql_query!("select-user-accesses-for-object"))
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let mut perms: HashSet<KmipOperation> = match client
             .query_opt(&stmt, &[&uid, &user])
             .await
-            .map_err(|e| InterfaceError::Db(e.to_string()))?
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?
         {
             Some(row) => {
                 let v: Value = row.get(0);
-                serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?
+                serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
             }
             None => HashSet::new(),
         };
@@ -675,11 +622,11 @@ impl PermissionsStore for PgPool {
             if let Some(row) = client
                 .query_opt(&stmt, &[&uid, &"*"])
                 .await
-                .map_err(|e| InterfaceError::Db(e.to_string()))?
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?
             {
                 let v: Value = row.get(0);
-                let all: HashSet<KmipOperation> =
-                    serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+                let all: HashSet<KmipOperation> = serde_json::from_value(v)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 perms.extend(all);
             }
         }

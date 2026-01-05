@@ -239,6 +239,18 @@ impl From<serde_json::Error> for DbError {
     }
 }
 
+impl From<mysql_async::UrlError> for DbError {
+    fn from(e: mysql_async::UrlError) -> Self {
+        Self::UrlError(e.to_string())
+    }
+}
+
+impl From<strum::ParseError> for DbError {
+    fn from(e: strum::ParseError) -> Self {
+        Self::ConversionError(ConversionDbError::Other(e.to_string()))
+    }
+}
+
 impl From<tracing::dispatcher::SetGlobalDefaultError> for DbError {
     fn from(e: tracing::dispatcher::SetGlobalDefaultError) -> Self {
         Self::ServerError(e.to_string())
