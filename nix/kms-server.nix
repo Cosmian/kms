@@ -2,7 +2,9 @@
   pkgs ? import <nixpkgs> { },
   pkgs228 ? pkgs, # Older nixpkgs with glibc 2.27 (for flake builds)
   lib ? pkgs.lib,
-  openssl312,
+  # Optional external overrides; if null, will be constructed from nix/openssl.nix
+  openssl36 ? null,
+  openssl312 ? null,
   # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
   # links against pkgs228 (glibc 2.27) on Linux for maximum compatibility.
   rustPlatform ? pkgs.rustPlatform,
@@ -22,6 +24,37 @@
 let
   isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
   baseVariant = if isFips then "fips" else "non-fips";
+  # Use older nixpkgs (pkgs228) to build OpenSSL on Linux to ensure
+  # glibc compatibility (avoid __isoc23_strtol symbol mismatches).
+  opensslPkgs = if pkgs.stdenv.isLinux then pkgs228 else pkgs;
+  # Construct OpenSSL 3.6.0 (main) and 3.1.2 (FIPS provider) if not provided
+  openssl36_ =
+    if openssl36 != null then
+      openssl36
+    else
+      opensslPkgs.callPackage ./openssl.nix {
+        inherit static;
+        version = "3.6.0";
+        srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+        # NOTE: Use lib.fakeSha256 so Nix prints the correct SRI on first build; replace afterwards
+        sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
+        # Skip local tarball integrity unless you add resources/tarballs/openssl-3.6.0.tar.gz
+        expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+      };
+  openssl312_ =
+    if openssl312 != null then
+      openssl312
+    else
+      opensslPkgs.callPackage ./openssl.nix {
+        inherit static;
+        version = "3.1.2";
+      };
+
+  # Select OpenSSL to link against based on variant
+  # FIPS builds must link against 3.1.2 to match the FIPS provider module
+  # Non-FIPS builds link against 3.6.0
+  opensslLink = if isFips then openssl312_ else openssl36_;
+
   # Combine base variant with suffix for hash file lookup
   # Using -static-openssl or -dynamic-openssl for backward compatibility with existing hash files
   variant-suffix = if static then "-static-openssl" else "-dynamic-openssl";
@@ -129,7 +162,7 @@ let
     # For non-static builds, check if libraries are available
     ${lib.optionalString (!static) ''
       echo "Checking dynamic library dependencies..."
-      export LD_LIBRARY_PATH="${openssl312}/lib:$LD_LIBRARY_PATH"
+      export LD_LIBRARY_PATH="${openssl36_}/lib:$LD_LIBRARY_PATH"
       echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
       if [ "$(uname)" = "Linux" ]; then
         ldd "$BIN" || true
@@ -227,14 +260,19 @@ let
       echo "To update repository, copy this file to: nix/expected-hashes/$HASH_FILENAME"
     fi
 
-    # For FIPS builds with static linkage, verify binary was built against OpenSSL 3.1.2
+    # Verify binary was built against the expected OpenSSL version
     # Note: For dynamic builds, the version string is in the shared library, not the binary
     # OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
     ${lib.optionalString (static && pkgs.stdenv.isLinux) ''
-      strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2"; exit 1; }
-      echo "Binary validation OK (OpenSSL 3.1.2 statically linked)"
+      if ${lib.optionalString isFips "true"} ; then
+        strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2 in FIPS variant"; exit 1; }
+        echo "Binary validation OK (OpenSSL 3.1.2 statically linked for FIPS)"
+      else
+        strings "$BIN" | grep -q "OpenSSL 3.6.0" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.0 in non-FIPS variant"; exit 1; }
+        echo "Binary validation OK (OpenSSL 3.6.0 statically linked for non-FIPS)"
+      fi
     ''}
     ${lib.optionalString (static && pkgs.stdenv.isDarwin) ''
       echo "Skipping static OpenSSL string check on macOS (validation handled via FIPS modules and runtime tests)"
@@ -313,7 +351,7 @@ rustPlatform.buildRustPackage rec {
     ];
 
   buildInputs = [
-    openssl312
+    opensslLink
   ]
   ++ lib.optionals pkgs.stdenv.isDarwin (
     let
@@ -328,9 +366,9 @@ rustPlatform.buildRustPackage rec {
   );
 
   # Environment for openssl-sys to pick our OpenSSL
-  OPENSSL_DIR = openssl312;
-  OPENSSL_LIB_DIR = "${openssl312}/lib";
-  OPENSSL_INCLUDE_DIR = "${openssl312}/include";
+  OPENSSL_DIR = opensslLink;
+  OPENSSL_LIB_DIR = "${opensslLink}/lib";
+  OPENSSL_INCLUDE_DIR = "${opensslLink}/include";
   OPENSSL_NO_VENDOR = 1;
 
   # Custom build/install to re-link the final binary with the system dynamic
@@ -382,22 +420,43 @@ rustPlatform.buildRustPackage rec {
 
     ${lib.optionalString isFips ''
       mkdir -p "$out/usr/local/cosmian/lib"
-      cp -r "${openssl312}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
-      cp -r "${openssl312}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
+      # Use OpenSSL 3.1.2 only for FIPS provider and configs
+      cp -r "${openssl312_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+      cp -r "${openssl312_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
+    ''}
+
+    ${lib.optionalString (!static) ''
+      # Dynamic linkage variant: ship libssl and libcrypto from OpenSSL 3.6.0
+      mkdir -p "$out/usr/local/cosmian/lib"
+      if [ "$(uname)" = "Darwin" ]; then
+        # macOS: copy versioned dylibs if present; fall back to unversioned names
+        for dylib in libssl.3.dylib libcrypto.3.dylib libssl.dylib libcrypto.dylib; do
+          if [ -f "${openssl36_}/lib/$dylib" ]; then
+            cp "${openssl36_}/lib/$dylib" "$out/usr/local/cosmian/lib/$dylib"
+          fi
+        done
+      else
+        # Linux: copy .so.3 versioned shared libraries
+        for so in libssl.so.3 libcrypto.so.3; do
+          if [ -f "${openssl36_}/lib/$so" ]; then
+            cp "${openssl36_}/lib/$so" "$out/usr/local/cosmian/lib/$so"
+          fi
+        done
+      fi
     ''}
 
     # Write build info
     cat > "$out/bin/build-info.txt" <<EOF
     KMS Server ${variant} (${if static then "static" else "dynamic"} OpenSSL)
     Version: ${version}
-    OpenSSL: ${openssl312}
-    ${lib.optionalString isFips "FIPS: usr/local/cosmian/lib/ossl-modules/"}
+    OpenSSL (link): ${opensslLink}
+    ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.1.2 (usr/local/cosmian/lib)"}
     EOF
   '';
 
   passthru = {
     inherit variant isFips;
-    opensslPath = openssl312;
+    opensslPath = opensslLink;
     uiPath = ui;
     src = filteredSrc;
     inherit version;

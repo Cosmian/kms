@@ -3,6 +3,8 @@
     url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
     sha256 = "1lr1h35prqkd1mkmzriwlpvxcb34kmhc9dnr48gkm8hh089hifmx";
   }) { },
+  # Explicit variant argument to avoid relying on builtins.getEnv during evaluation
+  variant ? "fips",
 }:
 
 let
@@ -126,6 +128,8 @@ pkgs228.mkShell {
   );
   shellHook = ''
     export NIX_OPENSSL_OUT="${openssl312}"
+    # Absolute repo root for reliable path resolution inside nix-shell
+    export REPO_ROOT="${toString ./.}"
     ${
       if isLinux then
         ''
@@ -153,14 +157,25 @@ pkgs228.mkShell {
       # Add OpenSSL lib directory to LD_LIBRARY_PATH so dynamically linked binaries can find it
       export LD_LIBRARY_PATH=${"\${NIX_OPENSSL_OUT}"}/lib:${"\${LD_LIBRARY_PATH:-}"}
 
-      # Configure FIPS provider for runtime (needed for tests)
-      # Point to the FIPS configuration and provider modules
-      if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
-        export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
+      # Set OpenSSL runtime config based on variant
+      if [ "${variant}" = "non-fips" ]; then
+        # Non-FIPS: reuse original config installed by OpenSSL (default provider only)
+        if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
+          export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
+        fi
+      else
+        # FIPS: use dev/test FIPS-enabled config in Nix store
+        if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl-fips.cnf ]; then
+          export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl-fips.cnf
+        fi
       fi
+
+      # Ensure provider modules path is set
       if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules ]; then
         export OPENSSL_MODULES=${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules
       fi
+      # Allow loading from config (do not disable) in all cases
+      unset OPENSSL_NO_CONFIG
 
       # Force openssl-sys to use our specific OpenSSL and detect version correctly
       # Disable pkg-config to prevent it from finding wrong OpenSSL versions

@@ -262,11 +262,23 @@ pkgs.dockerTools.buildLayeredImage {
     };
 
     # Environment variables
+    # Ensure OpenSSL uses the packaged configuration and provider modules.
+    # - FIPS: use the dev/test FIPS config and packaged modules
+    # - non-FIPS: use the original OpenSSL config (default provider)
     Env = [
       "PATH=/usr/local/bin:/bin:${runtimeEnv}/bin:${pkgs.busybox}/bin"
       "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
       "TZDIR=${pkgs.tzdata}/share/zoneinfo"
-    ];
+    ]
+    ++ (
+      if variant == "fips" then
+        [
+          "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl-fips.cnf"
+          "OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules"
+        ]
+      else
+        [ ]
+    );
 
     # Set working directory
     WorkingDir = "/var/lib/cosmian-kms";

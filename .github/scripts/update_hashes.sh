@@ -14,7 +14,7 @@ LOG_DIR="${TMPDIR:-/tmp}/kms-update-hashes"
 mkdir -p "$LOG_DIR"
 
 # Check if gh CLI is available
-if ! command -v gh &> /dev/null; then
+if ! command -v gh &>/dev/null; then
   echo "Error: gh CLI is not installed. Please install it from https://cli.github.com/" >&2
   exit 1
 fi
@@ -57,7 +57,7 @@ while IFS= read -r JOB_ID; do
   LOG_FILE="$LOG_DIR/job_${JOB_ID}.log"
 
   # Download job logs
-  gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID/logs" > "$LOG_FILE" 2>&1 || {
+  gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID/logs" >"$LOG_FILE" 2>&1 || {
     echo "Warning: Could not fetch logs for job $JOB_ID, skipping..."
     continue
   }
@@ -120,8 +120,8 @@ while IFS= read -r JOB_ID; do
         last_drv_name=""
       fi
     fi
-  done < "$LOG_FILE"
-done <<< "$FAILED_JOBS"
+  done <"$LOG_FILE"
+done <<<"$FAILED_JOBS"
 
 # Apply updates
 updated_count=0

@@ -103,6 +103,13 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
 
+### OpenSSL Versions
+
+- Linkage: the KMS server is built against OpenSSL `3.6.0` in all configurations (FIPS and non-FIPS; static and dynamic).
+- FIPS runtime: FIPS builds ship the OpenSSL `3.1.2` FIPS provider and configuration (`openssl.cnf`, `fipsmodule.cnf`), loaded at runtime via `OPENSSL_CONF` and `OPENSSL_MODULES`.
+
+This ensures consistent modern linkage while preserving certified FIPS runtime behavior.
+
 - [Cosmian KMS](#cosmian-kms)
     - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
     - [🎯 Top Use Cases](#-top-use-cases)
@@ -300,7 +307,7 @@ Follow the prerequisites below, or use the provided PowerShell helpers.
 Prerequisites (manual):
 
 1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
-2. Install OpenSSL 3.1.2 with vcpkg:
+2. Install OpenSSL 3.6.0 with vcpkg:
 
 ```powershell
 vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64

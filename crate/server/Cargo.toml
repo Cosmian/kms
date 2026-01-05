@@ -19,7 +19,10 @@ description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 c
 # - Local cargo builds: build.rs compiles OpenSSL with --openssldir=target/openssl-fips-{version}-{os}-{arch}/ssl
 #   This allows local development/testing without system-wide installation.
 # - The cargo-deb/cargo-rpm configurations below use target/.openssl-staging/ which is populated
-#   by build.rs for non-Nix packaging workflows (deprecated in favor of Nix).
+#   by build.rs. In non-FIPS mode, staging contains OpenSSL 3.6.0 legacy provider (legacy.*).
+#   In FIPS mode, staging contains OpenSSL 3.1.2 FIPS provider (fips.*) and configs, while
+#   the main runtime OpenSSL remains 3.6.0. For dynamic linkage variants, the shipped
+#   libssl/libcrypto are from OpenSSL 3.6.0.
 
 [lints]
 workspace = true

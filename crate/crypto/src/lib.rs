@@ -89,50 +89,93 @@ mod tests {
                         }
                     }
                 } else {
-                    // Fall back to locally built FIPS OpenSSL (built by build.rs in crate/server)
-                    // The build folder already contains everything needed:
-                    // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/openssl.cnf
-                    // - target/openssl-fips-3.1.2-{os}-{arch}/ssl/fipsmodule.cnf
-                    // - target/openssl-fips-3.1.2-{os}-{arch}/lib/ossl-modules/fips.so (or .dylib on macOS)
-                    let os = std::env::consts::OS;
-                    let arch = std::env::consts::ARCH;
+                    // Fall back to locally staged OpenSSL artifacts (preferred)
+                    // Staged by crate/server build.rs under: target/.openssl-staging
+                    let staged_dir = workspace_root.join("target").join(".openssl-staging");
+                    let staged_conf = staged_dir.join("ssl").join("openssl.cnf");
+                    let staged_modules = staged_dir.join("lib").join("ossl-modules");
 
-                    let target_dir = workspace_root
-                        .join("target")
-                        .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
-                    let openssl_conf = target_dir.join("ssl").join("openssl.cnf");
-                    let modules_dir = target_dir.join("lib").join("ossl-modules");
-
-                    if !conf_is_set {
-                        unsafe {
-                            env::set_var("OPENSSL_CONF", &openssl_conf);
+                    if staged_conf.exists() && staged_modules.exists() {
+                        if !conf_is_set {
+                            unsafe { env::set_var("OPENSSL_CONF", &staged_conf) }
                         }
-                    }
-                    if !modules_is_set {
-                        unsafe {
-                            env::set_var("OPENSSL_MODULES", &modules_dir);
+                        if !modules_is_set {
+                            unsafe { env::set_var("OPENSSL_MODULES", &staged_modules) }
+                        }
+                    } else {
+                        // Backward-compatible fallback to versioned build directories
+                        // Prefer new fips provider layout, then legacy layout
+                        let os = std::env::consts::OS;
+                        let arch = std::env::consts::ARCH;
+
+                        let fipsprov_dir = workspace_root
+                            .join("target")
+                            .join(format!("openssl-fipsprov-3.1.2-{os}-{arch}"));
+                        let legacy_fips_dir = workspace_root
+                            .join("target")
+                            .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
+
+                        let (openssl_conf, modules_dir) = if fipsprov_dir.exists() {
+                            (
+                                fipsprov_dir.join("ssl").join("openssl.cnf"),
+                                fipsprov_dir.join("lib").join("ossl-modules"),
+                            )
+                        } else {
+                            (
+                                legacy_fips_dir.join("ssl").join("openssl.cnf"),
+                                legacy_fips_dir.join("lib").join("ossl-modules"),
+                            )
+                        };
+
+                        if !conf_is_set {
+                            unsafe { env::set_var("OPENSSL_CONF", &openssl_conf) }
+                        }
+                        if !modules_is_set {
+                            unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
                         }
                     }
                 }
             } else {
-                // No OPENSSL_DIR set, use locally built FIPS OpenSSL
-                let os = std::env::consts::OS;
-                let arch = std::env::consts::ARCH;
+                // No OPENSSL_DIR set, prefer staged artifacts then versioned fallbacks
+                let staged_dir = workspace_root.join("target").join(".openssl-staging");
+                let staged_conf = staged_dir.join("ssl").join("openssl.cnf");
+                let staged_modules = staged_dir.join("lib").join("ossl-modules");
 
-                let target_dir = workspace_root
-                    .join("target")
-                    .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
-                let openssl_conf = target_dir.join("ssl").join("openssl.cnf");
-                let modules_dir = target_dir.join("lib").join("ossl-modules");
-
-                if !conf_is_set {
-                    unsafe {
-                        env::set_var("OPENSSL_CONF", &openssl_conf);
+                if staged_conf.exists() && staged_modules.exists() {
+                    if !conf_is_set {
+                        unsafe { env::set_var("OPENSSL_CONF", &staged_conf) }
                     }
-                }
-                if !modules_is_set {
-                    unsafe {
-                        env::set_var("OPENSSL_MODULES", &modules_dir);
+                    if !modules_is_set {
+                        unsafe { env::set_var("OPENSSL_MODULES", &staged_modules) }
+                    }
+                } else {
+                    let os = std::env::consts::OS;
+                    let arch = std::env::consts::ARCH;
+
+                    let fipsprov_dir = workspace_root
+                        .join("target")
+                        .join(format!("openssl-fipsprov-3.1.2-{os}-{arch}"));
+                    let legacy_fips_dir = workspace_root
+                        .join("target")
+                        .join(format!("openssl-fips-3.1.2-{os}-{arch}"));
+
+                    let (openssl_conf, modules_dir) = if fipsprov_dir.exists() {
+                        (
+                            fipsprov_dir.join("ssl").join("openssl.cnf"),
+                            fipsprov_dir.join("lib").join("ossl-modules"),
+                        )
+                    } else {
+                        (
+                            legacy_fips_dir.join("ssl").join("openssl.cnf"),
+                            legacy_fips_dir.join("lib").join("ossl-modules"),
+                        )
+                    };
+
+                    if !conf_is_set {
+                        unsafe { env::set_var("OPENSSL_CONF", &openssl_conf) }
+                    }
+                    if !modules_is_set {
+                        unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
                     }
                 }
             }

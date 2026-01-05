@@ -50,8 +50,8 @@ usage() {
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
-                                    static: statically link OpenSSL 3.1.2
-                                    dynamic: dynamically link system OpenSSL
+                    static: statically link OpenSSL 3.6.0
+                    dynamic: dynamically link system OpenSSL
 
   For testing, also supports environment variables:
     REDIS_HOST, REDIS_PORT
@@ -356,6 +356,7 @@ test)
         --keep REDIS_HOST --keep REDIS_PORT \
         --keep MYSQL_HOST --keep MYSQL_PORT \
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
+      --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
         --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
@@ -398,7 +399,7 @@ package)
       # Run without --pure to preserve access to /usr/bin tools
       # Use unified pinned nixpkgs (from common.sh)
       # shellcheck disable=SC2086
-      nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
+      nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS --argstr variant "$VARIANT" "$REPO_ROOT/shell.nix" \
         --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
       # After packaging, compute checksum for the produced DMG (if present)
       OUT_DIR="$REPO_ROOT/result-dmg-$VARIANT-$LINK"
@@ -421,7 +422,8 @@ sbom)
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
   echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
-  bash "$SCRIPT" "$@"
+  # Pass resolved global flags so variant/link are honored
+  bash "$SCRIPT" --variant "$VARIANT" --link "$LINK" "$@"
   exit $?
   ;;
 update-hashes)
@@ -732,9 +734,9 @@ if [ "$COMMAND" = "package" ]; then
           else
             # Verify OpenSSL version based on link type
             if [ "$BUILD_LINK" = "static" ]; then
-              # Static builds must use our bundled OpenSSL 3.1.2
-              echo "$INFO_OUT" | grep -q "OpenSSL 3\.1\.2" || {
-                echo "Smoke test failed: static build expected OpenSSL 3.1.2" >&2
+              # Static builds must use our bundled OpenSSL 3.6.0
+              echo "$INFO_OUT" | grep -q "OpenSSL 3\.6\.0" || {
+                echo "Smoke test failed: static build expected OpenSSL 3.6.0" >&2
                 exit 1
               }
             else
@@ -851,6 +853,10 @@ fi
     CMD="bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
 
+  ARGSTR_VARIANT=""
+  if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then
+    ARGSTR_VARIANT="--argstr variant $VARIANT"
+  fi
   # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS "$SHELL_PATH" --run "$CMD"
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS $ARGSTR_VARIANT "$SHELL_PATH" --run "$CMD"
 }

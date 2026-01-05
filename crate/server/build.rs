@@ -14,11 +14,18 @@ use time::{OffsetDateTime, ext::NumericalDuration, format_description::well_know
 
 const DEMO_TIMEOUT: i64 = 90; // 3 months in days
 
-// OpenSSL FIPS build parameters (must mirror nix/openssl-3_1_2.nix)
-const OPENSSL_VERSION: &str = "3.1.2";
-const OPENSSL_TARBALL: &str = "openssl-3.1.2.tar.gz";
-const OPENSSL_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz"; // pinned historic URL
-const OPENSSL_SHA256: &str = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"; // expected hash (same as nix derivation)
+// OpenSSL versions: main runtime (3.6.0) and FIPS provider source (3.1.2)
+const OPENSSL_MAIN_VERSION: &str = "3.6.0";
+const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.0.tar.gz";
+const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+const OPENSSL_MAIN_SHA256: &str =
+    "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+
+const OPENSSL_FIPS_VERSION: &str = "3.1.2";
+const OPENSSL_FIPS_TARBALL: &str = "openssl-3.1.2.tar.gz";
+const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz"; // pinned historic URL
+const OPENSSL_FIPS_SHA256: &str =
+    "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"; // expected hash (same as nix derivation)
 
 fn main() {
     // Always re-run if this script changes
@@ -74,35 +81,10 @@ fn maybe_build_fips_openssl() {
         return;
     }
 
-    // If user already exported OPENSSL_DIR, check if it's suitable
+    // We will prefer our own deterministic builds so we can stage assets cleanly
     if let Ok(dir) = env::var("OPENSSL_DIR") {
-        let dirp = Path::new(&dir);
-        if dirp.join("include").exists() {
-            if fips_mode {
-                if fips_artifacts_present(dirp) {
-                    println!(
-                        "cargo:warning=Using existing OPENSSL_DIR={dir} (FIPS artifacts detected; not rebuilding)"
-                    );
-                    return;
-                }
-                println!(
-                    "cargo:warning=OPENSSL_DIR is set to {dir}, but FIPS provider artifacts were not found; will build FIPS OpenSSL"
-                );
-            } else {
-                // In non-FIPS mode, any OpenSSL 3.x should work
-                println!("cargo:warning=Using existing OPENSSL_DIR={dir} in non-FIPS mode");
-                return;
-            }
-        }
-    }
-
-    if fips_mode {
         println!(
-            "cargo:warning=Building OpenSSL {OPENSSL_VERSION} locally in FIPS mode (explicit/legacy FIPS requested, non-Nix environment)"
-        );
-    } else {
-        println!(
-            "cargo:warning=Building OpenSSL {OPENSSL_VERSION} locally in non-FIPS mode with legacy provider support"
+            "cargo:warning=OPENSSL_DIR is set to {dir}; ignoring to ensure consistent staged assets"
         );
     }
 
@@ -134,36 +116,276 @@ fn maybe_build_fips_openssl() {
         .map(|s| Path::new(&s).to_path_buf())
         .unwrap_or_else(|| workspace_root.join("target"));
 
-    let mode_suffix = if fips_mode { "fips" } else { "legacy" };
-    let install_prefix = target_dir.join(format!(
+    // Paths for main (3.6.0) and FIPS provider (3.1.2)
+    let main_prefix = target_dir.join(format!(
         "openssl-{}-{}-{}-{}",
-        mode_suffix, OPENSSL_VERSION, os, arch
+        if fips_mode { "fips" } else { "legacy" },
+        OPENSSL_MAIN_VERSION,
+        os,
+        arch
     ));
-
-    if install_prefix.join("lib/libcrypto.a").exists() {
-        println!(
-            "cargo:warning=Cached {} OpenSSL already present at {}",
-            if fips_mode { "FIPS" } else { "legacy" },
-            install_prefix.display()
-        );
-        emit_link_env(&install_prefix);
-        return;
-    }
+    let fipsprov_prefix = target_dir.join(format!(
+        "openssl-fipsprov-{}-{}-{}",
+        OPENSSL_FIPS_VERSION, os, arch
+    ));
 
     if let Err(e) = fs::create_dir_all(&build_root) {
         println!("cargo:warning=Failed to create build_root: {e}");
         return;
     }
-    if let Err(e) = fs::create_dir_all(&install_prefix) {
-        println!("cargo:warning=Failed to create install_prefix: {e}");
-        return;
+    let _ = fs::create_dir_all(&main_prefix);
+    if fips_mode {
+        let _ = fs::create_dir_all(&fipsprov_prefix);
     }
 
-    // Obtain the tarball: prefer project-local resources/tarballs like the Nix derivation for offline parity
-    let local_tarball = workspace_root
-        .join("resources/tarballs")
-        .join(OPENSSL_TARBALL);
+    // Helper: build main OpenSSL (3.6.0) if needed
+    if !main_prefix.join("lib/libcrypto.a").exists() {
+        if let Err(e) = build_and_install_openssl(
+            workspace_root,
+            &build_root,
+            OPENSSL_MAIN_VERSION,
+            OPENSSL_MAIN_TARBALL,
+            OPENSSL_MAIN_URL,
+            OPENSSL_MAIN_SHA256,
+            &main_prefix,
+            // enable_fips on main tree: always false (runtime FIPS comes from 3.1.2 provider)
+            false,
+            // enable_legacy on main tree: only for non-FIPS builds
+            !fips_mode,
+        ) {
+            println!(
+                "cargo:warning=Failed to build OpenSSL {}: {e}",
+                OPENSSL_MAIN_VERSION
+            );
+            return;
+        }
+    }
 
+    // In FIPS mode, also build the 3.1.2 provider tree
+    if fips_mode && !fipsprov_prefix.join("lib/ossl-modules").exists() {
+        if let Err(e) = build_and_install_openssl(
+            workspace_root,
+            &build_root,
+            OPENSSL_FIPS_VERSION,
+            OPENSSL_FIPS_TARBALL,
+            OPENSSL_FIPS_URL,
+            OPENSSL_FIPS_SHA256,
+            &fipsprov_prefix,
+            // enable_fips=
+            true,
+            // enable_legacy=
+            false,
+        ) {
+            println!(
+                "cargo:warning=Failed to build OpenSSL {} (FIPS provider): {e}",
+                OPENSSL_FIPS_VERSION
+            );
+            return;
+        }
+    }
+
+    // Normalize provider path (lib64 -> lib) if necessary for both trees
+    normalize_provider_layout(&main_prefix);
+    if fips_mode {
+        normalize_provider_layout(&fipsprov_prefix);
+    }
+
+    // Stage assets for packaging to a stable path consumed by Cargo.toml
+    stage_assets(
+        &target_dir,
+        &main_prefix,
+        fips_mode.then_some(&fipsprov_prefix),
+    );
+
+    // Backward-compat alias: ensure target/openssl-fips-3.1.2-<os>-<arch>
+    // resolves to the provider tree, even if a stale dir already exists.
+    if fips_mode {
+        let arch_bc = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "unknown-arch".into());
+        let os_bc = env::var("CARGO_CFG_TARGET_OS").unwrap_or_else(|_| "unknown-os".into());
+        let legacy_fips_dir = target_dir.join(format!(
+            "openssl-fips-{}-{}-{}",
+            OPENSSL_FIPS_VERSION, os_bc, arch_bc
+        ));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            match fs::symlink_metadata(&legacy_fips_dir) {
+                Ok(meta) => {
+                    if meta.file_type().is_symlink() {
+                        // Ensure symlink points to the provider prefix
+                        if let Ok(link_target) = fs::read_link(&legacy_fips_dir) {
+                            if link_target != fipsprov_prefix {
+                                let _ = fs::remove_file(&legacy_fips_dir);
+                                let _ = symlink(&fipsprov_prefix, &legacy_fips_dir);
+                            }
+                        } else {
+                            let _ = fs::remove_file(&legacy_fips_dir);
+                            let _ = symlink(&fipsprov_prefix, &legacy_fips_dir);
+                        }
+                    } else {
+                        // Directory exists but may be stale; check for fips.so
+                        let fips_so = legacy_fips_dir.join("lib/ossl-modules").join(
+                            if cfg!(target_os = "macos") {
+                                "fips.dylib"
+                            } else {
+                                "fips.so"
+                            },
+                        );
+                        if !fips_so.exists() {
+                            let _ = fs::remove_dir_all(&legacy_fips_dir);
+                            let _ = symlink(&fipsprov_prefix, &legacy_fips_dir);
+                        }
+                    }
+                }
+                Err(_) => {
+                    let _ = symlink(&fipsprov_prefix, &legacy_fips_dir);
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            // On non-unix, ensure the directory exists with the expected layout
+            let modules = legacy_fips_dir.join("lib/ossl-modules");
+            if !modules.exists() {
+                let _ = fs::create_dir_all(&modules);
+                let src = fipsprov_prefix.join("lib/ossl-modules");
+                if let Ok(entries) = fs::read_dir(&src) {
+                    for e in entries.flatten() {
+                        let _ = fs::copy(e.path(), modules.join(e.file_name()));
+                    }
+                }
+                let _ = fs::create_dir_all(legacy_fips_dir.join("ssl"));
+                let _ = fs::copy(
+                    fipsprov_prefix.join("ssl/openssl.cnf"),
+                    legacy_fips_dir.join("ssl/openssl.cnf"),
+                );
+                let _ = fs::copy(
+                    fipsprov_prefix.join("ssl/fipsmodule.cnf"),
+                    legacy_fips_dir.join("ssl/fipsmodule.cnf"),
+                );
+            }
+        }
+    }
+
+    // Emit link directives: link with main (3.6.0), set env to provider (3.1.2) in FIPS mode
+    if fips_mode {
+        emit_link_env_split(&main_prefix, &fipsprov_prefix);
+    } else {
+        emit_link_env_split(&main_prefix, &main_prefix);
+    }
+}
+
+fn normalize_provider_layout(install_prefix: &Path) {
+    let lib64 = install_prefix.join("lib64/ossl-modules");
+    let lib = install_prefix.join("lib/ossl-modules");
+    if lib64.exists() && !lib.exists() {
+        if let Some(parent) = lib.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(entries) = fs::read_dir(&lib64) {
+            for entry in entries.flatten() {
+                let dest = lib.join(entry.file_name());
+                let _ = fs::rename(entry.path(), dest);
+            }
+        }
+        if let Some(parent64) = lib64.parent() {
+            let _ = fs::remove_dir_all(parent64.join("ossl-modules"));
+            let _ = fs::create_dir_all(parent64);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::symlink;
+                let _ = symlink("../lib/ossl-modules", parent64.join("ossl-modules"));
+            }
+        }
+    }
+}
+
+fn emit_link_env_split(link_prefix: &Path, runtime_provider_prefix: &Path) {
+    // Link against main tree (3.6.0)
+    println!("cargo:rustc-env=OPENSSL_DIR={}", link_prefix.display());
+    println!(
+        "cargo:rustc-link-search=native={}/lib",
+        link_prefix.display()
+    );
+    println!("cargo:rustc-link-lib=static=crypto");
+    println!("cargo:rustc-link-lib=static=ssl");
+
+    // Runtime env to load providers from desired tree
+    println!(
+        "cargo:rustc-env=OPENSSL_CONF={}/ssl/openssl.cnf",
+        runtime_provider_prefix.display()
+    );
+    println!(
+        "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
+        runtime_provider_prefix.display()
+    );
+}
+
+fn stage_assets(target_dir: &Path, main_prefix: &Path, fipsprov_prefix: Option<&Path>) {
+    let staging = target_dir.join(".openssl-staging");
+    let _ = fs::create_dir_all(staging.join("lib/ossl-modules"));
+    let _ = fs::create_dir_all(staging.join("ssl"));
+    let _ = fs::create_dir_all(staging.join("lib"));
+
+    let mod_ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+
+    // Providers
+    if let Some(fips_prefix) = fipsprov_prefix {
+        let fips_src = fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}"));
+        let _ = fs::copy(
+            &fips_src,
+            staging
+                .join("lib/ossl-modules")
+                .join(format!("fips.{mod_ext}")),
+        );
+        let _ = fs::copy(
+            fips_prefix.join("ssl/openssl.cnf"),
+            staging.join("ssl/openssl.cnf"),
+        );
+        let _ = fs::copy(
+            fips_prefix.join("ssl/fipsmodule.cnf"),
+            staging.join("ssl/fipsmodule.cnf"),
+        );
+    } else {
+        // Non-FIPS: legacy provider from main tree
+        let legacy_src = main_prefix.join(format!("lib/ossl-modules/legacy.{mod_ext}"));
+        let _ = fs::copy(
+            &legacy_src,
+            staging
+                .join("lib/ossl-modules")
+                .join(format!("legacy.{mod_ext}")),
+        );
+    }
+
+    // Dynamic libs (if available from our build; otherwise packaging can ignore)
+    for libname in ["libssl.so.3", "libcrypto.so.3"] {
+        // Linux packaging
+        let candidate = main_prefix.join("lib").join(libname);
+        if candidate.exists() {
+            let _ = fs::copy(&candidate, staging.join("lib").join(libname));
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_and_install_openssl(
+    workspace_root: &Path,
+    build_root: &Path,
+    version: &str,
+    tarball: &str,
+    url: &str,
+    sha256: &str,
+    install_prefix: &Path,
+    enable_fips: bool,
+    enable_legacy: bool,
+) -> Result<(), String> {
+    // Fetch
+    let local_tarball = workspace_root.join("resources/tarballs").join(tarball);
     let tarball_path = if local_tarball.exists() {
         println!(
             "cargo:warning=Using local cached tarball {}",
@@ -171,156 +393,98 @@ fn maybe_build_fips_openssl() {
         );
         local_tarball
     } else {
-        let dl_path = build_root.join(OPENSSL_TARBALL);
+        let dl_path = build_root.join(tarball);
         if !dl_path.exists() {
-            println!("cargo:warning=Downloading {OPENSSL_URL}");
-            match Command::new("curl")
-                .args(["-fsSL", OPENSSL_URL, "-o", dl_path.to_str().unwrap()])
-                .status()
-            {
-                Ok(status) if status.success() => {}
-                Ok(status) => {
-                    println!(
-                        "cargo:warning=curl download failed with status {status}; aborting FIPS build"
-                    );
-                    return;
-                }
-                Err(e) => {
-                    println!("cargo:warning=Failed to spawn curl: {e}; aborting FIPS build");
-                    return;
-                }
-            }
+            println!("cargo:warning=Downloading {url}");
+            run_cmd(
+                Command::new("curl").args(["-fsSL", url, "-o", dl_path.to_str().unwrap()]),
+                "curl",
+            )?;
         }
         dl_path
     };
 
-    verify_hash(&tarball_path, OPENSSL_SHA256);
+    // Hash warn (non-fatal)
+    if !sha256.is_empty() {
+        verify_hash(&tarball_path, sha256);
+    }
 
     // Extract
-    let extract_dir = build_root.join("src");
+    let extract_dir = build_root.join(format!("src-{version}"));
     if !extract_dir.exists() {
-        if let Err(e) = fs::create_dir_all(&extract_dir) {
-            println!("cargo:warning=Failed to create extract_dir: {e}");
-            return;
-        }
-        match Command::new("tar")
-            .current_dir(&extract_dir)
-            .args(["-xf", tarball_path.to_str().unwrap()])
-            .status()
-        {
-            Ok(status) if status.success() => {}
-            Ok(status) => {
-                println!("cargo:warning=tar extraction failed (status {status})");
-                return;
-            }
-            Err(e) => {
-                println!("cargo:warning=Failed to spawn tar: {e}");
-                return;
-            }
-        }
+        fs::create_dir_all(&extract_dir).map_err(|e| format!("mkdir extract_dir: {e}"))?;
+        run_cmd(
+            Command::new("tar")
+                .current_dir(&extract_dir)
+                .args(["-xf", tarball_path.to_str().unwrap()]),
+            "tar -xf",
+        )?;
     }
-
-    let src_root = extract_dir.join(format!("openssl-{OPENSSL_VERSION}"));
+    let src_root = extract_dir.join(format!("openssl-{version}"));
     if !src_root.exists() {
-        println!(
-            "cargo:warning=Expected source root not found: {}",
+        return Err(format!(
+            "Expected source root not found: {}",
             src_root.display()
-        );
-        return;
+        ));
     }
 
-    // Determine OpenSSL target (mirrors nix expression logic)
+    // Configure
     let target = determine_openssl_target();
-
-    // Configure with appropriate options based on mode
     let prefix_arg = format!("--prefix={}", install_prefix.display());
     let openssldir_arg = format!("--openssldir={}/ssl", install_prefix.display());
-
     let mut configure_args = vec![
         "./Configure",
         "no-shared",
         prefix_arg.as_str(),
         openssldir_arg.as_str(),
         "--libdir=lib",
+        &target,
     ];
-
-    if fips_mode {
-        configure_args.push("enable-fips");
-    } else {
-        // In non-FIPS mode, enable legacy provider support
-        configure_args.push("enable-legacy");
+    if enable_fips {
+        configure_args.insert(1, "enable-fips");
     }
-
-    configure_args.push(&target);
-
-    if let Err(e) = run_cmd(
+    if enable_legacy {
+        configure_args.insert(1, "enable-legacy");
+    }
+    run_cmd(
         Command::new("perl")
             .current_dir(&src_root)
             .args(&configure_args),
-        if fips_mode {
-            "Configure (FIPS)"
-        } else {
-            "Configure (legacy)"
-        },
-    ) {
-        println!("cargo:warning=Configure failed: {e}");
-        return;
-    }
+        "Configure",
+    )?;
 
-    // Build (parallel jobs = cores - 1)
-    let jobs = num_parallel_jobs();
-    if let Err(e) = run_cmd(
+    // Build
+    let jobs = num_parallel_jobs().to_string();
+    run_cmd(
         Command::new("make").current_dir(&src_root).args(["depend"]),
         "make depend",
-    ) {
-        println!("cargo:warning=make depend failed: {e}");
-        return;
-    }
-    if let Err(e) = run_cmd(
+    )?;
+    run_cmd(
         Command::new("make")
             .current_dir(&src_root)
-            .args(["-j", &jobs.to_string()]),
+            .args(["-j", &jobs]),
         "make -j",
-    ) {
-        println!("cargo:warning=make build failed: {e}");
-        return;
-    }
+    )?;
 
-    // Install (including FIPS artifacts in FIPS mode, or standard install in non-FIPS)
-    let jobs_str = jobs.to_string();
-    let mut install_args = vec!["install_sw", "install_ssldirs"];
-    if fips_mode {
-        install_args.push("install_fips");
+    // Install
+    let mut install_args = vec!["install_sw", "install_ssldirs", "-j", &jobs];
+    if enable_fips {
+        install_args.insert(0, "install_fips");
     }
-    install_args.extend_from_slice(&["-j", &jobs_str]);
-
-    if let Err(e) = run_cmd(
+    run_cmd(
         Command::new("make")
             .current_dir(&src_root)
             .args(&install_args),
         "make install",
-    ) {
-        println!("cargo:warning=make install failed: {e}");
-        return;
-    }
+    )?;
 
-    // Patch openssl.cnf to activate providers
+    // Patch openssl.cnf for provider activation depending on mode
     let ssl_dir = install_prefix.join("ssl");
     let openssl_cnf = ssl_dir.join("openssl.cnf");
-
-    if openssl_cnf.exists() {
-        let Ok(mut cnf) = fs::read_to_string(&openssl_cnf) else {
-            println!("cargo:warning=Failed to read openssl.cnf");
-            return;
-        };
-
-        if fips_mode {
-            // FIPS mode: activate FIPS module exactly like nix derivation
+    if let Ok(mut cnf) = fs::read_to_string(&openssl_cnf) {
+        if enable_fips {
             let fipsmodule_cnf = ssl_dir.join("fipsmodule.cnf");
             let fipsmodule_path = fipsmodule_cnf.to_str().unwrap_or("fipsmodule.cnf");
-
-            // Handle both commented and uncommented .include directives
-            // Replace any relative path references with absolute path
             if cnf.contains("# .include fipsmodule.cnf") {
                 cnf = cnf.replace(
                     "# .include fipsmodule.cnf",
@@ -346,13 +510,11 @@ fn maybe_build_fips_openssl() {
                     "fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n",
                 );
             }
-        } else {
-            // Non-FIPS mode: ensure legacy and default providers are activated
-            // Add legacy provider configuration if not present
+        }
+        if enable_legacy {
             if !cnf.contains("[provider_sect]") {
                 cnf.push_str("\n[provider_sect]\ndefault = default_sect\nlegacy = legacy_sect\n\n[default_sect]\nactivate = 1\n\n[legacy_sect]\nactivate = 1\n");
             } else if !cnf.contains("legacy = legacy_sect") {
-                // provider_sect exists but legacy is not configured
                 if let Some(pos) = cnf.find("[provider_sect]") {
                     let insert_pos = cnf[pos..].find('\n').map_or(cnf.len(), |p| pos + p + 1);
                     cnf.insert_str(insert_pos, "legacy = legacy_sect\n");
@@ -360,86 +522,13 @@ fn maybe_build_fips_openssl() {
                 }
             }
         }
-
-        if let Err(e) = fs::write(&openssl_cnf, cnf) {
-            println!("cargo:warning=Failed to patch openssl.cnf: {e}");
-        }
-    } else {
-        println!("cargo:warning=openssl.cnf not found; provider activation patch skipped");
+        let _ = fs::write(&openssl_cnf, cnf);
     }
 
-    // Normalize provider path (lib64 -> lib) if necessary
-    let lib64 = install_prefix.join("lib64/ossl-modules");
-    let lib = install_prefix.join("lib/ossl-modules");
-    if lib64.exists() && !lib.exists() {
-        if let Some(parent) = lib.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(entries) = fs::read_dir(&lib64) {
-            for entry in entries.flatten() {
-                let dest = lib.join(entry.file_name());
-                let _ = fs::rename(entry.path(), dest);
-            }
-        }
-        if let Some(parent64) = lib64.parent() {
-            let _ = fs::remove_dir_all(parent64.join("ossl-modules"));
-            let _ = fs::create_dir_all(parent64);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::symlink;
-                let _ = symlink("../lib/ossl-modules", parent64.join("ossl-modules"));
-            }
-        }
-    }
-
-    // Emit link environment variables
-    // In FIPS mode, only do this if FIPS artifacts are present
-    // In non-FIPS mode, always do this since we built OpenSSL with legacy provider
-    if fips_mode {
-        if fips_artifacts_present(&install_prefix) {
-            emit_link_env(&install_prefix);
-        } else {
-            println!(
-                "cargo:warning=Local OpenSSL build completed but FIPS artifacts are missing; falling back to system OpenSSL"
-            );
-        }
-    } else {
-        // In non-FIPS mode, always emit link env since we built with legacy provider
-        emit_link_env(&install_prefix);
-    }
+    Ok(())
 }
 
-fn emit_link_env(install_prefix: &Path) {
-    println!("cargo:rustc-env=OPENSSL_DIR={}", install_prefix.display());
-    println!(
-        "cargo:rustc-link-search=native={}/lib",
-        install_prefix.display()
-    );
-    // Static linking (no shared libcrypto/libssl)
-    println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
-
-    // Set runtime environment variables so tests can find FIPS provider and config
-    println!(
-        "cargo:rustc-env=OPENSSL_CONF={}/ssl/openssl.cnf",
-        install_prefix.display()
-    );
-    println!(
-        "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
-        install_prefix.display()
-    );
-}
-
-fn fips_artifacts_present(prefix: &Path) -> bool {
-    let mod_ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
-    let provider = prefix.join(format!("lib/ossl-modules/fips.{mod_ext}"));
-    let cnf = prefix.join("ssl/fipsmodule.cnf");
-    provider.exists() && cnf.exists()
-}
+// fips_artifacts_present no longer needed with split trees
 
 fn run_cmd(cmd: &mut Command, context: &str) -> Result<(), String> {
     println!("cargo:warning=Running {context} -> {:?}", cmd);
