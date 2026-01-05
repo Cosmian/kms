@@ -36,24 +36,33 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 The Cosmian KMS presents some unique features, such as:
 
-- 🔐 Large-scale encryption and decryption of data — [documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
-- ☁️ Confidential execution in public clouds and zero-trust environments via Cosmian VM - [Azure, GCP, AWS marketplaces](https://cosmian.com/marketplaces/) and [deployment guide](./documentation/docs/installation/marketplace_guide.md)
-- 🛡️ Advanced authentication mechanisms — see [authentication](./documentation/docs/authentication.md)
-- 🔵 Google Workspace Client-Side Encryption (CSE) — [guide](./documentation/docs/google_cse/index.md)
-- 🪟 Microsoft Double Key Encryption (DKE) — [guide](./documentation/docs/ms_dke/index.md)
-- 🧱 HSM integrations (CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco, …) with KMS keys wrapped by the HSM — [HSM docs](./documentation/docs/hsms/index.md)
-- 💽 Disk encryption support — [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/)
-- ✅ [FIPS 140-3](./documentation/docs/fips.md) mode gated behind feature `fips`
-- 🔗 KMIP interface (binary and JSON) for versions 1.0-1.4 and 2.0-2.1 — [KMIP docs](./documentation/docs/kmip/index.md)
-- 🍃 [MongoDB](./documentation/docs/mongodb.md)
-- 🏛️ Oracle DB TDE — [guide](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
-- 🐘 [Percona PostgreSQL](./documentation/docs/percona.md)
-- 🏢 VMware vCenter Trust Authority / Trust Key Provider — [integration](./documentation/docs/vcenter.md)
-- 🧮 Big Data UDFs — [Python UDF](./documentation/docs/python_udf/index.md) and [Snowflake](./documentation/docs/snowflake/index.md)
-- 🖥️ Full-featured client — [command-line and GUI](https://docs.cosmian.com/cosmian_cli/)
-- 📈 High-availability mode with simple horizontal scaling — [guide](documentation/docs/installation/high_availability_mode.md)
-- 🧪 Multi-language client support — Python, JavaScript, Dart, Rust, C/C++, Java (see `cloudproof` libraries on [GitHub](https://github.com/Cosmian))
-- 📊 Integrated observability with [OpenTelemetry](https://opentelemetry.io/)
+- large-scale encryption and decryption of
+  data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- the ability to confidentially run in a public cloud, or any zero-trust environment, using
+  Cosmian VM. See our cloud-ready confidential KMS on the
+  [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/)
+  our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
+- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
+- out-of-the-box support of
+  [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
+- out-of-the-box support
+  of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
+- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
+- [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)
+  and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
+- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
+- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
+- MongoDB (./documentation/docs/mongodb.md)
+- Mysql Enterprise (./documentation/docs/mysql.md)
+- Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
+- Percona Postgresql DB (./documentation/docs/percona.md)
+- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
+- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
+- a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
+- a support of Python, JavaScript, Dart, Rust, C/C++, and Java clients (see the `cloudproof` libraries
+  on [Cosmian Github](https://github.com/Cosmian))
+- integrated with [OpenTelemetry](https://opentelemetry.io/)
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
