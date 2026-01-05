@@ -159,10 +159,10 @@ For mutual TLS authentication:
 Choose your Linux distribution and refer to [installation guide](./installation/installation_getting_started.md)
 
 # Verify version is 5.14+
-./cosmian_kms --version
+cosmian_kms --version
 
 # Check configuration file location
-cat kms.toml
+cat /etc/cosmian/kms.toml
 ```
 
 #### 1.2 Configure KMS TOML File
@@ -177,6 +177,7 @@ force_default_username = true
 otlp = ""  # Disabled for lab
 enable_metering = false
 rust_log = "info,cosmian_kms=debug"
+## rolling_log_dir = "path_to_logging_directory"
 ## rolling_log_dir = "path_to_logging_directory"
 
 [tls]
@@ -197,8 +198,9 @@ hostname = "0.0.0.0"
 ui_index_html_folder = "/usr/local/cosmian/ui/dist"
 kms_public_url = "https://localhost:9998"
 
-[database]
-database_path = "/path/to/cosmian-kms/sqlite-data/kms.db"
+[db]
+database-type="mysql"
+database-url="mysql://kms_user:kms_password@mysql-server:3306/kms"
 ```
 
 **Key Configuration Notes:**
