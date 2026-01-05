@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 echo "========================================="
 echo "Running SoftHSM2 HSM tests"

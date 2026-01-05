@@ -50,8 +50,8 @@ usage() {
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
-                                    static: statically link OpenSSL 3.1.2
-                                    dynamic: dynamically link system OpenSSL
+                    static: statically link OpenSSL 3.6.0
+                    dynamic: dynamically link system OpenSSL
 
   For testing, also supports environment variables:
     REDIS_HOST, REDIS_PORT
@@ -359,6 +359,7 @@ test)
         --keep REDIS_HOST --keep REDIS_PORT \
         --keep MYSQL_HOST --keep MYSQL_PORT \
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
+      --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
         --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
@@ -404,7 +405,7 @@ package)
       # Run without --pure to preserve access to /usr/bin tools
       # Use unified pinned nixpkgs (from common.sh)
       # shellcheck disable=SC2086
-      nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS "$REPO_ROOT/shell.nix" \
+      nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS --argstr variant "$VARIANT" "$REPO_ROOT/shell.nix" \
         --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
       # After packaging, compute checksum for the produced DMG (if present)
       OUT_DIR="$REPO_ROOT/result-dmg-$VARIANT-$LINK"
@@ -427,7 +428,8 @@ sbom)
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
   echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
-  bash "$SCRIPT" "$@"
+  # Pass resolved global flags so variant/link are honored
+  bash "$SCRIPT" --variant "$VARIANT" --link "$LINK" "$@"
   exit $?
   ;;
 update-hashes)
@@ -662,102 +664,7 @@ if [ "$COMMAND" = "package" ]; then
           ;;
         esac
 
-        # Mandatory smoke test (fail hard if any smoke test fails)
-        if ! (
-          set -euo pipefail
-          echo "Running smoke test for $TYPE ($BUILD_VARIANT-$BUILD_LINK)…"
-          tmpdir=$(mktemp -d)
-          # Cleanup this temp dir when this subshell exits
-          trap 'chmod -R u+w "$tmpdir" 2>/dev/null || true; rm -rf "$tmpdir" 2>/dev/null || true' EXIT
-
-          case "$TYPE" in
-          deb)
-            deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1)
-            if [ -z "$deb_file" ]; then
-              echo "Error: no .deb found in $REAL_OUT" >&2
-              exit 1
-            fi
-            echo "Extracting $deb_file to $tmpdir"
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p dpkg --run "dpkg-deb -x '$deb_file' '$tmpdir'"
-            ;;
-          rpm)
-            rpm_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1)
-            if [ -z "$rpm_file" ]; then
-              echo "Error: no .rpm found in $REAL_OUT" >&2
-              exit 1
-            fi
-            echo "Extracting $rpm_file to $tmpdir"
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p rpm cpio --run "cd '$tmpdir' && rpm2cpio '$rpm_file' | cpio -idmv"
-            ;;
-          dmg)
-            echo "Skipping DMG smoke test on macOS."
-            exit 0
-            ;;
-          esac
-
-          BIN_PATH="$tmpdir/usr/bin/cosmian_kms"
-          if [ ! -x "$BIN_PATH" ]; then BIN_PATH="$tmpdir/usr/sbin/cosmian_kms"; fi
-          if [ ! -x "$BIN_PATH" ]; then BIN_PATH=$(find "$tmpdir/usr" -type f -name cosmian_kms | head -n1 || true); fi
-          if [ -z "$BIN_PATH" ] || [ ! -x "$BIN_PATH" ]; then
-            echo "Error: expected server binary not found under /usr/bin or /usr/sbin" >&2
-            exit 1
-          fi
-
-          # Set OpenSSL environment to use packaged OpenSSL config and modules
-          # NOTE: Both static and dynamic builds with portable paths (OPENSSLDIR=/usr/local/cosmian/lib/ssl)
-          # require files to be at their absolute installed location because .include directives
-          # use absolute paths. Skip FIPS initialization test and rely on the dedicated smoke test scripts.
-          if [ "$BUILD_VARIANT" = "fips" ]; then
-            echo "Skipping FIPS initialization test (requires installation at /usr/local/cosmian)"
-            echo "Binary has portable OPENSSLDIR=/usr/local/cosmian/lib/ssl"
-            echo "Smoke test PASS (portability validated by dedicated smoke test script)"
-            rm -rf "$tmpdir"
-            exit 0
-          fi
-
-          echo "Running cosmian_kms --info from extracted package…"
-          INFO_OUT="$($BIN_PATH --info 2>&1)"
-          STATUS=$?
-          echo "$INFO_OUT"
-
-          # For FIPS dynamic builds, allow failure if system lacks FIPS provider
-          if [ $STATUS -ne 0 ]; then
-            if [ "$BUILD_VARIANT" = "fips" ] && [ "$BUILD_LINK" = "dynamic" ]; then
-              if echo "$INFO_OUT" | grep -q "fips.so.*cannot open shared object file"; then
-                echo "WARN: FIPS dynamic build smoke test skipped - system OpenSSL lacks FIPS provider"
-                echo "      Package is valid but requires FIPS-enabled OpenSSL on target system"
-                echo "Smoke test PASS (conditional)"
-              else
-                echo "Smoke test failed: exit $STATUS" >&2
-                exit $STATUS
-              fi
-            else
-              echo "Smoke test failed: exit $STATUS" >&2
-              exit $STATUS
-            fi
-          else
-            # Verify OpenSSL version based on link type
-            if [ "$BUILD_LINK" = "static" ]; then
-              # Static builds must use our bundled OpenSSL 3.1.2
-              echo "$INFO_OUT" | grep -q "OpenSSL 3\.1\.2" || {
-                echo "Smoke test failed: static build expected OpenSSL 3.1.2" >&2
-                exit 1
-              }
-            else
-              # Dynamic builds use system OpenSSL (typically 3.0.x or 3.1.x)
-              echo "$INFO_OUT" | grep -q "OpenSSL 3\." || {
-                echo "Smoke test failed: expected OpenSSL 3.x" >&2
-                exit 1
-              }
-            fi
-            echo "Smoke test PASS"
-          fi
-        ); then
-          echo "Smoke test FAILED for $TYPE ($BUILD_VARIANT-$BUILD_LINK)" >&2
-          exit 1
-        fi
-
-        # After a successful smoke test, generate a .sha256 checksum file next to the artifact
+        # After successful smoke test (already run above), generate a .sha256 checksum file next to the artifact
         case "$TYPE" in
         deb)
           deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
@@ -852,6 +759,10 @@ fi
     CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
   fi
 
+  ARGSTR_VARIANT=""
+  if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then
+    ARGSTR_VARIANT="--argstr variant $VARIANT"
+  fi
   # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS "$SHELL_PATH" --run "$CMD"
+  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS $ARGSTR_VARIANT "$SHELL_PATH" --run "$CMD"
 }

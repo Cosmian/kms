@@ -69,3 +69,6 @@ tokio = { workspace = true, features = ["full"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]
+
+[build-dependencies]
+sha2 = { workspace = true }

@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 # Use a writable runtime directory for the Utimaco simulator (moved)
 export UTIMACO_RUNTIME_DIR="${REPO_ROOT}/.utimaco"

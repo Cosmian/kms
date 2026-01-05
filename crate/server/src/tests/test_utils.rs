@@ -100,7 +100,10 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     // replace the ":" with "-" to make it a valid filename
     let name = now.replace(':', "-");
 
-    project_dir.join(format!("{name}.sqlite"))
+    // Add thread ID to ensure uniqueness when tests run in parallel
+    let thread_id = std::thread::current().id();
+
+    project_dir.join(format!("{name}_{thread_id:?}.sqlite"))
 }
 
 /// Creates a test application instance with KMIP and Google CSE capabilities.

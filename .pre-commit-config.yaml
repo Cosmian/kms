@@ -201,7 +201,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)

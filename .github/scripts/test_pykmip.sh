@@ -17,9 +17,6 @@ fi
 VARIANT="non-fips"
 FEATURES_FLAG=(--features non-fips)
 
-# Call setup_fips_openssl_env AFTER setting VARIANT to ensure correct OpenSSL config
-setup_fips_openssl_env
-
 # Default KMS config (can be overridden by env before invoking nix.sh)
 : "${COSMIAN_KMS_CONF:=$REPO_ROOT/scripts/kms.toml}"
 export COSMIAN_KMS_CONF

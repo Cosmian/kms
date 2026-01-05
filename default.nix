@@ -252,12 +252,14 @@ let
     kmsServer = kms-server-fips-static-openssl;
     variant = "fips";
     version = kmsVersion;
+    opensslDrv = openssl312;
   };
 
   docker-image-non-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-non-fips-static-openssl;
     variant = "non-fips";
     version = kmsVersion;
+    # non-FIPS image doesn't require a specific OpenSSL derivation for provider config
   };
 
 in

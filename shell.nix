@@ -40,6 +40,80 @@
 }:
 
 let
+  inherit (pkgs.stdenv) isLinux;
+  # Import project-level outputs to access tools like cargo-packager
+  project = import ./default.nix { inherit pkgs; };
+  hostGlibc =
+    if isLinux then
+      (pkgs.stdenv.cc.libc.version or (pkgs.lib.getVersion pkgs.stdenv.cc.libc))
+    else
+      "n/a";
+  nixpkgs1903 = builtins.getEnv "NIXPKGS_GLIBC_228_URL";
+  pkgs228 =
+    if isLinux && !(pkgs.lib.versionOlder hostGlibc "2.29") then
+      import (builtins.fetchTarball {
+        url =
+          if nixpkgs1903 != "" then
+            nixpkgs1903
+          else
+            "https://github.com/NixOS/nixpkgs/archive/refs/heads/nixos-19.03.tar.gz";
+      }) { }
+    else
+      pkgs;
+  # Use custom OpenSSL 3.1.2 (FIPS-capable) for both FIPS and non-FIPS modes
+  # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
+  # via OPENSSL_CONF and OPENSSL_MODULES environment variables
+  openssl312 = pkgs228.callPackage ./nix/openssl.nix { };
+  # Wrapper config to activate both default and FIPS providers while reusing
+  # the derivation's generated fipsmodule.cnf. This avoids generating configs
+  # inside nix/openssl.nix and strictly reuses the derivation outputs.
+  opensslFipsWrapper = pkgs228.writeText "openssl-fips-wrapper.cnf" ''
+    # Auto-load provider configuration
+    openssl_conf = openssl_init
+    config_diagnostics = 1
+
+    # Reuse the derivation's installed FIPS module config
+    .include ${openssl312}/ssl/fipsmodule.cnf
+
+    [openssl_init]
+    providers = provider_sect
+
+    [provider_sect]
+    default = default_sect
+    fips = fips_sect
+
+    [default_sect]
+    activate = 1
+  '';
+  # SoftHSM override with OpenSSL-only backend (Botan disabled)
+  # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
+  # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
+  opensslForSofthsm = pkgs228.openssl;
+  softhsm_pkg = pkgs228.softhsm.overrideAttrs (
+    old:
+    let
+      lib = pkgs.lib or pkgs228.lib;
+      # Drop crypto-backend and backend-specific flags to avoid duplicates
+      filteredFlags = lib.filter (
+        f:
+        !(lib.hasPrefix "--with-crypto-backend=" f)
+        && !(lib.hasPrefix "--with-botan" f)
+        && !(lib.hasPrefix "--with-openssl" f)
+      ) (old.configureFlags or [ ]);
+      # Force OpenSSL backend only (no Botan)
+      extraFlags = [
+        "--with-crypto-backend=openssl"
+        "--with-openssl=${opensslForSofthsm}"
+      ];
+      extraInputs = [ opensslForSofthsm ];
+    in
+    {
+      configureFlags = filteredFlags ++ extraFlags;
+      buildInputs = (old.buildInputs or [ ]) ++ extraInputs;
+    }
+  );
+  # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
+  withWget = (builtins.getEnv "WITH_WGET") == "1";
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
   # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds

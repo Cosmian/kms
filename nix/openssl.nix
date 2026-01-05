@@ -6,9 +6,20 @@
   coreutils,
   # Linkage mode: true for static libraries only, false for shared libraries
   static ? true,
+  # OpenSSL version to build (e.g. "3.6.0" or "3.1.2")
+  version ? "3.1.2",
+  # Build the legacy provider module (needed for non-FIPS features)
+  enableLegacy ? false,
+  # Optional override for source URL and hashes. When not provided, defaults to Cosmian mirror
+  # and known hashes for 3.1.2. For other versions, callers should provide these.
+  srcUrl ? null,
+  # SRI sha256 for fetchurl (e.g. "sha256-oM5p...")
+  sha256SRI ? null,
+  # Expected plain hex sha256 for validating local tarball in resources/tarballs
+  expectedHash ? null,
 }:
 
-# OpenSSL 3.1.2 built with FIPS provider and fipsmodule.cnf generated.
+# OpenSSL ${version} built with FIPS provider and fipsmodule.cnf generated.
 # Can build either static-only or shared libraries based on the 'static' parameter.
 # Output layout mirrors a typical OPENSSL_DIR tree for ease of consumption:
 #   $out/bin/openssl
@@ -23,19 +34,26 @@
 # use an older nixpkgs snapshot (e.g., nixos-19.03 with glibc <= 2.28).
 
 let
-  localTarball = ../resources/tarballs/openssl-3.1.2.tar.gz;
+  tarballName = "openssl-${version}.tar.gz";
+  localTarball = ../resources/tarballs/${tarballName};
 
-  # Expected SHA256 hash of the official OpenSSL 3.1.2 tarball
-  expectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
+  # Provide sensible defaults for 3.1.2 to preserve historical behavior.
+  defaultUrl = "https://package.cosmian.com/openssl/${tarballName}";
+  defaultExpectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"; # 3.1.2
+  defaultSRI = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk="; # 3.1.2
+
+  url = if srcUrl != null then srcUrl else defaultUrl;
+  sri = if sha256SRI != null then sha256SRI else defaultSRI;
+  expected = if expectedHash != null then expectedHash else defaultExpectedHash;
 
   # Validate local tarball hash and select source
   opensslSrc =
     if builtins.pathExists localTarball then
       let
         actualHash = builtins.hashFile "sha256" localTarball;
-        hashValidation = lib.assertMsg (actualHash == expectedHash) (
+        hashValidation = lib.assertMsg (actualHash == expected) (
           "Local OpenSSL tarball hash mismatch!\n"
-          + "Expected: ${expectedHash}\n"
+          + "Expected: ${expected}\n"
           + "Actual:   ${actualHash}\n"
           + "Please verify the integrity of ${toString localTarball}"
         );
@@ -44,15 +62,15 @@ let
       builtins.seq hashValidation localTarball
     else
       fetchurl {
-        # Should be https://www.openssl.org/source/old/3.1/openssl-3.1.2.tar.gz but using Cosmian mirror for reliability
-        url = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
-        # SRI hash pinned from nix fetch (sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=)
-        sha256 = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk=";
+        # Prefer Cosmian mirror for reliability; callers can override via srcUrl
+        inherit url;
+        # SRI hash pinned by caller or defaults (3.1.2)
+        sha256 = sri;
       };
 in
 stdenv.mkDerivation rec {
   pname = "openssl";
-  version = "3.1.2";
+  inherit version;
 
   src = opensslSrc;
 
@@ -100,6 +118,7 @@ stdenv.mkDerivation rec {
       ${if static then "no-shared" else "shared"} \
       no-zlib \
       enable-fips \
+      ${if enableLegacy then "enable-legacy" else ""} \
       --prefix=$out \
       --openssldir=/usr/local/cosmian/lib/ssl \
       --libdir=lib \
@@ -150,14 +169,13 @@ stdenv.mkDerivation rec {
     fi
     echo "Make install_sw completed successfully."
 
-    # Now manually create the production directory structure
+    # Create expected directories
     mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
     mkdir -p "$out/usr/local/cosmian/lib/ssl"
     mkdir -p "$out/lib/ossl-modules"
     mkdir -p "$out/ssl"
 
-    # The FIPS module was built but not installed by install_sw
-    # Find and copy it to both dev and production locations
+    # Copy FIPS provider module to both prod and dev locations
     echo "Looking for FIPS provider module..."
     if [ -f "providers/fips.${soExt}" ]; then
       echo "Found FIPS module at providers/fips.${soExt}"
@@ -169,23 +187,39 @@ stdenv.mkDerivation rec {
       exit 1
     fi
 
-    # Generate fipsmodule.cnf in production location
-    echo "Generating FIPS module configuration..."
-    ${
-      if static then "" else "LD_LIBRARY_PATH=$out/lib:$LD_LIBRARY_PATH "
-    }$out/bin/openssl fipsinstall -out "$out/usr/local/cosmian/lib/ssl/fipsmodule.cnf" \
-      -module "$out/usr/local/cosmian/lib/ossl-modules/fips.${soExt}"
-
-    # Copy base openssl.cnf to production location
-    if [ -f "./apps/openssl.cnf" ]; then
-      cp "./apps/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
-    else
-      echo "ERROR: openssl.cnf template not found"
-      exit 1
+    # Optionally copy legacy provider module when enabled
+    if [ "${toString enableLegacy}" = "1" ]; then
+      echo "Checking for legacy provider module (enableLegacy=true)..."
+      if [ -f "providers/legacy.${soExt}" ]; then
+        echo "Found legacy module at providers/legacy.${soExt}"
+        cp "providers/legacy.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
+        cp "providers/legacy.${soExt}" "$out/lib/ossl-modules/"
+      else
+        echo "WARNING: legacy provider not found at providers/legacy.${soExt}"
+        ls -la providers/ || true
+      fi
     fi
 
-    # Also create dev/test copies in $out/ssl
+    # Generate fipsmodule.cnf in production location (runs self-tests)
+    echo "Generating FIPS module configuration (with install self-tests)..."
+    ${
+      if static then "" else "LD_LIBRARY_PATH=$out/lib:$LD_LIBRARY_PATH "
+    }$out/bin/openssl fipsinstall -self_test_oninstall -out "$out/usr/local/cosmian/lib/ssl/fipsmodule.cnf" \
+      -module "$out/usr/local/cosmian/lib/ossl-modules/fips.${soExt}"
+
+    # Reuse fipsmodule.cnf as generated by openssl fipsinstall without modifications
     cp "$out/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$out/ssl/"
+
+    # Reuse the openssl.cnf installed by install_sw
+    if [ -f "$out/ssl/openssl.cnf" ]; then
+      cp "$out/ssl/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+    elif [ -f "./apps/openssl.cnf" ]; then
+      cp "./apps/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+    else
+      echo "ERROR: openssl.cnf not found in install output or build tree"
+      exit 1
+    fi
+    # Ensure dev copy exists
     cp "$out/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/ssl/"
 
     # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
@@ -279,7 +313,9 @@ stdenv.mkDerivation rec {
   # No passthru needed; consumers can use the derivation path as OPENSSL_DIR
 
   meta = with lib; {
-    description = "OpenSSL 3.1.2 with FIPS provider (${if static then "static" else "shared"} linkage)";
+    description = "OpenSSL ${version} with FIPS provider (${
+      if static then "static" else "shared"
+    } linkage)";
     homepage = "https://www.openssl.org";
     license = licenses.openssl;
     platforms = platforms.unix;

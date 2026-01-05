@@ -70,7 +70,7 @@ xml_test!(
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-7-21.xml",
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-8-21.xml",
     // Skipped: BL-M-9-21 contains an invalid RSA key (p and q are not prime)
-    // OpenSSL 3.2.0 correctly rejects this mathematically invalid key
+    // OpenSSL 3.1.2 correctly rejects this mathematically invalid key
     // "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-9-21.xml",
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-10-21.xml",
     "../kmip/src/kmip_2_1/specifications/XML/mandatory/BL-M-11-21.xml",

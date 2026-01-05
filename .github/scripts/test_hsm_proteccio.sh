@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 echo "========================================="
 echo "Running Proteccio HSM tests"
@@ -20,17 +19,12 @@ echo "========================================="
   exit 1
 }
 
-# If HSM env variables are missing or HSM is unreachable, skip tests gracefully.
-if [ -z "${PROTECCIO_IP:-}" ]; then
-  echo "Skipping Proteccio HSM tests: PROTECCIO_IP not set."
-  exit 0
-fi
-if [ -z "${PROTECCIO_PASSWORD:-}" ]; then
-  echo "Skipping Proteccio HSM tests: PROTECCIO_PASSWORD not set."
-  exit 0
-fi
-if ! ping -c 1 -W 1 "$PROTECCIO_IP" &>/dev/null; then
-  echo "Warning: PROTECCIO_IP=$PROTECCIO_IP unreachable. Skipping Proteccio tests."
+# If HSM is down on env.variable PROTECCIO_IP, skip tests.
+# Use TCP connection test instead of ping (ICMP may be disabled)
+# Proteccio typically uses port 1432 for PKCS#11; adjust if needed
+PROTECCIO_PORT="${PROTECCIO_PORT:-1432}"
+if ! timeout 2 bash -c "cat < /dev/null > /dev/tcp/${PROTECCIO_IP}/${PROTECCIO_PORT}" 2>/dev/null; then
+  echo "Warning: PROTECCIO_IP is set but HSM is unreachable on port ${PROTECCIO_PORT}. Skipping tests."
   exit 0
 fi
 
