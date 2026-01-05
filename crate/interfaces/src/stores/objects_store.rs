@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use cosmian_kmip::{
@@ -38,9 +38,6 @@ impl AtomicOperation {
 /// Trait that must implement all object stores (DBs, HSMs, etc.) that store objects
 #[async_trait(?Send)]
 pub trait ObjectsStore {
-    /// Return the filename of the database or `None` if not supported
-    fn filename(&self, group_id: u128) -> Option<PathBuf>;
-
     /// Create the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.

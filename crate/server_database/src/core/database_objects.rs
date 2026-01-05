@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -113,14 +112,6 @@ impl Database {
                 })?
                 .clone(),
         })
-    }
-
-    /// Return the filename of the database or `None` if not supported
-    pub async fn filename(&self, group_id: u128) -> Option<PathBuf> {
-        self.get_object_store("")
-            .await
-            .ok()
-            .and_then(|db| db.filename(group_id))
     }
 
     /// Create the given Object in the database.

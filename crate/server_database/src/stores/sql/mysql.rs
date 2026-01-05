@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
@@ -107,8 +104,7 @@ impl MySqlPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let opts = mysql_async::Opts::from_url(connection_url)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let opts = mysql_async::Opts::from_url(connection_url).map_err(DbError::from)?;
 
         // Default: reduce deadlocks by using READ COMMITTED isolation level per session
         // This is applied for every new connection.
@@ -156,6 +152,20 @@ impl MySqlPool {
         }
         Ok(Self { pool })
     }
+
+    // Helper to obtain a pooled connection and configure session settings consistently
+    // - Isolation level: READ COMMITTED (reduces deadlocks vs REPEATABLE READ)
+    // - Lock wait timeout: 10s (avoid long stalls under contention)
+    async fn get_configured_conn(&self) -> DbResult<mysql_async::Conn> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+            .await
+            .map_err(DbError::from)?;
+        conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+            .await
+            .map_err(DbError::from)?;
+        Ok(conn)
+    }
 }
 
 impl SqlDatabase for MySqlPool {
@@ -170,10 +180,6 @@ impl SqlDatabase for MySqlPool {
 
 #[async_trait(?Send)]
 impl ObjectsStore for MySqlPool {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     async fn create(
         &self,
         uid: Option<String>,
@@ -185,29 +191,16 @@ impl ObjectsStore for MySqlPool {
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         let mut attempt = 0_u32;
         loop {
-            let mut conn = self
-                .pool
-                .get_conn()
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
-            // Reduce deadlocks and long stalls: use READ COMMITTED and a shorter lock wait timeout
-            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
-            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+                .map_err(DbError::from)?;
             let uid_res = create_(uid.clone(), owner, object, attributes, tags, &mut tx).await;
             let uid = match uid_res {
                 Ok(u) => u,
                 Err(e) => {
-                    tx.rollback().await.map_err(|re| {
-                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
-                    })?;
+                    tx.rollback().await.map_err(DbError::from)?;
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
@@ -219,9 +212,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!(
-                        "creation of object failed: {e}"
-                    )));
+                    return Err(InterfaceError::from(e));
                 }
             };
             match tx.commit().await {
@@ -235,9 +226,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!(
-                        "Failed to commit the transaction: {e}"
-                    )));
+                    return Err(InterfaceError::from(DbError::from(e)));
                 }
             }
         }
@@ -261,21 +250,11 @@ impl ObjectsStore for MySqlPool {
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         let mut attempt = 0_u32;
         loop {
-            let mut conn = self
-                .pool
-                .get_conn()
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
-            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
-            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+                .map_err(DbError::from)?;
             match update_object_(uid, object, attributes, tags, &mut tx).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
@@ -288,15 +267,11 @@ impl ObjectsStore for MySqlPool {
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                             continue;
                         }
-                        return Err(InterfaceError::Db(format!(
-                            "Failed to commit the transaction: {e}"
-                        )));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(|re| {
-                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
-                    })?;
+                    tx.rollback().await.map_err(DbError::from)?;
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
@@ -308,7 +283,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!("update of object failed: {e}")));
+                    return Err(InterfaceError::from(e));
                 }
             }
         }
@@ -318,21 +293,11 @@ impl ObjectsStore for MySqlPool {
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         let mut attempt = 0_u32;
         loop {
-            let mut conn = self
-                .pool
-                .get_conn()
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
-            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
-            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+                .map_err(DbError::from)?;
             match update_state_(uid, state, &mut tx).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
@@ -345,15 +310,11 @@ impl ObjectsStore for MySqlPool {
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                             continue;
                         }
-                        return Err(InterfaceError::Db(format!(
-                            "Failed to commit the transaction: {e}"
-                        )));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(|re| {
-                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
-                    })?;
+                    tx.rollback().await.map_err(DbError::from)?;
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
@@ -365,9 +326,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!(
-                        "update of the state of object {uid} failed: {e}"
-                    )));
+                    return Err(InterfaceError::from(e));
                 }
             }
         }
@@ -377,21 +336,11 @@ impl ObjectsStore for MySqlPool {
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         let mut attempt = 0_u32;
         loop {
-            let mut conn = self
-                .pool
-                .get_conn()
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
-            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
-            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+                .map_err(DbError::from)?;
             match delete_(uid, &mut tx).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
@@ -404,15 +353,11 @@ impl ObjectsStore for MySqlPool {
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                             continue;
                         }
-                        return Err(InterfaceError::Db(format!(
-                            "Failed to commit the transaction: {e}"
-                        )));
+                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(|re| {
-                        InterfaceError::Db(format!("transaction rollback failed: {re}"))
-                    })?;
+                    tx.rollback().await.map_err(DbError::from)?;
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
@@ -424,7 +369,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!("delete of object failed: {e}")));
+                    return Err(InterfaceError::from(e));
                 }
             }
         }
@@ -439,35 +384,21 @@ impl ObjectsStore for MySqlPool {
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         let mut attempt = 0_u32;
         loop {
-            let mut conn = self
-                .pool
-                .get_conn()
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to get a connection: {e}")))?;
-            conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set isolation level: {e}")))?;
-            conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
-                .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to set lock wait timeout: {e}")))?;
+            let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
-                .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
+                .map_err(DbError::from)?;
 
             match atomic_(user, operations, &mut tx).await {
                 Ok(v) => {
-                    tx.commit().await.map_err(|e| {
-                        InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                    })?;
+                    tx.commit().await.map_err(DbError::from)?;
                     return Ok(v);
                 }
                 Err(e) => {
                     // Always attempt to rollback before deciding to retry or return the error
-                    if let Err(re) = tx.rollback().await {
-                        return Err(InterfaceError::Db(format!(
-                            "transaction rollback failed: {re}"
-                        )));
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
                     }
 
                     // Detect MySQL deadlock (1213) via normalized error text
@@ -487,7 +418,7 @@ impl ObjectsStore for MySqlPool {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::Db(format!("atomic operation failed: {e}")));
+                    return Err(InterfaceError::from(e));
                 }
             }
         }

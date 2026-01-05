@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -260,10 +259,6 @@ impl RedisWithFindex {
 
 #[async_trait(?Send)]
 impl ObjectsStore for RedisWithFindex {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.
