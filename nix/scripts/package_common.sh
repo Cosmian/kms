@@ -447,6 +447,18 @@ resolve_openssl_path() {
       cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_workspace/ssl/"
       cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_server/ssl/"
       cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_server/ssl/"
+      # Ensure openssl.cnf contains the correct FIPS include directive
+      for staging_dir in "$fixed_path_workspace" "$fixed_path_server"; do
+        conf="$staging_dir/ssl/openssl.cnf"
+        if [ -f "$conf" ]; then
+          # Replace commented or incorrect include with the correct absolute path
+          sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
+          # If the include is still missing, prepend it at the top
+          if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
+            sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
+          fi
+        fi
+      done
       # Fix permissions (Nix store files are readonly)
       chmod 644 "$fixed_path_workspace/ssl"/*.cnf "$fixed_path_server/ssl"/*.cnf
     fi
@@ -476,6 +488,14 @@ resolve_openssl_path() {
         mkdir -p "$staging_dir/ssl"
         cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$staging_dir/ssl/"
         cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$staging_dir/ssl/"
+        # Ensure openssl.cnf contains the correct FIPS include directive
+        conf="$staging_dir/ssl/openssl.cnf"
+        if [ -f "$conf" ]; then
+          sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
+          if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
+            sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
+          fi
+        fi
         # Fix permissions (Nix store files are readonly)
         chmod 644 "$staging_dir/ssl/openssl.cnf"
         chmod 644 "$staging_dir/ssl/fipsmodule.cnf"
