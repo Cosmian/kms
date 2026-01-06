@@ -794,6 +794,8 @@ pub enum BlockCipherMode {
     LegacyNISTKeyWrap = 0x8000_000D,
 }
 
+pub use block_cipher_mode::BlockCipherMode;
+
 /// Padding Method Enumeration
 #[kmip_enum]
 pub enum PaddingMethod {
