@@ -18,7 +18,10 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
 
-use crate::{DbError, db_bail, error::DbResult, stores::redis::findex::Keyword};
+use crate::{
+    DbError, db_bail, error::DbResult, migrate_block_cipher_mode_if_needed,
+    stores::redis::findex::Keyword,
+};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -182,8 +185,10 @@ impl ObjectsDB {
                 Some(uid.as_bytes()),
             )
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
-        let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)
+        // Mutability below is needed to Migrate legacy BlockCipherMode in-place - otherwise we should destructure and that's very verbose.
+        let mut redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
+        redis_db_object.object = migrate_block_cipher_mode_if_needed(redis_db_object.object);
         Ok(redis_db_object)
     }
 

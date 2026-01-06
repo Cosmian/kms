@@ -549,7 +549,7 @@ pub fn encrypt(
         }
         SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
             info!(
-                "RFC 3394 is deprecated in favor of RFC 5549 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
+                "RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
             );
             Ok((rfc3394_wrap(plaintext, key)?, vec![]))
         }
@@ -698,7 +698,7 @@ pub fn decrypt(
         }
         SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
             info!(
-                "RFC 3394 is deprecated in favor of RFC 5549 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
+                "RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
             );
             rfc3394_unwrap(ciphertext, key)?
         }

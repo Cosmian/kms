@@ -84,7 +84,7 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
     let cipher = select_cipher_pad(kek)?;
     let n_bytes = ciphertext.len();
 
-    // RFC 5649 requires ciphertext to be at least 2 semi-blocks (so 1 bloc) and a multiple of 8 bytes (complete blocs)
+    // RFC 5649 requires ciphertext to be at least 2 semi-blocks (so 1 block) and a multiple of 8 bytes (complete blocks)
     if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 2 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_owned(),

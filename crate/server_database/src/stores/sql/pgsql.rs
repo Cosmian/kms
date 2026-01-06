@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
+    migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
         migrate::HasDatabase,
@@ -58,6 +59,7 @@ fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
     let object: Object = serde_json::from_str(&row.get::<String, _>(1))
         .context("failed deserializing the object")?;
+    let object = migrate_block_cipher_mode_if_needed(object);
     let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
         .context("failed deserializing the Attributes")?;
     let owner = row.get::<String, _>(3);

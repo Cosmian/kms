@@ -55,3 +55,57 @@ pub mod reexport {
     #[cfg(feature = "non-fips")]
     pub use redis;
 }
+
+use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+
+/// Upgrades wrongly serialized `BlockCipherMode::LegacyNISTKeyWrap` (`0x8000_000D`) to
+/// `BlockCipherMode::AESKeyWrapPadding` (`0x0000_000C`) for backward compatibility
+/// with versions prior to 5.15.x Calling this right after deserializing ensures that no faulty
+/// data even gets read from a (previously) valid database.
+///
+/// This function checks if the object has a `KeyWrappingData` with the legacy
+/// `NISTKeyWrap` value and converts it to the correct `AESKeyWrapPadding` value.
+#[allow(deprecated)] // Allow use of LegacyNISTKeyWrap for backward compatibility migration
+pub(crate) fn migrate_block_cipher_mode_if_needed(mut object: Object) -> Object {
+    use cosmian_kmip::{
+        kmip_0::kmip_types::BlockCipherMode,
+        kmip_2_1::kmip_objects::{
+            Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
+        },
+    };
+    // Only objects with key blocks can have key wrapping data
+    let key_block = match &mut object {
+        Object::SymmetricKey(SymmetricKey { key_block })
+        | Object::PrivateKey(PrivateKey { key_block })
+        | Object::PublicKey(PublicKey { key_block })
+        | Object::SecretData(SecretData { key_block, .. })
+        | Object::SplitKey(SplitKey { key_block, .. })
+        | Object::PGPKey(PGPKey { key_block, .. }) => key_block,
+        // These object types don't have key blocks
+        Object::Certificate(_) | Object::CertificateRequest(_) | Object::OpaqueObject(_) => {
+            return object;
+        }
+    };
+
+    // Check if key_wrapping_data exists and has encryption_key_information
+    if let Some(key_wrapping_data) = &mut key_block.key_wrapping_data {
+        if let Some(encryption_key_info) = &mut key_wrapping_data.encryption_key_information {
+            if let Some(crypto_params) = &mut encryption_key_info.cryptographic_parameters {
+                if crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap) {
+                    crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
+                }
+            }
+        }
+
+        // Also check MAC/signature key information (if present)
+        if let Some(mac_sign_key_info) = &mut key_wrapping_data.mac_signature_key_information {
+            if let Some(crypto_params) = &mut mac_sign_key_info.cryptographic_parameters {
+                if crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap) {
+                    crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
+                }
+            }
+        }
+    }
+
+    object
+}

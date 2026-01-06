@@ -35,8 +35,8 @@ pub enum ExportKeyFormat {
 #[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum WrappingAlgorithm {
-    AESKeyWrapPadding,
-    NistKeyWrap,
+    AESKeyWrapPadding, // RFC 5649
+    NistKeyWrap,       // RFC 3394
     AesGCM,
     RsaPkcsV15Sha1,
     RsaPkcsV15,

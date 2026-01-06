@@ -34,7 +34,7 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
 pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let n_bytes = plaintext.len();
 
-    // RFC 3394 requires plaintext to be at least 16 bytes and a multiple of 8 bytes
+    // RFC 3394 requires plaintext to be at least 16 bytes and a multiple of 8 bytes.
     if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 2 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The plaintext size should be >= 16 and a multiple of 8".to_owned(),
@@ -47,9 +47,9 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let mut ctx = CipherCtx::new()?;
     ctx.encrypt_init(Some(cipher), Some(kek), None)?;
 
-    // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final
-    // The extra blocs will not propagate to the result as its truncated to the actual size. Due to how the openssl library is programmed,
-    // not adding at least 1 extra bloc results in a panic. We chose to add two because that's how openssl library operates when using this cypher
+    // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final.
+    // The extra blocks will not propagate to the result as it's truncated to the actual size. Due to how the openssl library is programmed,
+    // not adding at least 1 extra block results in a panic. We chose to add two because that's how the openssl library operates when using this cipher.
     let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE];
 
     // Perform the key wrap operation
@@ -58,7 +58,7 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
         CryptoError::IndexingSlicing("Buffer too small for cipher_final".to_owned())
     })?)?;
 
-    // Truncate to actual output size
+    // Truncate to actual output size.
     ciphertext.truncate(written);
 
     Ok(ciphertext)
@@ -67,7 +67,7 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
 pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 
-    // RFC 3394 requires ciphertext to be at least 24 bytes (16 bytes plaintext + 8 bytes IV) and a multiple of 8
+    // RFC 3394 requires ciphertext to be at least 24 bytes (16 bytes plaintext + 8 bytes IV) and a multiple of 8.
     if !n_bytes.is_multiple_of(AES_WRAP_BLOCK_SIZE) || n_bytes < 3 * AES_WRAP_BLOCK_SIZE {
         return Err(CryptoError::InvalidSize(
             "The ciphertext size should be >= 24 and a multiple of 8".to_owned(),
@@ -76,7 +76,7 @@ pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     let cipher = select_cipher(kek)?;
 
-    // Initialize cipher context for decryption
+    // Initialize cipher context for decryption.
     let mut ctx = CipherCtx::new()?;
     ctx.decrypt_init(Some(cipher), Some(kek), None)?;
 
@@ -89,7 +89,7 @@ pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
         CryptoError::IndexingSlicing("Buffer too small for cipher_final".to_owned())
     })?)?;
 
-    // Truncate to actual output size
+    // Truncate to actual output size.
     plaintext.truncate(written);
 
     Ok(plaintext)

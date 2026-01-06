@@ -765,31 +765,49 @@ pub enum ShreddingAlgorithm {
     Unsupervised = 0x3,
 }
 
-// Block Cipher Mode Enumeration
-#[kmip_enum]
-pub enum BlockCipherMode {
-    CBC = 0x0000_0001,
-    ECB = 0x0000_0002,
-    PCBC = 0x0000_0003,
-    CFB = 0x0000_0004,
-    OFB = 0x0000_0005,
-    CTR = 0x0000_0006,
-    CMAC = 0x0000_0007,
-    CCM = 0x0000_0008,
-    GCM = 0x0000_0009,
-    CBCMAC = 0x0000_000A,
-    XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    NISTKeyWrap = 0x8000_000D, // FIXME
-    X9102AESKW = 0x0000_000E,
-    X9102TDKW = 0x0000_000F,
-    X9102AKW1 = 0x0000_0010,
-    X9102AKW2 = 0x0000_0011,
-    AEAD = 0x0000_0012,
-    // Extensions - 8XXXXXXX
-    // AES GCM SIV
-    GCMSIV = 0x8000_0002,
+#[allow(deprecated)] // this is mandatory since we do want to signal that variant is deprecated to the "user" but still keep it
+// this module was created because it's not possible to `allow` lints and use `kmip_enum` at the same time. The module is immediately
+// re-exported below, it only exists for proper compilation and has 0 effects on the final executable
+mod block_cipher_mode {
+    use super::{
+        Deserialize, Display, KmipEnumDeserialize, KmipEnumSerialize, Serialize, kmip_enum,
+    };
+
+    #[kmip_enum]
+    pub enum BlockCipherMode {
+        CBC = 0x0000_0001,
+        ECB = 0x0000_0002,
+        PCBC = 0x0000_0003,
+        CFB = 0x0000_0004,
+        OFB = 0x0000_0005,
+        CTR = 0x0000_0006,
+        CMAC = 0x0000_0007,
+        CCM = 0x0000_0008,
+        GCM = 0x0000_0009,
+        CBCMAC = 0x0000_000A,
+        XTS = 0x0000_000B,
+        AESKeyWrapPadding = 0x0000_000C, // RFC 5649
+        NISTKeyWrap = 0x0000_000D,       // RFC 3394
+        X9102AESKW = 0x0000_000E,
+        X9102TDKW = 0x0000_000F,
+        X9102AKW1 = 0x0000_0010,
+        X9102AKW2 = 0x0000_0011,
+        AEAD = 0x0000_0012,
+        // Extensions - 8XXXXXXX
+        // AES GCM SIV
+        GCMSIV = 0x8000_0002,
+        // This variant was introduced to support backward compatibility with versions prior to 5.15
+        // In the database layer, right after deserialization, objects that have a saved BlockCipherMode (via their `KeyWrappingData`) are tested for this mode and
+        // converted to AESKeyWrapPadding if found.
+        #[deprecated(
+            since = "5.15.0",
+            note = "Use `AESKeyWrapPadding` instead. This value exists only for backward compatibility and will be removed in a future version."
+        )]
+        LegacyNISTKeyWrap = 0x8000_000D,
+    }
 }
+
+pub use block_cipher_mode::BlockCipherMode;
 
 /// Padding Method Enumeration
 #[kmip_enum]
