@@ -200,6 +200,27 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p usr/local/cosmian/ui/dist
     cp -r ${actualKmsServer}/usr/local/cosmian/ui/dist/* usr/local/cosmian/ui/dist/ 2>/dev/null || echo "UI dist copy skipped or empty"
 
+    echo "=== fakeRootCommands: Installing OpenSSL FIPS modules and configs (if present) ==="
+    # Copy FIPS provider modules and OpenSSL configs from the built server derivation
+    # into the expected runtime locations inside the image. This ensures
+    # OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl-fips.cnf and
+    # OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules resolve correctly.
+    mkdir -p usr/local/cosmian/lib/ossl-modules
+    mkdir -p usr/local/cosmian/lib/ssl
+    if [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
+      cp -L ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+    else
+      echo "No ossl-modules found in server output"
+    fi
+    if [ -d ${actualKmsServer}/usr/local/cosmian/lib/ssl ]; then
+      cp -L ${actualKmsServer}/usr/local/cosmian/lib/ssl/* usr/local/cosmian/lib/ssl/ 2>/dev/null || true
+    else
+      echo "No ssl config dir found in server output"
+    fi
+    echo "=== fakeRootCommands: Verifying FIPS files ==="
+    ls -la usr/local/cosmian/lib/ossl-modules/ || echo "ossl-modules not present"
+    ls -la usr/local/cosmian/lib/ssl/ || echo "ssl config not present"
+
     echo "=== fakeRootCommands: Bundling CA certificates locally ==="
     cp -L ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt || echo "Failed to copy CA bundle"
 
