@@ -164,9 +164,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, JwtAuthConfig,
-        LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
-        UiConfig, WorkspaceConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, LoggingConfig,
+        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+        WorkspaceConfig,
     };
 
     #[cfg(feature = "non-fips")]

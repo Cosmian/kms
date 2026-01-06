@@ -185,11 +185,25 @@ async fn get_and_validate_kek_algorithm(
         .map_err(KmsError::from)?
         .cryptographic_algorithm()
         .ok_or_else(|| {
-            AzureEkmErrorReply::internal_error("key has no cryptographic algorithm".to_owned())
+            AzureEkmErrorReply::internal_error("Key has no cryptographic algorithm set".to_owned())
         })?;
 
+    // According to KMS docs, if the algorithm is present the length is also present, so if we reach this line, there is no more error risk
     match (&kek_algorithm, request_alg) {
         (CryptographicAlgorithm::AES, WrapAlgorithm::A256KW | WrapAlgorithm::A256KWP) => {
+            // Specs mention only the usage of 256 bits keys
+            let key_length = key_object
+                .key_block()
+                .map_err(KmsError::from)?
+                .cryptographic_length
+                .ok_or_else(|| {
+                    AzureEkmErrorReply::internal_error("Key has no cryptographic length.")
+                })?;
+            if key_length != 256 {
+                return Err(AzureEkmErrorReply::invalid_request(format!(
+                    "AES KEK must be 256 bits, found {key_length} bits"
+                )));
+            }
             Ok(kek_algorithm)
         }
         (CryptographicAlgorithm::RSA, WrapAlgorithm::RsaOaep256) => Ok(kek_algorithm),
@@ -207,7 +221,6 @@ async fn get_and_validate_kek_algorithm(
     }
 }
 
-// TODO: refuse keks that are not 256
 pub(crate) async fn wrap_key_handler(
     kms: &KMS,
     key_name: &str,
@@ -300,8 +313,8 @@ async fn wrap_with_aes(
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     // Determine block cipher mode and IV/nonce based on algorithm
     let block_cipher_mode = match alg {
-        WrapAlgorithm::A256KWP => BlockCipherMode::NISTKeyWrap,
-        WrapAlgorithm::A256KW => panic!("not now, working on it."),
+        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
+        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
         WrapAlgorithm::RsaOaep256 => {
             return Err(AzureEkmErrorReply::invalid_request(
                 "Invalid AES wrap algorithm",
@@ -417,10 +430,9 @@ async fn unwrap_with_aes(
     alg: &WrapAlgorithm,
     correlation_id: String, // for logging purposes
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
-    // Determine block cipher mode and IV/nonce based on algorithm
     let block_cipher_mode = match alg {
-        WrapAlgorithm::A256KWP => BlockCipherMode::NISTKeyWrap,
-        WrapAlgorithm::A256KW => panic!("not now, working on it."), // the right value is probably Block
+        WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
+        WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
         WrapAlgorithm::RsaOaep256 => {
             return Err(AzureEkmErrorReply::invalid_request(
                 "Invalid AES wrap algorithm",
