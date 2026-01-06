@@ -24,6 +24,25 @@ use crate::{
     stores::{PGSQL_QUERIES, sql::database::SqlDatabase},
 };
 
+// Deadlock/serialization handling parameters for PostgreSQL
+const PG_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+fn is_pg_deadlock_or_serialization(msg: &str) -> bool {
+    // Detect common PostgreSQL errors
+    // - deadlock detected (SQLSTATE 40P01)
+    // - serialization failure (SQLSTATE 40001)
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("deadlock detected")
+        || lower.contains("40p01")
+        || lower.contains("serialization failure")
+        || lower.contains("40001")
+}
+
+fn pg_deadlock_backoff_ms(attempt: u32) -> u64 {
+    let cap = attempt.min(PG_DEADLOCK_MAX_RETRIES);
+    50_u64 * (1_u64 << cap)
+}
+
 macro_rules! get_pgsql_query {
     ($name:literal) => {
         PGSQL_QUERIES
@@ -109,44 +128,73 @@ impl ObjectsStore for PgPool {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-        let object_json =
-            serde_json::to_string(object).map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let attributes_json =
-            serde_json::to_value(attributes).map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let state = attributes.state.unwrap_or(State::PreActive).to_string();
-        let stmt = tx
-            .prepare(get_pgsql_query!("insert-objects"))
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let attrs_param = Json(&attributes_json);
-        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &owner])
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        if !tags.is_empty() {
-            let transaction_stmt = tx
-                .prepare(get_pgsql_query!("insert-tags"))
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            uid: &str,
+            owner: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: &HashSet<String>,
+        ) -> DbResult<()> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let state = attributes.state.unwrap_or(State::PreActive).to_string();
+            let stmt = tx
+                .prepare(get_pgsql_query!("insert-objects"))
                 .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            for tag in tags {
-                tx.execute(&transaction_stmt, &[&uid, tag])
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &owner])
+                .await
+                .map_err(DbError::from)?;
+            if !tags.is_empty() {
+                let transaction_stmt = tx
+                    .prepare(get_pgsql_query!("insert-tags"))
                     .await
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&transaction_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
+            }
+            Ok(())
+        }
+
+        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, &uid, owner, object, attributes, tags).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(uid.clone()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
             }
         }
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        Ok(uid)
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
@@ -208,49 +256,77 @@ impl ObjectsStore for PgPool {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let object_json =
-            serde_json::to_string(object).map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let attributes_json =
-            serde_json::to_value(attributes).map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let stmt = tx
-            .prepare(get_pgsql_query!("update-object-with-object"))
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let attrs_param = Json(&attributes_json);
-        tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        if let Some(tags) = tags {
-            let delete_stmt = tx
-                .prepare(get_pgsql_query!("delete-tags"))
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            uid: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: Option<&HashSet<String>>,
+        ) -> DbResult<()> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let stmt = tx
+                .prepare(get_pgsql_query!("update-object-with-object"))
                 .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            tx.execute(&delete_stmt, &[&uid])
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
                 .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let insert_stmt = tx
-                .prepare(get_pgsql_query!("insert-tags"))
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            for tag in tags {
-                tx.execute(&insert_stmt, &[&uid, tag])
+                .map_err(DbError::from)?;
+            if let Some(tags) = tags {
+                let delete_stmt = tx
+                    .prepare(get_pgsql_query!("delete-tags"))
                     .await
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                    .map_err(DbError::from)?;
+                tx.execute(&delete_stmt, &[&uid])
+                    .await
+                    .map_err(DbError::from)?;
+                let insert_stmt = tx
+                    .prepare(get_pgsql_query!("insert-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&insert_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
+            }
+            Ok(())
+        }
+
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, uid, object, attributes, tags).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
             }
         }
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        Ok(())
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
@@ -272,33 +348,52 @@ impl ObjectsStore for PgPool {
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let d1 = tx
-            .prepare(get_pgsql_query!("delete-object"))
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        tx.execute(&d1, &[&uid])
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let d2 = tx
-            .prepare(get_pgsql_query!("delete-tags"))
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        tx.execute(&d2, &[&uid])
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        Ok(())
+        async fn transact(tx: &tokio_postgres::Transaction<'_>, uid: &str) -> DbResult<()> {
+            let d1 = tx
+                .prepare(get_pgsql_query!("delete-object"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+            let d2 = tx
+                .prepare(get_pgsql_query!("delete-tags"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+            Ok(())
+        }
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, uid).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
+            }
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn atomic(
@@ -306,78 +401,168 @@ impl ObjectsStore for PgPool {
         user: &str,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let mut uids = Vec::with_capacity(operations.len());
-        for op in operations {
-            match op {
-                AtomicOperation::Create((uid, object, attributes, tags)) => {
-                    let new_uid = self
-                        .create(Some(uid.clone()), user, object, attributes, tags)
-                        .await?;
-                    uids.push(new_uid);
-                }
-                AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                    self.update_object(uid, object, attributes, tags.as_ref())
-                        .await?;
-                    uids.push(uid.clone());
-                }
-                AtomicOperation::UpdateState((uid, state)) => {
-                    self.update_state(uid, *state).await?;
-                    uids.push(uid.clone());
-                }
-                AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                    // emulate upsert via object upsert query
-                    let object_json = serde_json::to_string(object)
-                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                    let attributes_json = serde_json::to_value(attributes)
-                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                    let stmt = tx
-                        .prepare(get_pgsql_query!("upsert-object"))
-                        .await
-                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                    let st = state.to_string();
-                    let attrs_param = Json(&attributes_json);
-                    tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &st, &user])
-                        .await
-                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                    if let Some(tags) = tags {
-                        let delete_stmt = tx
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            user: &str,
+            operations: &[AtomicOperation],
+        ) -> DbResult<Vec<String>> {
+            let mut uids = Vec::with_capacity(operations.len());
+            for op in operations {
+                match op {
+                    AtomicOperation::Create((uid, object, attributes, tags)) => {
+                        // inline create within same transaction
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let state = attributes.state.unwrap_or(State::PreActive).to_string();
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("insert-objects"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &user])
+                            .await
+                            .map_err(DbError::from)?;
+                        if !tags.is_empty() {
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("update-object-with-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateState((uid, state)) => {
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("update-object-with-state"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        tx.execute(&stmt, &[&st, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("upsert-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &st, &user])
+                            .await
+                            .map_err(DbError::from)?;
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Delete(uid) => {
+                        let d1 = tx
+                            .prepare(get_pgsql_query!("delete-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+                        let d2 = tx
                             .prepare(get_pgsql_query!("delete-tags"))
                             .await
-                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                        tx.execute(&delete_stmt, &[&uid])
-                            .await
-                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                        let insert_stmt = tx
-                            .prepare(get_pgsql_query!("insert-tags"))
-                            .await
-                            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                        for tag in tags {
-                            tx.execute(&insert_stmt, &[&uid, tag])
-                                .await
-                                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                        }
+                            .map_err(DbError::from)?;
+                        tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+                        uids.push(uid.clone());
                     }
-                    uids.push(uid.clone());
                 }
-                AtomicOperation::Delete(uid) => {
-                    self.delete(uid).await?;
-                    uids.push(uid.clone());
+            }
+            Ok(uids)
+        }
+
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, user, operations).await {
+                Ok(v) => match tx.commit().await {
+                    Ok(()) => return Ok(v),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
                 }
             }
         }
-        tx.commit()
-            .await
-            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        Ok(uids)
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {

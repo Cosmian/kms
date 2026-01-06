@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
@@ -15,8 +18,6 @@ use rawsql::Loader;
 use serde_json::Value;
 use uuid::Uuid;
 
-// Default MySQL lock wait timeout (seconds) applied to every new session.
-// MySQL default is ~50s; 10s is more appropriate for tests and reduces long stalls.
 use crate::{
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
@@ -45,8 +46,9 @@ fn is_mysql_deadlock(msg: &str) -> bool {
 }
 
 fn mysql_deadlock_backoff_ms(attempt: u32) -> u64 {
-    // Exponential-ish backoff: 50, 100, 200, 400, 800, 1600ms
-    50_u64.saturating_mul(1_u64 << attempt.min(10))
+    // Exponential-ish backoff capped by retry count: 50, 100, 200, 400, 800, 1600ms
+    let cap = attempt.min(MYSQL_DEADLOCK_MAX_RETRIES);
+    50_u64 * (1_u64 << cap)
 }
 
 #[macro_export]
@@ -106,12 +108,12 @@ impl MySqlPool {
     ) -> DbResult<Self> {
         let opts = mysql_async::Opts::from_url(connection_url).map_err(DbError::from)?;
 
-        // Default: reduce deadlocks by using READ COMMITTED isolation level per session
-        // This is applied for every new connection.
-        // Also set a reasonable lock wait timeout (seconds) to fail faster under contention
-        // Default rationale: conservative pool tuned to CPU. MySQL/MariaDB can suffer
-        // from too many concurrent connections (threads, buffer pool pressure). Using
-        // min(10, 2 × CPU cores) balances parallelism with stability for typical services.
+        // Pool sizing defaults: conservative pool tuned to CPU.
+        // Session settings (READ COMMITTED + shorter lock wait timeout) are applied in
+        // `get_configured_conn()` when acquiring a connection for transactional work.
+        // Rationale: MySQL/MariaDB can suffer from too many concurrent connections
+        // (threads, buffer pool pressure). Using min(10, 2 × CPU cores) balances
+        // parallelism with stability for typical services.
         let default_conns: usize = num_cpus::get().saturating_mul(2).min(10);
         let max_conns: usize = max_connections
             .and_then(|v| usize::try_from(v).ok())
@@ -188,48 +190,58 @@ impl ObjectsStore for MySqlPool {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
+        async fn transact(
+            tx: &mut Transaction<'_>,
+            uid: Option<String>,
+            owner: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: &HashSet<String>,
+        ) -> DbResult<String> {
+            create_(uid, owner, object, attributes, tags, tx).await
+        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        let mut attempt = 0_u32;
-        loop {
+        for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            let uid_res = create_(uid.clone(), owner, object, attributes, tags, &mut tx).await;
-            let uid = match uid_res {
-                Ok(u) => u,
+            match transact(&mut tx, uid.clone(), owner, object, attributes, tags).await {
+                Ok(v) => match tx.commit().await {
+                    Ok(()) => return Ok(v),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt + 1 < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
                 Err(e) => {
-                    tx.rollback().await.map_err(DbError::from)?;
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
+                    }
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
                         if is_mysql_deadlock(msg)
                     );
-                    if is_deadlock && attempt < max_retries {
+                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
                 }
-            };
-            match tx.commit().await {
-                Ok(()) => return Ok(uid),
-                Err(e) => {
-                    let msg = e.to_string();
-                    let is_deadlock = is_mysql_deadlock(&msg);
-                    if is_deadlock && attempt < max_retries {
-                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
-                    return Err(InterfaceError::from(DbError::from(e)));
-                }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
@@ -247,132 +259,153 @@ impl ObjectsStore for MySqlPool {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
+        async fn transact(
+            tx: &mut Transaction<'_>,
+            uid: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: Option<&HashSet<String>>,
+        ) -> DbResult<()> {
+            update_object_(uid, object, attributes, tags, tx).await
+        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        let mut attempt = 0_u32;
-        loop {
+        for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            match update_object_(uid, object, attributes, tags, &mut tx).await {
+            match transact(&mut tx, uid, object, attributes, tags).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt < max_retries {
+                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            attempt += 1;
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(DbError::from)?;
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
+                    }
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
                         if is_mysql_deadlock(msg)
                     );
-                    if is_deadlock && attempt < max_retries {
+                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
                 }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        async fn transact(tx: &mut Transaction<'_>, uid: &str, state: State) -> DbResult<()> {
+            update_state_(uid, state, tx).await
+        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        let mut attempt = 0_u32;
-        loop {
+        for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            match update_state_(uid, state, &mut tx).await {
+            match transact(&mut tx, uid, state).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt < max_retries {
+                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            attempt += 1;
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(DbError::from)?;
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
+                    }
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
                         if is_mysql_deadlock(msg)
                     );
-                    if is_deadlock && attempt < max_retries {
+                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
                 }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+        async fn transact(tx: &mut Transaction<'_>, uid: &str) -> DbResult<()> {
+            delete_(uid, tx).await
+        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        let mut attempt = 0_u32;
-        loop {
+        for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            match delete_(uid, &mut tx).await {
+            match transact(&mut tx, uid).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt < max_retries {
+                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            attempt += 1;
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    tx.rollback().await.map_err(DbError::from)?;
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
+                    }
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
                         if is_mysql_deadlock(msg)
                     );
-                    if is_deadlock && attempt < max_retries {
+                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
                 }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn atomic(
@@ -380,48 +413,55 @@ impl ObjectsStore for MySqlPool {
         user: &str,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        // Retry on MySQL deadlocks (ER_LOCK_DEADLOCK = 1213) with small backoff
+        async fn transact(
+            tx: &mut Transaction<'_>,
+            user: &str,
+            operations: &[AtomicOperation],
+        ) -> DbResult<Vec<String>> {
+            atomic_(user, operations, tx).await
+        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        let mut attempt = 0_u32;
-        loop {
+        for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-
-            match atomic_(user, operations, &mut tx).await {
-                Ok(v) => {
-                    tx.commit().await.map_err(DbError::from)?;
-                    return Ok(v);
-                }
+            match transact(&mut tx, user, operations).await {
+                Ok(v) => match tx.commit().await {
+                    Ok(()) => return Ok(v),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt + 1 < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
                 Err(e) => {
-                    // Always attempt to rollback before deciding to retry or return the error
                     if let Err(re) = tx.rollback().await.map_err(DbError::from) {
                         return Err(InterfaceError::from(re));
                     }
-
-                    // Detect MySQL deadlock (1213) via normalized error text
-                    // The inner operations may wrap SQL errors using `db_bail!`,
-                    // which produces a `DatabaseError` variant. Handle both.
-                    let is_deadlock = match &e {
-                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg) => {
-                            is_mysql_deadlock(msg)
-                        }
-                        _ => false,
-                    };
-                    if is_deadlock && attempt < max_retries {
-                        // Exponential-ish backoff: 50, 100, 200, 400, 800, 1600ms
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        attempt += 1;
-                        #[allow(clippy::disallowed_methods)]
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
                 }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
