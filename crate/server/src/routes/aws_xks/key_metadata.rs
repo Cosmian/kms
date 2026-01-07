@@ -1,17 +1,22 @@
 //! `GetKeyMetaData`
 //! ----------------
-//! This API fetches metadata associated with the external key including its type,
-//! supported cryptographic operations and status.
+//! This API is called by KMS to get metadata about an external key or create a new external key.
 use std::sync::Arc;
 
 use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path},
 };
-
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::GetAttributes,
-    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::Create,
+        kmip_operations::GetAttributes,
+        kmip_types::KeyFormatType,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    },
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
@@ -144,10 +149,17 @@ pub(crate) async fn get_key_metadata(
     );
     debug!("get metadata request: {:?}", request.requestMetadata);
     let kms = kms.into_inner();
-    match get_key_metadata_inner(req_http, request, key_id, &kms)
-        .await
-        .map(Json)
-    {
+    let response = match request.requestMetadata.kmsOperation.as_str() {
+        "GetKeyMetadata" => get_key_metadata_inner(req_http, request, key_id, &kms)
+            .await
+            .map(Json),
+        "CreateKey" => create_key(req_http, request, key_id, &kms).await.map(Json),
+        x => Err(XksErrorReply {
+            errorName: XksErrorName::UnsupportedOperationException,
+            errorMessage: Some(format!("Unsupported kmsOperation: {x}")),
+        }),
+    };
+    match response {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
         Err(e) => HttpResponse::from_error(e),
     }
@@ -222,6 +234,66 @@ async fn get_key_metadata_inner(
         }
     };
 
+    let key_status = "ENABLED".to_owned();
+    Ok(GetKeyMetadataResponse {
+        keySpec: key_spec,
+        keyUsage: key_usage,
+        keyStatus: key_status,
+    })
+}
+
+async fn create_key(
+    _req_http: HttpRequest,
+    request: GetKeyMetadataRequest,
+    key_id: String,
+    kms: &Arc<KMS>,
+) -> Result<GetKeyMetadataResponse, XksErrorReply> {
+    let user = request.requestMetadata.awsPrincipalArn;
+
+    let mut attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        cryptographic_parameters: Some(CryptographicParameters {
+            block_cipher_mode: Some(BlockCipherMode::GCM),
+            ..CryptographicParameters::default()
+        }),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
+        ..Attributes::default()
+    };
+    attributes
+        .set_tags(["_kk", "aws-xks"])
+        .map_err(|e| XksErrorReply {
+            errorName: XksErrorName::InternalException,
+            errorMessage: Some(format!("Failed to set tags: {e}")),
+        })?;
+    let create = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes,
+        protection_storage_masks: None,
+    };
+
+    kms.create(create, &user, None, None)
+        .await
+        .map_err(|e| XksErrorReply {
+            errorName: XksErrorName::KeyNotFoundException,
+            errorMessage: Some(e.to_string()),
+        })?;
+
+    let key_spec = "AES_256".to_owned();
+    let key_usage = vec![
+        KeyUsage::ENCRYPT,
+        KeyUsage::DECRYPT,
+        KeyUsage::WRAP,
+        KeyUsage::UNWRAP,
+    ];
     let key_status = "ENABLED".to_owned();
     Ok(GetKeyMetadataResponse {
         keySpec: key_spec,
