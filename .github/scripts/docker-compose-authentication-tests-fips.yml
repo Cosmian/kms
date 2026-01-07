@@ -17,9 +17,9 @@ services:
       - --port
       - '9999'
       - --tls-cert-file
-      - /data/certificates/client_server/server/kmserver.acme.com.crt
+      - /data/certificates/client_server/server-3072/server.crt
       - --tls-key-file
-      - /data/certificates/client_server/server/kmserver.acme.com.key
+      - /data/certificates/client_server/server-3072/server.key
       - --clients-ca-cert-file
       - /data/certificates/client_server/ca/ca.crt
       - --socket-server-start
@@ -42,9 +42,9 @@ services:
       - --port
       - '10000'
       - --tls-cert-file
-      - /data/certificates/client_server/server/kmserver.acme.com.crt
+      - /data/certificates/client_server/server-3072/server.crt
       - --tls-key-file
-      - /data/certificates/client_server/server/kmserver.acme.com.key
+      - /data/certificates/client_server/server-3072/server.key
       - --tls-cipher-suites
       - TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_AES_128_CCM_SHA256
       - --clients-ca-cert-file

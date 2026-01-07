@@ -6,6 +6,10 @@
   variant ? "fips",
   # KMS version (from Cargo.toml)
   version,
+  # Optional: pass the OpenSSL derivation used to build the server (e.g., from nix/openssl.nix).
+  # When provided (recommended for FIPS), Docker will copy configs/modules from here
+  # instead of from the server output, ensuring strict reuse of the original derivation configs.
+  opensslDrv ? null,
 }:
 
 # Note: The kmsServer derivation must be built with a UI parameter
@@ -23,6 +27,9 @@ let
   # Image name and tag
   imageName = "cosmian-kms";
   imageTag = "${version}-${variant}";
+
+  # Optional OpenSSL derivation absolute path (empty string when not provided)
+  opensslDrvPath = if opensslDrv == null then "" else toString opensslDrv;
 
   # Create a minimal runtime environment
   # Include necessary libraries for the KMS server
@@ -136,6 +143,24 @@ let
     echo "=== End Debug Info ==="
     echo ""
 
+    echo "=== OpenSSL runtime configuration ==="
+    echo "OPENSSL_CONF: $${OPENSSL_CONF:-unset}"
+    echo "OPENSSL_MODULES: $${OPENSSL_MODULES:-unset}"
+    if [ -f /usr/local/cosmian/lib/ssl/openssl.cnf ]; then
+      echo "Dumping /usr/local/cosmian/lib/ssl/openssl.cnf (first 80 lines):"
+      head -n 80 /usr/local/cosmian/lib/ssl/openssl.cnf || true
+    else
+      echo "/usr/local/cosmian/lib/ssl/openssl.cnf not found"
+    fi
+    if [ -f /usr/local/cosmian/lib/ssl/fipsmodule.cnf ]; then
+      echo "Dumping /usr/local/cosmian/lib/ssl/fipsmodule.cnf:"
+      cat /usr/local/cosmian/lib/ssl/fipsmodule.cnf || true
+    else
+      echo "/usr/local/cosmian/lib/ssl/fipsmodule.cnf not found"
+    fi
+    echo "=== End OpenSSL runtime configuration ==="
+    echo ""
+
     # Create data directory if it doesn't exist
     mkdir -p /var/lib/cosmian-kms
 
@@ -201,21 +226,31 @@ pkgs.dockerTools.buildLayeredImage {
     cp -r ${actualKmsServer}/usr/local/cosmian/ui/dist/* usr/local/cosmian/ui/dist/ 2>/dev/null || echo "UI dist copy skipped or empty"
 
     echo "=== fakeRootCommands: Installing OpenSSL FIPS modules and configs (if present) ==="
-    # Copy FIPS provider modules and OpenSSL configs from the built server derivation
-    # into the expected runtime locations inside the image. This ensures
-    # OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl-fips.cnf and
-    # OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules resolve correctly.
+    # Prefer copying OpenSSL provider modules and configs from the provided OpenSSL derivation
+    # (opensslDrv) to strictly reuse the derivation-generated configuration. Fall back to
+    # the server output if opensslDrv is not provided.
     mkdir -p usr/local/cosmian/lib/ossl-modules
     mkdir -p usr/local/cosmian/lib/ssl
-    if [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
+    if [ -n "${opensslDrvPath}" ] && [ -d ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules ]; then
+      cp -L ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+    elif [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
       cp -L ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
     else
-      echo "No ossl-modules found in server output"
+      echo "No ossl-modules found in openssl derivation or server output"
     fi
-    if [ -d ${actualKmsServer}/usr/local/cosmian/lib/ssl ]; then
+    if [ -n "${opensslDrvPath}" ] && [ -d ${opensslDrvPath}/usr/local/cosmian/lib/ssl ]; then
+      cp -L ${opensslDrvPath}/usr/local/cosmian/lib/ssl/* usr/local/cosmian/lib/ssl/ 2>/dev/null || true
+    elif [ -d ${actualKmsServer}/usr/local/cosmian/lib/ssl ]; then
       cp -L ${actualKmsServer}/usr/local/cosmian/lib/ssl/* usr/local/cosmian/lib/ssl/ 2>/dev/null || true
     else
-      echo "No ssl config dir found in server output"
+      echo "No ssl config dir found in openssl derivation or server output"
+    fi
+    # Reuse the original openssl.cnf as-is; do not modify/include here
+    if [ -f usr/local/cosmian/lib/ssl/openssl.cnf ]; then
+      chmod 644 usr/local/cosmian/lib/ssl/openssl.cnf || true
+    fi
+    if [ -f usr/local/cosmian/lib/ssl/fipsmodule.cnf ]; then
+      chmod 644 usr/local/cosmian/lib/ssl/fipsmodule.cnf || true
     fi
     echo "=== fakeRootCommands: Verifying FIPS files ==="
     ls -la usr/local/cosmian/lib/ossl-modules/ || echo "ossl-modules not present"
@@ -294,7 +329,9 @@ pkgs.dockerTools.buildLayeredImage {
     ++ (
       if variant == "fips" then
         [
-          "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl-fips.cnf"
+          # Reuse the original OpenSSL config shipped with the server derivation
+          # which includes the FIPS module configuration.
+          "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf"
           "OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules"
         ]
       else

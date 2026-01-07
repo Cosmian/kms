@@ -394,10 +394,10 @@ write_binary_hash_file() {
 # 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
 # Needed for both static and dynamic builds (dynamic builds ship OpenSSL .so files)
 resolve_openssl_path() {
+  # Resolve OpenSSL derivation path (3.1.2 in Nix)
   local openssl_attr="openssl312-static"
   local link="$REPO_ROOT/result-openssl-312"
 
-  # Use dynamic OpenSSL for dynamic builds
   if [ "$LINK" = "dynamic" ]; then
     openssl_attr="openssl312-dynamic"
     link="$REPO_ROOT/result-openssl-312-dynamic"
@@ -409,102 +409,63 @@ resolve_openssl_path() {
   fi
   OSSL_PATH=$(readlink -f "$link")
 
-  # Create symlinks at fixed locations that Cargo.toml can reference
-  # cargo-deb/cargo-generate-rpm look for paths relative to the crate directory
-  # Using target directory to avoid polluting workspace root
-  local fixed_path_workspace="$REPO_ROOT/target/.openssl-staging"
-  local fixed_path_server="$REPO_ROOT/crate/server/target/.openssl-staging"
+  # Compute staging directory matching Cargo.toml asset paths
+  # Format expected:
+  #  - FIPS:      target/openssl-3.6.0-<os>-<arch>
+  #  - non-FIPS:  target/openssl-non-fips-3.6.0-<os>-<arch>
+  local os_name arch_name stage_basename stage_dir
+  os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case "$os_name" in
+    linux) os_name="linux" ;;
+    darwin) os_name="darwin" ;;
+    *) : ;;
+  esac
+  arch_name=$(uname -m)
+  if [ "$VARIANT" = "non-fips" ]; then
+    stage_basename="openssl-non-fips-3.6.0-${os_name}-${arch_name}"
+  else
+    stage_basename="openssl-3.6.0-${os_name}-${arch_name}"
+  fi
+  stage_dir="$REPO_ROOT/crate/server/target/${stage_basename}"
 
-  # Ensure parent directories exist
-  mkdir -p "$REPO_ROOT/target"
-  mkdir -p "$REPO_ROOT/crate/server/target"
+  # Clean previous staging and create directories
+  if [ -d "$stage_dir" ]; then chmod -R u+w "$stage_dir" 2>/dev/null || true; rm -rf "$stage_dir"; fi
+  mkdir -p "$stage_dir/lib/ossl-modules" "$stage_dir/ssl"
 
-  # Remove existing paths (use chmod to handle Nix store readonly files)
-  for path in "$fixed_path_workspace" "$fixed_path_server"; do
-    if [ -e "$path" ] || [ -L "$path" ]; then
-      chmod -R u+w "$path" 2>/dev/null || true
-      rm -rf "$path" 2>/dev/null || true
-    fi
-  done
+  # Populate staging directory according to variant/link expected by Cargo.toml
+  # Dynamic builds ship libssl/libcrypto and provider module
+  # Static builds ship provider module and production config only
+  if [ "$LINK" = "dynamic" ]; then
+    # Copy shared libraries
+    if [ -f "$OSSL_PATH/lib/libssl.so.3" ]; then cp "$OSSL_PATH/lib/libssl.so.3" "$stage_dir/lib/"; fi
+    if [ -f "$OSSL_PATH/lib/libcrypto.so.3" ]; then cp "$OSSL_PATH/lib/libcrypto.so.3" "$stage_dir/lib/"; fi
+  fi
 
-  # For RPM builds, cargo-generate-rpm resolves symlinks and uses the resolved path
-  # in the RPM package, so we need to copy files instead of symlinking
-  if [ "$FORMAT" = "rpm" ]; then
-    echo "Copying OpenSSL files for RPM build (cargo-generate-rpm doesn't handle symlinks correctly)"
-    mkdir -p "$fixed_path_workspace" "$fixed_path_server"
-    cp -rL "$OSSL_PATH"/* "$fixed_path_workspace"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_workspace"/
-    cp -rL "$OSSL_PATH"/* "$fixed_path_server"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_server"/
-
-    # Override FIPS configuration files with production versions from server derivation
-    # This ensures portable paths (/usr/local/cosmian) instead of Nix store paths
-    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
-      echo "Using production FIPS config from server derivation (portable paths)"
-      # Remove readonly ssl directories and replace with production config
-      chmod -R u+w "$fixed_path_workspace/ssl" "$fixed_path_server/ssl" 2>/dev/null || true
-      rm -rf "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
-      mkdir -p "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_workspace/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_workspace/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_server/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_server/ssl/"
-      # Ensure openssl.cnf contains the correct FIPS include directive
-      for staging_dir in "$fixed_path_workspace" "$fixed_path_server"; do
-        conf="$staging_dir/ssl/openssl.cnf"
-        if [ -f "$conf" ]; then
-          # Replace commented or incorrect include with the correct absolute path
-          sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
-          # If the include is still missing, prepend it at the top
-          if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
-            sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
-          fi
-        fi
-      done
-      # Fix permissions (Nix store files are readonly)
-      chmod 644 "$fixed_path_workspace/ssl"/*.cnf "$fixed_path_server/ssl"/*.cnf
+  # Provider modules: fips for FIPS, legacy for non-FIPS
+  if [ "$VARIANT" = "fips" ]; then
+    if [ -f "$OSSL_PATH/lib/ossl-modules/fips.so" ]; then
+      cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
-    # For DEB builds, handle based on whether we need production FIPS config
-    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
-      echo "Using production FIPS config from server derivation (portable paths)"
-      # Copy OpenSSL files but exclude ssl directory, then add production config
-      mkdir -p "$fixed_path_workspace" "$fixed_path_server"
-
-      for staging_dir in "$fixed_path_workspace" "$fixed_path_server"; do
-        # Copy all files from OpenSSL except ssl directory
-        for item in "$OSSL_PATH"/*; do
-          base=$(basename "$item")
-          if [ "$base" != "ssl" ]; then
-            if [ -d "$item" ]; then
-              cp -r "$item" "$staging_dir/" 2>/dev/null || true
-            else
-              cp "$item" "$staging_dir/" 2>/dev/null || true
-            fi
-          fi
-        done
-
-        # Now create ssl directory with production config
-        # Remove any existing ssl directory first (may have readonly files from previous run)
-        rm -rf "$staging_dir/ssl"
-        mkdir -p "$staging_dir/ssl"
-        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$staging_dir/ssl/"
-        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$staging_dir/ssl/"
-        # Ensure openssl.cnf contains the correct FIPS include directive
-        conf="$staging_dir/ssl/openssl.cnf"
-        if [ -f "$conf" ]; then
-          sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
-          if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
-            sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
-          fi
-        fi
-        # Fix permissions (Nix store files are readonly)
-        chmod 644 "$staging_dir/ssl/openssl.cnf"
-        chmod 644 "$staging_dir/ssl/fipsmodule.cnf"
-      done
-    else
-      # No production config available, use symlinks
-      ln -sf "$OSSL_PATH" "$fixed_path_workspace"
-      ln -sf "$OSSL_PATH" "$fixed_path_server"
+    if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
+      cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     fi
+  fi
+
+  # Use production FIPS config from server derivation for FIPS builds
+  if [ "$VARIANT" = "fips" ] && [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
+    echo "Using production FIPS config from server derivation (portable paths)"
+    cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$stage_dir/ssl/"
+    cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$stage_dir/ssl/"
+    # Ensure include directive is present and absolute
+    local conf="$stage_dir/ssl/openssl.cnf"
+    if [ -f "$conf" ]; then
+      sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
+      if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
+        sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
+      fi
+    fi
+    chmod 644 "$stage_dir/ssl/openssl.cnf" "$stage_dir/ssl/fipsmodule.cnf" || true
   fi
 }
 

@@ -206,7 +206,55 @@ stdenv.mkDerivation rec {
     # Ensure dev copy exists
     cp "$out/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/ssl/"
 
-    echo "OpenSSL FIPS modules installed; reusing installed openssl.cnf and fipsmodule.cnf as-is."
+    # Patch openssl.cnf to strictly include fipsmodule.cnf via absolute path
+    # and activate the FIPS provider alongside default and base providers.
+    # This mirrors the known-good configuration used across the workspace.
+    sed -i \
+      -e 's/^# *\.include fipsmodule\.cnf/.include \/usr\/local\/cosmian\/lib\/ssl\/fipsmodule.cnf/' \
+      "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+
+    # Ensure provider_sect includes fips and base providers. Append if missing.
+    # Insert lines after the 'default = default_sect' entry inside [provider_sect].
+    awk '
+      BEGIN { in_section=0; done=0 }
+      /^\[provider_sect\]/ { in_section=1 }
+      in_section && /^\[/ && !/^\[provider_sect\]/ { in_section=0 }
+      {
+        print $0
+        if (in_section && $0 ~ /^default[[:space:]]*=[[:space:]]*default_sect$/ && done==0) {
+          print "fips = fips_sect";
+          print "base = base_sect";
+          done=1
+        }
+      }
+    ' "$out/usr/local/cosmian/lib/ssl/openssl.cnf" > "$out/usr/local/cosmian/lib/ssl/openssl.cnf.tmp" && \
+    mv "$out/usr/local/cosmian/lib/ssl/openssl.cnf.tmp" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+
+    # Explicitly activate the default provider to ensure decoders and legacy
+    # plumbing are available alongside FIPS-approved algorithms. This mirrors
+    # common FIPS deployments where both FIPS and default providers are loaded.
+    awk '
+      BEGIN { in_def=0; has_activate=0 }
+      /^\[default_sect\]/ { in_def=1; has_activate=0; print; next }
+      {
+        if (in_def) {
+          if ($0 ~ /^[[:space:]]*activate[[:space:]]*=/) { has_activate=1 }
+          if ($0 ~ /^\[/) {
+            if (has_activate==0) { print "activate = 1" }
+            in_def=0
+          }
+          print $0
+        } else {
+          print $0
+        }
+      }
+      END {
+        if (in_def && has_activate==0) { print "activate = 1" }
+      }
+    ' "$out/usr/local/cosmian/lib/ssl/openssl.cnf" > "$out/usr/local/cosmian/lib/ssl/openssl.cnf.tmp" && \
+    mv "$out/usr/local/cosmian/lib/ssl/openssl.cnf.tmp" "$out/usr/local/cosmian/lib/ssl/openssl.cnf"
+
+    echo "OpenSSL FIPS modules installed; openssl.cnf patched to include FIPS config and providers."
 
     runHook postInstall
   '';

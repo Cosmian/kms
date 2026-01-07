@@ -117,13 +117,16 @@ fn maybe_build_fips_openssl() {
         .unwrap_or_else(|| workspace_root.join("target"));
 
     // Paths for main (3.6.0) and FIPS provider (3.1.2)
-    let main_prefix = target_dir.join(format!(
-        "openssl-{}-{}-{}-{}",
-        if fips_mode { "fips" } else { "legacy" },
-        OPENSSL_MAIN_VERSION,
-        os,
-        arch
-    ));
+    // Default (FIPS mode): target/openssl-3.6.0-<os>-<arch>
+    // Non-FIPS mode:       target/openssl-non-fips-3.6.0-<os>-<arch>
+    let main_prefix = if fips_mode {
+        target_dir.join(format!("openssl-{}-{}-{}", OPENSSL_MAIN_VERSION, os, arch))
+    } else {
+        target_dir.join(format!(
+            "openssl-non-fips-{}-{}-{}",
+            OPENSSL_MAIN_VERSION, os, arch
+        ))
+    };
     let fipsprov_prefix = target_dir.join(format!(
         "openssl-fipsprov-{}-{}-{}",
         OPENSSL_FIPS_VERSION, os, arch
@@ -190,12 +193,8 @@ fn maybe_build_fips_openssl() {
         normalize_provider_layout(&fipsprov_prefix);
     }
 
-    // Stage assets for packaging to a stable path consumed by Cargo.toml
-    stage_assets(
-        &target_dir,
-        &main_prefix,
-        fips_mode.then_some(&fipsprov_prefix),
-    );
+    // Integrate provider/configs into the main prefix (no staging directory)
+    integrate_assets_into_main(&main_prefix, fips_mode.then_some(&fipsprov_prefix));
 
     // Backward-compat alias: ensure target/openssl-fips-3.1.2-<os>-<arch>
     // resolves to the provider tree, even if a stale dir already exists.
@@ -268,12 +267,8 @@ fn maybe_build_fips_openssl() {
         }
     }
 
-    // Emit link directives: link with main (3.6.0), set env to provider (3.1.2) in FIPS mode
-    if fips_mode {
-        emit_link_env_split(&main_prefix, &fipsprov_prefix);
-    } else {
-        emit_link_env_split(&main_prefix, &main_prefix);
-    }
+    // Emit link directives: link with main (3.6.0) and use configs/providers from main prefix
+    emit_link_env(&main_prefix);
 }
 
 fn normalize_provider_layout(install_prefix: &Path) {
@@ -301,7 +296,7 @@ fn normalize_provider_layout(install_prefix: &Path) {
     }
 }
 
-fn emit_link_env_split(link_prefix: &Path, runtime_provider_prefix: &Path) {
+fn emit_link_env(link_prefix: &Path) {
     // Link against main tree (3.6.0)
     println!("cargo:rustc-env=OPENSSL_DIR={}", link_prefix.display());
     println!(
@@ -314,19 +309,17 @@ fn emit_link_env_split(link_prefix: &Path, runtime_provider_prefix: &Path) {
     // Runtime env to load providers from desired tree
     println!(
         "cargo:rustc-env=OPENSSL_CONF={}/ssl/openssl.cnf",
-        runtime_provider_prefix.display()
+        link_prefix.display()
     );
     println!(
         "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
-        runtime_provider_prefix.display()
+        link_prefix.display()
     );
 }
 
-fn stage_assets(target_dir: &Path, main_prefix: &Path, fipsprov_prefix: Option<&Path>) {
-    let staging = target_dir.join(".openssl-staging");
-    let _ = fs::create_dir_all(staging.join("lib/ossl-modules"));
-    let _ = fs::create_dir_all(staging.join("ssl"));
-    let _ = fs::create_dir_all(staging.join("lib"));
+fn integrate_assets_into_main(main_prefix: &Path, fipsprov_prefix: Option<&Path>) {
+    let _ = fs::create_dir_all(main_prefix.join("lib/ossl-modules"));
+    let _ = fs::create_dir_all(main_prefix.join("ssl"));
 
     let mod_ext = if cfg!(target_os = "macos") {
         "dylib"
@@ -334,40 +327,29 @@ fn stage_assets(target_dir: &Path, main_prefix: &Path, fipsprov_prefix: Option<&
         "so"
     };
 
-    // Providers
     if let Some(fips_prefix) = fipsprov_prefix {
-        let fips_src = fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}"));
+        // Copy FIPS provider and configs into main prefix
         let _ = fs::copy(
-            &fips_src,
-            staging
-                .join("lib/ossl-modules")
-                .join(format!("fips.{mod_ext}")),
+            fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
+            main_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
         );
         let _ = fs::copy(
             fips_prefix.join("ssl/openssl.cnf"),
-            staging.join("ssl/openssl.cnf"),
+            main_prefix.join("ssl/openssl.cnf"),
         );
         let _ = fs::copy(
             fips_prefix.join("ssl/fipsmodule.cnf"),
-            staging.join("ssl/fipsmodule.cnf"),
-        );
-    } else {
-        // Non-FIPS: legacy provider from main tree
-        let legacy_src = main_prefix.join(format!("lib/ossl-modules/legacy.{mod_ext}"));
-        let _ = fs::copy(
-            &legacy_src,
-            staging
-                .join("lib/ossl-modules")
-                .join(format!("legacy.{mod_ext}")),
+            main_prefix.join("ssl/fipsmodule.cnf"),
         );
     }
 
-    // Dynamic libs (if available from our build; otherwise packaging can ignore)
+    // Ensure dynamic libs (if built) are present under main prefix
     for libname in ["libssl.so.3", "libcrypto.so.3"] {
-        // Linux packaging
         let candidate = main_prefix.join("lib").join(libname);
         if candidate.exists() {
-            let _ = fs::copy(&candidate, staging.join("lib").join(libname));
+            // already present
+        } else {
+            // no-op; some builds use static linking only
         }
     }
 }
