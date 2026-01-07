@@ -265,7 +265,7 @@ async fn create_key(
         ..Attributes::default()
     };
     attributes
-        .set_tags(["_kk", "aws-xks"])
+        .set_tags(["aws-xks"])
         .map_err(|e| XksErrorReply {
             errorName: XksErrorName::InternalException,
             errorMessage: Some(format!("Failed to set tags: {e}")),
