@@ -8,14 +8,14 @@ use actix_web::{
     web::{Data, Json, Path},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
+    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::Create,
         kmip_operations::GetAttributes,
         kmip_types::KeyFormatType,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
 use serde::{Deserialize, Serialize};
