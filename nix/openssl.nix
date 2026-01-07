@@ -8,6 +8,8 @@
   static ? true,
   # OpenSSL version to build (e.g. "3.6.0" or "3.1.2")
   version ? "3.1.2",
+  # Build the legacy provider module (needed for non-FIPS features)
+  enableLegacy ? false,
   # Optional override for source URL and hashes. When not provided, defaults to Cosmian mirror
   # and known hashes for 3.1.2. For other versions, callers should provide these.
   srcUrl ? null,
@@ -116,6 +118,7 @@ stdenv.mkDerivation rec {
       ${if static then "no-shared" else "shared"} \
       no-zlib \
       enable-fips \
+      ${if enableLegacy then "enable-legacy" else ""} \
       --prefix=$out \
       --openssldir=/usr/local/cosmian/lib/ssl \
       --libdir=lib \
@@ -182,6 +185,19 @@ stdenv.mkDerivation rec {
       echo "ERROR: FIPS provider module not found at providers/fips.${soExt}"
       ls -la providers/ || true
       exit 1
+    fi
+
+    # Optionally copy legacy provider module when enabled
+    if [ "${toString enableLegacy}" = "true" ]; then
+      echo "Checking for legacy provider module (enableLegacy=true)..."
+      if [ -f "providers/legacy.${soExt}" ]; then
+        echo "Found legacy module at providers/legacy.${soExt}"
+        cp "providers/legacy.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
+        cp "providers/legacy.${soExt}" "$out/lib/ossl-modules/"
+      else
+        echo "WARNING: legacy provider not found at providers/legacy.${soExt}"
+        ls -la providers/ || true
+      fi
     fi
 
     # Generate fipsmodule.cnf in production location (runs self-tests)

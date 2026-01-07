@@ -216,6 +216,21 @@ else
   info "✓ Version output looks correct"
 fi
 
+# Enforce OpenSSL runtime version == 3.6.0 for all builds (FIPS and non-FIPS)
+info "Verifying OpenSSL runtime version (expected 3.6.0)…"
+if ! INFO_OUTPUT=$("$BINARY_PATH" --info 2>&1); then
+  error "Failed to run --info for runtime OpenSSL verification"
+fi
+echo "$INFO_OUTPUT" | grep -q "OpenSSL 3\.6\.0" || {
+  echo "$INFO_OUTPUT" >&2
+  if [ "$IS_FIPS" = true ]; then
+    error "Smoke test failed: FIPS build expected OpenSSL 3.6.0 at runtime"
+  else
+    error "Smoke test failed: non-FIPS build expected OpenSSL 3.6.0 at runtime"
+  fi
+}
+info "✓ OpenSSL runtime version is 3.6.0"
+
 info ""
 info "============================================"
 info "✓ ALL SMOKE TESTS PASSED!"

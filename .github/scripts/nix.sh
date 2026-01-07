@@ -699,17 +699,11 @@ if [ "$COMMAND" = "package" ]; then
             exit 1
           fi
 
-          # Set OpenSSL environment to use packaged OpenSSL config and modules
-          # NOTE: Both static and dynamic builds with portable paths (OPENSSLDIR=/usr/local/cosmian/lib/ssl)
-          # require files to be at their absolute installed location because .include directives
-          # use absolute paths. Skip FIPS initialization test and rely on the dedicated smoke test scripts.
-          if [ "$BUILD_VARIANT" = "fips" ]; then
-            echo "Skipping FIPS initialization test (requires installation at /usr/local/cosmian)"
-            echo "Binary has portable OPENSSLDIR=/usr/local/cosmian/lib/ssl"
-            echo "Smoke test PASS (portability validated by dedicated smoke test script)"
-            rm -rf "$tmpdir"
-            exit 0
-          fi
+          # Set OpenSSL environment to use packaged OpenSSL config and modules (for both variants)
+          export OPENSSL_CONF="$tmpdir/usr/local/cosmian/lib/ssl/openssl.cnf"
+          export OPENSSL_MODULES="$tmpdir/usr/local/cosmian/lib/ossl-modules"
+          # Ensure the runtime loader prefers the packaged OpenSSL libs during smoke test
+          export LD_LIBRARY_PATH="$tmpdir/usr/local/cosmian/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
           echo "Running cosmian_kms --info from extracted package…"
           INFO_OUT="$($BIN_PATH --info 2>&1)"
@@ -740,11 +734,19 @@ if [ "$COMMAND" = "package" ]; then
                 exit 1
               }
             else
-              # Dynamic builds use system OpenSSL (typically 3.0.x or 3.1.x)
-              echo "$INFO_OUT" | grep -q "OpenSSL 3\." || {
-                echo "Smoke test failed: expected OpenSSL 3.x" >&2
-                exit 1
-              }
+              # Dynamic builds in Nix must use our OpenSSL 3.6.0 for non-FIPS
+              if [ "$BUILD_VARIANT" = "non-fips" ]; then
+                echo "$INFO_OUT" | grep -q "OpenSSL 3\.6\.0" || {
+                  echo "Smoke test failed: non-fips dynamic build expected OpenSSL 3.6.0" >&2
+                  exit 1
+                }
+              else
+                # For FIPS dynamic builds (if not skipped earlier), require OpenSSL 3.6.0
+                echo "$INFO_OUT" | grep -q "OpenSSL 3\.6\.0" || {
+                  echo "Smoke test failed: fips dynamic build expected OpenSSL 3.6.0" >&2
+                  exit 1
+                }
+              fi
             fi
             echo "Smoke test PASS"
           fi

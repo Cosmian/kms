@@ -220,6 +220,44 @@ else
   info "✓ Version output looks correct"
 fi
 
+# Enforce OpenSSL runtime version == 3.6.0 for all builds (FIPS and non-FIPS)
+info "Verifying OpenSSL runtime version (expected 3.6.0)…"
+# For FIPS builds, temporarily disable FIPS config when checking version to
+# validate the linked OpenSSL runtime (3.6.0) independently of provider setup.
+if [ "$IS_FIPS" = true ]; then
+  SAVED_OPENSSL_CONF="${OPENSSL_CONF:-}"
+  SAVED_OPENSSL_MODULES="${OPENSSL_MODULES:-}"
+  unset OPENSSL_CONF
+  unset OPENSSL_MODULES
+fi
+
+# Ensure our packaged libs are preferred during version check for dynamic builds
+export LD_LIBRARY_PATH="$TEMP_DIR/usr/local/cosmian/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+if ! INFO_OUTPUT=$("$BINARY_PATH" --info 2>&1); then
+  if [ "$IS_FIPS" = true ]; then
+    # Restore FIPS env before failing to aid debugging
+    [ -n "${SAVED_OPENSSL_CONF:-}" ] && export OPENSSL_CONF="$SAVED_OPENSSL_CONF"
+    [ -n "${SAVED_OPENSSL_MODULES:-}" ] && export OPENSSL_MODULES="$SAVED_OPENSSL_MODULES"
+  fi
+  error "Failed to run --info for runtime OpenSSL verification"
+fi
+
+# Restore FIPS environment for any subsequent checks (none currently)
+if [ "$IS_FIPS" = true ]; then
+  [ -n "${SAVED_OPENSSL_CONF:-}" ] && export OPENSSL_CONF="$SAVED_OPENSSL_CONF"
+  [ -n "${SAVED_OPENSSL_MODULES:-}" ] && export OPENSSL_MODULES="$SAVED_OPENSSL_MODULES"
+fi
+echo "$INFO_OUTPUT" | grep -q "OpenSSL 3\.6\.0" || {
+  echo "$INFO_OUTPUT" >&2
+  if [ "$IS_FIPS" = true ]; then
+    error "Smoke test failed: FIPS build expected OpenSSL 3.6.0 at runtime"
+  else
+    error "Smoke test failed: non-FIPS build expected OpenSSL 3.6.0 at runtime"
+  fi
+}
+info "✓ OpenSSL runtime version is 3.6.0"
+
 info ""
 info "============================================"
 info "✓ ALL SMOKE TESTS PASSED!"

@@ -35,6 +35,8 @@ let
       opensslPkgs.callPackage ./openssl.nix {
         inherit static;
         version = "3.6.0";
+        # Build legacy provider for non-FIPS features (e.g., legacy.so)
+        enableLegacy = true;
         srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
         # NOTE: Use lib.fakeSha256 so Nix prints the correct SRI on first build; replace afterwards
         sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
@@ -445,6 +447,17 @@ rustPlatform.buildRustPackage rec {
             cp "${openssl36_}/lib/$so" "$out/usr/local/cosmian/lib/$so"
           fi
         done
+      fi
+      # For non-FIPS dynamic builds, also include provider modules from OpenSSL 3.6.0 (e.g., legacy)
+      if [ "${toString (!isFips)}" = "true" ]; then
+        mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
+        if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
+          cp -r "${openssl36_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+        elif [ -d "${openssl36_}/lib/ossl-modules" ]; then
+          cp -r "${openssl36_}/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+        else
+          echo "WARNING: OpenSSL 3.6.0 ossl-modules directory not found; legacy provider may be missing"
+        fi
       fi
     ''}
 

@@ -394,20 +394,21 @@ write_binary_hash_file() {
 # 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
 # Needed for both static and dynamic builds (dynamic builds ship OpenSSL .so files)
 resolve_openssl_path() {
-  # Resolve OpenSSL derivation path (3.1.2 in Nix)
-  local openssl_attr="openssl312-static"
-  local link="$REPO_ROOT/result-openssl-312"
-
+  # Resolve OpenSSL files to stage for packaging
+  # For dynamic builds, use the libs staged in the server derivation, which
+  # already selects 3.6.0 for non-fips and 3.1.2 for fips.
   if [ "$LINK" = "dynamic" ]; then
-    openssl_attr="openssl312-dynamic"
-    link="$REPO_ROOT/result-openssl-312-dynamic"
+    OSSL_PATH="$REAL_SERVER/usr/local/cosmian"
+  else
+    # Static builds rely on 3.1.2 for FIPS provider; stage from openssl312
+    local openssl_attr="openssl312-static"
+    local link="$REPO_ROOT/result-openssl-312"
+    if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
+      rm -f "$link" 2>/dev/null || true
+      nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"
+    fi
+    OSSL_PATH=$(readlink -f "$link")
   fi
-
-  if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
-    rm -f "$link" 2>/dev/null || true
-    nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"
-  fi
-  OSSL_PATH=$(readlink -f "$link")
 
   # Compute staging directory matching Cargo.toml asset paths
   # Format expected:
@@ -436,7 +437,7 @@ resolve_openssl_path() {
   # Dynamic builds ship libssl/libcrypto and provider module
   # Static builds ship provider module and production config only
   if [ "$LINK" = "dynamic" ]; then
-    # Copy shared libraries
+    # Copy shared libraries from server derivation
     if [ -f "$OSSL_PATH/lib/libssl.so.3" ]; then cp "$OSSL_PATH/lib/libssl.so.3" "$stage_dir/lib/"; fi
     if [ -f "$OSSL_PATH/lib/libcrypto.so.3" ]; then cp "$OSSL_PATH/lib/libcrypto.so.3" "$stage_dir/lib/"; fi
   fi
@@ -447,8 +448,19 @@ resolve_openssl_path() {
       cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
+    # Prefer provider from server derivation; fallback to OpenSSL 3.6.0 store
     if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
       cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
+    else
+      # Fallback: locate legacy.so from any OpenSSL 3.6.0 derivation in the Nix store
+      # Use find instead of ls to handle arbitrary filenames and stop at first match
+      LEGACY_SRC=$(find /nix/store -type f -path '*/openssl-3.6.0*/lib/ossl-modules/legacy.so' -print -quit 2>/dev/null || true)
+      if [ -n "${LEGACY_SRC}" ] && [ -f "${LEGACY_SRC}" ]; then
+        cp "${LEGACY_SRC}" "$stage_dir/lib/ossl-modules/"
+      else
+        echo "ERROR: OpenSSL legacy provider (legacy.so) not found; expected under $OSSL_PATH/lib/ossl-modules or /nix/store/*openssl-3.6.0*/lib/ossl-modules" >&2
+        exit 1
+      fi
     fi
   fi
 
@@ -685,9 +697,11 @@ prepare_workspace() {
   cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
   cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
-  # For dynamic builds, patch the RPATH to point to /usr/local/cosmian/lib
+  # For dynamic builds, patch the RPATH/RUNPATH to include a portable path
+  # Use $ORIGIN so the binary can locate libs both when installed
+  # at /usr/local/cosmian/lib and when extracted in smoke tests.
   if [ "$LINK" = "dynamic" ] && command -v patchelf >/dev/null 2>&1; then
-    echo "Patching RPATH for dynamic build to /usr/local/cosmian/lib"
+    echo "Patching RPATH for dynamic build to \$ORIGIN/../local/cosmian/lib:/usr/local/cosmian/lib"
     for binary in \
       "crate/server/target/$HOST_TRIPLE/release/cosmian_kms" \
       "crate/server/target/release/cosmian_kms" \
@@ -697,7 +711,8 @@ prepare_workspace() {
         chmod u+w "$binary"
         # Remove existing RPATH/RUNPATH and set to our standard path
         patchelf --remove-rpath "$binary" 2>/dev/null || true
-        patchelf --set-rpath /usr/local/cosmian/lib "$binary"
+        # Use double quotes and escape $ to preserve literal $ORIGIN for the dynamic loader
+        patchelf --set-rpath "\$ORIGIN/../local/cosmian/lib:/usr/local/cosmian/lib" "$binary"
         echo "  Patched: $binary"
       fi
     done
