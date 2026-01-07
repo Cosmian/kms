@@ -253,10 +253,6 @@ async fn create_key(
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
-        cryptographic_parameters: Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::GCM),
-            ..CryptographicParameters::default()
-        }),
         cryptographic_usage_mask: Some(
             CryptographicUsageMask::Encrypt
                 | CryptographicUsageMask::Decrypt
