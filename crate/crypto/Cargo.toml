@@ -30,6 +30,7 @@ non-fips = [
     "argon2",
     "dep:sha2",
     "dep:p256",
+    "dep:k256",
 ]
 
 [dependencies]
@@ -57,6 +58,7 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 sha2 = { workspace = true, optional = true }
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+k256 = { version = "0.13", features = ["ecdsa"], optional = true }
 
 [dev-dependencies]
 aes-kw = "0.3.0-rc.1"

@@ -299,8 +299,14 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_sign_ecdsa() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::P256, "ecdsa").await
+async fn test_sign_ecdsa_p256() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P256, "p256_rfc6979").await
+}
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_sign_ecdsa_p192() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P192, "p192").await
 }
 
 #[cfg(feature = "non-fips")]
@@ -311,18 +317,12 @@ async fn test_sign_eddsa() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_sign_secp256k1() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::SECP256K1, "secp256k1").await
+async fn test_sign_ecdsa_k256() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::SECP256K1, "k256_rfc6979").await
 }
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_secp224r1() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::P224, "secp224r1").await
-}
-
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_sign_secp256k1_rfc6979() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::P256, "secp256k1_rfc6979").await
+    test_sign_ec_curve(RecommendedCurve::P224, "p224").await
 }
