@@ -55,7 +55,7 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, get_version,
+        access, download_cli, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip::{self, handle_ttlv_bytes},
         ms_dke,
@@ -851,7 +851,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
-            .service(get_version);
+            .service(get_version)
+            .service(download_cli);
 
         app.service(default_scope)
     })
