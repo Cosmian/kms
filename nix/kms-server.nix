@@ -52,10 +52,11 @@ let
         version = "3.1.2";
       };
 
-  # Select OpenSSL to link against based on variant
-  # FIPS builds must link against 3.1.2 to match the FIPS provider module
-  # Non-FIPS builds link against 3.6.0
-  opensslLink = if isFips then openssl312_ else openssl36_;
+  # Select OpenSSL to link against:
+  # Always link against OpenSSL 3.6.0 for both FIPS and non-FIPS builds.
+  # In FIPS builds, the runtime FIPS provider (3.1.2) is shipped and used via
+  # OpenSSL provider configuration, but the linkage itself remains on 3.6.0.
+  opensslLink = openssl36_;
 
   # Combine base variant with suffix for hash file lookup
   # Using -static-openssl or -dynamic-openssl for backward compatibility with existing hash files
@@ -267,18 +268,10 @@ let
     # OPENSSLDIR is baked into OpenSSL at compile time and will show the Nix store path.
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
-    ${lib.optionalString (static && pkgs.stdenv.isLinux) (
-      if isFips then
-        ''
-          strings "$BIN" | grep -q "OpenSSL 3.1.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.1.2 in FIPS variant"; exit 1; }
-          echo "Binary validation OK (OpenSSL 3.1.2 statically linked for FIPS)"
-        ''
-      else
-        ''
-          strings "$BIN" | grep -q "OpenSSL 3.6.0" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.0 in non-FIPS variant"; exit 1; }
-          echo "Binary validation OK (OpenSSL 3.6.0 statically linked for non-FIPS)"
-        ''
-    )}
+    ${lib.optionalString (static && pkgs.stdenv.isLinux) ''
+      strings "$BIN" | grep -q "OpenSSL 3.6.0" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.0"; exit 1; }
+      echo "Binary validation OK (OpenSSL 3.6.0 statically linked)"
+    ''}
     ${lib.optionalString (static && pkgs.stdenv.isDarwin) ''
       echo "Skipping static OpenSSL string check on macOS (validation handled via FIPS modules and runtime tests)"
     ''}
@@ -425,31 +418,43 @@ rustPlatform.buildRustPackage rec {
 
     ${lib.optionalString isFips ''
       mkdir -p "$out/usr/local/cosmian/lib"
-      # Use OpenSSL 3.1.2 only for FIPS provider and configs
+      # Use OpenSSL 3.1.2 for FIPS provider and configs
       cp -r "${openssl312_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
       cp -r "${openssl312_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
     ''}
 
     ${lib.optionalString (!static) ''
-      # Dynamic linkage variant: ship libssl and libcrypto from OpenSSL 3.6.0
+      # Dynamic linkage variant: ship libssl and libcrypto
       mkdir -p "$out/usr/local/cosmian/lib"
+      # For FIPS dynamic builds, use OpenSSL 3.1.2 to match the FIPS provider version
+      # For non-FIPS dynamic builds, use OpenSSL 3.6.0
+      ${
+        if isFips then
+          ''
+            opensslSrc="${openssl312_}"
+          ''
+        else
+          ''
+            opensslSrc="${openssl36_}"
+          ''
+      }
       if [ "$(uname)" = "Darwin" ]; then
         # macOS: copy versioned dylibs if present; fall back to unversioned names
         for dylib in libssl.3.dylib libcrypto.3.dylib libssl.dylib libcrypto.dylib; do
-          if [ -f "${openssl36_}/lib/$dylib" ]; then
-            cp "${openssl36_}/lib/$dylib" "$out/usr/local/cosmian/lib/$dylib"
+          if [ -f "$opensslSrc/lib/$dylib" ]; then
+            cp "$opensslSrc/lib/$dylib" "$out/usr/local/cosmian/lib/$dylib"
           fi
         done
       else
         # Linux: copy .so.3 versioned shared libraries
         for so in libssl.so.3 libcrypto.so.3; do
-          if [ -f "${openssl36_}/lib/$so" ]; then
-            cp "${openssl36_}/lib/$so" "$out/usr/local/cosmian/lib/$so"
+          if [ -f "$opensslSrc/lib/$so" ]; then
+            cp "$opensslSrc/lib/$so" "$out/usr/local/cosmian/lib/$so"
           fi
         done
       fi
       # For non-FIPS dynamic builds, also include provider modules from OpenSSL 3.6.0 (e.g., legacy)
-      if [ "${toString (!isFips)}" = "true" ]; then
+      if [ "${toString (!isFips)}" = "1" ]; then
         mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
         if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
           cp -r "${openssl36_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"

@@ -140,6 +140,28 @@ if ! echo "$VERSION_OUTPUT" | grep -qE "(cosmian_kms_server|cosmian_kms)"; then
 fi
 info "\xe2\x9c\x93 Binary executed successfully"
 
+# Enforce OpenSSL runtime version == 3.6.0 for all builds (FIPS and non-FIPS)
+info "Verifying OpenSSL runtime version (expected 3.6.0)…"
+if [ "$IS_FIPS" = true ]; then
+  INFO_CMD=(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "$BINARY_PATH" --info)
+else
+  INFO_CMD=("$BINARY_PATH" --info)
+fi
+
+if ! INFO_OUTPUT=$("${INFO_CMD[@]}" 2>&1); then
+  error "Failed to run --info for runtime OpenSSL verification"
+fi
+
+echo "$INFO_OUTPUT" | grep -q "OpenSSL 3\.6\.0" || {
+  echo "$INFO_OUTPUT" >&2
+  if [ "$IS_FIPS" = true ]; then
+    error "Smoke test failed: FIPS build expected OpenSSL 3.6.0 at runtime"
+  else
+    error "Smoke test failed: non-FIPS build expected OpenSSL 3.6.0 at runtime"
+  fi
+}
+info "\xe2\x9c\x93 OpenSSL runtime version is 3.6.0"
+
 info ""
 info "============================================"
 info "\xe2\x9c\x93 ALL SMOKE TESTS PASSED!"

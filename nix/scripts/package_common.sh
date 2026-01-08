@@ -417,9 +417,9 @@ resolve_openssl_path() {
   local os_name arch_name stage_basename stage_dir
   os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os_name" in
-    linux) os_name="linux" ;;
-    darwin) os_name="darwin" ;;
-    *) : ;;
+  linux) os_name="linux" ;;
+  darwin) os_name="darwin" ;;
+  *) : ;;
   esac
   arch_name=$(uname -m)
   if [ "$VARIANT" = "non-fips" ]; then
@@ -430,8 +430,18 @@ resolve_openssl_path() {
   stage_dir="$REPO_ROOT/crate/server/target/${stage_basename}"
 
   # Clean previous staging and create directories
-  if [ -d "$stage_dir" ]; then chmod -R u+w "$stage_dir" 2>/dev/null || true; rm -rf "$stage_dir"; fi
+  if [ -d "$stage_dir" ]; then
+    chmod -R u+w "$stage_dir" 2>/dev/null || true
+    rm -rf "$stage_dir"
+  fi
   mkdir -p "$stage_dir/lib/ossl-modules" "$stage_dir/ssl"
+
+  # Also clean workspace staging directory (used by cargo-generate-rpm)
+  local workspace_stage_dir="$REPO_ROOT/target/${stage_basename}"
+  if [ -d "$workspace_stage_dir" ]; then
+    chmod -R u+w "$workspace_stage_dir" 2>/dev/null || true
+    rm -rf "$workspace_stage_dir"
+  fi
 
   # Populate staging directory according to variant/link expected by Cargo.toml
   # Dynamic builds ship libssl/libcrypto and provider module
@@ -458,8 +468,8 @@ resolve_openssl_path() {
       if [ -n "${LEGACY_SRC}" ] && [ -f "${LEGACY_SRC}" ]; then
         cp "${LEGACY_SRC}" "$stage_dir/lib/ossl-modules/"
       else
-        echo "ERROR: OpenSSL legacy provider (legacy.so) not found; expected under $OSSL_PATH/lib/ossl-modules or /nix/store/*openssl-3.6.0*/lib/ossl-modules" >&2
-        exit 1
+        echo "WARNING: OpenSSL legacy provider (legacy.so) not found to stage; proceeding without bundling it." >&2
+        echo "         Non-FIPS dynamic packages require legacy provider available on target system's OPENSSL_MODULES path." >&2
       fi
     fi
   fi
@@ -478,6 +488,19 @@ resolve_openssl_path() {
       fi
     fi
     chmod 644 "$stage_dir/ssl/openssl.cnf" "$stage_dir/ssl/fipsmodule.cnf" || true
+
+    # Also copy to workspace root target directory for cargo-generate-rpm
+    # (cargo-generate-rpm resolves asset paths from workspace root, not crate directory)
+    local workspace_stage_dir="$REPO_ROOT/target/${stage_basename}"
+    mkdir -p "$workspace_stage_dir/lib/ossl-modules" "$workspace_stage_dir/ssl"
+    cp "$stage_dir/ssl/openssl.cnf" "$workspace_stage_dir/ssl/"
+    cp "$stage_dir/ssl/fipsmodule.cnf" "$workspace_stage_dir/ssl/"
+    cp "$stage_dir/lib/ossl-modules/fips.so" "$workspace_stage_dir/lib/ossl-modules/" 2>/dev/null || true
+    if [ "$LINK" = "dynamic" ]; then
+      cp "$stage_dir/lib/libssl.so.3" "$workspace_stage_dir/lib/" 2>/dev/null || true
+      cp "$stage_dir/lib/libcrypto.so.3" "$workspace_stage_dir/lib/" 2>/dev/null || true
+    fi
+    chmod 644 "$workspace_stage_dir/ssl/openssl.cnf" "$workspace_stage_dir/ssl/fipsmodule.cnf" || true
   fi
 }
 

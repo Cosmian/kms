@@ -30,6 +30,13 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NON_FIPS");
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Skip OpenSSL build on Windows
+    let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if os == "windows" {
+        println!("cargo:warning=Skipping OpenSSL build on Windows");
+        return;
+    }
+
     let fips_mode = env::var("CARGO_FEATURE_NON_FIPS").is_err();
 
     // Resolve workspace root: crate/crypto -> crate -> repo root
@@ -102,8 +109,9 @@ fn main() {
         );
     }
 
-    // In FIPS mode, also build provider tree and integrate into main prefix
-    if fips_mode && !fipsprov_prefix.join("lib/ossl-modules").exists() {
+    // Always build FIPS provider (3.1.2) for test compatibility, regardless of feature flags
+    // This ensures `cargo test` works for both FIPS and non-FIPS code paths
+    if !fipsprov_prefix.join("lib/ossl-modules").exists() {
         let _ = build_and_install_openssl(
             &workspace_root,
             &build_root,
@@ -121,9 +129,7 @@ fn main() {
 
     // Normalize provider layout and integrate FIPS provider/config into main prefix
     normalize_provider_layout(&main_prefix);
-    if fips_mode {
-        normalize_provider_layout(&fipsprov_prefix);
-    }
+    normalize_provider_layout(&fipsprov_prefix);
     if fips_mode {
         integrate_assets_into_main(&main_prefix, Some(&fipsprov_prefix));
     }

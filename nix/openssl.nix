@@ -188,7 +188,7 @@ stdenv.mkDerivation rec {
     fi
 
     # Optionally copy legacy provider module when enabled
-    if [ "${toString enableLegacy}" = "true" ]; then
+    if [ "${toString enableLegacy}" = "1" ]; then
       echo "Checking for legacy provider module (enableLegacy=true)..."
       if [ -f "providers/legacy.${soExt}" ]; then
         echo "Found legacy module at providers/legacy.${soExt}"
