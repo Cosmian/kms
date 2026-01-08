@@ -111,42 +111,45 @@ The KMS has extensive online [documentation](https://docs.cosmian.com/key_manage
 This ensures consistent modern linkage while preserving certified FIPS runtime behavior.
 
 - [Cosmian KMS](#cosmian-kms)
-    - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
-    - [🎯 Top Use Cases](#-top-use-cases)
-    - [🔒 Security & Compliance](#-security--compliance)
-    - [🚀 Quick start](#-quick-start)
-        - [▶️ Example](#️-example)
-    - [📦 Repository content](#-repository-content)
-        - [🧰 Binaries](#-binaries)
-        - [🧱 Core Crates](#-core-crates)
-            - [🖧 Server Infrastructure](#-server-infrastructure)
-            - [🧑‍💻 Client Libraries](#-client-libraries)
-            - [🔐 Cryptographic Components](#-cryptographic-components)
-            - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
-            - [🗄️ Database Interfaces](#️-database-interfaces)
-            - [🧪 Development and Testing](#-development-and-testing)
-        - [📁 Additional Directories](#-additional-directories)
-    - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
-        - [✨ Features](#-features)
-        - [🖥️ Linux or macOS](#️-linux-or-macos)
-        - [🪟 Windows](#-windows)
-        - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
-    - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
-    - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
-    - [🔧 Server parameters](#-server-parameters)
-    - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [🏷️ Releases](#️-releases)
-    - [📈 Benchmarks](#-benchmarks)
-    - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
-        - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
-        - [KMIP Coverage](#kmip-coverage)
-            - [Messages](#messages)
-            - [Operations by KMIP Version](#operations-by-kmip-version)
-            - [Methodology](#methodology)
-            - [Managed Objects](#managed-objects)
-            - [Base Objects](#base-objects)
-            - [Transparent Key Structures](#transparent-key-structures)
-            - [Attributes](#attributes)
+  - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
+  - [🎯 Top Use Cases](#-top-use-cases)
+  - [🔒 Security \& Compliance](#-security--compliance)
+    - [OpenSSL Versions](#openssl-versions)
+  - [🚀 Quick start](#-quick-start)
+    - [▶️ Example](#️-example)
+  - [📦 Repository content](#-repository-content)
+    - [🧰 Binaries](#-binaries)
+    - [🧱 Core Crates](#-core-crates)
+      - [🖧 Server Infrastructure](#-server-infrastructure)
+      - [🧑‍💻 Client Libraries](#-client-libraries)
+      - [🔐 Cryptographic Components](#-cryptographic-components)
+      - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
+      - [🗄️ Database Interfaces](#️-database-interfaces)
+      - [🧪 Development and Testing](#-development-and-testing)
+    - [📁 Additional Directories](#-additional-directories)
+  - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
+    - [OpenSSL prerequisite](#openssl-prerequisite)
+    - [✨ Features](#-features)
+    - [🖥️ Linux or macOS](#️-linux-or-macos)
+    - [🪟 Windows](#-windows)
+    - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
+  - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
+  - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
+  - [🔧 Server parameters](#-server-parameters)
+  - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+  - [🏷️ Releases](#️-releases)
+  - [📈 Benchmarks](#-benchmarks)
+  - [🤝 Community \& Support](#-community--support)
+  - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
+    - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
+    - [KMIP Coverage](#kmip-coverage)
+      - [Messages](#messages)
+      - [Operations by KMIP Version](#operations-by-kmip-version)
+      - [Methodology](#methodology)
+      - [Managed Objects](#managed-objects)
+      - [Base Objects](#base-objects)
+      - [Transparent Key Structures](#transparent-key-structures)
+      - [Attributes](#attributes)
 
 ## 🚀 Quick start
 
@@ -271,14 +274,17 @@ Two paths are supported:
 
 ### OpenSSL prerequisite
 
-The following matrix (from `nix/kms-server.nix`) shows the OpenSSL version used depending on feature and linkage:
+The following matrix (aligned with `nix/kms-server.nix`) shows the OpenSSL versions used by build variant:
 
 | Linkage | FIPS | Non‑FIPS |
 | --- | --- | --- |
-| Static | OpenSSL 3.1.2 (FIPS provider) | OpenSSL 3.1.2 (base provider) |
-| Dynamic | OpenSSL 3.1.2 (FIPS provider) | OpenSSL 3.1.2 (base provider) |
+| Static | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers |
+| Dynamic | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
 
-Note: FIPS builds enable the OpenSSL FIPS provider and embed `fipsmodule.cnf` and provider artifacts for runtime; non‑FIPS builds use the base provider.
+Notes:
+
+- All builds link against OpenSSL 3.6.0.
+- FIPS builds include `fipsmodule.cnf` and the FIPS provider; runtime validation occurs via `--info` in smoke tests.
 
 ### ✨ Features
 
@@ -288,7 +294,7 @@ The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `c
 The `interop` feature enables KMIP interoperability test operations, which are disabled by default for security reasons.
 These operations should only be enabled during testing: `cargo build --features interop` or `cargo test --features interop`.
 
-Nix builds pin OpenSSL 3.1.2 for both FIPS and non‑FIPS (static and dynamic). For non‑Nix development, ensure OpenSSL 3.x is available (3.6.0+ recommended).
+All builds link against OpenSSL 3.6.0. FIPS variants ship the FIPS provider and `fipsmodule.cnf`; non‑FIPS variants use the default/legacy providers. For non‑Nix development, ensure OpenSSL 3.6.0+ is available.
 
 ### 🖥️ Linux or macOS
 

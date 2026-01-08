@@ -7,8 +7,6 @@ use cosmian_kms_server::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
-#[cfg(feature = "timeout")]
-use cosmian_logger::warn;
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
@@ -135,20 +133,10 @@ async fn run() -> KResult<()> {
         return Ok(());
     }
 
-    #[cfg(feature = "timeout")]
-    info!("Feature Timeout enabled");
     #[cfg(test)]
     info!("Feature Test enabled");
 
-    #[cfg(feature = "timeout")]
-    {
-        warn!("This is a demo version, the server will stop in 3 months");
-        let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await
-    };
-
     // Start the KMS
-    #[cfg(not(feature = "timeout"))]
     Box::pin(start_kms_server(server_params, None)).await?;
 
     Ok(())
