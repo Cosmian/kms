@@ -130,7 +130,6 @@ This ensures consistent modern linkage while preserving certified FIPS runtime b
         - [✨ Features](#-features)
         - [🖥️ Linux or macOS](#️-linux-or-macos)
         - [🪟 Windows](#-windows)
-        - [🐳 Build the Docker Ubuntu container](#-build-the-docker-ubuntu-container)
         - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
     - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
     - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
@@ -270,6 +269,17 @@ Two paths are supported:
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
+### OpenSSL prerequisite
+
+The following matrix (from `nix/kms-server.nix`) shows the OpenSSL version used depending on feature and linkage:
+
+| Linkage | FIPS | Non‑FIPS |
+| --- | --- | --- |
+| Static | OpenSSL 3.1.2 (FIPS provider) | OpenSSL 3.1.2 (base provider) |
+| Dynamic | OpenSSL 3.1.2 (FIPS provider) | OpenSSL 3.1.2 (base provider) |
+
+Note: FIPS builds enable the OpenSSL FIPS provider and embed `fipsmodule.cnf` and provider artifacts for runtime; non‑FIPS builds use the base provider.
+
 ### ✨ Features
 
 From version 5.4.0, the KMS runs in FIPS mode by default.
@@ -278,7 +288,7 @@ The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `c
 The `interop` feature enables KMIP interoperability test operations, which are disabled by default for security reasons.
 These operations should only be enabled during testing: `cargo build --features interop` or `cargo test --features interop`.
 
-OpenSSL v3.2.0 is required to build the KMS.
+Nix builds pin OpenSSL 3.1.2 for both FIPS and non‑FIPS (static and dynamic). For non‑Nix development, ensure OpenSSL 3.x is available (3.6.0+ recommended).
 
 ### 🖥️ Linux or macOS
 
@@ -331,20 +341,6 @@ BuildProject -BuildType release   # or debug
 
 . .github/scripts/cargo_test.ps1
 TestProject -BuildType release    # or debug
-```
-
-### 🐳 Build the Docker Ubuntu container
-
-You can build a Docker image that contains the KMS server as follows:
-
-```sh
-docker buildx build . -t kms
-```
-
-Or, with FIPS support:
-
-```sh
-docker buildx build --build-arg FIPS="true" -t kms .
 ```
 
 ### 📦 Packaging (DEB/RPM/DMG) and hashes

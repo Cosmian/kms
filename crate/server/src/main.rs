@@ -14,9 +14,6 @@ use dotenvy::dotenv;
 use openssl::provider::Provider;
 use tracing::span;
 
-#[cfg(feature = "timeout")]
-mod expiry;
-
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
     "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
