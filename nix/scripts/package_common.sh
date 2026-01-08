@@ -502,6 +502,25 @@ resolve_openssl_path() {
     fi
     chmod 644 "$workspace_stage_dir/ssl/openssl.cnf" "$workspace_stage_dir/ssl/fipsmodule.cnf" || true
   fi
+
+  # Create architecture-agnostic symlinks for cargo-deb/cargo-generate-rpm
+  # These allow Cargo.toml to reference a fixed path regardless of build architecture
+  local generic_basename
+  if [ "$VARIANT" = "non-fips" ]; then
+    generic_basename="openssl-non-fips-3.6.0-linux"
+  else
+    generic_basename="openssl-3.6.0-linux"
+  fi
+
+  # Create symlink in crate/server/target for cargo-deb
+  local generic_path_crate="$REPO_ROOT/crate/server/target/${generic_basename}"
+  rm -f "$generic_path_crate" 2>/dev/null || true
+  ln -sf "${stage_basename}" "$generic_path_crate"
+
+  # Create symlink in workspace target for cargo-generate-rpm
+  local generic_path_workspace="$REPO_ROOT/target/${generic_basename}"
+  rm -f "$generic_path_workspace" 2>/dev/null || true
+  ln -sf "${stage_basename}" "$generic_path_workspace"
 }
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
