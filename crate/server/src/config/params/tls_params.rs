@@ -98,7 +98,8 @@ impl TlsParams {
             server_chain_pem,
             clients_ca_cert_pem,
             cipher_suites,
-            ..Default::default()
+            #[cfg(feature = "non-fips")]
+            p12: None,
         }))
     }
 }
@@ -133,6 +134,11 @@ impl fmt::Debug for TlsParams {
             || "Default OpenSSL cipher suites".to_owned(),
             |cipher_string| format!("Custom cipher string: {cipher_string}"),
         );
+
+        #[cfg(not(feature = "non-fips"))]
+        let mut ds = f.debug_struct("TlsParams");
+
+        #[cfg(feature = "non-fips")]
         let mut ds = &mut f.debug_struct("TlsParams");
 
         #[cfg(feature = "non-fips")]

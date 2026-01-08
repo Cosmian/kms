@@ -7,9 +7,11 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path},
 };
+use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::Create,
@@ -19,12 +21,34 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tracing::{debug, info};
 
 use crate::{
     core::KMS,
     routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
+
+/// Returns the current UTC time with milliseconds set to zero.
+///
+/// This function is used to normalize timestamps across the KMIP implementation,
+/// ensuring consistent time representations without millisecond precision.
+///
+/// # Returns
+///
+/// Returns the current `OffsetDateTime` with milliseconds set to 0.
+///
+/// # Errors
+///
+/// Returns a `KmipError::Default` if the millisecond replacement fails.
+fn time_normalize() -> Result<OffsetDateTime, XksErrorReply> {
+    OffsetDateTime::now_utc()
+        .replace_millisecond(0)
+        .map_err(|e| XksErrorReply {
+            errorName: XksErrorName::InternalException,
+            errorMessage: Some(format!("Failed to normalize time: {e}")),
+        })
+}
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -248,7 +272,13 @@ async fn create_key(
     key_id: String,
     kms: &Arc<KMS>,
 ) -> Result<GetKeyMetadataResponse, XksErrorReply> {
-    let user = request.requestMetadata.awsPrincipalArn;
+    let aws_user = request.requestMetadata.awsPrincipalArn;
+    let uid = UniqueIdentifier::TextString(key_id);
+    // Set the activation date  in the past to have the key immediately active
+    let activation_date = time_normalize().map_err(|e| XksErrorReply {
+        errorName: XksErrorName::InternalException,
+        errorMessage: Some(format!("Failed to get current time: {e}")),
+    })? - time::Duration::minutes(1);
 
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -261,7 +291,8 @@ async fn create_key(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
-        unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
+        unique_identifier: Some(uid.clone()),
+        activation_date: Some(activation_date),
         ..Attributes::default()
     };
     attributes
@@ -276,13 +307,35 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    kms.create(create, &user, None, None)
+    kms.create(create, &kms.params.default_username, None, None)
         .await
         .map_err(|e| XksErrorReply {
             errorName: XksErrorName::KeyNotFoundException,
             errorMessage: Some(e.to_string()),
         })?;
 
+    // Grant Encrypt and Decrypt usage for the created key to the AWS user
+    kms.grant_access(
+        &Access {
+            unique_identifier: Some(uid.clone()),
+            user_id: aws_user.clone(),
+            operation_types: vec![
+                KmipOperation::Encrypt,
+                KmipOperation::Decrypt,
+                KmipOperation::GetAttributes,
+            ],
+        },
+        &kms.params.default_username,
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| XksErrorReply {
+        errorName: XksErrorName::InternalException,
+        errorMessage: Some(format!("Failed to grant access to user {aws_user}: {e}")),
+    })?;
+
+    // Return the key metadata
     let key_spec = "AES_256".to_owned();
     let key_usage = vec![
         KeyUsage::ENCRYPT,
