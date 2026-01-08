@@ -518,6 +518,8 @@ resolve_openssl_path() {
   ln -sf "${stage_basename}" "$generic_path_crate"
 
   # Create symlink in workspace target for cargo-generate-rpm
+  # Ensure target directory exists first
+  mkdir -p "$REPO_ROOT/target"
   local generic_path_workspace="$REPO_ROOT/target/${generic_basename}"
   rm -f "$generic_path_workspace" 2>/dev/null || true
   ln -sf "${stage_basename}" "$generic_path_workspace"

@@ -20,8 +20,11 @@ echo "========================================="
 }
 
 # If HSM is down on env.variable PROTECCIO_IP, skip tests.
-if ! ping -c 1 -W 1 "$PROTECCIO_IP" &>/dev/null; then
-  echo "Warning: PROTECCIO_IP is set but HSM is unreachable. Skipping tests."
+# Use TCP connection test instead of ping (ICMP may be disabled)
+# Proteccio typically uses port 1432 for PKCS#11; adjust if needed
+PROTECCIO_PORT="${PROTECCIO_PORT:-1432}"
+if ! timeout 2 bash -c "cat < /dev/null > /dev/tcp/${PROTECCIO_IP}/${PROTECCIO_PORT}" 2>/dev/null; then
+  echo "Warning: PROTECCIO_IP is set but HSM is unreachable on port ${PROTECCIO_PORT}. Skipping tests."
   exit 0
 fi
 
