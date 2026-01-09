@@ -11,7 +11,6 @@ use actix_web::{
 };
 use clap::crate_version;
 use cosmian_logger::{error, info, warn};
-use serde::Serialize;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -105,23 +104,13 @@ pub(crate) async fn download_cli(req: HttpRequest, kms: Data<Arc<KMS>>) -> Resul
     Ok(file.set_content_disposition(cd))
 }
 
-#[derive(Serialize)]
-struct ExistsResponse {
-    exists: bool,
-}
-
-pub(crate) async fn cli_download_exists(req: HttpRequest) -> HttpResponse {
+pub(crate) async fn cli_download_exists() -> HttpResponse {
     let exists = tokio::fs::metadata(FILE_PATH).await.is_ok();
 
-    if req.method() == actix_web::http::Method::HEAD {
-        // For HEAD, no body — return 200 or 404 with appropriate headers only.
-        if exists {
-            HttpResponse::Ok().finish()
-        } else {
-            HttpResponse::NotFound().finish()
-        }
+    // For HEAD, no body — return 200 or 404 with appropriate headers only.
+    if exists {
+        HttpResponse::Ok().finish()
     } else {
-        // For GET, return a JSON body.
-        HttpResponse::Ok().json(ExistsResponse { exists })
+        HttpResponse::NotFound().finish()
     }
 }
