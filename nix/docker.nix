@@ -171,10 +171,9 @@ let
           CONF_PATH="$${COSMIAN_KMS_CONF:-}"
           if [ -z "$CONF_PATH" ]; then CONF_PATH="/etc/cosmian/kms.toml"; fi
           if [ -f "$CONF_PATH" ]; then
-              echo "Starting Cosmian KMS with configuration: $CONF_PATH"
-              exec cosmian_kms -c "$CONF_PATH"
-            fi
-
+            echo "Starting Cosmian KMS with configuration: $CONF_PATH"
+            exec cosmian_kms -c "$CONF_PATH"
+          else
             # No config file found, start with default SQLite configuration
             echo "Starting Cosmian KMS with default SQLite configuration"
             echo "Database location: /var/lib/cosmian-kms/sqlite-data"
@@ -186,9 +185,10 @@ let
             echo ""
             exec cosmian_kms --database-type sqlite --sqlite-path /var/lib/cosmian-kms/sqlite-data
           fi
-
+        else
           # Execute the KMS server with provided arguments
           exec cosmian_kms "$@"
+        fi
     EOF
         chmod +x $out/bin/docker-entrypoint.sh
   '';
