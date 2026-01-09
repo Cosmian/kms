@@ -15,7 +15,6 @@ on:
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -90,7 +89,6 @@ jobs:
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

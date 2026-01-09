@@ -2,12 +2,10 @@
 name: Packaging
 
 on:
-  workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
-        default: 1.90.0
+  push:
+    tags:
+      - '**'
+  pull_request:
   workflow_dispatch:
     inputs:
       toolchain:
@@ -20,17 +18,17 @@ jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0
       archive-name: windows
 
   docker:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging-docker.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0
 
   packages:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -53,16 +51,27 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+        if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+          || startsWith(github.ref, 'refs/tags/')
 
       - name: List keys
         run: gpg -K
+        if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+          || startsWith(github.ref, 'refs/tags/')
 
-      - name: Package
+      - name: Package with GPG signature
         run: |
           bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+        if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+          || startsWith(github.ref, 'refs/tags/')
+
+      - name: Package without GPG signature
+        run: |
+          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+        if: github.event.pull_request.head.repo.full_name != github.repository || startsWith(github.ref_name, 'dependabot/') || github.actor == 'dependabot[bot]'
 
       - name: Upload package
         uses: actions/upload-artifact@v6
@@ -71,9 +80,12 @@ jobs:
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
           retention-days: 1
           if-no-files-found: error
+        if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+          || startsWith(github.ref, 'refs/tags/')
 
   publish-release:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      || startsWith(github.ref, 'refs/tags/')
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
     concurrency:
@@ -188,4 +200,4 @@ jobs:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0
