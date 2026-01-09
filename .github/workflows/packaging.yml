@@ -6,13 +6,6 @@ on:
     tags:
       - '**'
   pull_request:
-  workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
-        required: true
-        type: string
-        default: 1.90.0
 
 jobs:
   windows-package:
