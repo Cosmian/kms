@@ -2,10 +2,12 @@
 name: Packaging
 
 on:
-  push:
-    tags:
-      - '**'
-  pull_request:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+        default: 1.90.0
 
 jobs:
   windows-package:

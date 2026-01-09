@@ -1,0 +1,17 @@
+---
+name: Packaging
+
+on:
+  push:
+    tags:
+      - '**'
+  pull_request:
+
+jobs:
+  # Run packaging for PRs
+  packaging:
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.90.0
