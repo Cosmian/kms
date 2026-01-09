@@ -9,6 +9,18 @@ use openssl::{
     sign::Verifier,
 };
 
+#[cfg(feature = "non-fips")]
+use crate::crypto::elliptic_curves::VERIFY_256_DATA_LENGTH;
+#[cfg(feature = "non-fips")]
+use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
+#[cfg(feature = "non-fips")]
+use openssl::bn::BigNumContext;
+#[cfg(feature = "non-fips")]
+use p256::ecdsa::{
+    Signature as P256Signature, VerifyingKey as P256VerifyingKey,
+    signature::hazmat::PrehashVerifier as _,
+};
+
 pub fn ecdsa_verify(
     verification_key: &PKey<Public>,
     data: &[u8],
@@ -51,11 +63,10 @@ pub fn ecdsa_verify(
                 let is_p256 = curve_nid == Some(openssl::nid::Nid::X9_62_PRIME256V1);
                 let is_k256 = curve_nid == Some(openssl::nid::Nid::SECP256K1);
                 if is_digested && (is_p256 || is_k256) {
-                    use openssl::bn::BigNumContext;
-
-                    if data.len() != 32 {
+                    if data.len() != VERIFY_256_DATA_LENGTH {
                         return Err(CryptoError::InvalidSize(format!(
-                            "SHA-256 digest for verify must be exactly 32 bytes, is {} bytes.",
+                            "SHA-256 digest for verify must be exactly {} bytes, is {} bytes.",
+                            VERIFY_256_DATA_LENGTH,
                             data.len()
                         )));
                     }
@@ -66,32 +77,26 @@ pub fn ecdsa_verify(
                         &mut ctx,
                     )?;
                     let is_valid = if is_p256 {
-                        use p256::ecdsa::{
-                            Signature, VerifyingKey, signature::hazmat::PrehashVerifier,
-                        };
-                        let verifying_key =
-                            VerifyingKey::from_sec1_bytes(&pub_key_sec1).map_err(|e| {
+                        let verifying_key = P256VerifyingKey::from_sec1_bytes(&pub_key_sec1)
+                            .map_err(|e| {
                                 CryptoError::ConversionError(format!(
                                     "Verify - invalid P256 public key: {e}"
                                 ))
                             })?;
-                        let signature = Signature::from_der(signature).map_err(|e| {
+                        let signature = P256Signature::from_der(signature).map_err(|e| {
                             CryptoError::ConversionError(format!(
                                 "Verify - invalid ECDSA P256 signature: {e}"
                             ))
                         })?;
                         verifying_key.verify_prehash(data, &signature).is_ok()
                     } else {
-                        use k256::ecdsa::{
-                            Signature, VerifyingKey, signature::hazmat::PrehashVerifier,
-                        };
-                        let verifying_key =
-                            VerifyingKey::from_sec1_bytes(&pub_key_sec1).map_err(|e| {
+                        let verifying_key = K256VerifyingKey::from_sec1_bytes(&pub_key_sec1)
+                            .map_err(|e| {
                                 CryptoError::ConversionError(format!(
                                     "Verify - invalid K256 public key: {e}"
                                 ))
                             })?;
-                        let signature = Signature::from_der(signature).map_err(|e| {
+                        let signature = K256Signature::from_der(signature).map_err(|e| {
                             CryptoError::ConversionError(format!(
                                 "Verify - invalid ECDSA K256 signature: {e}"
                             ))
@@ -166,22 +171,14 @@ mod test {
                 ..Default::default()
             };
             let req_raw = Sign {
-                unique_identifier: None,
                 data: Some(message.to_vec().into()),
-                digested_data: None,
                 cryptographic_parameters: Some(cp.clone()),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
             let req_digest = Sign {
-                unique_identifier: None,
-                data: None,
                 digested_data: Some(message_digest.to_vec()),
                 cryptographic_parameters: Some(cp),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
 
             // raw data -> sha256(raw data)

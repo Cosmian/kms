@@ -15,5 +15,7 @@ pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const ED448_PRIVATE_KEY_LENGTH: usize = 0x39;
 pub const ED448_PUBLIC_KEY_LENGTH: usize = 0x39;
+pub const ECDSA_256_D_PRIVATE_KEY_LENGTH: usize = 0x20;
+pub const VERIFY_256_DATA_LENGTH: usize = 0x20;
 
 pub const CURVE_25519_Q_LENGTH_BITS: i32 = 253;

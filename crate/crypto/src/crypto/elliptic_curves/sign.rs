@@ -7,6 +7,18 @@ use openssl::{
 
 use crate::error::CryptoError;
 
+#[cfg(feature = "non-fips")]
+use crate::crypto::elliptic_curves::ECDSA_256_D_PRIVATE_KEY_LENGTH;
+#[cfg(feature = "non-fips")]
+use k256::ecdsa::{Signature as K256Signature, SigningKey as K256SigningKey};
+#[cfg(feature = "non-fips")]
+use p256::ecdsa::{
+    Signature as P256Signature, SigningKey as P256SigningKey, signature::DigestSigner as _,
+    signature::hazmat::PrehashSigner as _,
+};
+#[cfg(feature = "non-fips")]
+use sha2::{Digest, Sha256};
+
 /// ECDSA signature helper implementing RFC6979 determinism for NIST P-256 + SHA-256 in non-fips builds,
 /// falling back to OpenSSL Signer otherwise.
 pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>, CryptoError> {
@@ -39,8 +51,6 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
             let is_k256 = curve_nid == Some(openssl::nid::Nid::SECP256K1);
 
             if is_p256 || is_k256 {
-                use sha2::{Digest, Sha256};
-
                 let mut msg_bytes = Vec::new();
                 if let Some(corr) = request.correlation_value.clone() {
                     msg_bytes.extend_from_slice(&corr);
@@ -53,24 +63,18 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
 
                 // Private scalar d
                 let mut d_bytes = ec_key.private_key().to_vec();
-                if d_bytes.len() < 32 {
-                    let mut padded = vec![0_u8; 32 - d_bytes.len()];
+                if d_bytes.len() < ECDSA_256_D_PRIVATE_KEY_LENGTH {
+                    let mut padded = vec![0_u8; ECDSA_256_D_PRIVATE_KEY_LENGTH - d_bytes.len()];
                     padded.extend_from_slice(&d_bytes);
                     d_bytes = padded;
-                } else if d_bytes.len() > 32 {
-                    let start = d_bytes.len().saturating_sub(32);
+                } else if d_bytes.len() > ECDSA_256_D_PRIVATE_KEY_LENGTH {
+                    let start = d_bytes.len().saturating_sub(ECDSA_256_D_PRIVATE_KEY_LENGTH);
                     d_bytes = d_bytes.get(start..).unwrap_or(&d_bytes[..]).to_vec();
                 }
-
                 return if is_p256 {
-                    use p256::ecdsa::{
-                        Signature, SigningKey, signature::DigestSigner,
-                        signature::hazmat::PrehashSigner,
-                    };
-
-                    let key = SigningKey::from_slice(&d_bytes)
+                    let key = P256SigningKey::from_slice(&d_bytes)
                         .map_err(|e| CryptoError::NotSupported(format!("P256 key error: {e}")))?;
-                    let sig: Signature = if request.digested_data.is_some() {
+                    let sig: P256Signature = if request.digested_data.is_some() {
                         key.sign_prehash(&msg_bytes).map_err(|e| {
                             CryptoError::NotSupported(format!("Sign (P256) error: {e}"))
                         })?
@@ -79,14 +83,9 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                     };
                     Ok(sig.to_der().as_bytes().to_vec())
                 } else {
-                    use k256::ecdsa::{
-                        Signature, SigningKey, signature::DigestSigner,
-                        signature::hazmat::PrehashSigner,
-                    };
-
-                    let key = SigningKey::from_slice(&d_bytes)
+                    let key = K256SigningKey::from_slice(&d_bytes)
                         .map_err(|e| CryptoError::NotSupported(format!("K256 key error: {e}")))?;
-                    let sig: Signature = if request.digested_data.is_some() {
+                    let sig: K256Signature = if request.digested_data.is_some() {
                         key.sign_prehash(&msg_bytes).map_err(|e| {
                             CryptoError::NotSupported(format!("Sign (K256) error: {e}"))
                         })?
@@ -158,13 +157,9 @@ mod tests {
         let pkey = PKey::generate_ed25519().unwrap_or_else(|e| panic!("ed25519 gen: {e}"));
         let cp: CryptographicParameters = CryptographicParameters::default();
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ed25519 deterministic".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
@@ -178,13 +173,9 @@ mod tests {
         let pkey = PKey::generate_ed448().unwrap_or_else(|e| panic!("ed448 gen: {e}"));
         let cp: CryptographicParameters = CryptographicParameters::default();
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ed448 deterministic".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
@@ -206,13 +197,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ecdsa nondeterminism test".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, ecdsa_sign);
@@ -263,13 +250,9 @@ mod tests {
                 ..Default::default()
             };
             let req = Sign {
-                unique_identifier: None,
                 data: Some(b"supported curves signing".to_vec().into()),
-                digested_data: None,
                 cryptographic_parameters: Some(cp.clone()),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
 
             let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
@@ -296,13 +279,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
-            data: None,
             digested_data: Some(digest.to_vec()),
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
@@ -347,22 +326,14 @@ mod tests {
                 ..Default::default()
             };
             let req_raw = Sign {
-                unique_identifier: None,
                 data: Some(message.to_vec().into()),
-                digested_data: None,
                 cryptographic_parameters: Some(cp.clone()),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
             let req_digest = Sign {
-                unique_identifier: None,
-                data: None,
                 digested_data: Some(message_digest.to_vec()),
                 cryptographic_parameters: Some(cp),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
 
             // raw data -> sha256(raw data)
