@@ -1,3 +1,7 @@
+// TODO : rewrite some stuff
+
+
+
 # Cosmian KMS Crypto
 
 The **Crypto** crate provides core cryptographic operations and algorithm implementations for the Cosmian KMS.
