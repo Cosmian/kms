@@ -2,14 +2,9 @@
 name: Packaging
 
 on:
-  push:
-    tags:
-      - '**'
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
         required: true
         type: string
         default: 1.90.0

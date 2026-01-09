@@ -1,0 +1,16 @@
+---
+name: Packaging
+
+on:
+  push:
+    tags:
+      - '**'
+  pull_request:
+
+jobs:
+  # Run packaging for PRs
+  packaging:
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.90.0
