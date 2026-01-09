@@ -144,8 +144,8 @@ let
     echo ""
 
     echo "=== OpenSSL runtime configuration ==="
-    echo "OPENSSL_CONF: $${OPENSSL_CONF:-unset}"
-    echo "OPENSSL_MODULES: $${OPENSSL_MODULES:-unset}"
+    echo "OPENSSL_CONF: ''${OPENSSL_CONF:-unset}"
+    echo "OPENSSL_MODULES: ''${OPENSSL_MODULES:-unset}"
     if [ -f /usr/local/cosmian/lib/ssl/openssl.cnf ]; then
       echo "Dumping /usr/local/cosmian/lib/ssl/openssl.cnf (first 80 lines):"
       head -n 80 /usr/local/cosmian/lib/ssl/openssl.cnf || true
@@ -182,7 +182,7 @@ let
       echo "  - Mount a config file and set COSMIAN_KMS_CONF environment variable"
       echo "  - Or pass command-line arguments: docker run cosmian-kms --database-type postgres --database-url ..."
       echo ""
-      exec cosmian_kms
+      exec cosmian_kms --database-type sqlite --sqlite-path /var/lib/cosmian-kms/sqlite-data
     fi
 
     # Execute the KMS server with provided arguments
