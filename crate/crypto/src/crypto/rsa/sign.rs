@@ -118,39 +118,67 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             }
         }
     } else {
-        match default_hash {
-            KmipHash::SHA1 => MessageDigest::sha1(),
-            KmipHash::SHA384 => MessageDigest::sha384(),
-            KmipHash::SHA512 => MessageDigest::sha512(),
-            KmipHash::SHA3256 => MessageDigest::sha3_256(),
-            KmipHash::SHA3384 => MessageDigest::sha3_384(),
-            KmipHash::SHA3512 => MessageDigest::sha3_512(),
-            _ => MessageDigest::sha256(),
-        }
+        map_kmip_hash_to_openssl(default_hash)
     };
 
     // RSASSA-PSS: pre-hash path when digested_data provided
-    let mut signer = if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm
+    if digital_signature_algorithm == DigitalSignatureAlgorithm::RSASSAPSS
         && request.digested_data.is_some()
     {
-        Signer::new_without_digest(private_key)?
-    } else {
-        Signer::new(digest, private_key)?
-    };
+        // We use PkeyCtx because Signer::new_without_digest often loses the MD context, needed for PSS padding parameters
+        use openssl::pkey_ctx::PkeyCtx;
 
+        let mut buffer = Vec::new();
+        if let Some(corr) = &request.correlation_value {
+            buffer.extend_from_slice(corr);
+        }
+        let mut ctx = PkeyCtx::new(private_key)?;
+        ctx.sign_init()?;
+        ctx.set_rsa_padding(Padding::PKCS1_PSS)?;
+
+        if let Some(cp) = request.cryptographic_parameters.as_ref() {
+            if let Some(h) = cp.mask_generator_hashing_algorithm {
+                let mgf1 = map_kmip_hash_to_openssl(h);
+                #[allow(unsafe_code)]
+                ctx.set_rsa_mgf1_md(unsafe { &*(mgf1.as_ptr().cast::<openssl::md::MdRef>()) })?;
+            } else {
+                #[allow(unsafe_code)]
+                ctx.set_rsa_mgf1_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
+            }
+        } else {
+            #[allow(unsafe_code)]
+            ctx.set_rsa_mgf1_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
+        }
+        //Tell OpenSSL what the hash type is
+        #[allow(unsafe_code)]
+        ctx.set_signature_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
+
+        let salt_len = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| cp.salt_length)
+            .map_or(RsaPssSaltlen::DIGEST_LENGTH, RsaPssSaltlen::custom);
+        ctx.set_rsa_pss_saltlen(salt_len)?;
+
+        let digested_data = request.digested_data.as_ref().ok_or_else(|| {
+            CryptoError::ObjectNotFound("Missing digested data for PSS operation".to_owned())
+        })?;
+        buffer.extend_from_slice(digested_data);
+
+        // First call: Pass None to get the required buffer size
+        let required_len = ctx.sign(&buffer, None)?;
+        // Second call: Pass a buffer of the correct size
+        let mut signature = vec![0_u8; required_len];
+        ctx.sign(&buffer, Some(&mut signature))?;
+        return Ok(signature);
+    }
+
+    let mut signer = Signer::new(digest, private_key)?;
     if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
         if let Some(cp) = request.cryptographic_parameters.as_ref() {
-            if let Some(h) = &cp.mask_generator_hashing_algorithm {
-                let mgf1 = match h {
-                    KmipHash::SHA1 => MessageDigest::sha1(),
-                    KmipHash::SHA384 => MessageDigest::sha384(),
-                    KmipHash::SHA512 => MessageDigest::sha512(),
-                    KmipHash::SHA3256 => MessageDigest::sha3_256(),
-                    KmipHash::SHA3384 => MessageDigest::sha3_384(),
-                    KmipHash::SHA3512 => MessageDigest::sha3_512(),
-                    _ => MessageDigest::sha256(),
-                };
+            if let Some(h) = cp.mask_generator_hashing_algorithm {
+                let mgf1 = map_kmip_hash_to_openssl(h);
                 signer.set_rsa_mgf1_md(mgf1)?;
             } else {
                 signer.set_rsa_mgf1_md(digest)?;
@@ -175,6 +203,18 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
         signer.sign_oneshot_to_vec(&data_to_sign)
     }?;
     Ok(signature)
+}
+
+fn map_kmip_hash_to_openssl(kmip_hash: KmipHash) -> MessageDigest {
+    match kmip_hash {
+        KmipHash::SHA1 => MessageDigest::sha1(),
+        KmipHash::SHA384 => MessageDigest::sha384(),
+        KmipHash::SHA512 => MessageDigest::sha512(),
+        KmipHash::SHA3256 => MessageDigest::sha3_256(),
+        KmipHash::SHA3384 => MessageDigest::sha3_384(),
+        KmipHash::SHA3512 => MessageDigest::sha3_512(),
+        _ => MessageDigest::sha256(),
+    }
 }
 
 #[cfg(test)]
@@ -331,6 +371,91 @@ mod tests {
             valid,
             cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
             "Signature must verify for prehashed RSASSA-PSS"
+        );
+    }
+
+    #[test]
+    fn rsa_pss_sign_raw_digest_verify() {
+        // Generate RSA key
+        let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
+
+        // Compute SHA-256 digest of the message
+        let message = b"rsa pss raw/digest test";
+        let message_digest = openssl::hash::hash(MessageDigest::sha256(), message).expect("digest");
+
+        // RSASSA-PSS with explicit hashing + MGF1 and DIGEST_LENGTH salt
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            hashing_algorithm: Some(KmipHash::SHA256),
+            mask_generator_hashing_algorithm: Some(KmipHash::SHA256),
+            salt_length: None,
+            ..Default::default()
+        };
+        let req_raw = Sign {
+            unique_identifier: None,
+            data: Some(message.to_vec().into()),
+            digested_data: None,
+            cryptographic_parameters: Some(cp.clone()),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+        let req_digest = Sign {
+            unique_identifier: None,
+            data: None,
+            digested_data: Some(message_digest.to_vec()),
+            cryptographic_parameters: Some(cp),
+            init_indicator: None,
+            final_indicator: None,
+            correlation_value: None,
+        };
+        // Sign raw and digest data
+        let sig_raw = sign_rsa_with_pkey(&req_raw, &pkey).expect("signature raw");
+        let sig_digest = sign_rsa_with_pkey(&req_digest, &pkey).expect("signature digest");
+        assert_ne!(
+            sig_raw, sig_digest,
+            "Signature raw and digest match error - non deterministic - should be different"
+        );
+        // Verify signature
+        let public_key = PKey::public_key_from_pem(&pkey.public_key_to_pem().unwrap()).unwrap();
+        let cp_verify = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            hashing_algorithm: Some(KmipHash::SHA256),
+            mask_generator_hashing_algorithm: Some(KmipHash::SHA256),
+            ..Default::default()
+        };
+        // raw data verification - raw data, raw signature
+        let valid = rsa_verify(&public_key, message, &sig_raw, &cp_verify, false)
+            .expect("rsa_verify signature raw");
+        assert_eq!(
+            valid,
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            "Signature raw must verify for RSASSA-PSS"
+        );
+        // raw data verification - raw data, digest signature
+        let valid = rsa_verify(&public_key, message, &sig_digest, &cp_verify, false)
+            .expect("rsa_verify signature digest");
+        assert_eq!(
+            valid,
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            "Signature digest, raw data must verify for RSASSA-PSS"
+        );
+        // digest data verification - digest data, digest signature
+        let valid = rsa_verify(&public_key, &message_digest, &sig_digest, &cp_verify, true)
+            .expect("rsa_verify signature digest");
+        assert_eq!(
+            valid,
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            "Signature digest must verify for prehashed RSASSA-PSS"
+        );
+        // digest data verification - digest data, raw signature
+        let valid = rsa_verify(&public_key, &message_digest, &sig_raw, &cp_verify, true)
+            .expect("rsa_verify signature digest");
+        assert_eq!(
+            valid,
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            "Signature raw, digest data verify for prehashed RSASSA-PSS"
         );
     }
 }
