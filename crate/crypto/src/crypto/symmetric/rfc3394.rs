@@ -50,7 +50,7 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     // Allocate output buffer: wrapped size is plaintext + 8 bytes (IV) + 2 extra blocks for cipher_final.
     // The extra blocks will not propagate to the result as it's truncated to the actual size. Due to how the openssl library is programmed,
     // not adding at least 1 extra block results in a panic. We chose to add two because that's how the openssl library operates when using this cipher.
-    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE];
+    let mut ciphertext = vec![0_u8; n_bytes + AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -81,7 +81,10 @@ pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
     ctx.decrypt_init(Some(cipher), Some(kek), None)?;
 
     // Allocate output buffer: unwrapped size is ciphertext - 8 bytes (IV) + extra blocks for cipher_final. Same comments as above.
-    let mut plaintext = Zeroizing::new(vec![0_u8; n_bytes - AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE]);
+    let mut plaintext = Zeroizing::new(vec![
+        0_u8;
+        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
+    ]);
 
     // Perform the key unwrap operation
     let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;

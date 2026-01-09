@@ -65,7 +65,6 @@ use cosmian_kmip::kmip_2_1::kmip_objects::Object;
 ///
 /// This function checks if the object has a `KeyWrappingData` with the legacy
 /// `NISTKeyWrap` value and converts it to the correct `AESKeyWrapPadding` value.
-#[allow(deprecated)] // Allow use of LegacyNISTKeyWrap for backward compatibility migration
 pub(crate) fn migrate_block_cipher_mode_if_needed(mut object: Object) -> Object {
     use cosmian_kmip::{
         kmip_0::kmip_types::BlockCipherMode,
