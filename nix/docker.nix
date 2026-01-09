@@ -83,110 +83,114 @@ let
   '';
 
   # Create a startup script that sets up the environment
-  startupScript = pkgs.writeScriptBin "docker-entrypoint.sh" ''
-      #!${pkgs.bash}/bin/bash
-      set -e
+  startupScript = pkgs.runCommand "docker-entrypoint" { } ''
+        mkdir -p $out/bin
+        cat > $out/bin/docker-entrypoint.sh << 'EOF'
+    #!${pkgs.bash}/bin/bash
+    set -e
 
-      echo "=== Docker Entrypoint Debug Info ==="
-      echo "Architecture: $(uname -m)"
-      echo "Kernel: $(uname -r)"
-      echo "PATH: $PATH"
-      echo ""
+          echo "=== Docker Entrypoint Debug Info ==="
+          echo "Architecture: $(uname -m)"
+          echo "Kernel: $(uname -r)"
+          echo "PATH: $PATH"
+          echo ""
 
-      echo "=== Checking binary locations ==="
-      echo "which cosmian_kms: $(which cosmian_kms || echo 'NOT FOUND IN PATH')"
-      echo "ls -la /bin/cosmian_kms:"
-      ls -la /bin/cosmian_kms || echo "NOT FOUND"
-      echo "ls -la /usr/local/bin/cosmian_kms:"
-      ls -la /usr/local/bin/cosmian_kms || echo "NOT FOUND"
-      echo ""
+          echo "=== Checking binary locations ==="
+          echo "which cosmian_kms: $(which cosmian_kms || echo 'NOT FOUND IN PATH')"
+          echo "ls -la /bin/cosmian_kms:"
+          ls -la /bin/cosmian_kms || echo "NOT FOUND"
+          echo "ls -la /usr/local/bin/cosmian_kms:"
+          ls -la /usr/local/bin/cosmian_kms || echo "NOT FOUND"
+          echo ""
 
-      echo "=== Checking dynamic linker and libraries ==="
-      ARCH=$(uname -m)
-      if [ "$ARCH" = "x86_64" ]; then
-        echo "Expected linker: /lib64/ld-linux-x86-64.so.2"
-        ls -la /lib64/ld-linux-x86-64.so.2 || echo "NOT FOUND"
-        echo "Libraries in /lib/x86_64-linux-gnu/:"
-        ls -la /lib/x86_64-linux-gnu/ | head -20 || echo "NOT FOUND"
-      elif [ "$ARCH" = "aarch64" ]; then
-        echo "Expected linker: /lib/ld-linux-aarch64.so.1"
-        ls -la /lib/ld-linux-aarch64.so.1 || echo "NOT FOUND"
-        echo "Libraries in /lib/aarch64-linux-gnu/:"
-        ls -la /lib/aarch64-linux-gnu/ | head -20 || echo "NOT FOUND"
-      fi
-      echo ""
+          echo "=== Checking dynamic linker and libraries ==="
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            echo "Expected linker: /lib64/ld-linux-x86-64.so.2"
+            ls -la /lib64/ld-linux-x86-64.so.2 || echo "NOT FOUND"
+            echo "Libraries in /lib/x86_64-linux-gnu/:"
+            ls -la /lib/x86_64-linux-gnu/ | head -20 || echo "NOT FOUND"
+          elif [ "$ARCH" = "aarch64" ]; then
+            echo "Expected linker: /lib/ld-linux-aarch64.so.1"
+            ls -la /lib/ld-linux-aarch64.so.1 || echo "NOT FOUND"
+            echo "Libraries in /lib/aarch64-linux-gnu/:"
+            ls -la /lib/aarch64-linux-gnu/ | head -20 || echo "NOT FOUND"
+          fi
+          echo ""
 
-      echo "=== Checking binary ELF information ==="
-      if command -v readelf >/dev/null 2>&1; then
-        echo "Binary interpreter:"
-        readelf -l /usr/local/bin/cosmian_kms | grep interpreter || echo "readelf failed or no interpreter found"
-      else
-        echo "readelf not available"
-      fi
-      echo ""
+          echo "=== Checking binary ELF information ==="
+          if command -v readelf >/dev/null 2>&1; then
+            echo "Binary interpreter:"
+            readelf -l /usr/local/bin/cosmian_kms | grep interpreter || echo "readelf failed or no interpreter found"
+          else
+            echo "readelf not available"
+          fi
+          echo ""
 
-      echo "=== Checking ldd output ==="
-      if command -v ldd >/dev/null 2>&1; then
-        ldd /usr/local/bin/cosmian_kms || echo "ldd failed"
-      else
-        echo "ldd not available"
-      fi
-      echo ""
+          echo "=== Checking ldd output ==="
+          if command -v ldd >/dev/null 2>&1; then
+            ldd /usr/local/bin/cosmian_kms || echo "ldd failed"
+          else
+            echo "ldd not available"
+          fi
+          echo ""
 
-      echo "=== Attempting to execute binary directly ==="
-      if [ -x /bin/cosmian_kms ]; then
-        echo "/bin/cosmian_kms is executable, trying --version..."
-        /bin/cosmian_kms --version || echo "FAILED with exit code $?"
-      else
-        echo "/bin/cosmian_kms is NOT executable or does not exist"
-      fi
-      echo "=== End Debug Info ==="
-      echo ""
+          echo "=== Attempting to execute binary directly ==="
+          if [ -x /bin/cosmian_kms ]; then
+            echo "/bin/cosmian_kms is executable, trying --version..."
+            /bin/cosmian_kms --version || echo "FAILED with exit code $?"
+          else
+            echo "/bin/cosmian_kms is NOT executable or does not exist"
+          fi
+          echo "=== End Debug Info ==="
+          echo ""
 
-      echo "=== OpenSSL runtime configuration ==="
-      echo "OPENSSL_CONF: ''${OPENSSL_CONF:-unset}"
-      echo "OPENSSL_MODULES: ''${OPENSSL_MODULES:-unset}"
-      if [ -f /usr/local/cosmian/lib/ssl/openssl.cnf ]; then
-        echo "Dumping /usr/local/cosmian/lib/ssl/openssl.cnf (first 80 lines):"
-        head -n 80 /usr/local/cosmian/lib/ssl/openssl.cnf || true
-      else
-        echo "/usr/local/cosmian/lib/ssl/openssl.cnf not found"
-      fi
-      if [ -f /usr/local/cosmian/lib/ssl/fipsmodule.cnf ]; then
-        echo "Dumping /usr/local/cosmian/lib/ssl/fipsmodule.cnf:"
-        cat /usr/local/cosmian/lib/ssl/fipsmodule.cnf || true
-      else
-        echo "/usr/local/cosmian/lib/ssl/fipsmodule.cnf not found"
-      fi
-      echo "=== End OpenSSL runtime configuration ==="
-      echo ""
+          echo "=== OpenSSL runtime configuration ==="
+          echo "OPENSSL_CONF: ''${OPENSSL_CONF:-unset}"
+          echo "OPENSSL_MODULES: ''${OPENSSL_MODULES:-unset}"
+          if [ -f /usr/local/cosmian/lib/ssl/openssl.cnf ]; then
+            echo "Dumping /usr/local/cosmian/lib/ssl/openssl.cnf (first 80 lines):"
+            head -n 80 /usr/local/cosmian/lib/ssl/openssl.cnf || true
+          else
+            echo "/usr/local/cosmian/lib/ssl/openssl.cnf not found"
+          fi
+          if [ -f /usr/local/cosmian/lib/ssl/fipsmodule.cnf ]; then
+            echo "Dumping /usr/local/cosmian/lib/ssl/fipsmodule.cnf:"
+            cat /usr/local/cosmian/lib/ssl/fipsmodule.cnf || true
+          else
+            echo "/usr/local/cosmian/lib/ssl/fipsmodule.cnf not found"
+          fi
+          echo "=== End OpenSSL runtime configuration ==="
+          echo ""
 
-      # Create data directory if it doesn't exist
-      mkdir -p /var/lib/cosmian-kms
+          # Create data directory if it doesn't exist
+          mkdir -p /var/lib/cosmian-kms
 
-    # If no arguments provided, try starting from config file, else use defaults
-    if [ $# -eq 0 ]; then
-      CONF_PATH="$${COSMIAN_KMS_CONF:-}"
-      if [ -z "$CONF_PATH" ]; then CONF_PATH="/etc/cosmian/kms.toml"; fi
-      if [ -f "$CONF_PATH" ]; then
-          echo "Starting Cosmian KMS with configuration: $CONF_PATH"
-          exec cosmian_kms -c "$CONF_PATH"
-        fi
+        # If no arguments provided, try starting from config file, else use defaults
+        if [ $# -eq 0 ]; then
+          CONF_PATH="$${COSMIAN_KMS_CONF:-}"
+          if [ -z "$CONF_PATH" ]; then CONF_PATH="/etc/cosmian/kms.toml"; fi
+          if [ -f "$CONF_PATH" ]; then
+              echo "Starting Cosmian KMS with configuration: $CONF_PATH"
+              exec cosmian_kms -c "$CONF_PATH"
+            fi
 
-        # No config file found, start with default SQLite configuration
-        echo "Starting Cosmian KMS with default SQLite configuration"
-        echo "Database location: /var/lib/cosmian-kms/sqlite-data"
-        echo "HTTP port: 9998"
-        echo ""
-        echo "To use a custom configuration:"
-        echo "  - Mount a config file and set COSMIAN_KMS_CONF environment variable"
-        echo "  - Or pass command-line arguments: docker run cosmian-kms --database-type postgres --database-url ..."
-        echo ""
-        exec cosmian_kms --database-type sqlite --sqlite-path /var/lib/cosmian-kms/sqlite-data
-      fi
+            # No config file found, start with default SQLite configuration
+            echo "Starting Cosmian KMS with default SQLite configuration"
+            echo "Database location: /var/lib/cosmian-kms/sqlite-data"
+            echo "HTTP port: 9998"
+            echo ""
+            echo "To use a custom configuration:"
+            echo "  - Mount a config file and set COSMIAN_KMS_CONF environment variable"
+            echo "  - Or pass command-line arguments: docker run cosmian-kms --database-type postgres --database-url ..."
+            echo ""
+            exec cosmian_kms --database-type sqlite --sqlite-path /var/lib/cosmian-kms/sqlite-data
+          fi
 
-      # Execute the KMS server with provided arguments
-      exec cosmian_kms "$@"
+          # Execute the KMS server with provided arguments
+          exec cosmian_kms "$@"
+    EOF
+        chmod +x $out/bin/docker-entrypoint.sh
   '';
 
   # Root filesystem overlay with symlinks for binary and UI under /usr/local
