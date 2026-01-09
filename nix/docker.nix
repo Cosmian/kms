@@ -164,7 +164,7 @@ let
     # Create data directory if it doesn't exist
     mkdir -p /var/lib/cosmian-kms
 
-    # If no arguments provided, try starting from config file, else show help
+    # If no arguments provided, try starting from config file, else use defaults
     if [ $# -eq 0 ]; then
       CONF_PATH="$(printenv COSMIAN_KMS_CONF)"
       if [ -z "$CONF_PATH" ]; then CONF_PATH="/etc/cosmian/kms.toml"; fi
@@ -172,14 +172,17 @@ let
         echo "Starting Cosmian KMS with configuration: $CONF_PATH"
         exec cosmian_kms -c "$CONF_PATH"
       fi
-      echo "Cosmian KMS Server"
-      echo "Usage: docker run [docker-options] cosmian-kms [kms-options]"
+
+      # No config file found, start with default SQLite configuration
+      echo "Starting Cosmian KMS with default SQLite configuration"
+      echo "Database location: /var/lib/cosmian-kms/sqlite-data"
+      echo "HTTP port: 9998"
       echo ""
-      echo "Example with SQLite:"
-      echo "  docker run -p 9998:9998 -v /path/to/data:/data cosmian-kms"
-      echo "    --database-type sqlite --sqlite-path /data"
+      echo "To use a custom configuration:"
+      echo "  - Mount a config file and set COSMIAN_KMS_CONF environment variable"
+      echo "  - Or pass command-line arguments: docker run cosmian-kms --database-type postgres --database-url ..."
       echo ""
-      exec cosmian_kms --help
+      exec cosmian_kms
     fi
 
     # Execute the KMS server with provided arguments
