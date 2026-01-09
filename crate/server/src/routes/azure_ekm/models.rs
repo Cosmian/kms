@@ -65,7 +65,7 @@ impl KeyMetadataResponse {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub(crate) enum WrapAlgorithm {
     A256KW,
     A256KWP,
