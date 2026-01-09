@@ -540,8 +540,6 @@ impl TTLVXMLDeserializer {
                         "DSA" => Some((0x0000_0005, "DSA")),
                         "ECDSA" => Some((0x0000_0006, "ECDSA")),
                         // Vendor / extension algorithms present in mandatory vectors
-                        // NISTKeyWrap appears as an algorithm enumeration in interop vectors; assign vendor range code
-                        "NISTKeyWrap" => Some((0x8000_000D, "NISTKeyWrap")),
                         "HMAC_SHA1" => Some((0x0000_0007, "HMACSHA1")),
                         "HMAC_SHA224" => Some((0x0000_0008, "HMACSHA224")),
                         "HMAC_SHA256" => Some((0x0000_0009, "HMACSHA256")),
@@ -697,6 +695,8 @@ impl TTLVXMLDeserializer {
                         "CCM" => Some((0x0000_0008, "CCM")),
                         "CMAC" => Some((0x0000_0007, "CMAC")),
                         "AEAD" => Some((0x0000_0012, "AEAD")),
+                        "AESKeyWrapPadding" => Some((0x0000_000C, "AESKeyWrapPadding")),
+                        "NISTKeyWrap" => Some((0x0000_000D, "NISTKeyWrap")),
                         // PaddingMethod
                         "None" => Some((0x1, "None")),
                         "OAEP" => Some((0x2, "OAEP")),

@@ -582,7 +582,7 @@ FQIDAQAB
             crypto_bail!("test_for_byok: RFC5649 pkeyutl failed: {output:?}");
         }
         let rfc5649_encapsulation = fs::read(&rfc5649_encapsulation_file)?;
-        // Check against our implementation of NistKeyWrap
+        // Check against our implementation of AESKeyWrapPadding
         let rec_secret_bytes = rfc5649_unwrap(
             &rfc5649_encapsulation,
             &hex::decode(ephemeral)

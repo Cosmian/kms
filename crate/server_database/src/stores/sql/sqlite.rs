@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::{
     DbError, db_bail, db_error,
     error::{DbResult, DbResultHelper},
+    migrate_block_cipher_mode_if_needed,
     stores::{
         SQLITE_QUERIES,
         migrate::HasDatabase,
@@ -62,6 +63,7 @@ fn sqlite_row_to_owm(row: &SqliteRow) -> Result<ObjectWithMetadata, DbError> {
     let id = row.get::<String, _>(0);
     let object: Object = serde_json::from_str(&row.get::<String, _>(1))
         .context("failed deserializing the object")?;
+    let object = migrate_block_cipher_mode_if_needed(object);
     let raw_attributes = row.get::<Value, _>(2);
     let attributes = serde_json::from_value(raw_attributes)?;
     let owner = row.get::<String, _>(3);

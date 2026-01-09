@@ -35,7 +35,8 @@ pub enum ExportKeyFormat {
 #[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum WrappingAlgorithm {
-    NistKeyWrap,
+    AESKeyWrapPadding, // RFC 5649
+    NistKeyWrap,       // RFC 3394
     AesGCM,
     RsaPkcsV15Sha1,
     RsaPkcsV15,
@@ -155,6 +156,11 @@ pub fn prepare_key_export_elements(
         wrapping_algorithm
             .as_ref()
             .map(|wrapping_algorithm| match wrapping_algorithm {
+                WrappingAlgorithm::AESKeyWrapPadding => CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+                    ..CryptographicParameters::default()
+                },
                 WrappingAlgorithm::NistKeyWrap => CryptographicParameters {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),

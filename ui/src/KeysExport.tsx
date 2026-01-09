@@ -17,10 +17,11 @@ interface KeyExportFormData {
 
 type ExportKeyFormat = "json-ttlv" | "sec1-pem" | "sec1-der" | "pkcs1-pem" | "pkcs1-der" | "pkcs8-pem" | "pkcs8-der" | "base64" | "raw";
 
-type WrappingAlgorithm = "nist-key-wrap" | "aes-gcm" | "rsa-pkcs-v15" | "rsa-oaep" | "rsa-aes-key-wrap";
+type WrappingAlgorithm = "aes-key-wrap-padding" | "nist-key-wrap" | "aes-gcm" | "rsa-pkcs-v15" | "rsa-oaep" | "rsa-aes-key-wrap";
 
 const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
-    { label: "NIST Key Wrap (RFC 5649)", value: "nist-key-wrap" },
+    { label: "AES Key Wrap with Padding (RFC 5649)", value: "aes-key-wrap-padding" },
+    { label: "AES Key Wrap with NO Padding (RFC 3394)", value: "nist-key-wrap" },
     { label: "AES GCM", value: "aes-gcm" },
     { label: "RSA PKCS v1.5", value: "rsa-pkcs-v15" },
     { label: "RSA OAEP", value: "rsa-oaep" },

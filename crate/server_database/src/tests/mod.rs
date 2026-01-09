@@ -26,7 +26,10 @@ use crate::stores::additional_redis_findex_tests::{
 use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
-    tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
+    tests::{
+        database_tests::{atomic, block_cipher_mode_migration_after_json_deserialization},
+        list_uids_for_tags_test::list_uids_for_tags_test,
+    },
 };
 
 mod database_tests;
@@ -105,6 +108,8 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?, None).await?;
     crud(&get_redis_with_findex().await?, None).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?, None)
+        .await?;
     Ok(())
 }
 
@@ -135,7 +140,8 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?, None).await?;
     crud(&get_sqlite(&db_file).await?, None).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
-
+    block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?, None)
+        .await?;
     Ok(())
 }
 
@@ -154,6 +160,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     upsert(&get_pgsql().await?, None).await?;
     crud(&get_pgsql().await?, None).await?;
     list_uids_for_tags_test(&get_pgsql().await?, None).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?, None).await?;
     Ok(())
 }
 
@@ -171,5 +178,6 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     upsert(&get_mysql().await?, None).await?;
     crud(&get_mysql().await?, None).await?;
     list_uids_for_tags_test(&get_mysql().await?, None).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?, None).await?;
     Ok(())
 }

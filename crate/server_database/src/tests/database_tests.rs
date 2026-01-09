@@ -1,9 +1,10 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{BlockCipherMode, State},
     kmip_2_1::{
         kmip_attributes::Attributes,
+        kmip_objects::{Object, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier},
         requests::create_symmetric_key_kmip_object,
     },
@@ -395,6 +396,95 @@ pub(super) async fn crud<DB: ObjectsStore>(
 
     if db.retrieve(&uid, db_params).await?.is_some() {
         db_bail!("The object should have been deleted");
+    }
+
+    Ok(())
+}
+
+/// Test that any legacy value (`0x8000_000D`) is correctly migrated
+/// to `BlockCipherMode::AESKeyWrapPadding` (`0x0000_000C`) when objects are retrieved from the database.
+/// This ensures backward compatibility with some databases that might have been created by KMS versions prior to 5.15.
+/// This test should should be deleted once `BlockCipherMode::LegacyNISTKeyWrap` is permanently removed from the codebase.
+pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: ObjectsStore>(
+    db: &DB,
+    db_params: Option<Arc<dyn SessionParams>>,
+) -> DbResult<()> {
+    cosmian_logger::log_init(None);
+
+    let owner = "test_owner";
+    let uid = Uuid::new_v4().to_string();
+
+    // This is a sort of hack to trick the database into saving that deprecated value
+    let json = r#"
+    {
+      "SymmetricKey": {
+        "KeyBlock": {
+          "KeyFormatType": "TransparentSymmetricKey",
+          "CryptographicAlgorithm": "AES",
+          "CryptographicLength": 256,
+          "KeyWrappingData": {
+            "WrappingMethod": "Encrypt",
+            "EncryptionKeyInformation": {
+              "UniqueIdentifier": "aes_wrapper",
+              "CryptographicParameters": {
+                "BlockCipherMode": "LegacyNISTKeyWrap",
+                "CryptographicAlgorithm": "AES"
+              }
+            },
+            "EncodingOption": "TTLVEncoding"
+          }
+        }
+      }
+    }
+    "#;
+
+    let object: Object = serde_json::from_str(json).expect("Deserialization failed");
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        ..Default::default()
+    };
+
+    // Store the object in the database, it will encode to 0x8000_000D
+    db.create(
+        Some(uid.clone()),
+        owner,
+        &object,
+        &attributes,
+        &HashSet::new(),
+        db_params.clone(),
+    )
+    .await?;
+
+    let retrieved = db
+        .retrieve(&uid, db_params.clone())
+        .await?
+        .ok_or_else(|| DbError::ItemNotFound("Object should exist".to_owned()))?;
+
+    // Verify the BlockCipherMode was migrated
+    if let Object::SymmetricKey(SymmetricKey { key_block }) = retrieved.object() {
+        let block_cipher_mode = key_block
+            .key_wrapping_data
+            .as_ref()
+            .ok_or_else(|| DbError::ServerError("KeyWrappingData should exist".to_owned()))?
+            .encryption_key_information
+            .as_ref()
+            .ok_or_else(|| {
+                DbError::ServerError("EncryptionKeyInformation should exist".to_owned())
+            })?
+            .cryptographic_parameters
+            .as_ref()
+            .ok_or_else(|| DbError::ServerError("CryptographicParameters should exist".to_owned()))?
+            .block_cipher_mode;
+
+        if block_cipher_mode != Some(BlockCipherMode::AESKeyWrapPadding) {
+            return Err(DbError::ServerError(format!(
+                "Legacy BlockCipherMode should be migrated to AESKeyWrapPadding, found: {block_cipher_mode:?}"
+            )));
+        }
+    } else {
+        return Err(DbError::ServerError(
+            "Expected SymmetricKey object".to_owned(),
+        ));
     }
 
     Ok(())

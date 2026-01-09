@@ -262,7 +262,7 @@ pub(super) fn wrap(
                     let block_cipher_mode = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.block_cipher_mode)
-                        .unwrap_or(BlockCipherMode::NISTKeyWrap);
+                        .unwrap_or(BlockCipherMode::AESKeyWrapPadding);
                     let padding_method = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.padding_method)

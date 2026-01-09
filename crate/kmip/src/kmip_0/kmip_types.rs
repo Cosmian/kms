@@ -765,7 +765,6 @@ pub enum ShreddingAlgorithm {
     Unsupervised = 0x3,
 }
 
-// Block Cipher Mode Enumeration
 #[kmip_enum]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
@@ -779,8 +778,8 @@ pub enum BlockCipherMode {
     GCM = 0x0000_0009,
     CBCMAC = 0x0000_000A,
     XTS = 0x0000_000B,
-    AESKeyWrapPadding = 0x0000_000C,
-    NISTKeyWrap = 0x8000_000D,
+    AESKeyWrapPadding = 0x0000_000C, // RFC 5649
+    NISTKeyWrap = 0x0000_000D,       // RFC 3394
     X9102AESKW = 0x0000_000E,
     X9102TDKW = 0x0000_000F,
     X9102AKW1 = 0x0000_0010,
@@ -789,6 +788,10 @@ pub enum BlockCipherMode {
     // Extensions - 8XXXXXXX
     // AES GCM SIV
     GCMSIV = 0x8000_0002,
+    // This variant was introduced to support backward compatibility with versions prior to 5.15
+    // In the database layer, right after deserialization, objects that have a saved BlockCipherMode (via their `KeyWrappingData`) are tested for this mode and
+    // converted to AESKeyWrapPadding if found.
+    LegacyNISTKeyWrap = 0x8000_000D,
 }
 
 /// Padding Method Enumeration
