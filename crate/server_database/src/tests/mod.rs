@@ -107,8 +107,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     upsert(&get_redis_with_findex().await?).await?;
     crud(&get_redis_with_findex().await?).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
-    block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?, None)
-        .await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     Ok(())
 }
 
@@ -139,8 +138,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     upsert(&get_sqlite(&db_file).await?).await?;
     crud(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
-    block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?, None)
-        .await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
     Ok(())
 }
 
@@ -159,7 +157,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
     list_uids_for_tags_test(&get_pgsql().await?).await?;
-    block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?, None).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
     Ok(())
 }
 
@@ -177,6 +175,6 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     upsert(&get_mysql().await?).await?;
     crud(&get_mysql().await?).await?;
     list_uids_for_tags_test(&get_mysql().await?).await?;
-    block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?, None).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;
     Ok(())
 }

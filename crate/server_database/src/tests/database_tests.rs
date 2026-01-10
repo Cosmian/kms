@@ -363,7 +363,6 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 /// This test should should be deleted once `BlockCipherMode::LegacyNISTKeyWrap` is permanently removed from the codebase.
 pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: ObjectsStore>(
     db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
@@ -407,12 +406,11 @@ pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: O
         &object,
         &attributes,
         &HashSet::new(),
-        db_params.clone(),
     )
     .await?;
 
     let retrieved = db
-        .retrieve(&uid, db_params.clone())
+        .retrieve(&uid)
         .await?
         .ok_or_else(|| DbError::ItemNotFound("Object should exist".to_owned()))?;
 
