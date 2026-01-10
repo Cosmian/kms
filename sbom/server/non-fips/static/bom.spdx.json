@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
-  "documentNamespace": "sbomnix://8b33b370-7d88-489d-8771-a4fbcb36af15",
+  "name": "SPDXRef-nix-store-mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv",
+  "documentNamespace": "sbomnix://dcddc132-dc98-41b6-bad1-d4ee913a4ceb",
   "creationInfo": {
-    "created": "2025-12-18T11:03:54.082083+01:00",
+    "created": "2026-01-04T09:21:49.051288+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -77,8 +77,8 @@
     },
     {
       "name": "cosmian-kms-server-rebuild-1",
-      "SPDXID": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
-      "versionInfo": "5.14.0",
+      "SPDXID": "SPDXRef-nix-store-mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv",
+      "versionInfo": "5.14.1",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -87,12 +87,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.14.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.14.1:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server-rebuild-1@5.14.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-server-rebuild-1@5.14.1"
         }
       ]
     },
@@ -161,8 +161,8 @@
     },
     {
       "name": "openssl",
-      "SPDXID": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
-      "versionInfo": "3.1.2",
+      "SPDXID": "SPDXRef-nix-store-8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
+      "versionInfo": "3.6.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -171,12 +171,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:openssl:openssl:3.1.2:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:openssl:openssl:3.6.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/openssl@3.1.2"
+          "referenceLocator": "pkg:nix/openssl@3.6.0"
         }
       ]
     },
@@ -255,9 +255,9 @@
       "relatedSpdxElement": "SPDXRef-nix-store-iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-c251wvmafbrqdh4m19l2b8301jxmakxx-cosmian-kms-server-rebuild-1-5.14.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv"
+      "relatedSpdxElement": "SPDXRef-nix-store-8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv"
     },
     {
       "spdxElementId": "SPDXRef-nix-store-srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv",
@@ -275,17 +275,17 @@
       "relatedSpdxElement": "SPDXRef-nix-store-3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-ppwq7zdb0fl9gcgf43fqb5iv5fp1jbvs-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv"
     },

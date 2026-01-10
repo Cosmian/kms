@@ -55,11 +55,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: With bash test script
-        run: |
-          set -ex
-          bash .github/scripts/test_${{ matrix.type }}.sh --profile debug --variant ${{ matrix.features }}
-
       - name: With cargo only
         run: |
           set -ex

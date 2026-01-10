@@ -8,7 +8,6 @@ source "$SCRIPT_DIR/common.sh"
 
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 echo "========================================="
 echo "Running MySQL tests"

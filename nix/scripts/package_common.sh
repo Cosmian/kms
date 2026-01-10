@@ -394,98 +394,135 @@ write_binary_hash_file() {
 # 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
 # Needed for both static and dynamic builds (dynamic builds ship OpenSSL .so files)
 resolve_openssl_path() {
-  local openssl_attr="openssl312-static"
-  local link="$REPO_ROOT/result-openssl-312"
-
-  # Use dynamic OpenSSL for dynamic builds
+  # Resolve OpenSSL files to stage for packaging
+  # For dynamic builds, use the libs staged in the server derivation, which
+  # already selects 3.6.0 for non-fips and 3.1.2 for fips.
   if [ "$LINK" = "dynamic" ]; then
-    openssl_attr="openssl312-dynamic"
-    link="$REPO_ROOT/result-openssl-312-dynamic"
-  fi
-
-  if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
-    rm -f "$link" 2>/dev/null || true
-    nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"
-  fi
-  OSSL_PATH=$(readlink -f "$link")
-
-  # Create symlinks at fixed locations that Cargo.toml can reference
-  # cargo-deb/cargo-generate-rpm look for paths relative to the crate directory
-  # Using target directory to avoid polluting workspace root
-  local fixed_path_workspace="$REPO_ROOT/target/.openssl-staging"
-  local fixed_path_server="$REPO_ROOT/crate/server/target/.openssl-staging"
-
-  # Ensure parent directories exist
-  mkdir -p "$REPO_ROOT/target"
-  mkdir -p "$REPO_ROOT/crate/server/target"
-
-  # Remove existing paths (use chmod to handle Nix store readonly files)
-  for path in "$fixed_path_workspace" "$fixed_path_server"; do
-    if [ -e "$path" ] || [ -L "$path" ]; then
-      chmod -R u+w "$path" 2>/dev/null || true
-      rm -rf "$path" 2>/dev/null || true
+    OSSL_PATH="$REAL_SERVER/usr/local/cosmian"
+  else
+    # Static builds rely on 3.1.2 for FIPS provider; stage from openssl312
+    local openssl_attr="openssl312-static"
+    local link="$REPO_ROOT/result-openssl-312"
+    if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
+      rm -f "$link" 2>/dev/null || true
+      nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"
     fi
-  done
+    OSSL_PATH=$(readlink -f "$link")
+  fi
 
-  # For RPM builds, cargo-generate-rpm resolves symlinks and uses the resolved path
-  # in the RPM package, so we need to copy files instead of symlinking
-  if [ "$FORMAT" = "rpm" ]; then
-    echo "Copying OpenSSL files for RPM build (cargo-generate-rpm doesn't handle symlinks correctly)"
-    mkdir -p "$fixed_path_workspace" "$fixed_path_server"
-    cp -rL "$OSSL_PATH"/* "$fixed_path_workspace"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_workspace"/
-    cp -rL "$OSSL_PATH"/* "$fixed_path_server"/ 2>/dev/null || cp -r "$OSSL_PATH"/* "$fixed_path_server"/
+  # Compute staging directory matching Cargo.toml asset paths
+  # Format expected:
+  #  - FIPS:      target/openssl-3.6.0-<os>-<arch>
+  #  - non-FIPS:  target/openssl-non-fips-3.6.0-<os>-<arch>
+  local os_name arch_name stage_basename stage_dir
+  os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case "$os_name" in
+  linux) os_name="linux" ;;
+  darwin) os_name="darwin" ;;
+  *) : ;;
+  esac
+  arch_name=$(uname -m)
+  if [ "$VARIANT" = "non-fips" ]; then
+    stage_basename="openssl-non-fips-3.6.0-${os_name}-${arch_name}"
+  else
+    stage_basename="openssl-3.6.0-${os_name}-${arch_name}"
+  fi
+  stage_dir="$REPO_ROOT/crate/server/target/${stage_basename}"
 
-    # Override FIPS configuration files with production versions from server derivation
-    # This ensures portable paths (/usr/local/cosmian) instead of Nix store paths
-    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
-      echo "Using production FIPS config from server derivation (portable paths)"
-      # Remove readonly ssl directories and replace with production config
-      chmod -R u+w "$fixed_path_workspace/ssl" "$fixed_path_server/ssl" 2>/dev/null || true
-      rm -rf "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
-      mkdir -p "$fixed_path_workspace/ssl" "$fixed_path_server/ssl"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_workspace/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_workspace/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$fixed_path_server/ssl/"
-      cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$fixed_path_server/ssl/"
-      # Fix permissions (Nix store files are readonly)
-      chmod 644 "$fixed_path_workspace/ssl"/*.cnf "$fixed_path_server/ssl"/*.cnf
+  # Clean previous staging and create directories
+  if [ -d "$stage_dir" ]; then
+    chmod -R u+w "$stage_dir" 2>/dev/null || true
+    rm -rf "$stage_dir"
+  fi
+  mkdir -p "$stage_dir/lib/ossl-modules" "$stage_dir/ssl"
+
+  # Also clean workspace staging directory (used by cargo-generate-rpm)
+  local workspace_stage_dir="$REPO_ROOT/target/${stage_basename}"
+  if [ -d "$workspace_stage_dir" ]; then
+    chmod -R u+w "$workspace_stage_dir" 2>/dev/null || true
+    rm -rf "$workspace_stage_dir"
+  fi
+
+  # Populate staging directory according to variant/link expected by Cargo.toml
+  # Dynamic builds ship libssl/libcrypto and provider module
+  # Static builds ship provider module and production config only
+  if [ "$LINK" = "dynamic" ]; then
+    # Copy shared libraries from server derivation
+    if [ -f "$OSSL_PATH/lib/libssl.so.3" ]; then cp "$OSSL_PATH/lib/libssl.so.3" "$stage_dir/lib/"; fi
+    if [ -f "$OSSL_PATH/lib/libcrypto.so.3" ]; then cp "$OSSL_PATH/lib/libcrypto.so.3" "$stage_dir/lib/"; fi
+  fi
+
+  # Provider modules: fips for FIPS, legacy for non-FIPS
+  if [ "$VARIANT" = "fips" ]; then
+    if [ -f "$OSSL_PATH/lib/ossl-modules/fips.so" ]; then
+      cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
-    # For DEB builds, handle based on whether we need production FIPS config
-    if [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
-      echo "Using production FIPS config from server derivation (portable paths)"
-      # Copy OpenSSL files but exclude ssl directory, then add production config
-      mkdir -p "$fixed_path_workspace" "$fixed_path_server"
-
-      for staging_dir in "$fixed_path_workspace" "$fixed_path_server"; do
-        # Copy all files from OpenSSL except ssl directory
-        for item in "$OSSL_PATH"/*; do
-          base=$(basename "$item")
-          if [ "$base" != "ssl" ]; then
-            if [ -d "$item" ]; then
-              cp -r "$item" "$staging_dir/" 2>/dev/null || true
-            else
-              cp "$item" "$staging_dir/" 2>/dev/null || true
-            fi
-          fi
-        done
-
-        # Now create ssl directory with production config
-        # Remove any existing ssl directory first (may have readonly files from previous run)
-        rm -rf "$staging_dir/ssl"
-        mkdir -p "$staging_dir/ssl"
-        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$staging_dir/ssl/"
-        cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$staging_dir/ssl/"
-        # Fix permissions (Nix store files are readonly)
-        chmod 644 "$staging_dir/ssl/openssl.cnf"
-        chmod 644 "$staging_dir/ssl/fipsmodule.cnf"
-      done
+    # Prefer provider from server derivation; fallback to OpenSSL 3.6.0 store
+    if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
+      cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     else
-      # No production config available, use symlinks
-      ln -sf "$OSSL_PATH" "$fixed_path_workspace"
-      ln -sf "$OSSL_PATH" "$fixed_path_server"
+      # Fallback: locate legacy.so from any OpenSSL 3.6.0 derivation in the Nix store
+      # Use find instead of ls to handle arbitrary filenames and stop at first match
+      LEGACY_SRC=$(find /nix/store -type f -path '*/openssl-3.6.0*/lib/ossl-modules/legacy.so' -print -quit 2>/dev/null || true)
+      if [ -n "${LEGACY_SRC}" ] && [ -f "${LEGACY_SRC}" ]; then
+        cp "${LEGACY_SRC}" "$stage_dir/lib/ossl-modules/"
+      else
+        echo "WARNING: OpenSSL legacy provider (legacy.so) not found to stage; proceeding without bundling it." >&2
+        echo "         Non-FIPS dynamic packages require legacy provider available on target system's OPENSSL_MODULES path." >&2
+      fi
     fi
   fi
+
+  # Use production FIPS config from server derivation for FIPS builds
+  if [ "$VARIANT" = "fips" ] && [ -d "$REAL_SERVER/usr/local/cosmian/lib/ssl" ]; then
+    echo "Using production FIPS config from server derivation (portable paths)"
+    cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/openssl.cnf" "$stage_dir/ssl/"
+    cp "$REAL_SERVER/usr/local/cosmian/lib/ssl/fipsmodule.cnf" "$stage_dir/ssl/"
+    # Ensure include directive is present and absolute
+    local conf="$stage_dir/ssl/openssl.cnf"
+    if [ -f "$conf" ]; then
+      sed -i 's|^\s*#\s*\.include.*fipsmodule\.cnf|.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|' "$conf"
+      if ! grep -q '^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"; then
+        sed -i '1i \.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$conf"
+      fi
+    fi
+    chmod 644 "$stage_dir/ssl/openssl.cnf" "$stage_dir/ssl/fipsmodule.cnf" || true
+
+    # Also copy to workspace root target directory for cargo-generate-rpm
+    # (cargo-generate-rpm resolves asset paths from workspace root, not crate directory)
+    local workspace_stage_dir="$REPO_ROOT/target/${stage_basename}"
+    mkdir -p "$workspace_stage_dir/lib/ossl-modules" "$workspace_stage_dir/ssl"
+    cp "$stage_dir/ssl/openssl.cnf" "$workspace_stage_dir/ssl/"
+    cp "$stage_dir/ssl/fipsmodule.cnf" "$workspace_stage_dir/ssl/"
+    cp "$stage_dir/lib/ossl-modules/fips.so" "$workspace_stage_dir/lib/ossl-modules/" 2>/dev/null || true
+    if [ "$LINK" = "dynamic" ]; then
+      cp "$stage_dir/lib/libssl.so.3" "$workspace_stage_dir/lib/" 2>/dev/null || true
+      cp "$stage_dir/lib/libcrypto.so.3" "$workspace_stage_dir/lib/" 2>/dev/null || true
+    fi
+    chmod 644 "$workspace_stage_dir/ssl/openssl.cnf" "$workspace_stage_dir/ssl/fipsmodule.cnf" || true
+  fi
+
+  # Create architecture-agnostic symlinks for cargo-deb/cargo-generate-rpm
+  # These allow Cargo.toml to reference a fixed path regardless of build architecture
+  local generic_basename
+  if [ "$VARIANT" = "non-fips" ]; then
+    generic_basename="openssl-non-fips-3.6.0-linux"
+  else
+    generic_basename="openssl-3.6.0-linux"
+  fi
+
+  # Create symlink in crate/server/target for cargo-deb
+  local generic_path_crate="$REPO_ROOT/crate/server/target/${generic_basename}"
+  rm -f "$generic_path_crate" 2>/dev/null || true
+  ln -sf "${stage_basename}" "$generic_path_crate"
+
+  # Create symlink in workspace target for cargo-generate-rpm
+  # Ensure target directory exists first
+  mkdir -p "$REPO_ROOT/target"
+  local generic_path_workspace="$REPO_ROOT/target/${generic_basename}"
+  rm -f "$generic_path_workspace" 2>/dev/null || true
+  ln -sf "${stage_basename}" "$generic_path_workspace"
 }
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
@@ -704,9 +741,11 @@ prepare_workspace() {
   cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
   cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
-  # For dynamic builds, patch the RPATH to point to /usr/local/cosmian/lib
+  # For dynamic builds, patch the RPATH/RUNPATH to include a portable path
+  # Use $ORIGIN so the binary can locate libs both when installed
+  # at /usr/local/cosmian/lib and when extracted in smoke tests.
   if [ "$LINK" = "dynamic" ] && command -v patchelf >/dev/null 2>&1; then
-    echo "Patching RPATH for dynamic build to /usr/local/cosmian/lib"
+    echo "Patching RPATH for dynamic build to \$ORIGIN/../local/cosmian/lib:/usr/local/cosmian/lib"
     for binary in \
       "crate/server/target/$HOST_TRIPLE/release/cosmian_kms" \
       "crate/server/target/release/cosmian_kms" \
@@ -716,7 +755,8 @@ prepare_workspace() {
         chmod u+w "$binary"
         # Remove existing RPATH/RUNPATH and set to our standard path
         patchelf --remove-rpath "$binary" 2>/dev/null || true
-        patchelf --set-rpath /usr/local/cosmian/lib "$binary"
+        # Use double quotes and escape $ to preserve literal $ORIGIN for the dynamic loader
+        patchelf --set-rpath "\$ORIGIN/../local/cosmian/lib:/usr/local/cosmian/lib" "$binary"
         echo "  Patched: $binary"
       fi
     done

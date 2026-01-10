@@ -35,6 +35,8 @@ if [[ "$DMG_FILE" == *"fips"* ]] && [[ "$DMG_FILE" != *"non-fips"* ]]; then
   IS_FIPS=true
 fi
 
+
+
 [ -f "$DMG_FILE" ] || error "DMG not found: $DMG_FILE"
 
 info "Starting smoke test for: $DMG_FILE"
@@ -99,10 +101,12 @@ if [ "$IS_FIPS" = true ]; then
       error "OpenSSL config contains Nix store paths"
     fi
     info "\xe2\x9c\x93 OpenSSL config free of Nix paths"
-    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF"; then
-      info "\xe2\x9c\x93 openssl.cnf include directive correct"
+    # Accept either absolute include to /usr/local path or a relative include
+    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF" || \
+       grep -q '^.include\s\+fipsmodule.cnf' "$OSSL_CONF"; then
+      info "\xe2\x9c\x93 openssl.cnf include directive present"
     else
-      warn ".include directive missing or incorrect in openssl.cnf"
+      warn ".include directive missing or unexpected in openssl.cnf"
     fi
   else
     warn "OpenSSL config not found in DMG Resources: $OSSL_CONF"
@@ -119,7 +123,18 @@ info "Testing binary execution..."
 ENV_OPENSSL_CONF=""
 ENV_OPENSSL_MODULES=""
 if [ "$IS_FIPS" = true ]; then
-  ENV_OPENSSL_CONF="$CHECK_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  # Use a patched, relocatable OpenSSL config to ensure the include points to the DMG path
+  ORIG_OPENSSL_CONF="$CHECK_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  PATCH_DIR=$(mktemp -d /tmp/opensslconf.XXXXXX)
+  ENV_OPENSSL_CONF="$PATCH_DIR/openssl.cnf"
+  cp "$ORIG_OPENSSL_CONF" "$ENV_OPENSSL_CONF" 2>/dev/null || true
+  # Replace absolute include with the DMG resource path if needed
+  DMG_FIPS_CONF="$CHECK_DIR/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+  if [ -f "$ENV_OPENSSL_CONF" ]; then
+    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$ENV_OPENSSL_CONF"; then
+      sed -i '' -e "s|^\.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf|.include ${DMG_FIPS_CONF}|" "$ENV_OPENSSL_CONF" || true
+    fi
+  fi
   ENV_OPENSSL_MODULES="$CHECK_DIR/usr/local/cosmian/lib/ossl-modules"
 fi
 
@@ -139,6 +154,34 @@ if ! echo "$VERSION_OUTPUT" | grep -qE "(cosmian_kms_server|cosmian_kms)"; then
   error "Version output doesn't match expected pattern: $VERSION_OUTPUT"
 fi
 info "\xe2\x9c\x93 Binary executed successfully"
+
+# Determine expected OpenSSL runtime version
+# - All non-FIPS and FIPS static builds expect 3.6.0
+# - FIPS dynamic builds bundle 3.1.2 runtime libs to match the FIPS provider
+EXPECTED_VER="3.6.0"
+info "Verifying OpenSSL runtime version (expected ${EXPECTED_VER})…"
+if [ "$IS_FIPS" = true ]; then
+  INFO_CMD=(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "$BINARY_PATH" --info)
+else
+  INFO_CMD=("$BINARY_PATH" --info)
+fi
+
+if ! INFO_OUTPUT=$("${INFO_CMD[@]}" 2>&1); then
+  warn "--info execution failed, falling back to binary string scan"
+  # Fallback: try to infer OpenSSL version from binary strings
+  if strings "$BINARY_PATH" | grep -q "OpenSSL ${EXPECTED_VER}"; then
+    info "\xe2\x9c\x93 OpenSSL runtime/version artifacts match ${EXPECTED_VER} (fallback)"
+  else
+    echo "$INFO_OUTPUT" >&2 || true
+    error "Failed to verify OpenSSL ${EXPECTED_VER} (both --info and fallback failed)"
+  fi
+else
+  echo "$INFO_OUTPUT" | grep -q "OpenSSL ${EXPECTED_VER}" || {
+    echo "$INFO_OUTPUT" >&2
+    error "Smoke test failed: expected OpenSSL ${EXPECTED_VER} at runtime"
+  }
+  info "\xe2\x9c\x93 OpenSSL runtime version is ${EXPECTED_VER}"
+fi
 
 info ""
 info "============================================"

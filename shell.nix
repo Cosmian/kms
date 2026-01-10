@@ -3,6 +3,8 @@
     url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
     sha256 = "1lr1h35prqkd1mkmzriwlpvxcb34kmhc9dnr48gkm8hh089hifmx";
   }) { },
+  # Explicit variant argument to avoid relying on builtins.getEnv during evaluation
+  variant ? "fips",
 }:
 
 let
@@ -30,6 +32,27 @@ let
   # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
   # via OPENSSL_CONF and OPENSSL_MODULES environment variables
   openssl312 = pkgs228.callPackage ./nix/openssl.nix { };
+  # Wrapper config to activate both default and FIPS providers while reusing
+  # the derivation's generated fipsmodule.cnf. This avoids generating configs
+  # inside nix/openssl.nix and strictly reuses the derivation outputs.
+  opensslFipsWrapper = pkgs228.writeText "openssl-fips-wrapper.cnf" ''
+    # Auto-load provider configuration
+    openssl_conf = openssl_init
+    config_diagnostics = 1
+
+    # Reuse the derivation's installed FIPS module config
+    .include ${openssl312}/ssl/fipsmodule.cnf
+
+    [openssl_init]
+    providers = provider_sect
+
+    [provider_sect]
+    default = default_sect
+    fips = fips_sect
+
+    [default_sect]
+    activate = 1
+  '';
   # SoftHSM override with OpenSSL-only backend (Botan disabled)
   # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
   # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
@@ -126,6 +149,8 @@ pkgs228.mkShell {
   );
   shellHook = ''
     export NIX_OPENSSL_OUT="${openssl312}"
+    # Absolute repo root for reliable path resolution inside nix-shell
+    export REPO_ROOT="${toString ./.}"
     ${
       if isLinux then
         ''
@@ -153,14 +178,29 @@ pkgs228.mkShell {
       # Add OpenSSL lib directory to LD_LIBRARY_PATH so dynamically linked binaries can find it
       export LD_LIBRARY_PATH=${"\${NIX_OPENSSL_OUT}"}/lib:${"\${LD_LIBRARY_PATH:-}"}
 
-      # Configure FIPS provider for runtime (needed for tests)
-      # Point to the FIPS configuration and provider modules
-      if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
-        export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
-      fi
+      # Set OpenSSL runtime config:
+      # - For FIPS variant, use a wrapper that includes the derivation's fipsmodule.cnf
+      #   and activates both default and FIPS providers.
+      # - For non-FIPS, reuse the derivation's stock openssl.cnf.
+      ${
+        if variant == "fips" then
+          ''
+            export OPENSSL_CONF=${opensslFipsWrapper}
+          ''
+        else
+          ''
+            if [ -f ${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf ]; then
+              export OPENSSL_CONF=${"\${NIX_OPENSSL_OUT}"}/ssl/openssl.cnf
+            fi
+          ''
+      }
+
+      # Ensure provider modules path is set
       if [ -d ${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules ]; then
         export OPENSSL_MODULES=${"\${NIX_OPENSSL_OUT}"}/lib/ossl-modules
       fi
+      # Allow loading from config (do not disable) in all cases
+      unset OPENSSL_NO_CONFIG
 
       # Force openssl-sys to use our specific OpenSSL and detect version correctly
       # Disable pkg-config to prevent it from finding wrong OpenSSL versions
