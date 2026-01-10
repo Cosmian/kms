@@ -241,11 +241,22 @@ Options:
           [env: KMS_PROXY_NO_PROXY=]
 
       --jwt-auth-provider <JWT_AUTH_PROVIDER>
-          JWT authentication provider configuration The expected argument is --jwt-auth-provider="`PROVIDER_CONFIG_1`" --jwt-auth-provider="`PROVIDER_CONFIG_2`" ... where each `PROVIDER_CONFIG_N` defines one identity provider configuration.
+          JWT authentication provider configuration.
           
-          Each provider configuration `PROVIDER_CONFIG_N` should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`" where: - `JWT_ISSUER_URI`: The issuer URI of the JWT token (required) - `JWKS_URI`: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json) - `JWT_AUDIENCE_1..N`: One or more audience values for the JWT token (optional)
+          The expected argument is --jwt-auth-provider="`PROVIDER_CONFIG_1`" --jwt-auth-provider="`PROVIDER_CONFIG_2`" ...
+          where each `PROVIDER_CONFIG_N` defines one identity provider configuration.
           
-          Examples: --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs, kacls-migration, another-audience" --jwt-auth-provider="https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys" --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/"" This argument can be repeated to configure multiple identity providers.
+          Each provider configuration `PROVIDER_CONFIG_N` should be in the format: "`JWT_ISSUER_URI,JWKS_URI,JWT_AUDIENCE_1,JWT_AUDIENCE_2,...`"
+          where:
+          - `JWT_ISSUER_URI`: The issuer URI of the JWT token (required)
+          - `JWKS_URI`: The JWKS (JSON Web Key Set) URI (optional, defaults to <JWT_ISSUER_URI>/.well-known/jwks.json)
+          - `JWT_AUDIENCE_1..N`: One or more audience values for the JWT token (optional)
+          
+          Examples:
+          --jwt-auth-provider="https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs, kacls-migration, another-audience"
+          --jwt-auth-provider="https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/v2.0,https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174b69062c96/discovery/v2.0/keys"
+          --jwt-auth-provider="https://<your-tenant>.<region>.auth0.com/""
+          This argument can be repeated to configure multiple identity providers.
           
           [env: KMS_JWT_AUTH_PROVIDER=]
 
@@ -253,6 +264,13 @@ Options:
           The UI distribution folder
           
           [env: COSMIAN_UI_DIST_PATH=]
+
+      --ui-session-salt <UI_SESSION_SALT>
+          A secret salt used to derive the session cookie encryption key.
+          This MUST be identical across all KMS instances behind the same load balancer.
+          This should only be provided when `ui_index_html_folder` is explicitly defined.
+          
+          [env: KMS_SESSION_SALT=]
 
       --ui-oidc-client-id <UI_OIDC_CLIENT_ID>
           The client ID of the configured OIDC tenant for UI Auth

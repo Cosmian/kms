@@ -58,15 +58,21 @@ where
     async fn start(&self, clear_database: bool) -> InterfaceResult<()> {
         let is_new_instance = setup_database(self).await?;
         debug!("Database setup complete, is new instance? {is_new_instance}");
-        if is_new_instance {
+
+        // If clear_database is set, skip migration and just clear the database
+        if clear_database {
+            debug!("Clear database flag is set, clearing database without migration");
+            clear_db(self).await?;
+            // Set version after clearing to ensure metadata is current
+            self.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            self.set_db_state(DbState::Ready).await?;
+        } else if is_new_instance {
             self.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
             self.set_db_state(DbState::Ready).await?;
         } else {
             self.migrate().await?;
-        }
-        if clear_database {
-            clear_db(self).await?;
         }
         Ok(())
     }

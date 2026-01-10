@@ -697,7 +697,7 @@ async fn test_tls_options() -> KmsCliResult<()> {
     let default_db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
         sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-        clear_database: false,
+        clear_database: true,
         ..MainDBConfig::default()
     };
 

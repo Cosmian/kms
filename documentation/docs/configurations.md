@@ -316,6 +316,35 @@ rust_log = "warn,cosmian_kms_server=info"
 
 ---
 
+### [ui-load-balanced](#ui-load-balanced) {#ui-load-balanced}
+
+Production configuration exposing the Web UI behind a load balancer, with deterministic session cookies across KMS instances.
+
+```toml
+# Public URL exposed by the load balancer
+kms_public_url = "https://kms-ui.example.com"
+
+[http]
+port = 9998
+hostname = "0.0.0.0"
+
+# UI configuration: static assets served from this folder
+[ui_config]
+ui_index_html_folder = "./ui/dist"
+
+# Session salt used to derive the UI session cookie encryption key.
+# This value MUST be identical across all KMS instances behind the
+# same load balancer so any instance can decrypt the UI session cookie.
+ui_session_salt = "change-me-and-keep-secret"
+
+[logging]
+rust_log = "info,cosmian_kms_server=info"
+```
+
+**Use case:** Web UI deployments behind a load balancer where UI session cookies must remain valid across all KMS instances.
+
+---
+
 ### [ha-cluster](#ha-cluster) {#ha-cluster}
 
 High-availability cluster configuration.
