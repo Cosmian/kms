@@ -1,25 +1,25 @@
-use crate::error::{CryptoError, result::CryptoResult};
 use cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm as KmipHash,
     kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, ValidityIndicator},
 };
+#[cfg(feature = "non-fips")]
+use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
+#[cfg(feature = "non-fips")]
+use openssl::bn::BigNumContext;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Public},
     sign::Verifier,
 };
-
-#[cfg(feature = "non-fips")]
-use crate::crypto::elliptic_curves::VERIFY_256_DATA_LENGTH;
-#[cfg(feature = "non-fips")]
-use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
-#[cfg(feature = "non-fips")]
-use openssl::bn::BigNumContext;
 #[cfg(feature = "non-fips")]
 use p256::ecdsa::{
     Signature as P256Signature, VerifyingKey as P256VerifyingKey,
     signature::hazmat::PrehashVerifier as _,
 };
+
+#[cfg(feature = "non-fips")]
+use crate::crypto::elliptic_curves::VERIFY_256_DATA_LENGTH;
+use crate::error::{CryptoError, result::CryptoResult};
 
 pub fn ecdsa_verify(
     verification_key: &PKey<Public>,

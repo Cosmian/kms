@@ -34,9 +34,9 @@ pub struct UiConfig {
 
     /// A secret salt used to derive the session cookie encryption key.
     /// This MUST be identical across all KMS instances behind the same load balancer.
-    /// This is mandatory only if `ui_index_html_folder` is defined.
+    /// This should only be provided when `ui_index_html_folder` is explicitly defined.
     #[clap(verbatim_doc_comment, long, env = "KMS_SESSION_SALT")]
-    pub session_salt: Option<String>,
+    pub ui_session_salt: Option<String>,
 
     #[clap(flatten)]
     pub ui_oidc_auth: OidcConfig,

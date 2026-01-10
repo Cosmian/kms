@@ -26,6 +26,11 @@ pub struct ServerParams {
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory only if the UI is configured.
+    pub ui_session_salt: Option<String>,
+
     /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
 
@@ -116,11 +121,6 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
-
-    /// A secret salt used to derive the session cookie encryption key.
-    /// This MUST be identical across all KMS instances behind the same load balancer.
-    /// This is mandatory only if the UI is configured.
-    pub session_salt: Option<String>,
 }
 
 /// Represents the server parameters.
@@ -173,12 +173,13 @@ impl ServerParams {
             );
         }
 
-        // Validate session_salt: if ui_index_html_folder is explicitly defined, session_salt is mandatory
-        if conf.ui_config.ui_index_html_folder.is_some() && conf.ui_config.session_salt.is_none() {
+        // Validate session_salt: it should only be provided when ui_index_html_folder is explicitly defined
+        if conf.ui_config.ui_session_salt.is_some() && conf.ui_config.ui_index_html_folder.is_none()
+        {
             return Err(KmsError::ServerError(
-                "session_salt is mandatory when ui_index_html_folder is configured. \
-                 Please provide a session salt via --session-salt, KMS_SESSION_SALT env var, \
-                 or in the configuration file.".to_owned()
+                "ui_session_salt should only be provided when ui_index_html_folder is configured. \
+                 Please either provide --ui-index-html-folder or remove --session-salt."
+                    .to_owned(),
             ));
         }
 
@@ -288,7 +289,7 @@ impl ServerParams {
             },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
-            session_salt: conf.ui_config.session_salt,
+            ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -415,8 +416,8 @@ impl fmt::Debug for ServerParams {
         }
 
         // Mask the session salt for security (it's a secret)
-        if self.session_salt.is_some() {
-            debug_struct.field("session_salt", &"***");
+        if self.ui_session_salt.is_some() {
+            debug_struct.field("ui_session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information

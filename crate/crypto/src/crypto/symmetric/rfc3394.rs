@@ -8,12 +8,13 @@
 //! Notes:
 //! - Input must be a multiple of 8 bytes and at least 16 bytes (n >= 2 blocks).
 //! - No padding is performed; for non-8-byte input lengths, use RFC 5649 (KWP).
-use openssl::cipher::{Cipher, CipherRef};
-use openssl::cipher_ctx::CipherCtx;
+use openssl::{
+    cipher::{Cipher, CipherRef},
+    cipher_ctx::CipherCtx,
+};
 use zeroize::Zeroizing;
 
-use crate::error::CryptoError;
-use crate::error::result::CryptoResult;
+use crate::error::{CryptoError, result::CryptoResult};
 
 const AES_BLOCK_SIZE: usize = 16; // 128-bit
 const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
@@ -101,8 +102,9 @@ pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
     use zeroize::Zeroizing;
+
+    use super::*;
 
     /// Helper to run wrap/unwrap roundtrip test
     fn test_wrap_unwrap(kek_hex: &str, plaintext_hex: &str, expected_ciphertext_hex: &str) {

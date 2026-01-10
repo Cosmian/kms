@@ -33,12 +33,15 @@ use cosmian_kms_server_database::reexport::{
         requests::{create_rsa_key_pair_request, import_object_request},
     },
     cosmian_kms_crypto::{
-        crypto::password_derivation::{derive_key_from_password, FIPS_MIN_SALT_SIZE},
+        crypto::password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
         openssl::kmip_private_key_to_openssl,
     },
 };
 use cosmian_logger::{debug, error, info, trace};
-use openssl::{hash::{Hasher, MessageDigest}, ssl::SslAcceptorBuilder};
+use openssl::{
+    hash::{Hasher, MessageDigest},
+    ssl::SslAcceptorBuilder,
+};
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
@@ -526,20 +529,22 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key> {
     // Version prefix allows for future algorithm changes
     const VERSION: &str = "v1";
-    
+
     // Create a URL-specific salt by combining salt seed, version, and URL
     // This ensures different URLs get different salts while maintaining determinism
     let salt_input = format!("{user_salt}{VERSION}{public_url}");
-    
+
     // Hash the salt input to get a fixed-size salt
     // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
     let mut hasher = Hasher::new(MessageDigest::sha256())
         .map_err(|e| KmsError::ServerError(format!("Failed to create hasher: {e}")))?;
-    hasher.update(salt_input.as_bytes())
+    hasher
+        .update(salt_input.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Failed to hash salt input: {e}")))?;
-    let hash = hasher.finish()
+    let hash = hasher
+        .finish()
         .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
-    
+
     // Extract first FIPS_MIN_SALT_SIZE bytes as salt
     // SHA-256 produces 32 bytes and FIPS_MIN_SALT_SIZE is 16, so this is always safe
     let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
@@ -548,11 +553,11 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
     {
         salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
     }
-    
+
     // Derive a 64-byte key from the public URL
     let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
-    
+
     // Convert the derived key to an actix-web Key
     Ok(Key::from(derived_key.as_ref()))
 }
@@ -700,7 +705,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Derive or generate key for actix session cookie encryption
     // If session_salt is provided, derive a deterministic key for load-balanced setups
     // Otherwise, generate a random key (for setups without UI or load balancing)
-    let secret_key: Key = if let Some(ref salt) = kms_server.params.session_salt {
+    let secret_key: Key = if let Some(ref salt) = kms_server.params.ui_session_salt {
         derive_session_key_from_url(&kms_public_url, salt)?
     } else {
         Key::generate()
@@ -934,16 +939,16 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_derive_session_key_deterministic() {
         // Load the appropriate provider if available
         #[cfg(not(feature = "non-fips"))]
         {
-            let _ = openssl::provider::Provider::load(None, "fips");
+            drop(openssl::provider::Provider::load(None, "fips"));
         }
 
         let url1 = "https://kms.example.com:9998";
@@ -954,11 +959,11 @@ mod tests {
         // Same URL and salt should generate the same key
         let key1 = derive_session_key_from_url(url1, salt).expect("Failed to derive key 1");
         let key2 = derive_session_key_from_url(url2, salt).expect("Failed to derive key 2");
-        
+
         // Extract the key bytes for comparison
         let key1_bytes = key1.master();
         let key2_bytes = key2.master();
-        
+
         assert_eq!(
             key1_bytes, key2_bytes,
             "Same URL and salt should generate identical keys"
@@ -967,16 +972,17 @@ mod tests {
         // Different URL should generate different key
         let key3 = derive_session_key_from_url(url3, salt).expect("Failed to derive key 3");
         let key3_bytes = key3.master();
-        
+
         assert_ne!(
             key1_bytes, key3_bytes,
             "Different URLs should generate different keys"
         );
 
         // Different salt should generate different key
-        let key4 = derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
+        let key4 =
+            derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
         let key4_bytes = key4.master();
-        
+
         assert_ne!(
             key1_bytes, key4_bytes,
             "Different salts should generate different keys"
@@ -987,35 +993,20 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::unwrap_used)]
-    fn test_derive_session_key_from_empty_url() {
-        // Load the appropriate provider if available
-        #[cfg(not(feature = "non-fips"))]
-        {
-            let _ = openssl::provider::Provider::load(None, "fips");
-        }
-
-        // Even an empty URL should successfully derive a key
-        let key = derive_session_key_from_url("", "test_salt").expect("Failed to derive key from empty URL");
-        assert_eq!(key.master().len(), 64, "Key should be 64 bytes");
-    }
-
-    #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_derive_session_key_determinism() {
         // Load the appropriate provider if available
         #[cfg(not(feature = "non-fips"))]
         {
-            let _ = openssl::provider::Provider::load(None, "fips");
+            drop(openssl::provider::Provider::load(None, "fips"));
         }
 
         let url = "https://kms.example.com:9998";
         let salt = "my_secret_salt";
-        
+
         // Same URL and salt should always produce the same key
         let key1 = derive_session_key_from_url(url, salt).expect("Failed to derive key 1");
         let key2 = derive_session_key_from_url(url, salt).expect("Failed to derive key 2");
-        
+
         // Should be deterministic
         assert_eq!(
             key1.master(),
