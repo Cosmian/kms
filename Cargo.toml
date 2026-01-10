@@ -143,7 +143,7 @@ hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
-lru = "0.12"
+lru = "0.16"
 native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
