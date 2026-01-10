@@ -1,17 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
     path,
-    sync::{Arc, LazyLock},
+    sync::LazyLock,
 };
 
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_objects::{Certificate, Object},
-        kmip_operations::{Validate, ValidateResponse},
-        kmip_types::{UniqueIdentifier, ValidityIndicator},
-    },
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    KmipOperation,
+    kmip_objects::{Certificate, Object},
+    kmip_operations::{Validate, ValidateResponse},
+    kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_logger::{debug, trace, warn};
 use openssl::{
@@ -74,7 +71,6 @@ pub(crate) async fn validate_operation(
     kms: &KMS,
     request: Validate,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ValidateResponse> {
     trace!("Validate: {}", request);
 
@@ -91,13 +87,7 @@ pub(crate) async fn validate_operation(
             let set: HashSet<_> = unique_identifiers.drain(..).collect(); // dedup
             unique_identifiers.extend(set.into_iter());
             Ok((
-                Box::pin(certificates_by_uid(
-                    unique_identifiers.clone(),
-                    kms,
-                    user,
-                    params,
-                ))
-                .await?,
+                Box::pin(certificates_by_uid(unique_identifiers.clone(), kms, user)).await?,
                 unique_identifiers.len(),
             ))
         }
@@ -107,13 +97,7 @@ pub(crate) async fn validate_operation(
             Ok((
                 [
                     certificates.clone(),
-                    Box::pin(certificates_by_uid(
-                        unique_identifiers.clone(),
-                        kms,
-                        user,
-                        params,
-                    ))
-                    .await?,
+                    Box::pin(certificates_by_uid(unique_identifiers.clone(), kms, user)).await?,
                 ]
                 .concat(),
                 certificates.len() + unique_identifiers.len(),
@@ -654,7 +638,6 @@ async fn certificates_by_uid(
     unique_identifiers: Vec<UniqueIdentifier>,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Vec<Vec<u8>>> {
     for uid in &unique_identifiers {
         debug!("{} identifiers", uid);
@@ -664,31 +647,19 @@ async fn certificates_by_uid(
         let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
             KmsError::Certificate("as_str returned None in certificates_by_uid".to_owned())
         })?;
-        let result = Box::pin(certificate_by_uid(
-            unique_identifier,
-            kms,
-            user,
-            params.clone(),
-        ))
-        .await?;
+        let result = Box::pin(certificate_by_uid(unique_identifier, kms, user)).await?;
         results.push(result);
     }
     Ok(results)
 }
 
 // Fetches a certificate. If it fails, returns the according error
-async fn certificate_by_uid(
-    unique_identifier: &str,
-    kms: &KMS,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<Vec<u8>> {
+async fn certificate_by_uid(unique_identifier: &str, kms: &KMS, user: &str) -> KResult<Vec<u8>> {
     let uid_owm = Box::pin(retrieve_object_for_operation(
         unique_identifier,
         KmipOperation::Validate,
         kms,
         user,
-        params,
     ))
     .await?;
 

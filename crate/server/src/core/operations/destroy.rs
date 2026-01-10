@@ -1,19 +1,16 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use async_recursion::async_recursion;
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyMaterial, KeyValue},
-            kmip_objects::{Object, ObjectType},
-            kmip_operations::{Destroy, DestroyResponse},
-            kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Destroy, DestroyResponse},
+        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{debug, info, trace};
 use zeroize::Zeroizing;
@@ -35,7 +32,6 @@ pub(crate) async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DestroyResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -50,7 +46,6 @@ pub(crate) async fn destroy_operation(
         request.cascade,
         kms,
         user,
-        params,
         HashSet::new(),
     )
     .await?;
@@ -69,7 +64,6 @@ pub(crate) async fn recursively_destroy_object(
     cascade: bool,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -77,7 +71,7 @@ pub(crate) async fn recursively_destroy_object(
         "uid={} remove={} cascade={}",
         unique_identifier, remove, cascade
     );
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("Destroy")?;
 
@@ -88,27 +82,23 @@ pub(crate) async fn recursively_destroy_object(
         // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
             // ensure user can destroy
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
+            if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
+                    .list_user_operations_on_object(&uid, user, false)
                     .await?;
                 if !ops.iter().any(|p| KmipOperation::Destroy == *p) {
                     continue;
                 }
             }
-            kms.database.delete(&uid, params.clone()).await?;
+            kms.database.delete(&uid).await?;
             count += 1;
             info!(uid = uid, user = user, "Destroyed object");
             continue;
         }
 
         // Default database: retrieve the object
-        let Some(mut owm) = kms.database.retrieve_object(&uid, params.clone()).await? else {
+        let Some(mut owm) = kms.database.retrieve_object(&uid).await? else {
             continue;
         };
 
@@ -117,7 +107,7 @@ pub(crate) async fn recursively_destroy_object(
         if user != owm.owner() {
             let permissions = kms
                 .database
-                .list_user_operations_on_object(owm.id(), user, false, params.clone())
+                .list_user_operations_on_object(owm.id(), user, false)
                 .await?;
             if !permissions.contains(&KmipOperation::Destroy) {
                 continue;
@@ -221,7 +211,7 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy the key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
+                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
             }
             ObjectType::PrivateKey => {
                 // add this key to the ids to skip
@@ -238,7 +228,6 @@ pub(crate) async fn recursively_destroy_object(
                         true, // always cascade when destroying a `Covercrypt` master private key
                         kms,
                         user,
-                        params.clone(),
                         ids_to_skip.clone(),
                     )
                     .await?;
@@ -259,7 +248,6 @@ pub(crate) async fn recursively_destroy_object(
                                 cascade,
                                 kms,
                                 user,
-                                params.clone(),
                                 ids_to_skip.clone(),
                             )
                             .await?;
@@ -270,7 +258,7 @@ pub(crate) async fn recursively_destroy_object(
                 // destroy the private key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
+                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
             }
             ObjectType::PublicKey => {
                 ids_to_skip.insert(owm.id().to_owned());
@@ -284,10 +272,8 @@ pub(crate) async fn recursively_destroy_object(
                         .map(|l| l.to_string())
                     {
                         #[cfg(feature = "non-fips")]
-                        if let Ok(Some(private_owm)) = kms
-                            .database
-                            .retrieve_object(&private_key_id, params.clone())
-                            .await
+                        if let Ok(Some(private_owm)) =
+                            kms.database.retrieve_object(&private_key_id).await
                         {
                             if let Ok(kb) = private_owm.object().key_block() {
                                 if kb.key_format_type == KeyFormatType::CoverCryptSecretKey {
@@ -297,7 +283,6 @@ pub(crate) async fn recursively_destroy_object(
                                         true, // always cascade when destroying a `Covercrypt` master private key
                                         kms,
                                         user,
-                                        params.clone(),
                                         ids_to_skip.clone(),
                                     )
                                     .await?;
@@ -314,7 +299,6 @@ pub(crate) async fn recursively_destroy_object(
                                 cascade,
                                 kms,
                                 user,
-                                params.clone(),
                                 ids_to_skip.clone(),
                             )
                             .await
@@ -331,7 +315,7 @@ pub(crate) async fn recursively_destroy_object(
                 // Destroy the public key
                 let id = owm.id().to_owned();
                 let state = effective_state;
-                destroy_core(&id, remove, owm.object_mut(), state, kms, params.clone()).await?;
+                destroy_core(&id, remove, owm.object_mut(), state, kms).await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
@@ -368,30 +352,24 @@ async fn destroy_core(
     object: &mut Object,
     state: State,
     kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     if remove {
-        remove_from_database(unique_identifier, state, kms, params).await
+        remove_from_database(unique_identifier, state, kms).await
     } else {
-        update_as_destroyed(unique_identifier, object, state, kms, params).await
+        update_as_destroyed(unique_identifier, object, state, kms).await
     }
 }
 
 /// Remove an Object from the database
 /// This is a Cosmian specific operation
-async fn remove_from_database(
-    unique_identifier: &str,
-    state: State,
-    kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<()> {
+async fn remove_from_database(unique_identifier: &str, state: State, kms: &KMS) -> KResult<()> {
     if state == State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "Object with unique identifier: {unique_identifier} is active. It must be revoked \
              first"
         )));
     }
-    kms.database.delete(unique_identifier, params).await?;
+    kms.database.delete(unique_identifier).await?;
     Ok(())
 }
 
@@ -402,7 +380,6 @@ async fn update_as_destroyed(
     object: &mut Object,
     state: State,
     kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // Determine target destroyed state. Historically Active objects were rejected earlier unless
     // policy relaxed (e.g. for freshly registered asymmetric keys). We now allow an Active state
@@ -451,11 +428,11 @@ async fn update_as_destroyed(
     };
 
     kms.database
-        .update_object(unique_identifier, object, &attributes, None, params.clone())
+        .update_object(unique_identifier, object, &attributes, None)
         .await?;
 
     kms.database
-        .update_state(unique_identifier, new_state, params)
+        .update_state(unique_identifier, new_state)
         .await?;
 
     debug!(

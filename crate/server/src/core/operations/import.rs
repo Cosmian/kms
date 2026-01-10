@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
@@ -23,7 +23,7 @@ use cosmian_kms_server_database::reexport::{
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
         openssl_x509_to_certificate_attributes,
     },
-    cosmian_kms_interfaces::{AtomicOperation, SessionParams},
+    cosmian_kms_interfaces::AtomicOperation,
 };
 use cosmian_logger::{debug, trace};
 use openssl::x509::X509;
@@ -45,7 +45,6 @@ pub(crate) async fn import(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
@@ -70,7 +69,6 @@ pub(crate) async fn import(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
-            params.clone(),
         )
         .await?;
 
@@ -104,19 +102,11 @@ pub(crate) async fn import(
 
     // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
-        ObjectType::SymmetricKey => {
-            Box::pin(process_symmetric_key(kms, request, owner, params.clone())).await?
-        }
+        ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, owner)).await?,
         ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => {
-            Box::pin(process_public_key(kms, request, owner, params.clone())).await?
-        }
-        ObjectType::PrivateKey => {
-            Box::pin(process_private_key(kms, request, owner, params.clone())).await?
-        }
-        ObjectType::SecretData => {
-            Box::pin(process_secret_data(kms, request, owner, params.clone())).await?
-        }
+        ObjectType::PublicKey => Box::pin(process_public_key(kms, request, owner)).await?,
+        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, owner)).await?,
+        ObjectType::SecretData => Box::pin(process_secret_data(kms, request, owner)).await?,
         ObjectType::OpaqueObject => process_opaque_object(request)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
@@ -125,7 +115,7 @@ pub(crate) async fn import(
         }
     };
     // execute the operations
-    kms.database.atomic(owner, &operations, params).await?;
+    kms.database.atomic(owner, &operations).await?;
     // return the uid
     debug!("Imported object with uid: {}", uid);
     Ok(ImportResponse {
@@ -161,7 +151,6 @@ pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -175,7 +164,7 @@ pub(super) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner, params.clone()).await?;
+        unwrap_object(&mut object, kms, owner).await?;
     }
 
     // Tag the object as a symmetric key
@@ -237,7 +226,6 @@ pub(super) async fn process_symmetric_key(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -333,7 +321,6 @@ pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -342,7 +329,7 @@ pub(super) async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, owner, params.clone()).await?;
+            unwrap_object(&mut object, kms, owner).await?;
         }
     }
 
@@ -454,7 +441,6 @@ pub(super) async fn process_public_key(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -476,7 +462,6 @@ pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Whether the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -484,7 +469,7 @@ pub(super) async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner, params.clone()).await?;
+        unwrap_object(&mut object, kms, owner).await?;
     }
 
     // PKCS12 has its own processing
@@ -493,7 +478,6 @@ pub(super) async fn process_private_key(
         return Box::pin(process_pkcs12(
             kms,
             owner,
-            params,
             &request.unique_identifier,
             object,
             request.attributes,
@@ -646,7 +630,6 @@ pub(super) async fn process_private_key(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -688,7 +671,6 @@ fn single_operation(
 async fn process_pkcs12(
     kms: &KMS,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     unique_identifier: &UniqueIdentifier,
     object: Object,
     request_attributes: Attributes,
@@ -879,7 +861,6 @@ async fn process_pkcs12(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params,
         &UniqueIdentifier::TextString(private_key_id.clone()),
         &mut private_key,
     ))
@@ -1018,7 +999,6 @@ pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("{request}");
     // check if the object will be replaced if it already exists
@@ -1033,7 +1013,7 @@ pub(super) async fn process_secret_data(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner, params.clone()).await?;
+        unwrap_object(&mut object, kms, owner).await?;
     }
 
     // Tag the object as a secret data
@@ -1082,7 +1062,6 @@ pub(super) async fn process_secret_data(
     Box::pin(wrap_and_cache(
         kms,
         owner,
-        params,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))

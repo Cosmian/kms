@@ -20,9 +20,17 @@ echo "========================================="
   exit 1
 }
 
-# If HSM is down on env.variable PROTECCIO_IP, skip tests.
+# If HSM env variables are missing or HSM is unreachable, skip tests gracefully.
+if [ -z "${PROTECCIO_IP:-}" ]; then
+  echo "Skipping Proteccio HSM tests: PROTECCIO_IP not set."
+  exit 0
+fi
+if [ -z "${PROTECCIO_PASSWORD:-}" ]; then
+  echo "Skipping Proteccio HSM tests: PROTECCIO_PASSWORD not set."
+  exit 0
+fi
 if ! ping -c 1 -W 1 "$PROTECCIO_IP" &>/dev/null; then
-  echo "Warning: PROTECCIO_IP is set but HSM is unreachable. Skipping tests."
+  echo "Warning: PROTECCIO_IP=$PROTECCIO_IP unreachable. Skipping Proteccio tests."
   exit 0
 fi
 

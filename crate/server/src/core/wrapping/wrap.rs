@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::{
     CachedUnwrappedObject,
     reexport::{
@@ -16,7 +14,6 @@ use cosmian_kms_server_database::{
             },
         },
         cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
-        cosmian_kms_interfaces::SessionParams,
     },
 };
 use cosmian_logger::{debug, trace, warn};
@@ -51,7 +48,6 @@ use crate::{
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
     owner: &str,
-    params: Option<Arc<dyn SessionParams>>,
     unique_identifier: &UniqueIdentifier,
     object: &mut Object,
 ) -> Result<(), KmsError> {
@@ -121,7 +117,6 @@ pub(crate) async fn wrap_and_cache(
         },
         kms,
         owner,
-        params,
     ))
     .await?;
 
@@ -156,7 +151,6 @@ pub(crate) async fn wrap_object(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<()> {
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
@@ -176,7 +170,6 @@ pub(crate) async fn wrap_object(
             key_wrapping_specification,
             kms,
             user,
-            params,
             wrapping_key_uid,
             prefix,
         )
@@ -191,7 +184,6 @@ pub(crate) async fn wrap_object(
             key_wrapping_specification,
             kms,
             user,
-            params,
             wrapping_key_uid,
         ))
         .await?;
@@ -206,14 +198,13 @@ async fn wrap_using_kms(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     wrapping_key_uid: &str,
 ) -> KResult<()> {
     trace!("Checking permissions to wrap with key {wrapping_key_uid}");
     // fetch the wrapping key
     let wrapping_key = kms
         .database
-        .retrieve_object(wrapping_key_uid, params.clone())
+        .retrieve_object(wrapping_key_uid)
         .await
         .context("wrap using KMS")?;
     let wrapping_key = wrapping_key.ok_or_else(|| {
@@ -237,7 +228,7 @@ async fn wrap_using_kms(
             // fetch the private key
             let wrapping_key = kms
                 .database
-                .retrieve_object(&pk_id, params.clone())
+                .retrieve_object(&pk_id)
                 .await
                 .context("wrapping using the KMS")?;
             wrapping_key.ok_or_else(|| {
@@ -257,7 +248,7 @@ async fn wrap_using_kms(
     if wrapping_key.owner() != user {
         let ops = kms
             .database
-            .list_user_operations_on_object(wrapping_key.id(), user, false, params.clone())
+            .list_user_operations_on_object(wrapping_key.id(), user, false)
             .await?;
         if !ops
             .iter()
@@ -274,7 +265,7 @@ async fn wrap_using_kms(
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
         let mut wrapping_key_object = wrapping_key.object().clone();
-        unwrap_object(&mut wrapping_key_object, kms, user, params).await?;
+        unwrap_object(&mut wrapping_key_object, kms, user).await?;
         wrapping_key_object.clone()
     } else {
         wrapping_key.object().clone()
@@ -328,19 +319,18 @@ async fn wrap_using_encryption_oracle(
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     wrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
     // check permissions
     if !kms
         .database
-        .is_object_owned_by(wrapping_key_uid, user, params.clone())
+        .is_object_owned_by(wrapping_key_uid, user)
         .await?
     {
         let ops = kms
             .database
-            .list_user_operations_on_object(wrapping_key_uid, user, false, params)
+            .list_user_operations_on_object(wrapping_key_uid, user, false)
             .await?;
         if !ops
             .iter()

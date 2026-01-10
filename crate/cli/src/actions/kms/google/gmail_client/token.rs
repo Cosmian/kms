@@ -1,9 +1,7 @@
 use cosmian_kms_client::GmailApiConf;
-use jwt_simple::{
-    algorithms::RSAKeyPairLike,
-    prelude::{Claims, Duration, RS256KeyPair},
-};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
+use time::{Duration, OffsetDateTime};
 
 use super::GoogleApiError;
 
@@ -33,31 +31,36 @@ impl GoogleAuthRequest {
 pub(super) const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.settings.basic";
 pub(super) const GOOGLE_AUD_VALUE: &str = "https://oauth2.googleapis.com/token";
 // Token expiration time in hours
-const TOKEN_EXPIRATION_TIME: u64 = 1;
+const TOKEN_EXPIRATION_TIME_HOURS: i64 = 1;
 
 #[derive(Serialize, Deserialize)]
-struct JwtAuth {
+struct JwtAuthClaims {
     aud: String,
     iss: String,
     scope: String,
     sub: String,
+    iat: i64,
+    exp: i64,
 }
 
 pub(super) fn create_jwt(
     service_account: &GmailApiConf,
     user_email: &str,
 ) -> Result<String, GoogleApiError> {
-    let key_pair = RS256KeyPair::from_pem(&service_account.private_key)?;
-    let jwt_data = JwtAuth {
+    let now = OffsetDateTime::now_utc();
+    let claims = JwtAuthClaims {
         aud: GOOGLE_AUD_VALUE.to_owned(),
         iss: service_account.client_email.clone(),
         scope: GMAIL_SCOPE.to_owned(),
         sub: user_email.to_owned(),
+        iat: now.unix_timestamp(),
+        exp: (now + Duration::hours(TOKEN_EXPIRATION_TIME_HOURS)).unix_timestamp(),
     };
 
-    let claims = Claims::with_custom_claims(jwt_data, Duration::from_hours(TOKEN_EXPIRATION_TIME));
-
-    Ok(key_pair.sign(claims)?)
+    let key = EncodingKey::from_rsa_pem(service_account.private_key.as_bytes())?;
+    let mut header = Header::new(Algorithm::RS256);
+    header.typ = Some("JWT".to_owned());
+    Ok(encode(&header, &claims, &key)?)
 }
 
 pub(super) async fn retrieve_token(

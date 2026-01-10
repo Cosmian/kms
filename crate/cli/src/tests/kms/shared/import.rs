@@ -99,26 +99,38 @@ pub(crate) async fn test_generate_export_import() -> KmsCliResult<()> {
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
-    export_import_test(&private_key_id, Some(CryptographicAlgorithm::CoverCrypt)).await?;
+    Box::pin(export_import_test(
+        &private_key_id,
+        Some(CryptographicAlgorithm::CoverCrypt),
+    ))
+    .await?;
 
     // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) = CreateEcKeyPairAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    export_import_test(&private_key_id, Some(CryptographicAlgorithm::ECDH)).await?;
+    Box::pin(export_import_test(
+        &private_key_id,
+        Some(CryptographicAlgorithm::ECDH),
+    ))
+    .await?;
 
     // generate a symmetric key
     let key_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    export_import_test(&key_id, Some(CryptographicAlgorithm::AES)).await?;
+    Box::pin(export_import_test(
+        &key_id,
+        Some(CryptographicAlgorithm::AES),
+    ))
+    .await?;
 
     // generate a secret data
     let secret_id =
         crate::actions::kms::secret_data::create_secret::CreateSecretDataAction::default()
             .run(ctx.get_owner_client())
             .await?;
-    export_import_test(&secret_id, None).await?;
+    Box::pin(export_import_test(&secret_id, None)).await?;
 
     Ok(())
 }

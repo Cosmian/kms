@@ -1,7 +1,7 @@
 //! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
 //! It is the link between the database and the HSM.
 
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
@@ -20,8 +20,7 @@ use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
     AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, SessionParams,
-    as_hsm_uid,
+    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, as_hsm_uid,
 };
 
 pub struct HsmStore {
@@ -40,10 +39,6 @@ impl HsmStore {
 
 #[async_trait(?Send)]
 impl ObjectsStore for HsmStore {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM
@@ -55,7 +50,6 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         _tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
         if owner != self.hsm_admin {
             return Err(InterfaceError::InvalidRequest(
@@ -104,11 +98,7 @@ impl ObjectsStore for HsmStore {
         Ok(uid.to_owned())
     }
 
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the UID into a slot_id and key id
         let (slot_id, key_id) = parse_uid(uid)?;
         Ok(
@@ -122,11 +112,7 @@ impl ObjectsStore for HsmStore {
         )
     }
 
-    async fn retrieve_tags(
-        &self,
-        _uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
+    async fn retrieve_tags(&self, _uid: &str) -> InterfaceResult<HashSet<String>> {
         // Not supported for HSMs
         Ok(HashSet::new())
     }
@@ -137,7 +123,6 @@ impl ObjectsStore for HsmStore {
         _object: &Object,
         _attributes: &Attributes,
         _tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
@@ -145,23 +130,14 @@ impl ObjectsStore for HsmStore {
         ))
     }
 
-    async fn update_state(
-        &self,
-        _uid: &str,
-        _state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
+    async fn update_state(&self, _uid: &str, _state: State) -> InterfaceResult<()> {
         // not supported for HSMs
         Err(InterfaceError::InvalidRequest(
             "Update state is not supported for HSMs".to_owned(),
         ))
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
         Ok(())
@@ -171,7 +147,6 @@ impl ObjectsStore for HsmStore {
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
@@ -205,12 +180,7 @@ impl ObjectsStore for HsmStore {
         ))
     }
 
-    async fn is_object_owned_by(
-        &self,
-        _uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, _uid: &str, owner: &str) -> InterfaceResult<bool> {
         debug!(
             "Is {owner}, the owner of {_uid}? {}",
             owner == self.hsm_admin
@@ -221,7 +191,6 @@ impl ObjectsStore for HsmStore {
     async fn list_uids_for_tags(
         &self,
         _tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<String>> {
         // Not Tags on the HSM
         Ok(HashSet::new())
@@ -233,7 +202,6 @@ impl ObjectsStore for HsmStore {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();

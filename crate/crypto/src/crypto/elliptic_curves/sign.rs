@@ -1,16 +1,11 @@
 use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::DigitalSignatureAlgorithm};
+#[cfg(feature = "non-fips")]
+use k256::ecdsa::{Signature as K256Signature, SigningKey as K256SigningKey};
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
     sign::Signer,
 };
-
-use crate::error::CryptoError;
-
-#[cfg(feature = "non-fips")]
-use crate::crypto::elliptic_curves::ECDSA_256_D_PRIVATE_KEY_LENGTH;
-#[cfg(feature = "non-fips")]
-use k256::ecdsa::{Signature as K256Signature, SigningKey as K256SigningKey};
 #[cfg(feature = "non-fips")]
 use p256::ecdsa::{
     Signature as P256Signature, SigningKey as P256SigningKey, signature::DigestSigner as _,
@@ -18,6 +13,10 @@ use p256::ecdsa::{
 };
 #[cfg(feature = "non-fips")]
 use sha2::{Digest, Sha256};
+
+#[cfg(feature = "non-fips")]
+use crate::crypto::elliptic_curves::ECDSA_256_D_PRIVATE_KEY_LENGTH;
+use crate::error::CryptoError;
 
 /// ECDSA signature helper implementing RFC6979 determinism for NIST P-256 + SHA-256 in non-fips builds,
 /// falling back to OpenSSL Signer otherwise.
