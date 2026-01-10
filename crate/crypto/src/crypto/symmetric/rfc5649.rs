@@ -9,8 +9,10 @@
 //! This is done by introducing an Integrity Check Register (ICR) of 64 bits. The
 //! encryption algorithm is fed blocks of 64 bits concatenated to the ICR for a
 //! total of 128 bits blocks.
-use openssl::cipher::{Cipher, CipherRef};
-use openssl::cipher_ctx::CipherCtx;
+use openssl::{
+    cipher::{Cipher, CipherRef},
+    cipher_ctx::CipherCtx,
+};
 use zeroize::Zeroizing;
 
 use crate::error::{CryptoError, result::CryptoResult};

@@ -1,4 +1,5 @@
-use crate::db_error;
+use std::collections::{HashMap, HashSet};
+
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -11,7 +12,6 @@ use cosmian_kms_interfaces::{
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
 use rawsql::Loader;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
 use tokio_postgres::{
     NoTls,
     types::{Json, ToSql},
@@ -19,6 +19,7 @@ use tokio_postgres::{
 use uuid::Uuid;
 
 use crate::{
+    db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{PGSQL_QUERIES, sql::database::SqlDatabase},

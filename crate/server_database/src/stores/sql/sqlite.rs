@@ -20,8 +20,8 @@ use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
 use super::locate_query::{SqlitePlaceholder, query_from_attributes};
-use crate::db_error;
 use crate::{
+    db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{SQLITE_QUERIES, sql::database::SqlDatabase},
