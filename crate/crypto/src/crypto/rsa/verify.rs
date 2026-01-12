@@ -2,9 +2,11 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm as KmipHash, PaddingMethod},
     kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, ValidityIndicator},
 };
+use cosmian_logger::error;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Public},
+    pkey_ctx::PkeyCtx,
     rsa::Padding,
     sign::Verifier,
 };
@@ -85,15 +87,44 @@ pub fn rsa_verify(
         // Try primary MGF1, then fallback to SHA-1
         let try_verify = |mgf: MessageDigest| -> CryptoResult<bool> {
             if is_digested {
-                let mut v = Verifier::new_without_digest(verification_key)?;
-                v.set_rsa_padding(Padding::PKCS1_PSS)?;
-                v.set_rsa_mgf1_md(mgf)?;
-                Ok(v.verify_oneshot(signature, data)?)
+                let mut ctx = PkeyCtx::new(verification_key)?;
+                ctx.verify_init()?;
+                ctx.set_rsa_padding(Padding::PKCS1_PSS)?;
+                #[allow(unsafe_code)]
+                ctx.set_rsa_mgf1_md(unsafe { &*(mgf.as_ptr().cast::<openssl::md::MdRef>()) })?;
+                #[allow(unsafe_code)]
+                ctx.set_signature_md(unsafe {
+                    &*(message_digest.as_ptr().cast::<openssl::md::MdRef>())
+                })?;
+                ctx.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
+                match ctx.verify(data, signature) {
+                    Ok(verified) => Ok(verified),
+                    Err(err) => {
+                        error!(
+                            "Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                            signature_algorithm,
+                            hex::encode_upper(signature),
+                            hex::encode_upper(data)
+                        );
+                        Ok(false)
+                    }
+                }
             } else {
                 let mut v = Verifier::new(message_digest, verification_key)?;
                 v.set_rsa_padding(Padding::PKCS1_PSS)?;
                 v.set_rsa_mgf1_md(mgf)?;
-                Ok(v.verify_oneshot(signature, data)?)
+                match v.verify_oneshot(signature, data) {
+                    Ok(verified) => Ok(verified),
+                    Err(err) => {
+                        error!(
+                            "Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                            signature_algorithm,
+                            hex::encode_upper(signature),
+                            hex::encode_upper(data)
+                        );
+                        Ok(false)
+                    }
+                }
             }
         };
         let primary = try_verify(mgf1_digest)?;
@@ -113,7 +144,18 @@ pub fn rsa_verify(
         let mut verifier = Verifier::new(message_digest, verification_key)?;
         // Explicitly set PKCS1 padding for non-PSS RSA signatures
         verifier.set_rsa_padding(Padding::PKCS1)?;
-        verifier.verify_oneshot(signature, data)?
+        match verifier.verify_oneshot(signature, data) {
+            Ok(verified) => verified,
+            Err(err) => {
+                error!(
+                    "Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                    signature_algorithm,
+                    hex::encode_upper(signature),
+                    hex::encode_upper(data)
+                );
+                false
+            }
+        }
     };
 
     Ok(if is_valid {
