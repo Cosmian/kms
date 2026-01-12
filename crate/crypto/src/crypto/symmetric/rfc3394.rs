@@ -20,9 +20,9 @@ const AES_WRAP_BLOCK_SIZE: usize = 8; // 64-bit
 
 fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     Ok(match kek.len() {
-        16 => Cipher::aes_128_wrap_pad(),
-        24 => Cipher::aes_192_wrap_pad(),
-        32 => Cipher::aes_256_wrap_pad(),
+        16 => Cipher::aes_128_wrap(),
+        24 => Cipher::aes_192_wrap(),
+        32 => Cipher::aes_256_wrap(),
         _ => {
             return Err(CryptoError::InvalidSize(
                 "The KEK size should be 16, 24 or 32 bytes".to_owned(),
@@ -31,9 +31,6 @@ fn select_cipher(kek: &[u8]) -> CryptoResult<&CipherRef> {
     })
 }
 
-#[deprecated(
-    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
-)]
 pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     let n_bytes = plaintext.len();
 
@@ -67,9 +64,6 @@ pub fn rfc3394_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     Ok(ciphertext)
 }
 
-#[deprecated(
-    note = "Use `rfc5649::rfc5649_wrap` instead. RFC 3394 is provided only for legacy compatibility."
-)]
 pub fn rfc3394_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<Vec<u8>>> {
     let n_bytes = ciphertext.len();
 

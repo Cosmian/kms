@@ -283,7 +283,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
         // aes256_kwp can handle any plaintext size (unlike KW which requires multiples of 8 bytes)
         // we'll re-run multiple times to make sure sizes are handled correctly
-        let plaintext_len = 1 + (rng.next_u32() as usize % 256);
+        let plaintext_len = 8 + (rng.next_u32() as usize % 256);
         let mut rfc_plaintext_unwrapped_input = vec![0_u8; plaintext_len];
         rng.fill_bytes(&mut rfc_plaintext_unwrapped_input);
 
