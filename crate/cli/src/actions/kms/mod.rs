@@ -1,6 +1,7 @@
 pub mod access;
 pub mod actions;
 pub mod attributes;
+pub mod aws;
 pub mod azure;
 pub mod bench;
 pub mod certificates;
