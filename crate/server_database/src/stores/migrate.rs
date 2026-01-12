@@ -1,4 +1,3 @@
-#[cfg(feature = "non-fips")]
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +12,6 @@ pub(crate) enum DbState {
 }
 
 /// Base trait for database migration functionality
-#[cfg(feature = "non-fips")]
 #[async_trait(?Send)]
 #[allow(dead_code)]
 #[allow(dead_code)]
