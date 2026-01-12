@@ -54,7 +54,7 @@ pub fn sign_rsa_digest_with_algorithm(
         "SHA256withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha256()),
         "SHA512withRSA/PSS" => (Padding::PKCS1_PSS, Md::sha512()),
         _ => {
-            return Err(crate::error::CryptoError::Default(
+            return Err(CryptoError::Default(
                 "Padding algorithm not handled.".to_owned(),
             ));
         }
@@ -64,12 +64,12 @@ pub fn sign_rsa_digest_with_algorithm(
 
     let digest = general_purpose::STANDARD
         .decode(digest_b64)
-        .map_err(|e| crate::error::CryptoError::Default(e.to_string()))?;
+        .map_err(|e| CryptoError::Default(e.to_string()))?;
     let allocation_size = ctx.sign(&digest, None)?;
     let mut signature = vec![0_u8; allocation_size];
     let signature_size = ctx.sign(&digest, Some(&mut *signature))?;
     if allocation_size != signature_size {
-        return Err(crate::error::CryptoError::Default(
+        return Err(CryptoError::Default(
             "allocation_size MUST be equal to signature_size".to_owned(),
         ));
     }
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn rsa_pkcs1_v15_deterministic() {
         // Generate RSA key
-        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
         let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
 
         // Prepare Sign request for PKCS#1 v1.5 with SHA-256
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn rsa_pss_zero_salt_deterministic() {
         // Generate RSA key
-        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
         let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
 
         // RSASSA-PSS with SHA-256 and salt_length = 0 should be deterministic
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn rsa_pkcs1_v15_sign_prehashed_and_verify() {
         // Generate RSA key
-        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
         let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
 
         // Compute SHA-256 digest of the message
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn rsa_pss_sign_prehashed_and_verify() {
         // Generate RSA key
-        let rsa = openssl::rsa::Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
+        let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
         let pkey = PKey::from_rsa(rsa).unwrap_or_else(|e| panic!("pkey: {e}"));
 
         // Compute SHA-256 digest of the message
@@ -327,7 +327,6 @@ mod tests {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
             hashing_algorithm: Some(KmipHash::SHA256),
             mask_generator_hashing_algorithm: Some(KmipHash::SHA256),
-            salt_length: None,
             ..Default::default()
         };
         let req = Sign {
@@ -369,7 +368,6 @@ mod tests {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
             hashing_algorithm: Some(KmipHash::SHA256),
             mask_generator_hashing_algorithm: Some(KmipHash::SHA256),
-            salt_length: None,
             ..Default::default()
         };
         let req_raw = Sign {
