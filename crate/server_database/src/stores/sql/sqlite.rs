@@ -24,7 +24,11 @@ use crate::{
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
-    stores::{SQLITE_QUERIES, sql::database::SqlDatabase},
+    stores::{
+        SQLITE_QUERIES,
+        migrate::{DbState, Migrate},
+        sql::database::SqlDatabase,
+    },
 };
 
 macro_rules! get_sqlite_query {
@@ -75,6 +79,11 @@ impl SqlitePool {
             )
             .await
             .map_err(DbError::from)?;
+        if clear_database {
+            pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            pool.set_db_state(DbState::Ready).await?;
+        }
 
         Ok(pool)
     }
@@ -447,6 +456,108 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
         Ok(rows)
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for SqlitePool {
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        let select_param = replace_dollars_with_qn(
+            SQLITE_QUERIES
+                .get("select-parameter")
+                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
+        );
+        let res: Option<String> = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&select_param)?;
+                    let row = stmt
+                        .query_row(params_from_iter([&"db_state"]), |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()?;
+                    Ok(row)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        match res {
+            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        let upsert_param = replace_dollars_with_qn(
+            SQLITE_QUERIES
+                .get("upsert-parameter")
+                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
+        );
+        let state_json = serde_json::to_string(&state)?;
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(
+                        &upsert_param,
+                        params_from_iter([&"db_state", &state_json.as_str()]),
+                    )?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let select_param = replace_dollars_with_qn(
+            SQLITE_QUERIES
+                .get("select-parameter")
+                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
+        );
+        let res: Option<String> = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&select_param)?;
+                    let row = stmt
+                        .query_row(params_from_iter([&"db_version"]), |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()?;
+                    Ok(row)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(res)
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+        let upsert_param = replace_dollars_with_qn(
+            SQLITE_QUERIES
+                .get("upsert-parameter")
+                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
+        );
+        let version_s = version.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(
+                        &upsert_param,
+                        params_from_iter([&"db_version", &version_s.as_str()]),
+                    )?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 }
 

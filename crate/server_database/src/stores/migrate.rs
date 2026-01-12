@@ -1,12 +1,8 @@
-#[cfg(feature = "non-fips")]
 use async_trait::async_trait;
-#[cfg(feature = "non-fips")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "non-fips")]
 use crate::error::DbResult;
 
-#[cfg(feature = "non-fips")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// The state of the database
@@ -16,7 +12,6 @@ pub(crate) enum DbState {
 }
 
 /// Base trait for database migration functionality
-#[cfg(feature = "non-fips")]
 #[async_trait(?Send)]
 #[allow(dead_code)]
 pub(crate) trait Migrate {

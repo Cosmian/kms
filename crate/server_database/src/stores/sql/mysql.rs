@@ -24,6 +24,7 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         MYSQL_QUERIES,
+        migrate::{DbState, Migrate},
         sql::{
             database::SqlDatabase,
             locate_query::{MySqlPlaceholder, query_from_attributes},
@@ -152,7 +153,17 @@ impl MySqlPool {
                 }
             }
         }
-        Ok(Self { pool })
+
+        let this = Self { pool };
+
+        // On clear or first boot, update metadata (non-fips only)
+        if clear_database {
+            this.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            this.set_db_state(DbState::Ready).await?;
+        }
+
+        Ok(this)
     }
 
     // Helper to obtain a pooled connection and configure session settings consistently
@@ -487,6 +498,51 @@ impl ObjectsStore for MySqlPool {
             &self.pool,
         )
         .await?)
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for MySqlPool {
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        let mut conn = self.get_configured_conn().await?;
+        let sql = get_mysql_query!("select-parameter");
+        let res: Option<String> = conn
+            .exec_first(sql, ("db_state",))
+            .await
+            .map_err(DbError::from)?;
+        match res {
+            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        let mut conn = self.get_configured_conn().await?;
+        let sql = get_mysql_query!("upsert-parameter");
+        let state_json = serde_json::to_string(&state)?;
+        conn.exec_drop(sql, ("db_state", state_json))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let mut conn = self.get_configured_conn().await?;
+        let sql = get_mysql_query!("select-parameter");
+        let res: Option<String> = conn
+            .exec_first(sql, ("db_version",))
+            .await
+            .map_err(DbError::from)?;
+        Ok(res)
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+        let mut conn = self.get_configured_conn().await?;
+        let sql = get_mysql_query!("upsert-parameter");
+        conn.exec_drop(sql, ("db_version", version))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 }
 

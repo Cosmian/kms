@@ -164,6 +164,14 @@ repos:
 
   - repo: local
     hooks:
+      # Remove folders result*
+      - id: clean-result-folders
+        name: Clean result* folders
+        entry: bash .github/scripts/clean_result.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
         entry: bash .github/scripts/test_sqlite.sh --variant fips

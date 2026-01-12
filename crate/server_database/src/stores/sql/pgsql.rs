@@ -22,7 +22,11 @@ use crate::{
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
-    stores::{PGSQL_QUERIES, sql::database::SqlDatabase},
+    stores::{
+        PGSQL_QUERIES,
+        migrate::{DbState, Migrate},
+        sql::database::SqlDatabase,
+    },
 };
 
 // Deadlock/serialization handling parameters for PostgreSQL
@@ -108,6 +112,10 @@ impl PgPool {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
             }
+            let tmp = Self { pool: pool.clone() };
+            tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            tmp.set_db_state(DbState::Ready).await?;
         }
         Ok(Self { pool })
     }
@@ -648,6 +656,55 @@ impl ObjectsStore for PgPool {
             out.push((uid, state, attrs));
         }
         Ok(out)
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for PgPool {
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_state"])
+            .await
+            .map_err(DbError::from)?;
+        if let Some(row) = row_opt {
+            let s: String = row.get(0);
+            Ok(Some(serde_json::from_str(&s)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        let state_json = serde_json::to_string(&state)?;
+        client
+            .execute(sql, &[&"db_state", &state_json])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_version"])
+            .await
+            .map_err(DbError::from)?;
+        Ok(row_opt.map(|row| row.get::<usize, String>(0)))
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        client
+            .execute(sql, &[&"db_version", &version])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 }
 
