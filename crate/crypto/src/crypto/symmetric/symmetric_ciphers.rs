@@ -18,8 +18,10 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use super::aes_gcm_siv_not_openssl;
 use crate::{
-    crypto::symmetric::rfc3394::{rfc3394_unwrap, rfc3394_wrap},
-    crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+    crypto::symmetric::{
+        rfc3394::{rfc3394_unwrap, rfc3394_wrap},
+        rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+    },
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
 };

@@ -105,7 +105,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md
+        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/server_cli.md
 
   - repo: https://github.com/psf/black
     rev: 25.1.0
