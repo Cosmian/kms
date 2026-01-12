@@ -6,6 +6,7 @@ use cosmian_logger::error;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Public},
+    pkey_ctx::PkeyCtx,
     rsa::Padding,
     sign::Verifier,
 };
@@ -86,7 +87,6 @@ pub fn rsa_verify(
         // Try primary MGF1, then fallback to SHA-1
         let try_verify = |mgf: MessageDigest| -> CryptoResult<bool> {
             if is_digested {
-                use openssl::pkey_ctx::PkeyCtx;
                 let mut ctx = PkeyCtx::new(verification_key)?;
                 ctx.verify_init()?;
                 ctx.set_rsa_padding(Padding::PKCS1_PSS)?;

@@ -125,9 +125,6 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
     if digital_signature_algorithm == DigitalSignatureAlgorithm::RSASSAPSS
         && request.digested_data.is_some()
     {
-        // We use PkeyCtx because Signer::new_without_digest often loses the MD context, needed for PSS padding parameters
-        use openssl::pkey_ctx::PkeyCtx;
-
         let mut buffer = Vec::new();
         if let Some(corr) = &request.correlation_value {
             buffer.extend_from_slice(corr);
@@ -164,7 +161,6 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             CryptoError::ObjectNotFound("Missing digested data for PSS operation".to_owned())
         })?;
         buffer.extend_from_slice(digested_data);
-
         // First call: Pass None to get the required buffer size
         let required_len = ctx.sign(&buffer, None)?;
         // Second call: Pass a buffer of the correct size
@@ -244,13 +240,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"deterministic test".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
@@ -272,13 +264,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"deterministic PSS".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey);
@@ -302,13 +290,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
-            data: None,
             digested_data: Some(digest.to_vec()),
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let sig = sign_rsa_with_pkey(&req, &pkey).expect("signature");
@@ -347,13 +331,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
-            data: None,
             digested_data: Some(digest.to_vec()),
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let sig = sign_rsa_with_pkey(&req, &pkey).expect("signature");
@@ -393,22 +373,14 @@ mod tests {
             ..Default::default()
         };
         let req_raw = Sign {
-            unique_identifier: None,
             data: Some(message.to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp.clone()),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
         let req_digest = Sign {
-            unique_identifier: None,
-            data: None,
             digested_data: Some(message_digest.to_vec()),
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
         // Sign raw and digest data
         let sig_raw = sign_rsa_with_pkey(&req_raw, &pkey).expect("signature raw");
