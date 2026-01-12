@@ -164,8 +164,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, LoggingConfig, MainDBConfig,
-        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, LoggingConfig,
+        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+        WorkspaceConfig,
     };
 
     #[cfg(feature = "non-fips")]
@@ -232,6 +233,15 @@ mod tests {
                     "[kacls_url_2]".to_owned(),
                 ]),
                 google_cse_migration_key: None,
+            },
+            azure_ekm_config: AzureEkmConfig {
+                azure_ekm_enable: false,
+                azure_ekm_path_prefix: None,
+                azure_ekm_disable_client_auth: false,
+                azure_ekm_proxy_vendor: String::new(),
+                azure_ekm_proxy_name: String::new(),
+                azure_ekm_ekm_vendor: String::new(),
+                azure_ekm_ekm_product: String::new(),
             },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
@@ -324,6 +334,9 @@ ui_oidc_logout_url = "[logout url]"
 google_cse_enable = false
 google_cse_disable_tokens_validation = false
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
+
+[azure_ekm_config]
+azure_ekm_enable = false
 
 [workspace]
 root_data_path = "[root data path]"
