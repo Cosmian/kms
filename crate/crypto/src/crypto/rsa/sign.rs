@@ -146,7 +146,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             #[allow(unsafe_code)]
             ctx.set_rsa_mgf1_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
         }
-        //Tell OpenSSL what the hash type is
+        // Tell OpenSSL what the hash type is
         #[allow(unsafe_code)]
         ctx.set_signature_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
 
@@ -313,6 +313,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "non-fips")]
     fn rsa_pss_sign_prehashed_and_verify() {
         // Generate RSA key
         let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));
@@ -354,6 +355,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "non-fips")]
     fn rsa_pss_sign_raw_digest_verify() {
         // Generate RSA key
         let rsa = Rsa::generate(2048).unwrap_or_else(|e| panic!("rsa gen: {e}"));

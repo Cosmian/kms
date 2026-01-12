@@ -131,11 +131,19 @@ pub fn rsa_verify(
         if primary {
             true
         } else {
-            let mgf1_sha1 = MessageDigest::sha1();
-            if mgf1_sha1 == mgf1_digest {
+            #[cfg(not(feature = "non-fips"))]
+            {
+                // In FIPS mode, don't attempt SHA-1 fallback
                 false
-            } else {
-                try_verify(mgf1_sha1)?
+            }
+            #[cfg(feature = "non-fips")]
+            {
+                let mgf1_sha1 = MessageDigest::sha1();
+                if mgf1_sha1 == mgf1_digest {
+                    false
+                } else {
+                    try_verify(mgf1_sha1)?
+                }
             }
         }
     } else {
