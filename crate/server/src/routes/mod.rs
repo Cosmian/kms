@@ -109,7 +109,7 @@ pub(crate) async fn cli_archive_download(
     Ok(file.set_content_disposition(cd))
 }
 
-pub(crate) async fn cli_download_exists() -> HttpResponse {
+pub(crate) async fn cli_archive_exists() -> HttpResponse {
     let path = PathBuf::from(CLI_ARCHIVE_FOLDER).join(CLI_ARCHIVE_FILE_NAME);
     let exists = tokio::fs::metadata(path).await.is_ok();
 
