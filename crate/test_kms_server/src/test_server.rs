@@ -172,8 +172,6 @@ fn redis_findex_db_config(port: u16) -> MainDBConfig {
         database_url: Some(url),
         sqlite_path: PathBuf::default(),
         redis_master_password: Some("password".to_owned()),
-        // Use a unique Findex label to prevent index collisions across servers
-        redis_findex_label: Some(format!("label-{port}")),
     }
 }
 

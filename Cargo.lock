@@ -1362,6 +1362,8 @@ dependencies = [
  "lru 0.16.3",
  "mysql_async",
  "num_cpus",
+ "openssl",
+ "postgres-openssl",
  "rawsql",
  "redis",
  "rusqlite",
@@ -3054,6 +3056,7 @@ dependencies = [
  "keyed_priority_queue",
  "lru 0.14.0",
  "mysql_common",
+ "native-tls",
  "pem",
  "percent-encoding",
  "rand 0.9.2",
@@ -3062,6 +3065,7 @@ dependencies = [
  "socket2 0.5.10",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-native-tls",
  "tokio-util",
  "twox-hash",
  "url",
@@ -3650,6 +3654,18 @@ dependencies = [
  "cpufeatures",
  "opaque-debug",
  "universal-hash",
+]
+
+[[package]]
+name = "postgres-openssl"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f86f073ad570f76e9e278ce6f05775fc723eed7daa6b4f9c2aa078080a564a0"
+dependencies = [
+ "openssl",
+ "tokio",
+ "tokio-openssl",
+ "tokio-postgres",
 ]
 
 [[package]]

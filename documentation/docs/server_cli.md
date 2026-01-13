@@ -112,11 +112,6 @@ Options:
           
           [env: KMS_REDIS_MASTER_PASSWORD=]
 
-      --redis-findex-label <REDIS_FINDEX_LABEL>
-          redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
-          
-          [env: KMS_REDIS_FINDEX_LABEL=]
-
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database

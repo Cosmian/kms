@@ -198,7 +198,6 @@ Redis with Findex encrypted data and searchable indexes (non-FIPS build only).
 database_type = "redis-findex"
 database_url = "redis://redis-server:6379"
 redis_master_password = "change_me_master_password"   # Master password derives encryption key
-redis_findex_label = "v1"                             # Rotation label (change to re-encrypt indexes)
 ```
 
 **Use case:** Environments requiring encrypted server-side indexes and low-latency lookups with application-level protection.
@@ -391,7 +390,6 @@ Redis with Findex configuration for encrypted storage.
 database_type = "redis-findex"
 database_url = "redis://redis-server:6379"
 redis_master_password = "secure_master_password"
-redis_findex_label = "production_label"
 
 [logging]
 rust_log = "info,cosmian_kms_server=info,cosmian_findex_client=debug"

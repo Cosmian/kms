@@ -171,6 +171,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)

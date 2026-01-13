@@ -443,15 +443,15 @@ _run_workspace_tests() {
   local test_args="--nocapture"
   case "$KMS_TEST_DB" in
   postgresql)
-    test_filter="tests::test_db_postgresql test_validate_with_certificates"
+    test_filter="test_db_postgresql test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   mysql)
-    test_filter="tests::test_db_mysql test_validate_with_certificates"
+    test_filter="test_db_mysql test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   redis-findex)
-    test_filter="tests::test_db_redis_with_findex test_validate_with_certificates"
+    test_filter="test_db_redis_with_findex test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   esac

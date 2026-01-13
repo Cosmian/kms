@@ -39,6 +39,59 @@ services:
       - MYSQL_DATABASE=kms
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
+  postgres-mtls:
+    image: postgres:latest
+    ports:
+      - 5433:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/var/lib/postgresql/data
+    volumes:
+      - ./test_data/certificates/client_server/db/postgres-server.crt:/var/lib/postgresql/certs-ro/server.crt:ro
+      - ./test_data/certificates/client_server/db/postgres-server.key:/var/lib/postgresql/certs-ro/server.key:ro
+      - ./test_data/certificates/client_server/ca/ca.crt:/var/lib/postgresql/certs-ro/ca.crt:ro
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        BIN_DIR=$$(ls -1d /usr/lib/postgresql/*/bin 2>/dev/null | head -n1)
+        if [ -n "$$BIN_DIR" ]; then
+          export PATH="$$BIN_DIR:$$PATH"
+        fi
+        # Copy TLS materials from read-only mounts to a writable location
+        cp /var/lib/postgresql/certs-ro/server.crt /var/lib/postgresql/server.crt
+        cp /var/lib/postgresql/certs-ro/server.key /var/lib/postgresql/server.key
+        cp /var/lib/postgresql/certs-ro/ca.crt /var/lib/postgresql/ca.crt
+        chown postgres:postgres /var/lib/postgresql/server.key /var/lib/postgresql/server.crt /var/lib/postgresql/ca.crt || true
+        chmod 600 /var/lib/postgresql/server.key || true
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/var/lib/postgresql/server.crt \
+          -c ssl_key_file=/var/lib/postgresql/server.key \
+          -c ssl_ca_file=/var/lib/postgresql/ca.crt \
+          -c ssl_min_protocol_version=TLSv1.2 \
+          -c listen_addresses='*'
+  mysql-mtls:
+    image: mysql:latest
+    ports:
+      - 3309:3306
+    environment:
+      - MYSQL_USER=kms
+      - MYSQL_PASSWORD=kms
+      - MYSQL_DATABASE=kms
+      - MYSQL_ROOT_PASSWORD=kms
+    volumes:
+      - ./test_data/certificates/client_server/db/mysql-server.crt:/etc/mysql/certs/server-cert.pem:ro
+      - ./test_data/certificates/client_server/db/mysql-server.key:/etc/mysql/certs/server-key.pem:ro
+      - ./test_data/certificates/client_server/ca/ca.crt:/etc/mysql/certs/ca.pem:ro
+    command: >
+      --require-secure-transport=ON
+      --ssl-cert=/etc/mysql/certs/server-cert.pem
+      --ssl-key=/etc/mysql/certs/server-key.pem
+      --ssl-ca=/etc/mysql/certs/ca.pem
   redis:
     image: redis:latest
     ports:

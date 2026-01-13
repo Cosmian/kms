@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -13,9 +14,12 @@ use cosmian_kms_interfaces::{
     PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
-use mysql_async::{Pool, Transaction, prelude::*};
+#[cfg(feature = "non-fips")]
+use mysql_async::ClientIdentity;
+use mysql_async::{Pool, SslOpts, Transaction, prelude::*};
 use rawsql::Loader;
 use serde_json::Value;
+use url::Url;
 use uuid::Uuid;
 
 use crate::{
@@ -107,7 +111,117 @@ impl MySqlPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let opts = mysql_async::Opts::from_url(connection_url).map_err(DbError::from)?;
+        // Parse URL for TLS parameters first
+        let url = Url::parse(connection_url)
+            .map_err(|e| DbError::DatabaseError(format!("Invalid MySQL URL: {e}")))?;
+        let query_params: HashMap<_, _> = url.query_pairs().collect();
+
+        // Build a clean URL without SSL parameters that mysql_async doesn't recognize
+        let mut clean_url = url.clone();
+        clean_url.set_query(None);
+        let mut clean_query = clean_url.query_pairs_mut();
+        for (key, value) in &query_params {
+            // Remove our custom SSL parameters
+            if key != "ssl-mode"
+                && key != "ssl_mode"
+                && key != "ssl-ca"
+                && key != "ssl_ca"
+                && key != "ssl-client-identity"
+                && key != "ssl_client_identity"
+                && key != "ssl-client-identity-password"
+                && key != "ssl_client_identity_password"
+            {
+                clean_query.append_pair(key, value);
+            }
+        }
+        drop(clean_query);
+
+        let mut opts = mysql_async::Opts::from_url(clean_url.as_ref()).map_err(DbError::from)?;
+
+        // Check for TLS configuration via ssl-mode parameter
+        if let Some(ssl_mode) = query_params
+            .get("ssl-mode")
+            .or_else(|| query_params.get("ssl_mode"))
+        {
+            let mode_upper = ssl_mode.to_uppercase();
+            match mode_upper.as_str() {
+                "DISABLED" => {
+                    // Explicitly disable TLS
+                    opts = mysql_async::OptsBuilder::from_opts(opts)
+                        .ssl_opts(None)
+                        .into();
+                }
+                "REQUIRED" | "PREFERRED" | "VERIFY_CA" | "VERIFY_IDENTITY" => {
+                    // Build SslOpts for TLS
+                    let mut ssl_opts = SslOpts::default();
+
+                    // For REQUIRED/PREFERRED: skip all verification (encrypt but don't verify)
+                    // For VERIFY_CA/VERIFY_IDENTITY: verify certificates
+                    if mode_upper == "REQUIRED" || mode_upper == "PREFERRED" {
+                        ssl_opts = ssl_opts
+                            .with_danger_accept_invalid_certs(true)
+                            .with_danger_skip_domain_validation(true);
+                    } else {
+                        // Load CA certificate for server verification (ssl-ca) for VERIFY modes
+                        if let Some(ca_path) = query_params
+                            .get("ssl-ca")
+                            .or_else(|| query_params.get("ssl_ca"))
+                        {
+                            ssl_opts = ssl_opts
+                                .with_root_certs(vec![PathBuf::from(ca_path.as_ref()).into()]);
+                        }
+                    }
+
+                    // For mTLS client authentication:
+                    // In non-fips builds with native-tls backend, support PKCS12 identity via ssl-client-identity
+                    #[cfg(feature = "non-fips")]
+                    {
+                        if let Some(p12_path) = query_params
+                            .get("ssl-client-identity")
+                            .or_else(|| query_params.get("ssl_client_identity"))
+                        {
+                            let password = query_params
+                                .get("ssl-client-identity-password")
+                                .or_else(|| query_params.get("ssl_client_identity_password"))
+                                .map(std::string::ToString::to_string);
+
+                            let mut identity =
+                                ClientIdentity::new(PathBuf::from(p12_path.as_ref()).into());
+                            if let Some(pass) = password {
+                                identity = identity.with_password(pass);
+                            }
+                            ssl_opts = ssl_opts.with_client_identity(Some(identity));
+                        }
+                    }
+                    // In FIPS builds, reject PKCS12 client identity parameters explicitly
+                    #[cfg(not(feature = "non-fips"))]
+                    {
+                        if query_params
+                            .get("ssl-client-identity")
+                            .or_else(|| query_params.get("ssl_client_identity"))
+                            .is_some()
+                            || query_params
+                                .get("ssl-client-identity-password")
+                                .or_else(|| query_params.get("ssl_client_identity_password"))
+                                .is_some()
+                        {
+                            return Err(DbError::DatabaseError(
+                                "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure MySQL without client identity.".to_owned(),
+                            ));
+                        }
+                    }
+
+                    opts = mysql_async::OptsBuilder::from_opts(opts)
+                        .ssl_opts(Some(ssl_opts))
+                        .into();
+                }
+                _ => {
+                    return Err(DbError::DatabaseError(format!(
+                        "Unknown ssl-mode: {ssl_mode}"
+                    )));
+                }
+            }
+        }
 
         // Pool sizing defaults: conservative pool tuned to CPU.
         // Session settings (READ COMMITTED + shorter lock wait timeout) are applied in
@@ -125,6 +239,7 @@ impl MySqlPool {
             .ok_or_else(|| DbError::DatabaseError("Invalid pool constraints".to_owned()))?;
         opts_builder = opts_builder
             .pool_opts(mysql_async::PoolOpts::default().with_constraints(pool_constraints));
+
         let pool = Pool::new(opts_builder);
 
         // Bootstrap: create tables if they don't exist
@@ -180,6 +295,10 @@ impl MySqlPool {
         Ok(conn)
     }
 }
+
+// Note: TLS can be enabled by compiling mysql_async with a TLS backend feature
+// and configuring SslOpts within OptsBuilder. This module does not hardwire TLS
+// to keep the default build backend-agnostic.
 
 impl SqlDatabase for MySqlPool {
     fn get_loader(&self) -> &Loader {

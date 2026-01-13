@@ -180,8 +180,6 @@ mod tests {
                 #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
                 #[cfg(feature = "non-fips")]
-                #[allow(deprecated)]
-                redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
             },
@@ -283,7 +281,6 @@ database_type = "[redis-findex, postgresql,...]"
 database_url = "[redis urls]"
 sqlite_path = "[sqlite path]"
 redis_master_password = "[redis master password]"
-redis_findex_label = "[redis findex label]"
 clear_database = false
 unwrapped_cache_max_age = 15
 

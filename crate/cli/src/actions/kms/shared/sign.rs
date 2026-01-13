@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::UniqueIdentifier};
+use cosmian_kmip::kmip_2_1::{
+    kmip_operations::Sign,
+    kmip_types::{CryptographicParameters, UniqueIdentifier},
+};
 use cosmian_kms_client::{KmsClient, read_bytes_from_file, write_bytes_to_file};
 
 use crate::{
@@ -14,6 +17,7 @@ pub(crate) async fn run_sign(
     key_id: Option<String>,
     tags: Option<Vec<String>>,
     output_file: Option<PathBuf>,
+    cryptographic_parameters: Option<CryptographicParameters>,
     digested: bool,
 ) -> KmsCliResult<()> {
     let data = read_bytes_from_file(&input_file)
@@ -24,7 +28,7 @@ pub(crate) async fn run_sign(
     let sign_request = if digested {
         Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(id)),
-            cryptographic_parameters: None,
+            cryptographic_parameters,
             data: None,
             digested_data: Some(data),
             correlation_value: None,
@@ -34,7 +38,7 @@ pub(crate) async fn run_sign(
     } else {
         Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(id)),
-            cryptographic_parameters: None,
+            cryptographic_parameters,
             data: Some(data.into()),
             digested_data: None,
             correlation_value: None,

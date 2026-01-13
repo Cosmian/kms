@@ -73,10 +73,12 @@ pkgs.mkShell {
     if withHsm then
       [
         softhsmDrv
-        pkgs.psmisc
         pkgs.wget
-        utimacoDrv
       ]
+      # Utimaco HSM simulator is only available on x86_64-linux
+      ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]
+      # psmisc is only available on Linux; macOS has killall built-in
+      ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.psmisc ]
     else
       [ ]
   )

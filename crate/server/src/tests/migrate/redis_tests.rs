@@ -56,7 +56,6 @@ async fn init_test_kms(dump_filename: &str) -> KResult<Arc<KMS>> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url.clone()),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };
@@ -246,7 +245,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };

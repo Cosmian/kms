@@ -20,6 +20,7 @@ pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
 #[cfg(feature = "non-fips")]
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
+// mTLS proxy removed; rely on native client TLS support in pools
 
 /// The `Database` struct represents the core database functionalities, including object management,
 /// permission checks, and caching mechanisms for unwrapped keys.

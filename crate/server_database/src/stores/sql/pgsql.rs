@@ -10,12 +10,15 @@ use cosmian_kms_interfaces::{
     PermissionsStore,
 };
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
 use serde_json::Value;
 use tokio_postgres::{
     NoTls,
     types::{Json, ToSql},
 };
+use url::Url;
 use uuid::Uuid;
 
 use crate::{
@@ -67,8 +70,21 @@ impl PgPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        // Parse URL to check for TLS parameters
+        let url = Url::parse(connection_url)
+            .map_err(|e| DbError::DatabaseError(format!("Invalid PostgreSQL URL: {e}")))?;
+        let query_params: HashMap<_, _> = url.query_pairs().collect();
+
+        // Build a clean URL without any query parameters
+        // deadpool-postgres doesn't recognize URL query parameters like sslmode, sslrootcert, etc.
+        // We handle TLS configuration entirely through the MakeTlsConnector
+        let mut clean_url = url.clone();
+        clean_url.set_query(None);
+
+        let clean_url_str = clean_url.to_string();
+
         let mut cfg = PgConfig::new();
-        cfg.url = Some(connection_url.to_owned());
+        cfg.url = Some(clean_url_str);
         cfg.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
@@ -78,9 +94,67 @@ impl PgPool {
                 ..Default::default()
             });
         }
-        let pool = cfg
-            .create_pool(None, NoTls)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+
+        // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
+        let sslmode = query_params
+            .get("sslmode")
+            .map_or("prefer", std::convert::AsRef::as_ref);
+
+        let pool = if sslmode == "disable" {
+            // Explicitly no TLS
+            cfg.create_pool(None, NoTls)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        } else {
+            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
+            let mut builder = SslConnector::builder(SslMethod::tls())
+                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+            // Set verification mode based on sslmode
+            match sslmode {
+                "verify-full" => {
+                    // verify-full: verify certificate AND hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                }
+                "verify-ca" => {
+                    // verify-ca: verify certificate but NOT hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                    // For verify-ca, we don't want hostname verification
+                    // This is handled by not setting any hostname verification parameters
+                }
+                _ => {
+                    // require, prefer, allow: connect with TLS but don't verify cert
+                    builder.set_verify(SslVerifyMode::NONE);
+                }
+            }
+
+            // Load CA cert if provided (sslrootcert)
+            if let Some(ca_file) = query_params.get("sslrootcert") {
+                builder
+                    .set_ca_file(ca_file.as_ref())
+                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+            }
+
+            // Load client cert/key for mutual TLS (sslcert, sslkey)
+            if let Some(cert_file) = query_params.get("sslcert") {
+                builder
+                    .set_certificate_file(cert_file.as_ref(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
+                    })?;
+            }
+            if let Some(key_file) = query_params.get("sslkey") {
+                builder
+                    .set_private_key_file(key_file.as_ref(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
+                    })?;
+            }
+
+            let connector = MakeTlsConnector::new(builder.build());
+            cfg.create_pool(None, connector)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        };
+
         let client = pool.get().await.map_err(DbError::from)?;
         // Bootstrap schema if needed: create tables if they don't exist
         let tmp_loader = Self { pool: pool.clone() };
