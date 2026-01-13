@@ -55,7 +55,7 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, cli_download_exists, download_cli, get_version,
+        access, cli_archive_download, cli_download_exists, get_version,
         google_cse::{self, GoogleCseConfig},
         kmip::{self, handle_ttlv_bytes},
         ms_dke,
@@ -854,7 +854,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(get_version)
             .service(
                 web::resource("/download-cli")
-                    .route(web::get().to(download_cli))
+                    .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_download_exists)),
             );
 
