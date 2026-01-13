@@ -32,3 +32,4 @@ crate/server/ui*
 vendor/
 http_cache.sqlite
 sbom.*
+resources/cli.zip
