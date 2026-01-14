@@ -37,9 +37,10 @@ fi
 
 echo "Fetching failed jobs..."
 
-# Get all failed jobs from this run
+# Get all failed jobs from this run (id + name)
+# We rely on the job name to infer platform/linkage for server vendor hashes.
 FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.conclusion == "failure") | .id' 2>/dev/null || echo "")
+  --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
 
 if [ -z "$FAILED_JOBS" ]; then
   echo "No failed jobs found in run $RUN_ID. Nothing to update."
@@ -50,10 +51,11 @@ fi
 declare -A FILE_TO_HASH
 
 # Process each failed job
-while IFS= read -r JOB_ID; do
-  [ -z "$JOB_ID" ] && continue
+while IFS=$'\t' read -r JOB_ID JOB_NAME; do
+  [ -z "${JOB_ID:-}" ] && continue
+  JOB_NAME=${JOB_NAME:-""}
 
-  echo "Processing job $JOB_ID..."
+  echo "Processing job $JOB_ID${JOB_NAME:+ ($JOB_NAME)}..."
   LOG_FILE="$LOG_DIR/job_${JOB_ID}.log"
 
   # Download job logs
@@ -97,14 +99,21 @@ while IFS= read -r JOB_ID; do
         # UI wasm vendor - non-fips
         elif echo "$last_drv_name" | grep -qE "ui-wasm-non-fips.*-vendor"; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
-        # Server vendor - need to determine platform from job name or derivation
-        elif echo "$last_drv_name" | grep -qE "server.*-vendor"; then
-          # Try to infer from the derivation or use default for Linux
-          if echo "$last_drv_name" | grep -qE "darwin"; then
-            if echo "$last_drv_name" | grep -qE "static"; then
+        # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
+        # infer those from the GitHub Actions job name.
+        elif echo "$last_drv_name" | grep -qiE "(kms-server|server).*vendor|(^|-)vendor($|-)"; then
+          if echo "$JOB_NAME" | grep -qiE "macos|darwin"; then
+            if echo "$JOB_NAME" | grep -qiE "static"; then
               target_file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
-            else
+            elif echo "$JOB_NAME" | grep -qiE "dynamic"; then
               target_file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
+            else
+              # Default for macOS packaging jobs: update both (some job names don't include link)
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.darwin.sha256"]="$got_hash"
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"]="$got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.static.darwin.sha256: $got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.darwin.sha256: $got_hash"
+              target_file=""
             fi
           else
             # Default to Linux (most common in CI)

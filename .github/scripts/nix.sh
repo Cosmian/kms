@@ -441,7 +441,7 @@ update-hashes)
     echo "Missing $SCRIPT" >&2
     exit 1
   }
-  bash "$SCRIPT"
+  bash "$SCRIPT" "$@"
   exit $?
   ;;
 *)
