@@ -359,6 +359,8 @@ test)
         --keep REDIS_HOST --keep REDIS_PORT \
         --keep MYSQL_HOST --keep MYSQL_PORT \
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
+        --keep PROTECCIO_IP --keep PROTECCIO_PASSWORD --keep PROTECCIO_SLOT \
+        --keep PROTECCIO_PKCS11_LIB --keep PROTECCIO_PORT \
       --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
@@ -713,6 +715,13 @@ fi
 # Run the appropriate script inside nix-shell
 # Determine if we should use --pure mode
 USE_PURE=true
+
+# HSM test flows may require host utilities (notably sudo) to install vendor tools.
+# In pure mode, /usr/bin is typically not on PATH, causing "sudo: command not found".
+if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "proteccio" ]; }; then
+  USE_PURE=false
+  echo "Note: Running HSM tests without --pure to access host utilities (e.g., sudo)."
+fi
 
 # On macOS, DMG packaging requires system utilities (hdiutil, sw_vers) not available in pure mode
 if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "Darwin" ]; then

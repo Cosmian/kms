@@ -140,8 +140,23 @@ fn main() {
         "cargo:rustc-link-search=native={}/lib",
         main_prefix.display()
     );
-    println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
+    // Our OpenSSL build is configured with `no-shared`, but some environments (e.g. Nix)
+    // may still provide dynamic libs. Prefer static when present, otherwise fall back
+    // to dynamic to avoid link failures like "could not find native static library 'crypto'".
+    let lib_dir = main_prefix.join("lib");
+    let has_static_crypto = lib_dir.join("libcrypto.a").exists();
+    let has_static_ssl = lib_dir.join("libssl.a").exists();
+    if has_static_crypto && has_static_ssl {
+        println!("cargo:rustc-link-lib=static=crypto");
+        println!("cargo:rustc-link-lib=static=ssl");
+    } else {
+        println!(
+            "cargo:warning=Static OpenSSL libs not found under {}; falling back to dynamic linking",
+            lib_dir.display()
+        );
+        println!("cargo:rustc-link-lib=crypto");
+        println!("cargo:rustc-link-lib=ssl");
+    }
     println!(
         "cargo:rustc-env=OPENSSL_CONF={}/ssl/openssl.cnf",
         main_prefix.display()
