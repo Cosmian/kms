@@ -103,7 +103,7 @@ impl ExportByokAction {
                 "alg": "dir",
                 "enc": "CKM_RSA_AES_KEY_WRAP"
             },
-            "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key),
+            "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key), // TODO: check the docs, why use URL_SAFE_NO_PAD here instead of standard one
             "generator": "Cosmian_KMS;v5"
         });
         // write byok file
