@@ -77,7 +77,11 @@ impl ImportKekAction {
                 .expect("msg"), // TODO
             key_id: self.key_id.clone(),
             key_format: ImportKeyFormat::Pkcs8Pub,
-            tags: vec!["aws".to_owned(), format!("key_arn:{}", self.key_arn)],
+            tags: vec![
+                "aws".to_owned(),
+                format!("key_arn:{}", self.key_arn),
+                format!("wrapping_algorithm:{}", self.wrapping_algorithm),
+            ],
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
             replace_existing: true,
             ..Default::default()
