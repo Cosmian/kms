@@ -6,7 +6,7 @@ on:
     tags:
       - '**'
   pull_request:
-
+  workflow_call:
 jobs:
   # Run packaging for PRs
   packaging:
