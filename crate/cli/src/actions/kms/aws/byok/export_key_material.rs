@@ -14,7 +14,8 @@ use cosmian_logger::warn;
 
 use crate::{
     actions::kms::{
-        attributes::get_attributes, aws::byok::wrapping_algorithms::WrappingAlgorithm, console,
+        attributes::get_attributes, aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm,
+        console,
     },
     cli_bail,
     error::{
@@ -32,7 +33,7 @@ use crate::{
 pub struct ExportByokAction {
     /// The unique ID of the KMS private key that will be wrapped and then exported
     #[clap(required = true)]
-    pub(crate) wrapped_key_id: String,
+    pub(crate) key_id: String,
 
     /// The AWS KEK ID in this KMS.
     #[clap(required = true)]
@@ -50,7 +51,8 @@ pub struct ExportByokAction {
 }
 
 impl ExportByokAction {
-    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<()> {
+    #[allow(clippy::or_fun_call)]
+    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
         // Recover the attributes of the KEK key
         let (_kek_id, kek_attributes) =
             get_attributes(&kms_client, &self.kek_id, &[Tag::Tag], &[]).await?;
@@ -89,29 +91,29 @@ impl ExportByokAction {
             .ok_or(KmsCliError::Default(kek_tag_error(
                 "invalid wrapping algorithm tag",
             )))?
-            .parse::<WrappingAlgorithm>()
+            .parse::<AwsKmsWrappingAlgorithm>()
             .context(&kek_tag_error("invalid wrapping algorithm tag"))?;
 
         let wrapping_cryptographic_parameters = Some(match wrapping_algorithm_str {
-            WrappingAlgorithm::RsaesOaepSha1 => CryptographicParameters {
+            AwsKmsWrappingAlgorithm::RsaesOaepSha1 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(HashingAlgorithm::SHA1),
                 ..CryptographicParameters::default()
             },
-            WrappingAlgorithm::RsaesOaepSha256 => CryptographicParameters {
+            AwsKmsWrappingAlgorithm::RsaesOaepSha256 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             },
-            WrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
+            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(HashingAlgorithm::SHA1),
                 ..CryptographicParameters::default()
             },
-            WrappingAlgorithm::RsaAesKeyWrapSha256 => CryptographicParameters {
+            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha256 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 padding_method: Some(PaddingMethod::OAEP),
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
@@ -119,7 +121,7 @@ impl ExportByokAction {
             },
             // SM2PKE: SM2 public key encryption (China Regions only)
             // Supported for: RSA private keys, ECC private keys, SM2 private keys
-            WrappingAlgorithm::Sm2Pke => {
+            AwsKmsWrappingAlgorithm::Sm2Pke => {
                 warn!(
                     "This encrypted key material can only be imported into AWS KMS in China Regions."
                 );
@@ -143,14 +145,14 @@ impl ExportByokAction {
             authenticated_encryption_additional_data: None,
         };
 
-        let (_, object, _) =
-            export_object(&kms_client, &self.wrapped_key_id, export_params).await?;
+        let (_, object, _) = export_object(&kms_client, &self.key_id, export_params).await?;
 
         // Recover the wrapped bytes from the KeyBlock
         let key_block = object.key_block()?;
         let Some(KeyValue::ByteString(wrapped_key)) = &key_block.key_value else {
             cli_bail!("The wrapped key should be a byte string");
         };
+        let b64_key = base64::engine::general_purpose::STANDARD.encode(wrapped_key);
 
         if let Some(file_path) = &self.output_file_path {
             fs::write(file_path, wrapped_key)?;
@@ -165,7 +167,7 @@ impl ExportByokAction {
                      --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE",
                 wrapped_key.len(),
                 file_path.display(),
-                self.wrapped_key_id,
+                self.key_id,
                 key_arn,
                 file_path.display(),
                 self.token_file_path.as_ref().map_or_else(
@@ -175,11 +177,9 @@ impl ExportByokAction {
             ));
             stdout.write()?;
         } else {
-            let stdout = console::Stdout::new(
-                &base64::engine::general_purpose::STANDARD.encode(wrapped_key),
-            );
+            let stdout = console::Stdout::new(&b64_key);
             stdout.write()?;
         }
-        Ok(())
+        Ok(b64_key)
     }
 }
