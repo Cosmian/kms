@@ -2,12 +2,14 @@ use std::path::PathBuf;
 
 use crate::{
     actions::kms::{
-        aws::byok::wrapping_algorithms::WrappingAlgorithm, shared::ImportSecretDataOrKeyAction,
+        aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm,
+        shared::ImportSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::{ArgGroup, Parser};
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_client::{
     KmsClient,
     reexport::cosmian_kms_client_utils::import_utils::{ImportKeyFormat, KeyUsage},
@@ -50,7 +52,7 @@ pub struct ImportKekAction {
     pub(crate) key_arn: String,
 
     #[clap(required = true, verbatim_doc_comment)]
-    pub(crate) wrapping_algorithm: WrappingAlgorithm,
+    pub(crate) wrapping_algorithm: AwsKmsWrappingAlgorithm,
 
     /// The unique ID of the key in this KMS; a random UUID
     /// is generated if not specified.
@@ -59,8 +61,8 @@ pub struct ImportKekAction {
 }
 
 impl ImportKekAction {
-    #[allow(clippy::expect_used, clippy::unwrap_used)] // TODO
-    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<()> {
+    #[allow(clippy::expect_used, clippy::unwrap_used, clippy::missing_panics_doc)] // TODO
+    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let import_action = ImportSecretDataOrKeyAction {
             key_file: self
                 .kek_file
@@ -87,6 +89,6 @@ impl ImportKekAction {
             ..Default::default()
         };
 
-        import_action.run(kms_client).await.map(|_| ())
+        import_action.run(kms_client).await
     }
 }
