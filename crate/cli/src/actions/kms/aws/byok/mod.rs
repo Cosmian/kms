@@ -1,6 +1,6 @@
-mod export_key_material;
-mod import_kek;
-pub(crate) mod wrapping_algorithms;
+pub mod export_key_material;
+pub mod import_kek;
+pub mod wrapping_algorithms;
 
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
@@ -21,8 +21,13 @@ pub enum ByokCommands {
 impl ByokCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Import(action) => action.run(kms_rest_client).await,
-            Self::Export(action) => action.run(kms_rest_client).await,
+            Self::Import(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::Export(action) => {
+                action.run(kms_rest_client).await?;
+            }
         }
+        Ok(())
     }
 }
