@@ -8,6 +8,10 @@ on:
         required: true
         type: string
         default: 1.90.0
+      enforceDeterministicHash:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   windows-package:
@@ -53,7 +57,7 @@ jobs:
 
       - name: Package with GPG signature
         run: |
-          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} --enforce-deterministic-hash ${{ inputs.enforceDeterministicHash }} package
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}

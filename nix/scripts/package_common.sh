@@ -20,9 +20,10 @@ cd "$REPO_ROOT"
 FORMAT=""
 VARIANT="fips"
 LINK="static"
+ENFORCE_DETERMINISTIC_HASH="${ENFORCE_DETERMINISTIC_HASH:-false}"
 
 usage() {
-  echo "Usage: $0 --format deb|rpm [--variant fips|non-fips] [--link static|dynamic]" >&2
+  echo "Usage: $0 --format deb|rpm [--variant fips|non-fips] [--link static|dynamic] [--enforce-deterministic-hash true|false]" >&2
   exit 2
 }
 
@@ -41,10 +42,27 @@ while [ $# -gt 0 ]; do
     LINK="${2:-}"
     shift 2 || true
     ;;
+  --enforce-deterministic-hash | --enforce_deterministic_hash)
+    ENFORCE_DETERMINISTIC_HASH="${2:-}"
+    shift 2 || true
+    ;;
   -h | --help) usage ;;
   *) shift ;;
   esac
 done
+
+# Normalize boolean-ish inputs
+case "${ENFORCE_DETERMINISTIC_HASH}" in
+true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
+false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
+*)
+  echo "Error: --enforce-deterministic-hash must be true/false" >&2
+  exit 2
+  ;;
+esac
+
+# Nix arg for kms-server.nix and ui.nix
+NIX_ENFORCE_ARGS=(--arg enforceDeterministicHash "$ENFORCE_DETERMINISTIC_HASH")
 
 case "$FORMAT" in
 deb | rpm) : ;;
@@ -172,7 +190,7 @@ prewarm_store() {
   else
     server_attr="kms-server-${VARIANT}-static-openssl"
   fi
-  [ $need_server -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" -A "$server_attr" --no-out-link >/dev/null || echo "Server derivation already present"
+  [ $need_server -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" -A "$server_attr" --no-out-link >/dev/null || echo "Server derivation already present"
 }
 
 # 0.2) Pre-warm Cargo registry/cache so cargo-deb/cargo generate-rpm can operate offline
@@ -202,14 +220,21 @@ build_or_reuse_server() {
 
   OUT_LINK="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
 
-  # If we already have a built server at the expected link, reuse it blindly.
-  # The link name encodes variant/linkage, so no need to parse --info output,
-  # which can be ambiguous across modes and caused false mismatches.
-  if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/cosmian_kms" ]; then
+  # In strict mode, always run nix-build so changes to expected hashes (e.g., server.vendor.*)
+  # are actually validated. In relaxed mode, reuse the existing result link to avoid rebuilds.
+  if [ "$ENFORCE_DETERMINISTIC_HASH" = "true" ]; then
+    nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" --option substituters "" "$REPO_ROOT/default.nix" -A "$attr" -o "$OUT_LINK"
     REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
   else
-    nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$attr" -o "$OUT_LINK"
-    REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+    # If we already have a built server at the expected link, reuse it blindly.
+    # The link name encodes variant/linkage, so no need to parse --info output,
+    # which can be ambiguous across modes and caused false mismatches.
+    if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/cosmian_kms" ]; then
+      REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+    else
+      nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" --option substituters "" "$REPO_ROOT/default.nix" -A "$attr" -o "$OUT_LINK"
+      REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+    fi
   fi
 
   BIN_OUT="$REAL_SERVER/bin/cosmian_kms"
@@ -236,7 +261,7 @@ build_or_reuse_ui() {
     REAL_UI=$(readlink -f "$UI_OUT_LINK" || echo "$UI_OUT_LINK")
   else
     echo "Building UI derivation ($ui_attr) once for variant $VARIANT…"
-    nix-build -I "nixpkgs=${PIN_URL}" "$REPO_ROOT/default.nix" -A "$ui_attr" -o "$UI_OUT_LINK"
+    nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" "$REPO_ROOT/default.nix" -A "$ui_attr" -o "$UI_OUT_LINK"
     REAL_UI=$(readlink -f "$UI_OUT_LINK" || echo "$UI_OUT_LINK")
     if [ ! -d "$REAL_UI/dist" ]; then
       echo "ERROR: UI derivation $REAL_UI lacks dist/ directory" >&2
@@ -318,6 +343,12 @@ enforce_binary_hash() {
   local base_for_hash="${VARIANT}-${LINK}"
   local expected_file
   if ! expected_file=$(resolve_expected_hash_file "$base_for_hash"); then
+    if [ "$ENFORCE_DETERMINISTIC_HASH" = "true" ]; then
+      echo "ERROR: Expected hash file missing for strict deterministic enforcement (variant $VARIANT, link $LINK)." >&2
+      echo "Run: bash .github/scripts/nix.sh update-hashes --variant $VARIANT --link $LINK" >&2
+      exit 1
+    fi
+
     echo "Expected hash file missing; generating it via Nix…"
     # Build the Nix attribute that produces the expected-hash file
     local attr
@@ -332,7 +363,7 @@ enforce_binary_hash() {
       ;;
     esac
     local store_out
-    store_out=$(nix-build -I "nixpkgs=${PIN_URL}" -A "$attr" --no-out-link)
+    store_out=$(nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" -A "$attr" --no-out-link)
     mkdir -p "$REPO_ROOT/nix/expected-hashes"
     # Copy all .sha256 files from the derivation output (there should be exactly one)
     cp -f "$store_out"/*.sha256 "$REPO_ROOT/nix/expected-hashes/"
@@ -1094,8 +1125,12 @@ prewarm_store
 ensure_expected_hashes
 build_or_reuse_ui
 build_or_reuse_server
-write_binary_hash_file || true
-enforce_binary_hash
+if [ "$ENFORCE_DETERMINISTIC_HASH" = "true" ]; then
+  enforce_binary_hash
+else
+  write_binary_hash_file || true
+  echo "Skipping deterministic binary hash enforcement (ENFORCE_DETERMINISTIC_HASH=false)"
+fi
 resolve_openssl_path
 prewarm_cargo_registry
 prepare_workspace

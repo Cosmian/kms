@@ -14,7 +14,6 @@ pub(crate) enum DbState {
 /// Base trait for database migration functionality
 #[async_trait(?Send)]
 #[allow(dead_code)]
-#[allow(dead_code)]
 pub(crate) trait Migrate {
     /// Return the state of the database ("ready" or "upgrading").
     async fn get_db_state(&self) -> DbResult<Option<DbState>>;

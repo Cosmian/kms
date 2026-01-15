@@ -7,12 +7,10 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
     PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
@@ -56,9 +54,6 @@ fn mysql_deadlock_backoff_ms(attempt: u32) -> u64 {
     // Exponential-ish backoff capped by retry count: 50, 100, 200, 400, 800, 1600ms
     let cap = attempt.min(MYSQL_DEADLOCK_MAX_RETRIES);
     50_u64 * (1_u64 << cap)
-    // Exponential-ish backoff capped by retry count: 50, 100, 200, 400, 800, 1600ms
-    let cap = attempt.min(MYSQL_DEADLOCK_MAX_RETRIES);
-    50_u64 * (1_u64 << cap)
 }
 
 #[macro_export]
@@ -94,18 +89,7 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     let state_str: String = row.get(4).context("missing state")?;
     let object: Object =
         serde_json::from_str(&object_json).context("failed deserializing the object")?;
-fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbError> {
-    let id: String = row.get(0).context("missing id")?;
-    let object_json: String = row.get(1).context("missing object")?;
-    let attrs_json: Value = row.get(2).context("missing attributes")?;
-    let owner: String = row.get(3).context("missing owner")?;
-    let state_str: String = row.get(4).context("missing state")?;
-    let object: Object =
-        serde_json::from_str(&object_json).context("failed deserializing the object")?;
     let object = migrate_block_cipher_mode_if_needed(object);
-    let attributes: Attributes =
-        serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
-    let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
     let attributes: Attributes =
         serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
     let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
@@ -118,7 +102,6 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
-    pool: Pool,
     pool: Pool,
 }
 
@@ -347,18 +330,7 @@ impl ObjectsStore for MySqlPool {
         ) -> DbResult<String> {
             create_(uid, owner, object, attributes, tags, tx).await
         }
-        async fn transact(
-            tx: &mut Transaction<'_>,
-            uid: Option<String>,
-            owner: &str,
-            object: &Object,
-            attributes: &Attributes,
-            tags: &HashSet<String>,
-        ) -> DbResult<String> {
-            create_(uid, owner, object, attributes, tags, tx).await
-        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
         for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
@@ -383,37 +355,16 @@ impl ObjectsStore for MySqlPool {
                     if let Err(re) = tx.rollback().await.map_err(DbError::from) {
                         return Err(InterfaceError::from(re));
                     }
-            match transact(&mut tx, uid.clone(), owner, object, attributes, tags).await {
-                Ok(v) => match tx.commit().await {
-                    Ok(()) => return Ok(v),
-                    Err(e) => {
-                        let msg = e.to_string();
-                        let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt + 1 < max_retries {
-                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                            continue;
-                        }
-                        return Err(InterfaceError::from(DbError::from(e)));
-                    }
-                },
-                Err(e) => {
-                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
-                        return Err(InterfaceError::from(re));
-                    }
                     let is_deadlock = matches!(
                         &e,
                         crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
                         if is_mysql_deadlock(msg)
                     );
                     if is_deadlock && attempt + 1 < max_retries {
-                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
-                    return Err(InterfaceError::from(e));
                     return Err(InterfaceError::from(e));
                 }
             }
@@ -427,7 +378,6 @@ impl ObjectsStore for MySqlPool {
         Ok(retrieve_(uid, &self.pool).await?)
     }
 
-    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
         Ok(retrieve_tags_(uid, &self.pool).await?)
     }
@@ -448,17 +398,7 @@ impl ObjectsStore for MySqlPool {
         ) -> DbResult<()> {
             update_object_(uid, object, attributes, tags, tx).await
         }
-        async fn transact(
-            tx: &mut Transaction<'_>,
-            uid: &str,
-            object: &Object,
-            attributes: &Attributes,
-            tags: Option<&HashSet<String>>,
-        ) -> DbResult<()> {
-            update_object_(uid, object, attributes, tags, tx).await
-        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
         for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
@@ -466,27 +406,20 @@ impl ObjectsStore for MySqlPool {
                 .await
                 .map_err(DbError::from)?;
             match transact(&mut tx, uid, object, attributes, tags).await {
-            match transact(&mut tx, uid, object, attributes, tags).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
                         if is_deadlock && attempt + 1 < max_retries {
-                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
-                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
-                        return Err(InterfaceError::from(re));
-                    }
                     if let Err(re) = tx.rollback().await.map_err(DbError::from) {
                         return Err(InterfaceError::from(re));
                     }
@@ -496,20 +429,14 @@ impl ObjectsStore for MySqlPool {
                         if is_mysql_deadlock(msg)
                     );
                     if is_deadlock && attempt + 1 < max_retries {
-                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
-                    return Err(InterfaceError::from(e));
                 }
             }
         }
-        Err(InterfaceError::from(DbError::DatabaseError(
-            "too much contention: too many attempts".to_owned(),
-        )))
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
         )))
@@ -519,11 +446,7 @@ impl ObjectsStore for MySqlPool {
         async fn transact(tx: &mut Transaction<'_>, uid: &str, state: State) -> DbResult<()> {
             update_state_(uid, state, tx).await
         }
-        async fn transact(tx: &mut Transaction<'_>, uid: &str, state: State) -> DbResult<()> {
-            update_state_(uid, state, tx).await
-        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
         for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
@@ -531,27 +454,20 @@ impl ObjectsStore for MySqlPool {
                 .await
                 .map_err(DbError::from)?;
             match transact(&mut tx, uid, state).await {
-            match transact(&mut tx, uid, state).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
                         if is_deadlock && attempt + 1 < max_retries {
-                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
-                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
-                        return Err(InterfaceError::from(re));
-                    }
                     if let Err(re) = tx.rollback().await.map_err(DbError::from) {
                         return Err(InterfaceError::from(re));
                     }
@@ -561,20 +477,14 @@ impl ObjectsStore for MySqlPool {
                         if is_mysql_deadlock(msg)
                     );
                     if is_deadlock && attempt + 1 < max_retries {
-                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
-                    return Err(InterfaceError::from(e));
                 }
             }
         }
-        Err(InterfaceError::from(DbError::DatabaseError(
-            "too much contention: too many attempts".to_owned(),
-        )))
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
         )))
@@ -584,11 +494,7 @@ impl ObjectsStore for MySqlPool {
         async fn transact(tx: &mut Transaction<'_>, uid: &str) -> DbResult<()> {
             delete_(uid, tx).await
         }
-        async fn transact(tx: &mut Transaction<'_>, uid: &str) -> DbResult<()> {
-            delete_(uid, tx).await
-        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
         for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
@@ -596,27 +502,20 @@ impl ObjectsStore for MySqlPool {
                 .await
                 .map_err(DbError::from)?;
             match transact(&mut tx, uid).await {
-            match transact(&mut tx, uid).await {
                 Ok(()) => match tx.commit().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
                         let is_deadlock = is_mysql_deadlock(&msg);
                         if is_deadlock && attempt + 1 < max_retries {
-                        if is_deadlock && attempt + 1 < max_retries {
                             let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                             continue;
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
-                        return Err(InterfaceError::from(DbError::from(e)));
                     }
                 },
                 Err(e) => {
-                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
-                        return Err(InterfaceError::from(re));
-                    }
                     if let Err(re) = tx.rollback().await.map_err(DbError::from) {
                         return Err(InterfaceError::from(re));
                     }
@@ -626,20 +525,14 @@ impl ObjectsStore for MySqlPool {
                         if is_mysql_deadlock(msg)
                     );
                     if is_deadlock && attempt + 1 < max_retries {
-                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
-                    return Err(InterfaceError::from(e));
                 }
             }
         }
-        Err(InterfaceError::from(DbError::DatabaseError(
-            "too much contention: too many attempts".to_owned(),
-        )))
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
         )))
@@ -657,35 +550,13 @@ impl ObjectsStore for MySqlPool {
         ) -> DbResult<Vec<String>> {
             atomic_(user, operations, tx).await
         }
-        async fn transact(
-            tx: &mut Transaction<'_>,
-            user: &str,
-            operations: &[AtomicOperation],
-        ) -> DbResult<Vec<String>> {
-            atomic_(user, operations, tx).await
-        }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
         for attempt in 0..max_retries {
             let mut conn = self.get_configured_conn().await?;
             let mut tx = conn
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            match transact(&mut tx, user, operations).await {
-                Ok(v) => match tx.commit().await {
-                    Ok(()) => return Ok(v),
-                    Err(e) => {
-                        let msg = e.to_string();
-                        let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt + 1 < max_retries {
-                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                            continue;
-                        }
-                        return Err(InterfaceError::from(DbError::from(e)));
-                    }
-                },
             match transact(&mut tx, user, operations).await {
                 Ok(v) => match tx.commit().await {
                     Ok(()) => return Ok(v),
@@ -710,25 +581,14 @@ impl ObjectsStore for MySqlPool {
                         if is_mysql_deadlock(msg)
                     );
                     if is_deadlock && attempt + 1 < max_retries {
-                    let is_deadlock = matches!(
-                        &e,
-                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
-                        if is_mysql_deadlock(msg)
-                    );
-                    if is_deadlock && attempt + 1 < max_retries {
                         let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         continue;
                     }
                     return Err(InterfaceError::from(e));
-                    return Err(InterfaceError::from(e));
                 }
             }
         }
-        Err(InterfaceError::from(DbError::DatabaseError(
-            "too much contention: too many attempts".to_owned(),
-        )))
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
         )))
@@ -738,7 +598,6 @@ impl ObjectsStore for MySqlPool {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
-    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         Ok(list_uids_for_tags_(tags, &self.pool).await?)
     }
@@ -857,14 +716,7 @@ pub(super) async fn create_(
     attributes: &Attributes,
     tags: &HashSet<String>,
     tx: &mut Transaction<'_>,
-    tx: &mut Transaction<'_>,
 ) -> DbResult<String> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
-    })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
-    })?;
     let object_json = serde_json::to_string_pretty(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
@@ -884,22 +736,7 @@ pub(super) async fn create_(
     )
     .await
     .map_err(DbError::from)?;
-    tx.exec_drop(
-        get_mysql_query!("insert-objects"),
-        (
-            uid.clone(),
-            object_json,
-            attributes_json,
-            attributes.state.unwrap_or(State::PreActive).to_string(),
-            owner.to_owned(),
-        ),
-    )
-    .await
-    .map_err(DbError::from)?;
     for tag in tags {
-        tx.exec_drop(get_mysql_query!("insert-tags"), (uid.clone(), tag.as_str()))
-            .await
-            .map_err(DbError::from)?;
         tx.exec_drop(get_mysql_query!("insert-tags"), (uid.clone(), tag.as_str()))
             .await
             .map_err(DbError::from)?;
@@ -915,25 +752,8 @@ pub(super) async fn retrieve_(uid: &str, pool: &Pool) -> DbResult<Option<ObjectW
         .await
         .map_err(DbError::from)?;
     row_opt.map(|r| my_sql_row_to_owm(&r)).transpose()
-pub(super) async fn retrieve_(uid: &str, pool: &Pool) -> DbResult<Option<ObjectWithMetadata>> {
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let row_opt: Option<mysql_async::Row> = conn
-        .exec_first(get_mysql_query!("select-object"), (uid,))
-        .await
-        .map_err(DbError::from)?;
-    row_opt.map(|r| my_sql_row_to_owm(&r)).transpose()
 }
 
-async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let rows: Vec<mysql_async::Row> = conn
-        .exec(get_mysql_query!("select-tags"), (uid,))
-        .await
-        .map_err(DbError::from)?;
-    let tags = rows
-        .iter()
-        .map(|r| r.get::<String, _>(0).unwrap_or_default())
-        .collect::<HashSet<String>>();
 async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let rows: Vec<mysql_async::Row> = conn
@@ -953,28 +773,15 @@ pub(super) async fn update_object_(
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
     tx: &mut Transaction<'_>,
-    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
     let object_json = serde_json::to_string_pretty(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
-    })?;
 
     let attributes_json = serde_json::to_value(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
-    })?;
 
-    tx.exec_drop(
-        get_mysql_query!("update-object-with-object"),
-        (object_json, attributes_json, uid),
-    )
-    .await
-    .map_err(DbError::from)?;
     tx.exec_drop(
         get_mysql_query!("update-object-with-object"),
         (object_json, attributes_json, uid),
@@ -988,14 +795,8 @@ pub(super) async fn update_object_(
         tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
             .await
             .map_err(DbError::from)?;
-        tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
-            .await
-            .map_err(DbError::from)?;
 
         for tag in tags {
-            tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
-                .await
-                .map_err(DbError::from)?;
             tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
                 .await
                 .map_err(DbError::from)?;
@@ -1010,14 +811,7 @@ pub(super) async fn update_state_(
     uid: &str,
     state: State,
     tx: &mut Transaction<'_>,
-    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    tx.exec_drop(
-        get_mysql_query!("update-object-with-state"),
-        (state.to_string(), uid),
-    )
-    .await
-    .map_err(DbError::from)?;
     tx.exec_drop(
         get_mysql_query!("update-object-with-state"),
         (state.to_string(), uid),
@@ -1029,19 +823,12 @@ pub(super) async fn update_state_(
 }
 
 pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {
-pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {
     // delete the object
-    tx.exec_drop(get_mysql_query!("delete-object"), (uid,))
-        .await
-        .map_err(DbError::from)?;
     tx.exec_drop(get_mysql_query!("delete-object"), (uid,))
         .await
         .map_err(DbError::from)?;
 
     // delete the tags
-    tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
-        .await
-        .map_err(DbError::from)?;
     tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
         .await
         .map_err(DbError::from)?;
@@ -1058,20 +845,7 @@ pub(super) async fn upsert_(
     tags: Option<&HashSet<String>>,
     state: State,
     tx: &mut Transaction<'_>,
-    tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
-    })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
-    })?;
-    tx.exec_drop(
-        get_mysql_query!("upsert-object"),
-        (uid, object_json, attributes_json, state.to_string(), owner),
-    )
-    .await
-    .map_err(DbError::from)?;
     let object_json = serde_json::to_string_pretty(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
@@ -1091,14 +865,8 @@ pub(super) async fn upsert_(
         tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
             .await
             .map_err(DbError::from)?;
-        tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
-            .await
-            .map_err(DbError::from)?;
         // insert the new ones
         for tag in tags {
-            tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
-                .await
-                .map_err(DbError::from)?;
             tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
                 .await
                 .map_err(DbError::from)?;
@@ -1110,30 +878,16 @@ pub(super) async fn upsert_(
 }
 
 pub(super) async fn list_uids_for_tags_(
-pub(super) async fn list_uids_for_tags_(
     tags: &HashSet<String>,
-    pool: &Pool,
-) -> DbResult<HashSet<String>> {
     pool: &Pool,
 ) -> DbResult<HashSet<String>> {
     let tags_params = tags.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
     let raw_sql = get_mysql_query!("select-uids-from-tags").replace("@TAGS", &tags_params);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let mut params: Vec<mysql_async::Value> = Vec::with_capacity(tags.len() + 1);
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let mut params: Vec<mysql_async::Value> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
         params.push(mysql_async::Value::Bytes(tag.clone().into_bytes()));
-        params.push(mysql_async::Value::Bytes(tag.clone().into_bytes()));
     }
-    params.push(mysql_async::Value::Int(i64::from(i16::try_from(
-        tags.len(),
-    )?)));
-    let rows: Vec<mysql_async::Row> = conn.exec(raw_sql, params).await.map_err(DbError::from)?;
-    let uids = rows
-        .iter()
-        .map(|r| r.get::<String, _>(0).unwrap_or_default())
-        .collect::<HashSet<String>>();
     params.push(mysql_async::Value::Int(i64::from(i16::try_from(
         tags.len(),
     )?)));
@@ -1146,33 +900,10 @@ pub(super) async fn list_uids_for_tags_(
 }
 
 pub(super) async fn list_accesses_(
-pub(super) async fn list_accesses_(
     uid: &str,
     pool: &Pool,
 ) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
-    pool: &Pool,
-) -> DbResult<HashMap<String, HashSet<KmipOperation>>> {
     debug!("Uid = {}", uid);
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let rows: Vec<mysql_async::Row> = conn
-        .exec(
-            get_mysql_query!("select-rows-read_access-with-object-id"),
-            (uid,),
-        )
-        .await
-        .map_err(DbError::from)?;
-    let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::with_capacity(rows.len());
-    for row in rows {
-        let userid: String = row
-            .get(0)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing userid").into()))?;
-        let perms_val: Value = row
-            .get(1)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing permissions").into()))?;
-        let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val).map_err(|e| {
-            DbError::ConversionError(format!("failed deserializing operations: {e}").into())
-        })?;
-        ids.insert(userid, perms);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let rows: Vec<mysql_async::Row> = conn
         .exec(
@@ -1199,18 +930,10 @@ pub(super) async fn list_accesses_(
 }
 
 pub(super) async fn list_user_granted_access_rights_(
-pub(super) async fn list_user_granted_access_rights_(
     user: &str,
     pool: &Pool,
 ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-    pool: &Pool,
-) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
     debug!("Owner = {}", user);
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let rows: Vec<mysql_async::Row> = conn
-        .exec(get_mysql_query!("select-objects-access-obtained"), (user,))
-        .await
-        .map_err(DbError::from)?;
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let rows: Vec<mysql_async::Row> = conn
         .exec(get_mysql_query!("select-objects-access-obtained"), (user,))
@@ -1238,33 +961,11 @@ pub(super) async fn list_user_granted_access_rights_(
             DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
         })?;
         ids.insert(uid, (owner, state, ops));
-        HashMap::with_capacity(rows.len());
-    for row in rows {
-        let uid: String = row
-            .get(0)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing uid").into()))?;
-        let owner: String = row
-            .get(1)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing owner").into()))?;
-        let state_str: String = row
-            .get(2)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing state").into()))?;
-        let state = State::try_from(state_str.as_str()).map_err(|e| {
-            DbError::ConversionError(format!("failed converting the state: {e}").into())
-        })?;
-        let ops_val: Value = row
-            .get(3)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing operations").into()))?;
-        let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
-            DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
-        })?;
-        ids.insert(uid, (owner, state, ops));
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(super) async fn list_user_access_rights_on_object_(
 pub(super) async fn list_user_access_rights_on_object_(
     uid: &str,
     userid: &str,
@@ -1272,13 +973,9 @@ pub(super) async fn list_user_access_rights_on_object_(
     pool: &Pool,
 ) -> DbResult<HashSet<KmipOperation>> {
     let mut user_perms = perms(pool, uid, userid).await?;
-    pool: &Pool,
-) -> DbResult<HashSet<KmipOperation>> {
-    let mut user_perms = perms(pool, uid, userid).await?;
     if no_inherited_access || userid == "*" {
         return Ok(user_perms);
     }
-    user_perms.extend(perms(pool, uid, "*").await?);
     user_perms.extend(perms(pool, uid, "*").await?);
     Ok(user_perms)
 }
@@ -1303,35 +1000,11 @@ async fn perms(pool: &Pool, uid: &str, userid: &str) -> DbResult<HashSet<KmipOpe
         Ok(HashSet::new())
     }
 }
-async fn perms(pool: &Pool, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let row_opt: Option<mysql_async::Row> = conn
-        .exec_first(
-            get_mysql_query!("select-user-accesses-for-object"),
-            (uid, userid),
-        )
-        .await
-        .map_err(DbError::from)?;
-    if let Some(row) = row_opt {
-        let perms_raw: Value = row
-            .get(0)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing permissions").into()))?;
-        serde_json::from_value(perms_raw).map_err(|e| {
-            DbError::ConversionError(format!("failed deserializing the permissions: {e}").into())
-        })
-    } else {
-        Ok(HashSet::new())
-    }
-}
 
-pub(super) async fn insert_access_(
 pub(super) async fn insert_access_(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
-    pool: &Pool,
-) -> DbResult<()> {
-    let mut perms = list_user_access_rights_on_object_(uid, userid, false, pool).await?;
     pool: &Pool,
 ) -> DbResult<()> {
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, pool).await?;
@@ -1349,29 +1022,14 @@ pub(super) async fn insert_access_(
     )
     .await
     .map_err(DbError::from)?;
-    perms.extend(operation_types.iter().copied());
-    let json = serde_json::to_value(&perms).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
-    })?;
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    conn.exec_drop(
-        get_mysql_query!("upsert-row-read_access"),
-        (uid, userid, json),
-    )
-    .await
-    .map_err(DbError::from)?;
     trace!("Insert read access right in DB: {uid} / {userid}");
     Ok(())
 }
 
 pub(super) async fn remove_access_(
-pub(super) async fn remove_access_(
     uid: &str,
     userid: &str,
     operation_types: HashSet<KmipOperation>,
-    pool: &Pool,
-) -> DbResult<()> {
-    let perms = list_user_access_rights_on_object_(uid, userid, true, pool)
     pool: &Pool,
 ) -> DbResult<()> {
     let perms = list_user_access_rights_on_object_(uid, userid, true, pool)
@@ -1380,11 +1038,7 @@ pub(super) async fn remove_access_(
         .copied()
         .collect::<HashSet<_>>();
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     if perms.is_empty() {
-        conn.exec_drop(get_mysql_query!("delete-rows-read_access"), (uid, userid))
-            .await
-            .map_err(DbError::from)?;
         conn.exec_drop(get_mysql_query!("delete-rows-read_access"), (uid, userid))
             .await
             .map_err(DbError::from)?;
@@ -1399,15 +1053,6 @@ pub(super) async fn remove_access_(
     )
     .await
     .map_err(DbError::from)?;
-    let json = serde_json::to_value(&perms).map_err(|e| {
-        DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
-    })?;
-    conn.exec_drop(
-        get_mysql_query!("update-rows-read_access-with-permission"),
-        (json, uid, userid),
-    )
-    .await
-    .map_err(DbError::from)?;
     Ok(())
 }
 
@@ -1418,24 +1063,13 @@ pub(super) async fn is_object_owned_by_(uid: &str, owner: &str, pool: &Pool) -> 
         .await
         .map_err(DbError::from)?;
     Ok(row_opt.is_some())
-pub(super) async fn is_object_owned_by_(uid: &str, owner: &str, pool: &Pool) -> DbResult<bool> {
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let row_opt: Option<mysql_async::Row> = conn
-        .exec_first(get_mysql_query!("has-row-objects"), (uid, owner))
-        .await
-        .map_err(DbError::from)?;
-    Ok(row_opt.is_some())
 }
 
-pub(super) async fn find_(
 pub(super) async fn find_(
     researched_attributes: Option<&Attributes>,
     state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
-    pool: &Pool,
-) -> DbResult<Vec<(String, State, Attributes)>> {
-    let sql = query_from_attributes::<MySqlPlaceholder>(
     pool: &Pool,
 ) -> DbResult<Vec<(String, State, Attributes)>> {
     let sql = query_from_attributes::<MySqlPlaceholder>(
@@ -1448,16 +1082,7 @@ pub(super) async fn find_(
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let params: Vec<mysql_async::Value> = if user_must_be_owner {
         vec![mysql_async::Value::Bytes(user.as_bytes().to_vec())]
-    trace!("find_: {sql:?}");
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let params: Vec<mysql_async::Value> = if user_must_be_owner {
-        vec![mysql_async::Value::Bytes(user.as_bytes().to_vec())]
     } else {
-        vec![
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-        ]
         vec![
             mysql_async::Value::Bytes(user.as_bytes().to_vec()),
             mysql_async::Value::Bytes(user.as_bytes().to_vec()),
@@ -1465,31 +1090,13 @@ pub(super) async fn find_(
         ]
     };
     let rows: Vec<mysql_async::Row> = conn.exec(sql, params).await.map_err(DbError::from)?;
-    let rows: Vec<mysql_async::Row> = conn.exec(sql, params).await.map_err(DbError::from)?;
     to_qualified_uids(&rows)
 }
 
 /// Convert a list of rows into a list of qualified uids
 fn to_qualified_uids(rows: &[mysql_async::Row]) -> DbResult<Vec<(String, State, Attributes)>> {
-fn to_qualified_uids(rows: &[mysql_async::Row]) -> DbResult<Vec<(String, State, Attributes)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw = row
-            .get::<Value, _>(2)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing attributes").into()))?;
-        let attrs: Attributes = serde_json::from_value(raw).map_err(|e| {
-            DbError::ConversionError(format!("failed deserializing attributes: {e}").into())
-        })?;
-        let uid: String = row
-            .get::<String, _>(0)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing uid").into()))?;
-        let state_str: String = row
-            .get::<String, _>(1)
-            .ok_or_else(|| DbError::ConversionError(String::from("missing state").into()))?;
-        let state = State::try_from(state_str.as_str()).map_err(|e| {
-            DbError::ConversionError(format!("failed converting the state: {e}").into())
-        })?;
-        uids.push((uid, state, attrs));
         let raw = row
             .get::<Value, _>(2)
             .ok_or_else(|| DbError::ConversionError(String::from("missing attributes").into()))?;
@@ -1513,7 +1120,6 @@ fn to_qualified_uids(rows: &[mysql_async::Row]) -> DbResult<Vec<(String, State, 
 pub(super) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
-    tx: &mut Transaction<'_>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<Vec<String>> {
     let mut uids = Vec::with_capacity(operations.len());

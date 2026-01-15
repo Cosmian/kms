@@ -7,7 +7,6 @@ use cosmian_kmip::{
 };
 
 use crate::{InterfaceResult, ObjectWithMetadata};
-use crate::{InterfaceResult, ObjectWithMetadata};
 
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
@@ -55,10 +54,8 @@ pub trait ObjectsStore {
 
     /// Retrieve an object from the database.
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>>;
-    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>>;
 
     /// Retrieve the tags of the object with the given `uid`
-    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>>;
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>>;
 
     /// Update an object in the database.
@@ -74,10 +71,8 @@ pub trait ObjectsStore {
 
     /// Update the state of an object in the database.
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()>;
-    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()>;
 
     /// Delete an object from the database.
-    async fn delete(&self, uid: &str) -> InterfaceResult<()>;
     async fn delete(&self, uid: &str) -> InterfaceResult<()>;
 
     /// Perform an atomic set of operation on the database
@@ -93,10 +88,8 @@ pub trait ObjectsStore {
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool>;
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool>;
 
     /// List the `uid` of all the objects that have the given `tags`
-    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>>;
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>>;
 
     /// Return uid, state and attributes of the object identified by its owner,

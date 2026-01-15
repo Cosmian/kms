@@ -52,6 +52,9 @@ usage() {
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
                     static: statically link OpenSSL 3.6.0
                     dynamic: dynamically link system OpenSSL
+    --enforce-deterministic-hash <true|false>
+                    When true, enforce expected hashes (fail on mismatch).
+                    When false (default), relax expected-hash enforcement.
 
   For testing, also supports environment variables:
     REDIS_HOST, REDIS_PORT
@@ -95,7 +98,7 @@ EOF
 PROFILE="debug"
 VARIANT="fips"
 LINK="static"
-# Hash update tuning flags removed (no longer used)
+ENFORCE_DETERMINISTIC_HASH="false"
 
 # Parse global options before the subcommand
 while [ $# -gt 0 ]; do
@@ -112,6 +115,10 @@ while [ $# -gt 0 ]; do
   -l | --link)
     LINK="${2:-}"
     LINK_EXPLICIT=1
+    shift 2 || true
+    ;;
+  --enforce-deterministic-hash | --enforce_deterministic_hash)
+    ENFORCE_DETERMINISTIC_HASH="${2:-}"
     shift 2 || true
     ;;
   docker | test | package | sbom | update-hashes)
@@ -136,8 +143,18 @@ done
 # Validate command argument
 [ -z "${COMMAND:-}" ] && usage
 
+# Normalize boolean-ish inputs
+case "${ENFORCE_DETERMINISTIC_HASH}" in
+true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
+false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
+*)
+  echo "Error: --enforce-deterministic-hash must be true/false" >&2
+  exit 1
+  ;;
+esac
+
 # Export variables so they can be kept by nix-shell --keep
-export PROFILE VARIANT LINK
+export PROFILE VARIANT LINK ENFORCE_DETERMINISTIC_HASH
 
 # Handle test subcommand
 TEST_TYPE=""
@@ -408,7 +425,7 @@ package)
       # Use unified pinned nixpkgs (from common.sh)
       # shellcheck disable=SC2086
       nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS --argstr variant "$VARIANT" "$REPO_ROOT/shell.nix" \
-        --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+        --run "ENFORCE_DETERMINISTIC_HASH='${ENFORCE_DETERMINISTIC_HASH}' bash '$SCRIPT' --variant '$VARIANT' --link '$LINK' --enforce-deterministic-hash '${ENFORCE_DETERMINISTIC_HASH}'"
       # After packaging, compute checksum for the produced DMG (if present)
       OUT_DIR="$REPO_ROOT/result-dmg-$VARIANT-$LINK"
       dmg_file=$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
@@ -560,7 +577,7 @@ if [ "$COMMAND" = "package" ]; then
               exit 1
             }
             # Ensure required tools are available via a minimal nix-shell; remove NO_PREWARM default
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "ENFORCE_DETERMINISTIC_HASH='${ENFORCE_DETERMINISTIC_HASH}' bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK' --enforce-deterministic-hash '${ENFORCE_DETERMINISTIC_HASH}'"
             REAL_OUT="$REPO_ROOT/result-deb-$BUILD_VARIANT-$BUILD_LINK"
             echo "Built deb ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
@@ -595,7 +612,7 @@ if [ "$COMMAND" = "package" ]; then
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
             }
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "ENFORCE_DETERMINISTIC_HASH='${ENFORCE_DETERMINISTIC_HASH}' bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK' --enforce-deterministic-hash '${ENFORCE_DETERMINISTIC_HASH}'"
             REAL_OUT="$REPO_ROOT/result-rpm-$BUILD_VARIANT-$BUILD_LINK"
             echo "Built rpm ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
@@ -638,7 +655,7 @@ if [ "$COMMAND" = "package" ]; then
             ATTR="kms-server-${BUILD_VARIANT}-dmg"
             OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
           fi
-          nix-build -A "$ATTR" -o "$OUT_LINK"
+          nix-build -I "nixpkgs=${NIXPKGS_ARG}" --arg enforceDeterministicHash "$ENFORCE_DETERMINISTIC_HASH" "$REPO_ROOT/default.nix" -A "$ATTR" -o "$OUT_LINK"
           REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
           echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
