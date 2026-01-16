@@ -498,7 +498,7 @@ pub(crate) async fn get_attributes(
                         (Some(true), None) => Some(true),
                         (None, v) => v,
                     };
-                    res.fresh = decided.or(Some(true));
+                    res.fresh = decided;
                 }
                 Tag::State => {
                     res.state = attributes.state;

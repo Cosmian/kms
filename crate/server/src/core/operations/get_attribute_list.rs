@@ -1,7 +1,10 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_operations::{GetAttributeList, GetAttributeListResponse},
-    kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ProtocolVersion,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_operations::{GetAttributeList, GetAttributeListResponse},
+        kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
+    },
 };
 use cosmian_logger::trace;
 
@@ -17,6 +20,19 @@ pub(super) async fn get_attribute_list(
     request: GetAttributeList,
     user: &str,
 ) -> KResult<GetAttributeListResponse> {
+    get_attribute_list_with_protocol_version(kms, request, user, None).await
+}
+
+pub(super) async fn get_attribute_list_with_protocol_version(
+    kms: &KMS,
+    request: GetAttributeList,
+    user: &str,
+    protocol_version: Option<ProtocolVersion>,
+) -> KResult<GetAttributeListResponse> {
+    let include_fresh = protocol_version
+        .as_ref()
+        .is_some_and(|pv| !(pv.protocol_version_major == 1 && pv.protocol_version_minor == 0));
+
     let uid = request
         .unique_identifier
         .as_ref()
@@ -60,7 +76,9 @@ pub(super) async fn get_attribute_list(
     }
 
     // 2) Standard Attribute tag references for TL profile in the exact expected order
-    let tl_order = [
+    // Note: `Fresh` is inserted only for KMIP >= 1.1 (and 1.4/2.1) while remaining
+    // absent for KMIP 1.0.
+    let mut tl_order: Vec<Tag> = vec![
         Tag::UniqueIdentifier,
         Tag::ObjectType,
         Tag::CryptographicAlgorithm,
@@ -71,7 +89,6 @@ pub(super) async fn get_attribute_list(
         Tag::CryptographicUsageMask,
         Tag::Digest,
         Tag::Extractable,
-        Tag::Fresh,
         Tag::InitialDate,
         Tag::LastChangeDate,
         Tag::LeaseTime,
@@ -83,6 +100,11 @@ pub(super) async fn get_attribute_list(
         Tag::State,
     ];
 
+    if include_fresh {
+        // Keep stable ordering: insert immediately after Extractable.
+        tl_order.insert(10, Tag::Fresh);
+    }
+
     for tag in tl_order {
         refs.push(AttributeReference::Standard(tag));
     }
@@ -92,7 +114,7 @@ pub(super) async fn get_attribute_list(
     if let Some(refs) = &attribute_references {
         trace!(
             target: "kmip",
-            "[diag-get_attribute_list] uid={} refs=[{}]",
+            "get_attribute_list uid={} refs=[{}]",
             uid,
             refs
                 .iter()

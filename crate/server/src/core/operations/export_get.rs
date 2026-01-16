@@ -51,7 +51,7 @@ pub(crate) async fn export_get(
     user: &str,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
-    trace!(target: "kmip", "[diag-export_get] enter export_get op={:?} req={}", operation_type, request);
+    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
 
     let uid_or_tags = request
         .unique_identifier
@@ -67,8 +67,9 @@ pub(crate) async fn export_get(
     ))
     .await?;
 
+    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
     // Log basic object metadata before any processing
-    trace!(target: "kmip", "[diag-export_get] retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
+    trace!(target: "kmip", "retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
         owm.id(), owm.object().object_type(), owm.state(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
 
     // The object cannot be returned (Get/Export) if it is sensitive and not wrapped.
@@ -83,7 +84,6 @@ pub(crate) async fn export_get(
     // Revoked (Deactivated / Compromised) objects must NOT be accessible via Get (without
     // allow_revoked). The client uses Export with allow_revoked=true when retrieval of a revoked
     // object is explicitly requested. Enforce denial only for Get so that Export path continues
-    // to work for revoked objects but still blocks destroyed objects later.
     if operation_type == KmipOperation::Get && matches!(owm.state(), State::Deactivated) {
         return Err(KmsError::Kmip21Error(
             ErrorReason::Wrong_Key_Lifecycle_State,
@@ -197,7 +197,7 @@ pub(crate) async fn export_get(
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                trace!(target: "kmip", "[diag-export_get] processing symmetric key uid={} state={:?} requested_format={:?}", owm.id(), owm.state(), request.key_format_type);
+                trace!(target: "kmip", "processing symmetric key uid={} state={:?} requested_format={:?}", owm.id(), owm.state(), request.key_format_type);
                 Box::pin(process_symmetric_key(
                     &mut owm,
                     &request.key_format_type,
@@ -207,50 +207,53 @@ pub(crate) async fn export_get(
                     user,
                 ))
                 .await?;
-                trace!(target: "kmip", "[diag-export_get] post-process symmetric key uid={} final_format={:?}", owm.id(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
+                trace!(target: "kmip", "post-process symmetric key uid={} final_format={:?}", owm.id(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
 
                 // KMIP Fresh semantics for symmetric keys: once the key material has been
                 // returned unwrapped, Fresh should flip to false and be persisted so that
-                // subsequent GetAttributes reflects it (e.g., TL-M-3-21 step=2).
+                // subsequent GetAttributes reflects it (e.g., TL-M-3-14 request[0] then request[2]).
+                // Note: Get responses may omit Attributes, so key-block inner attributes may be absent.
                 if owm.attributes().fresh != Some(false) {
-                    if let Ok(kb) = owm.object().key_block() {
-                        if kb.key_wrapping_data.is_none() {
-                            let mut updated_attrs = owm.attributes().clone();
-                            updated_attrs.fresh = Some(false);
-                            let uid = owm.id().to_owned();
-                            // Also flip Fresh inside the embedded KeyBlock attributes if present
-                            let mut obj = owm.object().clone();
-                            if let Ok(kb_mut) = obj.key_block_mut() {
-                                if let Some(KeyValue::Structure { attributes, .. }) =
-                                    kb_mut.key_value.as_mut()
-                                {
-                                    if let Some(inner) = attributes.as_mut() {
-                                        inner.fresh = Some(false);
-                                    }
+                    let key_returned_unwrapped = request
+                        .key_wrap_type
+                        .is_none_or(|kwt| kwt == KeyWrapType::NotWrapped)
+                        && request.key_wrapping_specification.is_none();
+                    if key_returned_unwrapped {
+                        let mut updated_attrs = owm.attributes().clone();
+                        updated_attrs.fresh = Some(false);
+                        let uid = owm.id().to_owned();
+                        // Also flip Fresh inside the embedded KeyBlock attributes if present
+                        let mut obj = owm.object().clone();
+                        if let Ok(kb_mut) = obj.key_block_mut() {
+                            if let Some(KeyValue::Structure { attributes, .. }) =
+                                kb_mut.key_value.as_mut()
+                            {
+                                if let Some(inner) = attributes.as_mut() {
+                                    inner.fresh = Some(false);
                                 }
                             }
-                            // Persist update without modifying tags
-                            kms.database
-                                .atomic(
-                                    user,
-                                    &[AtomicOperation::UpdateObject((
-                                        uid,
-                                        obj,
-                                        updated_attrs,
-                                        None,
-                                    ))],
-                                )
-                                .await?;
-                            // Mirror change in-memory for immediate consistency
-                            let attrs_mut = owm.attributes_mut();
-                            attrs_mut.fresh = Some(false);
-                            if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
-                                if let Some(KeyValue::Structure { attributes, .. }) =
-                                    kb_mut.key_value.as_mut()
-                                {
-                                    if let Some(inner) = attributes.as_mut() {
-                                        inner.fresh = Some(false);
-                                    }
+                        }
+                        // Persist update without modifying tags
+                        kms.database
+                            .atomic(
+                                user,
+                                &[AtomicOperation::UpdateObject((
+                                    uid,
+                                    obj,
+                                    updated_attrs,
+                                    None,
+                                ))],
+                            )
+                            .await?;
+                        // Mirror change in-memory for immediate consistency
+                        let attrs_mut = owm.attributes_mut();
+                        attrs_mut.fresh = Some(false);
+                        if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
+                            if let Some(KeyValue::Structure { attributes, .. }) =
+                                kb_mut.key_value.as_mut()
+                            {
+                                if let Some(inner) = attributes.as_mut() {
+                                    inner.fresh = Some(false);
                                 }
                             }
                         }
@@ -1002,7 +1005,7 @@ async fn process_symmetric_key(
         object_with_metadata
     );
 
-    trace!(target: "kmip", "[diag-process_symmetric_key] enter uid={} requested_format={:?} wrap_type={:?}",
+    trace!(target: "kmip", "process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}",
         object_with_metadata.id(), key_format_type, key_wrap_type);
 
     // First check is any unwrapping needs to be done
@@ -1026,7 +1029,7 @@ async fn process_symmetric_key(
         .key_wrapping_data
         .is_some();
 
-    // trace!(target: "kmip", "[diag-process_symmetric_key] key_block initial format={:?} wrapped={} uid={}", key_block.key_format_type, key_block.key_wrapping_data.is_some(), obj_id);
+    // trace!(target: "kmip", "process_symmetric_key key_block initial format={:?} wrapped={} uid={}", key_block.key_format_type, key_block.key_wrapping_data.is_some(), obj_id);
 
     // If the key is still wrapped then historically we rejected any requested KeyFormatType.
     // Allow the client to request `Raw` but, in order to provide actual raw key bytes (so the
@@ -1096,7 +1099,7 @@ async fn process_symmetric_key(
             _ => kms_bail!("export: unsupported key material"),
         }
     } else {
-        trace!(target: "kmip", "[diag-process_symmetric_key] missing key_value structure uid={}", object_with_metadata.id());
+        trace!(target: "kmip", "process_symmetric_key missing key_value structure uid={}", object_with_metadata.id());
         return Err(KmsError::Default(
             "process_symmetric_key: key value not found in key".to_owned(),
         ));
@@ -1132,7 +1135,7 @@ async fn process_symmetric_key(
                 attributes: nested_attrs.clone(),
             });
             key_block.key_format_type = KeyFormatType::TransparentSymmetricKey;
-            trace!(target: "kmip", "[diag-process_symmetric_key] set TransparentSymmetricKey uid={}", obj_id);
+            trace!(target: "kmip", "process_symmetric_key set TransparentSymmetricKey uid={}", obj_id);
         }
         None | Some(KeyFormatType::Raw) => {
             key_block.key_value = Some(KeyValue::Structure {
@@ -1143,7 +1146,7 @@ async fn process_symmetric_key(
             if let Some(inner) = nested_attrs.as_mut() {
                 inner.key_format_type = Some(KeyFormatType::Raw);
             }
-            trace!(target: "kmip", "[diag-process_symmetric_key] set Raw uid={}", obj_id);
+            trace!(target: "kmip", "process_symmetric_key set Raw uid={}", obj_id);
         }
         _ => kms_bail!(
             "export: unsupported requested Key Format Type for a symmetric key: {:?}",
@@ -1151,7 +1154,7 @@ async fn process_symmetric_key(
         ),
     }
 
-    trace!(target: "kmip", "[diag-process_symmetric_key] exit uid={} final_format={:?}", obj_id, key_block.key_format_type);
+    trace!(target: "kmip", "process_symmetric_key exit uid={} final_format={:?}", obj_id, key_block.key_format_type);
 
     Ok(())
 }
