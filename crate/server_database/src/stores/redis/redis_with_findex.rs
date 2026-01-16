@@ -140,11 +140,26 @@ impl RedisWithFindex {
                 .await?;
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
-            return Err(DbError::DatabaseError(
-                "Legacy Redis/Findex migration support has been removed. \
-                Please export your data from the legacy KMS and reimport into the current version."
-                    .to_owned(),
-            ));
+            // Existing database detected. Accept databases that have our version/state markers;
+            // refuse truly legacy databases (no markers or non-ready state) since migrations were removed.
+            let db_version = redis_with_findex.get_current_db_version().await?;
+            let db_state = redis_with_findex.get_db_state().await?;
+
+            match (db_version, db_state) {
+                (Some(version), Some(DbState::Ready)) => {
+                    debug!(
+                        "Existing Redis database detected (version {version}). Using current database."
+                    );
+                    // proceed without reinitialization
+                }
+                _ => {
+                    return Err(DbError::DatabaseError(
+                        "Legacy Redis/Findex migration support has been removed. \
+                        Please export your data from the legacy KMS and reimport into the current version."
+                            .to_owned(),
+                    ));
+                }
+            }
         }
 
         Ok(redis_with_findex)
