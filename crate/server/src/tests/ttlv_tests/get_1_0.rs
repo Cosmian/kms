@@ -21,7 +21,7 @@ use super::{create_1_4::create_symmetric_key, socket_client::SocketClient};
 use crate::tests::ttlv_tests::get_client;
 
 #[test]
-fn test_get_1_4() {
+fn test_get_1_0() {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("debug"));
 
@@ -32,17 +32,13 @@ fn test_get_1_4() {
     info!("Key ID: {key_id}");
 
     // Get the symmetric key
-    get_symmetric_key(&client, &key_id);
+    get_symmetric_key_1_0(&client, &key_id);
 }
 
-pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
+pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
     let protocol_major = 1;
-    let protocol_minor = 4;
-    let kmip_flavor = if protocol_major == 2 {
-        KmipFlavor::Kmip2
-    } else {
-        KmipFlavor::Kmip1
-    };
+    let protocol_minor = 0;
+    let kmip_flavor = KmipFlavor::Kmip1;
 
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
@@ -73,16 +69,17 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
         .send_request::<RequestMessage, ResponseMessage>(kmip_flavor, &request_message)
         .expect("Failed to send request");
 
-    // KMIP 1.4 behavior check: `Fresh` is supported for KMIP > 1.0.
+    // Mandatory KMIP 1.0 compatibility check:
+    // verify that the encoded TTLV response does not include any AttributeName == "Fresh".
     let response_ttlv: TTLV = to_ttlv(&response).expect("Failed to convert response to TTLV");
     let response_bytes = response_ttlv
         .to_bytes(kmip_flavor)
         .expect("Failed to serialize response TTLV");
     assert!(
-        response_bytes
+        !response_bytes
             .windows(b"Fresh".len())
             .any(|w| w == b"Fresh"),
-        "KMIP 1.4 Get response should include Fresh when present (TTLV missing \"Fresh\")"
+        "KMIP 1.0 Get response must NOT include Fresh (TTLV contains \"Fresh\")"
     );
 
     // Safety: ensure the TTLV roundtrip decoding still works.

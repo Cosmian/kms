@@ -355,6 +355,10 @@ async fn test_import_export_wrap_private_key(
             .unique_identifier
             .clone();
 
+        // Fresh may legitimately be materialized as `Some(false)` after key material
+        // is returned (e.g., via unwrap-on-export). Ignore it for this equivalence check.
+        exp_attrs.fresh = None;
+
         assert_eq!(
             exported_unwrapped_key.key_block()?.key_value,
             private_key.key_block()?.key_value

@@ -803,6 +803,10 @@ impl TTLVXMLDeserializer {
                         // Validity
                         "ValidityIndicator" => Some(0x42_009B),
                         "ValidityDate" => Some(0x42_009A),
+                        // KMIP 1.4 mandatory vectors include this AttributeName in GetAttributeList.
+                        // Even if the Rust KMIP 1.4 model does not expose an Attribute::Fresh variant,
+                        // the XML test vectors are normative and must remain parseable.
+                        "Fresh" => Some(0x42_00CB),
                         // Misc frequently referenced attributes
                         "Description" => Some(0x42_00FC),
                         "ProcessStartDate" => Some(0x42_0067),
