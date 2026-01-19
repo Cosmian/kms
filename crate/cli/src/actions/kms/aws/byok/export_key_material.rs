@@ -24,6 +24,7 @@ use crate::{
     },
 };
 
+// TODO : test the binary cli to see what it outputs
 /// Wrap a KMS key with an AWS Key Encryption Key (KEK),
 /// previously imported using the `cosmian kms aws byok import` command.
 /// Generate the `.byok` file that can be used to import the KMS key into AWS KMS.
@@ -45,13 +46,13 @@ pub struct ExportByokAction {
     #[clap(required = false)]
     pub(crate) token_file_path: Option<PathBuf>,
 
-    /// If not specified, a base64 encoded blob containing the key material will be printed to stdout.
+    /// If not specified, a base64 encoded blob containing the key material will be printed to stdout. Can be piped to desired file or command.
     #[clap(required = false)]
     pub(crate) output_file_path: Option<PathBuf>,
 }
 
 impl ExportByokAction {
-    #[allow(clippy::or_fun_call)]
+    #[allow(clippy::print_stdout, clippy::or_fun_call)] // the kms console wrapper forces a println but this function does not want a line return for proper display
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
         // Recover the attributes of the KEK key
         let (_kek_id, kek_attributes) =
@@ -108,19 +109,22 @@ impl ExportByokAction {
                 ..CryptographicParameters::default()
             },
             AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                padding_method: Some(PaddingMethod::OAEP),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                // Note: We use "None" padding to route toward RSA AES Key Wrap, this is not a mistake
+                // see: crate/crypto/src/crypto/wrap/unwrap_key.rs line 365
+                padding_method: Some(PaddingMethod::None),
                 hashing_algorithm: Some(HashingAlgorithm::SHA1),
                 ..CryptographicParameters::default()
             },
             AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha256 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                padding_method: Some(PaddingMethod::OAEP),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::None),
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             },
             // SM2PKE: SM2 public key encryption (China Regions only)
             // Supported for: RSA private keys, ECC private keys, SM2 private keys
+            // TODO: gate this
             AwsKmsWrappingAlgorithm::Sm2Pke => {
                 warn!(
                     "This encrypted key material can only be imported into AWS KMS in China Regions."
@@ -134,7 +138,6 @@ impl ExportByokAction {
         });
 
         // Export the key wrapped with the KEK
-        // export the object
         let export_params = ExportObjectParams {
             unwrap: false,
             wrapping_key_id: Some(&self.kek_id),
@@ -157,16 +160,18 @@ impl ExportByokAction {
         if let Some(file_path) = &self.output_file_path {
             fs::write(file_path, wrapped_key)?;
 
-            let stdout = console::Stdout::new(&format!(
-                "The encrypted key material ({} bytes) was written to {} for key {}.\n\n\
-                 To import into AWS KMS, run:\n\
-                 aws kms import-key-material \\\n\
-                     --key-id {} \\\n\
-                     --encrypted-key-material fileb://{} \\\n\
-                     --import-token fileb://{} \\\n\
-                     --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE",
+            // Print all formatting and instructions to stderr to not interfere with pipes
+            eprint!("The encrypted key material was successfully written to ");
+            print!("{}", file_path.display());
+            eprintln!(
+                "{} for key {}.\n\n\
+         To import into AWS KMS, run:\n\
+         aws kms import-key-material \\\n\
+             --key-id {} \\\n\
+             --encrypted-key-material fileb://{} \\\n\
+             --import-token fileb://{} \\\n\
+             --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE",
                 wrapped_key.len(),
-                file_path.display(),
                 self.key_id,
                 key_arn,
                 file_path.display(),
@@ -174,9 +179,11 @@ impl ExportByokAction {
                     || "<IMPORT_TOKEN_FILE>".to_owned(),
                     |p| { p.display().to_string() }
                 )
-            ));
-            stdout.write()?;
+            );
         } else {
+            // Same as above: descriptive info to stderr...
+            eprintln!("Wrapped key material (base64-encoded):");
+            // And raw output goes to stdout (can be piped)
             let stdout = console::Stdout::new(&b64_key);
             stdout.write()?;
         }
