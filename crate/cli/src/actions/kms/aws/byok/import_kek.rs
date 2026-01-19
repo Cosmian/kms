@@ -37,26 +37,31 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
 /// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek>
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-#[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_file", "kek_blob"])))] // At least one of kek_file or kek_blob must be provided
+#[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_blob must be provided
 pub struct ImportKekAction {
     /// The RSA Key Encryption public key (the KEK) as a base64-encoded string
-    #[clap(long,value_parser = clap::builder::ValueParser::new(validate_kek_base64))]
+    #[clap(
+        short = 'b',
+        long,
+        value_parser = clap::builder::ValueParser::new(validate_kek_base64),
+        group = "kek_input"
+    )]
     pub(crate) kek_base64: Option<String>,
 
     /// In case of KEK provided as a file blob.
-    #[clap(long)]
+    #[clap(short = 'f', long, group = "kek_input")]
     pub(crate) kek_file: Option<PathBuf>,
 
     /// The Amazon Resource Name (key ARN) of the KMS key.
-    #[clap(required = true, verbatim_doc_comment)]
+    #[clap(short = 'a', long, required = true, verbatim_doc_comment)]
     pub(crate) key_arn: String,
 
-    #[clap(required = true, verbatim_doc_comment)]
+    #[clap(short = 'w', long, required = true, verbatim_doc_comment)]
     pub(crate) wrapping_algorithm: AwsKmsWrappingAlgorithm,
 
     /// The unique ID of the key in this KMS; a random UUID
     /// is generated if not specified.
-    #[clap(required = false)]
+    #[clap(short = 'i', long, required = false)]
     pub(crate) key_id: Option<String>,
 }
 
@@ -78,7 +83,7 @@ impl ImportKekAction {
                 })
                 .expect("msg"), // TODO
             key_id: self.key_id.clone(),
-            key_format: ImportKeyFormat::Pkcs8Pub,
+            key_format: ImportKeyFormat::Pkcs8Pub, // TODO: idk maybe this should be pkcs1
             tags: vec![
                 "aws".to_owned(),
                 format!("key_arn:{}", self.key_arn),

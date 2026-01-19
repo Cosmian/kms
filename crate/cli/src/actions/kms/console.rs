@@ -145,7 +145,7 @@ impl Stdout {
 
                 // Print the unique identifier if present
                 if let Some(id) = &self.unique_identifier {
-                    println!("\t  Unique identifier: {id}");
+                    println!("\tUnique identifier: {id}");
                 }
 
                 // Print the list of unique identifiers if present
@@ -157,12 +157,12 @@ impl Stdout {
 
                 // Print the public key unique identifier if present
                 if let Some(id) = &self.public_key_unique_identifier {
-                    println!("\t  Public key unique identifier: {id}");
+                    println!("\tPublic key unique identifier: {id}");
                 }
 
                 // Print the private key unique identifier if present
                 if let Some(id) = &self.private_key_unique_identifier {
-                    println!("\t  Private key unique identifier: {id}");
+                    println!("\tPrivate key unique identifier: {id}");
                 }
 
                 // Print the attribute if present: attribute is a single element
@@ -201,12 +201,13 @@ impl Stdout {
                 // Print the list of tags if present
                 if let Some(t) = &self.tags {
                     if !t.is_empty() {
-                        println!("\n  Tags:");
+                        println!("\tTags:");
                         for tag in t {
-                            println!("    - {tag}");
+                            println!("\t\t- {tag}");
                         }
                     }
                 }
+                println!(); // consecutive calls feel cluttered and become hard to read
             }
             OutputFormat::Json => {
                 // Serialize the output as JSON and print it
