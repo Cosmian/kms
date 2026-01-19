@@ -5,7 +5,7 @@ use thiserror::Error;
 pub enum GoogleApiError {
     /// A jwt error occurred.
     #[error("JWT error `{0}`")]
-    Jwt(jwt_simple::Error),
+    Jwt(jsonwebtoken::errors::Error),
     /// Got an error whilst processing a request.
     #[error("Reqwest error `{0}`")]
     Reqwest(reqwest::Error),
@@ -14,8 +14,8 @@ pub enum GoogleApiError {
     Serde(serde_json::Error),
 }
 
-impl From<jwt_simple::Error> for GoogleApiError {
-    fn from(e: jwt_simple::Error) -> Self {
+impl From<jsonwebtoken::errors::Error> for GoogleApiError {
+    fn from(e: jsonwebtoken::errors::Error) -> Self {
         Self::Jwt(e)
     }
 }

@@ -1,14 +1,9 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attribute,
-        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
-        kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
-        kmip_types::{AttributeReference, Tag, UniqueIdentifier},
-    },
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    KmipOperation,
+    kmip_attributes::Attribute,
+    kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
+    kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
+    kmip_types::{AttributeReference, Tag, UniqueIdentifier},
 };
 use cosmian_logger::trace;
 
@@ -22,7 +17,6 @@ pub(crate) async fn delete_attribute(
     kms: &KMS,
     request: DeleteAttribute,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<DeleteAttributeResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
@@ -39,7 +33,6 @@ pub(crate) async fn delete_attribute(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     trace!("Retrieved object for: {}", owm.object());
@@ -422,14 +415,14 @@ pub(crate) async fn delete_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+    let tags = kms.database.retrieve_tags(owm.id()).await?;
 
     if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         *object_attributes = attributes.clone();
     }
 
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags), params)
+        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
         .await?;
 
     Ok(DeleteAttributeResponse {

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
@@ -15,15 +15,12 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{ObjectsStore, SessionParams};
+use cosmian_kms_interfaces::ObjectsStore;
 use uuid::Uuid;
 
 use crate::{db_error, error::DbResult};
 
-pub(super) async fn find_attributes<DB: ObjectsStore>(
-    db: &DB,
-    db_params: Option<Arc<dyn SessionParams>>,
-) -> DbResult<()> {
+pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
@@ -62,13 +59,12 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
-            db_params.clone(),
         )
         .await?;
     assert_eq!(&uid, &uid_);
 
     let obj = db
-        .retrieve(&uid, db_params.clone())
+        .retrieve(&uid)
         .await?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::PreActive, obj.state());
@@ -94,7 +90,6 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
             Some(State::PreActive),
             owner,
             true,
-            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -112,7 +107,6 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
             Some(State::PreActive),
             owner,
             true,
-            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -131,7 +125,6 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
             Some(State::PreActive),
             owner,
             true,
-            db_params.clone(),
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -154,7 +147,6 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(
             Some(State::PreActive),
             owner,
             true,
-            db_params,
         )
         .await?;
     assert_eq!(found.len(), 0);

@@ -1,8 +1,6 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier, cosmian_kms_interfaces::SessionParams,
-};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 
 use crate::{
     core::KMS,
@@ -32,7 +30,6 @@ pub(super) fn has_prefix(uid: &str) -> Option<&str> {
 pub(super) async fn uids_from_unique_identifier(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<HashSet<String>> {
     let uid_or_tags = unique_identifier
         .as_str()
@@ -40,7 +37,7 @@ pub(super) async fn uids_from_unique_identifier(
     if uid_or_tags.starts_with('[') {
         // tags
         let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-        return Ok(kms.database.list_uids_for_tags(&tags, params).await?);
+        return Ok(kms.database.list_uids_for_tags(&tags).await?);
     }
     Ok(HashSet::from([uid_or_tags.to_owned()]))
 }

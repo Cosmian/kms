@@ -4,7 +4,10 @@ use cosmian_kms_client::{
         extra::VENDOR_ID_COSMIAN,
         kmip_types::{CryptographicAlgorithm, LinkType, Tag, VendorAttribute},
     },
-    reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
+    reexport::cosmian_kms_client_utils::{
+        certificate_utils::Algorithm,
+        import_utils::{KeyUsage, build_usage_mask_from_key_usage},
+    },
 };
 use cosmian_logger::trace;
 use strum::IntoEnumIterator;
@@ -16,7 +19,7 @@ use crate::{
             CCryptographicAlgorithm, CLinkType, DeleteAttributesAction, GetAttributesAction,
             SetAttributesAction, SetOrDeleteAttributes, VendorAttributeCli,
         },
-        certificates::{Algorithm, certify::CertifyAction},
+        certificates::certify::CertifyAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,

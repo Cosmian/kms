@@ -176,9 +176,7 @@ pub async fn display_rsa_public_key(
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let resp = kms
-        .get(get_request, &kms.params.default_username, None)
-        .await?;
+    let resp = kms.get(get_request, &kms.params.default_username).await?;
     if resp.object_type == ObjectType::PublicKey {
         match &resp.object.key_block()?.key_value {
             Some(KeyValue::Structure { key_material, .. }) => match key_material {
@@ -1001,9 +999,7 @@ pub async fn rewrap(
         key_wrapping_specification: None,
     };
 
-    let response = kms
-        .get(get_request, &kms.params.default_username, None)
-        .await?;
+    let response = kms.get(get_request, &kms.params.default_username).await?;
 
     let private_key_bytes = match response.object_type {
         ObjectType::PrivateKey => match &response.object.key_block()?.key_value {
@@ -1134,7 +1130,7 @@ async fn cse_wrapped_key_decrypt(
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let key = Box::pin(decrypt(kms, decryption_request, &user, None)).await?;
+    let key = Box::pin(decrypt(kms, decryption_request, &user)).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
@@ -1172,7 +1168,7 @@ async fn cse_key_encrypt(
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
     };
-    let dek = Box::pin(encrypt(kms, encryption_request, &user, None)).await?;
+    let dek = Box::pin(encrypt(kms, encryption_request, &user)).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {

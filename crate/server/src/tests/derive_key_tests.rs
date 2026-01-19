@@ -42,7 +42,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with PBKDF2
@@ -73,7 +73,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner, None).await?;
+    let derive_response = kms.derive_key(derive_request, owner).await?;
 
     // Verify the response
     assert!(!derive_response.unique_identifier.to_string().is_empty());
@@ -86,7 +86,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let get_response = kms.get(get_request, owner, None).await?;
+    let get_response = kms.get(get_request, owner).await?;
 
     // Verify the derived key properties
     match get_response.object {
@@ -133,7 +133,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_key_id = create_response.unique_identifier;
 
     let hash_algorithms = vec![
@@ -169,7 +169,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
             },
         };
 
-        let derive_response = kms.derive_key(derive_request, owner, None).await?;
+        let derive_response = kms.derive_key(derive_request, owner).await?;
         assert!(!derive_response.unique_identifier.to_string().is_empty());
 
         // Verify the derived key
@@ -180,7 +180,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
             key_compression_type: None,
             key_wrapping_specification: None,
         };
-        let get_response = kms.get(get_request, owner, None).await?;
+        let get_response = kms.get(get_request, owner).await?;
 
         match get_response.object {
             Object::SymmetricKey(SymmetricKey { key_block }) => {
@@ -203,7 +203,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with HKDF
@@ -234,7 +234,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner, None).await?;
+    let derive_response = kms.derive_key(derive_request, owner).await?;
 
     // Verify the response
     assert!(!derive_response.unique_identifier.to_string().is_empty());
@@ -247,7 +247,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
         key_compression_type: None,
         key_wrapping_specification: None,
     };
-    let get_response = kms.get(get_request, owner, None).await?;
+    let get_response = kms.get(get_request, owner).await?;
 
     // Verify the derived key properties
     match get_response.object {
@@ -270,7 +270,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
 
     // Create a base secret data object
     let create_request = create_base_secret_data_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_secret_id = create_response.unique_identifier;
 
     // Create DeriveKey request using the secret data as base
@@ -301,7 +301,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
     };
 
     // Perform the derivation
-    let derive_response = kms.derive_key(derive_request, owner, None).await?;
+    let derive_response = kms.derive_key(derive_request, owner).await?;
     assert!(!derive_response.unique_identifier.to_string().is_empty());
     Ok(())
 }
@@ -329,7 +329,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
         },
         protection_storage_masks: None,
     };
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let invalid_key_id = create_response.unique_identifier;
 
     // Test 1: Missing DeriveKey usage mask should fail
@@ -359,7 +359,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner, None).await;
+    let result = kms.derive_key(derive_request, owner).await;
     match result {
         Err(e) => assert!(e.to_string().contains("DeriveKey usage mask")),
         Ok(_) => panic!("expected error"),
@@ -377,7 +377,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request with PBKDF2 but missing salt
@@ -407,7 +407,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner, None).await;
+    let result = kms.derive_key(derive_request, owner).await;
     match result {
         Err(e) => assert!(
             e.to_string()
@@ -453,7 +453,7 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner, None).await;
+    let result = kms.derive_key(derive_request, owner).await;
     match result {
         Err(e) => assert!(e.to_string().contains("failed to retrieve base object")),
         Ok(_) => panic!("expected error"),
@@ -471,7 +471,7 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
 
     // Create a base symmetric key
     let create_request = create_base_symmetric_key_request();
-    let create_response = kms.create(create_request, owner, None, None).await?;
+    let create_response = kms.create(create_request, owner, None).await?;
     let base_key_id = create_response.unique_identifier;
 
     // Create DeriveKey request without cryptographic length
@@ -501,7 +501,7 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
         },
     };
 
-    let result = kms.derive_key(derive_request, owner, None).await;
+    let result = kms.derive_key(derive_request, owner).await;
     match result {
         Err(e) => assert!(
             e.to_string()

@@ -20,6 +20,7 @@ pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
 #[cfg(feature = "non-fips")]
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
+// mTLS proxy removed; rely on native client TLS support in pools
 
 /// The `Database` struct represents the core database functionalities, including object management,
 /// permission checks, and caching mechanisms for unwrapped keys.
@@ -65,28 +66,28 @@ impl Database {
         clear_db_on_start: bool,
         cache_max_age: Duration,
     ) -> DbResult<Self> {
-        Ok(match main_db_params {
+        match main_db_params {
             MainDbParams::Sqlite(db_path, max_conns) => {
                 let db = Arc::new(
                     SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start, *max_conns)
                         .await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                Ok(Self::new(db.clone(), db, cache_max_age))
             }
             MainDbParams::Postgres(url, max_conns) => {
                 let db = Arc::new(
                     PgPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                Ok(Self::new(db.clone(), db, cache_max_age))
             }
             MainDbParams::Mysql(url, max_conns) => {
                 let db = Arc::new(
                     MySqlPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                Ok(Self::new(db.clone(), db, cache_max_age))
             }
             #[cfg(feature = "non-fips")]
-            MainDbParams::RedisFindex(url, master_key, label) => {
+            MainDbParams::RedisFindex(url, master_key) => {
                 // There is no reason to keep a copy of the key in the shared config
                 // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                 // and zeroize the one in the shared config
@@ -101,17 +102,12 @@ impl Database {
                 // `master_key` implements ZeroizeOnDrop so there is no need
                 // to manually zeroize.
                 let db = Arc::new(
-                    RedisWithFindex::instantiate(
-                        url.as_str(),
-                        new_master_key,
-                        clear_db_on_start,
-                        label.as_deref(),
-                    )
-                    .await?,
+                    RedisWithFindex::instantiate(url.as_str(), new_master_key, clear_db_on_start)
+                        .await?,
                 );
-                Self::new(db.clone(), db, cache_max_age)
+                Ok(Self::new(db.clone(), db, cache_max_age))
             }
-        })
+        }
     }
 
     pub const fn unwrapped_cache(&self) -> &UnwrappedCache {

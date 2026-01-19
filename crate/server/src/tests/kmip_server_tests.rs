@@ -49,7 +49,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // request key pair creation
     let request =
         create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public keys exist
     // check secret key
     let sk_response = kms
@@ -61,7 +61,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .context("no string for the private_key_unique_identifier")?,
             ),
             owner,
-            None,
         )
         .await?;
     let sk_uid = sk_response
@@ -120,7 +119,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                     .context("no string for the public_key_unique_identifier")?,
             ),
             owner,
-            None,
         )
         .await?;
     let pk = &pk_response.object;
@@ -186,10 +184,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk.clone(),
     };
-    let new_uid = kms
-        .import(request, owner, None, None)
-        .await?
-        .unique_identifier;
+    let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
 
     let request = Import {
@@ -203,7 +198,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         },
         object: pk,
     };
-    let update_response = kms.import(request, owner, None, None).await?;
+    let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }
@@ -255,7 +250,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     };
 
     trace!("request: {}", request);
-    let response = kms.import(request, owner, None, None).await?;
+    let response = kms.import(request, owner, None).await?;
     trace!("response: {}", response);
 
     Ok(())
@@ -280,13 +275,13 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     )?;
 
     trace!("request: {}", request);
-    let response = kms.create(request, owner, None, None).await?;
+    let response = kms.create(request, owner, None).await?;
     trace!("response: {}", response);
 
     // Get symmetric key without specifying key format type
     //
     let request = Get::new(response.unique_identifier, false, None, None);
-    let response = kms.get(request, owner, None).await?;
+    let response = kms.get(request, owner).await?;
     assert_eq!(
         KeyFormatType::Raw,
         response.object.key_block()?.key_format_type
@@ -308,7 +303,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
         None,
         Some(KeyFormatType::TransparentSymmetricKey),
     );
-    let response = kms.get(request, owner, None).await?;
+    let response = kms.get(request, owner).await?;
     assert_eq!(
         KeyFormatType::TransparentSymmetricKey,
         response.object.key_block()?.key_format_type
@@ -329,7 +324,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // request key pair creation
     let request =
         create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
-    let response = kms.create_key_pair(request, owner, None, None).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
     // check secret key
@@ -341,7 +336,6 @@ async fn test_database_user_tenant() -> KResult<()> {
                 .context("no string for the private_key_unique_identifier")?,
         ),
         owner,
-        None,
     )
     .await?;
 
@@ -354,7 +348,6 @@ async fn test_database_user_tenant() -> KResult<()> {
                 .context("no string for the public_key_unique_identifier")?,
         ),
         owner,
-        None,
     )
     .await?;
 
@@ -370,7 +363,6 @@ async fn test_database_user_tenant() -> KResult<()> {
                     .context("no string for the private_key_unique_identifier")?,
             ),
             owner,
-            None,
         )
         .await;
     sk_response.unwrap_err();
@@ -384,7 +376,6 @@ async fn test_database_user_tenant() -> KResult<()> {
                     .context("no string for the public_key_unique_identifier")?,
             ),
             owner,
-            None,
         )
         .await;
     pk_response.unwrap_err();
@@ -434,7 +425,7 @@ async fn test_register_operation() -> KResult<()> {
     };
 
     trace!("request: {}", request);
-    let register_response = kms.register(request, owner, None, None).await?;
+    let register_response = kms.register(request, owner, None).await?;
     trace!("response: {}", register_response);
 
     let uid = register_response.unique_identifier;
@@ -448,7 +439,7 @@ async fn test_register_operation() -> KResult<()> {
     }
 
     let get_request = Get::new(uid.clone(), false, None, None);
-    let get_response = kms.get(get_request, owner, None).await?;
+    let get_response = kms.get(get_request, owner).await?;
     let key_block: &KeyBlock = get_response.object.key_block()?;
 
     assert_eq!(key_block.key_format_type, KeyFormatType::Raw);

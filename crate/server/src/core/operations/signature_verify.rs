@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::ErrorReason,
@@ -18,7 +16,6 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_public_key_to_openssl,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::debug;
 use openssl::pkey::{Id, PKey, Public};
@@ -50,7 +47,6 @@ pub(crate) async fn signature_verify(
     kms: &KMS,
     request: SignatureVerify,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<SignatureVerifyResponse> {
     debug!("{request}");
 
@@ -78,7 +74,6 @@ pub(crate) async fn signature_verify(
         KmipOperation::SignatureVerify,
         kms,
         user,
-        params,
     ))
     .await?;
 

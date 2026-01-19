@@ -1,125 +1,201 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SessionParams,
+    PermissionsStore,
 };
-use cosmian_logger::{debug, trace};
+use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
 use serde_json::Value;
-use sqlx::{
-    ConnectOptions, Executor, Pool, Postgres, Row, Transaction,
-    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
+use tokio_postgres::{
+    NoTls,
+    types::{Json, ToSql},
 };
+use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    db_bail, db_error,
-    error::{DbError, DbResult, DbResultHelper},
+    db_error,
+    error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
-        migrate::HasDatabase,
-        sql::{
-            database::SqlDatabase,
-            locate_query::{PgSqlPlaceholder, query_from_attributes},
-            main_store::SqlMainStore,
-        },
+        migrate::{DbState, Migrate},
+        sql::database::SqlDatabase,
     },
 };
 
-#[macro_export]
+// Deadlock/serialization handling parameters for PostgreSQL
+const PG_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+fn is_pg_deadlock_or_serialization(msg: &str) -> bool {
+    // Detect common PostgreSQL errors
+    // - deadlock detected (SQLSTATE 40P01)
+    // - serialization failure (SQLSTATE 40001)
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("deadlock detected")
+        || lower.contains("40p01")
+        || lower.contains("serialization failure")
+        || lower.contains("40001")
+}
+
+fn pg_deadlock_backoff_ms(attempt: u32) -> u64 {
+    let cap = attempt.min(PG_DEADLOCK_MAX_RETRIES);
+    50_u64 * (1_u64 << cap)
+}
+
 macro_rules! get_pgsql_query {
     ($name:literal) => {
         PGSQL_QUERIES
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
-    ($name:expr) => {
-        PGSQL_QUERIES
-            .get($name)
-            .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
-    };
-}
-
-/// Convert a row from the database into an `ObjectWithMetadata`
-/// This function is used to convert the result of a `SELECT` query
-/// into an `ObjectWithMetadata`
-fn pg_row_to_owm(row: &PgRow) -> Result<ObjectWithMetadata, DbError> {
-    let id = row.get::<String, _>(0);
-    let object: Object = serde_json::from_str(&row.get::<String, _>(1))
-        .context("failed deserializing the object")?;
-    let object = migrate_block_cipher_mode_if_needed(object);
-    let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
-        .context("failed deserializing the Attributes")?;
-    let owner = row.get::<String, _>(3);
-    let state = State::try_from(row.get::<String, _>(4).as_str()).map_err(|e| {
-        DbError::ConversionError(format!("failed converting the state: {e}").into())
-    })?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
 }
 
 #[derive(Clone)]
 pub(crate) struct PgPool {
-    pool: Pool<Postgres>,
-}
-
-impl HasDatabase for PgPool {
-    type Database = Postgres;
+    pool: Pool,
 }
 
 impl PgPool {
-    /// Instantiate a new `Postgres` database
-    /// and create the appropriate table(s) if need be
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let options = PgConnectOptions::from_str(connection_url)?
-            // disable logging of each query
-            .disable_statement_logging();
+        // Parse URL to check for TLS parameters
+        let url = Url::parse(connection_url)
+            .map_err(|e| DbError::DatabaseError(format!("Invalid PostgreSQL URL: {e}")))?;
+        let query_params: HashMap<_, _> = url.query_pairs().collect();
 
-        // Default rationale: small, CPU-aware pool. Postgres handles concurrency well,
-        // but oversized pools increase contention and idle resource usage. Using
-        // min(10, 2 × CPU cores) provides enough parallelism for typical APIs while
-        // staying below common server max_connections and avoiding oversubscription.
-        let default_conns: u32 = u32::try_from(num_cpus::get())
-            .map(|c| c.saturating_mul(2).min(10))
-            .unwrap_or(10);
-        let max_conns: u32 = max_connections.unwrap_or(default_conns);
-        let pool = PgPoolOptions::new()
-            .max_connections(max_conns)
-            .connect_with(options)
-            .await?;
+        // Build a clean URL without any query parameters
+        // deadpool-postgres doesn't recognize URL query parameters like sslmode, sslrootcert, etc.
+        // We handle TLS configuration entirely through the MakeTlsConnector
+        let mut clean_url = url.clone();
+        clean_url.set_query(None);
 
-        // Instantiate the pool
-        let pgsql_pool = Self { pool };
+        let clean_url_str = clean_url.to_string();
 
-        // Blanket implementation of SqlMainStore for SqlDatabase
-        pgsql_pool.start(clear_database).await?;
+        let mut cfg = PgConfig::new();
+        cfg.url = Some(clean_url_str);
+        cfg.manager = Some(ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        });
+        if let Some(max) = max_connections {
+            cfg.pool = Some(deadpool_postgres::PoolConfig {
+                max_size: usize::try_from(max).unwrap_or(usize::MAX),
+                ..Default::default()
+            });
+        }
 
-        Ok(pgsql_pool)
+        // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
+        let sslmode = query_params
+            .get("sslmode")
+            .map_or("prefer", std::convert::AsRef::as_ref);
+
+        let pool = if sslmode == "disable" {
+            // Explicitly no TLS
+            cfg.create_pool(None, NoTls)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        } else {
+            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
+            let mut builder = SslConnector::builder(SslMethod::tls())
+                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+            // Set verification mode based on sslmode
+            match sslmode {
+                "verify-full" => {
+                    // verify-full: verify certificate AND hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                }
+                "verify-ca" => {
+                    // verify-ca: verify certificate but NOT hostname
+                    builder.set_verify(SslVerifyMode::PEER);
+                    // For verify-ca, we don't want hostname verification
+                    // This is handled by not setting any hostname verification parameters
+                }
+                _ => {
+                    // require, prefer, allow: connect with TLS but don't verify cert
+                    builder.set_verify(SslVerifyMode::NONE);
+                }
+            }
+
+            // Load CA cert if provided (sslrootcert)
+            if let Some(ca_file) = query_params.get("sslrootcert") {
+                builder
+                    .set_ca_file(ca_file.as_ref())
+                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+            }
+
+            // Load client cert/key for mutual TLS (sslcert, sslkey)
+            if let Some(cert_file) = query_params.get("sslcert") {
+                builder
+                    .set_certificate_file(cert_file.as_ref(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
+                    })?;
+            }
+            if let Some(key_file) = query_params.get("sslkey") {
+                builder
+                    .set_private_key_file(key_file.as_ref(), SslFiletype::PEM)
+                    .map_err(|e| {
+                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
+                    })?;
+            }
+
+            let connector = MakeTlsConnector::new(builder.build());
+            cfg.create_pool(None, connector)
+                .map_err(|e| DbError::DatabaseError(e.to_string()))?
+        };
+
+        let client = pool.get().await.map_err(DbError::from)?;
+        // Bootstrap schema if needed: create tables if they don't exist
+        let tmp_loader = Self { pool: pool.clone() };
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Ensure attributes column is jsonb (and convert if needed)
+        client
+            .batch_execute(
+                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
+            )
+            .await
+            .map_err(DbError::from)?;
+
+        // Optionally clear any existing data (useful for tests)
+        if clear_database {
+            for name in [
+                // Remove dependent rows first to avoid potential constraints if present
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-objects",
+            ] {
+                let sql = tmp_loader.get_query(name)?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
+            }
+            let tmp = Self { pool: pool.clone() };
+            tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .await?;
+            tmp.set_db_state(DbState::Ready).await?;
+        }
+        Ok(Self { pool })
     }
 }
 
-impl SqlDatabase<Postgres> for PgPool {
-    fn get_pool(&self) -> &Pool<Postgres> {
-        &self.pool
-    }
-
+impl SqlDatabase for PgPool {
     fn get_loader(&self) -> &Loader {
         &PGSQL_QUERIES
     }
@@ -127,10 +203,6 @@ impl SqlDatabase<Postgres> for PgPool {
 
 #[async_trait(?Send)]
 impl ObjectsStore for PgPool {
-    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
-        None
-    }
-
     async fn create(
         &self,
         uid: Option<String>,
@@ -138,42 +210,126 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<String> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        let uid = match create_(uid, owner, object, attributes, tags, &mut tx).await {
-            Ok(uid) => uid,
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                return Err(InterfaceError::Db(format!(
-                    "creation of object failed: {e}"
-                )));
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            uid: &str,
+            owner: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: &HashSet<String>,
+        ) -> DbResult<()> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let state = attributes.state.unwrap_or(State::PreActive).to_string();
+            let stmt = tx
+                .prepare(get_pgsql_query!("insert-objects"))
+                .await
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &owner])
+                .await
+                .map_err(DbError::from)?;
+            if !tags.is_empty() {
+                let transaction_stmt = tx
+                    .prepare(get_pgsql_query!("insert-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&transaction_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
             }
-        };
-        tx.commit()
+            Ok(())
+        }
+
+        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, &uid, owner, object, attributes, tags).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(uid.clone()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
+            }
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
+    }
+
+    async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
+        let client = self
+            .pool
+            .get()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to commit the transaction: {e}")))?;
-        Ok(uid)
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("select-object"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows = client
+            .query(&stmt, &[&uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        if let Some(row) = rows.first() {
+            let id: String = row.get(0);
+            let object_json: String = row.get(1);
+            let object: Object = serde_json::from_str(&object_json)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let object = migrate_block_cipher_mode_if_needed(object);
+            let attributes_val: Value = row.get(2);
+            let attributes: Attributes = serde_json::from_value(attributes_val)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let owner: String = row.get(3);
+            let state_str: String = row.get(4);
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(Some(ObjectWithMetadata::new(
+                id, object, owner, state, attributes,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
-    async fn retrieve(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<Option<ObjectWithMetadata>> {
-        Ok(retrieve_(uid, &self.pool).await?)
-    }
-
-    async fn retrieve_tags(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
-        Ok(retrieve_tags_(uid, &self.pool).await?)
+    async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("select-tags"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows = client
+            .query(&stmt, &[&uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
     }
 
     async fn update_object(
@@ -182,118 +338,355 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_object_(uid, object, attributes, tags, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            uid: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: Option<&HashSet<String>>,
+        ) -> DbResult<()> {
+            let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let stmt = tx
+                .prepare(get_pgsql_query!("update-object-with-object"))
+                .await
+                .map_err(DbError::from)?;
+            let attrs_param = Json(&attributes_json);
+            tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+                .await
+                .map_err(DbError::from)?;
+            if let Some(tags) = tags {
+                let delete_stmt = tx
+                    .prepare(get_pgsql_query!("delete-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                tx.execute(&delete_stmt, &[&uid])
+                    .await
+                    .map_err(DbError::from)?;
+                let insert_stmt = tx
+                    .prepare(get_pgsql_query!("insert-tags"))
+                    .await
+                    .map_err(DbError::from)?;
+                for tag in tags {
+                    tx.execute(&insert_stmt, &[&uid, tag])
+                        .await
+                        .map_err(DbError::from)?;
+                }
             }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("update of object failed: {e}")))
+            Ok(())
+        }
+
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, uid, object, attributes, tags).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
-    async fn update_state(
-        &self,
-        uid: &str,
-        state: State,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
+    async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        let client = self
             .pool
-            .begin()
+            .get()
             .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match update_state_(uid, state, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!(
-                    "update of the state of object {uid} failed: {e}"
-                )))
-            }
-        }
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("update-object-with-state"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let s = state.to_string();
+        client
+            .execute(&stmt, &[&s, &uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
     }
 
-    async fn delete(
-        &self,
-        uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match delete_(uid, &mut tx).await {
-            Ok(()) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(())
-            }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("delete of object failed: {e}")))
+    async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+        async fn transact(tx: &tokio_postgres::Transaction<'_>, uid: &str) -> DbResult<()> {
+            let d1 = tx
+                .prepare(get_pgsql_query!("delete-object"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+            let d2 = tx
+                .prepare(get_pgsql_query!("delete-tags"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+            Ok(())
+        }
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, uid).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
     async fn atomic(
         &self,
         user: &str,
         operations: &[AtomicOperation],
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<String>> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("Failed to start a transaction: {e}")))?;
-        match atomic_(user, operations, &mut tx).await {
-            Ok(v) => {
-                tx.commit().await.map_err(|e| {
-                    InterfaceError::Db(format!("Failed to commit the transaction: {e}"))
-                })?;
-                Ok(v)
+        async fn transact(
+            tx: &tokio_postgres::Transaction<'_>,
+            user: &str,
+            operations: &[AtomicOperation],
+        ) -> DbResult<Vec<String>> {
+            let mut uids = Vec::with_capacity(operations.len());
+            for op in operations {
+                match op {
+                    AtomicOperation::Create((uid, object, attributes, tags)) => {
+                        // inline create within same transaction
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let state = attributes.state.unwrap_or(State::PreActive).to_string();
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("insert-objects"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &user])
+                            .await
+                            .map_err(DbError::from)?;
+                        if !tags.is_empty() {
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("update-object-with-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::UpdateState((uid, state)) => {
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("update-object-with-state"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        tx.execute(&stmt, &[&st, &uid])
+                            .await
+                            .map_err(DbError::from)?;
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attributes_json =
+                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let stmt = tx
+                            .prepare(get_pgsql_query!("upsert-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let st = state.to_string();
+                        let attrs_param = Json(&attributes_json);
+                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &st, &user])
+                            .await
+                            .map_err(DbError::from)?;
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::Delete(uid) => {
+                        let d1 = tx
+                            .prepare(get_pgsql_query!("delete-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d1, &[&uid]).await.map_err(DbError::from)?;
+                        let d2 = tx
+                            .prepare(get_pgsql_query!("delete-tags"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+                        uids.push(uid.clone());
+                    }
+                }
             }
-            Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
-                Err(InterfaceError::Db(format!("atomic operation failed: {e}")))
+            Ok(uids)
+        }
+
+        for attempt in 0..PG_DEADLOCK_MAX_RETRIES {
+            let mut client = self.pool.get().await.map_err(DbError::from)?;
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            match transact(&tx, user, operations).await {
+                Ok(v) => match tx.commit().await {
+                    Ok(()) => return Ok(v),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if is_pg_deadlock_or_serialization(&msg)
+                            && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                        {
+                            let delay_ms = pg_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if is_pg_deadlock_or_serialization(&e.to_string())
+                        && attempt + 1 < PG_DEADLOCK_MAX_RETRIES
+                    {
+                        let delay_ms = pg_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
             }
         }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
     }
 
-    async fn is_object_owned_by(
-        &self,
-        uid: &str,
-        owner: &str,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<bool> {
-        Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
+    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("has-row-objects"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let row = client
+            .query_opt(&stmt, &[&uid, &owner])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(row.is_some())
     }
 
-    async fn list_uids_for_tags(
-        &self,
-        tags: &HashSet<String>,
-        _params: Option<Arc<dyn SessionParams>>,
-    ) -> InterfaceResult<HashSet<String>> {
-        Ok(list_uids_from_tags_(tags, &self.pool).await?)
+    async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // Use ANY($1) with text[] to avoid dynamic placeholder lifetimes
+        let sql = "SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int";
+        let mut tag_vec: Vec<String> = tags.iter().cloned().collect();
+        tag_vec.sort();
+        let tag_refs: Vec<&str> = tag_vec.iter().map(String::as_str).collect();
+        let len_i32: i32 =
+            i32::try_from(tags.len()).map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let rows = client
+            .query(sql, &[&&tag_refs[..], &len_i32])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut out = HashSet::new();
+        for r in rows {
+            out.insert(r.get::<_, String>(0));
+        }
+        Ok(out)
     }
 
     async fn find(
@@ -302,16 +695,90 @@ impl ObjectsStore for PgPool {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        Ok(find_(
-            researched_attributes,
-            state,
-            user,
-            user_must_be_owner,
-            &self.pool,
-        )
-        .await?)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let query = crate::stores::sql::locate_query::query_from_attributes::<
+            crate::stores::sql::locate_query::PgSqlPlaceholder,
+        >(researched_attributes, state, user, user_must_be_owner);
+        cosmian_logger::debug!("PG find query: {query}");
+        let stmt = client
+            .prepare(&query)
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let params: Vec<&(dyn ToSql + Sync)> = if user_must_be_owner {
+            vec![&user]
+        } else {
+            vec![&user, &user, &user]
+        };
+        let rows = client
+            .query(&stmt, &params)
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let uid: String = row.get(0);
+            let state_str: String = row.get(1);
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let attrs_val: Value = row.get(2);
+            let attrs: Attributes = serde_json::from_value(attrs_val)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            out.push((uid, state, attrs));
+        }
+        Ok(out)
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for PgPool {
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_state"])
+            .await
+            .map_err(DbError::from)?;
+        if let Some(row) = row_opt {
+            let s: String = row.get(0);
+            Ok(Some(serde_json::from_str(&s)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        let state_json = serde_json::to_string(&state)?;
+        client
+            .execute(sql, &[&"db_state", &state_json])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("select-parameter");
+        let row_opt = client
+            .query_opt(sql, &[&"db_version"])
+            .await
+            .map_err(DbError::from)?;
+        Ok(row_opt.map(|row| row.get::<usize, String>(0)))
+    }
+
+    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(DbError::from)?;
+        let sql = get_pgsql_query!("upsert-parameter");
+        client
+            .execute(sql, &[&"db_version", &version])
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 }
 
@@ -320,17 +787,61 @@ impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
         user: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        Ok(list_user_granted_access_rights_(user, &self.pool).await?)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("select-objects-access-obtained"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows = client
+            .query(&stmt, &[&user])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut map = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let id: String = row.get(0);
+            let owner: String = row.get(1);
+            let state_str: String = row.get(2);
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            let perms_val: Value = row.get(3);
+            let perms: HashSet<KmipOperation> =
+                serde_json::from_value(perms_val).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            map.insert(id, (owner, state, perms));
+        }
+        Ok(map)
     }
 
     async fn list_object_operations_granted(
         &self,
         uid: &str,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
-        Ok(list_accesses_(uid, &self.pool).await?)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("select-rows-read_access-with-object-id"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows = client
+            .query(&stmt, &[&uid])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut map = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let userid: String = row.get(0);
+            let v: Value = row.get(1);
+            let ops: HashSet<KmipOperation> =
+                serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            map.insert(userid, ops);
+        }
+        Ok(map)
     }
 
     async fn grant_operations(
@@ -338,9 +849,27 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(insert_access_(uid, user, operations, &self.pool).await?)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // Merge with existing permissions
+        let existing = self.list_user_operations_on_object(uid, user, true).await?;
+        let mut combined = existing;
+        combined.extend(operations);
+        let json =
+            serde_json::to_value(&combined).map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("upsert-row-read_access"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&stmt, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
     }
 
     async fn remove_operations(
@@ -348,9 +877,36 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         operations: HashSet<KmipOperation>,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<()> {
-        Ok(remove_access_(uid, user, operations, &self.pool).await?)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let current = self.list_user_operations_on_object(uid, user, true).await?;
+        let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
+        if remaining.is_empty() {
+            let d = client
+                .prepare(get_pgsql_query!("delete-rows-read_access"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&d, &[&uid, &user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            return Ok(());
+        }
+        let json =
+            serde_json::to_value(&remaining).map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let u = client
+            .prepare(get_pgsql_query!("update-rows-read_access-with-permission"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        client
+            .execute(&u, &[&uid, &user, &json])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
     }
 
     async fn list_user_operations_on_object(
@@ -358,516 +914,39 @@ impl PermissionsStore for PgPool {
         uid: &str,
         user: &str,
         no_inherited_access: bool,
-        _params: Option<Arc<dyn SessionParams>>,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
-        Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
-    }
-}
-
-pub(super) async fn create_(
-    uid: Option<String>,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: &HashSet<String>,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<String> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-    debug!("uid: {:?}, object_json: {object_json:#?}", uid);
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    // If the uid is not provided, generate a new one
-    let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-
-    // Try to insert the object
-    match sqlx::query(get_pgsql_query!("insert-objects"))
-        .bind(uid.clone())
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(attributes.state.unwrap_or(State::PreActive).to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await
-    {
-        Ok(_) => {}
-        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            return Err(DbError::Kmip21Error(
-                ErrorReason::Object_Already_Exists,
-                format!("Object with UID '{uid}' already exists"),
-            ));
-        }
-        Err(e) => return Err(e.into()),
-    }
-
-    // Insert the tags
-    for tag in tags {
-        sqlx::query(get_pgsql_query!("insert-tags"))
-            .bind(uid.clone())
-            .bind(tag)
-            .execute(&mut **executor)
-            .await?;
-    }
-
-    trace!("Created in DB: {uid} / {owner}");
-    Ok(uid)
-}
-
-pub(super) async fn retrieve_<'e, E>(uid: &str, executor: E) -> DbResult<Option<ObjectWithMetadata>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row = sqlx::query(get_pgsql_query!("select-object"))
-        .bind(uid)
-        .fetch_optional(executor)
-        .await?;
-    if let Some(row) = row {
-        return Ok(Some(pg_row_to_owm(&row)?));
-    }
-    Ok(None)
-}
-
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let rows: Vec<PgRow> = sqlx::query(get_pgsql_query!("select-tags"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-
-    let tags = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-
-    Ok(tags)
-}
-
-pub(super) async fn update_object_(
-    uid: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    sqlx::query(get_pgsql_query!("update-object-with-object"))
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    // Insert the new tags if any
-    if let Some(tags) = tags {
-        // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
-
-        for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
-        }
-    }
-
-    trace!("Updated in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn update_state_(
-    uid: &str,
-    state: State,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    sqlx::query(get_pgsql_query!("update-object-with-state"))
-        .bind(state.to_string())
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-    trace!("Updated in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn delete_(uid: &str, executor: &mut Transaction<'_, Postgres>) -> DbResult<()> {
-    // delete the object
-    sqlx::query(get_pgsql_query!("delete-object"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    // delete the tags
-    sqlx::query(get_pgsql_query!("delete-tags"))
-        .bind(uid)
-        .execute(&mut **executor)
-        .await?;
-
-    trace!("Deleted in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn upsert_(
-    uid: &str,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-    state: State,
-    executor: &mut Transaction<'_, Postgres>,
-) -> DbResult<()> {
-    let object_json =
-        serde_json::to_string_pretty(object).context("failed serializing the object to JSON")?;
-
-    let attributes_json =
-        serde_json::to_value(attributes).context("failed serializing the attributes to JSON")?;
-
-    sqlx::query(get_pgsql_query!("upsert-object"))
-        .bind(uid)
-        .bind(object_json)
-        .bind(attributes_json)
-        .bind(state.to_string())
-        .bind(owner)
-        .execute(&mut **executor)
-        .await?;
-
-    // Insert the new tags if present
-    if let Some(tags) = tags {
-        // delete the existing tags
-        sqlx::query(get_pgsql_query!("delete-tags"))
-            .bind(uid)
-            .execute(&mut **executor)
-            .await?;
-        // insert the new ones
-        for tag in tags {
-            sqlx::query(get_pgsql_query!("insert-tags"))
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
-        }
-    }
-
-    trace!("Upserted in DB: {uid}");
-    Ok(())
-}
-
-pub(super) async fn list_uids_from_tags_<'e, E>(
-    tags: &HashSet<String>,
-    executor: E,
-) -> DbResult<HashSet<String>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let tags_params = tags
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("${}", i + 1))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let raw_sql = get_pgsql_query!("select-uids-from-tags")
-        .replace("@TAGS", &tags_params)
-        .replace("@LEN", &format!("${}", tags.len() + 1));
-
-    let mut query = sqlx::query::<Postgres>(&raw_sql);
-    for tag in tags {
-        query = query.bind(tag);
-    }
-    // Bind the tags len and the user
-    query = query.bind(i16::try_from(tags.len())?);
-
-    let rows = query.fetch_all(executor).await?;
-    let uids = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
-    Ok(uids)
-}
-
-pub(super) async fn list_accesses_<'e, E>(
-    uid: &str,
-    executor: E,
-) -> DbResult<HashMap<String, HashSet<KmipOperation>>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    debug!("Uid = {}", uid);
-
-    let list = sqlx::query(get_pgsql_query!("select-rows-read_access-with-object-id"))
-        .bind(uid)
-        .fetch_all(executor)
-        .await?;
-    let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            // userid
-            row.get::<String, _>(0),
-            // permissions
-            serde_json::from_value(row.get::<Value, _>(1))?,
-        );
-    }
-    debug!("Listed {} rows", ids.len());
-    Ok(ids)
-}
-
-pub(super) async fn list_user_granted_access_rights_<'e, E>(
-    user: &str,
-    executor: E,
-) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    debug!("Owner = {}", user);
-    let list = sqlx::query(get_pgsql_query!("select-objects-access-obtained"))
-        .bind(user)
-        .fetch_all(executor)
-        .await?;
-    let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
-        HashMap::with_capacity(list.len());
-    for row in list {
-        ids.insert(
-            row.get::<String, _>(0),
-            (
-                row.get::<String, _>(1),
-                State::try_from(row.get::<String, _>(2).as_str()).map_err(|e| {
-                    DbError::ConversionError(format!("failed converting the state: {e}").into())
-                })?,
-                serde_json::from_value(
-                    row.try_get::<Value, _>(3)
-                        .context("failed deserializing the operations")?,
-                )?,
-            ),
-        );
-    }
-    debug!("Listed {} rows", ids.len());
-    Ok(ids)
-}
-
-pub(super) async fn list_user_access_rights_on_object_<'e, E>(
-    uid: &str,
-    userid: &str,
-    no_inherited_access: bool,
-    executor: E,
-) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let mut user_perms = perms(uid, userid, executor).await?;
-    if no_inherited_access || userid == "*" {
-        return Ok(user_perms);
-    }
-    user_perms.extend(perms(uid, "*", executor).await?);
-    Ok(user_perms)
-}
-
-async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> DbResult<HashSet<KmipOperation>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("select-user-accesses-for-object"))
-        .bind(uid)
-        .bind(userid)
-        .fetch_optional(executor)
-        .await?;
-
-    row.map_or(Ok(HashSet::new()), |row| {
-        let perms_value = row
-            .try_get::<Value, _>(0)
-            .context("failed deserializing the permissions")?;
-        serde_json::from_value(perms_value).context("failed deserializing the permissions")
-    })
-}
-
-pub(super) async fn insert_access_<'e, E>(
-    uid: &str,
-    userid: &str,
-    operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    // Retrieve existing permissions if any
-    let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
-    if operation_types.is_subset(&perms) {
-        // permissions are already setup
-        return Ok(());
-    }
-    perms.extend(operation_types.iter());
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Upsert the DB
-    sqlx::query(get_pgsql_query!("upsert-row-read_access"))
-        .bind(uid)
-        .bind(userid)
-        .bind(json)
-        .execute(executor)
-        .await?;
-    trace!("Insert read access right in DB: {uid} / {userid}");
-    Ok(())
-}
-
-pub(super) async fn remove_access_<'e, E>(
-    uid: &str,
-    userid: &str,
-    operation_types: HashSet<KmipOperation>,
-    executor: E,
-) -> DbResult<()>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    // Retrieve existing permissions if any
-    let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
-        .await?
-        .difference(&operation_types)
-        .copied()
-        .collect::<HashSet<_>>();
-
-    // No remaining permissions, delete the row
-    if perms.is_empty() {
-        sqlx::query(get_pgsql_query!("delete-rows-read_access"))
-            .bind(uid)
-            .bind(userid)
-            .execute(executor)
-            .await?;
-        return Ok(());
-    }
-
-    // Serialize permissions
-    let json =
-        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
-
-    // Update the DB
-    sqlx::query(get_pgsql_query!("update-rows-read_access-with-permission"))
-        .bind(uid)
-        .bind(userid)
-        .bind(json)
-        .execute(executor)
-        .await?;
-    trace!("Deleted in DB: {uid} / {userid}");
-    Ok(())
-}
-
-pub(super) async fn is_object_owned_by_<'e, E>(
-    uid: &str,
-    owner: &str,
-    executor: E,
-) -> DbResult<bool>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let row: Option<PgRow> = sqlx::query(get_pgsql_query!("has-row-objects"))
-        .bind(uid)
-        .bind(owner)
-        .fetch_optional(executor)
-        .await?;
-    Ok(row.is_some())
-}
-
-pub(super) async fn find_<'e, E>(
-    researched_attributes: Option<&Attributes>,
-    state: Option<State>,
-    user: &str,
-    user_must_be_owner: bool,
-    executor: E,
-) -> DbResult<Vec<(String, State, Attributes)>>
-where
-    E: Executor<'e, Database = Postgres> + Copy,
-{
-    let query = query_from_attributes::<PgSqlPlaceholder>(
-        researched_attributes,
-        state,
-        user,
-        user_must_be_owner,
-    );
-    trace!("{query:?}");
-
-    let mut query = sqlx::query(&query);
-    // Bind user-provided values to placeholders
-    query = if user_must_be_owner {
-        query.bind(user)
-    } else {
-        query.bind(user).bind(user).bind(user)
-    };
-    let rows = query.fetch_all(executor).await?;
-
-    to_qualified_uids(&rows)
-}
-
-/// Convert a list of rows into a list of qualified uids
-fn to_qualified_uids(rows: &[PgRow]) -> DbResult<Vec<(String, State, Attributes)>> {
-    let mut uids = Vec::with_capacity(rows.len());
-    for row in rows {
-        let attrs: Attributes = match row.try_get::<Value, _>(2) {
-            Err(_) => return Err(DbError::DatabaseError("no attributes found".to_owned())),
-            Ok(v) => serde_json::from_value(v)
-                .context("failed deserializing the attributes")
-                .map_err(|e| DbError::DatabaseError(e.to_string()))?,
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let stmt = client
+            .prepare(get_pgsql_query!("select-user-accesses-for-object"))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut perms: HashSet<KmipOperation> = match client
+            .query_opt(&stmt, &[&uid, &user])
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?
+        {
+            Some(row) => {
+                let v: Value = row.get(0);
+                serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
+            }
+            None => HashSet::new(),
         };
-
-        uids.push((
-            row.get::<String, _>(0),
-            State::try_from(row.get::<String, _>(1).as_str()).map_err(|e| {
-                DbError::ConversionError(format!("failed converting the state: {e}").into())
-            })?,
-            attrs,
-        ));
-    }
-    Ok(uids)
-}
-
-pub(super) async fn atomic_(
-    owner: &str,
-    operations: &[AtomicOperation],
-    tx: &mut Transaction<'_, Postgres>,
-) -> DbResult<Vec<String>> {
-    let mut uids = Vec::with_capacity(operations.len());
-    for operation in operations {
-        match operation {
-            AtomicOperation::Create((uid, object, attributes, tags)) => {
-                if let Err(e) =
-                    create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
-                {
-                    db_bail!("creation of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
-                    db_bail!("update of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::UpdateState((uid, state)) => {
-                if let Err(e) = update_state_(uid, *state, tx).await {
-                    db_bail!("update of the state of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                if let Err(e) =
-                    upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await
-                {
-                    db_bail!("upsert of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
-            }
-            AtomicOperation::Delete(uid) => {
-                if let Err(e) = delete_(uid, tx).await {
-                    db_bail!("deletion of object {uid} failed: {e}");
-                }
-                uids.push(uid.clone());
+        if !no_inherited_access && user != "*" {
+            if let Some(row) = client
+                .query_opt(&stmt, &[&uid, &"*"])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?
+            {
+                let v: Value = row.get(0);
+                let all: HashSet<KmipOperation> = serde_json::from_value(v)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                perms.extend(all);
             }
         }
+        Ok(perms)
     }
-    Ok(uids)
 }

@@ -71,20 +71,6 @@ pub struct MainDBConfig {
     )]
     pub redis_master_password: Option<String>,
 
-    /// redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts
-    /// without changing the key
-    #[deprecated(
-        since = "5.12.0",
-        note = "!IMPORTANT if this KMS is launched with a non-empty Redis store that with \
-                versions prior to 5.12.0, you MUST provide the same label as before, otherwise the \
-                migration might fail and data can be forever lost. If you are launching a fresh \
-                KMS with an empty Redis store, or one that was already used with version 5.12.0 or \
-                later, you can safely discard this parameter."
-    )]
-    #[cfg(feature = "non-fips")]
-    #[clap(long, env = "KMS_REDIS_FINDEX_LABEL")]
-    pub redis_findex_label: Option<String>,
-
     /// Clear the database on start.
     /// WARNING: This will delete ALL the data in the database
     #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
@@ -124,9 +110,6 @@ impl Default for MainDBConfig {
             unwrapped_cache_max_age: 15,
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
-            #[cfg(feature = "non-fips")]
-            #[allow(deprecated)] // Label will still be accepted until all data is migrated
-            redis_findex_label: None,
         }
     }
 }
@@ -157,18 +140,11 @@ impl Display for MainDBConfig {
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => write!(
                     f,
-                    "redis-findex: {}, password: [****]{}",
+                    "redis-findex: {}, password: [****]",
                     &self
                         .database_url
                         .as_ref()
                         .map_or("[INVALID URL]", |url| url.as_str()),
-                    self.redis_findex_label
-                        .as_ref()
-                        .map_or_else(String::new, |label| format!(
-                            ", label: 0x{} (the label parameter is deprecated and will be removed \
-                             in future versions, use it only to migrate existing data)",
-                            hex::encode(label.as_bytes())
-                        ))
                 ),
                 unknown => write!(f, "Unknown database type: {unknown}"),
             }?;
@@ -220,8 +196,6 @@ impl MainDBConfig {
                 #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => {
-                    use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
                         .context("db:init")?;
                     // Check if a Redis master password was provided
@@ -233,17 +207,7 @@ impl MainDBConfig {
                     // Generate the symmetric key from the master password
                     let master_key = redis_master_key_from_password(&redis_master_password)
                         .context("db:init")?;
-                    let old_label = self.redis_findex_label.as_deref().map_or_else(
-                        || {
-                            use cosmian_kms_server_database::reexport::cloudproof_findex::Label;
-
-                            std::env::var("KMS_REDIS_FINDEX_LABEL")
-                                .ok()
-                                .map(|s| Label::from(s.as_bytes()))
-                        },
-                        |value| Some(Label::from(value.as_bytes())),
-                    );
-                    MainDbParams::RedisFindex(url, master_key, old_label)
+                    MainDbParams::RedisFindex(url, master_key)
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });

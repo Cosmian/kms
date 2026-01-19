@@ -34,6 +34,9 @@ jobs:
           # redis is exclusively for non-fips
           - type: redis
             features: fips
+          # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
+          - type: pykmip
+            features: fips
 
     steps:
       - name: Nix installation

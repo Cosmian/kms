@@ -1,23 +1,18 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, RNGAlgorithm, State},
-        kmip_2_1::{
-            KmipOperation,
-            extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyMaterial, KeyValue},
-            kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
-            kmip_operations::{GetAttributes, GetAttributesResponse},
-            kmip_types::{
-                AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
-                RandomNumberGenerator, Tag, UniqueIdentifier, VendorAttribute,
-                VendorAttributeReference,
-            },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, RNGAlgorithm, State},
+    kmip_2_1::{
+        KmipOperation,
+        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
+        kmip_operations::{GetAttributes, GetAttributesResponse},
+        kmip_types::{
+            AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
+            RandomNumberGenerator, Tag, UniqueIdentifier, VendorAttribute,
+            VendorAttributeReference,
         },
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::{debug, trace};
 use openssl::sha;
@@ -34,7 +29,6 @@ pub(crate) async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<GetAttributesResponse> {
     trace!("{request}");
 
@@ -51,7 +45,7 @@ pub(crate) async fn get_attributes(
         // (prefer owned by user). This aligns with vector semantics when UIDs are omitted.
         let mut best_user: Option<(String, Option<OffsetDateTime>)> = None;
         let mut best_any: Option<(String, Option<OffsetDateTime>)> = None;
-        for (id, owm) in kms.database.retrieve_objects("*", params.clone()).await? {
+        for (id, owm) in kms.database.retrieve_objects("*").await? {
             let attrs = owm.attributes();
             let ts = attrs
                 .last_change_date
@@ -95,10 +89,12 @@ pub(crate) async fn get_attributes(
         implicit_uid_buf
             .as_deref()
             .or(implicit_uid_any_buf.as_deref())
-            .ok_or(KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                "Get Attributes: no objects available for implicit selection".to_owned(),
-            ))?
+            .ok_or_else(|| {
+                KmsError::Kmip21Error(
+                    ErrorReason::Item_Not_Found,
+                    "Get Attributes: no objects available for implicit selection".to_owned(),
+                )
+            })?
     };
 
     let owm = Box::pin(retrieve_object_for_operation(
@@ -106,7 +102,6 @@ pub(crate) async fn get_attributes(
         KmipOperation::GetAttributes,
         kms,
         user,
-        params.clone(),
     ))
     .await?;
     trace!(
@@ -234,7 +229,7 @@ pub(crate) async fn get_attributes(
                 }
                 if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
                     if !tags_already_set {
-                        let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+                        let tags = kms.database.retrieve_tags(owm.id()).await?;
                         res.set_tags(tags)?;
                         tags_already_set = true;
                     }
@@ -539,7 +534,7 @@ pub(crate) async fn get_attributes(
                 }
                 Tag::Tag => {
                     if !tags_already_set {
-                        let tags = kms.database.retrieve_tags(owm.id(), params.clone()).await?;
+                        let tags = kms.database.retrieve_tags(owm.id()).await?;
                         res.set_tags(tags)?;
                         tags_already_set = true;
                     }

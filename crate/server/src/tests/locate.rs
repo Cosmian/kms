@@ -67,7 +67,7 @@ async fn test_locate() -> KResult<()> {
         )],
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, owner).await?;
     assert_eq!(response.response_header.batch_count, 1);
 
     // Verify specific individual keys can be retrieved
@@ -89,7 +89,7 @@ async fn test_locate() -> KResult<()> {
             attributes: key_attrs,
             ..Locate::default()
         };
-        let specific_response = kms.locate(locate_specific, owner, None).await?;
+        let specific_response = kms.locate(locate_specific, owner).await?;
         let found_count = specific_response.located_items.unwrap();
         assert_eq!(
             found_count, expected_result,

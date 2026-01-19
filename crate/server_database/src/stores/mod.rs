@@ -33,6 +33,3 @@ static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     #[expect(clippy::expect_used)]
     Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQL file")
 });
-
-#[cfg(feature = "non-fips")]
-pub(crate) use crate::stores::redis::migrations::legacy_cloudproof_redis_findex::LegacyDbError;

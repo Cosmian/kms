@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
@@ -18,7 +16,7 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_interfaces::{ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
@@ -30,12 +28,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(crate) async fn sign(
-    kms: &KMS,
-    request: Sign,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<SignResponse> {
+pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
     debug!("{request}");
 
     // Get the uids from the unique identifier
@@ -43,7 +36,7 @@ pub(crate) async fn sign(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("sign")?;
     trace!("candidate uids: {uids:?}");
@@ -51,13 +44,9 @@ pub(crate) async fn sign(
     // Find a suitable private key for signing
     let mut selected_owm = None;
     for uid in uids {
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
-            })?;
+        let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+            KmsError::InvalidRequest(format!("sign: failed to retrieve key: {uid}"))
+        })?;
         // Lifecycle gating: For mandatory profile vector CS-AC-M-8-21 we must reject Sign when the
         // key has an ActivationDate in the past but either (a) a future ProcessStartDate (not yet
         // usable) or (b) a ProtectStopDate already in the past (no longer protected/usable).
@@ -87,7 +76,7 @@ pub(crate) async fn sign(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
+                .list_user_operations_on_object(&uid, user, false)
                 .await?;
             if !ops.iter().any(|p| *p == KmipOperation::Sign) {
                 continue;
@@ -118,10 +107,7 @@ pub(crate) async fn sign(
     })?;
 
     // unwrap if wrapped
-    owm.set_object(
-        kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
-            .await?,
-    );
+    owm.set_object(kms.get_unwrapped(owm.id(), owm.object(), user).await?);
 
     // Only private keys can be used for signing
     let res = match owm.object() {

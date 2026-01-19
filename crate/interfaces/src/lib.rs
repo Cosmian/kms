@@ -9,9 +9,7 @@ pub use hsm::{
     HSM, HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
     HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-pub use stores::{
-    AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore, SessionParams,
-};
+pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
 
 /// Supported cryptographic object types
 /// in plugins

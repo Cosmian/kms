@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::EncryptionSystem;
 #[cfg(feature = "non-fips")]
@@ -39,7 +37,7 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_public_key_to_openssl,
     },
-    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::{
@@ -61,12 +59,7 @@ use crate::{
 
 const EMPTY_SLICE: &[u8] = &[];
 
-pub(crate) async fn encrypt(
-    kms: &KMS,
-    request: Encrypt,
-    user: &str,
-    params: Option<Arc<dyn SessionParams>>,
-) -> KResult<EncryptResponse> {
+pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
     trace!("{request}");
 
     // We do not (yet) support continuation cases
@@ -79,7 +72,7 @@ pub(crate) async fn encrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms, params.clone())
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("Encrypt")?;
     trace!("candidate uids: {uids:?}");
@@ -98,14 +91,10 @@ pub(crate) async fn encrypt(
     let mut selected_owm = None;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms
-                .database
-                .is_object_owned_by(&uid, user, params.clone())
-                .await?
-            {
+            if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(&uid, user, false, params.clone())
+                    .list_user_operations_on_object(&uid, user, false)
                     .await?;
                 if !ops
                     .iter()
@@ -117,13 +106,9 @@ pub(crate) async fn encrypt(
             debug!("user: {user} is authorized to encrypt using: {uid} from decryption oracle");
             return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
         }
-        let owm = kms
-            .database
-            .retrieve_object(&uid, params.clone())
-            .await?
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
-            })?;
+        let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+            KmsError::InvalidRequest(format!("Encrypt: failed to retrieve key: {uid}"))
+        })?;
         // Check effective state (PreActive with past activation_date counts as Active)
         if get_effective_state(&owm)? != State::Active {
             continue;
@@ -132,7 +117,7 @@ pub(crate) async fn encrypt(
         if owm.owner() != user {
             let ops = kms
                 .database
-                .list_user_operations_on_object(&uid, user, false, params.clone())
+                .list_user_operations_on_object(&uid, user, false)
                 .await?;
             if !ops
                 .iter()
@@ -190,10 +175,7 @@ pub(crate) async fn encrypt(
     // get unwrapped object for encryption but preserve original wrapped object
     let unwrapped_object = match owm.object() {
         Object::Certificate { .. } => owm.object().clone(),
-        _ => {
-            kms.get_unwrapped(owm.id(), owm.object(), user, params.clone())
-                .await?
-        }
+        _ => kms.get_unwrapped(owm.id(), owm.object(), user).await?,
     };
 
     // Create a new ObjectWithMetadata with the unwrapped object for encryption operations
@@ -275,7 +257,6 @@ pub(crate) async fn encrypt(
                 owm.object(),
                 attributes,
                 None, // tags unchanged
-                params.clone(),
             )
             .await
         {

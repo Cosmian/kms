@@ -40,7 +40,7 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
         }
     };
 
-    // RFC6979 path for non-fips builds
+    // RFC6979 deterministic ECDSA for P-256 and secp256k1 in non-fips builds
     #[cfg(feature = "non-fips")]
     {
         if let Ok(ec_key) = private_key.ec_key() {

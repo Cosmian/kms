@@ -60,7 +60,6 @@ database_type = "sqlite"
 # database_url = "<database-url>"
 sqlite_path = "."
 # redis_master_password = "<redis master password>"
-# redis_findex_label = "<redis findex label>"
 # Clear the database at startup. WARNING: This will delete all objects in the database.
 clear_database = false
 # When a wrapped object is fetched from the database,

@@ -14,6 +14,7 @@ use openssl::{
 
 use crate::{
     CryptoError, crypto::rsa::default_cryptographic_parameters, error::result::CryptoResult,
+    openssl::hashing_algorithm_to_openssl_ref,
 };
 
 /// Attempt to sign a digest using an RSA private key and the provided algorithm name.
@@ -84,42 +85,62 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
     let (_algorithm, _padding, default_hash, digital_signature_algorithm) =
         default_cryptographic_parameters(request.cryptographic_parameters.as_ref());
 
-    // Determine effective message digest
-    let digest = if let Some(cp) = request.cryptographic_parameters.as_ref() {
-        if let Some(h) = &cp.hashing_algorithm {
-            match h {
-                KmipHash::SHA1 => MessageDigest::sha1(),
-                KmipHash::SHA256 => MessageDigest::sha256(),
-                KmipHash::SHA384 => MessageDigest::sha384(),
-                KmipHash::SHA512 => MessageDigest::sha512(),
-                KmipHash::SHA3256 => MessageDigest::sha3_256(),
-                KmipHash::SHA3384 => MessageDigest::sha3_384(),
-                KmipHash::SHA3512 => MessageDigest::sha3_512(),
-                _ => {
-                    return Err(CryptoError::Default(
-                        "sign_rsa_with_pkey: hashing algorithm not supported".to_owned(),
-                    ));
-                }
-            }
+    // Determine effective hashing algorithm (KMIP) first, then map to OpenSSL.
+    let mut effective_hash: KmipHash = if let Some(cp) = request.cryptographic_parameters.as_ref() {
+        if let Some(h) = cp.hashing_algorithm {
+            h
         } else {
             match digital_signature_algorithm {
                 DigitalSignatureAlgorithm::RSASSAPSS
-                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
-                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),
-                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => MessageDigest::sha512(),
-                DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => MessageDigest::sha3_256(),
-                DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => MessageDigest::sha3_384(),
-                DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => MessageDigest::sha3_512(),
-                _ => {
+                | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => KmipHash::SHA256,
+                DigitalSignatureAlgorithm::SHA384WithRSAEncryption => KmipHash::SHA384,
+                DigitalSignatureAlgorithm::SHA512WithRSAEncryption => KmipHash::SHA512,
+                DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => KmipHash::SHA3256,
+                DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => KmipHash::SHA3384,
+                DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => KmipHash::SHA3512,
+                other => {
                     return Err(CryptoError::Default(format!(
-                        "sign_rsa_with_pkey: not supported: {digital_signature_algorithm:?}"
+                        "sign_rsa_with_pkey: not supported: {other:?}"
                     )));
                 }
             }
         }
+    } else if let Some(digested_data) = &request.digested_data {
+        // When no cryptographic parameters are provided but we have digested data,
+        // infer the digest algorithm from the size of the digest
+        match digested_data.len() {
+            20 => KmipHash::SHA1,
+            32 => KmipHash::SHA256,
+            48 => KmipHash::SHA384,
+            64 => KmipHash::SHA512,
+            _ => default_hash,
+        }
     } else {
-        map_kmip_hash_to_openssl(default_hash)
+        default_hash
     };
+
+    // If the caller provided pre-digested data, prefer inferring the hash from the digest length.
+    // This avoids accidentally selecting SHA-1 (disallowed in FIPS) when the digest is clearly
+    // SHA-256/384/512.
+    if let Some(digested_data) = &request.digested_data {
+        effective_hash = match digested_data.len() {
+            20 => KmipHash::SHA1,
+            32 => KmipHash::SHA256,
+            48 => KmipHash::SHA384,
+            64 => KmipHash::SHA512,
+            _ => effective_hash,
+        };
+    }
+
+    // OpenSSL FIPS provider forbids SHA-1 for RSA signing.
+    #[cfg(not(feature = "non-fips"))]
+    if effective_hash == KmipHash::SHA1 {
+        return Err(CryptoError::Default(
+            "RSA signing with SHA-1 is not supported in FIPS mode".to_owned(),
+        ));
+    }
+
+    let digest = map_kmip_hash_to_openssl(effective_hash);
 
     // RSASSA-PSS: pre-hash path when digested_data provided
     if digital_signature_algorithm == DigitalSignatureAlgorithm::RSASSAPSS
@@ -131,24 +152,30 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
         }
         let mut ctx = PkeyCtx::new(private_key)?;
         ctx.sign_init()?;
-        ctx.set_rsa_padding(Padding::PKCS1_PSS)?;
+        let mgf1_hash = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| cp.mask_generator_hashing_algorithm)
+            .unwrap_or(effective_hash);
 
-        if let Some(cp) = request.cryptographic_parameters.as_ref() {
-            if let Some(h) = cp.mask_generator_hashing_algorithm {
-                let mgf1 = map_kmip_hash_to_openssl(h);
-                #[allow(unsafe_code)]
-                ctx.set_rsa_mgf1_md(unsafe { &*(mgf1.as_ptr().cast::<openssl::md::MdRef>()) })?;
-            } else {
-                #[allow(unsafe_code)]
-                ctx.set_rsa_mgf1_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
-            }
+        #[cfg(not(feature = "non-fips"))]
+        let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+            effective_hash
         } else {
-            #[allow(unsafe_code)]
-            ctx.set_rsa_mgf1_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
-        }
-        // Tell OpenSSL what the hash type is
-        #[allow(unsafe_code)]
-        ctx.set_signature_md(unsafe { &*(digest.as_ptr().cast::<openssl::md::MdRef>()) })?;
+            mgf1_hash
+        };
+
+        // OpenSSL FIPS provider forbids SHA-1 for RSA PSS MGF1.
+        // KMIP says the default MGF1 hash is SHA-1 when omitted, so we must
+        // override that default to match the signature hash (typically SHA-256)
+        // for FIPS compatibility.
+        // Set the signature digest first so OpenSSL doesn't initialize RSA-PSS
+        // with SHA-1 defaults (disallowed in FIPS).
+        ctx.set_signature_md(hashing_algorithm_to_openssl_ref(effective_hash)?)?;
+        // Then select PSS padding; the digest is already configured.
+        ctx.set_rsa_padding(Padding::PKCS1_PSS)?;
+        // MGF1 digest is a PSS-only parameter, so set it after PSS is selected.
+        ctx.set_rsa_mgf1_md(hashing_algorithm_to_openssl_ref(mgf1_hash)?)?;
 
         let salt_len = request
             .cryptographic_parameters
@@ -162,19 +189,77 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
         })?;
         buffer.extend_from_slice(digested_data);
         // First call: Pass None to get the required buffer size
-        let required_len = ctx.sign(&buffer, None)?;
+        let required_len = ctx.sign(&buffer, None).map_err(|e| {
+            CryptoError::Default(format!(
+                "rsa pss prehash sign init failed (hash={effective_hash:?}, mgf1={mgf1_hash:?}, payload_len={}): {e}",
+                buffer.len()
+            ))
+        })?;
         // Second call: Pass a buffer of the correct size
         let mut signature = vec![0_u8; required_len];
-        ctx.sign(&buffer, Some(&mut signature))?;
+        ctx.sign(&buffer, Some(&mut signature)).map_err(|e| {
+            CryptoError::Default(format!(
+                "rsa pss prehash sign failed (hash={effective_hash:?}, mgf1={mgf1_hash:?}, payload_len={}): {e}",
+                buffer.len()
+            ))
+        })?;
         return Ok(signature);
     }
 
+    // PKCS#1 v1.5: pre-hash path when digested_data provided
+    // Use PkeyCtx for FIPS compatibility with pre-digested data
+    if request.digested_data.is_some() {
+        let digested_data = request
+            .digested_data
+            .as_ref()
+            .ok_or_else(|| CryptoError::ObjectNotFound("Missing digested data".to_owned()))?;
+
+        let mut buffer = Vec::new();
+        if let Some(corr) = &request.correlation_value {
+            buffer.extend_from_slice(corr);
+        }
+        buffer.extend_from_slice(digested_data);
+
+        let mut ctx = PkeyCtx::new(private_key)?;
+        ctx.sign_init()?;
+        ctx.set_signature_md(hashing_algorithm_to_openssl_ref(effective_hash)?)?;
+        // Tell OpenSSL what the hash type is for the pre-digested data.
+        // Set it before padding so OpenSSL doesn't use SHA-1 defaults.
+        ctx.set_rsa_padding(Padding::PKCS1)?;
+
+        // First call: Pass None to get the required buffer size
+        let required_len = ctx.sign(&buffer, None).map_err(|e| {
+            CryptoError::Default(format!(
+                "rsa pkcs1 prehash sign init failed (hash={effective_hash:?}, payload_len={}): {e}",
+                buffer.len()
+            ))
+        })?;
+        // Second call: Pass a buffer of the correct size
+        let mut signature = vec![0_u8; required_len];
+        ctx.sign(&buffer, Some(&mut signature)).map_err(|e| {
+            CryptoError::Default(format!(
+                "rsa pkcs1 prehash sign failed (hash={effective_hash:?}, payload_len={}): {e}",
+                buffer.len()
+            ))
+        })?;
+        return Ok(signature);
+    }
+
+    // Standard path for non-digested data
     let mut signer = Signer::new(digest, private_key)?;
     if DigitalSignatureAlgorithm::RSASSAPSS == digital_signature_algorithm {
         signer.set_rsa_padding(Padding::PKCS1_PSS)?;
         if let Some(cp) = request.cryptographic_parameters.as_ref() {
             if let Some(h) = cp.mask_generator_hashing_algorithm {
-                let mgf1 = map_kmip_hash_to_openssl(h);
+                let mgf1_hash = h;
+
+                #[cfg(not(feature = "non-fips"))]
+                let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+                    effective_hash
+                } else {
+                    mgf1_hash
+                };
+                let mgf1 = map_kmip_hash_to_openssl(mgf1_hash);
                 signer.set_rsa_mgf1_md(mgf1)?;
             } else {
                 signer.set_rsa_mgf1_md(digest)?;

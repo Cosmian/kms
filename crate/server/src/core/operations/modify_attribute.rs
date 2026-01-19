@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::{
-            kmip_attributes::Attribute,
-            kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        kmip_attributes::Attribute,
+        kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::SessionParams,
 };
 
 use crate::{core::KMS, error::KmsError, result::KResult};
@@ -26,7 +21,6 @@ pub(crate) async fn modify_attribute(
     kms: &KMS,
     request: ModifyAttribute,
     _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<ModifyAttributeResponse> {
     let uid = request.unique_identifier.clone().ok_or_else(|| {
         KmsError::Kmip21Error(
@@ -50,7 +44,7 @@ pub(crate) async fn modify_attribute(
         // Retrieve object to inspect current state only for ActivationDate modifications.
         let object_with_metadata = kms
             .database
-            .retrieve_object(&uid.to_string(), None)
+            .retrieve_object(&uid.to_string())
             .await?
             .ok_or_else(|| {
                 KmsError::Kmip21Error(ErrorReason::Item_Not_Found, "Object not found".to_owned())

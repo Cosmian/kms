@@ -19,8 +19,7 @@ mod expiry;
 
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
-    "info,cosmian=info,cosmian_kms_server=info,actix_web=info,sqlx::query=error,mysql=info"
-        .to_owned()
+    "info,cosmian=info,cosmian_kms_server=info,actix_web=info".to_owned()
 }
 
 /// Get the appropriate `rust_log` value, preferring config over environment
@@ -181,8 +180,6 @@ mod tests {
                 #[cfg(feature = "non-fips")]
                 redis_master_password: Some("[redis master password]".to_owned()),
                 #[cfg(feature = "non-fips")]
-                #[allow(deprecated)]
-                redis_findex_label: Some("[redis findex label]".to_owned()),
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
             },
@@ -284,7 +281,6 @@ database_type = "[redis-findex, postgresql,...]"
 database_url = "[redis urls]"
 sqlite_path = "[sqlite path]"
 redis_master_password = "[redis master password]"
-redis_findex_label = "[redis findex label]"
 clear_database = false
 unwrapped_cache_max_age = 15
 

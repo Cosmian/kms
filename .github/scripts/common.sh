@@ -145,33 +145,6 @@ init_build_env() {
       i=$((i + 1))
       link="${!i:-}"
       ;;
-    -p)
-      if [ $profile_set -eq 1 ]; then
-        echo "Error: -p/--profile specified multiple times" >&2
-        exit 1
-      fi
-      profile_set=1
-      i=$((i + 1))
-      profile="${!i:-}"
-      ;;
-    -v)
-      if [ $variant_set -eq 1 ]; then
-        echo "Error: -v/--variant specified multiple times" >&2
-        exit 1
-      fi
-      variant_set=1
-      i=$((i + 1))
-      variant="${!i:-}"
-      ;;
-    -l)
-      if [ $link_set -eq 1 ]; then
-        echo "Error: -l/--link specified multiple times" >&2
-        exit 1
-      fi
-      link_set=1
-      i=$((i + 1))
-      link="${!i:-}"
-      ;;
     esac
     i=$((i + 1))
   done
@@ -470,23 +443,28 @@ _run_workspace_tests() {
   local test_args="--nocapture"
   case "$KMS_TEST_DB" in
   postgresql)
-    test_filter="tests::test_db_postgresql"
+    test_filter="test_db_postgresql test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   mysql)
-    test_filter="tests::test_db_mysql"
+    test_filter="test_db_mysql test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   redis-findex)
-    test_filter="tests::test_db_redis_with_findex"
+    test_filter="test_db_redis_with_findex test_validate_with_certificates"
     test_args="$test_args --ignored"
     ;;
   esac
 
   # shellcheck disable=SC2086
-  cargo test --workspace --lib --exclude cosmian_kms_cli $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
-  # shellcheck disable=SC2086
-  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
+  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+
+  # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
+  # For sqlite, skip this step since all non-ignored tests already ran above
+  if [ "$KMS_TEST_DB" != "sqlite" ]; then
+    # shellcheck disable=SC2086
+    cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
+  fi
 }
 
 # Public: run DB-specific tests with optional service checks
