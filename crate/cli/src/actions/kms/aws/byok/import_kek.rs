@@ -5,7 +5,7 @@ use crate::{
         aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm,
         shared::ImportSecretDataOrKeyAction,
     },
-    error::result::KmsCliResult,
+    error::{KmsCliError, result::KmsCliResult},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::{ArgGroup, Parser};
@@ -33,8 +33,8 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
     }
     Ok(s.to_owned())
 }
-/// Import into the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
-/// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek>
+
+/// Import an AWS Key Encryption Key (KEK) into the KMS.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 #[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_blob must be provided
@@ -52,12 +52,12 @@ pub struct ImportKekAction {
     #[clap(short = 'f', long, group = "kek_input")]
     pub(crate) kek_file: Option<PathBuf>,
 
-    /// The Amazon Resource Name (key ARN) of the KMS key.
-    #[clap(short = 'a', long, required = true, verbatim_doc_comment)]
-    pub(crate) key_arn: String,
-
-    #[clap(short = 'w', long, required = true, verbatim_doc_comment)]
+    #[clap(short = 'w', long, required = true)]
     pub(crate) wrapping_algorithm: AwsKmsWrappingAlgorithm,
+
+    /// The Amazon Resource Name (key ARN) of the KMS key. It's recommended to provide it for an easier export later.
+    #[clap(short = 'a', long, required = false)]
+    pub(crate) key_arn: Option<String>,
 
     /// The unique ID of the key in this KMS; a random UUID
     /// is generated if not specified.
@@ -66,29 +66,33 @@ pub struct ImportKekAction {
 }
 
 impl ImportKekAction {
-    #[allow(clippy::expect_used, clippy::unwrap_used, clippy::missing_panics_doc)] // TODO
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
+        // build tags
+        let mut tags = vec![
+            "aws".to_owned(),
+            format!("wrapping_algorithm:{}", self.wrapping_algorithm),
+        ];
+        if let Some(arn) = &self.key_arn {
+            tags.push(format!("key_arn:{arn}"));
+        }
+
         let import_action = ImportSecretDataOrKeyAction {
-            key_file: self
-                .kek_file
-                .clone()
-                .or_else(|| {
-                    self.kek_base64.as_ref().map(|base64_str| {
-                        let temp_path =
-                            std::env::temp_dir().join(format!("{}", uuid::Uuid::new_v4()));
-                        std::fs::write(&temp_path, BASE64_STANDARD.decode(base64_str).unwrap())
-                            .unwrap(); // TODO
-                        temp_path
-                    })
-                })
-                .expect("msg"), // TODO
+            key_file: match (&self.kek_file, &self.kek_base64) {
+                (Some(file), _) => file.clone(),
+                (None, Some(base64_str)) => {
+                    let temp_path = std::env::temp_dir().join(format!("{}", uuid::Uuid::new_v4()));
+                    std::fs::write(&temp_path, BASE64_STANDARD.decode(base64_str)?)?;
+                    temp_path
+                }
+                (None, None) => {
+                    return Err(KmsCliError::Default(
+                        "KEK file or base64 data must be provided".to_owned(),
+                    ));
+                }
+            },
             key_id: self.key_id.clone(),
-            key_format: ImportKeyFormat::Pkcs8Pub, // TODO: idk maybe this should be pkcs1
-            tags: vec![
-                "aws".to_owned(),
-                format!("key_arn:{}", self.key_arn),
-                format!("wrapping_algorithm:{}", self.wrapping_algorithm),
-            ],
+            key_format: ImportKeyFormat::Pkcs8Pub,
+            tags,
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
             replace_existing: true,
             ..Default::default()
