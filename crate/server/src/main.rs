@@ -7,15 +7,10 @@ use cosmian_kms_server::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
-#[cfg(feature = "timeout")]
-use cosmian_logger::warn;
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use openssl::provider::Provider;
 use tracing::span;
-
-#[cfg(feature = "timeout")]
-mod expiry;
 
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
@@ -91,17 +86,8 @@ async fn run() -> KResult<()> {
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
-    #[cfg(not(feature = "non-fips"))]
     info!(
-        "OpenSSL FIPS mode version: {}, in {}, number: {:x}",
-        openssl::version::version(),
-        openssl::version::dir(),
-        openssl::version::number()
-    );
-
-    #[cfg(feature = "non-fips")]
-    info!(
-        "OpenSSL default mode, version: {}, in {}, number: {:x}",
+        "OpenSSL version: {}, in {}, number: {:x}",
         openssl::version::version(),
         openssl::version::dir(),
         openssl::version::number()
@@ -112,17 +98,22 @@ async fn run() -> KResult<()> {
 
     // In FIPS mode, we only load the FIPS provider
     #[cfg(not(feature = "non-fips"))]
-    Provider::load(None, "fips")?;
+    {
+        info!("Load FIPS provider");
+        Provider::load(None, "fips")?;
+    }
 
     // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
     // so that we can use the legacy algorithms.
     // particularly those used for old PKCS#12 formats
     #[cfg(feature = "non-fips")]
     if openssl::version::number() >= 0x3000_0000 {
+        info!("Load legacy provider");
         Provider::try_load(None, "legacy", true)
             .context("unable to load the openssl legacy provider")?;
     } else {
         // In version < 3.0, we only load the default provider
+        info!("Load default provider");
         Provider::load(None, "default")?;
     }
 
@@ -137,20 +128,10 @@ async fn run() -> KResult<()> {
         return Ok(());
     }
 
-    #[cfg(feature = "timeout")]
-    info!("Feature Timeout enabled");
     #[cfg(test)]
     info!("Feature Test enabled");
 
-    #[cfg(feature = "timeout")]
-    {
-        warn!("This is a demo version, the server will stop in 3 months");
-        let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_params, None)), demo).await
-    };
-
     // Start the KMS
-    #[cfg(not(feature = "timeout"))]
     Box::pin(start_kms_server(server_params, None)).await?;
 
     Ok(())

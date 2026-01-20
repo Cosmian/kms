@@ -18,9 +18,21 @@
           };
     in
     pinned,
+# Explicit variant argument to avoid relying on builtins.getEnv during evaluation
 }:
 
 let
+  # Import project-level outputs to access tools like cargo-packager
+  # Use custom OpenSSL 3.1.2 (FIPS-capable) for both FIPS and non-FIPS modes
+  # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
+  # via OPENSSL_CONF and OPENSSL_MODULES environment variables
+  # Wrapper config to activate both default and FIPS providers while reusing
+  # the derivation's generated fipsmodule.cnf. This avoids generating configs
+  # inside nix/openssl.nix and strictly reuses the derivation outputs.
+  # SoftHSM override with OpenSSL-only backend (Botan disabled)
+  # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
+  # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
+  # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
   # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds

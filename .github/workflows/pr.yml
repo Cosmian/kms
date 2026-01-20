@@ -6,7 +6,7 @@ on:
     tags:
       - '**'
   pull_request:
-
+  workflow_call:
 jobs:
   # Run packaging for PRs
   packaging:
@@ -14,3 +14,5 @@ jobs:
     secrets: inherit
     with:
       toolchain: 1.90.0
+      enforceDeterministicHash: ${{ startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.head_ref,
+        'release/') || startsWith(github.base_ref, 'release/') }}
