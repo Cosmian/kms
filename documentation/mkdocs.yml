@@ -74,6 +74,7 @@ nav:
       - Other HSMs: hsms/other_hsms.md
   - Integrations:
       - API Endpoints: api.md
+      - AWS ECS Fargate: aws_fargate.md
       - Azure:
           - BYOK (Bring Your Own Key): azure/byok.md
       - Google GCP:
