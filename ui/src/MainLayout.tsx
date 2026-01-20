@@ -22,6 +22,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
 
+    const serverHealthLabel =
+        serverHealthLatencyMs === null
+            ? `Health: ${serverHealth}`
+            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+    const serverHealthMarker = serverHealth === "DOWN" ? "🔴" : "🟢";
+
     const fetchServerInfo = async () => {
         if (idToken || authMethod != "JWT") {
             try {
@@ -132,14 +138,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             }
 
                             if (!version) {
-                                return serverHealthLatencyMs === null
-                                    ? `Health: ${serverHealth}`
-                                    : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+                                return `${serverHealthMarker} ${serverHealthLabel}`;
                             }
 
-                            return serverHealthLatencyMs === null
-                                ? `${version} — Health: ${serverHealth}`
-                                : `${version} — Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+                            return `${version} — ${serverHealthMarker} ${serverHealthLabel}`;
                         })()}
                     />
                 </Layout>

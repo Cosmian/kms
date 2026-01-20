@@ -72,7 +72,8 @@ async fn health_dependencies(kms: &Arc<KMS>) -> DependencyHealth {
     };
 
     let db_check = kms.database.health_check().await;
-    let db_health = match db_check {
+
+    match db_check {
         Ok(()) => DependencyHealth {
             name: Some(db_name.to_owned()),
             status: HealthStatus::Up,
@@ -83,7 +84,5 @@ async fn health_dependencies(kms: &Arc<KMS>) -> DependencyHealth {
             status: HealthStatus::Down,
             message: Some(e),
         },
-    };
-
-    db_health
+    }
 }
