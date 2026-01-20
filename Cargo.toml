@@ -133,7 +133,7 @@ bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "10.3", default-features = false, features = [
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/revert-breaking-changes", default-features = false, features = [
     "ser",
 ] }
 cosmian_logger = "0.5"

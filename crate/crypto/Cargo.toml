@@ -37,7 +37,7 @@ non-fips = [
 aes-gcm-siv = { version = "0.11.1", optional = true }
 argon2 = { version = "0.5", optional = true }
 base64 = { workspace = true }
-cosmian_cover_crypt = { version = "15.0", optional = true }
+cosmian_cover_crypt = { path = "../../../cover_crypt", optional = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip", version = "5.15.0" }
 cosmian_logger = { workspace = true }
