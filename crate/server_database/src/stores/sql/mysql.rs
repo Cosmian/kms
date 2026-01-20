@@ -281,6 +281,11 @@ impl MySqlPool {
         Ok(this)
     }
 
+    pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.query_drop("SELECT 1").await.map_err(DbError::from)
+    }
+
     // Helper to obtain a pooled connection and configure session settings consistently
     // - Isolation level: READ COMMITTED (reduces deadlocks vs REPEATABLE READ)
     // - Lock wait timeout: 10s (avoid long stalls under contention)

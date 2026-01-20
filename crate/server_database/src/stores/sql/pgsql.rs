@@ -193,6 +193,19 @@ impl PgPool {
         }
         Ok(Self { pool })
     }
+
+    pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        client
+            .query_one("SELECT 1", &[])
+            .await
+            .map(|_| ())
+            .map_err(|e| DbError::DatabaseError(e.to_string()))
+    }
 }
 
 impl SqlDatabase for PgPool {

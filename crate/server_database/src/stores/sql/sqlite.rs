@@ -87,6 +87,13 @@ impl SqlitePool {
 
         Ok(pool)
     }
+
+    pub(crate) async fn health_check(&self) -> DbResult<()> {
+        self.conn
+            .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
+            .await
+            .map_err(DbError::from)
+    }
 }
 
 impl SqlDatabase for SqlitePool {

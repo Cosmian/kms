@@ -5,9 +5,12 @@ mod database_permissions;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+#[cfg(feature = "non-fips")]
+use redis::AsyncCommands;
 use tokio::sync::RwLock;
 
 use crate::error::DbResult;
@@ -33,6 +36,28 @@ pub struct Database {
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
     unwrapped_cache: UnwrappedCache,
+
+    /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
+    kind: MainDbKind,
+
+    /// A lightweight health probe for the default store.
+    ///
+    /// This enables server-side `/health` checks without exposing internal store types.
+    health: Arc<dyn DatabaseHealth + Sync + Send>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainDbKind {
+    Sqlite,
+    Postgres,
+    Mysql,
+    #[cfg(feature = "non-fips")]
+    RedisFindex,
+}
+
+#[async_trait]
+trait DatabaseHealth {
+    async fn check(&self) -> Result<(), String>;
 }
 
 impl Database {
@@ -66,25 +91,49 @@ impl Database {
         clear_db_on_start: bool,
         cache_max_age: Duration,
     ) -> DbResult<Self> {
+        // Permissions are stored in the same backend as objects for the main database.
+        // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
+        // `PermissionsStore`, so we can reuse the same `Arc`.
         match main_db_params {
             MainDbParams::Sqlite(db_path, max_conns) => {
                 let db = Arc::new(
                     SqlitePool::instantiate(&db_path.join("kms.db"), clear_db_on_start, *max_conns)
                         .await?,
                 );
-                Ok(Self::new(db.clone(), db, cache_max_age))
+                let health = Arc::new(SqliteHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    MainDbKind::Sqlite,
+                    health,
+                ))
             }
             MainDbParams::Postgres(url, max_conns) => {
                 let db = Arc::new(
                     PgPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
                 );
-                Ok(Self::new(db.clone(), db, cache_max_age))
+                let health = Arc::new(PgHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    MainDbKind::Postgres,
+                    health,
+                ))
             }
             MainDbParams::Mysql(url, max_conns) => {
                 let db = Arc::new(
                     MySqlPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
                 );
-                Ok(Self::new(db.clone(), db, cache_max_age))
+                let health = Arc::new(MySqlHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    MainDbKind::Mysql,
+                    health,
+                ))
             }
             #[cfg(feature = "non-fips")]
             MainDbParams::RedisFindex(url, master_key) => {
@@ -105,7 +154,14 @@ impl Database {
                     RedisWithFindex::instantiate(url.as_str(), new_master_key, clear_db_on_start)
                         .await?,
                 );
-                Ok(Self::new(db.clone(), db, cache_max_age))
+                let health = Arc::new(RedisFindexHealthProbe::new(db.clone()));
+                Ok(Self::new(
+                    db.clone(),
+                    db,
+                    cache_max_age,
+                    MainDbKind::RedisFindex,
+                    health,
+                ))
             }
         }
     }
@@ -124,15 +180,110 @@ impl Database {
     /// - `default_database` is the default database for objects without a prefix
     /// - `permissions_database` is the database for permissions
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
-    pub(crate) fn new(
+    fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
         cache_max_age: Duration,
+        kind: MainDbKind,
+        health: Arc<dyn DatabaseHealth + Sync + Send>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
             unwrapped_cache: UnwrappedCache::new(cache_max_age),
+            kind,
+            health,
+        }
+    }
+
+    #[must_use]
+    pub const fn main_db_kind(&self) -> MainDbKind {
+        self.kind
+    }
+
+    pub async fn health_check(&self) -> Result<(), String> {
+        self.health.check().await
+    }
+}
+
+struct SqliteHealthProbe {
+    store: Arc<SqlitePool>,
+}
+
+impl SqliteHealthProbe {
+    #[allow(clippy::missing_const_for_fn)]
+    fn new(store: Arc<SqlitePool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for SqliteHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+struct PgHealthProbe {
+    store: Arc<PgPool>,
+}
+
+impl PgHealthProbe {
+    #[allow(clippy::missing_const_for_fn)]
+    fn new(store: Arc<PgPool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for PgHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+struct MySqlHealthProbe {
+    store: Arc<MySqlPool>,
+}
+
+impl MySqlHealthProbe {
+    #[allow(clippy::missing_const_for_fn)]
+    fn new(store: Arc<MySqlPool>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl DatabaseHealth for MySqlHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        self.store.health_check().await.map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(feature = "non-fips")]
+struct RedisFindexHealthProbe {
+    store: Arc<RedisWithFindex>,
+}
+
+#[cfg(feature = "non-fips")]
+impl RedisFindexHealthProbe {
+    #[allow(clippy::missing_const_for_fn)]
+    fn new(store: Arc<RedisWithFindex>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(feature = "non-fips")]
+#[async_trait::async_trait]
+impl DatabaseHealth for RedisFindexHealthProbe {
+    async fn check(&self) -> Result<(), String> {
+        let mut mgr = self.store.mgr.clone();
+        let pong: String = mgr.ping().await.map_err(|e| e.to_string())?;
+        #[allow(clippy::manual_ignore_case_cmp)]
+        if pong.eq_ignore_ascii_case("PONG") {
+            Ok(())
+        } else {
+            Err(format!("unexpected redis ping response: {pong}"))
         }
     }
 }

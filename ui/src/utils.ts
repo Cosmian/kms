@@ -76,13 +76,21 @@ export const postNoTTLVRequest = async (path: string, request: object, idToken: 
 
 export const getNoTTLVRequest = async (path: string, idToken: string | null, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
+
+    const controller = new AbortController();
+    const timeoutMs = 30_000;
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
     const response = await fetch(kmsUrl, {
         method: "GET",
         credentials: "include",
+        signal: controller.signal,
         headers: {
             ...(idToken && { Authorization: `Bearer ${idToken}` }),
         },
     });
+
+    clearTimeout(timeoutHandle);
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -90,6 +98,37 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
     }
 
     return await response.json();
+};
+
+export const getNoTTLVRequestWithTimeout = async (
+    path: string,
+    idToken: string | null,
+    serverUrl: string,
+    timeoutMs: number
+) => {
+    const kmsUrl = serverUrl + path;
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(kmsUrl, {
+            method: "GET",
+            credentials: "include",
+            signal: controller.signal,
+            headers: {
+                ...(idToken && { Authorization: `Bearer ${idToken}` }),
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`${response.status}: ${errorText}`);
+        }
+
+        return await response.json();
+    } finally {
+        clearTimeout(timeoutHandle);
+    }
 };
 
 export const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
