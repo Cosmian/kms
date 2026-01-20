@@ -3,12 +3,12 @@
 //!
 //! ## Test Matrix
 //!
-//! | Test Function                        | Wrapping Algorithm      | Key Source         | KEK Import | Key Type    |
-//! |--------------------------------------|-------------------------|--------------------|------------|-------------|
-//! | `aws_byok_with_rsaes_oaep_sha256`    | `RSAES_OAEP_SHA_256`    | Test file (imported)    | Base64     | AES-256     |
-//! | `aws_byok_with_rsaes_oaep_sha1`      | `RSAES_OAEP_SHA_1`      | KMS (generated)    | File (DER) | HMAC     |
-//! | `aws_byok_with_rsa_aes_key_wrap_sha1`| `RSA_AES_KEY_WRA_SHA_1`| KMS (generated)    | File (DER) | RSA (private key)     |
-//! | `aws_byok_with_rsa_aes_key_wrap_sha256`| `RSA_AES_KEY_WRAP_SHA_256`| KMS (generated) | Base64     | ECC (private key)     |
+//! | Test Function                          | Wrapping Algorithm        | Key Type           | Key Source         | KEK Import | Export Mode |
+//! |----------------------------------------|---------------------------|--------------------|--------------------|------------|-------------|
+//! | `aws_byok_with_rsa_aes_key_wrap_sha256`| `RSA_AES_KEY_WRAP_SHA_256`| ECC (private key) | KMS (generated)    | Base64     | File (bin)  |
+//! | `aws_byok_with_rsaes_oaep_sha256`      | `RSAES_OAEP_SHA_256`      | AES-256            | Test file (imported) | Base64     | Base64      |
+//! | `aws_byok_with_rsaes_oaep_sha1`        | `RSAES_OAEP_SHA_1`        | HMAC               | KMS (generated)    | File (DER) | Base64      |
+//! | `aws_byok_with_rsa_aes_key_wrap_sha1`  | `RSA_AES_KEY_WRA_SHA_1`   | RSA (private key)  | KMS (generated)    | File (DER) | File (bin)  |
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 
@@ -318,9 +318,10 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
     Ok(())
 }
 
-// // Generate the key material with the KMS, then export it using ExportObjectParams for later verification
-// // Import kek as base64 string
+// Generate the key material with the KMS, then export it using ExportObjectParams for later verification
+// Import kek as base64 string
 // Export the key material wrapped with the kek as a file blob
+// /!\ It's not possible to export cleartext ECC private keys from the KMS, so we skip the plaintext verification step
 #[tokio::test]
 async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
     log_init(None);
@@ -342,21 +343,9 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    // we will discard the public key for the test - real world users will simply export it in plaintext
     let (private_key_id, _public_key_id) =
         create_keypair_action.run(ctx.get_owner_client()).await?;
 
-    // Export the private key unwrapped and keep its plaintext bytes for later verification
-    let (_, cosmian_key_material, _) = export_object(
-        &ctx.get_owner_client(),
-        &private_key_id.to_string(),
-        ExportObjectParams::default(),
-    )
-    .await?;
-    let cosmian_key_bytes = cosmian_key_material.key_block()?.key_bytes()?;
-
-    // We now have all necessary elements to start the test
-    // Step 1: Import the KEK as base64 string
     let import_action = ImportKekAction {
         kek_base64: Some(public_key_base64),
         kek_file: None,
@@ -369,7 +358,6 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
 
     let output_file_path = temp_dir.join(format!("wrapped_key_test_{private_key_id}.bin"));
 
-    // Step 2: Export the wrapped key
     let export_action = ExportByokAction {
         key_id: private_key_id.to_string(),
         kek_id: kek_id.to_string(),
@@ -387,25 +375,13 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
         rsa_aes_key_wrap_sha256_unwrap(&wrapped_key_bytes, &aws_private_key_mock)
             .expect("Failed to unwrap key");
 
-    // // Parse the unwrapped key as PKCS#8 (ECC private key)
-    // let pkey = openssl::pkey::PKey::private_key_from_pkcs8(&unwrapped_key_bytes)
-    //     .expect("Failed to parse PKCS#8 key");
+    // Parse the unwrapped key as PKCS#8
+    let pkey = openssl::pkey::PKey::private_key_from_pkcs8(&unwrapped_key_bytes)
+        .expect("Failed to parse PKCS#8 key");
 
-    // // Extract the ECC key (not RSA)
-    // let ec_key = pkey.ec_key().expect("Key should be ECC");
+    // Extract the ECC key (and check it's valid)
+    let _ec_key = pkey.ec_key().expect("Key should be ECC");
 
-    // unwrapped_key_bytes = ec_key
-    //     .private_key_to_der()
-    //     .expect("Failed to convert to ECPrivateKey DER");
-
-    // Finally: Verify the unwrapped key matches the original key material
-    assert_eq!(
-        unwrapped_key_bytes,
-        cosmian_key_bytes.to_vec(),
-        "Unwrapped key should match the original key material"
-    );
-
-    // Cleanup temp files
     std::fs::remove_file(&output_file_path)?;
 
     Ok(())
