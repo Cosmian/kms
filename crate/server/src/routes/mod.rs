@@ -1,14 +1,21 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
+use actix_files::NamedFile;
 use actix_web::{
-    HttpRequest, HttpResponse, HttpResponseBuilder, get,
-    http::{StatusCode, header},
+    HttpRequest, HttpResponse, HttpResponseBuilder, Result, get,
+    http::{
+        StatusCode,
+        header::{self, ContentDisposition, DispositionParam, DispositionType},
+    },
     web::{Data, Json},
 };
 use clap::crate_version;
 use cosmian_logger::{error, info, warn};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
+
+const CLI_ARCHIVE_FOLDER: &str = "./resources";
+const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 
 pub mod access;
 pub mod google_cse;
@@ -77,4 +84,39 @@ pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResul
             "FIPS"
         }
     )))
+}
+
+pub(crate) async fn cli_archive_download(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+) -> Result<NamedFile> {
+    info!("GET /download-cli {}", kms.get_user(&req));
+
+    // Path to the actual file on disk you want to serve
+    let path: PathBuf = PathBuf::from(CLI_ARCHIVE_FOLDER).join(CLI_ARCHIVE_FILE_NAME);
+
+    // Open the file (returns io::Error -> converted into actix_web::Error via ?)
+    let file = NamedFile::open(path)?;
+
+    // Set Content-Disposition: attachment; filename="cli.zip"
+    let cd = ContentDisposition {
+        disposition: DispositionType::Attachment,
+        parameters: vec![DispositionParam::Filename(String::from(
+            CLI_ARCHIVE_FILE_NAME,
+        ))],
+    };
+
+    Ok(file.set_content_disposition(cd))
+}
+
+pub(crate) async fn cli_archive_exists() -> HttpResponse {
+    let path = PathBuf::from(CLI_ARCHIVE_FOLDER).join(CLI_ARCHIVE_FILE_NAME);
+    let exists = tokio::fs::metadata(path).await.is_ok();
+
+    // For HEAD, no body — return 200 or 404 with appropriate headers only.
+    if exists {
+        HttpResponse::Ok().finish()
+    } else {
+        HttpResponse::NotFound().finish()
+    }
 }

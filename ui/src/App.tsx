@@ -54,12 +54,23 @@ type AppContentProps = {
     setIsDarkMode: (value: boolean) => void;
 };
 
+const LS_DARKMODE_KEY = 'darkMode';
+const initialDarkMode = localStorage.getItem(LS_DARKMODE_KEY)
+
 const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
     const {setServerUrl, setIdToken, setUserId} = useAuth();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(false);
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
     const [loginError, setLoginError] = useState<undefined | string>(undefined);
+
+    useEffect(() => {
+        setIsDarkMode(initialDarkMode == 'true' ? true : false)
+    }, [])
+
+    useEffect(() => {
+        localStorage.setItem(LS_DARKMODE_KEY, JSON.stringify(isDarkMode));
+    }, [isDarkMode])
 
     useEffect(() => {
         // Automatically use dev URL in development mode

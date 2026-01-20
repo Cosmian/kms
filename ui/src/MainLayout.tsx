@@ -1,7 +1,7 @@
-import { MoonOutlined, SunOutlined } from "@ant-design/icons";
+import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
 import Header from "./Header";
@@ -18,25 +18,46 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const [serverVersion, setServerVersion] = useState("");
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
+    const [downloadTarget, setDownloadTarget] = useState<string>();
 
-    useEffect(() => {
-        async function fetchServerVersion() {
-            if (idToken || authMethod != "JWT") {
-                try {
-                    const version = await getNoTTLVRequest("/version", idToken, serverUrl);
-                    setServerVersion(version);
-                } catch (error) {
-                    console.error("Error fetching server version:", error);
-                    setServerVersion("Unavailable");
-                } finally {
-                    setLoading(false);
-                }
-            } else {
+    const fetchServerVersion = async () => {
+        if (idToken || authMethod != "JWT") {
+            try {
+                const version = await getNoTTLVRequest("/version", idToken, serverUrl);
+                setServerVersion(version);
+            } catch (error) {
+                console.error("Error fetching server version:", error);
+                setServerVersion("Unavailable");
+            } finally {
                 setLoading(false);
             }
+        } else {
+            setLoading(false);
         }
+    }
 
+    const downloadCliUrl = "/download-cli"
+
+    const determineDownloadTarget = async () => {
+        const kmsUrl = serverUrl + downloadCliUrl;
+        const response = await fetch(kmsUrl, {
+            method: "HEAD",
+            credentials: "include",
+            headers: {
+                ...(idToken && { Authorization: `Bearer ${idToken}` }),
+            },
+        });
+
+        if (response.status == 200) {
+            setDownloadTarget(serverUrl + downloadCliUrl)
+        } else {
+            setDownloadTarget('https://package.cosmian.com/cli')
+        }
+    }
+
+    useEffect(() => {
         fetchServerVersion();
+        determineDownloadTarget();
     }, [idToken, authMethod, serverUrl]);
 
     const handleLogout = async () => {
@@ -48,7 +69,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} />
-                    <div className="flex items-center h-full">
+                    <div className="flex items-center h-full" style={{ gap: '16px' }}>
+                        {downloadTarget && <Link to={downloadTarget} target="_blank">
+                            <Button type="primary" shape="round" icon={<DownloadOutlined />}>Download CLI</Button>
+                        </Link>}
                         <Switch
                             className="w-20"
                             checked={isDarkMode}
