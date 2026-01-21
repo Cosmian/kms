@@ -68,6 +68,15 @@ pub struct ImportKekAction {
 impl ImportKekAction {
     #[allow(clippy::expect_used, clippy::unwrap_used, clippy::missing_panics_doc)] // TODO
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
+        // build tags
+        let mut tags = vec![
+            "aws".to_owned(),
+            format!("wrapping_algorithm:{}", self.wrapping_algorithm),
+        ];
+        if let Some(arn) = &self.key_arn {
+            tags.push(format!("key_arn:{arn}"));
+        }
+
         let import_action = ImportSecretDataOrKeyAction {
             key_file: self
                 .kek_file
@@ -84,14 +93,7 @@ impl ImportKekAction {
                 .expect("msg"), // TODO
             key_id: self.key_id.clone(),
             key_format: ImportKeyFormat::Pkcs8Pub, // TODO: idk maybe this should be pkcs1
-            tags: vec![
-                "aws".to_owned(),
-                self.key_arn
-                    .as_ref()
-                    .map(|arn| format!("key_arn:{arn}"))
-                    .unwrap_or_default(),
-                format!("wrapping_algorithm:{}", self.wrapping_algorithm),
-            ],
+            tags,
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
             replace_existing: true,
             ..Default::default()
