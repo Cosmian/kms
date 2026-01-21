@@ -88,12 +88,17 @@ impl PgPool {
         cfg.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
-        if let Some(max) = max_connections {
-            cfg.pool = Some(deadpool_postgres::PoolConfig {
-                max_size: usize::try_from(max).unwrap_or(usize::MAX),
-                ..Default::default()
-            });
-        }
+
+        // Pool sizing defaults: conservative pool tuned to CPU.
+        // Keep behavior consistent with the MySQL backend.
+        let default_conns: usize = num_cpus::get().saturating_mul(2).min(10);
+        let max_conns: usize = max_connections
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(default_conns);
+        cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: max_conns,
+            ..Default::default()
+        });
 
         // Check sslmode parameter (disable, allow, prefer, require, verify-ca, verify-full)
         let sslmode = query_params
@@ -192,6 +197,19 @@ impl PgPool {
             tmp.set_db_state(DbState::Ready).await?;
         }
         Ok(Self { pool })
+    }
+
+    pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        client
+            .query_one("SELECT 1", &[])
+            .await
+            .map(|_| ())
+            .map_err(|e| DbError::DatabaseError(e.to_string()))
     }
 }
 

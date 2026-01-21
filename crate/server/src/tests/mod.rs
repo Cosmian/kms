@@ -5,6 +5,7 @@ mod cover_crypt_tests;
 mod curve_25519_tests;
 mod derive_key_tests;
 pub(crate) mod google_cse;
+mod health_endpoint;
 mod hsm;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]

@@ -19,8 +19,10 @@ const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 
 pub mod access;
 pub mod google_cse;
+pub mod health;
 pub mod kmip;
 pub mod ms_dke;
+pub mod root_redirect;
 pub mod ui_auth;
 
 impl actix_web::error::ResponseError for KmsError {

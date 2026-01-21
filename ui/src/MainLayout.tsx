@@ -6,7 +6,7 @@ import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
-import { AuthMethod, getNoTTLVRequest } from "./utils";
+import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "./utils";
 
 type MainLayoutProps = {
     isDarkMode: boolean;
@@ -16,18 +16,38 @@ type MainLayoutProps = {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod }) => {
     const [serverVersion, setServerVersion] = useState("");
+    const [serverHealth, setServerHealth] = useState<string>("");
+    const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
 
-    const fetchServerVersion = async () => {
+    const serverHealthLabel =
+        serverHealthLatencyMs === null
+            ? `Health: ${serverHealth}`
+            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+    const serverHealthMarker = serverHealth === "DOWN" ? "🔴" : "🟢";
+
+    const fetchServerInfo = async () => {
         if (idToken || authMethod != "JWT") {
             try {
                 const version = await getNoTTLVRequest("/version", idToken, serverUrl);
                 setServerVersion(version);
+                    const health = await getNoTTLVRequestWithTimeout(
+                        "/health",
+                        idToken,
+                        serverUrl,
+                        2_000
+                    );
+                    setServerHealth(health?.status ?? "Unavailable");
+                    setServerHealthLatencyMs(
+                        typeof health?.latency_ms === "number" ? health.latency_ms : null
+                    );
             } catch (error) {
                 console.error("Error fetching server version:", error);
                 setServerVersion("Unavailable");
+                    setServerHealth("Unavailable");
+                    setServerHealthLatencyMs(null);
             } finally {
                 setLoading(false);
             }
@@ -56,7 +76,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     }
 
     useEffect(() => {
-        fetchServerVersion();
+        fetchServerInfo();
         determineDownloadTarget();
     }, [idToken, authMethod, serverUrl]);
 
@@ -102,13 +122,27 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         {loading ? <Spin size="large" /> : <Outlet />}
                     </Layout.Content>
                     <Footer
-                        version={serverVersion ? (() => {
-                            try {
-                                return `${serverVersion}`;
-                            } catch {
-                                return serverVersion;
+                        version={(() => {
+                            const version = serverVersion
+                                ? (() => {
+                                      try {
+                                          return `${serverVersion}`;
+                                      } catch {
+                                          return serverVersion;
+                                      }
+                                  })()
+                                : serverVersion;
+
+                            if (!serverHealth) {
+                                return version;
                             }
-                        })() : serverVersion}
+
+                            if (!version) {
+                                return `${serverHealthMarker} ${serverHealthLabel}`;
+                            }
+
+                            return `${version} — ${serverHealthMarker} ${serverHealthLabel}`;
+                        })()}
                     />
                 </Layout>
             </Layout>

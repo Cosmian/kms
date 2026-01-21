@@ -57,8 +57,9 @@ use crate::{
     routes::{
         access, cli_archive_download, cli_archive_exists, get_version,
         google_cse::{self, GoogleCseConfig},
+        health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke,
+        ms_dke, root_redirect,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -816,6 +817,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
+        // Public endpoints (no authentication)
+        app = app
+            .service(root_redirect::root_redirect_to_ui)
+            .service(health::get_health)
+            .service(get_version);
+
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
@@ -851,7 +858,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
-            .service(get_version)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
