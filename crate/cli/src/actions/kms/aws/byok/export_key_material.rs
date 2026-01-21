@@ -77,12 +77,7 @@ impl ExportByokAction {
             )));
         }
 
-        let key_arn = tags
-            .iter()
-            .find(|t| t.starts_with("key_arn:"))
-            .context(&kek_tag_error("AWS key ARN not found"))?
-            .strip_prefix("key_arn:")
-            .ok_or(KmsCliError::Default(kek_tag_error("invalid arn tag")))?;
+        let key_arn = tags.iter().find_map(|t| t.strip_prefix("key_arn:"));
 
         let wrapping_algorithm_str = tags
             .iter()
@@ -165,7 +160,7 @@ impl ExportByokAction {
             print!("{}", file_path.display());
             eprintln!(
                 "{} for key {}.\n\n\
-         To import into AWS KMS, run:\n\
+         To import into AWS KMS using the API, run:\n\
          aws kms import-key-material \\\n\
              --key-id {} \\\n\
              --encrypted-key-material fileb://{} \\\n\
@@ -173,7 +168,7 @@ impl ExportByokAction {
              --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE",
                 wrapped_key.len(),
                 self.key_id,
-                key_arn,
+                key_arn.unwrap_or("<AWS_KEY_ARN>"),
                 file_path.display(),
                 self.token_file_path.as_ref().map_or_else(
                     || "<IMPORT_TOKEN_FILE>".to_owned(),
