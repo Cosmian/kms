@@ -55,11 +55,18 @@ pub(crate) async fn get_health(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult
         HealthStatus::Down
     };
 
-    Ok(actix_web::HttpResponse::Ok().json(HealthResponse {
+    let response = HealthResponse {
         status: global_status,
         latency_ms: start.elapsed().as_millis(),
         dependencies: Dependencies { database: db_dep },
-    }))
+    };
+
+    let http_response = match response.status {
+        HealthStatus::Up => actix_web::HttpResponse::Ok().json(response),
+        HealthStatus::Down => actix_web::HttpResponse::ServiceUnavailable().json(response),
+    };
+
+    Ok(http_response)
 }
 
 async fn health_dependencies(kms: &Arc<KMS>) -> DependencyHealth {
