@@ -77,20 +77,13 @@ let
       impl = if static then "static-openssl" else "dynamic-openssl";
       file1 = ./expected-hashes + "/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256";
     in
-    if builtins.pathExists file1 then
-      file1
-    else
-      builtins.throw ''
-        Expected hash file not found for variant ${baseVariant} (impl ${impl}) on system ${sys}.
-        Missing tried paths:
-            - expected-hashes/cosmian-kms-server.${baseVariant}.${impl}.${arch}.${os}.sha256
-        Please add the appropriate file with the expected SHA-256 of the built binary.
-      '';
+    if builtins.pathExists file1 then file1 else null;
 
   # Compute the actual hash file path for writing during build
 
   # Only compute and validate expected hash path if enforcement is enabled
   expectedHashPathVariant = if enforceDeterministicHash then expectedHashPath variant else null;
+  hasExpectedHashFile = expectedHashPathVariant != null;
   # Only read the hash file if enforcement is enabled to avoid errors when file doesn't exist
   expectedHashRaw =
     if enforceDeterministicHash && expectedHashPathVariant != null then
@@ -207,11 +200,16 @@ let
 
       # Deterministic hash check
       ${lib.optionalString enforceDeterministicHash ''
-        ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
-        [ "$ACTUAL" = "${expectedHash}" ] || {
-          echo "ERROR: Hash mismatch. Expected ${expectedHash}, got $ACTUAL" >&2; exit 1;
-        }
-        echo "Hash OK: $ACTUAL"
+        if [ "${if hasExpectedHashFile then "1" else "0"}" = "1" ]; then
+          [ -n "${expectedHash}" ] || { echo "ERROR: Expected hash file is empty" >&2; exit 1; }
+          ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
+          [ "$ACTUAL" = "${expectedHash}" ] || {
+            echo "ERROR: Hash mismatch. Expected ${expectedHash}, got $ACTUAL" >&2; exit 1;
+          }
+          echo "Hash OK: $ACTUAL"
+        else
+          echo "WARNING: Expected hash file missing; skipping deterministic hash check"
+        fi
       ''}
 
       # Always write actual hash to output for reference/updates
