@@ -4,11 +4,10 @@
 //!
 //! If ever E2E tests with AWS KMS are to be implemented, simply edit the calls to the functions below to calls to AWS KMS `import-key-material` command.
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
-use jwt_simple::reexports::rand::SeedableRng;
-use jwt_simple::reexports::rand::seq::SliceRandom as _;
 use openssl::cipher::{Cipher, CipherRef};
 use openssl::cipher_ctx::CipherCtx;
 use openssl::{encrypt::Decrypter, hash::MessageDigest};
+use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
 
 use openssl::pkey::{PKey, Private, Public};
 use openssl::rsa::{Padding, Rsa};
@@ -27,7 +26,7 @@ pub(crate) fn generate_rsa_keypair()
     // Randomly select key size from AWS-supported sizes
     let key_sizes = [2048, 3072, 4096];
     let mut rng = CsRng::from_entropy();
-    let bits = *key_sizes.choose(&mut rng).expect("key_sizes is not empty");
+    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     let rsa = Rsa::generate(bits)?;
 
