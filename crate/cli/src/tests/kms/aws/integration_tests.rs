@@ -5,14 +5,14 @@
 //!
 //! | Test Function                          | Wrapping Algorithm        | Key Type           | Key Source         | KEK Import | Export Mode |
 //! |----------------------------------------|---------------------------|--------------------|--------------------|------------|-------------|
-//! | `aws_byok_with_rsa_aes_key_wrap_sha256`| `RSA_AES_KEY_WRAP_SHA_256`| ECC (private key) | KMS (generated)    | Base64     | File (bin)  |
+//! | `aws_byok_with_rsa_aes_key_wrap_sha256`| `RSA_AES_KEY_WRAP_SHA_256`| ECC (private key)  | KMS (generated)    | Base64     | File (bin)  |
 //! | `aws_byok_with_rsaes_oaep_sha256`      | `RSAES_OAEP_SHA_256`      | AES-256            | Test file (imported) | Base64     | Base64      |
 //! | `aws_byok_with_rsaes_oaep_sha1`        | `RSAES_OAEP_SHA_1`        | HMAC               | KMS (generated)    | File (DER) | Base64      |
 //! | `aws_byok_with_rsa_aes_key_wrap_sha1`  | `RSA_AES_KEY_WRA_SHA_1`   | RSA (private key)  | KMS (generated)    | File (DER) | File (bin)  |
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 
-#![allow(unused_imports, clippy::unwrap_used)]
+#![allow(unused_imports, clippy::unwrap_used, clippy::as_conversions)]
 use crate::actions::kms::aws::byok::export_key_material::ExportByokAction;
 use crate::actions::kms::aws::byok::import_kek::ImportKekAction;
 use crate::actions::kms::aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm;
@@ -32,14 +32,12 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::Import
 use cosmian_kms_client::{ExportObjectParams, export_object};
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
 use cosmian_logger::log_init;
-use jwt_simple::reexports::rand::RngCore as _;
-use jwt_simple::reexports::rand::{SeedableRng, seq::SliceRandom as _};
 use openssl::cipher::{Cipher, CipherRef};
-use openssl::{encrypt::Decrypter, hash::MessageDigest};
-use test_kms_server::start_default_test_kms_server;
-
 use openssl::pkey::{PKey, Private, Public};
 use openssl::rsa::{Padding, Rsa};
+use openssl::{encrypt::Decrypter, hash::MessageDigest};
+use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
+use test_kms_server::start_default_test_kms_server;
 use uuid::Uuid;
 
 // Test constants from AWS KMS GetParametersForImport response
@@ -93,7 +91,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
         // TODO: check why the compiler complains abt an optional fields (the kek id)
         kek_base64: Some(public_key_base64),
         kek_file: None,
-        key_arn: TEST_KEY_ARN.to_owned(),
+        key_arn: Some(TEST_KEY_ARN.to_owned()),
         wrapping_algorithm: AwsKmsWrappingAlgorithm::RsaesOaepSha256,
         key_id: None,
     };
@@ -156,7 +154,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
 
     let key_sizes = [224, 256, 384, 512];
     let mut rng = CsRng::from_entropy();
-    let bits = *key_sizes.choose(&mut rng).expect("key_sizes is not empty");
+    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     // Generate a random symmetric key in the kms.
     let cosmian_key_id = CreateKeyAction {
@@ -182,7 +180,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
     let import_action = ImportKekAction {
         kek_base64: None,
         kek_file: Some(kek_file_path.clone()),
-        key_arn: TEST_KEY_ARN.to_owned(),
+        key_arn: Some(TEST_KEY_ARN.to_owned()),
         wrapping_algorithm: AwsKmsWrappingAlgorithm::RsaesOaepSha1,
         key_id: None,
     };
@@ -246,7 +244,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
     // Generate an RSA keypair in the KMS (the key material to wrap will be the private key)
     let key_sizes = [2048, 3072, 4096];
     let mut rng = CsRng::from_entropy();
-    let bits = *key_sizes.choose(&mut rng).expect("key_sizes is not empty");
+    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     let create_keypair_action = CreateRsaKeyPairAction {
         key_size: bits,
@@ -271,7 +269,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
     let import_action = ImportKekAction {
         kek_file: Some(kek_file_path.clone()),
         kek_base64: None,
-        key_arn: TEST_KEY_ARN.to_owned(),
+        key_arn: Some(TEST_KEY_ARN.to_owned()),
         wrapping_algorithm: AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha1,
         key_id: None,
     };
@@ -349,7 +347,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
     let import_action = ImportKekAction {
         kek_base64: Some(public_key_base64),
         kek_file: None,
-        key_arn: TEST_KEY_ARN.to_owned(),
+        key_arn: Some(TEST_KEY_ARN.to_owned()),
         wrapping_algorithm: AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha256,
         key_id: None,
     };

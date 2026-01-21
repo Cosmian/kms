@@ -52,12 +52,12 @@ pub struct ImportKekAction {
     #[clap(short = 'f', long, group = "kek_input")]
     pub(crate) kek_file: Option<PathBuf>,
 
-    /// The Amazon Resource Name (key ARN) of the KMS key.
-    #[clap(short = 'a', long, required = true, verbatim_doc_comment)]
-    pub(crate) key_arn: String,
-
-    #[clap(short = 'w', long, required = true, verbatim_doc_comment)]
+    #[clap(short = 'w', long, required = true)]
     pub(crate) wrapping_algorithm: AwsKmsWrappingAlgorithm,
+
+    /// The Amazon Resource Name (key ARN) of the KMS key. It's recommended to provide it for an easier export later.
+    #[clap(short = 'a', long, required = false)]
+    pub(crate) key_arn: Option<String>,
 
     /// The unique ID of the key in this KMS; a random UUID
     /// is generated if not specified.
@@ -86,7 +86,10 @@ impl ImportKekAction {
             key_format: ImportKeyFormat::Pkcs8Pub, // TODO: idk maybe this should be pkcs1
             tags: vec![
                 "aws".to_owned(),
-                format!("key_arn:{}", self.key_arn),
+                self.key_arn
+                    .as_ref()
+                    .map(|arn| format!("key_arn:{arn}"))
+                    .unwrap_or_default(),
                 format!("wrapping_algorithm:{}", self.wrapping_algorithm),
             ],
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
