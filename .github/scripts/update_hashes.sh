@@ -77,7 +77,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
       drv_path=$(echo "$line" | grep -Eo "'/nix/store/[^']+'" | tr -d "'" || echo "")
       if [ -n "$drv_path" ]; then
         # Extract the package name from the derivation path
-        # e.g., /nix/store/xxx-cosmian-kms-ui-deps-fips-5.14.1-npm-deps.drv -> cosmian-kms-ui-deps-fips-5.14.1-npm-deps
+        # e.g., /nix/store/xxx-cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps.drv -> cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps
         last_drv_name=$(basename "$drv_path" | sed 's/\.drv$//')
       fi
     fi

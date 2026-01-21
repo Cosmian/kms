@@ -66,7 +66,7 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
 
     useEffect(() => {
         setIsDarkMode(initialDarkMode == 'true' ? true : false)
-    }, [])
+    }, [setIsDarkMode])
 
     useEffect(() => {
         localStorage.setItem(LS_DARKMODE_KEY, JSON.stringify(isDarkMode));

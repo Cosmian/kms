@@ -1,6 +1,6 @@
 import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Button, Layout, Spin, Switch, Tag } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
@@ -22,13 +22,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
 
+    const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
+    const isServerHealthy = normalizedServerHealth === "UP";
+
     const serverHealthLabel =
         serverHealthLatencyMs === null
             ? `Health: ${serverHealth}`
             : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
-    const serverHealthMarker = serverHealth === "DOWN" ? "🔴" : "🟢";
+    const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
-    const fetchServerInfo = async () => {
+    const fetchServerInfo = useCallback(async () => {
         if (idToken || authMethod != "JWT") {
             try {
                 const version = await getNoTTLVRequest("/version", idToken, serverUrl);
@@ -54,11 +57,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         } else {
             setLoading(false);
         }
-    }
+    }, [authMethod, idToken, serverUrl]);
 
     const downloadCliUrl = "/download-cli"
 
-    const determineDownloadTarget = async () => {
+    const determineDownloadTarget = useCallback(async () => {
         const kmsUrl = serverUrl + downloadCliUrl;
         const response = await fetch(kmsUrl, {
             method: "HEAD",
@@ -73,12 +76,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         } else {
             setDownloadTarget('https://package.cosmian.com/cli')
         }
-    }
+    }, [downloadCliUrl, idToken, serverUrl]);
 
     useEffect(() => {
         fetchServerInfo();
         determineDownloadTarget();
-    }, [idToken, authMethod, serverUrl]);
+    }, [determineDownloadTarget, fetchServerInfo]);
 
     const handleLogout = async () => {
         await logout();
