@@ -51,7 +51,7 @@ const Sidebar: React.FC = () => {
                 const isCreateItem = item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
 
                 // Check if item is an Import item
-                const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
+                const isImportItem = 0; // TODO: restore this item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
 
                 // Handle disabled state based on access rights
                 if (isCreateItem || isImportItem) {
@@ -97,7 +97,9 @@ const Sidebar: React.FC = () => {
                 .findIndex((key: string) => levelKeys[key] === levelKeys[currentOpenKey]);
 
             setStateOpenKeys(
-                openKeys.filter((_, index: number) => index !== repeatIndex).filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
+                openKeys
+                    .filter((_, index: number) => index !== repeatIndex)
+                    .filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
             );
         } else {
             // close
