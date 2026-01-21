@@ -1,22 +1,25 @@
-import {Button, Card, Form, Input, Space} from "antd";
-import React, {useEffect, useRef, useState} from "react";
-import {useAuth} from "./AuthContext";
-import {downloadFile, sendKmipRequest} from "./utils";
+import { Button, Card, Form, Input, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { downloadFile, sendKmipRequest } from "./utils";
 import {
     export_ttlv_request,
     get_attributes_ttlv_request_with_options,
     parse_export_ttlv_response,
-    parse_get_attributes_ttlv_response
+    parse_get_attributes_ttlv_response,
 } from "./wasm/pkg";
+import ExternalLink from "./components/ExternalLink";
 
 const getTags = (attributes: Map<string, never>): string[] => {
     const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
     if (typeof vendor_attributes !== "undefined") {
-        const attrs_value_map: Map<string, never> | undefined = (vendor_attributes as Array<Map<string, never>>).find((attribute: Map<string, never>) => {
-            return attribute.get("AttributeName") === "tag";
-        })?.get("AttributeValue");
+        const attrs_value_map: Map<string, never> | undefined = (vendor_attributes as Array<Map<string, never>>)
+            .find((attribute: Map<string, never>) => {
+                return attribute.get("AttributeName") === "tag";
+            })
+            ?.get("AttributeValue");
         if (typeof attrs_value_map === "undefined") {
-            return []
+            return [];
         }
         const tags_string = (attrs_value_map as Map<string, string>).get("_c");
         if (tags_string) {
@@ -31,9 +34,8 @@ const getTags = (attributes: Map<string, never>): string[] => {
         }
     }
 
-
-    return []
-}
+    return [];
+};
 
 interface ExportAzureBYOKFormData {
     wrappedKeyId: string;
@@ -45,12 +47,12 @@ const ExportAzureBYOKForm: React.FC = () => {
     const [form] = Form.useForm<ExportAzureBYOKFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const {idToken, serverUrl} = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({behavior: "smooth"});
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
@@ -85,17 +87,13 @@ const ExportAzureBYOKForm: React.FC = () => {
             const tags = getTags(attributes);
 
             if (!tags.includes("azure")) {
-                setRes(
-                    "The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command."
-                );
+                setRes("The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command.");
                 return;
             }
 
             const kidTag = tags.find((t: string) => t.startsWith("kid:"));
             if (!kidTag) {
-                setRes(
-                    "The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command."
-                );
+                setRes("The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command.");
                 return;
             }
 
@@ -178,42 +176,36 @@ const ExportAzureBYOKForm: React.FC = () => {
             <h1 className="text-2xl font-bold mb-6">Export Azure BYOK File</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Wrap a KMS key with an Azure Key Encryption Key (KEK) and generate a .byok file for Azure Key Vault
-                    import.</p>
+                <p>Wrap a KMS key with an Azure Key Encryption Key (KEK) and generate a .byok file for Azure Key Vault import.</p>
                 <p>The KEK must be previously imported using the Import KEK command.</p>
                 <p className="text-sm text-gray-600">
                     See:{" "}
-                    <a
-                        href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                    >
+                    <ExternalLink href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification">
                         Azure BYOK Specification
-                    </a>
+                    </ExternalLink>
                 </p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
-                <Space direction="vertical" size="middle" style={{display: "flex"}}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identifiers (required)</h3>
                         <Form.Item
                             name="wrappedKeyId"
                             label="Wrapped Key ID"
-                            rules={[{required: true, message: "Please enter the wrapped key ID"}]}
+                            rules={[{ required: true, message: "Please enter the wrapped key ID" }]}
                             help="The unique ID of the KMS private key that will be wrapped and exported to Azure"
                         >
-                            <Input placeholder="Enter the KMS key ID to export"/>
+                            <Input placeholder="Enter the KMS key ID to export" />
                         </Form.Item>
 
                         <Form.Item
                             name="kekId"
                             label="Azure KEK ID"
-                            rules={[{required: true, message: "Please enter the KEK ID"}]}
+                            rules={[{ required: true, message: "Please enter the KEK ID" }]}
                             help="The ID of the Azure KEK in this KMS (previously imported using Import KEK)"
                         >
-                            <Input placeholder="Enter the Azure KEK ID"/>
+                            <Input placeholder="Enter the Azure KEK ID" />
                         </Form.Item>
                     </Card>
 
@@ -224,13 +216,12 @@ const ExportAzureBYOKForm: React.FC = () => {
                             label="BYOK Filename"
                             help="The filename for the exported .byok file. If not specified, it will be named <wrapped_key_id>.byok"
                         >
-                            <Input placeholder="custom-filename.byok (optional)"/>
+                            <Input placeholder="custom-filename.byok (optional)" />
                         </Form.Item>
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading}
-                                className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
                             Export BYOK File
                         </Button>
                     </Form.Item>
@@ -245,6 +236,5 @@ const ExportAzureBYOKForm: React.FC = () => {
         </div>
     );
 };
-
 
 export default ExportAzureBYOKForm;
