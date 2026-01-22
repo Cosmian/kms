@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_operations::{RNGRetrieve, RNGRetrieveResponse},
-    cosmian_kms_interfaces::SessionParams,
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+    RNGRetrieve, RNGRetrieveResponse,
 };
 use cosmian_logger::trace;
 use openssl::rand::rand_bytes;
@@ -20,7 +17,6 @@ pub(crate) async fn rng_retrieve(
     _kms: &KMS,
     request: RNGRetrieve,
     _user: &str,
-    _params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<RNGRetrieveResponse> {
     trace!("RNGRetrieve: {}", serde_json::to_string(&request)?);
     let req_len: usize = usize::try_from(request.data_length.max(0))
@@ -65,14 +61,14 @@ mod tests {
         let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
         // Intentionally no owner reference needed in this unit test.
 
-        let resp0 = rng_retrieve(&kms, RNGRetrieve { data_length: 0 }, "user", None).await?;
+        let resp0 = rng_retrieve(&kms, RNGRetrieve { data_length: 0 }, "user").await?;
         if !resp0.data.is_empty() {
             return Err(KmsError::InvalidRequest(
                 "expected empty RNG data for zero-length request".to_owned(),
             ));
         }
 
-        let resp = rng_retrieve(&kms, RNGRetrieve { data_length: 32 }, "user", None).await?;
+        let resp = rng_retrieve(&kms, RNGRetrieve { data_length: 32 }, "user").await?;
         if resp.data.len() != 32 {
             return Err(KmsError::InvalidRequest(
                 "expected RNG to return requested length".to_owned(),

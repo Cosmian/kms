@@ -4,7 +4,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
     kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
-use cosmian_logger::trace;
+use cosmian_logger::{info, trace};
 use openssl::{
     rand::rand_bytes,
     symm::{
@@ -18,7 +18,10 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use super::aes_gcm_siv_not_openssl;
 use crate::{
-    crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+    crypto::symmetric::{
+        rfc3394::{rfc3394_unwrap, rfc3394_wrap},
+        rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+    },
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
 };
@@ -96,18 +99,27 @@ pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
 #[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
 
+// RFC 3394 IV is actually a fixed overhead
+pub const RFC3394_IV_LENGTH: usize = 0;
+/// RFC3394 has no authentication.
+pub const RFC3394_MAC_LENGTH: usize = 0;
+/// RFC 3394 with a 16-byte KEK.
+pub const RFC3394_16_KEY_LENGTH: usize = 16;
+/// RFC 3394 with a 24-byte KEK.
+pub const RFC3394_24_KEY_LENGTH: usize = 24;
+/// RFC 3394 with a 32-byte KEK.
+pub const RFC3394_32_KEY_LENGTH: usize = 32;
+
+// RFC 5649 IV is actually a fixed overhead
+pub const RFC5649_IV_LENGTH: usize = 0;
+/// RFC5649 has no authentication.
+pub const RFC5649_MAC_LENGTH: usize = 0;
 /// RFC 5649 with a 16-byte KEK.
 pub const RFC5649_16_KEY_LENGTH: usize = 16;
-// RFC 5649 IV is actually a fixed overhead
-pub const RFC5649_16_IV_LENGTH: usize = 0;
-/// RFC5649 has no authentication.
-pub const RFC5649_16_MAC_LENGTH: usize = 0;
+/// RFC 5649 with a 24-byte KEK.
+pub const RFC5649_24_KEY_LENGTH: usize = 24;
 /// RFC 5649 with a 32-byte KEK.
 pub const RFC5649_32_KEY_LENGTH: usize = 32;
-// RFC 5649 IV is actually a fixed overhead
-pub const RFC5649_32_IV_LENGTH: usize = 0;
-/// RFC5649 has no authentication.
-pub const RFC5649_32_MAC_LENGTH: usize = 0;
 
 #[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 key length in bytes.
@@ -158,7 +170,11 @@ pub enum SymCipher {
     Aes128Gcm,
     Aes128Xts,
     Aes256Xts,
+    Rfc3394_16,
+    Rfc3394_24,
+    Rfc3394_32,
     Rfc5649_16,
+    Rfc5649_24,
     Rfc5649_32,
     #[cfg(feature = "non-fips")]
     Aes128GcmSiv,
@@ -185,7 +201,12 @@ impl SymCipher {
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
             Self::Aes256Xts => Ok(Cipher::aes_256_xts()),
-            Self::Rfc5649_16 | Self::Rfc5649_32 => {
+            Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => {
+                crypto_bail!(CryptoError::NotSupported(
+                    "RFC3394 is not supported in this version of openssl".to_owned()
+                ))
+            }
+            Self::Rfc5649_16 | Self::Rfc5649_24 | Self::Rfc5649_32 => {
                 crypto_bail!(CryptoError::NotSupported(
                     "RFC5649 is not supported in this version of openssl".to_owned()
                 ))
@@ -219,8 +240,8 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             Self::Aes128Xts => AES_128_XTS_MAC_LENGTH,
             Self::Aes256Xts => AES_256_XTS_MAC_LENGTH,
-            Self::Rfc5649_16 => RFC5649_16_MAC_LENGTH,
-            Self::Rfc5649_32 => RFC5649_32_MAC_LENGTH,
+            Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => RFC3394_MAC_LENGTH,
+            Self::Rfc5649_16 | Self::Rfc5649_24 | Self::Rfc5649_32 => RFC5649_MAC_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
             #[cfg(feature = "non-fips")]
@@ -247,8 +268,8 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             Self::Aes128Xts => AES_128_XTS_TWEAK_LENGTH,
             Self::Aes256Xts => AES_256_XTS_TWEAK_LENGTH,
-            Self::Rfc5649_16 => RFC5649_16_IV_LENGTH,
-            Self::Rfc5649_32 => RFC5649_32_IV_LENGTH,
+            Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => RFC3394_IV_LENGTH,
+            Self::Rfc5649_16 | Self::Rfc5649_24 | Self::Rfc5649_32 => RFC5649_IV_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
             #[cfg(feature = "non-fips")]
@@ -275,7 +296,11 @@ impl SymCipher {
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             Self::Aes128Xts => AES_128_XTS_KEY_LENGTH,
             Self::Aes256Xts => AES_256_XTS_KEY_LENGTH,
+            Self::Rfc3394_16 => RFC3394_16_KEY_LENGTH,
+            Self::Rfc3394_24 => RFC3394_24_KEY_LENGTH,
+            Self::Rfc3394_32 => RFC3394_32_KEY_LENGTH,
             Self::Rfc5649_16 => RFC5649_16_KEY_LENGTH,
+            Self::Rfc5649_24 => RFC5649_24_KEY_LENGTH,
             Self::Rfc5649_32 => RFC5649_32_KEY_LENGTH,
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
@@ -344,11 +369,21 @@ impl SymCipher {
                              {key_size} bytes",
                         ))),
                     },
-                    BlockCipherMode::NISTKeyWrap => match key_size {
+                    BlockCipherMode::AESKeyWrapPadding => match key_size {
                         RFC5649_16_KEY_LENGTH => Ok(Self::Rfc5649_16),
+                        RFC5649_24_KEY_LENGTH => Ok(Self::Rfc5649_24),
                         RFC5649_32_KEY_LENGTH => Ok(Self::Rfc5649_32),
                         _ => crypto_bail!(CryptoError::NotSupported(format!(
-                            "RFC5649 key must be 16 or 32 bytes long. Found {key_size} bytes",
+                            "RFC5649 key must be 16, 24 or 32 bytes long. Found {key_size} \
+                             bytes",
+                        ))),
+                    },
+                    BlockCipherMode::NISTKeyWrap => match key_size {
+                        RFC3394_16_KEY_LENGTH => Ok(Self::Rfc3394_16),
+                        RFC3394_24_KEY_LENGTH => Ok(Self::Rfc3394_24),
+                        RFC3394_32_KEY_LENGTH => Ok(Self::Rfc3394_32),
+                        _ => crypto_bail!(CryptoError::NotSupported(format!(
+                            "RFC3394 key must be 16, 24 or 32 bytes long. Found {key_size} bytes",
                         ))),
                     },
                     mode => {
@@ -511,8 +546,14 @@ pub fn encrypt(
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
         }
-        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => {
+        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_24 | SymCipher::Rfc5649_32 => {
             Ok((rfc5649_wrap(plaintext, key)?, vec![]))
+        }
+        SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
+            info!(
+                "RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
+            );
+            Ok((rfc3394_wrap(plaintext, key)?, vec![]))
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Chacha20 => {
@@ -657,7 +698,15 @@ pub fn decrypt(
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
             aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
         }
-        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_32 => rfc5649_unwrap(ciphertext, key)?,
+        SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
+            info!(
+                "RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `."
+            );
+            rfc3394_unwrap(ciphertext, key)?
+        }
+        SymCipher::Rfc5649_16 | SymCipher::Rfc5649_24 | SymCipher::Rfc5649_32 => {
+            rfc5649_unwrap(ciphertext, key)?
+        }
         #[cfg(feature = "non-fips")]
         SymCipher::Chacha20 => {
             if key.len() != CHACHA20_KEY_LENGTH {

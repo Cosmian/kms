@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 echo "========================================="
 echo "Running SoftHSM2 HSM tests"
@@ -65,6 +64,8 @@ env \
   "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
+echo "SoftHSM2 KMS server tests completed successfully."
+
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
@@ -78,4 +79,4 @@ env \
   --features softhsm2 \
   -- tests::test_hsm_softhsm2_all --ignored
 
-echo "SoftHSM2 HSM tests completed successfully."
+echo "SoftHSM2 Loader tests completed successfully."

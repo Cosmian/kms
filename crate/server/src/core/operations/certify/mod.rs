@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashSet, default::Default, sync::Arc};
+use std::{cmp::min, collections::HashSet, default::Default};
 
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -32,7 +32,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl, openssl_certificate_to_kmip,
         openssl_x509_to_certificate_attributes, x509_extensions,
     },
-    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, SessionParams},
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::{
@@ -73,7 +73,6 @@ pub(crate) async fn certify(
     kms: &KMS,
     request: Certify,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CertifyResponse> {
     trace!("{}", serde_json::to_string(&request)?);
@@ -85,16 +84,9 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = Box::pin(get_subject(
-        kms,
-        &request,
-        user,
-        params.clone(),
-        privileged_users,
-    ))
-    .await?;
+    let subject = Box::pin(get_subject(kms, &request, user, privileged_users)).await?;
     trace!("Subject name: {:?}", subject.subject_name());
-    let issuer = Box::pin(get_issuer(&subject, kms, &request, user, params.clone())).await?;
+    let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
 
@@ -232,7 +224,7 @@ pub(crate) async fn certify(
     };
 
     // perform DB operations
-    kms.database.atomic(user, &operations, params).await?;
+    kms.database.atomic(user, &operations).await?;
 
     Ok(CertifyResponse { unique_identifier })
 }
@@ -281,7 +273,7 @@ async fn get_subject(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
+
     privileged_users: Option<Vec<String>>,
 ) -> KResult<Subject> {
     // Did the user provide a CSR?
@@ -313,7 +305,6 @@ async fn get_subject(
             KmipOperation::Certify,
             kms,
             user,
-            params.clone(),
         ))
         .await
         {
@@ -378,7 +369,6 @@ async fn get_subject(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
-            params,
         )
         .await?;
 
@@ -452,7 +442,6 @@ async fn get_issuer<'a>(
     kms: &KMS,
     request: &Certify,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) =
         request
@@ -480,17 +469,13 @@ async fn get_issuer<'a>(
 
     if issuer_certificate_id.is_none() && issuer_private_key_id.is_none() {
         // If no issuer is provided, the subject is self-signed
-        return Box::pin(issuer_for_self_signed_certificate(
-            subject, kms, user, params,
-        ))
-        .await;
+        return Box::pin(issuer_for_self_signed_certificate(subject, kms, user)).await;
     }
     let (issuer_private_key, issuer_certificate) = retrieve_issuer_private_key_and_certificate(
         issuer_private_key_id.map(|id| id.to_string()),
         issuer_certificate_id.map(|id| id.to_string()),
         kms,
         user,
-        params,
     )
     .await?;
     Ok(Issuer::PrivateKeyAndCertificate(
@@ -505,7 +490,6 @@ async fn fetch_object_from_attributes(
     kms: &KMS,
     attributes: &Attributes,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = Box::pin(retrieve_object_for_operation(
@@ -513,7 +497,6 @@ async fn fetch_object_from_attributes(
             KmipOperation::Certify,
             kms,
             user,
-            params,
         ))
         .await?;
         return Ok(Some(object));
@@ -525,7 +508,6 @@ async fn issuer_for_self_signed_certificate<'a>(
     subject: &'a Subject,
     kms: &KMS,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {
@@ -543,7 +525,6 @@ async fn issuer_for_self_signed_certificate<'a>(
                 kms,
                 certificate_attributes,
                 user,
-                params,
             )
             .await?
             .ok_or_else(|| {
@@ -566,7 +547,6 @@ async fn issuer_for_self_signed_certificate<'a>(
                 kms,
                 public_key.attributes(),
                 user,
-                params.clone(),
             )
             .await?
             .ok_or_else(|| {
@@ -582,7 +562,6 @@ async fn issuer_for_self_signed_certificate<'a>(
                 kms,
                 public_key.attributes(),
                 user,
-                params.clone(),
             )
             .await?;
             match certificate {

@@ -779,6 +779,29 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "non-fips")]
+    fn test_conversion_ec_k_256_public_key() {
+        let key_size = 256;
+        let ec_group = EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+
+        let ec_point = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let ec_public_key = EcKey::from_public_key(&ec_group, &ec_point).unwrap();
+
+        let public_key = PKey::from_ec_key(ec_public_key).unwrap();
+
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
+
+        test_public_key_conversion_transparent_ec(
+            &public_key,
+            Some(&ec_group),
+            RecommendedCurve::SECP256K1,
+            Id::EC,
+            key_size,
+        );
+    }
+
+    #[test]
     fn test_conversion_ec_p_224_public_key() {
         // Load FIPS provider module from OpenSSL.
         #[cfg(not(feature = "non-fips"))]

@@ -56,7 +56,6 @@ async fn init_test_kms(dump_filename: &str) -> KResult<Arc<KMS>> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url.clone()),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };
@@ -107,13 +106,12 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 ..Locate::default()
             },
             owner,
-            None,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 5);
 
     // verify permission boundaries: normal user can only "get" 1 key (with the same request)
-    let locate_response = kms.locate(locate, user, None).await?;
+    let locate_response = kms.locate(locate, user).await?;
     assert_eq!(locate_response.located_items.unwrap(), 1);
 
     // but he hasn't enough rights to, for example, revoke it
@@ -129,7 +127,6 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 cascade: true,
             },
             user,
-            None,
         )
         .await;
     revoke_response.unwrap_err();
@@ -161,7 +158,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
             attributes: key_attrs,
             ..Locate::default()
         };
-        let specific_response = kms.locate(locate_specific, owner, None).await?;
+        let specific_response = kms.locate(locate_specific, owner).await?;
 
         let found_count = specific_response.located_items.unwrap();
 
@@ -190,7 +187,6 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
                 ..Decrypt::default()
             },
             owner,
-            None,
         )
         .await?;
 
@@ -249,7 +245,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
         database_type: Some("redis-findex".to_owned()),
         database_url: Some(redis_url),
         redis_master_password: Some("password".to_owned()),
-        redis_findex_label: Some("label".to_owned()),
         clear_database: false,
         ..Default::default()
     };
@@ -268,7 +263,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                 ..Locate::default()
             },
             owner,
-            None,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 0);
@@ -283,7 +277,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                 ..Locate::default()
             },
             owner,
-            None,
         )
         .await?;
     assert_eq!(locate_response.located_items.unwrap(), 1);
@@ -301,7 +294,6 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
                 cascade: true,
             },
             owner,
-            None,
         )
         .await;
     revoke_response.unwrap_err();

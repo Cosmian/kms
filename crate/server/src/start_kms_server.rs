@@ -32,10 +32,16 @@ use cosmian_kms_server_database::reexport::{
         kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         requests::{create_rsa_key_pair_request, import_object_request},
     },
-    cosmian_kms_crypto::openssl::kmip_private_key_to_openssl,
+    cosmian_kms_crypto::{
+        crypto::password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
+        openssl::kmip_private_key_to_openssl,
+    },
 };
 use cosmian_logger::{debug, error, info, trace};
-use openssl::ssl::SslAcceptorBuilder;
+use openssl::{
+    hash::{Hasher, MessageDigest},
+    ssl::SslAcceptorBuilder,
+};
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
 use crate::{
@@ -49,10 +55,11 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, get_version,
+        access, cli_archive_download, cli_archive_exists, get_version,
         google_cse::{self, GoogleCseConfig},
+        health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke,
+        ms_dke, root_redirect,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -103,7 +110,6 @@ pub async fn handle_google_cse_rsa_keypair(
                 attribute_reference: None,
             },
             &server_params.default_username,
-            None,
         )
         .await
     {
@@ -134,7 +140,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username, None, None)
+                .create_key_pair(create_request, &server_params.default_username, None)
                 .await
                 .map(|cr| {
                     (
@@ -161,7 +167,6 @@ pub async fn handle_google_cse_rsa_keypair(
                     attribute_reference: None,
                 },
                 &server_params.default_username,
-                None,
             )
             .await
         {
@@ -287,12 +292,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(
-            import_request_sk,
-            &server_params.default_username,
-            None,
-            None,
-        )
+        kms_server.import(import_request_sk, &server_params.default_username, None)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -304,12 +304,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(
-            import_request_pk,
-            &server_params.default_username,
-            None,
-            None,
-        )
+        kms_server.import(import_request_pk, &server_params.default_username, None)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -485,6 +480,77 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
     }
 }
 
+/// Derive a session cookie encryption key from the public URL and a user-provided salt.
+///
+/// This function creates a deterministic key from the public URL and salt to ensure that
+/// multiple server instances in a load-balanced setup can decrypt session cookies
+/// created by any instance.
+///
+/// The key derivation uses:
+/// - In FIPS mode: PBKDF2 with SHA-512
+/// - In non-FIPS mode: Argon2
+///
+/// # Security Considerations
+///
+/// The salt MUST be:
+/// 1. A secret value configured by the user
+/// 2. Identical across all KMS instances behind the same load balancer
+/// 3. Kept confidential to prevent key derivation attacks
+///
+/// # Versioning
+///
+/// The version string (v1) allows for future algorithm changes. If the derivation
+/// algorithm needs to change, increment the version to ensure backward compatibility
+/// during rolling upgrades.
+///
+/// # Arguments
+///
+/// * `public_url` - The public URL of the KMS server
+/// * `user_salt` - A user-provided secret salt (must not be empty)
+///
+/// # Returns
+///
+/// Returns a 64-byte `Key` suitable for actix-web session cookie encryption.
+///
+/// # Errors
+///
+/// Returns `KmsError` if key derivation fails.
+fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key> {
+    // Version prefix allows for future algorithm changes
+    const VERSION: &str = "v1";
+
+    // Create a URL-specific salt by combining salt seed, version, and URL
+    // This ensures different URLs get different salts while maintaining determinism
+    let salt_input = format!("{user_salt}{VERSION}{public_url}");
+
+    // Hash the salt input to get a fixed-size salt
+    // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
+    let mut hasher = Hasher::new(MessageDigest::sha256())
+        .map_err(|e| KmsError::ServerError(format!("Failed to create hasher: {e}")))?;
+    hasher
+        .update(salt_input.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to hash salt input: {e}")))?;
+    let hash = hasher
+        .finish()
+        .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
+
+    // Extract first FIPS_MIN_SALT_SIZE bytes as salt
+    // SHA-256 produces 32 bytes and FIPS_MIN_SALT_SIZE is 16, so this is always safe
+    let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
+    // This indexing is safe because SHA-256 always produces 32 bytes >= FIPS_MIN_SALT_SIZE (16)
+    #[allow(clippy::indexing_slicing)]
+    {
+        salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
+    }
+
+    // Derive a 64-byte key from the public URL
+    let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
+
+    // Convert the derived key to an actix-web Key
+    Ok(Key::from(derived_key.as_ref()))
+}
+
 /// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
@@ -615,9 +681,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
-    // Generate key for actix session cookie encryption and elements for UI exposure
-    let secret_key: Key = Key::generate();
-
+    // Compute the public URL first so we can use it to derive the session key
     let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
         format!(
             "http{}://{}:{}",
@@ -626,6 +690,15 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             &kms_server.params.http_port
         )
     });
+
+    // Derive or generate key for actix session cookie encryption
+    // If session_salt is provided, derive a deterministic key for load-balanced setups
+    // Otherwise, generate a random key (for setups without UI or load balancing)
+    let secret_key: Key = if let Some(ref salt) = kms_server.params.ui_session_salt {
+        derive_session_key_from_url(&kms_public_url, salt)?
+    } else {
+        Key::generate()
+    };
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -744,6 +817,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
+        // Public endpoints (no authentication)
+        app = app
+            .service(root_redirect::root_redirect_to_ui)
+            .service(health::get_health)
+            .service(get_version);
+
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
             .app_data(Data::new(privileged_users.clone()))
@@ -779,7 +858,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
-            .service(get_version);
+            .service(
+                web::resource("/download-cli")
+                    .route(web::get().to(cli_archive_download))
+                    .route(web::head().to(cli_archive_exists)),
+            );
 
         app.service(default_scope)
     })
@@ -852,4 +935,82 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     }
 
     Ok(builder)
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_derive_session_key_deterministic() {
+        // Load the appropriate provider if available
+        #[cfg(not(feature = "non-fips"))]
+        {
+            drop(openssl::provider::Provider::load(None, "fips"));
+        }
+
+        let url1 = "https://kms.example.com:9998";
+        let url2 = "https://kms.example.com:9998";
+        let url3 = "https://kms.different.com:9998";
+        let salt = "test_secret_salt";
+
+        // Same URL and salt should generate the same key
+        let key1 = derive_session_key_from_url(url1, salt).expect("Failed to derive key 1");
+        let key2 = derive_session_key_from_url(url2, salt).expect("Failed to derive key 2");
+
+        // Extract the key bytes for comparison
+        let key1_bytes = key1.master();
+        let key2_bytes = key2.master();
+
+        assert_eq!(
+            key1_bytes, key2_bytes,
+            "Same URL and salt should generate identical keys"
+        );
+
+        // Different URL should generate different key
+        let key3 = derive_session_key_from_url(url3, salt).expect("Failed to derive key 3");
+        let key3_bytes = key3.master();
+
+        assert_ne!(
+            key1_bytes, key3_bytes,
+            "Different URLs should generate different keys"
+        );
+
+        // Different salt should generate different key
+        let key4 =
+            derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
+        let key4_bytes = key4.master();
+
+        assert_ne!(
+            key1_bytes, key4_bytes,
+            "Different salts should generate different keys"
+        );
+
+        // Verify key length is 64 bytes
+        assert_eq!(key1_bytes.len(), 64, "Key should be 64 bytes");
+    }
+
+    #[test]
+    fn test_derive_session_key_determinism() {
+        // Load the appropriate provider if available
+        #[cfg(not(feature = "non-fips"))]
+        {
+            drop(openssl::provider::Provider::load(None, "fips"));
+        }
+
+        let url = "https://kms.example.com:9998";
+        let salt = "my_secret_salt";
+
+        // Same URL and salt should always produce the same key
+        let key1 = derive_session_key_from_url(url, salt).expect("Failed to derive key 1");
+        let key2 = derive_session_key_from_url(url, salt).expect("Failed to derive key 2");
+
+        // Should be deterministic
+        assert_eq!(
+            key1.master(),
+            key2.master(),
+            "Keys with same URL and salt should be identical"
+        );
+    }
 }

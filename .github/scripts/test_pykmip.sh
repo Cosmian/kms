@@ -17,38 +17,56 @@ fi
 VARIANT="non-fips"
 FEATURES_FLAG=(--features non-fips)
 
-# Call setup_fips_openssl_env AFTER setting VARIANT to ensure correct OpenSSL config
-setup_fips_openssl_env
-
 # Default KMS config (can be overridden by env before invoking nix.sh)
 : "${COSMIAN_KMS_CONF:=$REPO_ROOT/scripts/kms.toml}"
 export COSMIAN_KMS_CONF
 
+# Ensure Python's ssl module can initialize: avoid custom OpenSSL config used by Rust OpenSSL.
+# Do NOT clear LD_LIBRARY_PATH; keep Nix-provided runtime consistent to avoid GLIBC mismatches.
+unset OPENSSL_CONF OPENSSL_MODULES || true
+
 # Ensure Python is available (nix.sh sets WITH_PYTHON=1 which adds python311 + virtualenv)
 require_cmd python3 "Python 3 is required. Re-run via 'bash .github/scripts/nix.sh test pykmip' so nix-shell can provide it."
 
-# Prepare a throwaway virtualenv under target/tmp if none exists
+# Prefer Nix-provided Python (3.11) which is compatible with PyKMIP
+# The system Python may be too new (3.12+) which lacks ssl.wrap_socket
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
+echo "Using Python interpreter: $PYTHON_BIN"
+
+# Verify ssl module is available in chosen Python
+if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "$PYTHON_BIN" - <<'PY'; then
+import ssl, sys
+print("SSL OK:", ssl.OPENSSL_VERSION)
+PY
+  echo "Error: Selected Python has no working ssl module. Please install system Python with OpenSSL (e.g., python3 + libssl)." >&2
+  exit 1
+fi
+
+# Prepare a throwaway virtualenv under .venv if none exists
 VENV_DIR="$REPO_ROOT/.venv"
 if [ ! -d "$VENV_DIR" ]; then
   echo "Creating Python virtual environment at $VENV_DIR …"
+  # Use virtualenv from Nix which handles pip installation properly
   if command -v virtualenv >/dev/null 2>&1; then
-    virtualenv -p python3 "$VENV_DIR"
+    env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES virtualenv -p "$PYTHON_BIN" "$VENV_DIR"
   else
-    python3 -m venv "$VENV_DIR"
+    echo "Error: virtualenv command not found. Ensure WITH_PYTHON=1 is set in nix-shell." >&2
+    exit 1
   fi
 fi
 # Activate venv and ensure pip works
 # shellcheck disable=SC1090
 source "$VENV_DIR/bin/activate"
-python -m pip install --upgrade pip >/dev/null
+echo "Upgrading pip in virtual environment…"
+env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -m pip install --upgrade pip
 
 # Install PyKMIP if not already present
-if ! python -c "import kmip" >/dev/null 2>&1; then
+if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -c "import kmip" >/dev/null 2>&1; then
   echo "Installing PyKMIP into virtualenv …"
   # Prefer a straightforward install; fall back to dev head if needed
-  if ! python -m pip install --no-compile PyKMIP >/dev/null; then
+  if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -m pip install --no-compile PyKMIP >/dev/null; then
     echo "Falling back to installing PyKMIP from GitHub…"
-    python -m pip install --no-compile git+https://github.com/OpenKMIP/PyKMIP.git
+    env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -m pip install --no-compile git+https://github.com/OpenKMIP/PyKMIP.git
   fi
 fi
 
@@ -56,15 +74,38 @@ fi
 pushd "$REPO_ROOT" >/dev/null
 cargo build --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
 
-# Clean up any previous server on the same port
 KMS_PORT=9998
+KMIP_PORT=15696
+
+# Clean up any previous server on the same ports (HTTP and KMIP)
+free_port() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    local pids
+    pids=$(ss -ltnp 2>/dev/null | awk -v p=":$port" '$4 ~ p {gsub(/.*pid=([0-9]+).*/,"\\1",$NF); print $NF}')
+    if [ -n "$pids" ]; then
+      echo "Freeing port $port (PIDs: $pids) …"
+      # shellcheck disable=SC2086
+      kill $pids 2>/dev/null || true
+    fi
+  elif command -v lsof >/dev/null 2>&1; then
+    local pids
+    pids=$(lsof -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      echo "Freeing port $port (PIDs: $pids) …"
+      # shellcheck disable=SC2086
+      kill $pids 2>/dev/null || true
+    fi
+  fi
+}
+
+free_port "$KMS_PORT"
+free_port "$KMIP_PORT"
 
 # Start server
-set +e
 RUST_LOG=${RUST_LOG:-warn} COSMIAN_KMS_CONF="$COSMIAN_KMS_CONF" \
   cargo run --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} &
 KMS_PID=$!
-set -e
 
 # Ensure we stop the server on exit
 # shellcheck disable=SC2329
@@ -82,16 +123,16 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Wait for the port to be ready
-if _wait_for_port 127.0.0.1 "$KMS_PORT" 20; then
-  echo "KMS is up on port $KMS_PORT. Running PyKMIP tests…"
+if _wait_for_port 127.0.0.1 "$KMS_PORT" 20 && _wait_for_port 127.0.0.1 "$KMIP_PORT" 20; then
+  echo "KMS is up on ports $KMS_PORT (HTTP) and $KMIP_PORT (KMIP). Running PyKMIP tests…"
 else
-  echo "Error: KMS did not start on port $KMS_PORT in time." >&2
+  echo "Error: KMS did not start on required ports in time." >&2
   exit 1
 fi
 
 # Run the PyKMIP test runner (expects venv already active)
 # Use 'all' to exercise a suite of operations
-bash "$REPO_ROOT/scripts/test_pykmip.sh" all
+env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES bash "$REPO_ROOT/scripts/test_pykmip.sh" all
 PYKMIP_STATUS=$?
 
 popd >/dev/null

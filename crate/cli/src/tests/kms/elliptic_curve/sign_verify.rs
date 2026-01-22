@@ -391,20 +391,25 @@ async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
     let digest = sha2::Sha256::digest(&data);
 
     // Build curve list according to feature gating
-    let mut curves = vec![
+    #[cfg(not(feature = "non-fips"))]
+    let curves = vec![
         Curve::NistP224,
         Curve::NistP256,
         Curve::NistP384,
         Curve::NistP521,
     ];
     #[cfg(feature = "non-fips")]
-    {
-        curves.push(Curve::Ed448);
-        curves.push(Curve::Ed25519);
-        curves.push(Curve::NistP192);
-        curves.push(Curve::Secp256k1);
-        curves.push(Curve::Secp224k1);
-    }
+    let curves = vec![
+        Curve::NistP224,
+        Curve::NistP256,
+        Curve::NistP384,
+        Curve::NistP521,
+        Curve::Ed448,
+        Curve::Ed25519,
+        Curve::NistP192,
+        Curve::Secp256k1,
+        Curve::Secp224k1,
+    ];
 
     for curve in curves {
         // Try to create the key pair; if the curve isn't supported in this build, skip it

@@ -114,18 +114,15 @@ pub const AES_256_GCM_SIV_IV_LENGTH: usize = 12;
 #[cfg(feature = "non-fips")]
 pub const AES_256_GCM_SIV_MAC_LENGTH: usize = 16;
 
-/// RFC 5649 with a 16-byte KEK.
-pub const RFC5649_16_KEY_LENGTH: usize = 16;
+// RFC 3394 IV is actually a fixed overhead
+pub const RFC3394_IV_LENGTH: usize = 0;
+/// RFC3394 has no authentication.
+pub const RFC3394_MAC_LENGTH: usize = 0;
+
 // RFC 5649 IV is actually a fixed overhead
-pub const RFC5649_16_IV_LENGTH: usize = 0;
+pub const RFC5649_IV_LENGTH: usize = 0;
 /// RFC5649 has no authentication.
-pub const RFC5649_16_MAC_LENGTH: usize = 0;
-/// RFC 5649 with a 32-byte KEK.
-pub const RFC5649_32_KEY_LENGTH: usize = 32;
-// RFC 5649 IV is actually a fixed overhead
-pub const RFC5649_32_IV_LENGTH: usize = 0;
-/// RFC5649 has no authentication.
-pub const RFC5649_32_MAC_LENGTH: usize = 0;
+pub const RFC5649_MAC_LENGTH: usize = 0;
 
 #[cfg(feature = "non-fips")]
 /// Chacha20-Poly1305 key length in bytes.
@@ -156,7 +153,8 @@ pub fn parse_decrypt_elements(
             }
             BlockCipherMode::CBC => (AES_128_CBC_IV_LENGTH, AES_128_CBC_MAC_LENGTH),
             BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
-            BlockCipherMode::NISTKeyWrap => (RFC5649_16_IV_LENGTH, RFC5649_16_MAC_LENGTH),
+            BlockCipherMode::AESKeyWrapPadding => (RFC5649_IV_LENGTH, RFC5649_MAC_LENGTH),
+            BlockCipherMode::NISTKeyWrap => (RFC3394_IV_LENGTH, RFC3394_MAC_LENGTH),
             _ => {
                 return Err(UtilsError::Default(
                     "Unsupported block cipher mode".to_owned(),

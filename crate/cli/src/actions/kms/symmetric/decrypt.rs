@@ -390,7 +390,6 @@ impl DecryptAction {
         // determine the DEM parameters
         let dem_cryptographic_parameters: CryptographicParameters =
             data_encryption_algorithm.into();
-
         trace!("dek length {}", dek.len());
         let sym_cipher = SymCipher::from_algorithm_and_key_size(
             dem_cryptographic_parameters

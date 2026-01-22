@@ -8,7 +8,6 @@ source "$SCRIPT_DIR/common.sh"
 
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 # Ensure required tools are available when running outside Nix
 require_cmd cargo "Cargo is required to build and run tests. Install Rust (rustup) and retry."

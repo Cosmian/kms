@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/common.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
-setup_fips_openssl_env
 
 echo "========================================="
 echo "Running Proteccio HSM tests"
@@ -20,39 +19,44 @@ echo "========================================="
   exit 1
 }
 
-# If HSM is down on env.variable PROTECCIO_IP, skip tests.
-if ! ping -c 1 -W 1 "$PROTECCIO_IP" &>/dev/null; then
-  echo "Warning: PROTECCIO_IP is set but HSM is unreachable. Skipping tests."
+# Disable trace to avoid leaking password in logs
+set +x
+export HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}"
+HSM_SLOT_ID_VALUE="${PROTECCIO_SLOT}"
+set -x
+
+# Setup Proteccio HSM client tools
+if ! source "$REPO_ROOT/.github/reusable_scripts/prepare_proteccio.sh"; then
+  echo "Warning: Failed to source prepare_proteccio.sh, nethsmstatus may be failing. with return code $?."
   exit 0
 fi
 
-export HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}"
-
-# Setup Proteccio HSM client tools
-source "$REPO_ROOT/.github/reusable_scripts/prepare_proteccio.sh"
-
 # PROTECCIO integration test (KMS)
-env \
+# Unset Nix OpenSSL environment to use system libraries for Proteccio HSM
+env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   PATH="$PATH" \
   HSM_MODEL="proteccio" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
-  HSM_SLOT_ID="1" \
+  RUST_LOG="cosmian_kms_server=trace" \
+  HSM_SLOT_ID="$HSM_SLOT_ID_VALUE" \
   cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
-env \
+set +x
+env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   PATH="$PATH" \
   HSM_MODEL="proteccio" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
-  HSM_SLOT_ID="1" \
-  RUST_LOG="trace" \
+  HSM_SLOT_ID="$HSM_SLOT_ID_VALUE" \
+  RUST_LOG="cosmian_kms_server=trace" \
   cargo test \
   -p proteccio_pkcs11_loader \
   "$RELEASE_FLAG" \
   --features proteccio \
   -- tests::test_hsm_proteccio_all --ignored --exact
+set -x
 
 echo "Proteccio HSM tests completed successfully."

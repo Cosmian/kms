@@ -55,7 +55,6 @@ hostname = "0.0.0.0"
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
 redis_master_password = "master-password"
-redis_findex_label = "label"
 ```
 
 For testing purposes (connectivity, features, etc.), KMS server can also use a SQLite database by modifying the
@@ -119,15 +118,12 @@ hostname = "0.0.0.0"
 database_type = "redis-findex"
 database_url = "redis://<EXTERNAL_HOSTNAME_OR_IP>:6379"
 redis_master_password = "master-password"
-redis_findex_label = "label"
 ```
 
 - The database type `redis-findex` is a Redis database with encrypted data and
   encrypted indexes thanks to Cosmian Findex.
 - The `database_url` points to the Redis, typically an external managed Redis database.
 - The `redis_master_password` is used to encrypt the Redis data and indexes.
-- The `redis_findex_label` is a public arbitrary label that can be changed
-  to rotate the Findex ciphertexts without changing the key.
 
 ### Service
 
@@ -150,7 +146,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"5.14.1"
+"5.15.0"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"

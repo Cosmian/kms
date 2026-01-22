@@ -105,7 +105,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md
+        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/server_cli.md
 
   - repo: https://github.com/psf/black
     rev: 25.1.0
@@ -164,6 +164,15 @@ repos:
 
   - repo: local
     hooks:
+      # Remove folders result*
+      - id: clean-result-folders
+        name: Clean result* folders
+        entry: bash .github/scripts/clean_result.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [manual]
+
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
         entry: bash .github/scripts/test_sqlite.sh --variant fips
@@ -192,7 +201,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)

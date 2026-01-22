@@ -1,0 +1,20 @@
+{
+  "spec_version": "1.0.0",
+  "build": {
+    "variant": "fips",
+    "derivation": "openssl312",
+    "output_path": "/nix/store/p7lasxyvyk6gixqd4hc12qngc2diil7f-openssl-3.1.2",
+    "timestamp": "2026-01-04T07:48:37Z",
+    "generator": {
+      "tool": "sbomnix",
+      "version": "1.7.3"
+    }
+  },
+  "component_count": 9,
+  "vulnerability_count": 262,
+  "notes": [
+    "OpenSSL is statically linked in the binary",
+    "All dependencies are from Nix store with pinned versions",
+    "SBOM includes runtime dependencies only"
+  ]
+}

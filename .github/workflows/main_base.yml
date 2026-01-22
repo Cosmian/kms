@@ -55,11 +55,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: With bash test script
-        run: |
-          set -ex
-          bash .github/scripts/test_${{ matrix.type }}.sh --profile debug --variant ${{ matrix.features }}
-
       - name: With cargo only
         run: |
           set -ex
@@ -79,7 +74,8 @@ jobs:
       token: ${{ secrets.CRATES_IO }}
 
   test: # Run all tests
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
     with:
@@ -87,7 +83,7 @@ jobs:
       debug_or_release: ${{ inputs.debug_or_release }}
 
   public_documentation:
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/') || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 

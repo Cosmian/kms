@@ -11,6 +11,7 @@ source "$REPO_ROOT/.github/scripts/common.sh"
 # Determine variant and link mode from CLI arguments
 VARIANT="fips"
 LINK="static"
+ENFORCE_DETERMINISTIC_HASH="${ENFORCE_DETERMINISTIC_HASH:-false}"
 while [ $# -gt 0 ]; do
   case "$1" in
   -v | --variant)
@@ -19,6 +20,10 @@ while [ $# -gt 0 ]; do
     ;;
   -l | --link)
     LINK="${2:-}"
+    shift 2 || true
+    ;;
+  --enforce-deterministic-hash | --enforce_deterministic_hash)
+    ENFORCE_DETERMINISTIC_HASH="${2:-}"
     shift 2 || true
     ;;
   *) shift ;;
@@ -35,6 +40,16 @@ case "$LINK" in
 static | dynamic) : ;;
 *)
   echo "Error: --link must be 'static' or 'dynamic'" >&2
+  exit 1
+  ;;
+esac
+
+# Normalize boolean-ish inputs
+case "${ENFORCE_DETERMINISTIC_HASH}" in
+true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
+false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
+*)
+  echo "Error: --enforce-deterministic-hash must be true/false" >&2
   exit 1
   ;;
 esac
@@ -76,7 +91,7 @@ else
   echo "Building server derivation (variant: $VARIANT) via nix-build…"
   # Preserve existing link if reuse failed; replace atomically.
   rm -f "$OUT_LINK" 2>/dev/null || true
-  nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
+  nix-build -I "nixpkgs=${PIN_URL}" --arg enforceDeterministicHash "$ENFORCE_DETERMINISTIC_HASH" -A "$ATTR" -o "$OUT_LINK"
   REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
 fi
 
@@ -96,6 +111,36 @@ mkdir -p "$CARGO_HOME"
 
 # Ensure macOS system tools are available
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+# Prefer locally installed cargo subcommands in CARGO_HOME/bin
+export PATH="$CARGO_HOME/bin:$PATH"
+
+# Ensure cargo-packager 0.11.7 is available (hardcoded, no env overrides)
+ensure_packager() {
+  REQUIRED="0.11.7"
+  CURRENT=""
+  if command -v cargo-packager >/dev/null 2>&1; then
+    CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  fi
+  if [ "$CURRENT" = "$REQUIRED" ]; then
+    return 0
+  fi
+
+  echo "Installing cargo-packager $REQUIRED via cargo…"
+  cargo install cargo-packager --locked --version "$REQUIRED" --force
+  export PATH="$CARGO_HOME/bin:$PATH"
+  if ! command -v cargo-packager >/dev/null 2>&1; then
+    echo "Error: cargo-packager installation failed or not in PATH" >&2
+    exit 1
+  fi
+  CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  if [ "$CURRENT" != "$REQUIRED" ]; then
+    echo "Error: cargo-packager version mismatch (have $CURRENT, need $REQUIRED)" >&2
+    exit 1
+  fi
+}
+
+ensure_packager
 
 APP_PATH_EXISTING="target/release/Cosmian KMS Server.app"
 skip_packager=false

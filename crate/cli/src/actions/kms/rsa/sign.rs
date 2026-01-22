@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::{
+    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm},
+};
 use cosmian_kms_client::KmsClient;
 
 use crate::{
@@ -37,12 +41,21 @@ pub struct SignAction {
 
 impl SignAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        // Explicitly set SHA-256 for RSA signing (FIPS-safe) instead of relying on
+        // KMIP/OpenSSL defaults.
+        let cryptographic_parameters = Some(CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            mask_generator_hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        });
         run_sign(
             kms_rest_client,
             self.input_file.clone(),
             self.key_id.clone(),
             self.tags.clone(),
             self.output_file.clone(),
+            cryptographic_parameters,
             self.digested,
         )
         .await

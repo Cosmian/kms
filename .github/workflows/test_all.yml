@@ -15,7 +15,6 @@ on:
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -34,6 +33,9 @@ jobs:
         exclude:
           # redis is exclusively for non-fips
           - type: redis
+            features: fips
+          # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
+          - type: pykmip
             features: fips
 
     steps:
@@ -90,7 +92,6 @@ jobs:
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -9,7 +7,6 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::crypto::access_policy_from_attributes,
-    cosmian_kms_interfaces::SessionParams,
 };
 use cosmian_logger::trace;
 
@@ -20,7 +17,6 @@ pub(crate) async fn locate(
     request: Locate,
     state: Option<State>,
     user: &str,
-    params: Option<Arc<dyn SessionParams>>,
 ) -> KResult<LocateResponse> {
     trace!("{}", request);
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state
@@ -28,13 +24,7 @@ pub(crate) async fn locate(
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .database
-        .find(
-            Some(&request.attributes),
-            effective_state,
-            user,
-            false,
-            params,
-        )
+        .find(Some(&request.attributes), effective_state, user, false)
         .await?;
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);

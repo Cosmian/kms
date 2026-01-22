@@ -47,6 +47,7 @@ impl SignAction {
             self.key_id.clone(),
             self.tags.clone(),
             self.output_file.clone(),
+            None,
             self.digested,
         )
         .await

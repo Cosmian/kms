@@ -100,7 +100,10 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     // replace the ":" with "-" to make it a valid filename
     let name = now.replace(':', "-");
 
-    project_dir.join(format!("{name}.sqlite"))
+    // Add thread ID to ensure uniqueness when tests run in parallel
+    let thread_id = std::thread::current().id();
+
+    project_dir.join(format!("{name}_{thread_id:?}.sqlite"))
 }
 
 /// Creates a test application instance with KMIP and Google CSE capabilities.
@@ -142,6 +145,9 @@ pub(crate) async fn test_app(
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
         .app_data(Data::new(privileged_users))
+        .service(routes::root_redirect::root_redirect_to_ui)
+        .service(routes::health::get_health)
+        .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
         .service(routes::access::list_owned_objects)

@@ -26,7 +26,10 @@ use crate::stores::additional_redis_findex_tests::{
 use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
-    tests::{database_tests::atomic, list_uids_for_tags_test::list_uids_for_tags_test},
+    tests::{
+        database_tests::{atomic, block_cipher_mode_migration_after_json_deserialization},
+        list_uids_for_tags_test::list_uids_for_tags_test,
+    },
 };
 
 mod database_tests;
@@ -81,8 +84,7 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
-    let redis_findex =
-        RedisWithFindex::instantiate(redis_url, master_key, true, Some(b"label")).await?;
+    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, true).await?;
     Ok(redis_findex)
 }
 
@@ -95,16 +97,17 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
     test_corner_case().await?;
-    Box::pin(json_access(&get_redis_with_findex().await?, None)).await?;
-    find_attributes(&get_redis_with_findex().await?, None).await?;
-    owner(&get_redis_with_findex().await?, None).await?;
-    permissions(&get_redis_with_findex().await?, None).await?;
-    Box::pin(tags(&get_redis_with_findex().await?, None, false)).await?;
-    tx_and_list(&get_redis_with_findex().await?, None).await?;
-    atomic(&get_redis_with_findex().await?, None).await?;
-    upsert(&get_redis_with_findex().await?, None).await?;
-    crud(&get_redis_with_findex().await?, None).await?;
-    list_uids_for_tags_test(&get_redis_with_findex().await?, None).await?;
+    Box::pin(json_access(&get_redis_with_findex().await?)).await?;
+    find_attributes(&get_redis_with_findex().await?).await?;
+    owner(&get_redis_with_findex().await?).await?;
+    permissions(&get_redis_with_findex().await?).await?;
+    Box::pin(tags(&get_redis_with_findex().await?, false)).await?;
+    tx_and_list(&get_redis_with_findex().await?).await?;
+    atomic(&get_redis_with_findex().await?).await?;
+    upsert(&get_redis_with_findex().await?).await?;
+    crud(&get_redis_with_findex().await?).await?;
+    list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     Ok(())
 }
 
@@ -125,17 +128,17 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     if db_file.exists() {
         std::fs::remove_file(&db_file)?;
     }
-    Box::pin(json_access(&get_sqlite(&db_file).await?, None)).await?;
-    find_attributes(&get_sqlite(&db_file).await?, None).await?;
-    owner(&get_sqlite(&db_file).await?, None).await?;
-    permissions(&get_sqlite(&db_file).await?, None).await?;
-    Box::pin(tags(&get_sqlite(&db_file).await?, None, true)).await?;
-    tx_and_list(&get_sqlite(&db_file).await?, None).await?;
-    atomic(&get_sqlite(&db_file).await?, None).await?;
-    upsert(&get_sqlite(&db_file).await?, None).await?;
-    crud(&get_sqlite(&db_file).await?, None).await?;
-    list_uids_for_tags_test(&get_sqlite(&db_file).await?, None).await?;
-
+    Box::pin(json_access(&get_sqlite(&db_file).await?)).await?;
+    find_attributes(&get_sqlite(&db_file).await?).await?;
+    owner(&get_sqlite(&db_file).await?).await?;
+    permissions(&get_sqlite(&db_file).await?).await?;
+    Box::pin(tags(&get_sqlite(&db_file).await?, true)).await?;
+    tx_and_list(&get_sqlite(&db_file).await?).await?;
+    atomic(&get_sqlite(&db_file).await?).await?;
+    upsert(&get_sqlite(&db_file).await?).await?;
+    crud(&get_sqlite(&db_file).await?).await?;
+    list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
     Ok(())
 }
 
@@ -144,16 +147,17 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
 pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("trace"));
-    Box::pin(json_access(&get_pgsql().await?, None)).await?;
-    find_attributes(&get_pgsql().await?, None).await?;
-    owner(&get_pgsql().await?, None).await?;
-    permissions(&get_pgsql().await?, None).await?;
-    Box::pin(tags(&get_pgsql().await?, None, true)).await?;
-    tx_and_list(&get_pgsql().await?, None).await?;
-    atomic(&get_pgsql().await?, None).await?;
-    upsert(&get_pgsql().await?, None).await?;
-    crud(&get_pgsql().await?, None).await?;
-    list_uids_for_tags_test(&get_pgsql().await?, None).await?;
+    Box::pin(json_access(&get_pgsql().await?)).await?;
+    find_attributes(&get_pgsql().await?).await?;
+    owner(&get_pgsql().await?).await?;
+    permissions(&get_pgsql().await?).await?;
+    Box::pin(tags(&get_pgsql().await?, true)).await?;
+    tx_and_list(&get_pgsql().await?).await?;
+    atomic(&get_pgsql().await?).await?;
+    upsert(&get_pgsql().await?).await?;
+    crud(&get_pgsql().await?).await?;
+    list_uids_for_tags_test(&get_pgsql().await?).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
     Ok(())
 }
 
@@ -161,15 +165,16 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
 #[tokio::test]
 pub(crate) async fn test_db_mysql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
-    Box::pin(json_access(&get_mysql().await?, None)).await?;
-    find_attributes(&get_mysql().await?, None).await?;
-    owner(&get_mysql().await?, None).await?;
-    permissions(&get_mysql().await?, None).await?;
-    Box::pin(tags(&get_mysql().await?, None, true)).await?;
-    tx_and_list(&get_mysql().await?, None).await?;
-    atomic(&get_mysql().await?, None).await?;
-    upsert(&get_mysql().await?, None).await?;
-    crud(&get_mysql().await?, None).await?;
-    list_uids_for_tags_test(&get_mysql().await?, None).await?;
+    Box::pin(json_access(&get_mysql().await?)).await?;
+    find_attributes(&get_mysql().await?).await?;
+    owner(&get_mysql().await?).await?;
+    permissions(&get_mysql().await?).await?;
+    Box::pin(tags(&get_mysql().await?, true)).await?;
+    tx_and_list(&get_mysql().await?).await?;
+    atomic(&get_mysql().await?).await?;
+    upsert(&get_mysql().await?).await?;
+    crud(&get_mysql().await?).await?;
+    list_uids_for_tags_test(&get_mysql().await?).await?;
+    block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;
     Ok(())
 }

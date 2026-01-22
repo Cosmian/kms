@@ -359,6 +359,7 @@ pub fn openssl_private_key_to_kmip(
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
                             Nid::SECP384R1 => RecommendedCurve::P384,
                             Nid::SECP521R1 => RecommendedCurve::P521,
+                            Nid::SECP256K1 => RecommendedCurve::SECP256K1,
                             _ => {
                                 crypto_bail!(
                                     "Unsupported openssl curve: {:?} in this KMIP implementation",
@@ -849,6 +850,30 @@ mod tests {
             Some(&ec_public_key),
             Some(&ec_group),
             RecommendedCurve::P192,
+            Id::EC,
+            key_size,
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "non-fips")]
+    fn test_conversion_ec_k_256_private_key() {
+        log_init(option_env!("RUST_LOG"));
+
+        let key_size = 256;
+        let ec_group = EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, key_size, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, key_size);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::SECP256K1,
             Id::EC,
             key_size,
         );

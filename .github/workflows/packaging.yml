@@ -8,31 +8,29 @@ on:
         required: true
         type: string
         default: 1.90.0
-  workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
-        required: true
-        type: string
-        default: 1.90.0
+      enforceDeterministicHash:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0
       archive-name: windows
 
   docker:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging-docker.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
 
   packages:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+
     strategy:
       fail-fast: false
       matrix:
@@ -57,9 +55,9 @@ jobs:
       - name: List keys
         run: gpg -K
 
-      - name: Package
+      - name: Package with GPG signature
         run: |
-          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} --enforce-deterministic-hash ${{ inputs.enforceDeterministicHash }} package
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -73,7 +71,8 @@ jobs:
           if-no-files-found: error
 
   publish-release:
-    if: github.event.pull_request.head.repo.full_name == github.repository || startsWith(github.ref, 'refs/tags/')
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
     concurrency:
@@ -188,4 +187,4 @@ jobs:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: 1.90.0

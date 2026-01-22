@@ -1,12 +1,12 @@
-import { MoonOutlined, SunOutlined } from "@ant-design/icons";
+import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Button, Layout, Spin, Switch, Tag } from "antd";
-import React, { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
-import { AuthMethod, getNoTTLVRequest } from "./utils";
+import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "./utils";
 
 type MainLayoutProps = {
     isDarkMode: boolean;
@@ -16,28 +16,72 @@ type MainLayoutProps = {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod }) => {
     const [serverVersion, setServerVersion] = useState("");
+    const [serverHealth, setServerHealth] = useState<string>("");
+    const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
+    const [downloadTarget, setDownloadTarget] = useState<string>();
 
-    useEffect(() => {
-        async function fetchServerVersion() {
-            if (idToken || authMethod != "JWT") {
-                try {
-                    const version = await getNoTTLVRequest("/version", idToken, serverUrl);
-                    setServerVersion(version);
-                } catch (error) {
-                    console.error("Error fetching server version:", error);
-                    setServerVersion("Unavailable");
-                } finally {
-                    setLoading(false);
-                }
-            } else {
+    const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
+    const isServerHealthy = normalizedServerHealth === "UP";
+
+    const serverHealthLabel =
+        serverHealthLatencyMs === null
+            ? `Health: ${serverHealth}`
+            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+    const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
+
+    const fetchServerInfo = useCallback(async () => {
+        if (idToken || authMethod != "JWT") {
+            try {
+                const version = await getNoTTLVRequest("/version", idToken, serverUrl);
+                setServerVersion(version);
+                    const health = await getNoTTLVRequestWithTimeout(
+                        "/health",
+                        idToken,
+                        serverUrl,
+                        2_000
+                    );
+                    setServerHealth(health?.status ?? "Unavailable");
+                    setServerHealthLatencyMs(
+                        typeof health?.latency_ms === "number" ? health.latency_ms : null
+                    );
+            } catch (error) {
+                console.error("Error fetching server version:", error);
+                setServerVersion("Unavailable");
+                    setServerHealth("Unavailable");
+                    setServerHealthLatencyMs(null);
+            } finally {
                 setLoading(false);
             }
+        } else {
+            setLoading(false);
         }
+    }, [authMethod, idToken, serverUrl]);
 
-        fetchServerVersion();
-    }, [idToken, authMethod, serverUrl]);
+    const downloadCliUrl = "/download-cli"
+
+    const determineDownloadTarget = useCallback(async () => {
+        const kmsUrl = serverUrl + downloadCliUrl;
+        const response = await fetch(kmsUrl, {
+            method: "HEAD",
+            credentials: "include",
+            headers: {
+                ...(idToken && { Authorization: `Bearer ${idToken}` }),
+            },
+        });
+
+        if (response.status == 200) {
+            setDownloadTarget(serverUrl + downloadCliUrl)
+        } else {
+            setDownloadTarget('https://package.cosmian.com/cli')
+        }
+    }, [downloadCliUrl, idToken, serverUrl]);
+
+    useEffect(() => {
+        fetchServerInfo();
+        determineDownloadTarget();
+    }, [determineDownloadTarget, fetchServerInfo]);
 
     const handleLogout = async () => {
         await logout();
@@ -48,7 +92,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} />
-                    <div className="flex items-center h-full">
+                    <div className="flex items-center h-full" style={{ gap: '16px' }}>
+                        {downloadTarget && <Link to={downloadTarget} target="_blank">
+                            <Button type="primary" shape="round" icon={<DownloadOutlined />}>Download CLI</Button>
+                        </Link>}
                         <Switch
                             className="w-20"
                             checked={isDarkMode}
@@ -78,13 +125,27 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         {loading ? <Spin size="large" /> : <Outlet />}
                     </Layout.Content>
                     <Footer
-                        version={serverVersion ? (() => {
-                            try {
-                                return `${serverVersion}`;
-                            } catch {
-                                return serverVersion;
+                        version={(() => {
+                            const version = serverVersion
+                                ? (() => {
+                                      try {
+                                          return `${serverVersion}`;
+                                      } catch {
+                                          return serverVersion;
+                                      }
+                                  })()
+                                : serverVersion;
+
+                            if (!serverHealth) {
+                                return version;
                             }
-                        })() : serverVersion}
+
+                            if (!version) {
+                                return `${serverHealthMarker} ${serverHealthLabel}`;
+                            }
+
+                            return `${version} — ${serverHealthMarker} ${serverHealthLabel}`;
+                        })()}
                     />
                 </Layout>
             </Layout>

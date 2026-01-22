@@ -26,6 +26,11 @@ pub struct ServerParams {
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
 
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory only if the UI is configured.
+    pub ui_session_salt: Option<String>,
+
     /// The OIDC config used to handle login from the UI
     pub ui_oidc_auth: OidcConfig,
 
@@ -168,6 +173,16 @@ impl ServerParams {
             );
         }
 
+        // Validate session_salt: it should only be provided when ui_index_html_folder is explicitly defined
+        if conf.ui_config.ui_session_salt.is_some() && conf.ui_config.ui_index_html_folder.is_none()
+        {
+            return Err(KmsError::ServerError(
+                "ui_session_salt should only be provided when ui_index_html_folder is configured. \
+                 Please either provide --ui-index-html-folder or remove --session-salt."
+                    .to_owned(),
+            ));
+        }
+
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
         let slot_passwords: HashMap<usize, Option<String>> = conf
@@ -274,6 +289,7 @@ impl ServerParams {
             },
             non_revocable_key_id: conf.non_revocable_key_id,
             privileged_users: conf.privileged_users,
+            ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
         };
@@ -397,6 +413,11 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref users) = self.privileged_users {
             debug_struct.field("privileged_users", users);
+        }
+
+        // Mask the session salt for security (it's a secret)
+        if self.ui_session_salt.is_some() {
+            debug_struct.field("ui_session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information

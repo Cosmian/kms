@@ -222,7 +222,7 @@ async fn import_object(
         object: object.clone(),
     };
 
-    let create_response = kms.import(import_request, owner, None, None).await?;
+    let create_response = kms.import(import_request, owner, None).await?;
     Ok(create_response.unique_identifier)
 }
 
@@ -235,7 +235,7 @@ async fn export_object(kms: &Arc<KMS>, owner: &str, object_id: &str) -> KResult<
         key_wrapping_specification: None,
     };
 
-    let export_response = kms.export(export_request, owner, None).await?;
+    let export_response = kms.export(export_request, owner).await?;
     Ok(export_response.object)
 }
 
@@ -317,7 +317,7 @@ async fn send_message(
             .collect(),
     };
 
-    let response = kms.message(request, owner, None).await?;
+    let response = kms.message(request, owner).await?;
     assert_eq!(response.response_header.batch_count, num_ops);
 
     response

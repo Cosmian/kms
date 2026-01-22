@@ -1,10 +1,21 @@
 use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::DigitalSignatureAlgorithm};
+#[cfg(feature = "non-fips")]
+use k256::ecdsa::{Signature as K256Signature, SigningKey as K256SigningKey};
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
     sign::Signer,
 };
+#[cfg(feature = "non-fips")]
+use p256::ecdsa::{
+    Signature as P256Signature, SigningKey as P256SigningKey, signature::DigestSigner as _,
+    signature::hazmat::PrehashSigner as _,
+};
+#[cfg(feature = "non-fips")]
+use sha2::{Digest, Sha256};
 
+#[cfg(feature = "non-fips")]
+use crate::crypto::elliptic_curves::ECDSA_256_D_PRIVATE_KEY_LENGTH;
 use crate::error::CryptoError;
 
 /// ECDSA signature helper implementing RFC6979 determinism for NIST P-256 + SHA-256 in non-fips builds,
@@ -29,60 +40,61 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
         }
     };
 
-    // RFC6979 path for non-fips builds
+    // RFC6979 deterministic ECDSA for P-256 and secp256k1 in non-fips builds
     #[cfg(feature = "non-fips")]
     {
-        if digital_signature_algorithm == DigitalSignatureAlgorithm::ECDSAWithSHA256 {
-            if let Ok(ec_key) = private_key.ec_key() {
-                if matches!(
-                    ec_key.group().curve_name(),
-                    Some(openssl::nid::Nid::X9_62_PRIME256V1)
-                ) {
-                    use cosmian_crypto_core::reexport::signature::hazmat::PrehashSigner;
-                    use p256::ecdsa::{Signature, SigningKey, signature::DigestSigner};
-                    use sha2::{Digest, Sha256};
+        if let Ok(ec_key) = private_key.ec_key() {
+            let curve_nid = ec_key.group().curve_name();
 
-                    let mut msg_bytes = Vec::new();
-                    if let Some(corr) = request.correlation_value.clone() {
-                        msg_bytes.extend_from_slice(&corr);
-                    }
-                    if let Some(digested_data) = &request.digested_data {
-                        msg_bytes.extend_from_slice(digested_data);
-                    } else if let Some(data) = &request.data {
-                        msg_bytes.extend_from_slice(data.as_ref());
-                    }
+            let is_p256 = curve_nid == Some(openssl::nid::Nid::X9_62_PRIME256V1);
+            let is_k256 = curve_nid == Some(openssl::nid::Nid::SECP256K1);
 
-                    // Private scalar d
-                    let mut d_bytes = ec_key.private_key().to_vec();
-                    if d_bytes.len() < 32 {
-                        let mut padded = vec![0_u8; 32 - d_bytes.len()];
-                        padded.extend_from_slice(&d_bytes);
-                        d_bytes = padded;
-                    } else if d_bytes.len() > 32 {
-                        let start = d_bytes.len().saturating_sub(32);
-                        d_bytes = d_bytes.get(start..).unwrap_or(&d_bytes[..]).to_vec();
-                    }
-
-                    let signing_key = SigningKey::from_slice(&d_bytes).map_err(|e| {
-                        CryptoError::NotSupported(format!("p256 SigningKey error: {e}"))
-                    })?;
-
-                    let signature: Signature = if request.digested_data.is_some() {
-                        signing_key.sign_prehash(&msg_bytes).map_err(|e| {
-                            CryptoError::NotSupported(format!("Sign data pre hash error: {e}"))
-                        })?
-                    } else if request.data.is_some() {
-                        let mut hasher = Sha256::new();
-                        hasher.update(&msg_bytes);
-                        signing_key.sign_digest(hasher)
-                    } else {
-                        return Err(CryptoError::NotSupported(
-                            "Request data not supported".to_owned(),
-                        ));
-                    };
-                    let sig_der = signature.to_der();
-                    return Ok(sig_der.as_bytes().to_vec());
+            if is_p256 || is_k256 {
+                let mut msg_bytes = Vec::new();
+                if let Some(corr) = request.correlation_value.clone() {
+                    msg_bytes.extend_from_slice(&corr);
                 }
+                if let Some(digested_data) = &request.digested_data {
+                    msg_bytes.extend_from_slice(digested_data);
+                } else if let Some(data) = &request.data {
+                    msg_bytes.extend_from_slice(data.as_ref());
+                }
+
+                // Private scalar d
+                let mut d_bytes = ec_key.private_key().to_vec();
+                if d_bytes.len() < ECDSA_256_D_PRIVATE_KEY_LENGTH {
+                    let mut padded = vec![0_u8; ECDSA_256_D_PRIVATE_KEY_LENGTH - d_bytes.len()];
+                    padded.extend_from_slice(&d_bytes);
+                    d_bytes = padded;
+                } else if d_bytes.len() > ECDSA_256_D_PRIVATE_KEY_LENGTH {
+                    let start = d_bytes.len().saturating_sub(ECDSA_256_D_PRIVATE_KEY_LENGTH);
+                    d_bytes = d_bytes.get(start..).unwrap_or(&d_bytes[..]).to_vec();
+                }
+                return if is_p256 {
+                    let key = P256SigningKey::from_slice(&d_bytes)
+                        .map_err(|e| CryptoError::NotSupported(format!("P256 key error: {e}")))?;
+                    let sig: P256Signature = if request.digested_data.is_some() {
+                        key.sign_prehash(&msg_bytes).map_err(|e| {
+                            CryptoError::NotSupported(format!("Sign (P256) error: {e}"))
+                        })?
+                    } else {
+                        key.sign_digest(Sha256::new().chain_update(&msg_bytes))
+                    };
+                    Ok(sig.to_der().as_bytes().to_vec())
+                } else {
+                    let key = K256SigningKey::from_slice(&d_bytes)
+                        .map_err(|e| CryptoError::NotSupported(format!("K256 key error: {e}")))?;
+                    let sig: K256Signature = if request.digested_data.is_some() {
+                        key.sign_prehash(&msg_bytes).map_err(|e| {
+                            CryptoError::NotSupported(format!("Sign (K256) error: {e}"))
+                        })?
+                    } else {
+                        key.sign_digest(Sha256::new().chain_update(&msg_bytes))
+                    };
+                    // Apply Low-S normalization
+                    let normalized = sig.normalize_s().unwrap_or(sig);
+                    Ok(normalized.to_der().as_bytes().to_vec())
+                };
             }
         }
     }
@@ -144,13 +156,9 @@ mod tests {
         let pkey = PKey::generate_ed25519().unwrap_or_else(|e| panic!("ed25519 gen: {e}"));
         let cp: CryptographicParameters = CryptographicParameters::default();
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ed25519 deterministic".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
@@ -164,13 +172,9 @@ mod tests {
         let pkey = PKey::generate_ed448().unwrap_or_else(|e| panic!("ed448 gen: {e}"));
         let cp: CryptographicParameters = CryptographicParameters::default();
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ed448 deterministic".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, eddsa_sign);
@@ -192,13 +196,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
             data: Some(b"ecdsa nondeterminism test".to_vec().into()),
-            digested_data: None,
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let (sig1, sig2) = sign_twice_and_compare(&req, &pkey, ecdsa_sign);
@@ -249,13 +249,9 @@ mod tests {
                 ..Default::default()
             };
             let req = Sign {
-                unique_identifier: None,
                 data: Some(b"supported curves signing".to_vec().into()),
-                digested_data: None,
                 cryptographic_parameters: Some(cp.clone()),
-                init_indicator: None,
-                final_indicator: None,
-                correlation_value: None,
+                ..Default::default()
             };
 
             let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
@@ -282,13 +278,9 @@ mod tests {
             ..Default::default()
         };
         let req = Sign {
-            unique_identifier: None,
-            data: None,
             digested_data: Some(digest.to_vec()),
             cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
+            ..Default::default()
         };
 
         let sig = ecdsa_sign(&req, &pkey).expect("ecdsa signature");
@@ -312,48 +304,63 @@ mod tests {
     #[cfg(feature = "non-fips")]
     #[test]
     fn ecdsa_sign_raw_digest_sha256() {
-        let group = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
+        let group_p256 = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1)
             .unwrap_or_else(|e| panic!("ec group: {e}"));
-        let ec_key =
-            openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
-        let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
+        let group_k256 = openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::SECP256K1)
+            .unwrap_or_else(|e| panic!("ec group: {e}"));
+        let groups = vec![group_p256, group_k256];
+        let mut results = Vec::with_capacity(groups.len());
+        for group in groups {
+            let ec_key =
+                openssl::ec::EcKey::generate(&group).unwrap_or_else(|e| panic!("ec key gen: {e}"));
+            let pkey = PKey::from_ec_key(ec_key).unwrap_or_else(|e| panic!("pkey: {e}"));
 
-        let message = b"banana";
-        let message_digest = openssl::hash::hash(MessageDigest::sha256(), message).expect("digest");
+            let message = b"banana";
+            let message_digest =
+                openssl::hash::hash(MessageDigest::sha256(), message).expect("digest");
 
-        // Prepare ECDSA with SHA-256 using digested_data
-        let cp = CryptographicParameters {
-            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
-            ..Default::default()
-        };
-        let req_raw = Sign {
-            unique_identifier: None,
-            data: Some(message.to_vec().into()),
-            digested_data: None,
-            cryptographic_parameters: Some(cp.clone()),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
-        };
-        let req_digest = Sign {
-            unique_identifier: None,
-            data: None,
-            digested_data: Some(message_digest.to_vec()),
-            cryptographic_parameters: Some(cp),
-            init_indicator: None,
-            final_indicator: None,
-            correlation_value: None,
-        };
+            // Prepare ECDSA with SHA-256 using digested_data
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            };
+            let req_raw = Sign {
+                data: Some(message.to_vec().into()),
+                cryptographic_parameters: Some(cp.clone()),
+                ..Default::default()
+            };
+            let req_digest = Sign {
+                digested_data: Some(message_digest.to_vec()),
+                cryptographic_parameters: Some(cp),
+                ..Default::default()
+            };
 
-        // raw data -> sha256(raw data)
-        let sig_raw = ecdsa_sign(&req_raw, &pkey).expect("ecdsa signature raw");
-        // sha256 is provided
-        let sig_digest = ecdsa_sign(&req_digest, &pkey).expect("ecdsa signature digest");
+            // raw data -> sha256(raw data)
+            let sig_raw = ecdsa_sign(&req_raw, &pkey).expect("ecdsa signature raw");
+            // sha256 is provided
+            let sig_digest = ecdsa_sign(&req_digest, &pkey).expect("ecdsa signature digest");
 
-        // Verify signature - signature must be same raw data and digest data
-        assert_eq!(
-            sig_raw, sig_digest,
-            "ECDSA signature must be same for raw and digest data"
-        );
+            // Verify signature - signature must be same raw data and digest data
+            assert_eq!(
+                sig_raw, sig_digest,
+                "ECDSA signature must be same for raw and digest data"
+            );
+            results.push((sig_raw.clone(), sig_digest.clone()));
+            assert_eq!(
+                hex::encode(sig_raw),
+                hex::encode(sig_digest),
+                "ECDSA (sha256k) signature must be same for raw and digest data - hex"
+            );
+        }
+        assert_eq!(2, results.len());
+        let pair_result0 = results.first().expect("Pair results expected");
+        let pair_result1 = results.last().expect("Pair results expected");
+        assert_eq!(pair_result0.0, pair_result0.1);
+        assert_eq!(pair_result1.0, pair_result1.1);
+        // should not be the same p256 != k256
+        assert_ne!(pair_result0.0, pair_result1.0);
+        assert_ne!(pair_result0.0, pair_result1.1);
+        assert_ne!(pair_result0.1, pair_result1.0);
+        assert_ne!(pair_result0.1, pair_result1.1);
     }
 }

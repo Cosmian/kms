@@ -1,7 +1,5 @@
-#![cfg(feature = "non-fips")]
 mod access;
 mod attributes;
-#[cfg(feature = "non-fips")]
 mod auth_tests;
 mod certificates;
 #[cfg(feature = "non-fips")]

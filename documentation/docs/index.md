@@ -42,6 +42,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [VMware](./vcenter.md)
     - [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md),
     - [MongoDB](./mongodb.md),
+    - [Mysql Enterprise](./mysql.md)
     - [PostgreSQL](./percona.md)
     - and more
 - **Big Data encryption**:
@@ -65,9 +66,9 @@ See the complete [supported algorithms list](./algorithms.md).
 
 The **Cosmian KMS** is available as:
 
-- Linux packages: [Debian](https://package.cosmian.com/kms/5.14.1/debian/) or [RPM](https://package.cosmian.com/kms/5.14.1/rpm/)
-- Windows installer: [Windows](https://package.cosmian.com/kms/5.14.1/windows/)
-- macOS installer: [macOS](https://package.cosmian.com/kms/5.14.1/dmg/)
+- Linux packages: [Debian](https://package.cosmian.com/kms/5.15.0/debian/) or [RPM](https://package.cosmian.com/kms/5.15.0/rpm/)
+- Windows installer: [Windows](https://package.cosmian.com/kms/5.15.0/windows/)
+- macOS installer: [macOS](https://package.cosmian.com/kms/5.15.0/dmg/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
 
 ## User Interface
@@ -83,5 +84,5 @@ The [Cosmian CLI](../cosmian_cli/index.md) provides a powerful command-line inte
 
 The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.14.1/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/5.14.1/rockylinux9/) package
+- [Debian](https://package.cosmian.com/kms/5.15.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/5.15.0/rockylinux9/) package
 - [Pre-built binaries](https://package.cosmian.com/cli/) for Linux, Windows, and macOS

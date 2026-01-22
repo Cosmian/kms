@@ -19,6 +19,7 @@ use cosmian_logger::{
 };
 use openssl::{
     hash::MessageDigest,
+    md::Md,
     pkey::PKey,
     pkey_ctx::PkeyCtx,
     rsa::{Padding, Rsa},
@@ -180,6 +181,10 @@ async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
 
     let mut pk = PkeyCtx::new(&public_key)?;
     pk.verify_init()?;
+    // The server signs a *pre-hashed* SHA-256 digest using PKCS#1 v1.5 padding.
+    // Be explicit here to avoid relying on OpenSSL/provider defaults.
+    pk.set_rsa_padding(Padding::PKCS1)?;
+    pk.set_signature_md(Md::sha256())?;
     pk.verify(
         &general_purpose::STANDARD.decode(digest)?,
         &general_purpose::STANDARD.decode(resp.signature)?,
