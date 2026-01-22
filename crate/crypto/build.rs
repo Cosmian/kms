@@ -211,14 +211,13 @@ fn num_parallel_jobs() -> usize {
     2
 }
 
+#[allow(clippy::manual_assert)]
 fn verify_hash(path: &Path, expected: &str) {
     use sha2::{Digest, Sha256};
     if let Ok(buf) = fs::read(path) {
         let actual = format!("{:x}", Sha256::digest(&buf));
         if actual != expected {
-            println!(
-                "cargo:warning=OpenSSL tarball hash mismatch! expected {expected} got {actual}"
-            );
+            panic!("OpenSSL tarball hash mismatch: expected {expected} got {actual}");
         }
     }
 }

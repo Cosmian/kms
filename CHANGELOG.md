@@ -40,6 +40,9 @@ All notable changes to this project will be documented in this file.
             - mysql_async
             - tokio-rusqlite
             - rusqlite
+
+      **⚠️ WARNING about Redis migration:** For KMS server versions less than v5.12, first migrate KMS Redis-Findex database to 5.14 then 5.15. For KMS server versions 5.12 to 5.14, no migration needed to 5.15.
+
 - Fix Docker container issues [#692](https://github.com/Cosmian/kms/issues/692) and [#670](https://github.com/Cosmian/kms/issues/670) thanks to [#667](https://github.com/Cosmian/kms/pull/667)
 - Upgrade lru and downgrade yank flat2 to 1.1.5 [#680](https://github.com/Cosmian/kms/pull/680)
 - Fix double hash in RSASSAPSS in raw and digest data mode for sign/verify [#677](https://github.com/Cosmian/kms/pull/677)

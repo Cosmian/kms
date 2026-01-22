@@ -124,6 +124,8 @@ let
         || rel == "LICENSE"
         || rel == "README.md"
         || rel == "CHANGELOG.md"
+        || rel == "nix/expected-hashes"
+        || lib.hasPrefix "nix/expected-hashes/" rel
         || rel == "crate"
         || lib.hasPrefix "crate/" rel
         || rel == "resources"
