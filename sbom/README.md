@@ -134,6 +134,8 @@ tail -n +2 vulns.csv | cut -d',' -f3 | sort | uniq -c | sort -rn
 
 ## 🔍 Vulnerability Analysis
 
+Note: `vulnxscan` has no CPU-architecture filtering; `vulns.csv` (and `vulns.runtime.csv` when generated) may include CVEs for non-target architectures (e.g., PowerPC, ARMv7).
+
 The vulnerability scan combines results from multiple sources:
 
 - **Grype**: Scans against NVD, GitHub Security Advisories, and other databases

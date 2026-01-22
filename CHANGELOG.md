@@ -2,15 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.15.0] - 2026-01-09
+## [5.15.0] - 2026-01-21
 
-### ⚠️ WARNING
+### 🚀 Features
 
-Any previously **manually** exported keys in **JSON** format must be manually updated if they have been previously wrapped with AES. This can be done using the following command:
+- Upgrade OpenSSL to 3.6.0 but keep 3.1.2 for FIPS crypto provider [#667](https://github.com/Cosmian/kms/pull/667)
+    - Summary of changes:
 
-```bash
-sed -i 's/NISTKeyWrap/AESKeyWrapPadding/g' your_exported_key.json
-```
+      | OpenSSL Linkage | FIPS | Non‑FIPS |
+      | --- | --- | --- |
+      | Static | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers |
+      | Dynamic | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
+
+- Provide /health endpoint [#690](https://github.com/Cosmian/kms/pull/690)
+- Add k256 (RFC6979) curve for sign/verify for non-fips builds [#671](https://github.com/Cosmian/kms/pull/671)
+- Download CLI through UI [#678](https://github.com/Cosmian/kms/pull/678)
+- Support RFC 3394 (AESKeyWrap with **no** padding) [#658](https://github.com/Cosmian/kms/pull/658)
+
+  **⚠️ WARNING about AES Key Wrap changes**
+
+  Any previously **manually** exported keys in **JSON** format must be manually updated if they have been previously wrapped with AES. This can be done using the following command:
+
+  ```bash
+  sed -i 's/NISTKeyWrap/AESKeyWrapPadding/g' your_exported_key.json
+  ```
+
+### 🐛 Bug Fixes
+
+- Remove RUSTSEC-2023-0071 about `rsa` dependency and handle database without sqlx [#646](https://github.com/Cosmian/kms/pull/646).
+    - Summary of changes:
+        - `openidconnect` is removed in favor of manual OIDC implementation
+        - `jwt-simple` is replaced by `jsonwebtoken`
+        - old crate`cloudproof_findex` (->crypto_core->rsa) has been removed
+        - `sqlx` has been replaced by those crates:
+            - tokio-postgres
+            - deadpool-postgres
+            - mysql_async
+            - tokio-rusqlite
+            - rusqlite
+
+      **⚠️ WARNING about Redis migration:** For KMS server versions less than v5.12, first migrate KMS Redis-Findex database to 5.14 then 5.15. For KMS server versions 5.12 to 5.14, no migration needed to 5.15.
+
+- Fix Docker container issues [#692](https://github.com/Cosmian/kms/issues/692) and [#670](https://github.com/Cosmian/kms/issues/670) thanks to [#667](https://github.com/Cosmian/kms/pull/667)
+- Upgrade lru and downgrade yank flat2 to 1.1.5 [#680](https://github.com/Cosmian/kms/pull/680)
+- Fix double hash in RSASSAPSS in raw and digest data mode for sign/verify [#677](https://github.com/Cosmian/kms/pull/677)
+- RSA signature/verify tests only run on non-fips [#684](https://github.com/Cosmian/kms/pull/684)
+- Derive session cookie encryption key from public URL and user-provided salt for load-balanced deployments [#664](https://github.com/Cosmian/kms/pull/664)
+
+### 📚 Documentation
+
+- Add MySQL integration doc [#647](https://github.com/Cosmian/kms/pull/647)
+- Update Percona integration doc [#665](https://github.com/Cosmian/kms/pull/665)
+- Add AWS ECS Fargate doc [#686](https://github.com/Cosmian/kms/pull/686)
+
+### ⚙️ Build
+
+- *(deps)* Bump react-router from 7.5.3 to 7.12.0 in /ui in the npm_and_yarn group across 1 directory [#673](https://github.com/Cosmian/kms/pull/673)
+
+### ⚙️ Miscellaneous Tasks
+
+- Filter test_all workflow for dependabot branches [#674](https://github.com/Cosmian/kms/pull/674)
+- Test packaging on dependabot branch but wo GPG [#675](https://github.com/Cosmian/kms/pull/675)
+- Re-enable packaging workflow [#676](https://github.com/Cosmian/kms/pull/676)
 
 ## [5.14.1] - 2025-12-26
 
