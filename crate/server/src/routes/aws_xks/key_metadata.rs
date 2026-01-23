@@ -203,7 +203,6 @@ async fn get_key_metadata_inner(
                 attribute_reference: None,
             },
             &user,
-            None,
         )
         .await
         .map_err(|e| XksErrorReply {
@@ -307,7 +306,7 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    kms.create(create, &kms.params.default_username, None, None)
+    kms.create(create, &kms.params.default_username, None)
         .await
         .map_err(|e| XksErrorReply {
             errorName: XksErrorName::KeyNotFoundException,
@@ -326,7 +325,6 @@ async fn create_key(
             ],
         },
         &kms.params.default_username,
-        None,
         None,
     )
     .await

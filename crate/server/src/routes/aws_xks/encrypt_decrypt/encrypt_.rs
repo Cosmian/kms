@@ -259,7 +259,6 @@ async fn encrypt_inner(
                 authenticated_encryption_additional_data: aead.clone(),
             },
             &user,
-            None,
         )
         .await?;
     let ciphertext = response

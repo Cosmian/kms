@@ -211,7 +211,6 @@ async fn decrypt_inner(
                 authenticated_encryption_tag: Some(tag),
             },
             &user,
-            None,
         )
         .await?;
     let plaintext = response

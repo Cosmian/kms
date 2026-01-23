@@ -307,7 +307,6 @@ async fn get_aws_key(
                 ..Default::default()
             },
             sigv4_access_key_user,
-            None,
         )
         .await
         .map_err(|e| {
