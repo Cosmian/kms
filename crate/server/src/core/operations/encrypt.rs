@@ -152,7 +152,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     let mut owm = selected_owm.ok_or_else(|| {
         if found_but_no_permission {
             KmsError::Unauthorized(format!(
-                "Encrypt: invalid key usage for: {unique_identifier}"
+                "Encrypt: the user {user} does not have permission to encrypt using the key: {unique_identifier}"
             ))
         } else {
             KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))

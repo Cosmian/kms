@@ -157,7 +157,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
     let mut owm = selected_owm.ok_or_else(|| {
         if found_but_no_permission {
             KmsError::Unauthorized(format!(
-                "Decrypt: invalid key usage for: {unique_identifier}"
+                "Decrypt: the user {user} does not have the permission to decrypt using the key: {unique_identifier}"
             ))
         } else {
             KmsError::ItemNotFound(format!("Decrypt: key id: {unique_identifier}, not found"))
