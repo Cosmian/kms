@@ -1058,9 +1058,10 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "10.4.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#e4fbb5eec4f21fccf3bf80c8bee6a87493f14796"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#b25ee393134a32a11dfb4e7092d7168c264e68ad"
 dependencies = [
  "aead",
+ "aes-gcm",
  "blake2",
  "chacha20",
  "chacha20poly1305",
@@ -1424,7 +1425,7 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#e4fbb5eec4f21fccf3bf80c8bee6a87493f14796"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#b25ee393134a32a11dfb4e7092d7168c264e68ad"
 dependencies = [
  "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "openssl",
@@ -1434,7 +1435,7 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#e4fbb5eec4f21fccf3bf80c8bee6a87493f14796"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#b25ee393134a32a11dfb4e7092d7168c264e68ad"
 dependencies = [
  "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "curve25519-dalek",
