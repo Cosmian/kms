@@ -9,10 +9,10 @@ use crate::{CryptoError, crypto::KeyPair};
 #[cfg(feature = "non-fips")]
 use cosmian_cover_crypt::{AccessPolicy, AccessStructure};
 use cosmian_crypto_core::{
-    SymmetricKey,
+    Aes256Gcm, SymmetricKey,
     bytes_ser_de::Serializable,
     reexport::rand_core::CryptoRngCore,
-    traits::{KEM, cyclic_group_to_kem::GenericKem},
+    traits::{AE_InPlace, KEM, cyclic_group_to_kem::GenericKem},
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -409,7 +409,7 @@ impl ConfigurableKEM {
     fn enc(
         ek: &[u8],
         rng: &mut impl CryptoRngCore,
-        #[cfg(feature = "non-fips")] access_policy: Option<AccessPolicy>,
+        #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
     ) -> Result<(SymmetricKey<{ Self::KEY_LENGTH }>, Zeroizing<Vec<u8>>), CryptoError> {
         let (tag, pk_bytes) = <(KemTag, Vec<u8>)>::deserialize(ek).map_err(|e| {
             CryptoError::Default(format!(
@@ -488,6 +488,49 @@ impl ConfigurableKEM {
         }
     }
 
+    fn encrypt(
+        pk: &[u8],
+        ptx: &[u8],
+        #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        let (key, enc) = Self::enc(
+            pk,
+            rng,
+            #[cfg(feature = "non-fips")]
+            access_policy,
+        )?;
+
+        let mut nonce = [0; 12];
+        rng.fill_bytes(&mut nonce);
+
+        let mut ctx = vec![0; ptx.len()];
+        ctx.copy_from_slice(ptx);
+
+        let tag = Aes256Gcm::encrypt_in_place(
+            &key,
+            &mut ctx[enc.len() + nonce.len()..enc.len() + nonce.len() + ptx.len()],
+            &nonce,
+        )
+        .map_err(|e| CryptoError::Default(format!("AE encryption error in PKE: {e}")))?;
+
+        (enc, nonce, ctx, tag).serialize().map_err(|e| {
+            CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
+        })
+    }
+
+    fn decrypt(dk: &[u8], ctx: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        let (enc, nonce, mut ptx, tag) =
+            <(Vec<u8>, [u8; 12], Zeroizing<Vec<u8>>, [u8; 16])>::deserialize(ctx).map_err(|e| {
+                CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
+            })?;
+        let key = Self::dec(dk, &enc)?;
+        Aes256Gcm::decrypt_in_place(&key, &mut ptx, &nonce, &tag)
+            .map_err(|e| CryptoError::Default(format!("AE decryption error in PKE: {e}")))?;
+
+        Ok(ptx)
+    }
+
     fn create_dk_object(
         dk_bytes: Zeroizing<Vec<u8>>,
         mut attributes: Attributes,
@@ -514,12 +557,7 @@ impl ConfigurableKEM {
         attributes.sensitive = sensitive.then_some(true);
 
         let mut tags = attributes.get_tags();
-
-        //
-        // TODO: should this become _dk?
-        //
         tags.insert("_sk".to_owned());
-
         attributes.set_tags(tags)?;
 
         let cryptographic_length = Some(i32::try_from(dk_bytes.len())? * 8);
