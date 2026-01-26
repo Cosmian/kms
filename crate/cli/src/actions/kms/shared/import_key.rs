@@ -142,7 +142,7 @@ impl ImportSecretDataOrKeyAction {
 
         // print the response
         let stdout = format!(
-            "The {:?} in file {} was imported with id: {}",
+            "The {:?} in file {} was successfully imported with id: {}.",
             object_type,
             self.key_file.display(),
             unique_identifier,

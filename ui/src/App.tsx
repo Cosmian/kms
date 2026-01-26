@@ -48,17 +48,19 @@ import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
 import init from "./wasm/pkg";
+import ImportAwsKekForm from "./AwsImportKek";
+import AwsExportKeyMaterialForm from "./AwsExportKeyMaterial";
 
 type AppContentProps = {
     isDarkMode: boolean;
     setIsDarkMode: (value: boolean) => void;
 };
 
-const LS_DARKMODE_KEY = 'darkMode';
-const initialDarkMode = localStorage.getItem(LS_DARKMODE_KEY)
+const LS_DARKMODE_KEY = "darkMode";
+const initialDarkMode = localStorage.getItem(LS_DARKMODE_KEY);
 
-const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
-    const {setServerUrl, setIdToken, setUserId} = useAuth();
+const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode }) => {
+    const { setServerUrl, setIdToken, setUserId } = useAuth();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(false);
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
@@ -70,7 +72,7 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
 
     useEffect(() => {
         localStorage.setItem(LS_DARKMODE_KEY, JSON.stringify(isDarkMode));
-    }, [isDarkMode])
+    }, [isDarkMode]);
 
     useEffect(() => {
         // Automatically use dev URL in development mode
@@ -112,99 +114,102 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
         <Routes>
             {!isAuthenticated && authMethod === "JWT" ? (
                 <>
-                    <Route path="/login" element={<LoginPage auth={true} error={loginError}/>}/>
-                    <Route path="*" element={<Navigate to="/login" replace/>}/>
+                    <Route path="/login" element={<LoginPage auth={true} error={loginError} />} />
+                    <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
                 <>
-                    <Route index element={<LoginPage auth={false}/>}/>
-                    <Route path="/" element={<MainLayout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}
-                                                         authMethod={authMethod}/>}>
-                        <Route path="locate" element={<LocateForm/>}/>
+                    <Route index element={<LoginPage auth={false} />} />
+                    <Route path="/" element={<MainLayout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} authMethod={authMethod} />}>
+                        <Route path="locate" element={<LocateForm />} />
                         <Route path="sym">
-                            <Route path="keys/create" element={<SymKeyCreateForm/>}/>
-                            <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"}/>}/>
-                            <Route path="keys/import" element={<KeyImportForm key_type="symmetric"/>}/>
-                            <Route path="keys/revoke" element={<RevokeForm objectType="symmetric"/>}/>
-                            <Route path="keys/destroy" element={<DestroyForm objectType="symmetric"/>}/>
-                            <Route path="encrypt" element={<SymmetricEncryptForm/>}/>
-                            <Route path="decrypt" element={<SymmetricDecryptForm/>}/>
+                            <Route path="keys/create" element={<SymKeyCreateForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
+                            <Route path="encrypt" element={<SymmetricEncryptForm />} />
+                            <Route path="decrypt" element={<SymmetricDecryptForm />} />
                         </Route>
                         <Route path="rsa">
-                            <Route path="keys/create" element={<RsaKeyCreateForm/>}/>
-                            <Route path="keys/export" element={<KeyExportForm key_type={"rsa"}/>}/>
-                            <Route path="keys/import" element={<KeyImportForm key_type="rsa"/>}/>
-                            <Route path="keys/revoke" element={<RevokeForm objectType="rsa"/>}/>
-                            <Route path="keys/destroy" element={<DestroyForm objectType="rsa"/>}/>
-                            <Route path="encrypt" element={<RsaEncryptForm/>}/>
-                            <Route path="decrypt" element={<RsaDecryptForm/>}/>
-                            <Route path="sign" element={<RsaSignForm/>}/>
-                            <Route path="verify" element={<RsaVerifyForm/>}/>
+                            <Route path="keys/create" element={<RsaKeyCreateForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"rsa"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="rsa" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="rsa" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="rsa" />} />
+                            <Route path="encrypt" element={<RsaEncryptForm />} />
+                            <Route path="decrypt" element={<RsaDecryptForm />} />
+                            <Route path="sign" element={<RsaSignForm />} />
+                            <Route path="verify" element={<RsaVerifyForm />} />
                         </Route>
                         <Route path="ec">
-                            <Route path="keys/create" element={<ECKeyCreateForm/>}/>
-                            <Route path="keys/export" element={<KeyExportForm key_type={"ec"}/>}/>
-                            <Route path="keys/import" element={<KeyImportForm key_type="ec"/>}/>
-                            <Route path="keys/revoke" element={<RevokeForm objectType="ec"/>}/>
-                            <Route path="keys/destroy" element={<DestroyForm objectType="ec"/>}/>
-                            <Route path="encrypt" element={<ECEncryptForm/>}/>
-                            <Route path="decrypt" element={<ECDecryptForm/>}/>
-                            <Route path="sign" element={<ECSignForm/>}/>
-                            <Route path="verify" element={<ECVerifyForm/>}/>
+                            <Route path="keys/create" element={<ECKeyCreateForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"ec"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="ec" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="ec" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="ec" />} />
+                            <Route path="encrypt" element={<ECEncryptForm />} />
+                            <Route path="decrypt" element={<ECDecryptForm />} />
+                            <Route path="sign" element={<ECSignForm />} />
+                            <Route path="verify" element={<ECVerifyForm />} />
                         </Route>
                         <Route path="cc">
-                            <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm/>}/>
-                            <Route path="keys/create-user-key" element={<CovercryptUserKeyForm/>}/>
-                            <Route path="keys/export" element={<KeyExportForm key_type={"covercrypt"}/>}/>
-                            <Route path="keys/import" element={<KeyImportForm key_type={"covercrypt"}/>}/>
-                            <Route path="keys/revoke" element={<RevokeForm objectType="covercrypt"/>}/>
-                            <Route path="keys/destroy" element={<DestroyForm objectType="covercrypt"/>}/>
-                            <Route path="encrypt" element={<CCEncryptForm/>}/>
-                            <Route path="decrypt" element={<CCDecryptForm/>}/>
+                            <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
+                            <Route path="keys/create-user-key" element={<CovercryptUserKeyForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"covercrypt"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type={"covercrypt"} />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="covercrypt" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="covercrypt" />} />
+                            <Route path="encrypt" element={<CCEncryptForm />} />
+                            <Route path="decrypt" element={<CCDecryptForm />} />
                         </Route>
                         <Route path="secret-data">
-                            <Route path="create" element={<SecretDataCreateForm/>}/>
-                            <Route path="export" element={<KeyExportForm key_type={"secret-data"}/>}/>
-                            <Route path="import" element={<KeyImportForm key_type={"secret-data"}/>}/>
-                            <Route path="revoke" element={<RevokeForm objectType="secret-data"/>}/>
-                            <Route path="destroy" element={<DestroyForm objectType="secret-data"/>}/>
+                            <Route path="create" element={<SecretDataCreateForm />} />
+                            <Route path="export" element={<KeyExportForm key_type={"secret-data"} />} />
+                            <Route path="import" element={<KeyImportForm key_type={"secret-data"} />} />
+                            <Route path="revoke" element={<RevokeForm objectType="secret-data" />} />
+                            <Route path="destroy" element={<DestroyForm objectType="secret-data" />} />
                         </Route>
                         <Route path="opaque-object">
-                            <Route path="create" element={<OpaqueObjectForm/>}/>
-                            <Route path="export" element={<KeyExportForm key_type={"opaque-object"}/>}/>
-                            <Route path="import" element={<KeyImportForm key_type={"opaque-object"}/>}/>
-                            <Route path="revoke" element={<RevokeForm objectType="opaque-object"/>}/>
-                            <Route path="destroy" element={<DestroyForm objectType="opaque-object"/>}/>
+                            <Route path="create" element={<OpaqueObjectForm />} />
+                            <Route path="export" element={<KeyExportForm key_type={"opaque-object"} />} />
+                            <Route path="import" element={<KeyImportForm key_type={"opaque-object"} />} />
+                            <Route path="revoke" element={<RevokeForm objectType="opaque-object" />} />
+                            <Route path="destroy" element={<DestroyForm objectType="opaque-object" />} />
                         </Route>
                         <Route path="access-rights">
-                            <Route path="grant" element={<AccessGrantForm/>}/>
-                            <Route path="revoke" element={<AccessRevokeForm/>}/>
-                            <Route path="list" element={<AccessListForm/>}/>
-                            <Route path="owned" element={<ObjectsOwnedList/>}/>
-                            <Route path="obtained" element={<AccessObtainedList/>}/>
+                            <Route path="grant" element={<AccessGrantForm />} />
+                            <Route path="revoke" element={<AccessRevokeForm />} />
+                            <Route path="list" element={<AccessListForm />} />
+                            <Route path="owned" element={<ObjectsOwnedList />} />
+                            <Route path="obtained" element={<AccessObtainedList />} />
                         </Route>
                         <Route path="certificates">
-                            <Route path="certs/import" element={<CertificateImportForm/>}/>
-                            <Route path="certs/export" element={<CertificateExportForm/>}/>
-                            <Route path="certs/revoke" element={<RevokeForm objectType="certificate"/>}/>
-                            <Route path="certs/destroy" element={<DestroyForm objectType="certificate"/>}/>
-                            <Route path="certs/validate" element={<CertificateValidateForm/>}/>
-                            <Route path="encrypt" element={<CertificateEncryptForm/>}/>
-                            <Route path="decrypt" element={<CertificateDecryptForm/>}/>
-                            <Route path="certs/certify" element={<CertificateCertifyForm/>}/>
+                            <Route path="certs/import" element={<CertificateImportForm />} />
+                            <Route path="certs/export" element={<CertificateExportForm />} />
+                            <Route path="certs/revoke" element={<RevokeForm objectType="certificate" />} />
+                            <Route path="certs/destroy" element={<DestroyForm objectType="certificate" />} />
+                            <Route path="certs/validate" element={<CertificateValidateForm />} />
+                            <Route path="encrypt" element={<CertificateEncryptForm />} />
+                            <Route path="decrypt" element={<CertificateDecryptForm />} />
+                            <Route path="certs/certify" element={<CertificateCertifyForm />} />
                         </Route>
                         <Route path="attributes">
-                            <Route path="get" element={<AttributeGetForm/>}/>
-                            <Route path="set" element={<AttributeSetForm/>}/>
-                            <Route path="delete" element={<AttributeDeleteForm/>}/>
+                            <Route path="get" element={<AttributeGetForm />} />
+                            <Route path="set" element={<AttributeSetForm />} />
+                            <Route path="delete" element={<AttributeDeleteForm />} />
                         </Route>
                         <Route path="azure">
-                            <Route path="import-kek" element={<ImportAzureKekForm/>}/>
-                            <Route path="export-byok" element={<ExportAzureBYOKForm/>}/>
+                            <Route path="import-kek" element={<ImportAzureKekForm />} />
+                            <Route path="export-byok" element={<ExportAzureBYOKForm />} />
                         </Route>
-                        <Route path="google-cse" element={<CseInfo/>}/>
+                        <Route path="aws">
+                            <Route path="import-kek" element={<ImportAwsKekForm />} />
+                            <Route path="export-byok" element={<AwsExportKeyMaterialForm />} />
+                        </Route>
+                        <Route path="google-cse" element={<CseInfo />} />
                     </Route>
-                    <Route path="*" element={<NotFoundPage/>}/>
+                    <Route path="*" element={<NotFoundPage />} />
                 </>
             )}
         </Routes>
@@ -313,9 +318,9 @@ function App() {
 
     return (
         <BrowserRouter basename="/ui">
-            <ConfigProvider theme={{...theme.defaultConfig, ...(isDarkMode ? darkTheme : lightTheme)}}>
+            <ConfigProvider theme={{ ...theme.defaultConfig, ...(isDarkMode ? darkTheme : lightTheme) }}>
                 <AuthProvider>
-                    <AppContent isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}/>
+                    <AppContent isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
                 </AuthProvider>
             </ConfigProvider>
         </BrowserRouter>
