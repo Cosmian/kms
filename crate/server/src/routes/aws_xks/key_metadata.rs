@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
+use cosmian_logger::warn;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tracing::{debug, info};
@@ -306,32 +307,52 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    kms.create(create, &kms.params.default_username, None)
+    if let Err(e) = kms.create(create, &kms.params.default_username, None).await {
+        // if the key already exists, ignore the error
+        let get_att_response = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(uid.clone()),
+                    attribute_reference: None,
+                },
+                &kms.params.default_username,
+            )
+            .await
+            .map_err(|e| XksErrorReply {
+                errorName: XksErrorName::InternalException,
+                errorMessage: Some(format!("Failed to check prior existence of key {uid}: {e}")),
+            })?;
+        if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
+            warn!("AWS XKS create: key {uid} already exists (ignoring creation).");
+        } else {
+            return Err(XksErrorReply {
+                errorName: XksErrorName::InternalException,
+                errorMessage: Some(format!("Failed to create XKS key {uid}: {e}")),
+            });
+        }
+    } else {
+        // Grant Encrypt and Decrypt usage for the created key to the AWS user
+        kms.grant_access(
+            &Access {
+                unique_identifier: Some(uid.clone()),
+                user_id: aws_user.clone(),
+                operation_types: vec![
+                    KmipOperation::Encrypt,
+                    KmipOperation::Decrypt,
+                    KmipOperation::GetAttributes,
+                ],
+            },
+            &kms.params.default_username,
+            None,
+        )
         .await
         .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::KeyNotFoundException,
-            errorMessage: Some(e.to_string()),
+            errorName: XksErrorName::InternalException,
+            errorMessage: Some(format!(
+                "Failed to grant access to key {uid}, to user {aws_user}: {e}"
+            )),
         })?;
-
-    // Grant Encrypt and Decrypt usage for the created key to the AWS user
-    kms.grant_access(
-        &Access {
-            unique_identifier: Some(uid.clone()),
-            user_id: aws_user.clone(),
-            operation_types: vec![
-                KmipOperation::Encrypt,
-                KmipOperation::Decrypt,
-                KmipOperation::GetAttributes,
-            ],
-        },
-        &kms.params.default_username,
-        None,
-    )
-    .await
-    .map_err(|e| XksErrorReply {
-        errorName: XksErrorName::InternalException,
-        errorMessage: Some(format!("Failed to grant access to user {aws_user}: {e}")),
-    })?;
+    }
 
     // Return the key metadata
     let key_spec = "AES_256".to_owned();
