@@ -1,6 +1,7 @@
 mod access;
 mod attributes;
 mod auth_tests;
+// mod aws_xks_tests;
 mod certificates;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;

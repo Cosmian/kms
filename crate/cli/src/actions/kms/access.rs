@@ -70,7 +70,7 @@ pub struct GrantAccess {
     #[clap(long, short = 'i')]
     pub object_uid: Option<String>,
 
-    /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
+    /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`)
     #[clap(required = true)]
     pub operations: Vec<KmipOperation>,
 }
