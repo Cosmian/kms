@@ -5,7 +5,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
             ResponseMessageBatchItemVersioned, ResponseMessageHeader,
         },
-        kmip_types::{BatchErrorContinuationOption, ErrorReason, ResultStatusEnumeration, State},
+        kmip_types::{
+            BatchErrorContinuationOption, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+            State,
+        },
     },
     kmip_2_1::{
         extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
@@ -96,7 +99,13 @@ pub(crate) async fn message(
         // 2) Expand KMIP 2.1 GetAttributes with empty AttributeReference into the full explicit list
         expand_kmip2_get_attributes_request(&mut request_operation, kmip_version);
 
-        let response_operation = Box::pin(process_operation(kms, user, request_operation)).await;
+        let response_operation = Box::pin(process_operation(
+            kms,
+            user,
+            request_operation,
+            Some(request.request_header.protocol_version),
+        ))
+        .await;
         // 3) Optionally enforce MaximumResponseSize for Query
         let forced_size_error =
             enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
@@ -326,6 +335,7 @@ async fn process_operation(
     user: &str,
 
     request_operation: Operation,
+    protocol_version: Option<ProtocolVersion>,
 ) -> Result<Operation, KmsError> {
     // Get operation name for metrics
     let operation_name = get_operation_name(&request_operation);
@@ -379,10 +389,11 @@ async fn process_operation(
         }
         Operation::InteropResponse(r) => Operation::InteropResponse(r),
         Operation::GetAttributeList(kmip_request) => Operation::GetAttributeListResponse(
-            crate::core::operations::get_attribute_list::get_attribute_list(
+            crate::core::operations::get_attribute_list::get_attribute_list_with_protocol_version(
                 kms,
                 kmip_request,
                 user,
+                protocol_version,
             )
             .await?,
         ),

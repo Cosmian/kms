@@ -587,7 +587,19 @@ pub(crate) fn compare_attributes(
     // cmp_opt!(digest);
     cmp_opt!(digital_signature_algorithm);
     cmp_opt!(extractable);
-    cmp_opt!(fresh);
+    // Fresh is stateful: server may persist `Fresh=false` after key material has been
+    // returned once (e.g., Get with key wrapping disabled / unwrap-on-export).
+    // Be lenient when expected=Some(true) and actual=None/Some(false).
+    if e.fresh != a.fresh {
+        let expected = e.fresh;
+        let actual = a.fresh;
+        let tolerated = matches!(expected, Some(true)) && matches!(actual, None | Some(false));
+        if !tolerated {
+            return Err(KmsCliError::Default(
+                "Attributes.fresh mismatch".to_string(),
+            ));
+        }
+    }
     // cmp_opt!(initial_date);
     cmp_opt!(key_format_type);
     cmp_opt!(key_value_location);
