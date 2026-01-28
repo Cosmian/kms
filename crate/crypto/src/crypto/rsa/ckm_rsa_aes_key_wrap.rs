@@ -546,7 +546,7 @@ FQIDAQAB
         }
         let oaep_encapsulation = fs::read(&oaep_encapsulation_file)?;
 
-        // chack that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
+        // check that we can decrypt the ephemeral using KEK_FOR_BYOK and our implementation
         let priv_key = PKey::private_key_from_pem(RSA_PRIVATE_KEY.as_bytes())?;
         let rec_ephemeral = ckm_rsa_pkcs_oaep_key_unwrap(
             &priv_key,

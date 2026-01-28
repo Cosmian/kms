@@ -17,6 +17,7 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+
 processors:
   # Batch metrics for better performance
   batch:
@@ -57,11 +58,23 @@ exporters:
       # Add any required authentication headers
       # api-key: ${OTLP_API_KEY}
 
+  # OTLP over HTTP exporter (useful for simple backends / CI mocks)
+  otlphttp:
+    endpoint: http://${env:OTLP_ENDPOINT}
+    tls:
+      insecure: true
+    compression: none
+
   # Optional: Log metrics for debugging
   debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
+
+  # Expose metrics in Prometheus text format.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
 
 service:
   pipelines:
@@ -69,13 +82,13 @@ service:
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp, debug]
+      exporters: [prometheus, otlphttp, debug]
 
     # Traces pipeline
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 
   # Enable telemetry for the collector itself
   telemetry:
