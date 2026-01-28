@@ -2,7 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-.github/scripts/docker-compose-with-load-balancer.yml}"
-LB_URL="${LB_URL:-http://localhost:8080/health}"
+LB_URL="${LB_URL:-http://localhost:18080/health}"
 RECREATE_NGINX="${RECREATE_NGINX:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

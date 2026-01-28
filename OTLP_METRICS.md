@@ -56,14 +56,14 @@ cosmian_kms --otlp http://localhost:4317 --enable-metering
 
 ```bash
 # Start OTLP Collector and Jaeger
-docker compose -f docker-compose.otel.yml up -d
+docker compose --profile otel-test up -d otel-collector jaeger
 ```
 
 This starts:
 
-- **OTLP Collector** on port 4317 (gRPC) and 4318 (HTTP)
+- **OTLP Collector** on host ports 14317 (gRPC) and 14318 (HTTP)
+- **Collector Prometheus export** on <http://localhost:18889/metrics>
 - **Jaeger UI** on <http://localhost:16686>
-- **Grafana** on <http://localhost:3000> (admin/admin)
 
 ### 2. Start KMS with OTLP
 
@@ -77,7 +77,7 @@ cosmian_kms --otlp-url http://localhost:4317 \
 ### 3. View Metrics
 
 - **Jaeger UI**: <http://localhost:16686> (metrics and traces)
-- **Grafana**: <http://localhost:3000> (dashboards)
+- **Collector /metrics**: <http://localhost:18889/metrics>
 
 ## Available Metrics
 
@@ -236,7 +236,7 @@ otlp = "https://otlp-lb.example.com:4317"
 2. **Check Collector logs**:
 
 ```bash
-docker compose -f docker-compose.otel.yml logs -f otel-collector
+docker compose --profile otel-test logs -f otel-collector
 ```
 
 ### Metrics export errors
@@ -250,7 +250,7 @@ docker compose -f docker-compose.otel.yml logs -f otel-collector
 | File | Purpose |
 |------|---------|
 | `otel-collector-config.yaml` | OTLP Collector configuration |
-| `docker-compose.otel.yml` | Local development stack |
+| `docker-compose.yml` | Local development stack (use profile `otel-test`) |
 | `crate/server/src/core/otel_metrics.rs` | Metrics instruments and recording helpers |
 
 ## Differences from HTTP /metrics Endpoint

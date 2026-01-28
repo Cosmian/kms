@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.XX.YY] - 2026-02-XX
+
+### 🐛 Bug Fixes
+
+- Fix SQL Locate request for OpenTelemetry metrics collector:
+    - Refactored SQL Locate query building in locate_query.rs to use bound, typed parameters (LocateQuery + LocateParam) instead of interpolating values into SQL (safer + fixes type/cast handling across SQLite/Postgres/MySQL).
+    - Updated the SQL backends to consume the new LocateQuery API: crate/server_database/src/stores/sql/{mysql,pgsql,sqlite}.rs.
+    - Improved DB test error context in json_access_test.rs to make failures easier to diagnose.
+    - OpenTelemetry wiring updates:
+        - mod.rs: add OTEL resource attributes (service name/version + optional environment).
+        - otel_metrics.rs: ensure active_keys_count time series exists even when 0.
+        - cron.rs: fall back to default username if hsm_admin is empty.
+
 ## [5.15.0] - 2026-01-21
 
 ### 🚀 Features

@@ -25,6 +25,7 @@ jobs:
           - percona
           - mariadb
           - psql
+          - otel_export
           - google_cse
           - redis
           - pykmip

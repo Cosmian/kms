@@ -423,26 +423,30 @@ impl ObjectsStore for SqlitePool {
         user: &str,
         user_must_be_owner: bool,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let sql = query_from_attributes::<SqlitePlaceholder>(
+        let locate = query_from_attributes::<SqlitePlaceholder>(
             researched_attributes,
             state,
             user,
             user_must_be_owner,
         );
-        let sql_conversion = replace_dollars_with_qn(&sql);
-        let user1 = user.to_owned();
-        let user2 = user.to_owned();
-        let user3 = user.to_owned();
+        let sql_conversion = replace_dollars_with_qn(&locate.sql);
+        let locate_params = locate.params;
         let rows = self
             .conn
             .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql_conversion)?;
-                let params: Vec<&str> = if user_must_be_owner {
-                    vec![user1.as_str()]
-                } else {
-                    vec![user1.as_str(), user2.as_str(), user3.as_str()]
-                };
-                let mut q = stmt.query(params_from_iter(params.iter()))?;
+                let values: Vec<rusqlite::types::Value> = locate_params
+                    .into_iter()
+                    .map(|p| match p {
+                        crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                            rusqlite::types::Value::Text(s)
+                        }
+                        crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                            rusqlite::types::Value::Integer(i)
+                        }
+                    })
+                    .collect();
+                let mut q = stmt.query(rusqlite::params_from_iter(values.iter()))?;
                 let mut out = Vec::new();
                 while let Some(r) = q.next()? {
                     let id: String = r.get(0)?;

@@ -719,19 +719,23 @@ impl ObjectsStore for PgPool {
             .get()
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let query = crate::stores::sql::locate_query::query_from_attributes::<
+        let locate = crate::stores::sql::locate_query::query_from_attributes::<
             crate::stores::sql::locate_query::PgSqlPlaceholder,
         >(researched_attributes, state, user, user_must_be_owner);
-        cosmian_logger::debug!("PG find query: {query}");
+        cosmian_logger::debug!("PG find query: {}", locate.sql);
         let stmt = client
-            .prepare(&query)
+            .prepare(&locate.sql)
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-        let params: Vec<&(dyn ToSql + Sync)> = if user_must_be_owner {
-            vec![&user]
-        } else {
-            vec![&user, &user, &user]
-        };
+        let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+        for p in locate.params {
+            match p {
+                crate::stores::sql::locate_query::LocateParam::Text(s) => owned.push(Box::new(s)),
+                crate::stores::sql::locate_query::LocateParam::I64(i) => owned.push(Box::new(i)),
+            }
+        }
+        let params: Vec<&(dyn ToSql + Sync)> =
+            owned.iter().map(std::convert::AsRef::as_ref).collect();
         let rows = client
             .query(&stmt, &params)
             .await

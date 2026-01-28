@@ -16,7 +16,10 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
 use uuid::Uuid;
 
-use crate::{db_error, error::DbResult};
+use crate::{
+    db_error,
+    error::{DbResult, DbResultHelper},
+};
 
 pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
@@ -43,14 +46,20 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         symmetric_key.attributes()?,
         &HashSet::new(),
     )
-    .await?;
+    .await
+    .context("create")?;
 
-    assert!(db.is_object_owned_by(&uid, owner).await?);
+    assert!(
+        db.is_object_owned_by(&uid, owner)
+            .await
+            .context("is_object_owned_by")?
+    );
 
     // Retrieve object with valid owner with `Get` operation type - OK
     let obj = db
         .retrieve(&uid)
-        .await?
+        .await
+        .context("retrieve")?
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::PreActive, obj.state());
     assert_eq!(&symmetric_key, obj.object());
@@ -69,7 +78,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_algorithm)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -87,7 +97,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_length)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -106,7 +117,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (cryptographic_algorithm + cryptographic_length)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -124,7 +136,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (key_format_type)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -145,7 +158,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (all attributes)")?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
 
@@ -163,7 +177,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (bad cryptographic_algorithm)")?;
     assert!(found.is_empty());
 
     // Find bad key format type
@@ -180,7 +195,8 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             owner,
             true,
         )
-        .await?;
+        .await
+        .context("find (bad key_format_type)")?;
     assert!(found.is_empty());
 
     Ok(())

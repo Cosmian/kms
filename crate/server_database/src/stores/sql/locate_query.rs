@@ -65,7 +65,7 @@ pub(super) trait PlaceholderTrait {
     #[must_use]
     fn link_evaluation(node_name: &str, node_value: &str) -> String {
         format!(
-            "{}(links.value, {}) = '{}'",
+            "{}(links.value, {}) = {}",
             Self::JSON_FN_EXTRACT_TEXT,
             node_name,  // `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`
             node_value  // `link.link_type` or `uid`
@@ -75,7 +75,7 @@ pub(super) trait PlaceholderTrait {
     #[must_use]
     fn name_evaluation(node_name: &str, node_value: &str) -> String {
         format!(
-            "{}(names.value, {}) = '{}'",
+            "{}(names.value, {}) = {}",
             Self::JSON_FN_EXTRACT_TEXT,
             node_name,  // `P::JSON_TEXT_NAME_TYPE` or `P::JSON_TEXT_NAME_VALUE`
             node_value  // `name.name_type` or `name.name_value`
@@ -146,7 +146,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         //      '$[*].LinkType' -> `node_name` (from either `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`)
         // )
         format!(
-            "{}({}(objects.attributes, {}), 'one', '{}', NULL, {}) IS NOT NULL",
+            "{}({}(objects.attributes, {}), 'one', {}, NULL, {}) IS NOT NULL",
             Self::JSON_FN_EACH_ELEMENT,
             Self::JSON_FN_EXTRACT_PATH,
             Self::JSON_NODE_LINK,
@@ -157,7 +157,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
 
     fn name_evaluation(node_name: &str, node_value: &str) -> String {
         format!(
-            "{}({}(objects.attributes, {}), 'one', '{}', NULL, {}) IS NOT NULL",
+            "{}({}(objects.attributes, {}), 'one', {}, NULL, {}) IS NOT NULL",
             Self::JSON_FN_EACH_ELEMENT,
             Self::JSON_FN_EXTRACT_PATH,
             Self::JSON_NODE_NAME,
@@ -190,6 +190,9 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
     const JSON_TEXT_NAME_TYPE: &'static str = "'NameType'";
     const JSON_TEXT_NAME_VALUE: &'static str = "'NameValue'";
+    // We bind numeric parameters as Rust `i64` (see `LocateParam::I64`), so ensure
+    // any explicit cast on the JSON-extracted value uses a compatible PostgreSQL type.
+    const TYPE_INTEGER: &'static str = "BIGINT";
 
     // const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
 
@@ -221,6 +224,62 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 pub(super) enum SqlitePlaceholder {}
 impl PlaceholderTrait for SqlitePlaceholder {}
 
+// We build locate SQL dynamically across multiple DB engines (SQLite/Postgres/MySQL), but we must
+// *not* interpolate user-controlled values directly into the SQL string.
+//
+// This small query builder keeps two things separate:
+// - `sql`: the query text with engine-specific placeholders (`?` vs `$1`, `$2`, ...)
+// - `params`: a typed list of values to bind later via the DB driver
+//
+// That separation is needed for:
+// - Security: prevents SQL injection by always using bound parameters.
+// - Correctness: preserves types (e.g., numeric values stay numeric) so casts like
+//   `CAST(json_value AS BIGINT) = $n` behave consistently across engines.
+// - Portability: allows placeholder numbering/formatting to vary by engine while keeping one
+//   shared query-construction path.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum LocateParam {
+    Text(String),
+    I64(i64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct LocateQuery {
+    pub(super) sql: String,
+    pub(super) params: Vec<LocateParam>,
+}
+
+struct LocateQueryBuilder<P: PlaceholderTrait> {
+    params: Vec<LocateParam>,
+    _phantom: core::marker::PhantomData<P>,
+}
+
+impl<P: PlaceholderTrait> LocateQueryBuilder<P> {
+    const fn new() -> Self {
+        Self {
+            params: Vec::new(),
+            _phantom: core::marker::PhantomData,
+        }
+    }
+
+    fn bind_text(&mut self, value: impl Into<String>) -> String {
+        self.params.push(LocateParam::Text(value.into()));
+        P::binder(self.params.len())
+    }
+
+    fn bind_i64(&mut self, value: i64) -> String {
+        self.params.push(LocateParam::I64(value));
+        P::binder(self.params.len())
+    }
+
+    fn finish(self, sql: String) -> LocateQuery {
+        LocateQuery {
+            sql,
+            params: self.params,
+        }
+    }
+}
+
 /// Builds a SQL query depending on `attributes` and `state` constraints,
 /// to search for items in database.
 /// Returns a tuple containing the stringified query and the values to bind with.
@@ -228,9 +287,10 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<State>,
-    _user: &str,
+    user: &str,
     user_must_be_owner: bool,
-) -> String {
+) -> LocateQuery {
+    let mut qb = LocateQueryBuilder::<P>::new();
     let mut query =
         "SELECT DISTINCT objects.id as id, objects.state as state, objects.attributes as attrs \
                      FROM objects"
@@ -241,18 +301,20 @@ pub(super) fn query_from_attributes<P: PlaceholderTrait>(
         let tags = attributes.get_tags();
         let tags_len = tags.len();
         if tags_len > 0 {
-            let tags_string = tags
+            let tag_placeholders = tags
                 .iter()
-                .map(|t| format!("'{t}'"))
+                .map(|t| qb.bind_text(t.clone()))
                 .collect::<Vec<String>>()
                 .join(", ");
+            let tags_len_i64 = i64::try_from(tags_len).unwrap_or(0);
+            let tags_len_placeholder = qb.bind_i64(tags_len_i64);
             query = format!(
                 "{query} INNER JOIN (
     SELECT id
     FROM tags
-    WHERE tag IN ({tags_string})
+    WHERE tag IN ({tag_placeholders})
     GROUP BY id
-    HAVING COUNT(DISTINCT tag) = {tags_len}
+    HAVING COUNT(DISTINCT tag) = {tags_len_placeholder}
 ) AS matched_tags
 ON objects.id = matched_tags.id"
             );
@@ -264,7 +326,7 @@ ON objects.id = matched_tags.id"
         query = format!(
             "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
              read_access.userid = {}",
-            P::binder(1)
+            qb.bind_text(user)
         );
     }
 
@@ -288,17 +350,19 @@ ON objects.id = matched_tags.id"
 
     if user_must_be_owner {
         // only select objects for which the user is the owner
-        query = format!("{query} WHERE objects.owner = {}", P::binder(1));
+        query = format!("{query} WHERE objects.owner = {}", qb.bind_text(user));
     } else {
         query = format!(
             "{query} WHERE (objects.owner = {} OR read_access.userid = {})",
-            P::binder(2),
-            P::binder(3)
+            qb.bind_text(user),
+            qb.bind_text(user)
         );
     }
 
     if let Some(state) = state {
-        query = format!("{query} AND state = '{state}'");
+        // Bind state as text to avoid injection and keep DB representation consistent.
+        let state_s: &'static str = state.into();
+        query = format!("{query} AND state = {}", qb.bind_text(state_s));
     }
 
     #[allow(clippy::collapsible_match)]
@@ -306,49 +370,53 @@ ON objects.id = matched_tags.id"
         // UniqueIdentifier
         if let Some(uid) = &attributes.unique_identifier {
             if let UniqueIdentifier::TextString(id) = uid {
-                query = format!("{query} AND objects.id = '{id}'");
+                query = format!("{query} AND objects.id = {}", qb.bind_text(id.clone()));
             }
         }
 
         // ObjectGroup
         if let Some(object_group) = &attributes.object_group {
             query = format!(
-                "{query} AND {} = '{}'",
+                "{query} AND {} = {}",
                 P::extract_attribute_path(&["ObjectGroup"]),
-                object_group
+                qb.bind_text(object_group.clone())
             );
         }
 
         // ObjectGroupMember
         if let Some(object_group_member) = attributes.object_group_member {
             query = format!(
-                "{query} AND {} = '{}'",
+                "{query} AND {} = {}",
                 P::extract_attribute_path(&["ObjectGroupMember"]),
-                object_group_member
+                qb.bind_text(object_group_member.to_string())
             );
         }
 
         // CryptographicAlgorithm
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
-                "{query} AND {} = '{cryptographic_algorithm}'",
-                P::extract_attribute_path(&["CryptographicAlgorithm"])
+                "{query} AND {} = {}",
+                P::extract_attribute_path(&["CryptographicAlgorithm"]),
+                qb.bind_text(cryptographic_algorithm.to_string())
             );
         }
 
         // CryptographicLength
         if let Some(cryptographic_length) = attributes.cryptographic_length {
+            let len_i64 = i64::from(cryptographic_length);
             if P::NEEDS_INTEGER_CAST {
                 query = format!(
-                    "{query} AND CAST ({} AS {}) = {cryptographic_length}",
+                    "{query} AND CAST ({} AS {}) = {}",
                     P::extract_attribute_path(&["CryptographicLength"]),
-                    P::TYPE_INTEGER
+                    P::TYPE_INTEGER,
+                    qb.bind_i64(len_i64)
                 );
             } else {
                 // For MySQL/MariaDB, rely on implicit conversion of unquoted value
                 query = format!(
-                    "{query} AND {} = {cryptographic_length}",
-                    P::extract_attribute_path(&["CryptographicLength"])
+                    "{query} AND {} = {}",
+                    P::extract_attribute_path(&["CryptographicLength"]),
+                    qb.bind_i64(len_i64)
                 );
             }
         }
@@ -356,36 +424,41 @@ ON objects.id = matched_tags.id"
         // KeyFormatType
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
-                "{query} AND {} = '{key_format_type}'",
-                P::extract_attribute_path(&["KeyFormatType"])
+                "{query} AND {} = {}",
+                P::extract_attribute_path(&["KeyFormatType"]),
+                qb.bind_text(key_format_type.to_string())
             );
         }
 
         // ObjectType
         if let Some(object_type) = attributes.object_type {
-            query = format!("{query} AND {} = '{object_type}'", P::extract_object_type());
+            query = format!(
+                "{query} AND {} = {}",
+                P::extract_object_type(),
+                qb.bind_text(object_type.to_string())
+            );
         }
 
         // ApplicationSpecificInformation
         if let Some(app) = &attributes.application_specific_information {
             // ApplicationNamespace is required in the struct
             query = format!(
-                "{query} AND {} = '{}'",
+                "{query} AND {} = {}",
                 P::extract_attribute_path(&[
                     "ApplicationSpecificInformation",
                     "ApplicationNamespace"
                 ]),
-                app.application_namespace
+                qb.bind_text(app.application_namespace.clone())
             );
             // ApplicationData is optional
             if let Some(data) = &app.application_data {
                 query = format!(
-                    "{query} AND {} = '{}'",
+                    "{query} AND {} = {}",
                     P::extract_attribute_path(&[
                         "ApplicationSpecificInformation",
                         "ApplicationData"
                     ]),
-                    data
+                    qb.bind_text(data.clone())
                 );
             }
         }
@@ -396,14 +469,17 @@ ON objects.id = matched_tags.id"
                 // LinkType
                 query = format!(
                     "{query} AND {}",
-                    P::link_evaluation(P::JSON_TEXT_LINK_TYPE, &link.link_type.to_string())
+                    P::link_evaluation(
+                        P::JSON_TEXT_LINK_TYPE,
+                        &qb.bind_text(link.link_type.to_string())
+                    )
                 );
 
                 // LinkedObjectIdentifier
                 if let TextString(uid) = &link.linked_object_identifier {
                     query = format!(
                         "{query} AND {}",
-                        P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, uid)
+                        P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, &qb.bind_text(uid.clone()))
                     );
                 }
             }
@@ -417,19 +493,23 @@ ON objects.id = matched_tags.id"
                     "{query} AND {}",
                     P::name_evaluation(
                         P::JSON_TEXT_NAME_TYPE,
-                        match &name.name_type {
+                        &qb.bind_text(match &name.name_type {
                             NameType::UninterpretedTextString => "UninterpretedTextString",
                             NameType::URI => "URI",
-                        }
+                        })
                     )
                 );
                 // NameValue
                 query = format!(
                     "{query} AND {}",
-                    P::name_evaluation(P::JSON_TEXT_NAME_VALUE, &name.name_value)
+                    P::name_evaluation(
+                        P::JSON_TEXT_NAME_VALUE,
+                        &qb.bind_text(name.name_value.clone())
+                    )
                 );
             }
         }
     }
-    query
+
+    qb.finish(query)
 }

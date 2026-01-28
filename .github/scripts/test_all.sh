@@ -30,6 +30,23 @@ run_step() {
 # 1) SQLite (always)
 run_step "SQLite" "$SCRIPT_DIR/test_sqlite.sh"
 
+# 1b) WASM (always)
+run_step "WASM" "$SCRIPT_DIR/test_wasm.sh" --profile "${BUILD_PROFILE}" --variant "${VARIANT}"
+
+# 1c) OpenTelemetry export integration (requires Docker)
+if command -v docker >/dev/null 2>&1; then
+  printf "\n===== %s =====\n" "OTEL export"
+  (
+    set -euo pipefail
+    # Start the OTEL collector stack required by the ignored integration test
+    docker compose --profile otel-test up -d jaeger otel-collector
+    trap 'docker compose --profile otel-test down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+    bash "$SCRIPT_DIR/test_otel_export.sh" --profile "${BUILD_PROFILE}" --variant "${VARIANT}"
+  )
+else
+  echo "Skipping OTEL export (docker not available)"
+fi
+
 # 2) PostgreSQL (requires server)
 run_step "PostgreSQL" "$SCRIPT_DIR/test_psql.sh"
 

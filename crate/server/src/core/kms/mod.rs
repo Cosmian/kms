@@ -1,5 +1,5 @@
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::metrics::PeriodicReader;
+use opentelemetry_sdk::{Resource, metrics::PeriodicReader};
 mod kmip;
 mod other_kms_methods;
 mod permissions;
@@ -163,7 +163,26 @@ impl KMS {
                 .build();
 
             // Create meter provider
+            let mut resource_kvs = vec![
+                opentelemetry::KeyValue::new("service.name", "cosmian_kms"),
+                opentelemetry::KeyValue::new(
+                    "service.version",
+                    option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"),
+                ),
+            ];
+            if let Some(env) = server_params
+                .otel_params
+                .as_ref()
+                .and_then(|otel| otel.environment.as_ref())
+            {
+                resource_kvs.push(opentelemetry::KeyValue::new(
+                    "deployment.environment",
+                    env.clone(),
+                ));
+            }
+
             let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+                .with_resource(Resource::new(resource_kvs))
                 .with_reader(reader)
                 .build();
 

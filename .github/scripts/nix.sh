@@ -303,6 +303,9 @@ test)
   percona)
     SCRIPT="$REPO_ROOT/.github/scripts/test_percona.sh"
     ;;
+  otel_export)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_otel_export.sh"
+    ;;
   mariadb)
     SCRIPT="$REPO_ROOT/.github/scripts/test_maria.sh"
     ;;
@@ -360,7 +363,7 @@ test)
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: sqlite, mysql, psql, redis, google_cse, pykmip, hsm [softhsm2|utimaco|proteccio|all]" >&2
+    echo "Valid types: sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
     usage
     ;;
   esac
