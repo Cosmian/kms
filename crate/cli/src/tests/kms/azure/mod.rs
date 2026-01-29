@@ -1,17 +1,55 @@
 use std::fs;
 
-use cosmian_kmip::kmip_2_1::{kmip_objects::ObjectType, kmip_types::KeyFormatType};
+use openssl::{
+    pkey::{PKey, Private, Public},
+    rsa::Rsa,
+};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     actions::kms::{
         azure::byok::{ExportByokAction, ImportKekAction},
-        rsa::keys::create_key_pair::CreateKeyPairAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
 };
+
+/// Generate RSA keypair using OpenSSL (random size from 2048, 3072, or 4096 bits).
+///
+/// This mirrors AWS KMS "get-parameters-for-import" wrapping key specs and keeps
+/// the test independent from KMS RSA key generation/export actions.
+fn generate_rsa_keypair() -> KmsCliResult<(PKey<Private>, PKey<Public>)> {
+    let key_sizes = [2048_u32, 3072_u32, 4096_u32];
+    // Avoid introducing new RNG deps in the CLI crate's dev-deps.
+    let bits = key_sizes[std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| {
+            let len_u32 = u32::try_from(key_sizes.len()).unwrap_or(1);
+            let idx_u32 = d.subsec_nanos() % len_u32;
+            usize::try_from(idx_u32).unwrap_or(0)
+        })
+        .unwrap_or(0)];
+
+    let rsa = Rsa::generate(bits)
+        .map_err(|e| KmsCliError::Default(format!("Failed to generate RSA key: {e}")))?;
+    let private_key = PKey::from_rsa(rsa.clone())
+        .map_err(|e| KmsCliError::Default(format!("Failed to build private key: {e}")))?;
+    let public_key = PKey::from_rsa(
+        Rsa::from_public_components(
+            rsa.n()
+                .to_owned()
+                .map_err(|e| KmsCliError::Default(format!("Failed to clone modulus: {e}")))?,
+            rsa.e()
+                .to_owned()
+                .map_err(|e| KmsCliError::Default(format!("Failed to clone exponent: {e}")))?,
+        )
+        .map_err(|e| KmsCliError::Default(format!("Failed to build public RSA key: {e}")))?,
+    )
+    .map_err(|e| KmsCliError::Default(format!("Failed to build public key: {e}")))?;
+
+    Ok((private_key, public_key))
+}
 
 #[tokio::test]
 async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
@@ -19,69 +57,18 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
 
-    // 2. Generate an RSA key pair, export the public key as PEM, then import it as Azure KEK
-    let (_private_key_id, public_key_id) = CreateKeyPairAction {
-        key_size: 2048,
-        tags: vec!["test".to_owned()],
-        ..CreateKeyPairAction::default()
-    }
-    .run(kms_client.clone())
-    .await?;
-
     let tmp_dir = TempDir::new()?;
     let kek_pem_path = tmp_dir.path().join("kek_pub.pem");
 
-    // Export the public key material as PKCS#8 DER and convert to PEM.
-    let (_id, kek_pub_object, _attributes) = cosmian_kms_client::export_object(
-        &kms_client,
-        &public_key_id.to_string(),
-        cosmian_kms_client::ExportObjectParams {
-            unwrap: true,
-            wrapping_key_id: None,
-            allow_revoked: false,
-            key_format_type: Some(cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::PKCS8),
-            encode_to_ttlv: false,
-            wrapping_cryptographic_parameters: None,
-            authenticated_encryption_additional_data: None,
-        },
-    )
-    .await
-    .map_err(|e| KmsCliError::Default(format!("Failed to export RSA public key: {e}")))?;
-
-    let key_block = kek_pub_object
-        .key_block()
-        .map_err(|e| KmsCliError::Default(format!("Invalid exported key block: {e}")))?;
-    let der: Vec<u8> = match key_block.key_value.as_ref() {
-        Some(cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue::ByteString(v)) => v.to_vec(),
-        Some(cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue::Structure {
-            key_material,
-            ..
-        }) => match key_material {
-            cosmian_kmip::kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(v) => v.to_vec(),
-            x => {
-                return Err(KmsCliError::Default(format!(
-                    "Unsupported exported public key material: {x:?}"
-                )));
-            }
-        },
-        None => {
-            return Err(KmsCliError::Default(
-                "Exported public key has no key value".into(),
-            ));
-        }
-    };
-
-    let pem = cosmian_kms_client_utils::export_utils::der_to_pem(
-        der.as_slice(),
-        KeyFormatType::PKCS8,
-        ObjectType::PublicKey,
-    )
-    .map_err(|e| KmsCliError::Default(format!("DER to PEM conversion failed: {e}")))?;
-
-    fs::write(&kek_pem_path, pem.as_slice())?;
+    // 2. Generate an RSA key pair locally, write the public key in PKCS#8 PEM, then import it as Azure KEK
+    let (_private_key, public_key) = generate_rsa_keypair()?;
+    let public_key_pem = public_key
+        .public_key_to_pem()
+        .map_err(|e| KmsCliError::Default(format!("Failed to serialize public key PEM: {e}")))?;
+    fs::write(&kek_pem_path, &public_key_pem)?;
 
     let kid = "https://unit.test/keys/KEK/00000000000000000000000000000000".to_owned();
-    ImportKekAction {
+    let imported_kek_id = ImportKekAction {
         kek_file: kek_pem_path,
         kid: kid.clone(),
         key_id: None,
@@ -91,30 +78,6 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
 
     // The import action writes to stdout and does not return the imported id; locate it via tag.
     // Tag is `kid:<kid>`.
-    let locate_request = cosmian_kms_client_utils::locate_utils::build_locate_request(
-        Some(vec![format!("kid:{kid}")]),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| KmsCliError::Default(format!("Failed to build Locate request: {e}")))?;
-
-    let locate_response = kms_client
-        .locate(locate_request)
-        .await
-        .map_err(|e| KmsCliError::Default(format!("Failed to locate imported KEK: {e}")))?;
-
-    let imported_kek_id = locate_response
-        .unique_identifier
-        .unwrap_or_default()
-        .into_iter()
-        .next()
-        .ok_or_else(|| KmsCliError::Default("Failed to locate imported Azure KEK".to_owned()))?
-        .to_string();
 
     // 3. Generate a symmetric key and run ExportByokAction using it as wrapped_key_id
     let sym_key_id = CreateKeyAction {
@@ -130,7 +93,7 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
 
     ExportByokAction {
         wrapped_key_id: sym_key_id,
-        kek_id: imported_kek_id,
+        kek_id: imported_kek_id.to_string(),
         byok_file: Some(byok_file.clone()),
     }
     .run(kms_client)
