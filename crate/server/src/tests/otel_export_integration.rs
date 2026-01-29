@@ -283,7 +283,7 @@ async fn otel_export_metrics_uptime_and_active_keys() {
     let otlp_endpoint = std::env::var("OTEL_EXPORT_OTLP_ENDPOINT")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:14317".to_owned());
+        .unwrap_or_else(|| "http://127.0.0.1:4317".to_owned());
     clap_config.logging.otlp = Some(otlp_endpoint);
     clap_config.logging.enable_metering = true;
     clap_config.db.sqlite_path = test_utils::get_tmp_sqlite_path();
@@ -323,7 +323,7 @@ async fn otel_export_metrics_uptime_and_active_keys() {
     let scrape_url = std::env::var("OTEL_EXPORT_SCRAPE_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:18889/metrics".to_owned());
+        .unwrap_or_else(|| "http://127.0.0.1:8889/metrics".to_owned());
 
     // Collector's Prometheus exporter exposes received OTLP metrics under their
     // Prometheus-friendly names.

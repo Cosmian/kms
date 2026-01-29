@@ -22,12 +22,6 @@ echo "========================================="
 OTLP_GRPC_PORT=4317
 PROM_PORT=8889
 
-if [[ -z "$OTLP_GRPC_PORT" || -z "$PROM_PORT" ]]; then
-  echo "Failed to determine published ports from docker compose."
-  docker compose --project-directory "$REPO_ROOT" -p "$COMPOSE_PROJECT_NAME" ps || true
-  exit 1
-fi
-
 export OTEL_EXPORT_OTLP_ENDPOINT="http://127.0.0.1:${OTLP_GRPC_PORT}"
 export OTEL_EXPORT_SCRAPE_URL="http://127.0.0.1:${PROM_PORT}/metrics"
 
