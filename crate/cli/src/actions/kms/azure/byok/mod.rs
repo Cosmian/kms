@@ -3,11 +3,10 @@ mod import_kek;
 
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
+pub(crate) use export_byok::ExportByokAction;
+pub(crate) use import_kek::ImportKekAction;
 
-use crate::{
-    actions::kms::azure::byok::{export_byok::ExportByokAction, import_kek::ImportKekAction},
-    error::result::KmsCliResult,
-};
+use crate::error::result::KmsCliResult;
 
 /// Azure BYOK support.
 /// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification>

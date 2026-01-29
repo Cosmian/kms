@@ -4,7 +4,7 @@ import {useAuth} from "./AuthContext";
 import {downloadFile, sendKmipRequest} from "./utils";
 import {
     export_ttlv_request,
-    get_attributes_ttlv_request,
+    get_attributes_ttlv_request_with_options,
     parse_export_ttlv_response,
     parse_get_attributes_ttlv_response
 } from "./wasm/pkg";
@@ -59,7 +59,7 @@ const ExportAzureBYOKForm: React.FC = () => {
         setRes(undefined);
         try {
             // Step 1: Get the KEK attributes to retrieve the Azure kid
-            const getAttrsRequest = get_attributes_ttlv_request(values.kekId);
+            const getAttrsRequest = get_attributes_ttlv_request_with_options(values.kekId, true);
             const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
 
             if (!attrsResultStr) {
