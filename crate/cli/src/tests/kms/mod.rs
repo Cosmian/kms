@@ -1,6 +1,7 @@
 mod access;
 mod attributes;
 mod auth_tests;
+mod azure;
 mod certificates;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;

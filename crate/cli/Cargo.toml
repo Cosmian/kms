@@ -68,6 +68,7 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.15.0" }
 openssl = { workspace = true }
 serial_test = "3.0"
 tempfile = "3.19"

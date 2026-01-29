@@ -1,4 +1,4 @@
-mod byok;
+pub(crate) mod byok;
 
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
