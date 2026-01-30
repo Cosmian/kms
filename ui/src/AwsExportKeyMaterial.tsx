@@ -1,14 +1,8 @@
-import { Button, Card, Form, Input, Space, Upload } from "antd";
-import { UploadOutlined } from "@ant-design/icons";
+import { Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { downloadFile, sendKmipRequest } from "./utils";
-import {
-    export_ttlv_request,
-    get_attributes_ttlv_request,
-    parse_export_ttlv_response,
-    parse_get_attributes_ttlv_response,
-} from "./wasm/pkg/cosmian_kms_client_wasm";
+import * as wasm from "./wasm/pkg/cosmian_kms_client_wasm";
 import ExternalLink from "./components/ExternalLink";
 
 const getTags = (attributes: Map<string, never>): string[] => {
@@ -40,7 +34,7 @@ const getTags = (attributes: Map<string, never>): string[] => {
 interface AwsExportKeyMaterialFormData {
     wrappedKeyId: string;
     kekId: string;
-    tokenFile?: Uint8Array;
+    tokenFile?: string;
     byokFile?: string;
 }
 
@@ -62,7 +56,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
         setRes(undefined);
         try {
             // Step 1: Get KEK attributes to retrieve AWS tags
-            const getAttrsRequest = get_attributes_ttlv_request(values.kekId);
+            const getAttrsRequest = wasm.get_attributes_ttlv_request_with_options(values.kekId, true);
             const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
 
             if (!attrsResultStr) {
@@ -81,7 +75,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                 "public_key_id",
                 "private_key_id",
             ];
-            const attributes = await parse_get_attributes_ttlv_response(attrsResultStr, allAttributes);
+            const attributes = await wasm.parse_get_attributes_ttlv_response(attrsResultStr, allAttributes);
 
             const tags = getTags(attributes);
 
@@ -101,12 +95,12 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const wrappingAlgorithm = wrappingAlgTag.substring(19);
 
             // Step 2: Export the wrapped key using the KEK
-            const exportRequest = export_ttlv_request(
+            const exportRequest = wasm.export_ttlv_request(
                 values.wrappedKeyId, // Key ID to wrap
                 false, // Unwrap flag
-                undefined, // Key format (let server decide)
+                "raw", // Key format (raw bytes)
                 values.kekId, // Wrapping key ID
-                wrappingAlgorithm // Wrapping algorithm
+                wrappingAlgorithm, // Wrapping algorithm
             );
 
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
@@ -116,7 +110,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                 return;
             }
 
-            const wrappedKeyData = await parse_export_ttlv_response(exportResultStr, undefined);
+            const wrappedKeyData = await wasm.parse_export_ttlv_response(exportResultStr, "raw");
 
             let wrappedKeyBytes: Uint8Array;
             if (wrappedKeyData instanceof Uint8Array) {
@@ -138,15 +132,14 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                 downloadFile(wrappedKeyBytes, values.byokFile, "application/octet-stream");
 
                 // Build AWS CLI command
-                const tokenPath = values.tokenFile ? "<IMPORT_TOKEN_FILE>" : "<IMPORT_TOKEN_FILE>";
                 const awsCommand = `aws kms import-key-material \\
     --key-id ${keyArn || "<AWS_KEY_ARN>"} \\
     --encrypted-key-material fileb://${values.byokFile} \\
-    --import-token fileb://${tokenPath} \\
+    --import-token fileb://${values.tokenFile || "<IMPORT_TOKEN_FILE>"} \\
     --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE`;
 
                 setRes(
-                    `The encrypted key material (${wrappedKeyBytes.length} bytes) was successfully written to ${values.byokFile} for key ${values.wrappedKeyId}.\n\nTo import into AWS KMS using the CLI, run:\n\n${awsCommand}`
+                    `The encrypted key material (${wrappedKeyBytes.length} bytes) was successfully written to ${values.byokFile} for key ${values.wrappedKeyId}.\n\nTo import into AWS KMS using the CLI, you can run:\n\n${awsCommand}`,
                 );
             } else {
                 // Display as base64
@@ -196,39 +189,20 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">Import Token (Optional)</h3>
+                        <h3 className="text-m font-bold mb-4">Output Options (Optional)</h3>
                         <Form.Item
                             name="tokenFile"
-                            label="Import Token File"
-                            help="The import token file from AWS (not used by KMS, only for generating the CLI command)"
+                            label="Import Token File Path"
+                            help="The path to the import token file from AWS (used only for generating the CLI command)"
                         >
-                            <Upload
-                                beforeUpload={(file) => {
-                                    const reader = new FileReader();
-                                    reader.onload = (e) => {
-                                        const content = e.target?.result;
-                                        if (content instanceof ArrayBuffer) {
-                                            const bytes = new Uint8Array(content);
-                                            form.setFieldsValue({ tokenFile: bytes });
-                                        }
-                                    };
-                                    reader.readAsArrayBuffer(file);
-                                    return false;
-                                }}
-                                maxCount={1}
-                            >
-                                <Button icon={<UploadOutlined />}>Select Import Token File</Button>
-                            </Upload>
+                            <Input placeholder="path/to/import-token.bin" />
                         </Form.Item>
-                    </Card>
-                    <Card>
-                        <h3 className="text-m font-bold mb-4">Output Options</h3>
                         <Form.Item
                             name="byokFile"
-                            label="Output Filename (Optional)"
+                            label="Output Filename"
                             help="Filename for the wrapped key material. If not specified, base64-encoded output will be displayed."
                         >
-                            <Input placeholder="encrypted-key-material.bin (optional)" />
+                            <Input placeholder="encrypted-key-material.bin" />
                         </Form.Item>
                     </Card>
                     <Form.Item>

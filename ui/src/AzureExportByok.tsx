@@ -8,7 +8,6 @@ import {
     parse_export_ttlv_response,
     parse_get_attributes_ttlv_response,
 } from "./wasm/pkg";
-import ExternalLink from "./components/ExternalLink";
 
 const getTags = (attributes: Map<string, never>): string[] => {
     const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
@@ -108,7 +107,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 true, // unwrap - export the key in wrapped form
                 "raw", // key_format - raw bytes
                 values.kekId, // wrap_key_id - the KEK to wrap with
-                "rsa-aes-key-wrap-sha1" // wrapping_algorithm
+                "rsa-aes-key-wrap-sha1", // wrapping_algorithm
             );
 
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
@@ -180,9 +179,14 @@ const ExportAzureBYOKForm: React.FC = () => {
                 <p>The KEK must be previously imported using the Import KEK command.</p>
                 <p className="text-sm text-gray-600">
                     See:{" "}
-                    <ExternalLink href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification">
+                    <a
+                        href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                    >
                         Azure BYOK Specification
-                    </ExternalLink>
+                    </a>
                 </p>
             </div>
 
