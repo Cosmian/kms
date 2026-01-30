@@ -12,33 +12,32 @@
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 
-#![allow(unused_imports, clippy::unwrap_used, clippy::as_conversions)]
-use crate::actions::kms::aws::byok::export_key_material::ExportByokAction;
-use crate::actions::kms::aws::byok::import_kek::ImportKekAction;
-use crate::actions::kms::aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm;
-use crate::actions::kms::elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEccKeyPairAction;
-use crate::actions::kms::rsa::keys::create_key_pair::CreateKeyPairAction as CreateRsaKeyPairAction;
-use crate::actions::kms::shared::ImportSecretDataOrKeyAction;
-use crate::actions::kms::symmetric::keys::create_key::CreateKeyAction;
-use crate::error::result::KmsCliResult;
-use crate::tests::kms::aws::unwrap_utils::{
-    generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap, rsa_aes_key_wrap_sha256_unwrap,
-    rsaes_oaep_sha1_unwrap, rsaes_oaep_sha256_unwrap,
-};
 use base64::Engine;
-use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::ImportKeyFormat;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
+};
 use cosmian_kms_client::{ExportObjectParams, export_object};
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
 use cosmian_logger::log_init;
-use openssl::cipher::{Cipher, CipherRef};
-use openssl::pkey::{PKey, Private, Public};
-use openssl::rsa::{Padding, Rsa};
-use openssl::{encrypt::Decrypter, hash::MessageDigest};
 use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
 use test_kms_server::start_default_test_kms_server;
 use uuid::Uuid;
+
+use crate::actions::kms::{
+    aws::byok::{
+        export_key_material::ExportByokAction, import_kek::ImportKekAction,
+        wrapping_algorithms::AwsKmsWrappingAlgorithm,
+    },
+    elliptic_curves::keys::create_key_pair::CreateKeyPairAction as CreateEccKeyPairAction,
+    rsa::keys::create_key_pair::CreateKeyPairAction as CreateRsaKeyPairAction,
+    shared::ImportSecretDataOrKeyAction,
+    symmetric::keys::create_key::CreateKeyAction,
+};
+use crate::error::result::KmsCliResult;
+use crate::tests::kms::shared::openssl_utils::{
+    generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap, rsa_aes_key_wrap_sha256_unwrap,
+    rsaes_oaep_sha1_unwrap, rsaes_oaep_sha256_unwrap,
+};
 
 // Test constants from AWS KMS GetParametersForImport response
 const TEST_KEY_ARN: &str =

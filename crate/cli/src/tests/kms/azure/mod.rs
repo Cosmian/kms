@@ -1,55 +1,16 @@
-use std::fs;
-
-use openssl::{
-    pkey::{PKey, Private, Public},
-    rsa::Rsa,
-};
-use tempfile::TempDir;
-use test_kms_server::start_default_test_kms_server;
-
 use crate::{
     actions::kms::{
         azure::byok::{ExportByokAction, ImportKekAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
+    tests::kms::shared::openssl_utils::{generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap},
 };
-
-/// Generate RSA keypair using OpenSSL (random size from 2048, 3072, or 4096 bits).
-///
-/// This mirrors AWS KMS "get-parameters-for-import" wrapping key specs and keeps
-/// the test independent from KMS RSA key generation/export actions.
-fn generate_rsa_keypair() -> KmsCliResult<(PKey<Private>, PKey<Public>)> {
-    let key_sizes = [2048_u32, 3072_u32, 4096_u32];
-    // Avoid introducing new RNG deps in the CLI crate's dev-deps.
-    let bits = key_sizes[std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| {
-            let len_u32 = u32::try_from(key_sizes.len()).unwrap_or(1);
-            let idx_u32 = d.subsec_nanos() % len_u32;
-            usize::try_from(idx_u32).unwrap_or(0)
-        })
-        .unwrap_or(0)];
-
-    let rsa = Rsa::generate(bits)
-        .map_err(|e| KmsCliError::Default(format!("Failed to generate RSA key: {e}")))?;
-    let private_key = PKey::from_rsa(rsa.clone())
-        .map_err(|e| KmsCliError::Default(format!("Failed to build private key: {e}")))?;
-    let public_key = PKey::from_rsa(
-        Rsa::from_public_components(
-            rsa.n()
-                .to_owned()
-                .map_err(|e| KmsCliError::Default(format!("Failed to clone modulus: {e}")))?,
-            rsa.e()
-                .to_owned()
-                .map_err(|e| KmsCliError::Default(format!("Failed to clone exponent: {e}")))?,
-        )
-        .map_err(|e| KmsCliError::Default(format!("Failed to build public RSA key: {e}")))?,
-    )
-    .map_err(|e| KmsCliError::Default(format!("Failed to build public key: {e}")))?;
-
-    Ok((private_key, public_key))
-}
+use base64::Engine;
+use cosmian_kms_client::{ExportObjectParams, export_object};
+use std::fs;
+use tempfile::TempDir;
+use test_kms_server::start_default_test_kms_server;
 
 #[tokio::test]
 async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
@@ -61,7 +22,7 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
     let kek_pem_path = tmp_dir.path().join("kek_pub.pem");
 
     // 2. Generate an RSA key pair locally, write the public key in PKCS#8 PEM, then import it as Azure KEK
-    let (_private_key, public_key) = generate_rsa_keypair()?;
+    let (private_key, public_key) = generate_rsa_keypair()?;
     let public_key_pem = public_key
         .public_key_to_pem()
         .map_err(|e| KmsCliError::Default(format!("Failed to serialize public key PEM: {e}")))?;
@@ -88,6 +49,10 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
     .run(kms_client.clone())
     .await?
     .to_string();
+    // for later verification
+    let (_, cosmian_key_material, _) =
+        export_object(&kms_client, &sym_key_id, ExportObjectParams::default()).await?;
+    let original_key_bytes = cosmian_key_material.key_block()?.key_bytes()?;
 
     let byok_file = tmp_dir.path().join("out.byok");
 
@@ -99,10 +64,33 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
     .run(kms_client)
     .await?;
 
+    // 4. Post-export verifications
+
     // Assert byok file written
-    let contents = std::fs::read_to_string(&byok_file)?;
-    assert!(contents.contains("\"ciphertext\""));
-    assert!(contents.contains("\"kid\""));
+    let byok_contents = std::fs::read_to_string(&byok_file)?;
+    assert!(byok_contents.contains("\"ciphertext\""));
+    assert!(byok_contents.contains("\"kid\""));
+
+    // Unwrap and verify the key matches original (via helper function)
+    let json: serde_json::Value = serde_json::from_str(&byok_contents)?;
+    let ciphertext_b64url = json["ciphertext"]
+        .as_str()
+        .ok_or("Missing 'ciphertext' field in BYOK JSON")
+        .unwrap();
+
+    // Decode BASE64URL first
+    let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(ciphertext_b64url)
+        .map_err(|e| KmsCliError::Default(format!("Failed to decode BASE64URL: {e}")))?;
+
+    // now unwrap
+    let unwrapped_key_bytes = rsa_aes_key_wrap_sha1_unwrap(&ciphertext, &private_key).unwrap();
+
+    assert_eq!(
+        unwrapped_key_bytes,
+        original_key_bytes.to_vec(),
+        "Unwrapped key should match original"
+    );
 
     Ok(())
 }
