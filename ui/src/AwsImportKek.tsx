@@ -3,7 +3,7 @@ import { Button, Card, Form, Input, Select, Space, Upload, Tabs } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
+import * as wasm from "./wasm/pkg";
 import ExternalLink from "./components/ExternalLink";
 
 interface ImportAwsKekFormData {
@@ -56,7 +56,7 @@ const ImportAwsKekForm: React.FC = () => {
 
             if (inputType === "file" && values.kekFile) {
                 kekData = values.kekFile;
-                kekFormat = "pkcs8";
+                kekFormat = "pkcs8-pub";
             } else if (inputType === "base64" && values.kekBase64) {
                 // Decode base64 to Uint8Array
                 const binary = atob(values.kekBase64.replace(/\s/g, ""));
@@ -65,30 +65,30 @@ const ImportAwsKekForm: React.FC = () => {
                     bytes[i] = binary.charCodeAt(i);
                 }
                 kekData = bytes;
-                kekFormat = "pkcs8";
+                kekFormat = "pkcs8-pub";
             } else {
                 setRes("Please provide the KEK as a file or base64 string.");
                 setIsLoading(false);
                 return;
             }
 
-            const request = import_ttlv_request(
+            const request = wasm.import_ttlv_request(
                 values.keyId || null, // Custom key ID
                 kekData, // Key bytes
                 kekFormat, // Format type
-                undefined, // Public key ID
-                undefined, // Private key ID
-                undefined, // Certificate ID
+                null, // Public key ID
+                null, // Private key ID
+                null, // Certificate ID
                 false, // Unwrap flag
                 true, // Replace existing
-                tags, // Tags array
+                tags,
                 keyUsage, // Key usage
-                undefined // Wrapping key ID
+                null, // Wrapping key ID
             );
 
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
+                const result: KeyImportResponse = await wasm.parse_import_ttlv_response(result_str);
                 setRes(`AWS KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`);
             }
         } catch (e) {
@@ -194,8 +194,12 @@ const ImportAwsKekForm: React.FC = () => {
                     </Card>
                     <Card>
                         <h3 className="text-m font-bold mb-4">AWS Key ARN</h3>
-                        <Form.Item name="keyArn" label="AWS Key ARN" help="The Amazon Resource Name (ARN) of the AWS KMS key (optional)">
-                            <Input placeholder="arn:aws:kms:..." />
+                        <Form.Item
+                            name="keyArn"
+                            label="AWS Key ARN"
+                            help="The Amazon Resource Name (ARN) of the AWS KMS key (optional). Example: arn:aws:kms:eu-west-3:447182645454:key/ef52e07b-e9b5-4902-bc5e-f9cce4354203"
+                        >
+                            <Input placeholder="arn:aws:kms:region:account-id:key/key-id" />
                         </Form.Item>
                     </Card>
                     <Card>
