@@ -6,8 +6,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/common.sh"
 
-# Ensure SDKROOT is set on macOS for link steps.
-ensure_macos_sdk_env
+# -------------------------------
+# Functions (keep declarations together)
+# -------------------------------
 
 # Display usage information
 usage() {
@@ -94,98 +95,6 @@ EOF
   exit 1
 }
 
-# Default options
-PROFILE="debug"
-VARIANT="fips"
-LINK="static"
-ENFORCE_DETERMINISTIC_HASH="false"
-
-# Parse global options before the subcommand
-while [ $# -gt 0 ]; do
-  case "$1" in
-  -p | --profile)
-    PROFILE="${2:-}"
-    shift 2 || true
-    ;;
-  -v | --variant)
-    VARIANT="${2:-}"
-    VARIANT_EXPLICIT=1
-    shift 2 || true
-    ;;
-  -l | --link)
-    LINK="${2:-}"
-    LINK_EXPLICIT=1
-    shift 2 || true
-    ;;
-  --enforce-deterministic-hash | --enforce_deterministic_hash)
-    ENFORCE_DETERMINISTIC_HASH="${2:-}"
-    shift 2 || true
-    ;;
-  docker | test | package | sbom | update-hashes)
-    COMMAND="$1"
-    shift
-    break
-    ;;
-  -h | --help)
-    usage
-    ;;
-  *)
-    # Stop at first non-option token if command already provided
-    if [ -n "${COMMAND:-}" ]; then
-      break
-    fi
-    echo "Unknown option: $1" >&2
-    usage
-    ;;
-  esac
-done
-
-# Validate command argument
-[ -z "${COMMAND:-}" ] && usage
-
-# Normalize boolean-ish inputs
-case "${ENFORCE_DETERMINISTIC_HASH}" in
-true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
-false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
-*)
-  echo "Error: --enforce-deterministic-hash must be true/false" >&2
-  exit 1
-  ;;
-esac
-
-# Export variables so they can be kept by nix-shell --keep
-export PROFILE VARIANT LINK ENFORCE_DETERMINISTIC_HASH
-
-# Handle test subcommand
-TEST_TYPE=""
-if [ "$COMMAND" = "test" ]; then
-  if [ $# -eq 0 ]; then
-    # Default to all when no type is provided
-    TEST_TYPE="all"
-  else
-    TEST_TYPE="$1"
-    shift
-  fi
-fi
-
-# Handle package subcommand (type is optional; if omitted, build all for platform)
-PACKAGE_TYPE=""
-if [ "$COMMAND" = "package" ]; then
-  if [ $# -ge 1 ]; then
-    PACKAGE_TYPE="$1"
-    shift
-  fi
-fi
-
-# Flag extra tools for nix-shell through environment (avoids mixing -p with shell.nix)
-if [ "$COMMAND" = "test" ]; then
-  export WITH_WGET=1
-fi
-
-# Determine repository root
-REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-cd "$REPO_ROOT"
-
 # Compute a SHA-256 for a given file using the best available tool
 compute_sha256() {
   local file="$1"
@@ -196,9 +105,201 @@ compute_sha256() {
   fi
 }
 
-# Validate command and corresponding script
-case "$COMMAND" in
-docker)
+# Resolve pinned nixpkgs to a local store path so later -I uses do not hit the network.
+resolve_pinned_nixpkgs_store() {
+  # Try nix (new) first, fallback to nix-instantiate
+  local path
+  if path=$(nix eval --raw "(builtins.fetchTarball \"${PINNED_NIXPKGS_URL}\")" 2>/dev/null); then
+    :
+  else
+    # nix-instantiate returns a quoted string; strip quotes
+    path=$(nix-instantiate --eval -E "builtins.fetchTarball { url = \"${PINNED_NIXPKGS_URL}\"; }" | sed -e 's/\"//g') || path=""
+  fi
+  if [ -n "$path" ] && [ -e "$path" ]; then
+    echo "$path"
+    return 0
+  fi
+  return 1
+}
+
+# Optionally prewarm nixpkgs and smoke-test tools into the store (online phase)
+prewarm_nixpkgs_and_tools() {
+  # Skip if explicitly disabled
+  if [ -n "${NO_PREWARM:-}" ]; then
+    echo "Skipping prewarm (NO_PREWARM set)"
+    return 0
+  fi
+  echo "Prewarming pinned nixpkgs into the store…"
+  # Evaluate fetchTarball to realize nixpkgs tarball in store
+  if ! resolve_pinned_nixpkgs_store >/dev/null; then
+    # Trigger realization via eval to fetch the tarball
+    nix-instantiate --eval -E "builtins.fetchTarball { url = \"${PINNED_NIXPKGS_URL}\"; }" >/dev/null
+  fi
+  local NIXPKGS_STORE
+  NIXPKGS_STORE=$(resolve_pinned_nixpkgs_store || true)
+  if [ -n "$NIXPKGS_STORE" ]; then
+    export NIXPKGS_STORE
+    echo "Pinned nixpkgs realized at: $NIXPKGS_STORE"
+    # Prewarm tools used later by nix-shell -p during smoke tests so offline works
+    if [ "$(uname)" = "Linux" ]; then
+      echo "Prewarming dpkg/rpm/cpio/curl into the store…"
+      # These may download from cache or build; okay during online prewarm
+      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; dpkg' --no-out-link >/dev/null 2>/dev/null || true
+      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; rpm' --no-out-link >/dev/null 2>/dev/null || true
+      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; cpio' --no-out-link >/dev/null 2>/dev/null || true
+      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl.bin' --no-out-link >/dev/null 2>/dev/null ||
+        nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl' --no-out-link >/dev/null 2>/dev/null || true
+    fi
+  fi
+}
+
+parse_global_options() {
+  PROFILE="debug"
+  VARIANT="fips"
+  LINK="static"
+  ENFORCE_DETERMINISTIC_HASH="false"
+
+  # Parse global options before the subcommand
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -p | --profile)
+      PROFILE="${2:-}"
+      shift 2 || true
+      ;;
+    -v | --variant)
+      VARIANT="${2:-}"
+      VARIANT_EXPLICIT=1
+      shift 2 || true
+      ;;
+    -l | --link)
+      LINK="${2:-}"
+      LINK_EXPLICIT=1
+      shift 2 || true
+      ;;
+    --enforce-deterministic-hash | --enforce_deterministic_hash)
+      ENFORCE_DETERMINISTIC_HASH="${2:-}"
+      shift 2 || true
+      ;;
+    docker | test | package | sbom | update-hashes)
+      COMMAND="$1"
+      shift
+      break
+      ;;
+    -h | --help)
+      usage
+      ;;
+    *)
+      # Stop at first non-option token if command already provided
+      if [ -n "${COMMAND:-}" ]; then
+        break
+      fi
+      echo "Unknown option: $1" >&2
+      usage
+      ;;
+    esac
+  done
+
+  # Validate command argument
+  [ -z "${COMMAND:-}" ] && usage
+
+  # Normalize boolean-ish inputs
+  case "${ENFORCE_DETERMINISTIC_HASH}" in
+  true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
+  false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
+  *)
+    echo "Error: --enforce-deterministic-hash must be true/false" >&2
+    exit 1
+    ;;
+  esac
+
+  export PROFILE VARIANT LINK ENFORCE_DETERMINISTIC_HASH
+  REMAINING_ARGS=("$@")
+}
+
+resolve_command_args() {
+  local args=("$@")
+  COMMAND_ARGS=()
+
+  # Handle test subcommand
+  TEST_TYPE=""
+  if [ "$COMMAND" = "test" ]; then
+    if [ ${#args[@]} -eq 0 ]; then
+      TEST_TYPE="all"
+    else
+      TEST_TYPE="${args[0]}"
+      args=("${args[@]:1}")
+    fi
+
+    # Backward compatible alias: some commands/docs used `otel`
+    # while the implemented test type is `otel_export`.
+    if [ "$TEST_TYPE" = "otel" ]; then
+      TEST_TYPE="otel_export"
+    fi
+  fi
+
+  # Handle package subcommand (type is optional; if omitted, build all for platform)
+  PACKAGE_TYPE=""
+  if [ "$COMMAND" = "package" ]; then
+    if [ ${#args[@]} -ge 1 ]; then
+      PACKAGE_TYPE="${args[0]}"
+      args=("${args[@]:1}")
+    fi
+  fi
+
+  # Flag extra tools for nix-shell through environment (avoids mixing -p with shell.nix)
+  if [ "$COMMAND" = "test" ]; then
+    export WITH_WGET=1
+  fi
+
+  # Some integration tests (e.g., otel_export) require host-facing tools.
+  # Provide them via nix-shell so the environment is self-contained.
+  if [ "$COMMAND" = "test" ] && [ "${TEST_TYPE:-}" = "otel_export" ]; then
+    export WITH_CURL=1
+    export WITH_DOCKER=1
+  fi
+
+  COMMAND_ARGS=("${args[@]}")
+}
+
+set_repo_root() {
+  REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+  cd "$REPO_ROOT"
+}
+
+dispatch_command() {
+  case "$COMMAND" in
+  docker)
+    docker_command "${COMMAND_ARGS[@]}"
+    ;;
+  test)
+    test_command "${COMMAND_ARGS[@]}"
+    ;;
+  package)
+    package_command "${COMMAND_ARGS[@]}"
+    ;;
+  sbom)
+    sbom_command "${COMMAND_ARGS[@]}"
+    ;;
+  update-hashes)
+    update_hashes_command "${COMMAND_ARGS[@]}"
+    ;;
+  *)
+    echo "Error: Unknown command '$COMMAND'" >&2
+    usage
+    ;;
+  esac
+}
+
+ensure_nix_path() {
+  # Ensure <nixpkgs> lookups work even if NIX_PATH is unset (common on CI)
+  # Pin to the same nixpkgs as shell.nix to keep environments consistent
+  PINNED_NIXPKGS_URL="$PIN_URL"
+  if [ -z "${NIX_PATH:-}" ]; then
+    export NIX_PATH="nixpkgs=${PINNED_NIXPKGS_URL}"
+  fi
+}
+
+docker_command() {
   # Build Docker image(s) via Nix attributes; optionally docker load and/or test
   # Allow flags after subcommand: --variant/--load/--test (docker is always static-linked)
   DOCKER_VARIANT="$VARIANT"
@@ -244,8 +345,6 @@ docker)
     ;;
   esac
 
-  # Use unified pinned nixpkgs (from common.sh)
-
   # Map variant to attribute (docker is always static-linked)
   ATTR="docker-image-$DOCKER_VARIANT"
 
@@ -283,10 +382,9 @@ docker)
       echo "Warning: docker CLI not found; skipping --load" >&2
     fi
   fi
+}
 
-  exit 0
-  ;;
-test)
+test_command() {
   case "$TEST_TYPE" in
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
@@ -367,6 +465,7 @@ test)
     usage
     ;;
   esac
+
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
   if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_HSM=1
@@ -375,6 +474,7 @@ test)
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi
+
   KEEP_VARS=" \
         --keep REDIS_HOST --keep REDIS_PORT \
         --keep MYSQL_HOST --keep MYSQL_PORT \
@@ -387,14 +487,35 @@ test)
         --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
         --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
         --keep WITH_WGET \
+        --keep WITH_CURL \
+        --keep WITH_DOCKER \
         --keep WITH_HSM \
           --keep WITH_PYTHON \
           --keep VARIANT \
           --keep LINK \
           --keep BUILD_PROFILE"
-  ;;
-package)
-  # Prefer Nix derivations (nix/package.nix) over shell scripts
+}
+
+sbom_command() {
+  # SBOM generation using sbomnix - runs OUTSIDE nix-shell
+  # sbomnix needs direct access to nix-store and nix commands
+  SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
+  echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
+  bash "$SCRIPT" --variant "$VARIANT" --link "$LINK" "$@"
+  exit $?
+}
+
+update_hashes_command() {
+  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
+  [ -f "$SCRIPT" ] || {
+    echo "Missing $SCRIPT" >&2
+    exit 1
+  }
+  bash "$SCRIPT" "$@"
+  exit $?
+}
+
+package_command() {
   case "$VARIANT" in
   fips | non-fips) : ;;
   *)
@@ -416,7 +537,6 @@ package)
   # Special-case: On macOS, DMG packaging needs system tools (hdiutil, osascript).
   # Run inside nix-shell (non-pure) to keep access to system utilities and still use cargo-packager.
   if [ "$(uname)" = "Darwin" ]; then
-    # Build only DMG on macOS when no type specified
     if [ -z "$PACKAGE_TYPE" ]; then
       PACKAGE_TYPE="dmg"
     fi
@@ -424,141 +544,43 @@ package)
       SCRIPT="$REPO_ROOT/nix/scripts/package_dmg.sh"
       KEEP_VARS=""
       echo "Note: Building DMG via nix-shell to allow macOS system tools (cargo-packager path)."
-      # Run without --pure to preserve access to /usr/bin tools
-      # Use unified pinned nixpkgs (from common.sh)
       # shellcheck disable=SC2086
       nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS --argstr variant "$VARIANT" "$REPO_ROOT/shell.nix" \
         --run "ENFORCE_DETERMINISTIC_HASH='${ENFORCE_DETERMINISTIC_HASH}' bash '$SCRIPT' --variant '$VARIANT' --link '$LINK' --enforce-deterministic-hash '${ENFORCE_DETERMINISTIC_HASH}'"
-      # After packaging, compute checksum for the produced DMG (if present)
       OUT_DIR="$REPO_ROOT/result-dmg-$VARIANT-$LINK"
       dmg_file=$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
       if [ -n "${dmg_file:-}" ] && [ -f "$dmg_file" ]; then
-        if command -v shasum >/dev/null 2>&1; then
-          sum=$(shasum -a 256 "$dmg_file" | awk '{print $1}')
-        else
-          sum=$(sha256sum "$dmg_file" | awk '{print $1}')
-        fi
+        sum=$(compute_sha256 "$dmg_file")
         echo "$sum  $(basename "$dmg_file")" >"$dmg_file.sha256"
         echo "Wrote checksum: $dmg_file.sha256 ($sum)"
       fi
       exit 0
     fi
   fi
-  ;;
-sbom)
-  # SBOM generation using sbomnix - runs OUTSIDE nix-shell
-  # sbomnix needs direct access to nix-store and nix commands
-  SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
-  echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
-  # Pass resolved global flags so variant/link are honored
-  bash "$SCRIPT" --variant "$VARIANT" --link "$LINK" "$@"
-  exit $?
-  ;;
-update-hashes)
-  # Run automated hash update across all variant/link combinations
-  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
-  [ -f "$SCRIPT" ] || {
-    echo "Missing $SCRIPT" >&2
-    exit 1
-  }
-  bash "$SCRIPT" "$@"
-  exit $?
-  ;;
-*)
-  echo "Error: Unknown command '$COMMAND'" >&2
-  usage
-  ;;
-esac
 
-# Ensure <nixpkgs> lookups work even if NIX_PATH is unset (common on CI)
-# Pin to the same nixpkgs as shell.nix to keep environments consistent
-PINNED_NIXPKGS_URL="$PIN_URL"
-if [ -z "${NIX_PATH:-}" ]; then
-  export NIX_PATH="nixpkgs=${PINNED_NIXPKGS_URL}"
-fi
+  ensure_nix_path
 
-# Resolve pinned nixpkgs to a local store path so later -I uses do not hit the network.
-resolve_pinned_nixpkgs_store() {
-  # Try nix (new) first, fallback to nix-instantiate
-  local path
-  if path=$(nix eval --raw "(builtins.fetchTarball \"${PINNED_NIXPKGS_URL}\")" 2>/dev/null); then
-    :
-  else
-    # nix-instantiate returns a quoted string; strip quotes
-    path=$(nix-instantiate --eval -E "builtins.fetchTarball { url = \"${PINNED_NIXPKGS_URL}\"; }" | sed -e 's/\"//g') || path=""
-  fi
-  if [ -n "$path" ] && [ -e "$path" ]; then
-    echo "$path"
-    return 0
-  fi
-  return 1
-}
-
-# Optionally prewarm nixpkgs and smoke-test tools into the store (online phase)
-prewarm_nixpkgs_and_tools() {
-  # Skip if explicitly disabled
-  if [ -n "${NO_PREWARM:-}" ]; then
-    echo "Skipping prewarm (NO_PREWARM set)"
-    return 0
-  fi
-  echo "Prewarming pinned nixpkgs into the store…"
-  # Evaluate fetchTarball to realize nixpkgs tarball in store
-  if ! resolve_pinned_nixpkgs_store >/dev/null; then
-    # Trigger realization via eval to fetch the tarball
-    nix-instantiate --eval -E "builtins.fetchTarball { url = \"${PINNED_NIXPKGS_URL}\"; }" >/dev/null
-  fi
-  local NIXPKGS_STORE
-  NIXPKGS_STORE=$(resolve_pinned_nixpkgs_store || true)
-  if [ -n "$NIXPKGS_STORE" ]; then
-    export NIXPKGS_STORE
-    echo "Pinned nixpkgs realized at: $NIXPKGS_STORE"
-    # Prewarm tools used later by nix-shell -p during smoke tests so offline works
-    if [ "$(uname)" = "Linux" ]; then
-      echo "Prewarming dpkg/rpm/cpio/curl into the store…"
-      # These may download from cache or build; okay during online prewarm
-      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; dpkg' --no-out-link >/dev/null 2>/dev/null || true
-      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; rpm' --no-out-link >/dev/null 2>/dev/null || true
-      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; cpio' --no-out-link >/dev/null 2>/dev/null || true
-      nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl.bin' --no-out-link >/dev/null 2>/dev/null ||
-        nix-build -I "nixpkgs=${NIXPKGS_STORE}" -E 'with import <nixpkgs> {}; curl' --no-out-link >/dev/null 2>/dev/null || true
-    fi
-  fi
-}
-
-# If packaging, build directly via Nix attributes and exit (no shell wrapper)
-if [ "$COMMAND" = "package" ]; then
+  # If packaging, build directly via Nix attributes and exit (no shell wrapper)
   # Determine which package types to build
   if [ -z "$PACKAGE_TYPE" ]; then
     if [ "$(uname)" = "Darwin" ]; then
       TYPES="dmg"
     else
-      # Linux and others: DEB and RPM
       TYPES="deb rpm"
     fi
   else
     TYPES="$PACKAGE_TYPE"
   fi
 
-  # Prewarm nixpkgs and base tools once per packaging invocation (if not disabled)
   prewarm_nixpkgs_and_tools || true
   NIXPKGS_STORE="${NIXPKGS_STORE:-}"
-  # Prefer store path over URL for -I nixpkgs to avoid network usage offline
   NIXPKGS_ARG="$PINNED_NIXPKGS_URL"
   if [ -n "$NIXPKGS_STORE" ] && [ -e "$NIXPKGS_STORE" ]; then
     NIXPKGS_ARG="$NIXPKGS_STORE"
   fi
 
-  # Build all combinations only when:
-  # 1. No package type specified (packaging all types for the platform)
-  # 2. User didn't explicitly override --variant or --link (used defaults)
-  # To detect explicit user choice, we track if flags were actually provided
   VARIANTS_TO_BUILD=("$VARIANT")
   LINKS_TO_BUILD=("$LINK")
-
-  # Only build all combinations if BOTH conditions are true:
-  # - No specific package type requested
-  # - User didn't override defaults (variant=fips AND link=static)
-  # Note: This means "package" with no type builds all, but "package deb" builds only what's specified
   if [ -z "$PACKAGE_TYPE" ] && [ "$VARIANT" = "fips" ] && [ "$LINK" = "static" ] && [ -z "${VARIANT_EXPLICIT:-}" ] && [ -z "${LINK_EXPLICIT:-}" ]; then
     VARIANTS_TO_BUILD=("fips" "non-fips")
     LINKS_TO_BUILD=("static" "dynamic")
@@ -579,12 +601,10 @@ if [ "$COMMAND" = "package" ]; then
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
             }
-            # Ensure required tools are available via a minimal nix-shell; remove NO_PREWARM default
             nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "ENFORCE_DETERMINISTIC_HASH='${ENFORCE_DETERMINISTIC_HASH}' bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK' --enforce-deterministic-hash '${ENFORCE_DETERMINISTIC_HASH}'"
             REAL_OUT="$REPO_ROOT/result-deb-$BUILD_VARIANT-$BUILD_LINK"
             echo "Built deb ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
-            # Run smoke test on the generated .deb package
             echo "=========================================="
             echo "Running smoke test on .deb package..."
             echo "=========================================="
@@ -592,7 +612,6 @@ if [ "$COMMAND" = "package" ]; then
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
-                # Run smoke test in a clean nix-shell to ensure no previous builds affect the test
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$SMOKE_TEST_SCRIPT' '$DEB_FILE'" || {
                   echo "ERROR: Smoke test failed for $DEB_FILE" >&2
                   exit 1
@@ -619,7 +638,6 @@ if [ "$COMMAND" = "package" ]; then
             REAL_OUT="$REPO_ROOT/result-rpm-$BUILD_VARIANT-$BUILD_LINK"
             echo "Built rpm ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
-            # Run smoke test on the generated RPM package
             echo "=========================================="
             echo "Running smoke test on RPM package..."
             echo "=========================================="
@@ -627,7 +645,6 @@ if [ "$COMMAND" = "package" ]; then
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
-                # Run smoke test in a clean nix-shell to ensure no previous builds affect the test
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$SMOKE_TEST_SCRIPT' '$RPM_FILE'" || {
                   echo "ERROR: Smoke test failed for $RPM_FILE" >&2
                   exit 1
@@ -644,9 +661,7 @@ if [ "$COMMAND" = "package" ]; then
           fi
           ;;
         dmg)
-          # DMG only supports static for now (check if dynamic variant exists)
           if [ "$BUILD_LINK" = "dynamic" ]; then
-            # Check if dynamic DMG attribute exists
             if nix-instantiate -A "kms-server-${BUILD_VARIANT}-dmg-dynamic" >/dev/null 2>&1; then
               ATTR="kms-server-${BUILD_VARIANT}-dmg-dynamic"
               OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
@@ -662,13 +677,11 @@ if [ "$COMMAND" = "package" ]; then
           REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
           echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
-          # Invoke DMG smoke test via nix.sh (in addition to any internal calls)
           DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
           SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
           if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
             if [ -f "$SMOKE_TEST_SCRIPT" ]; then
               echo "Running DMG smoke test for $DMG_FILE..."
-              # Ensure we have macOS system tools; run outside pure shell
               bash "$SMOKE_TEST_SCRIPT" "$DMG_FILE" || {
                 echo "ERROR: DMG smoke test failed for $DMG_FILE" >&2
                 exit 1
@@ -686,7 +699,6 @@ if [ "$COMMAND" = "package" ]; then
           ;;
         esac
 
-        # After successful smoke test (already run above), generate a .sha256 checksum file next to the artifact
         case "$TYPE" in
         deb)
           deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
@@ -713,85 +725,105 @@ if [ "$COMMAND" = "package" ]; then
           fi
           ;;
         esac
-      done # for TYPE in $TYPES
-    done   # for BUILD_LINK
-  done     # for BUILD_VARIANT
+      done
+    done
+  done
 
   exit 0
-fi
-
-# Check if script exists (build/test flows)
-[ -f "$SCRIPT" ] || {
-  echo "Missing $SCRIPT" >&2
-  exit 1
 }
 
-# Check if shell.nix exists
-[ -f "$REPO_ROOT/shell.nix" ] || {
-  echo "Error: No shell.nix found at $REPO_ROOT" >&2
-  exit 1
-}
+run_in_nix_shell() {
+  # Check if script exists (build/test flows)
+  [ -f "$SCRIPT" ] || {
+    echo "Missing $SCRIPT" >&2
+    exit 1
+  }
 
-# Run the appropriate script inside nix-shell
-# Determine if we should use --pure mode
-USE_PURE=true
+  # Check if shell.nix exists
+  [ -f "$REPO_ROOT/shell.nix" ] || {
+    echo "Error: No shell.nix found at $REPO_ROOT" >&2
+    exit 1
+  }
 
-# HSM test flows may require host utilities (notably sudo) to install vendor tools.
-# In pure mode, /usr/bin is typically not on PATH, causing "sudo: command not found".
-if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "proteccio" ]; }; then
-  USE_PURE=false
-  echo "Note: Running HSM tests without --pure to access host utilities (e.g., sudo)."
-fi
+  # Determine if we should use --pure mode
+  USE_PURE=true
 
-# On macOS, DMG packaging requires system utilities (hdiutil, sw_vers) not available in pure mode
-if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "Darwin" ]; then
-  USE_PURE=false
-  echo "Note: Running without --pure mode on macOS for DMG packaging (requires system utilities)"
-fi
+  # HSM test flows may require host utilities.
+  if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "proteccio" ]; }; then
+    USE_PURE=false
+    echo "Note: Running HSM tests without --pure to access host utilities (e.g., sudo)."
+  fi
 
-{
-  # Decide purity and extra packages once, then run a single nix-shell
-  PURE_FLAG="--pure"
-  KEEP_ARGS="$KEEP_VARS"
-  EXTRA_PKGS=""
-  SHELL_PATH="$REPO_ROOT/shell.nix"
+  # On macOS, DMG packaging requires system utilities (hdiutil, sw_vers) not available in pure mode
+  if [ "$COMMAND" = "package" ] && [ "$PACKAGE_TYPE" = "dmg" ] && [ "$(uname)" = "Darwin" ]; then
+    USE_PURE=false
+    echo "Note: Running without --pure mode on macOS for DMG packaging (requires system utilities)"
+  fi
 
-  # sbom always uses pure shell with variant/link only
-  if [ "$COMMAND" = "sbom" ]; then
+  {
     PURE_FLAG="--pure"
     KEEP_ARGS="$KEEP_VARS"
     EXTRA_PKGS=""
-  else
-    # For wasm tests: use non-pure shell and inject nodejs + wasm-pack (retain system cargo/rustup)
-    if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "wasm" ]; then
-      PURE_FLAG="" # non-pure
-      KEEP_ARGS="" # avoid mixing --keep with -p
-      EXTRA_PKGS="-p nodejs wasm-pack"
-      SHELL_PATH="<nixpkgs>" # run a minimal shell when using -p packages
+    SHELL_PATH="$REPO_ROOT/shell.nix"
+
+    if [ "$COMMAND" = "sbom" ]; then
+      PURE_FLAG="--pure"
+      KEEP_ARGS="$KEEP_VARS"
+      EXTRA_PKGS=""
     else
-      # Otherwise respect computed USE_PURE setting
-      if [ "$USE_PURE" = true ]; then
-        PURE_FLAG="--pure"
-        KEEP_ARGS="$KEEP_VARS"
-      else
+      if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "wasm" ]; then
         PURE_FLAG=""
-        KEEP_ARGS="$KEEP_VARS"
+        KEEP_ARGS=""
+        EXTRA_PKGS="-p nodejs wasm-pack"
+        SHELL_PATH="<nixpkgs>"
+      elif [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "otel_export" ]; then
+        PURE_FLAG=""
+      else
+        if [ "$USE_PURE" = true ]; then
+          PURE_FLAG="--pure"
+          KEEP_ARGS="$KEEP_VARS"
+        else
+          PURE_FLAG=""
+          KEEP_ARGS="$KEEP_VARS"
+        fi
       fi
     fi
-  fi
 
-  # Build command to run inside nix-shell
-  # Export VARIANT, LINK, and BUILD_PROFILE before the command so shellHook can see them
-  if [ "$COMMAND" = "sbom" ]; then
-    CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
-  else
-    CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
-  fi
+    if [ "$COMMAND" = "sbom" ]; then
+      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+    else
+      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
+    fi
 
-  ARGSTR_VARIANT=""
-  if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then
-    ARGSTR_VARIANT="--argstr variant $VARIANT"
-  fi
-  # shellcheck disable=SC2086
-  nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS $ARGSTR_VARIANT "$SHELL_PATH" --run "$CMD"
+    ARGSTR_VARIANT=""
+    if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then
+      ARGSTR_VARIANT="--argstr variant $VARIANT"
+    fi
+    # shellcheck disable=SC2086
+    nix-shell -I "nixpkgs=${PINNED_NIXPKGS_URL}" $PURE_FLAG $KEEP_ARGS $EXTRA_PKGS $ARGSTR_VARIANT "$SHELL_PATH" --run "$CMD"
+  }
 }
+
+main() {
+  SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+  source "$SCRIPT_DIR/common.sh"
+
+  # Ensure SDKROOT is set on macOS for link steps.
+  ensure_macos_sdk_env
+  if [ "$(uname -s)" = "Darwin" ]; then
+    export SDKROOT="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
+  fi
+
+  parse_global_options "$@"
+  resolve_command_args "${REMAINING_ARGS[@]}"
+  set_repo_root
+
+  dispatch_command
+
+  ensure_nix_path
+
+  # For package flows, package_command already exited.
+  run_in_nix_shell
+}
+
+main "$@"

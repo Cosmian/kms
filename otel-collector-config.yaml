@@ -1,15 +1,9 @@
 ---
-# OpenTelemetry Collector Configuration
-# This collector receives KMS metrics via OTLP and exports to configured backends
-#
-# Usage:
-#   1. Install OTLP Collector: https://opentelemetry.io/docs/collector/installation/
-#   2. Run: otelcol --config=otel-collector-config.yaml
-#   3. The collector will receive OTLP metrics from KMS server
-#   4. Metrics are exported to your configured OTLP endpoint (Jaeger, etc.)
+# Minimal OpenTelemetry Collector config used by CI to validate that
+# KMS can export metrics via OTLP and that the collector exposes them
+# on a Prometheus scrape endpoint.
 
 receivers:
-  # Receive OTLP metrics directly from KMS server
   otlp:
     protocols:
       grpc:
@@ -17,82 +11,25 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-
 processors:
-  # Batch metrics for better performance
-  batch:
-    timeout: 10s
-    send_batch_size: 1024
-    send_batch_max_size: 2048
-
-  # Add resource attributes
-  resource:
-    attributes:
-      - key: service.name
-        value: cosmian_kms
-        action: upsert
-      - key: service.version
-        value: ${env:KMS_VERSION}
-        action: upsert
-      - key: deployment.environment
-        value: ${env:ENVIRONMENT}
-        action: upsert
+  batch: {}
 
 exporters:
-  # Export to your OTLP backend (Jaeger, cloud providers, etc.)
-  otlp:
-    endpoint: ${env:OTLP_ENDPOINT}
-    tls:
-      insecure: true
-    compression: gzip
-    sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 5000
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-    headers:
-      # Add any required authentication headers
-      # api-key: ${OTLP_API_KEY}
-
-  # OTLP over HTTP exporter (useful for simple backends / CI mocks)
-  otlphttp:
-    endpoint: http://${env:OTLP_ENDPOINT}
-    tls:
-      insecure: true
-    compression: none
-
-  # Optional: Log metrics for debugging
-  debug:
-    verbosity: detailed
-    sampling_initial: 5
-    sampling_thereafter: 200
-
-  # Expose metrics in Prometheus text format.
   prometheus:
     endpoint: 0.0.0.0:8889
-
+    send_timestamps: true
+    metric_expiration: 5m
+  debug:
+    verbosity: detailed
 
 service:
-  pipelines:
-    # Metrics pipeline: OTLP receive → OTLP export
-    metrics:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [prometheus, otlphttp, debug]
-
-    # Traces pipeline
-    traces:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [otlphttp]
-
-  # Enable telemetry for the collector itself
   telemetry:
     logs:
-      level: info
+      level: debug
     metrics:
-      level: detailed
+      level: basic
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]
