@@ -217,7 +217,8 @@ parse_global_options() {
 }
 
 resolve_command_args() {
-  local args=("$@")
+  local -a args=()
+  args=("$@")
   COMMAND_ARGS=()
 
   # Handle test subcommand
@@ -258,7 +259,9 @@ resolve_command_args() {
     export WITH_DOCKER=1
   fi
 
-  COMMAND_ARGS=("${args[@]}")
+  # In strict mode (`set -u`), expanding an unset array triggers an error.
+  # Use the nounset-safe idiom so CI invocations without trailing args work.
+  COMMAND_ARGS=("${args[@]+"${args[@]}"}")
 }
 
 set_repo_root() {
