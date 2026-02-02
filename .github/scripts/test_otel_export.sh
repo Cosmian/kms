@@ -26,8 +26,12 @@ collector_metrics_probe() {
   # Emit a single-line probe result that is easy to log and parse under bash 3.2+.
   # Example: "curl_exit=0 http=200 size=8714"
   local out curl_status http_code size
-  out=$(curl -sS --max-time 2 -o /dev/null -w "%{http_code} %{size_download}" "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null || true)
-  curl_status=$?
+  if out=$(curl -sS --max-time 2 -o /dev/null -w "%{http_code} %{size_download}" "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null); then
+    curl_status=0
+  else
+    curl_status=$?
+    out=""
+  fi
   http_code="${out%% *}"
   size="${out##* }"
   if [ -z "${http_code}" ] || [ "${http_code}" = "${out}" ]; then
@@ -40,7 +44,10 @@ collector_metrics_probe() {
 }
 
 collector_metrics_body() {
-  curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null || true
+  if curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
+    return 0
+  fi
+  return 0
 }
 
 collector_metrics_size() {
@@ -78,32 +85,41 @@ dump_debug_state() {
   echo "=========================================" >&2
 
   echo "-- Environment (OTEL/KMS)" >&2
-  env | sort | grep -E '^(OTEL_|KMS_)' >&2 || true
+  env | sort | awk '/^(OTEL_|KMS_)/ { print }' >&2
 
   if [ -n "${KMS_CONF_PATH:-}" ] && [ -f "${KMS_CONF_PATH}" ]; then
     echo "-- KMS config: ${KMS_CONF_PATH}" >&2
-    cat "${KMS_CONF_PATH}" >&2 || true
+    if ! cat "${KMS_CONF_PATH}" >&2; then
+      echo "Failed to read KMS config: ${KMS_CONF_PATH}" >&2
+    fi
   fi
 
   if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
     echo "-- KMS logs (tail)" >&2
-    tail -n 200 "${LOG_PATH}" >&2 || true
+    if ! tail -n 200 "${LOG_PATH}" >&2; then
+      echo "Failed to read KMS log: ${LOG_PATH}" >&2
+    fi
   fi
 
   echo "-- Collector /metrics probe" >&2
-  collector_metrics_probe >&2 || true
+  collector_metrics_probe >&2
 
   echo "-- Collector /metrics headers" >&2
-  curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+  if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+    echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+  fi
 
   echo "-- Collector /metrics size" >&2
-  curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" | wc -c >&2 || true
+  if ! curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null | wc -c >&2; then
+    echo "Failed to fetch collector metrics body from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+  fi
 }
 
 wait_for_collector_http_endpoint() {
   # We only require the endpoint to respond; it may legitimately be empty until
   # KMS starts exporting.
-  for _ in {1..120}; do
+  # CI can be slow to pull/start the collector image; allow a bit more time.
+  for _ in {1..240}; do
     if curl -fsS -o /dev/null "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
       return 0
     fi
@@ -112,9 +128,11 @@ wait_for_collector_http_endpoint() {
 
   echo "OTEL collector did not become ready (HTTP endpoint not responding) at ${OTEL_EXPORT_SCRAPE_URL}" >&2
   echo "Collector /metrics headers:" >&2
-  curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+  if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+    echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+  fi
   echo "Collector /metrics size:" >&2
-  collector_metrics_size >&2 || true
+  collector_metrics_size >&2
   return 1
 }
 
@@ -122,11 +140,11 @@ cleanup() {
   # Preserve the script exit status; otherwise the last command in this
   # EXIT trap (e.g., wait) can overwrite it.
   local status=$?
-  set +e
+
   # Only dump diagnostics if something looks wrong.
   # Note: `curl -f` + pipe can print "0" even on connection errors, so use a probe.
   if [ -n "${OTEL_EXPORT_SCRAPE_URL:-}" ]; then
-    probe=$(collector_metrics_probe || true)
+    probe=$(collector_metrics_probe)
     local probe_curl probe_http_field probe_size_field
     IFS=' ' read -r probe_curl probe_http_field probe_size_field <<<"${probe}"
     probe_curl_exit="${probe_curl#curl_exit=}"
@@ -138,11 +156,19 @@ cleanup() {
     probe_size=""
   fi
   if [ -n "${probe_http}" ] && { [ "${probe_curl_exit}" != "0" ] || [ "${probe_http}" != "200" ] || [ "${probe_size}" -eq 0 ]; }; then
-    dump_debug_state || true
+    if ! dump_debug_state; then
+      echo "Debug dump failed" >&2
+    fi
   fi
   if [ -n "${KMS_PID}" ]; then
-    kill "${KMS_PID}" 2>/dev/null || true
-    wait "${KMS_PID}" 2>/dev/null || true
+    if kill -0 "${KMS_PID}" 2>/dev/null; then
+      if ! kill "${KMS_PID}" 2>/dev/null; then
+        echo "Failed to stop KMS PID ${KMS_PID}" >&2
+      fi
+      if ! wait "${KMS_PID}" 2>/dev/null; then
+        echo "KMS PID ${KMS_PID} did not exit cleanly" >&2
+      fi
+    fi
   fi
 
   return "$status"
@@ -156,12 +182,14 @@ wait_for_kms_listen() {
     # If the process died early, surface logs.
     if ! kill -0 "${KMS_PID}" 2>/dev/null; then
       echo "KMS process exited early. KMS log tail:" >&2
-      tail -n 200 "${LOG_PATH}" >&2 || true
+      if ! tail -n 200 "${LOG_PATH}" >&2; then
+        echo "Failed to read KMS log: ${LOG_PATH}" >&2
+      fi
       exit 1
     fi
 
     # Probe KMIP endpoint with empty JSON body. Any HTTP response code means the server is up.
-    if curl -sS -o /dev/null -w "%{http_code}" -X POST "${url}" -H "Content-Type: application/json" -d '{}' | grep -Eq '^[0-9]{3}$'; then
+    if curl -sS -o /dev/null -w "%{http_code}" -X POST "${url}" -H "Content-Type: application/json" -d '{}' 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
       return 0
     fi
 
@@ -170,7 +198,9 @@ wait_for_kms_listen() {
 
   echo "Timed out waiting for KMS to accept HTTP connections." >&2
   echo "KMS log tail:" >&2
-  tail -n 200 "${LOG_PATH}" >&2 || true
+  if ! tail -n 200 "${LOG_PATH}" >&2; then
+    echo "Failed to read KMS log: ${LOG_PATH}" >&2
+  fi
   return 1
 }
 
@@ -260,14 +290,18 @@ wait_for_metric_gt() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+          echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+        fi
         echo "Collector /metrics probe:" >&2
-        collector_metrics_probe >&2 || true
+        collector_metrics_probe >&2
         echo "Collector /metrics size:" >&2
-        collector_metrics_size >&2 || true
+        collector_metrics_size >&2
         if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
           echo "KMS log tail:" >&2
-          tail -n 200 "${LOG_PATH}" >&2 || true
+          if ! tail -n 200 "${LOG_PATH}" >&2; then
+            echo "Failed to read KMS log: ${LOG_PATH}" >&2
+          fi
         fi
       fi
       return 1
@@ -300,14 +334,18 @@ wait_for_metric_eq() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+          echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+        fi
         echo "Collector /metrics probe:" >&2
-        collector_metrics_probe >&2 || true
+        collector_metrics_probe >&2
         echo "Collector /metrics size:" >&2
-        collector_metrics_size >&2 || true
+        collector_metrics_size >&2
         if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
           echo "KMS log tail:" >&2
-          tail -n 200 "${LOG_PATH}" >&2 || true
+          if ! tail -n 200 "${LOG_PATH}" >&2; then
+            echo "Failed to read KMS log: ${LOG_PATH}" >&2
+          fi
         fi
       fi
       return 1
@@ -338,14 +376,18 @@ wait_for_metric_any_uptime_gt() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+          echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+        fi
         echo "Collector /metrics probe:" >&2
-        collector_metrics_probe >&2 || true
+        collector_metrics_probe >&2
         echo "Collector /metrics size:" >&2
-        collector_metrics_size >&2 || true
+        collector_metrics_size >&2
         if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
           echo "KMS log tail:" >&2
-          tail -n 200 "${LOG_PATH}" >&2 || true
+          if ! tail -n 200 "${LOG_PATH}" >&2; then
+            echo "Failed to read KMS log: ${LOG_PATH}" >&2
+          fi
         fi
       fi
       return 1
@@ -379,14 +421,18 @@ wait_for_server_uptime_using_start_time() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
+        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+          echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
+        fi
         echo "Collector /metrics probe:" >&2
-        collector_metrics_probe >&2 || true
+        collector_metrics_probe >&2
         echo "Collector /metrics size:" >&2
-        collector_metrics_size >&2 || true
+        collector_metrics_size >&2
         if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
           echo "KMS log tail:" >&2
-          tail -n 200 "${LOG_PATH}" >&2 || true
+          if ! tail -n 200 "${LOG_PATH}" >&2; then
+            echo "Failed to read KMS log: ${LOG_PATH}" >&2
+          fi
         fi
       fi
       return 1
@@ -435,7 +481,12 @@ clear_database = true
 EOF
 
   LOG_PATH="${LOG_PATH:-/tmp/kms-otel-export.log}"
-  rm -f "${LOG_PATH}" || true
+  rm -f "${LOG_PATH}"
+
+  echo "Building KMS server (may take a while on cold caches)..."
+  # Build first so the readiness wait doesn't time out while `cargo run` is compiling.
+  # shellcheck disable=SC2086
+  cargo build -p cosmian_kms_server $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
 
   # Start the server with OTEL export enabled.
   # shellcheck disable=SC2086
@@ -455,7 +506,9 @@ EOF
       echo "Create failed with KMIP error response (iteration ${i}):" >&2
       echo "${resp}" >&2
       echo "KMS log tail:" >&2
-      tail -n 200 /tmp/kms-otel-export.log >&2 || true
+      if ! tail -n 200 /tmp/kms-otel-export.log >&2; then
+        echo "Failed to read KMS log: /tmp/kms-otel-export.log" >&2
+      fi
       exit 1
     fi
 
@@ -464,7 +517,9 @@ EOF
       echo "Create failed (iteration ${i}):" >&2
       echo "${resp}" >&2
       echo "KMS log tail:" >&2
-      tail -n 200 /tmp/kms-otel-export.log >&2 || true
+      if ! tail -n 200 /tmp/kms-otel-export.log >&2; then
+        echo "Failed to read KMS log: /tmp/kms-otel-export.log" >&2
+      fi
       exit 1
     fi
     uid=$(printf '%s' "${resp}" | extract_uid)
@@ -472,7 +527,9 @@ EOF
       echo "Failed to parse unique identifier from Create response (iteration ${i})." >&2
       echo "Response was: ${resp}" >&2
       echo "KMS log tail:" >&2
-      tail -n 200 /tmp/kms-otel-export.log >&2 || true
+      if ! tail -n 200 /tmp/kms-otel-export.log >&2; then
+        echo "Failed to read KMS log: /tmp/kms-otel-export.log" >&2
+      fi
       exit 1
     fi
     activate_key "${uid}" >/dev/null
