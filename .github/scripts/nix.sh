@@ -837,7 +837,7 @@ main() {
   if [ "${REMAINING_ARGS+x}" != "x" ]; then
     REMAINING_ARGS=()
   fi
-  resolve_command_args "${REMAINING_ARGS[@]}"
+  resolve_command_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
   set_repo_root
 
   dispatch_command
