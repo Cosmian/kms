@@ -38,9 +38,6 @@ jobs:
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
             features: fips
-          # otel_export is exclusively for non-fips since P12 is used for TLS KMS server
-          - type: otel_export
-            features: fips
 
     steps:
       - name: Nix installation

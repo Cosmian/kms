@@ -121,5 +121,3 @@ services:
       - 4317:4317 # OTLP gRPC receiver (host)
       - 4318:4318 # OTLP HTTP receiver (host)
       - 8889:8889 # Prometheus metrics endpoint (host)
-
-volumes: {}

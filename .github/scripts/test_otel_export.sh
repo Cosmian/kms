@@ -14,11 +14,11 @@ source "$SCRIPT_DIR/common.sh"
 KMS_HTTP_HOST=127.0.0.1
 KMS_HTTP_PORT=18080
 
-OTLP_GRPC_PORT=4317
-PROM_PORT=8889
+OTLP_GRPC_PORT=${OTLP_GRPC_PORT:-4317}
+PROM_PORT=${PROM_PORT:-8889}
 
-export OTEL_EXPORT_OTLP_ENDPOINT="http://127.0.0.1:${OTLP_GRPC_PORT}"
-OTEL_EXPORT_SCRAPE_URL="http://127.0.0.1:${PROM_PORT}/metrics"
+export OTEL_EXPORT_OTLP_ENDPOINT="${OTEL_EXPORT_OTLP_ENDPOINT:-http://127.0.0.1:${OTLP_GRPC_PORT}}"
+OTEL_EXPORT_SCRAPE_URL="${OTEL_EXPORT_SCRAPE_URL:-http://127.0.0.1:${PROM_PORT}/metrics}"
 
 KMS_PID=""
 
@@ -85,18 +85,10 @@ dump_debug_state() {
     cat "${KMS_CONF_PATH}" >&2 || true
   fi
 
-  echo "-- Collector config (unredacted)" >&2
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" exec -T otel-collector \
-    /otelcol-contrib print-config --config=/etc/otel-collector-config.yaml --mode=unredacted \
-    >&2 || true
-
-  echo "-- Collector logs (tail)" >&2
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
-
-  echo "-- Collector container status" >&2
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" ps otel-collector >&2 || true
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" port otel-collector 4317 >&2 || true
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" port otel-collector 8889 >&2 || true
+  if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
+    echo "-- KMS logs (tail)" >&2
+    tail -n 200 "${LOG_PATH}" >&2 || true
+  fi
 
   echo "-- Collector /metrics probe" >&2
   collector_metrics_probe >&2 || true
@@ -108,14 +100,9 @@ dump_debug_state() {
   curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" | wc -c >&2 || true
 }
 
-# The collector exposes Prometheus metrics (both its own telemetry and
-# OTLP-received metrics) via the HTTP exporter at 8889.
-compose_up_collector() {
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" up -d otel-collector
-
-  # Wait for the endpoint to be ready.
-  # In CI (and locally), we can observe HTTP 200 with Content-Length: 0 until
-  # the KMS starts exporting metrics. Treat readiness as: endpoint responds.
+wait_for_collector_http_endpoint() {
+  # We only require the endpoint to respond; it may legitimately be empty until
+  # KMS starts exporting.
   for _ in {1..120}; do
     if curl -fsS -o /dev/null "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
       return 0
@@ -128,7 +115,6 @@ compose_up_collector() {
   curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
   echo "Collector /metrics size:" >&2
   collector_metrics_size >&2 || true
-  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
   return 1
 }
 
@@ -275,8 +261,14 @@ wait_for_metric_gt() {
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
         curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
-        echo "Collector logs (tail):" >&2
-        docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
+        echo "Collector /metrics probe:" >&2
+        collector_metrics_probe >&2 || true
+        echo "Collector /metrics size:" >&2
+        collector_metrics_size >&2 || true
+        if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
+          echo "KMS log tail:" >&2
+          tail -n 200 "${LOG_PATH}" >&2 || true
+        fi
       fi
       return 1
     fi
@@ -309,8 +301,14 @@ wait_for_metric_eq() {
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
         curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
-        echo "Collector logs (tail):" >&2
-        docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
+        echo "Collector /metrics probe:" >&2
+        collector_metrics_probe >&2 || true
+        echo "Collector /metrics size:" >&2
+        collector_metrics_size >&2 || true
+        if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
+          echo "KMS log tail:" >&2
+          tail -n 200 "${LOG_PATH}" >&2 || true
+        fi
       fi
       return 1
     fi
@@ -341,8 +339,14 @@ wait_for_metric_any_uptime_gt() {
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
         curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
-        echo "Collector logs (tail):" >&2
-        docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
+        echo "Collector /metrics probe:" >&2
+        collector_metrics_probe >&2 || true
+        echo "Collector /metrics size:" >&2
+        collector_metrics_size >&2 || true
+        if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
+          echo "KMS log tail:" >&2
+          tail -n 200 "${LOG_PATH}" >&2 || true
+        fi
       fi
       return 1
     fi
@@ -376,8 +380,14 @@ wait_for_server_uptime_using_start_time() {
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
         curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
-        echo "Collector logs (tail):" >&2
-        docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
+        echo "Collector /metrics probe:" >&2
+        collector_metrics_probe >&2 || true
+        echo "Collector /metrics size:" >&2
+        collector_metrics_size >&2 || true
+        if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
+          echo "KMS log tail:" >&2
+          tail -n 200 "${LOG_PATH}" >&2 || true
+        fi
       fi
       return 1
     fi
@@ -390,7 +400,6 @@ main() {
   setup_test_logging
 
   require_cmd cargo "Cargo is required to build and run tests. Install Rust (rustup) and retry."
-  require_cmd docker "Docker is required to run the OTEL collector stack. Start Docker and retry."
   require_cmd curl "curl is required to scrape the collector metrics endpoint. Install it and retry."
 
   echo "========================================="
@@ -401,8 +410,9 @@ main() {
 
   echo "Starting KMS server (background)..."
 
-  # Ensure the collector stack is up before we start exporting.
-  compose_up_collector
+  # Collector containers are started outside of this script; just wait for the
+  # Prometheus scrape endpoint to respond.
+  wait_for_collector_http_endpoint
 
   # The server expects `sqlite_path` to be a directory where it creates `kms.db`.
   SQLITE_PATH="$(mktemp -d -t kms-otel-XXXXXX)"
