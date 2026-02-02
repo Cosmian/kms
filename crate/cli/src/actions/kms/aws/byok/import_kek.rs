@@ -5,7 +5,7 @@ use crate::{
         aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm,
         shared::ImportSecretDataOrKeyAction,
     },
-    error::result::KmsCliResult,
+    error::{KmsCliError, result::KmsCliResult},
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::{ArgGroup, Parser};
@@ -34,6 +34,7 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
+/// Import an AWS Key Encryption Key (KEK) into the KMS.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 #[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_blob must be provided
@@ -65,7 +66,6 @@ pub struct ImportKekAction {
 }
 
 impl ImportKekAction {
-    #[allow(clippy::expect_used, clippy::unwrap_used, clippy::missing_panics_doc)] // TODO
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         // build tags
         let mut tags = vec![
@@ -77,21 +77,21 @@ impl ImportKekAction {
         }
 
         let import_action = ImportSecretDataOrKeyAction {
-            key_file: self
-                .kek_file
-                .clone()
-                .or_else(|| {
-                    self.kek_base64.as_ref().map(|base64_str| {
-                        let temp_path =
-                            std::env::temp_dir().join(format!("{}", uuid::Uuid::new_v4()));
-                        std::fs::write(&temp_path, BASE64_STANDARD.decode(base64_str).unwrap())
-                            .unwrap(); // TODO
-                        temp_path
-                    })
-                })
-                .expect("msg"), // TODO
+            key_file: match (&self.kek_file, &self.kek_base64) {
+                (Some(file), _) => file.clone(),
+                (None, Some(base64_str)) => {
+                    let temp_path = std::env::temp_dir().join(format!("{}", uuid::Uuid::new_v4()));
+                    std::fs::write(&temp_path, BASE64_STANDARD.decode(base64_str)?)?;
+                    temp_path
+                }
+                (None, None) => {
+                    return Err(KmsCliError::Default(
+                        "KEK file or base64 data must be provided".to_owned(),
+                    ));
+                }
+            },
             key_id: self.key_id.clone(),
-            key_format: ImportKeyFormat::Pkcs8Pub, // TODO: idk maybe this should be pkcs1
+            key_format: ImportKeyFormat::Pkcs8Pub,
             tags,
             key_usage: Some(vec![KeyUsage::WrapKey, KeyUsage::Encrypt]),
             replace_existing: true,

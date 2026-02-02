@@ -11,9 +11,9 @@ use super::configurable_kem::ConfigurableKemCommands;
 use super::cover_crypt::CovercryptCommands;
 use crate::{
     actions::kms::{
-        access::AccessAction, attributes::AttributesCommands, azure::AzureCommands,
-        bench::BenchAction, certificates::CertificatesCommands, console::Stdout,
-        derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
+        access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
+        azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
+        console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
         opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
         secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
@@ -30,6 +30,8 @@ pub enum KmsActions {
     Attributes(AttributesCommands),
     #[command(subcommand)]
     Azure(AzureCommands),
+    #[command(subcommand)]
+    Aws(AwsCommands),
     #[clap(hide = true)]
     Bench(BenchAction),
     #[cfg(feature = "non-fips")]
@@ -81,6 +83,7 @@ impl KmsActions {
         match self {
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Aws(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Azure(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
