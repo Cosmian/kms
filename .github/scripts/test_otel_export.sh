@@ -22,8 +22,25 @@ OTEL_EXPORT_SCRAPE_URL="http://127.0.0.1:${PROM_PORT}/metrics"
 
 KMS_PID=""
 
+collector_metrics_probe() {
+  # Emit a single-line probe result that is easy to log and parse under bash 3.2+.
+  # Example: "curl_exit=0 http=200 size=8714"
+  local out curl_status http_code size
+  out=$(curl -sS --max-time 2 -o /dev/null -w "%{http_code} %{size_download}" "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null || true)
+  curl_status=$?
+  http_code="${out%% *}"
+  size="${out##* }"
+  if [ -z "${http_code}" ] || [ "${http_code}" = "${out}" ]; then
+    http_code="000"
+  fi
+  if [ -z "${size}" ] || [ "${size}" = "${out}" ]; then
+    size="0"
+  fi
+  echo "curl_exit=${curl_status} http=${http_code} size=${size}"
+}
+
 collector_metrics_body() {
-  curl -fsS "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null || true
+  curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null || true
 }
 
 collector_metrics_size() {
@@ -42,6 +59,17 @@ collector_metrics_has_expected_series() {
   local body="$1"
   # Prefer checking for server metrics we know should exist once KMS exports.
   echo "${body}" | grep -Eq '^(kms_server_uptime_seconds_total|kms_server_start_time_seconds)(\{|[[:space:]])' || return 1
+}
+
+metric_value_from_body() {
+  local metric_name="$1"
+  local body="$2"
+  # Prometheus exposition samples look like:
+  #   name{labels} <value> [timestamp]
+  # Print the first observed numeric value (no trailing newline if missing).
+  echo "${body}" | awk -v name="${metric_name}" '
+    $1 ~ ("^"name"(\\{|$)") { print $2; exit }
+  '
 }
 
 dump_debug_state() {
@@ -65,11 +93,19 @@ dump_debug_state() {
   echo "-- Collector logs (tail)" >&2
   docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" logs --no-color --tail 200 otel-collector >&2 || true
 
+  echo "-- Collector container status" >&2
+  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" ps otel-collector >&2 || true
+  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" port otel-collector 4317 >&2 || true
+  docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" port otel-collector 8889 >&2 || true
+
+  echo "-- Collector /metrics probe" >&2
+  collector_metrics_probe >&2 || true
+
   echo "-- Collector /metrics headers" >&2
   curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
 
   echo "-- Collector /metrics size" >&2
-  curl -fsS "${OTEL_EXPORT_SCRAPE_URL}" | wc -c >&2 || true
+  curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" | wc -c >&2 || true
 }
 
 # The collector exposes Prometheus metrics (both its own telemetry and
@@ -102,12 +138,20 @@ cleanup() {
   local status=$?
   set +e
   # Only dump diagnostics if something looks wrong.
+  # Note: `curl -f` + pipe can print "0" even on connection errors, so use a probe.
   if [ -n "${OTEL_EXPORT_SCRAPE_URL:-}" ]; then
-    body_size=$(collector_metrics_size || true)
+    probe=$(collector_metrics_probe || true)
+    local probe_curl probe_http_field probe_size_field
+    IFS=' ' read -r probe_curl probe_http_field probe_size_field <<<"${probe}"
+    probe_curl_exit="${probe_curl#curl_exit=}"
+    probe_http="${probe_http_field#http=}"
+    probe_size="${probe_size_field#size=}"
   else
-    body_size=""
+    probe_curl_exit=""
+    probe_http=""
+    probe_size=""
   fi
-  if [ -n "${body_size}" ] && [ "${body_size}" -eq 0 ]; then
+  if [ -n "${probe_http}" ] && { [ "${probe_curl_exit}" != "0" ] || [ "${probe_http}" != "200" ] || [ "${probe_size}" -eq 0 ]; }; then
     dump_debug_state || true
   fi
   if [ -n "${KMS_PID}" ]; then
@@ -428,13 +472,18 @@ EOF
 
   # Prefer an explicit uptime metric if present, otherwise fall back
   # to the exported start time gauge.
-  if ! wait_for_metric_any_uptime_gt 10; then
+  if ! wait_for_metric_any_uptime_gt 30; then
     wait_for_server_uptime_using_start_time 120
   fi
 
   # Active keys should reflect our 10 activated keys.
   # This is a hard/blocking requirement (script fails on mismatch/timeout).
   wait_for_metric_eq "kms_keys_active_count" 10 180
+
+  # Echo what we observed to help diagnose CI flakiness.
+  body=$(collector_metrics_body)
+  observed_active_keys=$(metric_value_from_body "kms_keys_active_count" "${body}")
+  echo "Observed kms_keys_active_count=${observed_active_keys:-<missing>}"
 
   echo "OTEL export integration script completed successfully."
 }

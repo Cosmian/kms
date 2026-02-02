@@ -832,6 +832,11 @@ main() {
   fi
 
   parse_global_options "$@"
+  # macOS (bash 3.2) + `set -u` can still error if option parsing unsets the array.
+  # Ensure the array exists before expanding `${REMAINING_ARGS[@]}`.
+  if [ "${REMAINING_ARGS+x}" != "x" ]; then
+    REMAINING_ARGS=()
+  fi
   resolve_command_args "${REMAINING_ARGS[@]}"
   set_repo_root
 
