@@ -97,7 +97,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             // Step 2: Export the wrapped key using the KEK
             const exportRequest = wasm.export_ttlv_request(
                 values.wrappedKeyId, // Key ID to wrap
-                false, // Unwrap flag
+                true, // Unwrap flag
                 "raw", // Key format (raw bytes)
                 values.kekId, // Wrapping key ID
                 wrappingAlgorithm, // Wrapping algorithm

@@ -24,7 +24,6 @@ use crate::{
     },
 };
 
-// TODO : test the binary cli to see what it outputs
 /// Wrap a KMS key with an AWS Key Encryption Key (KEK),
 /// previously imported using the `cosmian kms aws byok import` command.
 /// Generate the `.byok` file that can be used to import the KMS key into AWS KMS.

@@ -110,7 +110,7 @@ const ImportAwsKekForm: React.FC = () => {
                 {/* prettier-ignore */}
                 <p className="text-sm text-gray-600">
                     See AWS KMS developer documentation for {" "}
-                <ExternalLink href="https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys.html">
+                <ExternalLink href="https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html">
                     downloading the wrapping public key and import token
                 </ExternalLink>.
                 </p>

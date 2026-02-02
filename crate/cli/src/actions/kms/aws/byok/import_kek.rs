@@ -33,8 +33,7 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
     }
     Ok(s.to_owned())
 }
-/// Import into the KMS an RSA Key Encryption Key (KEK) generated on Azure Key Vault.
-/// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek>
+
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 #[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_blob must be provided
