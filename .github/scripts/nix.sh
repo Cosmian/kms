@@ -382,6 +382,10 @@ docker_command() {
       echo "Warning: docker CLI not found; skipping --load" >&2
     fi
   fi
+
+  # Docker builds are executed directly (not via run_in_nix_shell).
+  # Exit here to avoid falling through to run_in_nix_shell, which expects $SCRIPT.
+  exit 0
 }
 
 test_command() {
@@ -734,8 +738,13 @@ package_command() {
 
 run_in_nix_shell() {
   # Check if script exists (build/test flows)
-  [ -f "$SCRIPT" ] || {
-    echo "Missing $SCRIPT" >&2
+  if [ -z "${SCRIPT:-}" ]; then
+    echo "Internal error: SCRIPT is not set for command '${COMMAND:-}'" >&2
+    exit 1
+  fi
+
+  [ -f "${SCRIPT}" ] || {
+    echo "Missing ${SCRIPT}" >&2
     exit 1
   }
 
@@ -807,6 +816,14 @@ run_in_nix_shell() {
 main() {
   SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
   source "$SCRIPT_DIR/common.sh"
+
+  # Guard against `set -u` when the script is invoked without extra args after the command.
+  # `parse_global_options` should populate these, but initializing here avoids CI failures
+  # if parsing exits early or is changed in the future.
+  REMAINING_ARGS=()
+  COMMAND_ARGS=()
+  COMMAND=""
+  SCRIPT=""
 
   # Ensure SDKROOT is set on macOS for link steps.
   ensure_macos_sdk_env

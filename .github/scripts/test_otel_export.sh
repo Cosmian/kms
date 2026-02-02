@@ -78,17 +78,16 @@ compose_up_collector() {
   docker compose -f "${SCRIPT_DIR}/../../docker-compose.yml" up -d otel-collector
 
   # Wait for the endpoint to be ready.
-  # In CI we can observe HTTP 200 with Content-Length: 0 for a short time.
-  # Treat readiness as: endpoint responds AND body is non-empty.
+  # In CI (and locally), we can observe HTTP 200 with Content-Length: 0 until
+  # the KMS starts exporting metrics. Treat readiness as: endpoint responds.
   for _ in {1..120}; do
-    body=$(collector_metrics_body)
-    if [ -n "${body}" ] && collector_metrics_has_any_series "${body}"; then
+    if curl -fsS -o /dev/null "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
       return 0
     fi
     sleep 0.5
   done
 
-  echo "OTEL collector did not become ready (non-empty metrics) at ${OTEL_EXPORT_SCRAPE_URL}" >&2
+  echo "OTEL collector did not become ready (HTTP endpoint not responding) at ${OTEL_EXPORT_SCRAPE_URL}" >&2
   echo "Collector /metrics headers:" >&2
   curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2 || true
   echo "Collector /metrics size:" >&2
@@ -98,6 +97,9 @@ compose_up_collector() {
 }
 
 cleanup() {
+  # Preserve the script exit status; otherwise the last command in this
+  # EXIT trap (e.g., wait) can overwrite it.
+  local status=$?
   set +e
   # Only dump diagnostics if something looks wrong.
   if [ -n "${OTEL_EXPORT_SCRAPE_URL:-}" ]; then
@@ -112,6 +114,8 @@ cleanup() {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   fi
+
+  return "$status"
 }
 
 wait_for_kms_listen() {
