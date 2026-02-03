@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig,ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -127,6 +127,8 @@ pub struct ServerParams {
 
     /// KMIP algorithm policy.
     pub kmip_policy: KmipPolicyParams,
+
+    pub azure_ekm: AzureEkmConfig,
 }
 
 /// Represents the server parameters.
@@ -336,6 +338,7 @@ impl ServerParams {
                     aes_key_sizes: kmip_allowlists.aes_key_sizes,
                 },
             },
+            azure_ekm: conf.azure_ekm_config,
         };
         debug!("{res:#?}");
 
@@ -442,6 +445,32 @@ impl fmt::Debug for ServerParams {
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+        }
+
+        // Azure EKM configuration
+        if self.azure_ekm.azure_ekm_enable {
+            debug_struct
+                .field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm.azure_ekm_proxy_vendor,
+                )
+                .field("azure_ekm_proxy_name", &self.azure_ekm.azure_ekm_proxy_name)
+                .field("azure_ekm_ekm_vendor", &self.azure_ekm.azure_ekm_ekm_vendor)
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm.azure_ekm_ekm_product,
+                );
+        } else {
+            debug_struct.field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable);
         }
 
         if self.hsm_model.is_some() {

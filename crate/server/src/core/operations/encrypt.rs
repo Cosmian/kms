@@ -593,7 +593,7 @@ fn get_key_and_cipher(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
 ) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
-    trace!("entering");
+    trace!("Entering get_key_and_cipher");
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
         .object()

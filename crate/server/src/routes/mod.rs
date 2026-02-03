@@ -18,6 +18,7 @@ const CLI_ARCHIVE_FOLDER: &str = "./resources";
 const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 
 pub mod access;
+pub mod azure_ekm;
 pub mod google_cse;
 pub mod health;
 pub mod kmip;
