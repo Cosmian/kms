@@ -50,7 +50,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
         None,
     )
     .unwrap();
-    let create_response = kms.create(req, owner, None, None).await.unwrap();
+    let create_response = kms.create(req, owner, None).await.unwrap();
     let aes_kek_id = create_response.unique_identifier.to_string();
 
     // Test invalid base64url - contains invalid characters
@@ -152,7 +152,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
                 None,
             )
             .unwrap();
-            let create_response = kms.create(req, owner, None, None).await.unwrap();
+            let create_response = kms.create(req, owner, None).await.unwrap();
             let aes_kek_id = create_response.unique_identifier.to_string();
 
             let invalid_size_request = WrapKeyRequest {
@@ -220,7 +220,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
         EMPTY_TAGS,
     )?;
 
-    let import_response = kms.import(import_request, owner, None, None).await?;
+    let import_response = kms.import(import_request, owner, None).await?;
     let kek_id = import_response.unique_identifier.to_string();
 
     let wrap_request = WrapKeyRequest {
@@ -308,7 +308,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
         )
         .unwrap();
 
-        let import_response = kms.import(import_request, owner, None, None).await?;
+        let import_response = kms.import(import_request, owner, None).await?;
         let kek_id = import_response.unique_identifier.to_string();
 
         let wrap_request = WrapKeyRequest {
@@ -361,7 +361,6 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         .create_key_pair(
             create_rsa_key_pair_request(None, Vec::<String>::new(), 2048, false, None)?,
             owner,
-            None,
             None,
         )
         .await?;
