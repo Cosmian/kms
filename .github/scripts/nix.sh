@@ -271,6 +271,11 @@ set_repo_root() {
 }
 
 dispatch_command() {
+  # Ensure arrays are always defined in strict mode.
+  # CI may run this script in a way where `resolve_command_args` is not reached
+  # before we expand `COMMAND_ARGS[@]`.
+  COMMAND_ARGS=()
+
   # Parse top-level flags and determine command.
   # Doing it here lets `main` simply call `dispatch_command` without
   # needing to manage any intermediate arrays (strict-mode safe).
