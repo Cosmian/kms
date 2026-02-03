@@ -48,12 +48,9 @@ usage() {
                        Default: generates all combinations (openssl + server fips/non-fips × static/dynamic)
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
-                         --target <openssl|server>  Choose specific SBOM target
-                         --variant <fips|non-fips>  Specific variant (server target only)
-                         --link <static|dynamic>    Specific linkage (server target only)
-    update-hashes [RUN_ID]
-               Update expected hashes by parsing GitHub Actions packaging logs.
-               RUN_ID is optional; if omitted, uses the latest packaging workflow run.
+                         --target <openssl|server>  Choose SBOM target (default: openssl)
+    update-hashes
+           Update expected hashes for current platform (release profile mandatory)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug)
@@ -99,8 +96,7 @@ usage() {
     $0 sbom --target openssl                # SBOM for the OpenSSL 3.1.2 only derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
-    $0 update-hashes                        # Update expected hashes from the latest packaging workflow
-    $0 update-hashes 123456789              # Update expected hashes from a specific workflow run
+    $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
 EOF
   exit 1
 }

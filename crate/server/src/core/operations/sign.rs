@@ -22,7 +22,10 @@ use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
 
 use crate::{
-    core::{KMS, uid_utils::uids_from_unique_identifier},
+    core::{
+        KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+        uid_utils::uids_from_unique_identifier,
+    },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -108,6 +111,9 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
 
     // unwrap if wrapped
     owm.set_object(kms.get_unwrapped(owm.id(), owm.object(), user).await?);
+
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Sign", owm.id(), &owm)?;
 
     // Only private keys can be used for signing
     let res = match owm.object() {

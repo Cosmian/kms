@@ -6,6 +6,8 @@ use cosmian_kmip::{
 use cosmian_kms_client::{KmsClient, KmsClientConfig};
 
 #[cfg(feature = "non-fips")]
+use super::configurable_kem::ConfigurableKemCommands;
+#[cfg(feature = "non-fips")]
 use super::cover_crypt::CovercryptCommands;
 use crate::{
     actions::kms::{
@@ -33,6 +35,9 @@ pub enum KmsActions {
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Cc(CovercryptCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
+    Kem(ConfigurableKemCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
     DeriveKey(DeriveKeyAction),
@@ -80,6 +85,8 @@ impl KmsActions {
             Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
+            Self::Kem(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }

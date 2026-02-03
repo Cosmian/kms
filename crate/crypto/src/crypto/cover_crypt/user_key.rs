@@ -75,17 +75,16 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_usk_object(
         &mut self,
-        access_policy_str: &str,
+        access_policy: &str,
         create_attributes: &Attributes,
         msk_id: &str,
     ) -> Result<Object, CryptoError> {
         // Generate a fresh user decryption key
         //
-        let access_policy = AccessPolicy::parse(access_policy_str)?;
         trace!("Access Policy: {access_policy:?}");
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(self.msk, &access_policy)
+            .generate_user_secret_key(self.msk, &AccessPolicy::parse(access_policy)?)
             .map_err(|e| CryptoError::Kmip(e.to_string()))?;
 
         trace!("Created user decryption key with access policy: {access_policy:?}");
@@ -120,7 +119,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
-        upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
+        upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
 
         // Add the link to the master secret key
         attributes.link = Some(vec![Link {

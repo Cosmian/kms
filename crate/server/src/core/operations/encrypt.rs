@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
+            kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object},
             kmip_operations::{Encrypt, EncryptResponse},
             kmip_types::{
@@ -46,10 +47,17 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::{
+    enforce_ecies_fixed_suite_for_attributes, enforce_ecies_fixed_suite_for_pkey_id,
+};
 use crate::{
+    config::ServerParams,
     core::{
         KMS,
-        operations::get_effective_state,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+        },
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -182,6 +190,14 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     let mut unwrapped_owm = owm.clone();
     unwrapped_owm.set_object(unwrapped_object);
 
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(
+        &kms.params,
+        "Encrypt",
+        unwrapped_owm.id(),
+        &unwrapped_owm,
+    )?;
+
     // plaintext length for logging
     let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
@@ -209,11 +225,11 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     let res = match BulkData::deserialize(data) {
         Ok(bulk_data) => {
             // It is a bulk encryption request
-            encrypt_bulk(&unwrapped_owm, request, bulk_data)
+            encrypt_bulk(&unwrapped_owm, &kms.params, request, bulk_data)
         }
         Err(_) => {
             // fallback to single encryption
-            encrypt_single(&unwrapped_owm, &request)
+            encrypt_single(&unwrapped_owm, &kms.params, &request)
         }
     }?;
 
@@ -335,13 +351,17 @@ async fn encrypt_using_encryption_oracle(
 ///  * `request` - the encryption request
 /// # Returns
 /// * the encrypt response
-fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<EncryptResponse> {
+fn encrypt_single(
+    owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
+    request: &Encrypt,
+) -> KResult<EncryptResponse> {
     match owm.object() {
         Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
-        Object::PublicKey { .. } => encrypt_with_public_key(request, owm),
+        Object::PublicKey { .. } => encrypt_with_public_key(request, server_params, owm),
         Object::Certificate(Certificate {
             certificate_value, ..
-        }) => encrypt_with_certificate(request, owm.id(), certificate_value),
+        }) => encrypt_with_certificate(request, server_params, owm.id(), certificate_value),
         other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
@@ -364,6 +384,7 @@ fn encrypt_single(owm: &ObjectWithMetadata, request: &Encrypt) -> KResult<Encryp
 // TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
 pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
     mut request: Encrypt,
     bulk_data: BulkData,
 ) -> KResult<EncryptResponse> {
@@ -404,7 +425,7 @@ pub(super) fn encrypt_bulk(
         Object::PublicKey { .. } => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_public_key(&request, owm)?;
+                let response = encrypt_with_public_key(&request, server_params, owm)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -413,7 +434,8 @@ pub(super) fn encrypt_bulk(
         }) => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_certificate(&request, owm.id(), certificate_value)?;
+                let response =
+                    encrypt_with_certificate(&request, server_params, owm.id(), certificate_value)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -617,6 +639,7 @@ fn get_key_and_cipher(
 
 fn encrypt_with_public_key(
     request: &Encrypt,
+    server_params: &ServerParams,
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     // Make sure that the key used to encrypt can be used to encrypt.
@@ -633,7 +656,34 @@ fn encrypt_with_public_key(
     }
 
     let key_block = owm.object().key_block()?;
+
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEMPublicKey => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+                crypto::kem::kem_encaps, reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+            };
+
+            let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let (key, enc) = kem_encaps(&ek_bytes, request.data.as_ref())?;
+            Ok(EncryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(
+                    (key, enc)
+                        .serialize()
+                        .map_err(|e| {
+                            KmsError::ConversionError(format!(
+                                "failed serializing the configurable-KEM encapsulation \
+                                 results: {e}"
+                            ))
+                        })?
+                        .to_vec(),
+                ),
+                i_v_counter_nonce: None,
+                correlation_value: None,
+                authenticated_encryption_tag: None,
+            })
+        }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
             CoverCryptEncryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
@@ -653,7 +703,14 @@ fn encrypt_with_public_key(
             );
             let public_key = kmip_public_key_to_openssl(owm.object())?;
             trace!("OpenSSL Public Key instantiated before encryption");
-            encrypt_with_pkey(request, owm.id(), plaintext, &public_key)
+            encrypt_with_pkey(
+                request,
+                server_params,
+                owm.id(),
+                owm.attributes(),
+                plaintext,
+                &public_key,
+            )
         }
         other => Err(KmsError::NotSupported(format!(
             "encryption with public keys of format: {other}"
@@ -663,7 +720,11 @@ fn encrypt_with_public_key(
 
 fn encrypt_with_pkey(
     request: &Encrypt,
+    #[cfg(feature = "non-fips")] server_params: &ServerParams,
+    #[cfg(not(feature = "non-fips"))] _server_params: &ServerParams,
     key_id: &str,
+    #[cfg(feature = "non-fips")] key_attributes: &Attributes,
+    #[cfg(not(feature = "non-fips"))] _key_attributes: &Attributes,
     plaintext: &[u8],
     public_key: &PKey<Public>,
 ) -> KResult<EncryptResponse> {
@@ -680,7 +741,15 @@ fn encrypt_with_pkey(
             )?
         }
         #[cfg(feature = "non-fips")]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, plaintext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => {
+            enforce_ecies_fixed_suite_for_attributes(
+                server_params,
+                "Encrypt",
+                key_id,
+                key_attributes,
+            )?;
+            ecies_encrypt(public_key, plaintext)?
+        }
         other => {
             kms_bail!("Encrypt: public key type not supported: {other:?}")
         }
@@ -731,6 +800,7 @@ fn encrypt_with_rsa(
 
 fn encrypt_with_certificate(
     request: &Encrypt,
+    server_params: &ServerParams,
     key_id: &str,
     certificate_value: &[u8],
 ) -> KResult<EncryptResponse> {
@@ -742,5 +812,28 @@ fn encrypt_with_certificate(
     let public_key = cert.public_key().map_err(|e| {
         KmipError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
     })?;
-    encrypt_with_pkey(request, key_id, plaintext, &public_key)
+    // No key `Attributes` are available when encrypting with a raw certificate.
+    // If the certificate key is an ECIES-capable key type, fall back to strict PKey-id enforcement.
+    #[cfg(feature = "non-fips")]
+    {
+        match public_key.id() {
+            Id::EC | Id::X25519 | Id::ED25519 => {
+                enforce_ecies_fixed_suite_for_pkey_id(
+                    server_params,
+                    "Encrypt",
+                    key_id,
+                    public_key.id(),
+                )?;
+            }
+            _ => {}
+        }
+    }
+    encrypt_with_pkey(
+        request,
+        server_params,
+        key_id,
+        &Attributes::default(),
+        plaintext,
+        &public_key,
+    )
 }

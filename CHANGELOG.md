@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- Add PQC hybridized KEM support via `cosmian_cover_crypt`:
+    - The Cosmian KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
+      via the [cosmian_cover_crypt](https://github.com/Cosmian/cover_crypt) crate. This crate provides
+      a configurable KEM framework that can operate in pure classical, pure post-quantum, or hybrid mode
+      by combining a pre-quantum KEM with a post-quantum KEM through a KEM combiner (using SHA-256).
+    - Server supports `CreateKeyPair` for Configurable-KEM and `Encrypt`/`Decrypt` encapsulation/decapsulation flows.
+- Add server-side KMIP algorithm policy allowlists (enforcement via `kmip.policy_id` and `[kmip.allowlists]`) [#700](https://github.com/Cosmian/kms/pull/700)
+    - `kmip.policy_id` selects a policy (case-insensitive):
+        - `DEFAULT`: built-in conservative allowlists (e.g., SHA-2/3, P-256/P-384/P-521 + Curve25519/448, AEAD/wrapping modes, OAEP/PSS/PKCS5, RSA 3072/4096).
+        - `CUSTOM`: enforce the allowlists you set under `[kmip.allowlists]`.
+    - If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
+    - `None` vs `[]` semantics (for each allowlist): `None` means "no restriction", while an empty list `[]` means "deny all" when enforcement is enabled.
 - *(UI)* Runtime branding support via `/ui/branding.json` (title, theme, and favicon resolved before React renders)
     - Theme asset support under `/ui/themes/<theme>/...` with Ant Design token overrides
     - Replace the example theme favicons with neutral, non-Cosmian icons
@@ -23,7 +35,6 @@ All notable changes to this project will be documented in this file.
         - mod.rs: add OTEL resource attributes (service name/version + optional environment).
         - otel_metrics.rs: ensure active_keys_count time series exists even when 0.
         - cron.rs: fall back to default username if hsm_admin is empty.
-
 - Fix Linux packaging smoke tests when the host has `/etc/cosmian/kms.toml` present by running with an explicit temp config.
 - Make OpenTelemetry export tests resilient under FIPS Nix shells by running `curl` in a clean environment (avoid inherited OpenSSL/LD overrides).
 
@@ -31,8 +42,8 @@ All notable changes to this project will be documented in this file.
 
 - Nix builds now target GLIBC ≤ 2.34 (Rocky Linux 9 compatibility) by updating pins and building Linux OpenSSL/server outputs against a glibc 2.34 stdenv; server vendor hash expectations are split by static/dynamic on Linux.
 - SBOM generation improvements:
-  - `.github/scripts/nix.sh sbom` strictly validates `--target/--variant/--link`, defaults to generating all combinations, and supports generating a specific server subset.
-  - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place (via `nix/scripts/dedup_cves.py`, with optional filtering helper `nix/scripts/filter_vulns.py`).
+    - `.github/scripts/nix.sh sbom` strictly validates `--target/--variant/--link`, defaults to generating all combinations, and supports generating a specific server subset.
+    - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place (via `nix/scripts/dedup_cves.py`, with optional filtering helper `nix/scripts/filter_vulns.py`).
 
 ### 📚 Documentation
 
@@ -148,7 +159,9 @@ jwt_auth_provider = [
 
 ### 🚜 Refactor
 
-- Server: Consolidate KMIP operations `Sign` and `SignatureVerify` for RSA and Elliptic Curves (`crate/server/src/core/operations/sign.rs`, `signature_verify.rs`; routes updated). Supported signature schemes: RSASSA-PSS, ECDSA, EdDSA (Ed25519, Ed448).
+- Server: Consolidate KMIP operations `Sign` and `SignatureVerify` for RSA and Elliptic Curves
+  (`crate/server/src/core/operations/sign.rs`, `signature_verify.rs`; routes updated).
+  Supported signature schemes: RSASSA-PSS, ECDSA, EdDSA (Ed25519, Ed448).
 - Digest (pre-hashed) mode for signing and verification ([#619](https://github.com/Cosmian/kms/issues/619)):
     - Introduced `digested=true` handling so inputs are treated as final digests (no implicit hashing) across RSA and EC paths (crypto + server).
     - RSA: Added verify support using pre-hashed input, including PKCS#1 v1.5 and RSASSA-PSS flows (`crate/crypto/src/crypto/rsa/verify.rs`).
@@ -387,7 +400,10 @@ jwt_auth_provider = [
 
 **🚨 IMPORTANT: Back up your Redis database before upgrading to version 5.12.0.** 🚨
 
-- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import them after clearing the redis store. Databases created with version 4.x.x are not compatible with the automated migration routine and won't start if the `db_version` key is unset.
+- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats
+  (PKCS#8, PEM, etc.) and re-import them after clearing the redis store.
+  Databases created with version 4.x.x are not compatible with the automated migration routine and
+  won't start if the `db_version` key is unset.
 - If you're upgrading from a 5.x DB : A transparent migration process will occur and should typically take less than a minute.
 
 ## [5.11.2] - 2025-11-12

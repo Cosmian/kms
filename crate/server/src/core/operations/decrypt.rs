@@ -38,10 +38,15 @@ use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
 use crate::{
+    config::ServerParams,
     core::{
         KMS,
-        operations::get_effective_state,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+        },
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -186,9 +191,12 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
             .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
     );
 
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Decrypt", owm.id(), &owm)?;
+
     let res = BulkData::deserialize(data).map_or_else(
-        |_| decrypt_single(&owm, &request),
-        |bulk_data| decrypt_bulk(&owm, &request, bulk_data),
+        |_| decrypt_single(&owm, &kms.params, &request),
+        |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
     )?;
 
     info!(
@@ -268,6 +276,7 @@ async fn decrypt_using_encryption_oracle(
 
 fn decrypt_bulk(
     owm: &ObjectWithMetadata,
+    server_params: &ServerParams,
     request: &Decrypt,
     bulk_data: BulkData,
 ) -> KResult<DecryptResponse> {
@@ -300,7 +309,7 @@ fn decrypt_bulk(
                     data: Some(ciphertext.to_vec()),
                     ..request.clone()
                 };
-                let response = decrypt_with_private_key(owm, &request)?;
+                let response = decrypt_with_private_key(owm, &request, server_params)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
         }
@@ -373,10 +382,30 @@ fn decrypt_bulk(
     })
 }
 
-fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<DecryptResponse> {
+fn decrypt_single(
+    owm: &ObjectWithMetadata,
+    server_params: &crate::config::ServerParams,
+    request: &Decrypt,
+) -> KResult<DecryptResponse> {
     trace!("entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEMSecretKey => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_decaps;
+
+            let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let enc = request
+                .data
+                .as_ref()
+                .ok_or_else(|| KmsError::InvalidRequest("missing KEM encapsulation".to_owned()))?;
+            let key = kem_decaps(&dk_bytes, enc)?;
+            Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(key),
+                correlation_value: None,
+            })
+        }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
@@ -388,7 +417,7 @@ fn decrypt_single(owm: &ObjectWithMetadata, request: &Decrypt) -> KResult<Decryp
                 "matching on public key format type: {:?}",
                 key_block.key_format_type
             );
-            decrypt_with_private_key(owm, request)
+            decrypt_with_private_key(owm, request, server_params)
         }
 
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
@@ -554,6 +583,8 @@ fn get_aead_and_key(
 fn decrypt_with_private_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
+    #[cfg(feature = "non-fips")] server_params: &ServerParams,
+    #[cfg(not(feature = "non-fips"))] _server_params: &ServerParams,
 ) -> KResult<DecryptResponse> {
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
@@ -579,7 +610,15 @@ fn decrypt_with_private_key(
     let plaintext = match private_key.id() {
         Id::RSA => decrypt_with_rsa(&private_key, effective_cp.as_ref(), ciphertext)?,
         #[cfg(feature = "non-fips")]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => {
+            enforce_ecies_fixed_suite_for_attributes(
+                server_params,
+                "Decrypt",
+                owm.id(),
+                owm.attributes(),
+            )?;
+            ecies_decrypt(&private_key, ciphertext)?
+        }
         other => {
             kms_bail!("Decrypt with PKey: private key type not supported: {other:?}")
         }
