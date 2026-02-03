@@ -4,6 +4,7 @@ set -euo pipefail
 
 # Source shared helpers and unified pins
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=.github/scripts/common.sh
 source "$SCRIPT_DIR/common.sh"
 
 # -------------------------------
@@ -270,6 +271,14 @@ set_repo_root() {
 }
 
 dispatch_command() {
+  # Parse top-level flags and determine command.
+  # Doing it here lets `main` simply call `dispatch_command` without
+  # needing to manage any intermediate arrays (strict-mode safe).
+  parse_global_options "$@"
+
+  # Resolve subcommand args just-in-time based on the parsed command.
+  resolve_command_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
+
   case "$COMMAND" in
   docker)
     docker_command "${COMMAND_ARGS[@]}"
@@ -818,32 +827,15 @@ run_in_nix_shell() {
 
 main() {
   SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+  # shellcheck source=.github/scripts/common.sh
   source "$SCRIPT_DIR/common.sh"
-
-  # Guard against `set -u` when the script is invoked without extra args after the command.
-  # `parse_global_options` should populate these, but initializing here avoids CI failures
-  # if parsing exits early or is changed in the future.
-  REMAINING_ARGS=()
-  COMMAND_ARGS=()
-  COMMAND=""
-  SCRIPT=""
 
   # Ensure SDKROOT is set on macOS for link steps.
   ensure_macos_sdk_env
-  if [ "$(uname -s)" = "Darwin" ]; then
-    export SDKROOT="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
-  fi
 
-  parse_global_options "$@"
-  # macOS (bash 3.2) + `set -u` can still error if option parsing unsets the array.
-  # Ensure the array exists before expanding `${REMAINING_ARGS[@]}`.
-  if [ "${REMAINING_ARGS+x}" != "x" ]; then
-    REMAINING_ARGS=()
-  fi
-  resolve_command_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
   set_repo_root
 
-  dispatch_command
+  dispatch_command "$@"
 
   ensure_nix_path
 
