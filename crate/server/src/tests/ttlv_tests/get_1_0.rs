@@ -82,10 +82,51 @@ pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
         "KMIP 1.0 Get response must NOT include Fresh (TTLV contains \"Fresh\")"
     );
 
+    // Percona Server for MongoDB (KMIP 1.0) interoperability:
+    // Initial Date is rejected by Percona in KMIP 1.0 sessions.
+    assert!(
+        !response_bytes
+            .windows(b"Initial Date".len())
+            .any(|w| w == b"Initial Date"),
+        "KMIP 1.0 Get response must NOT include Initial Date (TTLV contains \"Initial Date\")"
+    );
+
     // Safety: ensure the TTLV roundtrip decoding still works.
     let decoded_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor)
         .expect("Failed to decode serialized response TTLV");
-    let _decoded: ResponseMessage = from_ttlv(decoded_ttlv).expect("Failed to decode response");
+    let decoded: ResponseMessage = from_ttlv(decoded_ttlv).expect("Failed to decode response");
+
+    // Stronger KMIP 1.0 assertion: ensure the returned KeyValue attributes do not contain
+    // unsupported fields (Fresh/InitialDate). Other attributes may be present.
+    let Some(decoded_batch_item) = decoded.batch_item.first() else {
+        panic!("Expected decoded response batch item");
+    };
+    let ResponseMessageBatchItemVersioned::V14(decoded_batch_item) = decoded_batch_item else {
+        panic!("Expected decoded V14 response message");
+    };
+    let Some(Operation::GetResponse(decoded_response)) = &decoded_batch_item.response_payload
+    else {
+        panic!("Expected decoded GetResponse");
+    };
+    let Object::SymmetricKey(decoded_symmetric_key) = decoded_response.object.clone() else {
+        panic!("Expected decoded SymmetricKey");
+    };
+    let Some(KeyValue::Structure { attribute, .. }) = decoded_symmetric_key.key_block.key_value
+    else {
+        panic!("Expected decoded KeyValue structure");
+    };
+    if let Some(attrs) = attribute {
+        for a in attrs {
+            assert!(
+                !matches!(
+                    a,
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
+                        | cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::InitialDate(_)
+                ),
+                "KMIP 1.0 Get response must not include Fresh or InitialDate"
+            );
+        }
+    }
 
     assert_eq!(
         response.response_header.protocol_version,

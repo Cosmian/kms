@@ -621,10 +621,15 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
                                 ..
                             } = kv
                             {
+                                // KMIP 1.0 interoperability: keep KeyValue attributes (known to
+                                // work with Percona), but drop attributes not supported in 1.0.
+                                // - Fresh does not exist in KMIP 1.0
+                                // - Initial Date is rejected by Percona in KMIP 1.0 sessions
                                 attrs.retain(|a| {
                                     !matches!(
                                         a,
                                         cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
+                                            | cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::InitialDate(_)
                                     )
                                 });
                                 if attrs.is_empty() {
