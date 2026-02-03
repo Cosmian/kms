@@ -49,7 +49,7 @@ cosmian_kms_crypto = { path = "../crypto", version = "5.15.0" }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 leb128 = { workspace = true }
 num-format = { workspace = true }
 pem = { workspace = true }
