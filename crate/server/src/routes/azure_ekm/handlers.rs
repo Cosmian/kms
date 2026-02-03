@@ -41,7 +41,7 @@ pub(crate) async fn get_key_metadata_handler(
         unique_identifier: Some(UniqueIdentifier::TextString(key_name.clone())),
         ..Default::default()
     };
-    match kms.get(get_request, &user, None).await {
+    match kms.get(get_request, &user).await {
         Ok(resp) => {
             match resp.object {
                 Object::SymmetricKey(_) | Object::PublicKey(_) | Object::PrivateKey(_) => {
@@ -171,7 +171,6 @@ async fn get_and_validate_kek_algorithm(
                 ..Default::default()
             },
             user,
-            None,
         )
         .await
         .map_err(|e| match e {
@@ -333,7 +332,7 @@ async fn wrap_with_aes(
         ..Default::default()
     };
 
-    let response = kms.encrypt(encrypt_request, user, None).await?;
+    let response = kms.encrypt(encrypt_request, user).await?;
 
     let wrapped_data = response
         .data
@@ -365,7 +364,7 @@ async fn wrap_with_rsa(
 
     // let rep = kms.
 
-    let response = kms.encrypt(encrypt_request, user, None).await?;
+    let response = kms.encrypt(encrypt_request, user).await?;
 
     let wrapped_data = response
         .data
@@ -451,7 +450,7 @@ async fn unwrap_with_aes(
         ..Default::default()
     };
 
-    let response = kms.decrypt(decrypt_request, user, None).await?;
+    let response = kms.decrypt(decrypt_request, user).await?;
 
     let unwrapped_data = response
         .data
@@ -481,7 +480,7 @@ async fn unwrap_with_rsa(
         ..Default::default()
     };
 
-    let response = kms.decrypt(decrypt_request, user, None).await?;
+    let response = kms.decrypt(decrypt_request, user).await?;
 
     let unwrapped_data = response
         .data
@@ -511,7 +510,6 @@ async fn get_public_exponent_from_linked_key(
                 ..Default::default()
             },
             user,
-            None,
         )
         .await?;
 
