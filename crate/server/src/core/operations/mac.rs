@@ -10,7 +10,10 @@ use cosmian_logger::{debug, trace};
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+        retrieve_object_utils::retrieve_object_for_operation,
+    },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -65,6 +68,8 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
             user,
         ))
         .await?;
+
+        enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", uid, &owm)?;
         let key_block = owm.object().key_block()?;
         if let Some(ca) = key_block.cryptographic_algorithm {
             match ca {
@@ -159,6 +164,8 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
             user,
         ))
         .await?;
+
+        enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", uid, &owm)?;
         let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
@@ -191,6 +198,8 @@ pub(super) async fn mac_verify(
         user,
     ))
     .await?;
+
+    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", uid, &owm)?;
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes().context("mac_verify")?;
 

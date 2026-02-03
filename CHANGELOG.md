@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.XX.YY] - 2026-02-XX
+## [5.16.0] - 2026-02-03
+
+### 🚀 Features
+
+- Add server-side KMIP algorithm policy allowlists (optional enforcement via `kmip.enforce` and `[kmip.allowlists]`) [#700](https://github.com/Cosmian/kms/pull/700)
 
 ### 🐛 Bug Fixes
 

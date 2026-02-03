@@ -5,11 +5,14 @@ use cosmian_kms_server_database::{
 };
 use cosmian_logger::{debug, warn};
 
-use super::TlsParams;
+use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
         ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
-        params::{OpenTelemetryConfig, proxy_params::ProxyParams},
+        params::{
+            OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
+            proxy_params::ProxyParams,
+        },
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -121,6 +124,9 @@ pub struct ServerParams {
     /// Users who have initial rights to create and grant access rights for Create Kmip Operation
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
+
+    /// KMIP algorithm policy.
+    pub kmip_policy: KmipPolicyParams,
 }
 
 /// Represents the server parameters.
@@ -292,13 +298,27 @@ impl ServerParams {
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            kmip_policy: KmipPolicyParams {
+                enforce: conf.kmip.enforce,
+                allowlists: KmipAllowlistsParams {
+                    algorithms: conf.kmip.allowlists.algorithms,
+                    hashes: conf.kmip.allowlists.hashes,
+                    signature_algorithms: conf.kmip.allowlists.signature_algorithms,
+                    curves: conf.kmip.allowlists.curves,
+                    block_cipher_modes: conf.kmip.allowlists.block_cipher_modes,
+                    padding_methods: conf.kmip.allowlists.padding_methods,
+                    mgf_hashes: conf.kmip.allowlists.mgf_hashes,
+                    mask_generators: conf.kmip.allowlists.mask_generators,
+                    rsa_key_sizes: conf.kmip.allowlists.rsa_key_sizes,
+                    aes_key_sizes: conf.kmip.allowlists.aes_key_sizes,
+                },
+            },
         };
         debug!("{res:#?}");
 
         Ok(res)
     }
 }
-
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
@@ -331,6 +351,35 @@ impl fmt::Debug for ServerParams {
 
         if let Some(ref unwrap_types) = self.default_unwrap_types {
             debug_struct.field("default_unwrap_types", unwrap_types);
+        }
+
+        debug_struct.field("kmip_policy_enforce", &self.kmip_policy.enforce);
+        if let Some(ref wl) = self.kmip_policy.allowlists.algorithms {
+            debug_struct.field("kmip_allowed_algorithms", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.hashes {
+            debug_struct.field("kmip_allowed_hashes", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.signature_algorithms {
+            debug_struct.field("kmip_allowed_signature_algorithms", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.curves {
+            debug_struct.field("kmip_allowed_curves", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.block_cipher_modes {
+            debug_struct.field("kmip_allowed_block_cipher_modes", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.padding_methods {
+            debug_struct.field("kmip_allowed_padding_methods", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.mgf_hashes {
+            debug_struct.field("kmip_allowed_mgf_hashes", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.rsa_key_sizes {
+            debug_struct.field("kmip_allowed_rsa_key_sizes", wl);
+        }
+        if let Some(ref wl) = self.kmip_policy.allowlists.aes_key_sizes {
+            debug_struct.field("kmip_allowed_aes_key_sizes", wl);
         }
 
         if self.start_socket_server {

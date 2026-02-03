@@ -2,25 +2,18 @@
 
 The Cosmian server supports a large, and growing, list of cryptographic algorithms.
 This page lists the supported algorithms, their details and their reference in various standards.
-FIPS compliant
-algorithms are also listed with the corresponding NIST standard.
+FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using
-the Cosmian KMS server [API](./kmip/json_ttlv_api.md)
-or [Cosmian CLI](../cosmian_cli/index.md)
+unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [Cosmian CLI](../cosmian_cli/index.md)
 
-Should you require a specific algorithm or standard to be supported, please directly open a ticket
-or pull request on
-the [Github repository](https://github.com/Cosmian/kms).
+Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
 ## Key-wrapping schemes
 
-The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip
-operations.
+The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip operations.
 The (un)wrapping key identifier may be that of a key or a certificate.
-In the latter case, the public key (or the associated private key for unwrapping, if any) will be
-retrieved and used.
+In the latter case, the public key (or the associated private key for unwrapping, if any) will be retrieved and used.
 
 The supported key-wrapping algorithms are:
 
@@ -31,7 +24,7 @@ The supported key-wrapping algorithms are:
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
 | CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
 | Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-192, P-224, P-256, P-384, P-521    | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-192, P-224, P-256) AES 256 GCM otherwise.        |
+| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-192, P-224, P-256) AES 256 GCM otherwise.        |
 
 Any encryption scheme below can be used for key-wrapping as well.
 
@@ -56,7 +49,7 @@ The supported encryption algorithms are:
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
-| ECIES             | P-192, P-224, P-256, P-384, P-521                       | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
+| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
 
 ## Algorithms Details
 
@@ -236,6 +229,64 @@ The Cosmian server supports the following FIPS compliant hashing algorithms:
 - SHA-256
 - SHA-384
 - SHA-512
+
+## KMIP algorithm policy (server-side)
+
+The `cosmian_kms_server` crate enforces a KMIP algorithm policy at request entry points (and on retrieved keys).
+The policy is configured in `kms.toml` and is disabled by default.
+
+```toml
+[kmip]
+
+# Gate enforcement.
+# - false (default): do not enforce allowlists.
+# - true: enforce allowlists (or their defaults).
+enforce = false
+
+[kmip.allowlists]
+
+# Allowlisted KMIP enums.
+algorithms = ["AES", "RSA", "ECDSA", "ECDH", "EC", "HMACSHA256", "HMACSHA384", "HMACSHA512"]
+hashes = ["SHA256", "SHA384", "SHA512"]
+signature_algorithms = ["RSASSAPSS", "SHA256WithRSAEncryption", "ECDSAWithSHA256"]
+curves = ["P256", "P384", "P521", "CURVE25519"]
+block_cipher_modes = ["GCM", "NISTKeyWrap", "AESKeyWrapPadding", "GCMSIV"]
+padding_methods = ["OAEP", "PSS", "PKCS5", "PKCS1v15"]
+mgf_hashes = ["SHA256", "SHA384", "SHA512"]
+mask_generators = ["MFG1"]
+
+# Key-size allowlists (new): values are compared against KMIP `CryptographicLength`.
+# If set, the size must be in the list (in addition to baseline minimums).
+rsa_key_sizes = [2048, 3072, 4096]
+aes_key_sizes = [128, 192, 256]
+```
+
+Notes:
+
+- The default allowlists are conservative (ANSSI/NIST/FIPS-aligned) but are only enforced when `kmip.enforce = true`.
+- `rsa_key_sizes` and `aes_key_sizes` are optional allowlists. If they are present, sizes outside the list are rejected.
+- The server also enforces baseline structural constraints (e.g., RSA minimum size and AES allowed sizes).
+
+### Scheme-to-policy mapping
+
+This table links the documentation scheme names above to the minimal `kms.toml` allowlist values needed to keep each scheme reachable when `kmip.enforce = true`.
+
+| Documentation scheme name | KMIP operation(s) | KMIP `CryptographicAlgorithm` | Minimal `kms.toml` allowlist values |
+| ------------------------- | ----------------- | ----------------------------- | ---------------------------------- |
+| AES-KWP (RFC 5649) | `Import` / `Export` (wrap/unwrap) | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["AESKeyWrapPadding"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
+| NIST KW (RFC 3394) | `Import` / `Export` (wrap/unwrap) | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["NISTKeyWrap"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
+| CKM_RSA_PKCS_OAEP | `Encrypt` / `Decrypt` (and RSA-wrap paths using OAEP) | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["OAEP"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MFG1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| CKM_RSA_AES_KEY_WRAP | `Import` / `Export` (wrap/unwrap) | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["None"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| CKM_RSA_PKCS (PKCS#1 v1.5) | `Encrypt` / `Decrypt` | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["PKCS1v15"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| ECIES (NIST curves) | `Encrypt` / `Decrypt` | (key-type driven) | `curves=["P256","P384","P521"]`<br>(and if restricting key creation/import: `algorithms=["EC","ECDH","ECDSA"]`) |
+| Salsa Sealed Box | `Encrypt` / `Decrypt` | (key-type driven) | `curves=["CURVE25519","CURVEED25519"]`<br>(and if restricting key creation/import: `algorithms=["EC","ECDH","ECDSA","Ed25519"]`) |
+| AES GCM | `Encrypt` / `Decrypt` | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["GCM"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
+| AES XTS | `Encrypt` / `Decrypt` | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["XTS"]`<br>`aes_key_sizes=[512]` (or `[256,512]` depending on client encoding) |
+| AES GCM-SIV | `Encrypt` / `Decrypt` | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["GCMSIV"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
+| ChaCha20-Poly1305 | `Encrypt` / `Decrypt` | `ChaCha20Poly1305` | `algorithms=["ChaCha20Poly1305"]` |
+| RSASSA-PSS | `Sign` / `SignatureVerify` | `RSA` | `algorithms=["RSA"]`<br>`signature_algorithms=["RSASSAPSS"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MFG1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| ECDSA (with SHA-2) | `Sign` / `SignatureVerify` | `ECDSA` | `algorithms=["ECDSA","EC"]`<br>`signature_algorithms=["ECDSAWithSHA256","ECDSAWithSHA384","ECDSAWithSHA512"]`<br>`curves=["P256","P384","P521"]` |
+| EdDSA | `Sign` / `SignatureVerify` | `Ed25519` / `Ed448` | `algorithms=["Ed25519","Ed448"]`<br>`curves=["CURVEED25519","CURVEED448"]` |
 
 ## References
 
