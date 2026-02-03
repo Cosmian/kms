@@ -271,34 +271,30 @@ set_repo_root() {
 }
 
 dispatch_command() {
-  # Ensure arrays are always defined in strict mode.
-  # CI may run this script in a way where `resolve_command_args` is not reached
-  # before we expand `COMMAND_ARGS[@]`.
-  COMMAND_ARGS=()
-
   # Parse top-level flags and determine command.
   # Doing it here lets `main` simply call `dispatch_command` without
   # needing to manage any intermediate arrays (strict-mode safe).
   parse_global_options "$@"
 
   # Resolve subcommand args just-in-time based on the parsed command.
+  # Use a nounset-safe expansion to avoid CI failures when REMAINING_ARGS is empty.
   resolve_command_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
 
   case "$COMMAND" in
   docker)
-    docker_command "${COMMAND_ARGS[@]}"
+    docker_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   test)
-    test_command "${COMMAND_ARGS[@]}"
+    test_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   package)
-    package_command "${COMMAND_ARGS[@]}"
+    package_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   sbom)
-    sbom_command "${COMMAND_ARGS[@]}"
+    sbom_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   update-hashes)
-    update_hashes_command "${COMMAND_ARGS[@]}"
+    update_hashes_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   *)
     echo "Error: Unknown command '$COMMAND'" >&2
