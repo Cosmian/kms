@@ -1,0 +1,265 @@
+<KmipTestCase>
+  <RequestMessage>
+    <RequestHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <BatchCount type="Integer" value="1" />
+      </RequestHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="Create" />
+      <RequestPayload>
+        <ObjectType type="Enumeration" value="SymmetricKey" />
+        <TemplateAttribute>
+          <Attribute>
+            <AttributeName type="TextString" value="Cryptographic Algorithm" />
+            <AttributeValue type="Enumeration" value="AES" />
+            </Attribute>
+          <Attribute>
+            <AttributeName type="TextString" value="Cryptographic Length" />
+            <AttributeValue type="Integer" value="256" />
+            </Attribute>
+          <Attribute>
+            <AttributeName type="TextString" value="Cryptographic Usage Mask" />
+            <AttributeValue type="Integer" value="Encrypt   Decrypt" />
+            </Attribute>
+          <Attribute>
+            <AttributeName type="TextString" value="Name" />
+            <AttributeValue>
+              <NameValue type="TextString" value="SKLC-O-1-12" />
+              <NameType type="Enumeration" value="UninterpretedTextString" />
+              </AttributeValue>
+            </Attribute>
+          </TemplateAttribute>
+        </RequestPayload>
+      </BatchItem>
+    </RequestMessage>
+  <ResponseMessage>
+    <ResponseHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <TimeStamp type="DateTime" value="2012-04-27T08:12:24+00:00" />
+      <BatchCount type="Integer" value="1" />
+      </ResponseHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="Create" />
+      <ResultStatus type="Enumeration" value="Success" />
+      <ResponsePayload>
+        <ObjectType type="Enumeration" value="SymmetricKey" />
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        </ResponsePayload>
+      </BatchItem>
+    </ResponseMessage>
+  <RequestMessage>
+    <RequestHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <BatchCount type="Integer" value="1" />
+      </RequestHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="GetAttributes" />
+      <RequestPayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        <AttributeName type="TextString" value="State" />
+        <AttributeName type="TextString" value="Cryptographic   Usage Mask" />
+        <AttributeName type="TextString" value="Unique   Identifier" />
+        <AttributeName type="TextString" value="Object   Type" />
+        <AttributeName type="TextString" value="Cryptographic   Algorithm" />
+        <AttributeName type="TextString" value="Cryptographic   Length" />
+        <AttributeName type="TextString" value="Digest" />
+        <AttributeName type="TextString" value="Initial   Date" />
+        <AttributeName type="TextString" value="Last   Change Date" />
+        <AttributeName type="TextString" value="Activation   Date" />
+        </RequestPayload>
+      </BatchItem>
+    </RequestMessage>
+  <ResponseMessage>
+    <ResponseHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <TimeStamp type="DateTime" value="2012-04-27T08:12:24+00:00" />
+      <BatchCount type="Integer" value="1" />
+      </ResponseHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="GetAttributes" />
+      <ResultStatus type="Enumeration" value="Success" />
+      <ResponsePayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        <Attribute>
+          <AttributeName type="TextString" value="State" />
+          <AttributeValue type="Enumeration" value="PreActive" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask" />
+          <AttributeValue type="Integer" value="Decrypt   Encrypt" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Unique Identifier" />
+          <AttributeValue type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Object Type" />
+          <AttributeValue type="Enumeration" value="SymmetricKey" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Algorithm" />
+          <AttributeValue type="Enumeration" value="AES" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Length" />
+          <AttributeValue type="Integer" value="256" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Digest" />
+          <AttributeValue>
+            <HashingAlgorithm type="Enumeration" value="SHA_256" />
+            <DigestValue type="ByteString" value="bc12861408b8ac72cdb3b2748ad342b7dc519bd109046a1b931fdaed73591f29" />
+            <KeyFormatType type="Enumeration" value="Raw" />
+            </AttributeValue>
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Initial Date" />
+          <AttributeValue type="DateTime" value="2013-01-10T23:33:21+00:00" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Last Change Date" />
+          <AttributeValue type="DateTime" value="2013-01-10T23:33:21+00:00" />
+          </Attribute>
+        </ResponsePayload>
+      </BatchItem>
+    </ResponseMessage>
+  <RequestMessage>
+    <RequestHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <BatchCount type="Integer" value="1" />
+      </RequestHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="Destroy" />
+      <RequestPayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        </RequestPayload>
+      </BatchItem>
+    </RequestMessage>
+  <ResponseMessage>
+    <ResponseHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <TimeStamp type="DateTime" value="2012-04-27T08:12:25+00:00" />
+      <BatchCount type="Integer" value="1" />
+      </ResponseHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="Destroy" />
+      <ResultStatus type="Enumeration" value="Success" />
+      <ResponsePayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        </ResponsePayload>
+      </BatchItem>
+    </ResponseMessage>
+  <RequestMessage>
+    <RequestHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <BatchCount type="Integer" value="1" />
+      </RequestHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="GetAttributes" />
+      <RequestPayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        </RequestPayload>
+      </BatchItem>
+    </RequestMessage>
+  <ResponseMessage>
+    <ResponseHeader>
+      <ProtocolVersion>
+        <ProtocolVersionMajor type="Integer" value="1" />
+        <ProtocolVersionMinor type="Integer" value="2" />
+        </ProtocolVersion>
+      <TimeStamp type="DateTime" value="2012-04-27T08:12:25+00:00" />
+      <BatchCount type="Integer" value="1" />
+      </ResponseHeader>
+    <BatchItem>
+      <Operation type="Enumeration" value="GetAttributes" />
+      <ResultStatus type="Enumeration" value="Success" />
+      <ResponsePayload>
+        <UniqueIdentifier type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+        <Attribute>
+          <AttributeName type="TextString" value="Unique Identifier" />
+          <AttributeValue type="TextString" value="$UNIQUE_IDENTIFIER_0" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Object Type" />
+          <AttributeValue type="Enumeration" value="SymmetricKey" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Algorithm" />
+          <AttributeValue type="Enumeration" value="AES" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Length" />
+          <AttributeValue type="Integer" value="256" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Cryptographic Usage Mask" />
+          <AttributeValue type="Integer" value="Decrypt   Encrypt" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Destroy Date" />
+          <AttributeValue type="DateTime" value="2013-01-11T00:39:11+00:00" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Digest" />
+          <AttributeValue>
+            <HashingAlgorithm type="Enumeration" value="SHA_256" />
+            <DigestValue type="ByteString" value="bf60cac2a3f82e6added839c87b0bdbc386d6280c14c8f09ca96e098365f7fe3" />
+            <KeyFormatType type="Enumeration" value="Raw" />
+            </AttributeValue>
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Fresh" />
+          <AttributeValue type="Boolean" value="true" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Initial Date" />
+          <AttributeValue type="DateTime" value="2013-01-11T00:39:11+00:00" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Last Change Date" />
+          <AttributeValue type="DateTime" value="2013-01-11T00:39:11+00:00" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Lease Time" />
+          <AttributeValue type="Interval" value="3600" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Name" />
+          <AttributeValue>
+            <NameValue type="TextString" value="SKLC-O-1-12" />
+            <NameType type="Enumeration" value="UninterpretedTextString" />
+            </AttributeValue>
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="Original Creation Date" />
+          <AttributeValue type="DateTime" value="2013-01-11T00:39:11+00:00" />
+          </Attribute>
+        <Attribute>
+          <AttributeName type="TextString" value="State" />
+          <AttributeValue type="Enumeration" value="Destroyed" />
+          </Attribute>
+        </ResponsePayload>
+      </BatchItem>
+    </ResponseMessage>
+  </KmipTestCase>
