@@ -78,7 +78,7 @@ crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.15.0" }
 dotenvy = "0.15"
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
