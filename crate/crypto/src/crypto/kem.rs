@@ -3,11 +3,11 @@
 //!
 //! Implementations of the concrete variants are chosen at compile-time.
 
-#![allow(dead_code, unused_variables)]
-
 use crate::{CryptoError, crypto::KeyPair};
 #[cfg(feature = "non-fips")]
-use cosmian_cover_crypt::{AccessPolicy, AccessStructure};
+use cosmian_cover_crypt::{
+    AccessPolicy, AccessStructure, Covercrypt, MasterPublicKey, UserSecretKey, XEnc, traits::KemAc,
+};
 use cosmian_crypto_core::{
     Aes256Gcm, SymmetricKey,
     bytes_ser_de::Serializable,
@@ -137,7 +137,7 @@ impl Serializable for KemTag {
                 (2_u64, (KemAlgorithm::from(tag1), KemAlgorithm::from(tag2))).write(ser)
             }
             #[cfg(feature = "non-fips")]
-            Self::Abe => 3u64.write(ser),
+            Self::Abe => 3_u64.write(ser),
         }
         .map_err(|e| {
             Self::Error::ConversionError(format!("error upon writing KEM tag {self:?}: {e}"))
@@ -169,7 +169,7 @@ impl Serializable for KemTag {
                     ))
                 }),
             #[cfg(feature = "non-fips")]
-            3 => Ok(KemTag::Abe),
+            3 => Ok(Self::Abe),
             _ => Err(Self::Error::ConversionError(format!(
                 "value {value} is not a valid KEM tag"
             ))),
@@ -196,6 +196,11 @@ pub enum KemAlgorithm {
 type P256Kem = MonadicKEM<32, P256, Sha256>;
 type R25519Kem = GenericKem<32, R25519, Sha256>;
 
+//
+// TODO: use a proper ML-KEM provider.
+//
+type MlKem = GenericKem<32, P256, Sha256>;
+
 // Even though lengths of the keys encapsulated by the two combined KEM schemes
 // can vary, it is much simpler to enforce their equality, which is performed
 // here by binding the three key lengths required by the KEM combiner to the
@@ -209,11 +214,6 @@ type KemCombiner<const LENGTH: usize, Kem1, Kem2> =
         Kem2,
         Sha256,
     >;
-
-//
-// TODO: use a proper ML-KEM provider.
-//
-type MlKem = GenericKem<32, P256, Sha256>;
 
 impl KemAlgorithm {
     /// Asserts the given KEM tag corresponds to an authorized KEM algorithm.
@@ -304,7 +304,7 @@ impl Serializable for KemAlgorithm {
             Self::R25519 => ser.write(&2_usize),
             Self::MlKem => ser.write(&3_usize),
             #[cfg(feature = "non-fips")]
-            Self::Covercrypt => ser.write(&4usize),
+            Self::Covercrypt => ser.write(&4_usize),
         }
         .map_err(|e| {
             CryptoError::ConversionError(format!("error upon writing KEM algorithm {self:?}: {e}"))
@@ -340,10 +340,10 @@ impl ConfigurableKEM {
     /// Length of the key encapsulated by this configurable KEM.
     // NOTE: the type-system ensures that all concrete KEM implementations used
     // indeed return 32-byte keys.
-    const KEY_LENGTH: usize = 32;
+    pub const KEY_LENGTH: usize = 32;
 
     #[allow(clippy::too_many_arguments)]
-    fn keygen(
+    pub fn keygen(
         tag: KemTag,
         authorized_algorithms: &HashSet<KemAlgorithm>,
         dk_uid: String,
@@ -384,10 +384,14 @@ impl ConfigurableKEM {
                 let access_structure = access_structure.ok_or_else(|| {
                     CryptoError::Default(
                         "cannot execute a Covercrypt key generation without an access structure"
-                            .to_string(),
+                            .to_owned(),
                     )
                 })?;
-                todo!()
+                let cc = Covercrypt::default();
+                let (mut msk, _) = cc.setup()?;
+                msk.access_structure = access_structure;
+                let mpk = cc.update_msk(&mut msk)?;
+                Ok((msk.serialize()?, mpk.serialize()?))
             }
         }?;
 
@@ -406,7 +410,7 @@ impl ConfigurableKEM {
         ))
     }
 
-    fn enc(
+    pub fn enc(
         ek: &[u8],
         rng: &mut impl CryptoRngCore,
         #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
@@ -439,11 +443,21 @@ impl ConfigurableKEM {
                 >(ek, rng)
             }
             #[cfg(feature = "non-fips")]
-            KemTag::Abe => todo!(),
+            KemTag::Abe => {
+                let ap = access_policy.as_ref().ok_or_else(|| {
+                    CryptoError::Default(
+                        "cannot create a Covercrypt encapsulation without an access policy"
+                            .to_owned(),
+                    )
+                })?;
+                let mpk = MasterPublicKey::deserialize(&pk_bytes)?;
+                let (key, ctx) = Covercrypt::default().encaps(&mpk, ap)?;
+                Ok((SymmetricKey::from(key), ctx.serialize()?))
+            }
         }
     }
 
-    fn dec(dk: &[u8], enc: &[u8]) -> Result<SymmetricKey<{ Self::KEY_LENGTH }>, CryptoError> {
+    pub fn dec(dk: &[u8], enc: &[u8]) -> Result<SymmetricKey<{ Self::KEY_LENGTH }>, CryptoError> {
         let (tag, dk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(dk).map_err(|e| {
             CryptoError::Default(format!(
                 "failed deserializing the tag and decapsulation key in configurable KEM: {e}"
@@ -484,11 +498,21 @@ impl ConfigurableKEM {
                 >(&dk_bytes, &enc_bytes)
             }
             #[cfg(feature = "non-fips")]
-            KemTag::Abe => todo!(),
+            KemTag::Abe => {
+                let usk = UserSecretKey::deserialize(&dk_bytes)?;
+                let enc = XEnc::deserialize(&enc_bytes)?;
+                let key = Covercrypt::default().decaps(&usk, &enc)?.ok_or_else(|| {
+                    CryptoError::Default(
+                        "cannot open Covercrypt encapsulation: incompatible access rights"
+                            .to_owned(),
+                    )
+                })?;
+                Ok(SymmetricKey::<{ Self::KEY_LENGTH }>::from(key))
+            }
         }
     }
 
-    fn encrypt(
+    pub fn encrypt(
         pk: &[u8],
         ptx: &[u8],
         #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
@@ -501,34 +525,28 @@ impl ConfigurableKEM {
             access_policy,
         )?;
 
+        let mut ctx = ptx.to_vec();
+
         let mut nonce = [0; 12];
         rng.fill_bytes(&mut nonce);
 
-        let mut ctx = vec![0; ptx.len()];
-        ctx.copy_from_slice(ptx);
-
-        let tag = Aes256Gcm::encrypt_in_place(
-            &key,
-            &mut ctx[enc.len() + nonce.len()..enc.len() + nonce.len() + ptx.len()],
-            &nonce,
-        )
-        .map_err(|e| CryptoError::Default(format!("AE encryption error in PKE: {e}")))?;
+        let tag = Aes256Gcm::encrypt_in_place(&key, &mut ctx, &nonce)
+            .map_err(|e| CryptoError::Default(format!("AE encryption error in PKE: {e}")))?;
 
         (enc, nonce, ctx, tag).serialize().map_err(|e| {
             CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
         })
     }
 
-    fn decrypt(dk: &[u8], ctx: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-        let (enc, nonce, mut ptx, tag) =
+    pub fn decrypt(dk: &[u8], ctx: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        let (enc, nonce, mut ctx, tag) =
             <(Vec<u8>, [u8; 12], Zeroizing<Vec<u8>>, [u8; 16])>::deserialize(ctx).map_err(|e| {
                 CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
             })?;
         let key = Self::dec(dk, &enc)?;
-        Aes256Gcm::decrypt_in_place(&key, &mut ptx, &nonce, &tag)
+        Aes256Gcm::decrypt_in_place(&key, &mut ctx, &nonce, &tag)
             .map_err(|e| CryptoError::Default(format!("AE decryption error in PKE: {e}")))?;
-
-        Ok(ptx)
+        Ok(ctx)
     }
 
     fn create_dk_object(

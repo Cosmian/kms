@@ -1032,8 +1032,8 @@ dependencies = [
 name = "cosmian_cover_crypt"
 version = "15.0.0"
 dependencies = [
- "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Frevert-breaking-changes)",
- "cosmian_rust_curve25519_provider 1.0.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Frevert-breaking-changes)",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
+ "cosmian_rust_curve25519_provider",
  "ml-kem",
  "serde",
  "serde_json",
@@ -1083,17 +1083,11 @@ name = "cosmian_crypto_core"
 version = "10.4.0"
 source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Frevert-breaking-changes#d10f47f4ce20e1e61f95b5410b562a7156402c54"
 dependencies = [
- "aead",
- "aes-gcm",
- "curve25519-dalek",
- "ed25519-dalek",
  "gensym",
  "getrandom 0.2.17",
  "leb128",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
- "sha2",
- "signature",
  "tiny-keccak",
  "zeroize",
 ]
@@ -1284,7 +1278,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_logger",
  "cosmian_openssl_provider",
- "cosmian_rust_curve25519_provider 1.0.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
+ "cosmian_rust_curve25519_provider",
  "ctor",
  "hex",
  "k256",
@@ -1438,16 +1432,6 @@ version = "1.0.0"
 source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#b25ee393134a32a11dfb4e7092d7168c264e68ad"
 dependencies = [
  "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
- "curve25519-dalek",
- "zeroize",
-]
-
-[[package]]
-name = "cosmian_rust_curve25519_provider"
-version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Frevert-breaking-changes#d10f47f4ce20e1e61f95b5410b562a7156402c54"
-dependencies = [
- "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Frevert-breaking-changes)",
  "curve25519-dalek",
  "zeroize",
 ]
