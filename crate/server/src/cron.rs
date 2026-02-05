@@ -33,6 +33,7 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
         rt.block_on(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            let mut uptime_interval = tokio::time::interval(std::time::Duration::from_secs(1));
             let mut shutdown_rx = shutdown_rx;
             loop {
                 tokio::select! {
@@ -45,7 +46,11 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                             },
                             ..Default::default()
                         };
-                        let user = kms.params.hsm_admin.clone();
+                        let user = if kms.params.hsm_admin.trim().is_empty() {
+                            kms.params.default_username.clone()
+                        } else {
+                            kms.params.hsm_admin.clone()
+                        };
                         match kms.locate(request, &user,).await {
                             Ok(resp) => {
                                 let count = resp.located_items.unwrap_or(0);
@@ -57,6 +62,11 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                             Err(e) => {
                                 debug!("[metrics-cron] Failed to refresh active keys count: {}", e);
                             }
+                        }
+                    }
+                    _ = uptime_interval.tick() => {
+                        if let Some(ref metrics) = kms.metrics {
+                            metrics.update_uptime();
                         }
                     }
                     _ = &mut shutdown_rx => {

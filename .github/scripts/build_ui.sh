@@ -15,6 +15,8 @@ if [ -n "${FEATURES:-}" ]; then
   CARGO_FEATURES="--features ${FEATURES}"
 fi
 
+WASM_PACK_VERSION="0.13.1"
+
 # Install nodejs from nodesource if npm is not installed
 if ! command -v npm >/dev/null 2>&1; then
   SUDO="sudo"
@@ -33,9 +35,10 @@ if ! command -v npm >/dev/null 2>&1; then
   fi
 fi
 
-# Install wasm-pack tool
-if ! command -v npm >/dev/null 2>&1; then
-  cargo install wasm-pack
+# Install wasm-pack tool (pinned for compatibility with the WASM crate)
+if ! command -v wasm-pack >/dev/null 2>&1 || ! wasm-pack --version 2>/dev/null | grep -q "${WASM_PACK_VERSION}"; then
+  cargo install --version "${WASM_PACK_VERSION}" wasm-pack --locked --force
+  export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
 # Build WASM component

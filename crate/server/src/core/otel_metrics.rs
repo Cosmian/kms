@@ -237,6 +237,9 @@ impl OtelMetrics {
             .with_description("Number of keys in Active state (absolute count based on Locate)")
             .with_unit("{key}")
             .build();
+        // Force the time series to exist even when the count is 0.
+        // Without at least one measurement, some backends won't expose the metric at all.
+        active_keys_count.add(0, &[]);
 
         // Cache operations
         let cache_operations_total = meter

@@ -2,7 +2,7 @@
 # Only used for local development and testing
 services:
   postgres:
-    image: postgres
+    image: postgres:16
     ports:
       - 5432:5432
     environment:
@@ -11,7 +11,7 @@ services:
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
   mysql:
-    image: mysql
+    image: mysql:8.0
     ports:
       - 3306:3306
     environment:
@@ -31,7 +31,7 @@ services:
       - CLUSTER_NAME=test-cluster
       - PXC_STRICT_MODE=ENFORCING
   mariadb:
-    image: mariadb:latest
+    image: mariadb:11.4
     ports:
       - 3308:3306
     environment:
@@ -40,7 +40,7 @@ services:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
   postgres-mtls:
-    image: postgres:latest
+    image: postgres:16
     ports:
       - 5433:5432
     environment:
@@ -75,7 +75,7 @@ services:
           -c ssl_min_protocol_version=TLSv1.2 \
           -c listen_addresses='*'
   mysql-mtls:
-    image: mysql:latest
+    image: mysql:8.0
     ports:
       - 3309:3306
     environment:
@@ -93,13 +93,31 @@ services:
       --ssl-key=/etc/mysql/certs/server-key.pem
       --ssl-ca=/etc/mysql/certs/ca.pem
   redis:
-    image: redis:latest
+    image: redis:7.2
     ports:
       - 6379:6379
+
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.55
     ports:
       - 16686:16686
-      - 4317:4317
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+
+  # Minimal OTEL stack for integration tests:
+  # KMS -> otel-collector -> scrape collector Prometheus endpoint
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.144.0
+    command: [--config=/etc/otel-collector-config.yaml]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      # Kept for local setups that also export somewhere else; not used by test assertions.
+      - OTLP_ENDPOINT=jaeger:4317
+      - ENVIRONMENT=test
+      - KMS_VERSION=dev
+    ports:
+      - 4317:4317 # OTLP gRPC receiver (host)
+      - 4318:4318 # OTLP HTTP receiver (host)
+      - 8889:8889 # Prometheus metrics endpoint (host)

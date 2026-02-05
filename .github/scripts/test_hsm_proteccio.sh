@@ -14,6 +14,13 @@ echo "========================================="
 echo "Running Proteccio HSM tests"
 echo "========================================="
 
+# Proteccio tests require external credentials/configuration. In CI/Nix environments
+# these are often not provided; skip with success rather than failing under `set -u`.
+if [[ -z "${PROTECCIO_PASSWORD-}" || -z "${PROTECCIO_SLOT-}" ]]; then
+  echo "Skipping Proteccio HSM tests (missing PROTECCIO_PASSWORD and/or PROTECCIO_SLOT)."
+  exit 0
+fi
+
 [ ! -f /etc/lsb-release ] && {
   echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
   exit 1
