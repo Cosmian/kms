@@ -9,4 +9,18 @@ if [ -f $KMS_CONFIG ]; then
   cp $KMS_CONFIG /etc/cosmian/kms.toml.bak
 fi
 
+# Backup existing UI branding overrides (if any)
+UI_DIST="/usr/local/cosmian/ui/dist"
+UI_BACKUP_DIR="/var/lib/cosmian/ui"
+if [ -d "$UI_DIST" ]; then
+  mkdir -p "$UI_BACKUP_DIR"
+  if [ -f "$UI_DIST/branding.json" ]; then
+    cp "$UI_DIST/branding.json" "$UI_BACKUP_DIR/branding.json.bak"
+  fi
+  if [ -d "$UI_DIST/themes" ]; then
+    rm -rf "$UI_BACKUP_DIR/themes.bak"
+    cp -R "$UI_DIST/themes" "$UI_BACKUP_DIR/themes.bak"
+  fi
+fi
+
 #DEBHELPER#

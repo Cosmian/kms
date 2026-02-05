@@ -2,7 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.XX.YY] - 2026-02-XX
+## [5.16.0] - 2026-02-04
+
+### 🚀 Features
+
+- *(UI)* Runtime branding support via `/ui/branding.json` (title, theme, and favicon resolved before React renders)
+    - Theme asset support under `/ui/themes/<theme>/...` with Ant Design token overrides
+    - Replace the example theme favicons with neutral, non-Cosmian icons
+    - *(docs)* Add post-install UI branding / theme override guide (paths under `/usr/local/cosmian/ui/dist/`)
+    - *(packaging)* Include nested UI theme assets in linux packages (recursive `dist/**/*` globs)
+    - *(nix)* Stage and validate UI `dist/` content during packaging (checks `index.html`, `assets/`, `themes/`, `branding.json`)
 
 ### 🐛 Bug Fixes
 

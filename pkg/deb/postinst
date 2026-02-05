@@ -12,4 +12,27 @@ systemctl stop cosmian_kms.service
 
 systemctl daemon-reload
 
+# Restore UI branding overrides (if any)
+UI_DIST="/usr/local/cosmian/ui/dist"
+UI_BACKUP_DIR="/var/lib/cosmian/ui"
+if [ -d "$UI_DIST" ]; then
+  if [ -f "$UI_BACKUP_DIR/branding.json.bak" ]; then
+    if [ ! -f "$UI_DIST/branding.json" ]; then
+      cp "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json"
+    else
+      if ! cmp -s "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json"; then
+        cp "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json.dpkg-old"
+      fi
+    fi
+  fi
+
+  if [ -d "$UI_BACKUP_DIR/themes.bak" ]; then
+    if [ ! -d "$UI_DIST/themes" ]; then
+      cp -R "$UI_BACKUP_DIR/themes.bak" "$UI_DIST/themes"
+    else
+      cp -R "$UI_BACKUP_DIR/themes.bak" "$UI_DIST/themes.dpkg-old"
+    fi
+  fi
+fi
+
 #DEBHELPER#

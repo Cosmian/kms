@@ -1,18 +1,23 @@
 import React from "react";
+import { useBranding } from "./BrandingContext";
 
 type HeaderProps = {
     isDarkMode: boolean;
 };
 
-const Header: React.FC<HeaderProps> = ({ isDarkMode }) => (
-    <div className="flex items-center h-full w-full">
-        <img
-            src={isDarkMode ? "/ui/Cosmian-Logo-Dark.svg" : "/ui/Cosmian-Logo.svg"}
-            alt="Cosmian Logo"
-            className="h-7 mr-4 transition-opacity duration-300"
-        />
-        <h1 className="text-xl font-bold pl-10">Key Management System</h1>
-    </div>
-);
+const Header: React.FC<HeaderProps> = ({ isDarkMode }) => {
+    const branding = useBranding();
+
+    return (
+        <div className="flex items-center h-full w-full">
+            <img
+                src={isDarkMode ? branding.logoDarkUrl : branding.logoLightUrl}
+                alt={branding.logoAlt}
+                className="h-7 mr-4 transition-opacity duration-300"
+            />
+            <h1 className="text-xl font-bold pl-10">{branding.logoAlt}</h1>
+        </div>
+    );
+};
 
 export default Header;
