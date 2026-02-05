@@ -39,7 +39,7 @@ use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
-use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_pkey_id;
+use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
 use crate::{
     config::ServerParams,
     core::{
@@ -595,11 +595,11 @@ fn decrypt_with_private_key(
         Id::RSA => decrypt_with_rsa(&private_key, effective_cp.as_ref(), ciphertext)?,
         #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => {
-            enforce_ecies_fixed_suite_for_pkey_id(
+            enforce_ecies_fixed_suite_for_attributes(
                 server_params,
                 "Decrypt",
                 owm.id(),
-                private_key.id(),
+                owm.attributes(),
             )?;
             ecies_decrypt(&private_key, ciphertext)?
         }

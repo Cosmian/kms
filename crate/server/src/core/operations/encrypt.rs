@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
+            kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object},
             kmip_operations::{Encrypt, EncryptResponse},
             kmip_types::{
@@ -47,7 +48,9 @@ use openssl::{
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
-use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_pkey_id;
+use crate::core::operations::algorithm_policy::{
+    enforce_ecies_fixed_suite_for_attributes, enforce_ecies_fixed_suite_for_pkey_id,
+};
 use crate::{
     config::ServerParams,
     core::{
@@ -673,7 +676,14 @@ fn encrypt_with_public_key(
             );
             let public_key = kmip_public_key_to_openssl(owm.object())?;
             trace!("OpenSSL Public Key instantiated before encryption");
-            encrypt_with_pkey(request, server_params, owm.id(), plaintext, &public_key)
+            encrypt_with_pkey(
+                request,
+                server_params,
+                owm.id(),
+                owm.attributes(),
+                plaintext,
+                &public_key,
+            )
         }
         other => Err(KmsError::NotSupported(format!(
             "encryption with public keys of format: {other}"
@@ -686,6 +696,8 @@ fn encrypt_with_pkey(
     #[cfg(feature = "non-fips")] server_params: &ServerParams,
     #[cfg(not(feature = "non-fips"))] _server_params: &ServerParams,
     key_id: &str,
+    #[cfg(feature = "non-fips")] key_attributes: &Attributes,
+    #[cfg(not(feature = "non-fips"))] _key_attributes: &Attributes,
     plaintext: &[u8],
     public_key: &PKey<Public>,
 ) -> KResult<EncryptResponse> {
@@ -703,11 +715,11 @@ fn encrypt_with_pkey(
         }
         #[cfg(feature = "non-fips")]
         Id::EC | Id::X25519 | Id::ED25519 => {
-            enforce_ecies_fixed_suite_for_pkey_id(
+            enforce_ecies_fixed_suite_for_attributes(
                 server_params,
                 "Encrypt",
                 key_id,
-                public_key.id(),
+                key_attributes,
             )?;
             ecies_encrypt(public_key, plaintext)?
         }
@@ -773,5 +785,28 @@ fn encrypt_with_certificate(
     let public_key = cert.public_key().map_err(|e| {
         KmipError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
     })?;
-    encrypt_with_pkey(request, server_params, key_id, plaintext, &public_key)
+    // No key `Attributes` are available when encrypting with a raw certificate.
+    // If the certificate key is an ECIES-capable key type, fall back to strict PKey-id enforcement.
+    #[cfg(feature = "non-fips")]
+    {
+        match public_key.id() {
+            Id::EC | Id::X25519 | Id::ED25519 => {
+                enforce_ecies_fixed_suite_for_pkey_id(
+                    server_params,
+                    "Encrypt",
+                    key_id,
+                    public_key.id(),
+                )?;
+            }
+            _ => {}
+        }
+    }
+    encrypt_with_pkey(
+        request,
+        server_params,
+        key_id,
+        &Attributes::default(),
+        plaintext,
+        &public_key,
+    )
 }

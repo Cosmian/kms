@@ -348,17 +348,32 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     key_id: &str,
     pkey_id: openssl::pkey::Id,
 ) -> KResult<()> {
-    // ECIES is gated by the general curve allowlist.
-    // If curve restrictions are not configured, ECIES is considered disabled to avoid
-    // accidental enablement (OpenSSL's PKey::id() does not expose the exact NIST curve).
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
+    // ECIES is gated by the curve allowlist.
+    // Semantics:
+    // - `None`: do not restrict curve selection (i.e., curve usage is "unrestricted"), but keep
+    //   ECIES disabled. This is intentional: ECIES is an implicit fixed-suite (it pulls in internal
+    //   SHAKE-based KDF/hash choices that are not expressed in KMIP request parameters), and
+    //   at this enforcement point `PKey::id()` does not reliably carry the exact named curve.
+    //   Therefore ECIES is treated as opt-in and requires an explicit curve allowlist (`Some(...)`).
+    // - `Some(vec![])`: curves are unrestricted globally, but ECIES is explicitly disabled.
+    // - `Some(non-empty)`: ECIES is enabled and restricted to those curves.
     let allowed = match params.kmip_policy.allowlists.curves.as_deref() {
-        Some(v) if !v.is_empty() => v,
-        _ => {
+        None => {
             return deny(
                 ErrorReason::Constraint_Violation,
                 format!("{operation_tag}: ECIES is disabled by server policy (key={key_id})"),
             );
         }
+        Some([]) => {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
+                ),
+            );
+        }
+        Some(v) => v,
     };
 
     let token = match pkey_id {
@@ -426,7 +441,97 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
         );
     }
 
+    // ECIES uses a fixed internal suite (not expressed in KMIP request parameters).
+    // For *standard curves* (P-*), the KDF/hash is SHAKE128/256.
+    // Strict fallback policy: when the exact curve is not known at this point (OpenSSL's
+    // `PKey::id()` is only `EC`), require *both* SHAKE128 and SHAKE256 to be allowlisted.
+    if pkey_id == openssl::pkey::Id::EC {
+        for shake_token in [
+            CryptographicAlgorithm::SHAKE128,
+            CryptographicAlgorithm::SHAKE256,
+        ] {
+            if !allow(wl.algorithms.as_ref(), &shake_token) {
+                return deny(
+                    ErrorReason::Constraint_Violation,
+                    format!(
+                        "{operation_tag}: ECIES internal algorithm not allowed by policy: {shake_token:?} (key={key_id})"
+                    ),
+                );
+            }
+        }
+    }
+
     Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
+    params: &ServerParams,
+    operation_tag: &str,
+    key_id: &str,
+    attrs: &Attributes,
+) -> KResult<()> {
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
+
+    // ECIES is gated by curve allowlist.
+    // Semantics:
+    // - `None`: do not restrict curve selection, but keep ECIES disabled (ECIES is opt-in and
+    //   requires an explicit curve allowlist).
+    // - `Some(vec![])`: curves are unrestricted globally, but ECIES is explicitly disabled.
+    // - `Some(non-empty)`: ECIES is enabled and restricted to those curves.
+    let allowed_curves = match params.kmip_policy.allowlists.curves.as_deref() {
+        None => {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("{operation_tag}: ECIES is disabled by server policy (key={key_id})"),
+            );
+        }
+        Some([]) => {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
+                ),
+            );
+        }
+        Some(v) => v,
+    };
+
+    let recommended_curve = attrs
+        .cryptographic_domain_parameters
+        .as_ref()
+        .and_then(|dp| dp.recommended_curve);
+
+    // If we know the curve, enforce the precise SHAKE requirement.
+    if let Some(curve) = recommended_curve {
+        if !allowed_curves.contains(&curve) {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES curve not allowed by policy: {curve:?} (key={key_id})"
+                ),
+            );
+        }
+
+        let required_shake = match curve {
+            RecommendedCurve::P384 | RecommendedCurve::P521 => CryptographicAlgorithm::SHAKE256,
+            // Default for standard curves (including P-256) is SHAKE128.
+            _ => CryptographicAlgorithm::SHAKE128,
+        };
+
+        if !allow(wl.algorithms.as_ref(), &required_shake) {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES internal algorithm not allowed by policy: {required_shake:?} (key={key_id})"
+                ),
+            );
+        }
+        return Ok(());
+    }
+
+    // If the curve is unknown from attributes, fall back to strict ID-based enforcement.
+    enforce_ecies_fixed_suite_for_pkey_id(params, operation_tag, key_id, openssl::pkey::Id::EC)
 }
 
 fn deny(reason: ErrorReason, msg: impl Into<String>) -> KResult<()> {
@@ -805,11 +910,17 @@ fn validate_curve(
         }
     }
 
-    if !allow(whitelist, &curve) {
-        return deny(
-            ErrorReason::Constraint_Violation,
-            format!("Curve not in recommended whitelist: {curve}"),
-        );
+    // Curve allowlist semantics:
+    // - `None`: no restriction
+    // - `Some(non-empty)`: restrict to members
+    // - `Some(empty)`: treated as *no restriction* for curve usage (but ECIES is separately gated)
+    if let Some(set) = whitelist {
+        if !set.is_empty() && !set.contains(&curve) {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("Curve not in recommended whitelist: {curve}"),
+            );
+        }
     }
 
     Ok(())

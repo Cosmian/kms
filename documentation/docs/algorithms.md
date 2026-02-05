@@ -24,7 +24,7 @@ The supported key-wrapping algorithms are:
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
 | CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
 | Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-192, P-224, P-256) AES 256 GCM otherwise.        |
+| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-256) AES 256 GCM otherwise.        |
 
 Any encryption scheme below can be used for key-wrapping as well.
 
@@ -247,11 +247,16 @@ enforce = false
 
 # Allowlisted KMIP enums.
 algorithms = ["AES", "RSA", "ECDSA", "ECDH", "EC", "HMACSHA256", "HMACSHA384", "HMACSHA512"]
-hashes = ["SHA256", "SHA384", "SHA512"]
+# Non-FIPS build only (`cargo build --features non-fips`):
+# algorithms = [
+#   "AES", "RSA", "ECDSA", "ECDH", "EC", "HMACSHA256", "HMACSHA384", "HMACSHA512",
+#   "ChaCha20Poly1305", "CoverCrypt", "Ed25519", "SHAKE128", "SHAKE256"
+# ]
+hashes = ["SHA256", "SHA384", "SHA512", "SHA3256", "SHA3384", "SHA3512"]
 signature_algorithms = ["RSASSAPSS", "SHA256WithRSAEncryption", "ECDSAWithSHA256"]
-curves = ["P256", "P384", "P521", "CURVE25519"]
+curves = ["P256", "P384", "P521", "CURVE25519", "CURVE448"]
 block_cipher_modes = ["GCM", "NISTKeyWrap", "AESKeyWrapPadding", "GCMSIV"]
-padding_methods = ["OAEP", "PSS", "PKCS5", "PKCS1v15"]
+padding_methods = ["OAEP", "PSS", "PKCS5"]
 mgf_hashes = ["SHA256", "SHA384", "SHA512"]
 mask_generators = ["MFG1"]
 

@@ -150,7 +150,7 @@ impl Default for KmipAllowlistsConfig {
         // Default is a conservative, recommended allowlist aligned with ANSSI/NIST/FIPS guidance.
         // Enforcement is gated by `kmip.enforce`.
         #[cfg(feature = "non-fips")]
-        let mut algorithms = vec![
+        let algorithms = vec![
             // AES: the default symmetric primitive for encryption/wrapping (widest KMIP support).
             CryptographicAlgorithm::AES,
             // RSA/ECC: primary asymmetric primitives for key wrapping and signatures.
@@ -164,24 +164,20 @@ impl Default for KmipAllowlistsConfig {
             CryptographicAlgorithm::HMACSHA256,
             CryptographicAlgorithm::HMACSHA384,
             CryptographicAlgorithm::HMACSHA512,
-            // ChaCha20/Poly1305: modern AEAD widely used in non-FIPS contexts and some clients.
-            CryptographicAlgorithm::ChaCha20,
-            CryptographicAlgorithm::Poly1305,
+            // Documented non-FIPS schemes (documentation/docs/algorithms.md).
             CryptographicAlgorithm::ChaCha20Poly1305,
-            // SHA-3 family: kept available for hashing and HMAC to support policy-controlled usage.
-            CryptographicAlgorithm::SHA3224,
-            CryptographicAlgorithm::SHA3256,
-            CryptographicAlgorithm::SHA3384,
-            CryptographicAlgorithm::SHA3512,
-            CryptographicAlgorithm::HMACSHA3224,
-            CryptographicAlgorithm::HMACSHA3256,
-            CryptographicAlgorithm::HMACSHA3384,
-            CryptographicAlgorithm::HMACSHA3512,
+            CryptographicAlgorithm::Ed25519,
+            // ECIES fixed internal KDF/hash for standard curves uses SHAKE128.
+            // When `kmip.enforce = true`, ECIES is denied unless SHAKE128 is allowlisted.
+            CryptographicAlgorithm::SHAKE128,
+            // Standard curves P-384/P-521 use SHAKE256 internally.
+            // In strict mode (when the exact curve is not known), ECIES requires both SHAKE128 and SHAKE256.
+            CryptographicAlgorithm::SHAKE256,
         ];
 
         #[cfg(not(feature = "non-fips"))]
         let algorithms = vec![
-            // Same rationale as non-FIPS list: keep this list policy-driven.
+            // Conservative baseline: keep defaults to common profiles.
             CryptographicAlgorithm::AES,
             CryptographicAlgorithm::RSA,
             CryptographicAlgorithm::ECDSA,
@@ -190,27 +186,7 @@ impl Default for KmipAllowlistsConfig {
             CryptographicAlgorithm::HMACSHA256,
             CryptographicAlgorithm::HMACSHA384,
             CryptographicAlgorithm::HMACSHA512,
-            CryptographicAlgorithm::ChaCha20,
-            CryptographicAlgorithm::Poly1305,
-            CryptographicAlgorithm::ChaCha20Poly1305,
-            CryptographicAlgorithm::SHA3224,
-            CryptographicAlgorithm::SHA3256,
-            CryptographicAlgorithm::SHA3384,
-            CryptographicAlgorithm::SHA3512,
-            CryptographicAlgorithm::HMACSHA3224,
-            CryptographicAlgorithm::HMACSHA3256,
-            CryptographicAlgorithm::HMACSHA3384,
-            CryptographicAlgorithm::HMACSHA3512,
         ];
-
-        #[cfg(feature = "non-fips")]
-        {
-            algorithms.extend([
-                // EdDSA: modern signature schemes, typically used outside strict FIPS profiles.
-                CryptographicAlgorithm::Ed25519,
-                CryptographicAlgorithm::Ed448,
-            ]);
-        }
 
         let signature_algorithms = vec![
             // X.509 / CMS interoperability: the most common RSA signature OIDs.
@@ -232,7 +208,7 @@ impl Default for KmipAllowlistsConfig {
                 HashingAlgorithm::SHA256,
                 HashingAlgorithm::SHA384,
                 HashingAlgorithm::SHA512,
-                // SHA-3: supported for clients that require it, controlled by policy.
+                // ANSSI also recommends SHA-3 family (FIPS202).
                 HashingAlgorithm::SHA3256,
                 HashingAlgorithm::SHA3384,
                 HashingAlgorithm::SHA3512,
@@ -245,6 +221,8 @@ impl Default for KmipAllowlistsConfig {
                 RecommendedCurve::P521,
                 // Curve25519: common for X25519 key agreement when policy permits.
                 RecommendedCurve::CURVE25519,
+                // Curve448: also recommended by ANSSI.
+                RecommendedCurve::CURVE448,
             ]),
             block_cipher_modes: Some(vec![
                 // Recommended AEAD / wrapping modes.
@@ -258,7 +236,7 @@ impl Default for KmipAllowlistsConfig {
                 // NIST key wrap (RFC 3394) and padding variant (RFC 5649): standard wrapping.
                 BlockCipherMode::NISTKeyWrap,
                 BlockCipherMode::AESKeyWrapPadding,
-                // GCM-SIV: misuse-resistant AEAD when supported.
+                // Documented scheme: AES GCM-SIV.
                 BlockCipherMode::GCMSIV,
             ]),
             padding_methods: Some(vec![
@@ -267,13 +245,16 @@ impl Default for KmipAllowlistsConfig {
                 PaddingMethod::PSS,
                 // PKCS#5 / PKCS#1 v1.5: retained for interoperability with legacy clients.
                 PaddingMethod::PKCS5,
-                PaddingMethod::PKCS1v15,
             ]),
             // ANSSI: RSA-2048 is not recommended anymore (R vs. legacy), prefer 3072+.
             rsa_key_sizes: Some(vec![RsaKeySize::Rsa3072, RsaKeySize::Rsa4096]),
 
-            // Cosmian restriction: deny AES-128 and AES-192 by default.
-            aes_key_sizes: Some(vec![AesKeySize::Aes256]),
+            // ANSSI recommends AES with 128/192/256-bit keys.
+            aes_key_sizes: Some(vec![
+                AesKeySize::Aes128,
+                AesKeySize::Aes192,
+                AesKeySize::Aes256,
+            ]),
             mgf_hashes: Some(vec![
                 // MGF1 hash allowlist for RSA-OAEP/RSA-PSS; keep aligned with SHA-2 defaults.
                 HashingAlgorithm::SHA256,
