@@ -169,17 +169,15 @@ An Ed25519 key can be used; it will be automatically converted to X25519 first.
 
 Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is
 based on FIPS compliant cryptographic primitives only and uses the same algorithm as the Salsa
-Sealed Boxes. It supports the entire family of NIST P curves, with the exception of `P-192` in FIPS
-mode, and uses AES-128-GCM and SHAKE128 for curves with security strength $s \leq 128$ bits:
+Sealed Boxes. It supports the NIST P curves starting at P-256, and uses AES-128-GCM and SHAKE128
+for curves with security strength $s \leq 128$ bits:
 
-- `P-192`
-- `P-224`
 - `P-256`
 
 and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 
 - `P-384`
-- `P-512`
+- `P-521`
 
 ## Signature schemes
 
@@ -195,14 +193,14 @@ The `Sign` operation is used to perform digital signature operations on provided
 | Algorithm  | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
 | ---------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                          | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
-| ECDSA      | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| ECDSA      | P-256, P-384, P-521, X25519, X448 | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA      | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 ### Digital Signature Operations
 
 - `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
 - `ECDSA` performs digital signatures on elliptic
-  curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512`, `X25519` and `X448`.
+  curves `P-256`, `P-384`, `P-521`, `X25519` and `X448`.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
 
 ## Password-based key derivation
@@ -241,34 +239,30 @@ The policy is configured in `kms.toml` and is disabled by default.
 # Gate enforcement.
 # - false (default): do not enforce allowlists.
 # - true: enforce allowlists (or their defaults).
-enforce = false
+enforce = true
 
 [kmip.allowlists]
 
 # Allowlisted KMIP enums.
 algorithms = ["AES", "RSA", "ECDSA", "ECDH", "EC", "HMACSHA256", "HMACSHA384", "HMACSHA512"]
-# Non-FIPS build only (`cargo build --features non-fips`):
-# algorithms = [
-#   "AES", "RSA", "ECDSA", "ECDH", "EC", "HMACSHA256", "HMACSHA384", "HMACSHA512",
-#   "ChaCha20Poly1305", "CoverCrypt", "Ed25519", "SHAKE128", "SHAKE256"
-# ]
 hashes = ["SHA256", "SHA384", "SHA512", "SHA3256", "SHA3384", "SHA3512"]
-signature_algorithms = ["RSASSAPSS", "SHA256WithRSAEncryption", "ECDSAWithSHA256"]
+signature_algorithms = ["SHA256WithRSAEncryption", "SHA384WithRSAEncryption", "SHA512WithRSAEncryption", "RSASSAPSS", "ECDSAWithSHA256", "ECDSAWithSHA384", "ECDSAWithSHA512"]
 curves = ["P256", "P384", "P521", "CURVE25519", "CURVE448"]
-block_cipher_modes = ["GCM", "NISTKeyWrap", "AESKeyWrapPadding", "GCMSIV"]
+block_cipher_modes = ["GCM", "CCM", "XTS", "NISTKeyWrap", "AESKeyWrapPadding", "GCMSIV"]
 padding_methods = ["OAEP", "PSS", "PKCS5"]
 mgf_hashes = ["SHA256", "SHA384", "SHA512"]
 mask_generators = ["MFG1"]
 
 # Key-size allowlists (new): values are compared against KMIP `CryptographicLength`.
 # If set, the size must be in the list (in addition to baseline minimums).
-rsa_key_sizes = [2048, 3072, 4096]
+rsa_key_sizes = [3072, 4096]
 aes_key_sizes = [128, 192, 256]
 ```
 
 Notes:
 
 - The default allowlists are conservative (ANSSI/NIST/FIPS-aligned) but are only enforced when `kmip.enforce = true`.
+- All allowlists follow the same semantics: when a list is omitted (`None`), no restriction is applied for that parameter; when a list is present and non-empty, values must be in the list; when a list is present but empty (`[]`), all values are denied.
 - `rsa_key_sizes` and `aes_key_sizes` are optional allowlists. If they are present, sizes outside the list are rejected.
 - The server also enforces baseline structural constraints (e.g., RSA minimum size and AES allowed sizes).
 

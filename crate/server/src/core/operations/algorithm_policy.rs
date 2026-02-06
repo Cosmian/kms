@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_operations::{
-                Create, CreateKeyPair, DeriveKey, Hash, MAC, MACVerify, Operation, Sign,
+                Create, CreateKeyPair, DeriveKey, Export, Hash, MAC, MACVerify, Operation, Sign,
                 SignatureVerify,
             },
             kmip_types::{
@@ -44,105 +44,36 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     ttlv: &TTLV,
 ) -> KResult<()> {
     let ttlv_tag_for_error = &ttlv.tag;
+
+    macro_rules! deserialize_op {
+        ($ty:ty, $name:expr) => {
+            from_ttlv::<$ty>(ttlv.clone()).map_err(|e| {
+                KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Message,
+                    format!(
+                        "failed to deserialize {} for policy enforcement ({}): {}",
+                        $name, ttlv_tag_for_error, e
+                    ),
+                )
+            })
+        };
+    }
     // The root TTLV tag is the operation name (e.g. "Create").
     // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.
     let op = match operation_tag {
-        "Create" => Operation::Create(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Create for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "CreateKeyPair" => Operation::CreateKeyPair(Box::new(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize CreateKeyPair for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?)),
-        "Encrypt" => Operation::Encrypt(Box::new(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Encrypt for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?)),
-        "Decrypt" => Operation::Decrypt(Box::new(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Decrypt for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?)),
-        "Hash" => Operation::Hash(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Hash for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "MAC" => Operation::MAC(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize MAC for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "MACVerify" => Operation::MACVerify(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize MACVerify for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "Sign" => Operation::Sign(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Sign for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "SignatureVerify" => Operation::SignatureVerify(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize SignatureVerify for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "DeriveKey" => Operation::DeriveKey(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize DeriveKey for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "Import" => Operation::Import(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Import for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
-        "Register" => Operation::Register(from_ttlv(ttlv.clone()).map_err(|e| {
-            KmsError::Kmip21Error(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "failed to deserialize Register for policy enforcement ({ttlv_tag_for_error}): {e}"
-                ),
-            )
-        })?),
+        "Create" => Operation::Create(deserialize_op!(Create, "Create")?),
+        "CreateKeyPair" => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
+        "Encrypt" => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
+        "Decrypt" => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
+        "Hash" => Operation::Hash(deserialize_op!(Hash, "Hash")?),
+        "MAC" => Operation::MAC(deserialize_op!(MAC, "MAC")?),
+        "MACVerify" => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
+        "Sign" => Operation::Sign(deserialize_op!(Sign, "Sign")?),
+        "SignatureVerify" => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
+        "DeriveKey" => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
+        "Import" => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
+        "Register" => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
+        "Export" => Operation::Export(deserialize_op!(Export, "Export")?),
         // For other operations, request-time algorithm policy doesn't apply.
         _ => return Ok(()),
     };
@@ -170,6 +101,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
         Operation::DeriveKey(ref req) => validate_derive_key(req, &wl),
         Operation::Import(ref req) => validate_attributes(&req.attributes, &wl),
         Operation::Register(ref req) => validate_attributes(&req.attributes, &wl),
+        Operation::Export(ref req) => validate_export(req, &wl),
 
         // Rekey operations operate on existing objects; enforcement is done on retrieved keys and
         // on the Create/Import paths they invoke.
@@ -196,6 +128,20 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
             }
         }
     })
+}
+
+fn validate_export(req: &Export, wl: &KmipWhitelists) -> KResult<()> {
+    // Export may declare a Key Wrapping Specification with embedded CryptographicParameters.
+    // Those parameters represent algorithm choices made by the caller and must be validated
+    // against the configured allowlists.
+    if let Some(spec) = &req.key_wrapping_specification {
+        if let Some(eki) = &spec.encryption_key_information {
+            if let Some(cp) = &eki.cryptographic_parameters {
+                validate_cryptographic_parameters(&Some(cp.clone()), wl)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 impl KmipWhitelists {
@@ -349,23 +295,13 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     pkey_id: openssl::pkey::Id,
 ) -> KResult<()> {
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
-    // ECIES is gated by the curve allowlist.
-    // Semantics:
-    // - `None`: do not restrict curve selection (i.e., curve usage is "unrestricted"), but keep
-    //   ECIES disabled. This is intentional: ECIES is an implicit fixed-suite (it pulls in internal
-    //   SHAKE-based KDF/hash choices that are not expressed in KMIP request parameters), and
-    //   at this enforcement point `PKey::id()` does not reliably carry the exact named curve.
-    //   Therefore ECIES is treated as opt-in and requires an explicit curve allowlist (`Some(...)`).
-    // - `Some(vec![])`: curves are unrestricted globally, but ECIES is explicitly disabled.
-    // - `Some(non-empty)`: ECIES is enabled and restricted to those curves.
-    let allowed = match params.kmip_policy.allowlists.curves.as_deref() {
-        None => {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!("{operation_tag}: ECIES is disabled by server policy (key={key_id})"),
-            );
-        }
-        Some([]) => {
+    // ECIES uses a fixed internal suite. Curve allowlists apply as follows:
+    // - `None`: no curve restriction (default-on)
+    // - `Some(empty)`: deny all curves
+    // - `Some(non-empty)`: restrict to listed curves
+    let allowed = params.kmip_policy.allowlists.curves.as_deref();
+    if let Some(set) = allowed {
+        if set.is_empty() {
             return deny(
                 ErrorReason::Constraint_Violation,
                 format!(
@@ -373,8 +309,7 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
                 ),
             );
         }
-        Some(v) => v,
-    };
+    }
 
     let token = match pkey_id {
         openssl::pkey::Id::X25519 => "X25519",
@@ -392,37 +327,45 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     // we allow EC only when the KMIP policy already constrained curves at key creation/import.
     // For X25519, we can enforce directly.
     if pkey_id == openssl::pkey::Id::X25519 {
-        if !allowed.contains(&RecommendedCurve::CURVE25519) {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!(
-                    "{operation_tag}: ECIES curve not allowed by policy: {token} (key={key_id})"
-                ),
-            );
+        if let Some(set) = allowed {
+            if !set.contains(&RecommendedCurve::CURVE25519) {
+                return deny(
+                    ErrorReason::Constraint_Violation,
+                    format!(
+                        "{operation_tag}: ECIES curve not allowed by policy: {token} (key={key_id})"
+                    ),
+                );
+            }
         }
     } else if pkey_id == openssl::pkey::Id::EC {
         // Require at least one of the NIST curves. Actual curve is enforced earlier via KMIP attributes.
-        if !allowed.contains(&RecommendedCurve::P256)
-            && !allowed.contains(&RecommendedCurve::P384)
-            && !allowed.contains(&RecommendedCurve::P521)
-        {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!("{operation_tag}: ECIES EC curves not allowed by policy (key={key_id})"),
-            );
-        }
-    } else if pkey_id == openssl::pkey::Id::ED25519 {
-        #[cfg(feature = "non-fips")]
-        {
-            if !allowed.contains(&RecommendedCurve::CURVEED25519)
-                && !allowed.contains(&RecommendedCurve::CURVE25519)
+        if let Some(set) = allowed {
+            if !set.contains(&RecommendedCurve::P256)
+                && !set.contains(&RecommendedCurve::P384)
+                && !set.contains(&RecommendedCurve::P521)
             {
                 return deny(
                     ErrorReason::Constraint_Violation,
                     format!(
-                        "{operation_tag}: ECIES curve not allowed by policy: ED25519 (key={key_id})"
+                        "{operation_tag}: ECIES EC curves not allowed by policy (key={key_id})"
                     ),
                 );
+            }
+        }
+    } else if pkey_id == openssl::pkey::Id::ED25519 {
+        #[cfg(feature = "non-fips")]
+        {
+            if let Some(set) = allowed {
+                if !set.contains(&RecommendedCurve::CURVEED25519)
+                    && !set.contains(&RecommendedCurve::CURVE25519)
+                {
+                    return deny(
+                        ErrorReason::Constraint_Violation,
+                        format!(
+                            "{operation_tag}: ECIES curve not allowed by policy: ED25519 (key={key_id})"
+                        ),
+                    );
+                }
             }
         }
 
@@ -473,20 +416,13 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
 ) -> KResult<()> {
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
-    // ECIES is gated by curve allowlist.
-    // Semantics:
-    // - `None`: do not restrict curve selection, but keep ECIES disabled (ECIES is opt-in and
-    //   requires an explicit curve allowlist).
-    // - `Some(vec![])`: curves are unrestricted globally, but ECIES is explicitly disabled.
-    // - `Some(non-empty)`: ECIES is enabled and restricted to those curves.
-    let allowed_curves = match params.kmip_policy.allowlists.curves.as_deref() {
-        None => {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!("{operation_tag}: ECIES is disabled by server policy (key={key_id})"),
-            );
-        }
-        Some([]) => {
+    // Curve allowlists apply as follows:
+    // - `None`: no curve restriction (default-on)
+    // - `Some(empty)`: deny all curves
+    // - `Some(non-empty)`: restrict to listed curves
+    let allowed_curves = params.kmip_policy.allowlists.curves.as_deref();
+    if let Some(set) = allowed_curves {
+        if set.is_empty() {
             return deny(
                 ErrorReason::Constraint_Violation,
                 format!(
@@ -494,8 +430,7 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
                 ),
             );
         }
-        Some(v) => v,
-    };
+    }
 
     let recommended_curve = attrs
         .cryptographic_domain_parameters
@@ -504,13 +439,15 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
 
     // If we know the curve, enforce the precise SHAKE requirement.
     if let Some(curve) = recommended_curve {
-        if !allowed_curves.contains(&curve) {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!(
-                    "{operation_tag}: ECIES curve not allowed by policy: {curve:?} (key={key_id})"
-                ),
-            );
+        if let Some(set) = allowed_curves {
+            if !set.contains(&curve) {
+                return deny(
+                    ErrorReason::Constraint_Violation,
+                    format!(
+                        "{operation_tag}: ECIES curve not allowed by policy: {curve:?} (key={key_id})"
+                    ),
+                );
+            }
         }
 
         let required_shake = match curve {
@@ -910,17 +847,15 @@ fn validate_curve(
         }
     }
 
-    // Curve allowlist semantics:
-    // - `None`: no restriction
+    // Curve allowlist semantics are consistent with other allowlists:
+    // - `None`: no restriction (allow all recommended curves)
     // - `Some(non-empty)`: restrict to members
-    // - `Some(empty)`: treated as *no restriction* for curve usage (but ECIES is separately gated)
-    if let Some(set) = whitelist {
-        if !set.is_empty() && !set.contains(&curve) {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!("Curve not in recommended whitelist: {curve}"),
-            );
-        }
+    // - `Some(empty)`: deny all curves
+    if !allow(whitelist, &curve) {
+        return deny(
+            ErrorReason::Constraint_Violation,
+            format!("Curve not in recommended whitelist: {curve}"),
+        );
     }
 
     Ok(())
