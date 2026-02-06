@@ -692,7 +692,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 )));
             }
 
-            // Check for illegal characters (only a-z, A-Z, 0-9, /, - are allowed)
             if !prefix
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-')
