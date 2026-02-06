@@ -76,7 +76,8 @@ nav:
       - API Endpoints: api.md
       - AWS ECS Fargate: aws_fargate.md
       - Azure:
-          - BYOK (Bring Your Own Key): azure/byok.md
+          - BYOK (Bring Your Own Key): azure/byok/byok.md
+          - EKM (External Key Management): azure/ekm/ekm.md
       - Google GCP:
           - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
           - CSEK (Customer Supplied Encryption Keys): google_gcp/csek.md
