@@ -681,13 +681,40 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
-    if enable_azure_ekm
-        && !kms_server.params.azure_ekm.azure_ekm_disable_client_auth
-        && !use_cert_auth
-    {
-        return Err(KmsError::ServerError(
-            "Azure EKM requires mTLS authentication but the KMS server is not configured with client certificate authentication.".to_owned()
-        ));
+    if enable_azure_ekm {
+        // Validate path prefix if provided
+        if let Some(prefix) = &kms_server.params.azure_ekm.azure_ekm_path_prefix {
+            // Check length (max 64 characters)
+            if prefix.len() > 64 {
+                return Err(KmsError::ServerError(format!(
+                    "Azure EKM path prefix is too long ({} chars). Maximum allowed is 64 characters.",
+                    prefix.len()
+                )));
+            }
+
+            // Check for illegal characters (only a-z, A-Z, 0-9, /, - are allowed)
+            if !prefix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-')
+            {
+                return Err(KmsError::ServerError(format!(
+                    "Azure EKM path prefix contains illegal characters: '{prefix}'. Only a-z, A-Z, 0-9, '/', and '-' are allowed."
+                )));
+            }
+
+            // Check for leading or trailing slashes
+            if prefix.starts_with('/') || prefix.ends_with('/') {
+                return Err(KmsError::ServerError(
+                    "Azure EKM path prefix cannot start or end with '/'".to_owned(),
+                ));
+            }
+        }
+
+        if !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && !use_cert_auth {
+            return Err(KmsError::ServerError(
+                "Azure EKM requires mTLS authentication but the KMS server is not configured with client certificate authentication.".to_owned()
+            ));
+        }
     }
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
@@ -774,21 +801,32 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 );
             }
 
+            
+
             let base_path = kms_server
                 .params
                 .azure_ekm
                 .azure_ekm_path_prefix
                 .as_ref()
                 .map_or_else(
-                    || "/azure_ekm".to_owned(),
-                    |prefix| format!("/azure_ekm/{prefix}"),
+                    // TODO: for unkwnown reasons, an "azure-ekm" base path will get compiled to "azure_ekm" in the binary. This isn't a problem but azureekm looks ugly. Renaming the route will be more fast and efficient than investigating the root cause of this transformation IMO.
+                    // DO NOT change this before the Microsoft team tests are done, their paths are based on '/azureekm'.
+                    || "/azureekm".to_owned(),
+                    |prefix| format!("/azureekm/{prefix}"),
                 );
 
             info!("azure EKM API enabled at {}", base_path);
 
             let azure_ekm_scope = web::scope(&base_path)
+                    .wrap(Condition::new(
+            !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
+            EnsureAuth::new(kms_server_for_http.clone(), use_cert_auth),
+        ))
+        .wrap(Condition::new(
+            !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
+            SslAuth,
+        ))
                 .wrap(Cors::permissive())
-                // TODO: add auth middleware ...?
                 .service(azure_ekm::get_proxy_info)
                 .service(azure_ekm::get_key_metadata)
                 .service(azure_ekm::wrap_key)
