@@ -43,6 +43,26 @@ fn validate_api_version(version: &str) -> Result<(), AzureEkmErrorReply> {
     Ok(())
 }
 
+fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
+    if key_name.is_empty() || key_name.len() > 127 {
+        return Err(AzureEkmErrorReply::invalid_request(
+            "Key name length must be between 1 and 127 characters",
+        ));
+    }
+
+    // Only a-z, A-Z, 0-9, - allowed
+    if !key_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err(AzureEkmErrorReply::invalid_request(
+            "Key name contains illegal characters. Only a-z, A-Z, 0-9, and '-' are allowed.",
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 struct AzureEkmQueryParams {
     #[serde(rename = "api-version")]
@@ -100,6 +120,9 @@ pub(crate) async fn get_key_metadata(
     if let Err(e) = validate_api_version(&query.api_version) {
         return e.into();
     }
+    if let Err(e) = validate_key_name(&key_name) {
+        return e.into();
+    }
 
     match get_key_metadata_handler(key_name, user, kms).await {
         Ok(response) => response,
@@ -126,6 +149,9 @@ pub(crate) async fn wrap_key(
 
     // Validate API version
     if let Err(e) = validate_api_version(&query.api_version) {
+        return e.into();
+    }
+    if let Err(e) = validate_key_name(&key_name) {
         return e.into();
     }
 
@@ -164,6 +190,9 @@ pub(crate) async fn unwrap_key(
 
     // Validate API version
     if let Err(e) = validate_api_version(&query.api_version) {
+        return e.into();
+    }
+    if let Err(e) = validate_key_name(&key_name) {
         return e.into();
     }
 
