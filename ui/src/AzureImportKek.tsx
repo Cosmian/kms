@@ -1,9 +1,11 @@
-import {UploadOutlined} from "@ant-design/icons";
-import {Button, Card, Form, Input, Space, Upload} from "antd";
-import React, {useEffect, useRef, useState} from "react";
-import {useAuth} from "./AuthContext";
-import {sendKmipRequest} from "./utils";
-import {import_ttlv_request, parse_import_ttlv_response} from "./wasm/pkg";
+import { UploadOutlined } from "@ant-design/icons";
+import { Button, Card, Form, Input, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { FormUpload } from "./FormUpload";
+import { azureKekKeyUsage, azureKekTags } from "./azureKek";
+import { sendKmipRequest } from "./utils";
+import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
 
 interface ImportAzureKekFormData {
     kekFile: Uint8Array;
@@ -33,8 +35,8 @@ const ImportAzureKekForm: React.FC = () => {
         setRes(undefined);
         try {
             // Import the KEK with Azure-specific tags and key usage
-            const tags = ["azure", `kid:${values.kid}`];
-            const keyUsage = ["WrapKey", "Encrypt"];
+            const tags = azureKekTags(values.kid);
+            const keyUsage = azureKekKeyUsage;
 
             const request = import_ttlv_request(
                 values.keyId,
@@ -97,7 +99,7 @@ const ImportAzureKekForm: React.FC = () => {
                             rules={[{required: true, message: "Please upload the KEK file"}]}
                             help="The KEK file exported from Azure Key Vault in PKCS#8 PEM format"
                         >
-                            <Upload
+                            <FormUpload
                                 beforeUpload={(file) => {
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
@@ -118,7 +120,7 @@ const ImportAzureKekForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <Button icon={<UploadOutlined/>}>Select KEK File</Button>
-                            </Upload>
+                            </FormUpload>
                         </Form.Item>
                     </Card>
 

@@ -1,39 +1,14 @@
-import {Button, Card, Form, Input, Space} from "antd";
-import React, {useEffect, useRef, useState} from "react";
-import {useAuth} from "./AuthContext";
-import {downloadFile, sendKmipRequest} from "./utils";
+import { Button, Card, Form, Input, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthContext";
+import { buildAzureByokContent, getAzureByokFilename, getTags } from "./azureByok";
+import { downloadFile, sendKmipRequest } from "./utils";
 import {
     export_ttlv_request,
     get_attributes_ttlv_request_with_options,
     parse_export_ttlv_response,
     parse_get_attributes_ttlv_response
 } from "./wasm/pkg";
-
-const getTags = (attributes: Map<string, never>): string[] => {
-    const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
-    if (typeof vendor_attributes !== "undefined") {
-        const attrs_value_map: Map<string, never> | undefined = (vendor_attributes as Array<Map<string, never>>).find((attribute: Map<string, never>) => {
-            return attribute.get("AttributeName") === "tag";
-        })?.get("AttributeValue");
-        if (typeof attrs_value_map === "undefined") {
-            return []
-        }
-        const tags_string = (attrs_value_map as Map<string, string>).get("_c");
-        if (tags_string) {
-            try {
-                return JSON.parse(tags_string);
-            } catch (error) {
-                console.error("Error parsing tags JSON:", error);
-                return [];
-            }
-        } else {
-            return [];
-        }
-    }
-
-
-    return []
-}
 
 interface ExportAzureBYOKFormData {
     wrappedKeyId: string;
@@ -107,7 +82,7 @@ const ExportAzureBYOKForm: React.FC = () => {
             // Using "rsa-pkcs-oaep" as the wrapping algorithm
             const exportRequest = export_ttlv_request(
                 values.wrappedKeyId,
-                true, // unwrap - export the key in wrapped form
+                false, // unwrap - keep key material wrapped on export
                 "raw", // key_format - raw bytes
                 values.kekId, // wrap_key_id - the KEK to wrap with
                 "rsa-aes-key-wrap-sha1" // wrapping_algorithm
@@ -139,27 +114,10 @@ const ExportAzureBYOKForm: React.FC = () => {
             }
 
             // Step 3: Generate .byok file in JSON format
-            // Convert bytes to base64 URL-safe encoding (no padding)
-            const base64UrlEncode = (bytes: Uint8Array): string => {
-                const base64 = btoa(String.fromCharCode(...bytes));
-                return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-            };
-
-            const byokObject = {
-                schema_version: "1.0.0",
-                header: {
-                    kid: kid,
-                    alg: "dir",
-                    enc: "CKM_RSA_AES_KEY_WRAP",
-                },
-                ciphertext: base64UrlEncode(wrappedKeyBytes),
-                generator: "Cosmian_KMS;v5",
-            };
-
-            const byokContent = JSON.stringify(byokObject, null, 2);
-
             // Determine the filename
-            const filename = values.byokFile || `${values.wrappedKeyId}.byok`;
+            const filename = getAzureByokFilename(values.wrappedKeyId, values.byokFile);
+
+            const byokContent = buildAzureByokContent(kid, wrappedKeyBytes);
 
             // Download the .byok file
             downloadFile(byokContent, filename, "application/json");
