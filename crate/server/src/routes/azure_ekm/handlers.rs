@@ -123,10 +123,10 @@ pub(crate) async fn get_key_metadata_handler(
                             }
 
                             let modulus_bytes = modulus.to_bytes_be().1; // .1 to skip sign
-                            let exponent_bytes = &public_exponent.to_bytes_be().1;
+                            let exponent_bytes = public_exponent.to_bytes_be().1;
 
                             let n_base64url = URL_SAFE_NO_PAD.encode(&modulus_bytes);
-                            let e_base64url = URL_SAFE_NO_PAD.encode(exponent_bytes);
+                            let e_base64url = URL_SAFE_NO_PAD.encode(&exponent_bytes);
                             HttpResponse::Ok().json(KeyMetadataResponse::rsa(
                                 key_length,
                                 n_base64url,
