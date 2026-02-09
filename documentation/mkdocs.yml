@@ -1,7 +1,7 @@
 ---
 site_name: Key Management System
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2024 Cosmian. All rights reserved
+copyright: © Copyright 2018-2026 Cosmian. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material

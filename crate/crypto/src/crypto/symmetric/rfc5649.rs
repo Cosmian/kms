@@ -68,7 +68,7 @@ pub fn rfc5649_wrap(plaintext: &[u8], kek: &[u8]) -> CryptoResult<Vec<u8>> {
     };
 
     // Allocate output buffer with extra space for cipher_final
-    let mut ciphertext = vec![0_u8; padded_len + AES_BLOCK_SIZE];
+    let mut ciphertext = vec![0_u8; padded_len + (AES_BLOCK_SIZE * 2)];
 
     // Perform the key wrap operation
     let mut written = ctx.cipher_update(plaintext, Some(&mut ciphertext))?;
@@ -99,7 +99,10 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     // Allocate output buffer: maximum plaintext size is ciphertext - 8 bytes (AIV)
     // Add extra space for cipher_final
-    let mut plaintext = Zeroizing::new(vec![0_u8; n_bytes - AES_WRAP_BLOCK_SIZE + AES_BLOCK_SIZE]);
+    let mut plaintext = Zeroizing::new(vec![
+        0_u8;
+        n_bytes - AES_WRAP_BLOCK_SIZE + (AES_BLOCK_SIZE * 2)
+    ]);
 
     // Perform the key unwrap operation
     let mut written = ctx.cipher_update(ciphertext, Some(&mut plaintext))?;
@@ -112,108 +115,6 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
 
     Ok(plaintext)
 }
-
-//             // Encrypt block using AES with ECB mode i.e. raw AES as specified in
-//             // RFC5649.
-//             let ciphertext = encrypt(cipher, kek, None, &plaintext_block)?;
-
-//             // A = MSB(64, B) ^ t where t = (n*j)+i
-//             let t = u64::try_from((n * j) + (i + 1))?;
-
-//             icr = u64::from_be_bytes(ciphertext[0..8].try_into()?) ^ t;
-//             *block = u64::from_be_bytes(ciphertext[8..16].try_into()?);
-//         }
-//     }
-
-//     let mut wrapped_key = Vec::with_capacity(8 * (blocks.len() + 1));
-//     wrapped_key.extend(icr.to_be_bytes());
-//     for block in blocks {
-//         wrapped_key.extend(block.to_be_bytes());
-//     }
-
-//     Ok(wrapped_key)
-// }
-
-// fn unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), CryptoError> {
-//     let n = ciphertext.len();
-
-//     if !n.is_multiple_of(AES_WRAP_PAD_BLOCK_SIZE) || n < AES_BLOCK_SIZE {
-//         return Err(CryptoError::InvalidSize(
-//             "The ciphertext size should be >= 16 and a multiple of 8".to_owned(),
-//         ));
-//     }
-
-//     // Number of 64-bit blocks minus 1
-//     let n = n / 8 - 1;
-
-//     let mut blocks = Zeroizing::from(Vec::with_capacity(n + 1));
-//     for chunk in ciphertext.chunks(AES_WRAP_PAD_BLOCK_SIZE) {
-//         blocks.push(u64::from_be_bytes(chunk.try_into()?));
-//     }
-
-//     // ICR stands for Integrity Check Register initially containing the IV.
-//     #[expect(clippy::indexing_slicing)]
-//     let mut icr = blocks[0];
-
-//     // Encrypt block using AES with ECB mode i.e. raw AES as specified in
-//     // RFC5649.
-//     // Make use of OpenSSL Crypter interface to decrypt blocks incrementally
-//     // without padding since RFC5649 has special padding methods.
-//     let mut decrypt_cipher = match kek.len() {
-//         16 => Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, kek, None)?,
-//         24 => Crypter::new(Cipher::aes_192_ecb(), Mode::Decrypt, kek, None)?,
-//         32 => Crypter::new(Cipher::aes_256_ecb(), Mode::Decrypt, kek, None)?,
-//         _ => {
-//             return Err(CryptoError::InvalidSize(
-//                 "The kek size should be 16, 24 or 32".to_owned(),
-//             ));
-//         }
-//     };
-//     decrypt_cipher.pad(false);
-
-//     #[expect(clippy::indexing_slicing)]
-//     for j in (0..6).rev() {
-//         for (i, block) in blocks[1..].iter_mut().rev().enumerate().take(n) {
-//             let t = u64::try_from((n * j) + (n - i))?;
-
-//             // B = AES-1(K, (A ^ t) | R[i]) where t = n*j+i
-//             let big_i = ((u128::from(icr ^ t) << 64) | u128::from(*block)).to_be_bytes();
-//             let big_b = big_i.as_slice();
-
-//             let mut plaintext = Zeroizing::from(vec![0; big_b.len() + AES_BLOCK_SIZE]);
-//             let mut dec_len = decrypt_cipher.update(big_b, &mut plaintext)?;
-//             dec_len += decrypt_cipher.finalize(&mut plaintext)?;
-//             plaintext.truncate(dec_len);
-
-//             // A = MSB(64, B)
-//             icr = u64::from_be_bytes(
-//                 plaintext
-//                     .get(0..AES_WRAP_PAD_BLOCK_SIZE)
-//                     .ok_or_else(|| {
-//                         CryptoError::InvalidSize(
-//                             "Decryption output too short for IV extraction".to_owned(),
-//                         )
-//                     })?
-//                     .try_into()?,
-//             );
-
-//             // R[i] = LSB(64, B)
-//             *block = u64::from_be_bytes(
-//                 plaintext[AES_WRAP_PAD_BLOCK_SIZE..AES_WRAP_PAD_BLOCK_SIZE * 2].try_into()?,
-//             );
-//         }
-//     }
-
-//     let mut unwrapped_key = Zeroizing::from(Vec::with_capacity((blocks.len() - 1) * 8));
-//     for block in blocks
-//         .get(1..)
-//         .ok_or_else(|| CryptoError::IndexingSlicing("Block index issue".to_owned()))?
-//     {
-//         unwrapped_key.extend(block.to_be_bytes());
-//     }
-
-//     Ok((icr, unwrapped_key))
-// }
 
 #[expect(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]

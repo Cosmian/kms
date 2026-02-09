@@ -36,6 +36,7 @@ publish-dry-crate = "publish --dry-run --allow-dirty"
 #   "target_cpu=native",
 # ]
 
-# [target.x86_64-unknown-linux-gnu] # TODO: uncomment this after dev is finished
+# can increase build time for system that support mold
+# [target.x86_64-unknown-linux-gnu]
 # linker = "clang"
 # rustflags = ["-C", "link-arg=-fuse-ld=mold"]

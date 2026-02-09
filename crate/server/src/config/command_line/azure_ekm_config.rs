@@ -17,7 +17,6 @@ pub struct AzureEkmConfig {
     ///
     /// Enables multi-customer use or isolation of different MHSM pools using the same proxy.
     /// Must be max 64 characters: letters (a-z, A-Z), numbers (0-9), slashes (/), dashes (-).
-    /// TODO: validate allowed characters
     #[clap(long, env = "KMS_AZURE_EKM_PATH_PREFIX", verbatim_doc_comment)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub azure_ekm_path_prefix: Option<String>,
@@ -52,7 +51,6 @@ pub struct AzureEkmConfig {
     pub azure_ekm_ekm_vendor: String, // double "ekm" is intentional
 
     /// Product Name and Version of the EKMS to report in the /info endpoint.
-    /// TODO: refer to page 12 of the specs to assert this is the correct default value
     #[clap(
         long,
         env = "KMS_AZURE_EKM_PRODUCT",

@@ -95,6 +95,7 @@ pub(crate) async fn get_status(
     info!("GET /google_cse/status {}", kms.get_user(&req));
 
     let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
+
     Ok(Json(operations::get_status(&google_cse_kacls_url)))
 }
 
