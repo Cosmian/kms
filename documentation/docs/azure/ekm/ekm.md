@@ -1,15 +1,16 @@
 
 Cosmian KMS implements the Azure External Key Manager (EKM) Proxy API, enabling it to serve as an external key management service for an Azure Managed HSM.
 
-This integration allows organizations to maintain complete physical control over their encryption keys outside of Azure infrastructure while seamlessly integrating with Azure services that support Customer Managed Keys (CMK).
+This integration allows organizations to maintain complete physical control over their encryption keys outside of Azure infrastructure while seamlessly integrating with Azure services that support **Customer Managed Keys** (CMK).
 
 The Cosmian KMS implementation follows and implements the Microsoft EKM Proxy API Specification for v0.1-preview.
 
-## Table of content
 <!-- TOC -->
-- [Table of content](#table-of-content)
-- [Architecture Overview](#architecture-overview)
+- [High level architecture](#high-level-architecture)
 - [Api specification](#api-specification)
+  - [URL format](#url-format)
+  - [Endpoints](#endpoints)
+  - [Supported algorithms](#supported-algorithms)
 - [Getting started](#getting-started)
   - [Azure Managed HSM Setup](#azure-managed-hsm-setup)
   - [Cosmian KMS setup](#cosmian-kms-setup)
@@ -18,14 +19,45 @@ The Cosmian KMS implementation follows and implements the Microsoft EKM Proxy AP
 - [Testing the integration](#testing-the-integration)
 <!-- TOC -->
 
-## Architecture Overview
+## High level architecture
 
-![high level arch](high_level_arch.png)
+![High level architecture](high_level_arch.png)
+<!-- 
+Mermaid chart of high level architecture diagram
 
-![Workflow](sequence.svg)
+%%{init: {'themeVariables': { 'edgeLabelBackground': '#fff9c4' } }}%%
+flowchart LR
+  subgraph AZ["Azure infrastructure"]
+    direction LR
+    A["Azure service with CMK"]
+    B["Managed HSM<br/>(External Key)"]
+    A <-> B
+  end
+
+  subgraph DC["Customer infrastructure"]
+    direction TB
+    P["Cosmian KMS"]
+  end
+
+  B <->|"Proxy API<br>(mTLS)"| P
+  
+  style AZ fill:#e3f2fd,stroke:#1976d2
+  style DC fill:#ffe0cc,stroke:#e34319
+  style P fill:#e34319,stroke:#b8330f,color:#fff
+  style A fill:#fff,stroke:#1976d2
+  style B fill:#fff,stroke:#1976d2
+-->
+
+The customer's Azure services (configured with Customer Managed Keys) communicate with Azure Managed HSM to perform encryption/decryption operations. A full list of Azure services that support CMK [can be consulted on this page](https://learn.microsoft.com/en-us/azure/security/fundamentals/encryption-customer-managed-keys-support).
+
+With this integration, your protected secrets remain under your complete control while maintaining compatibility with Azure's managed services.
+
+The following diagram illustrates a possible use case where Cosmian KMS acts as the EKM Proxy :
+
+
+![Sequence diagram: Using an Azure Service with keys saved on customer's infrastructure](sequence.svg)
 
 <!--
-TODO(review): please confirm this is correct
 Keep this comment in case you need to redraw or edit the diagram in the future
 
 sequenceDiagram
@@ -49,23 +81,28 @@ sequenceDiagram
 
 ## Api specification
 
+### URL format
+
 All requests and responses for Azure EKM APIs are sent as JSON objects over HTTPS. Each request includes context information to associate Azure Managed HSM logs and audits with Cosmian KMS logs.
 
 The URI format for EKM Proxy API calls is:
 
 ```
-https://{server}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client-api-version}
+https://{public-KMS-URI}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client-api-version}
 ```
 
+The parameters between brackets {} can be edited on the KMS configuration and must follow the following constraints :
+
 **Path Prefix:**
-- Maximum 64 characters
+- Maximum 64 characters  
 - Allowed characters: letters (a-z, A-Z), numbers (0-9), slashes (/), and dashes (-)
 
 **External Key ID:**
-- Referenced as `{key-name}` in the endpoints below
-- Maximum 64 characters
+- Referenced as `{key-name}` in the endpoints below  
+- Maximum 64 characters  
 - Allowed characters: letters (a-z, A-Z), numbers (0-9), and dashes (-)
 
+### Endpoints
 
 | Endpoint         | Method | Path                                             | Description                                       |
 | ---------------- | ------ | ------------------------------------------------ | ------------------------------------------------- |
@@ -73,6 +110,8 @@ https://{server}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client
 | Get Key Metadata | POST   | /azureekm/[path-prefix]/{key-name}/metadata      | Retrieve key type, size, and supported operations |
 | Wrap Key         | POST   | /azureekm/[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
 | Unwrap Key       | POST   | /azureekm/[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
+
+### Supported algorithms
 
 | Algorithm    | Key Type | Description                          |
 | ------------ | -------- | ------------------------------------ |
@@ -90,18 +129,18 @@ Once the configuration is done, you will need the root CA certificate that the A
 
 Save this as **`mhsm-root-ca.pem`** - We will need it in the next step.
 
-// TODO more info here
-
 ### Cosmian KMS setup
 
-Follow the [Cosmian KMS installation guide](../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. Alternatively, you can deploy a pre-configured VM using the [this page](../../installation/marketplace_guide.md).
+Follow the [Cosmian KMS installation guide](../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
 
-The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters. For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
+Alternatively, you can deploy a pre-configured Cosmian Confidential VM [like explained in this guide.](../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
 
-**Important:** The Azure EKM feature requires running Cosmian KMS in non-FIPS mode.
+Environment variables can also be used for all the configurations below.
+
+**The following guide will consider running Cosmian KMS on confidential VM in non-FIPS mode.**
 
 #### TLS Configuration
-Configure mutual TLS authentication to accept connections from Azure Managed HSM:
+Configure mutual TLS authentication to accept connections from Azure Managed HSM by adding of editing to following lines in your configuration file:
 
 ```toml
 [tls]
@@ -114,7 +153,7 @@ tls_p12_password = "your-secure-password"
 clients_ca_cert_file = "/etc/cosmian/mhsm-root-ca.pem"
 ```
 
-To convert PEM certificate and key files to PKCS#12 format using `openssl`:
+**Note** : If you have a server's key and certificate files, you can convert them to PKCS#12 format using [`openssl`](https://docs.openssl.org/master/man1/openssl/):
 
 ```bash
 openssl pkcs12 -export \
@@ -145,9 +184,22 @@ azure_ekm_ekm_product = "Cosmian KMS"
 azure_ekm_disable_client_auth = false
 ```
 
+**Configuration Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `azure_ekm_enable` | boolean | `false` | Enable/disable Azure EKM API endpoints. |
+| `azure_ekm_path_prefix` | string | none | Optional path prefix for routing and multi-tenant isolation. Max 64 chars: `a-z`, `A-Z`, `0-9`, `/`, `-`. Example: `"cosmian0"`, `"customer-a/prod"` |
+| `azure_ekm_proxy_vendor` | string | `"Cosmian"` | Proxy vendor name reported in `/info` endpoint. |
+| `azure_ekm_proxy_name` | string | `"EKM Proxy Service v{version}"` | Proxy name and version reported in `/info` endpoint. Auto-inserts API version by default. |
+| `azure_ekm_ekm_vendor` | string | `"Cosmian"` | EKMS vendor name reported in `/info` endpoint.|
+| `azure_ekm_ekm_product` | string | `"Cosmian KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
+| `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
+
+
 ## Testing the integration
 
-For testing purposes or for debugging, you temporarily disable client authentication:
+For testing purposes or for debugging, you can temporarily disable client authentication by commenting out the following configuration fields:
 
 ```toml
 [tls]
@@ -155,8 +207,8 @@ For testing purposes or for debugging, you temporarily disable client authentica
 # clients_ca_cert_file = "/etc/cosmian/mhsm-root-ca.pem"
 
 [azure_ekm_config]
-# change to false
-azure_ekm_disable_client_auth = false
+# chor change to false
+# azure_ekm_disable_client_auth = false
 
 ```
 

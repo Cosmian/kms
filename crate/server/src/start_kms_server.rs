@@ -806,8 +806,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .azure_ekm_path_prefix
                 .as_ref()
                 .map_or_else(
-                    // TODO: for unknown reasons, an "azure-ekm" base path will get compiled to "azure_ekm" in the binary. This isn't a problem but azureekm looks ugly. Renaming the route will be more fast and efficient than investigating the root cause of this transformation IMO.
-                    // DO NOT change this before the Microsoft team tests are done, their paths are based on '/azureekm'.
+                    // for unknown reasons, an "azure-ekm" base path will get compiled to "azure_ekm" in the binary, but underscores go against the path specs.
                     || "/azureekm".to_owned(),
                     |prefix| format!("/azureekm/{prefix}"),
                 );
