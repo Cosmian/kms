@@ -223,7 +223,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
-            kmip: KmipPolicyConfig::default(),
+            kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),

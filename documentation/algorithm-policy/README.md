@@ -15,10 +15,11 @@ In `kms.toml`:
 ```toml
 [kmip]
 
-# Gate KMIP algorithm policy enforcement.
-# - false (default): allowlists are not enforced.
-# - true: allowlists below (or their defaults) are enforced.
-enforce = false
+# Select the KMIP policy profile (case-insensitive).
+# - CUSTOM (default): enforce the allowlists below. If you omit `[kmip.allowlists]`, the server
+#   runs without KMIP restrictions.
+# - DEFAULT: enforce the built-in conservative allowlists (ANSSI/NIST/FIPS-aligned).
+policy_id = "CUSTOM"
 
 # Parameter-specific allowlists.
 # These are matched case-insensitively against KMIP enum Display names.
@@ -48,7 +49,8 @@ Notes:
 
 ### Key-size allowlists
 
-When `kmip.enforce = true`, the server can additionally enforce allowed key sizes:
+When `kmip.policy_id` selects an enforcing profile (`DEFAULT` or `CUSTOM`), the server can
+additionally enforce allowed key sizes:
 
 - `rsa_key_sizes`: allowed RSA key sizes in bits (e.g., `[3072, 4096]`)
 - `aes_key_sizes`: allowed AES key sizes in bits (e.g., `[256]`)

@@ -15,9 +15,9 @@ fn ecies_policy_conf(
     allowed_shake: CryptographicAlgorithm,
 ) -> crate::config::ClapConfig {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.curves = Some(vec![curve]);
-    conf.kmip.allowlists.algorithms = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.curves = Some(vec![curve]);
+    conf.kmip_policy.allowlists.algorithms = Some(vec![
         CryptographicAlgorithm::EC,
         CryptographicAlgorithm::ECDH,
         allowed_shake,
@@ -155,9 +155,9 @@ async fn e2e_ecies_matrix_p521_shake256_passes_shake128_fails() {
 #[actix_web::test]
 async fn e2e_ecies_is_allowed_when_curves_allowlist_is_unset() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.curves = None;
-    conf.kmip.allowlists.algorithms = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.curves = None;
+    conf.kmip_policy.allowlists.algorithms = Some(vec![
         CryptographicAlgorithm::EC,
         CryptographicAlgorithm::ECDH,
         CryptographicAlgorithm::SHAKE128,
@@ -211,9 +211,9 @@ async fn e2e_ecies_is_allowed_when_curves_allowlist_is_unset() {
 #[actix_web::test]
 async fn e2e_ecies_is_denied_when_curves_allowlist_is_empty() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.curves = Some(vec![]);
-    conf.kmip.allowlists.algorithms = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.curves = Some(vec![]);
+    conf.kmip_policy.allowlists.algorithms = Some(vec![
         CryptographicAlgorithm::EC,
         CryptographicAlgorithm::ECDH,
         CryptographicAlgorithm::SHAKE256,

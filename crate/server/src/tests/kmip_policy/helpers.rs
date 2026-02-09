@@ -29,10 +29,9 @@ use crate::{
 };
 
 pub(super) fn params_with_default_policy() -> ServerParams {
-    let mut params =
-        ServerParams::try_from(ClapConfig::default()).expect("default clap config should build");
-    params.kmip_policy.enforce = true;
-    params
+    let mut conf = ClapConfig::default();
+    conf.kmip_policy.policy_id = "DEFAULT".to_owned();
+    ServerParams::try_from(conf).expect("default policy config should build")
 }
 
 pub(super) fn params_with_allowlists(conf: ClapConfig) -> ServerParams {

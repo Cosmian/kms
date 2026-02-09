@@ -10,8 +10,11 @@ use crate::config::{AesKeySize, RsaKeySize};
 /// This groups all KMIP policy related config fields (formerly `ServerParams.kmip_*`).
 #[derive(Debug, Clone, Default)]
 pub struct KmipPolicyParams {
-    /// Enable KMIP algorithm policy enforcement.
-    pub enforce: bool,
+    /// KMIP algorithm policy selector.
+    ///
+    /// Normalized to uppercase and validated at startup.
+    /// Accepted values: `DEFAULT`, `CUSTOM`.
+    pub policy_id: String,
 
     /// Parameter-specific allowlists.
     ///

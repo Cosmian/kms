@@ -43,6 +43,9 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     operation_tag: &str,
     ttlv: &TTLV,
 ) -> KResult<()> {
+    if params.kmip_policy.policy_id == "NONE" {
+        return Ok(());
+    }
     let ttlv_tag_for_error = &ttlv.tag;
 
     macro_rules! deserialize_op {
@@ -78,9 +81,6 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
         _ => return Ok(()),
     };
 
-    if !params.kmip_policy.enforce {
-        return Ok(());
-    }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
     #[allow(clippy::match_same_arms)]
@@ -211,11 +211,10 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
     uid_for_error: &str,
     owm: &ObjectWithMetadata,
 ) -> KResult<()> {
-    let wl = if params.kmip_policy.enforce {
-        KmipWhitelists::from_params(&params.kmip_policy)
-    } else {
-        KmipWhitelists::default()
-    };
+    if params.kmip_policy.policy_id == "NONE" {
+        return Ok(());
+    }
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
     let attrs = owm
         .object()
         .attributes()
@@ -294,6 +293,9 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     key_id: &str,
     pkey_id: openssl::pkey::Id,
 ) -> KResult<()> {
+    if params.kmip_policy.policy_id == "NONE" {
+        return Ok(());
+    }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
     // ECIES uses a fixed internal suite. Curve allowlists apply as follows:
     // - `None`: no curve restriction (default-on)
@@ -414,6 +416,9 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
     key_id: &str,
     attrs: &Attributes,
 ) -> KResult<()> {
+    if params.kmip_policy.policy_id == "NONE" {
+        return Ok(());
+    }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
     // Curve allowlists apply as follows:

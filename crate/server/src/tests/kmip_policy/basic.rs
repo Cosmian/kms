@@ -70,7 +70,7 @@ fn default_policy_allows_aes_gcm_encrypt_params() {
 #[actix_web::test]
 async fn e2e_default_policy_allows_aes_gcm_encrypt_params() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
+    conf.kmip_policy.policy_id = "DEFAULT".to_owned();
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-aes-gcm", 256)
@@ -114,7 +114,7 @@ fn default_policy_denies_deprecated_algorithm_des() {
 #[actix_web::test]
 async fn e2e_default_policy_denies_deprecated_algorithm_des() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
+    conf.kmip_policy.policy_id = "DEFAULT".to_owned();
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let req = Operation::Create(Create {
@@ -153,7 +153,7 @@ fn default_policy_denies_aes_invalid_key_size() {
 #[actix_web::test]
 async fn e2e_default_policy_denies_aes_invalid_key_size() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
+    conf.kmip_policy.policy_id = "DEFAULT".to_owned();
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let req = Operation::Create(Create {
@@ -175,13 +175,13 @@ async fn e2e_default_policy_denies_aes_invalid_key_size() {
 #[test]
 fn aes_key_sizes_allowlist_denies_non_standard_size() {
     let mut conf = crate::config::ClapConfig::default();
-    conf.kmip.allowlists.aes_key_sizes = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.aes_key_sizes = Some(vec![
         crate::config::AesKeySize::Aes128,
         crate::config::AesKeySize::Aes192,
         crate::config::AesKeySize::Aes256,
     ]);
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    let params = params_with_allowlists(conf);
 
     let op = Operation::Create(Create {
         object_type: ObjectType::SymmetricKey,
@@ -216,13 +216,13 @@ fn default_policy_denies_rsa_too_small() {
 #[test]
 fn rsa_key_sizes_allowlist_denies_non_standard_size() {
     let mut conf = crate::config::ClapConfig::default();
-    conf.kmip.allowlists.rsa_key_sizes = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.rsa_key_sizes = Some(vec![
         crate::config::RsaKeySize::Rsa2048,
         crate::config::RsaKeySize::Rsa3072,
         crate::config::RsaKeySize::Rsa4096,
     ]);
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    let params = params_with_allowlists(conf);
 
     let op = Operation::Create(Create {
         object_type: ObjectType::PublicKey,
@@ -240,9 +240,9 @@ fn rsa_key_sizes_allowlist_denies_non_standard_size() {
 #[test]
 fn default_policy_denies_disallowed_block_cipher_mode_ecb() {
     let mut conf = crate::config::ClapConfig::default();
-    conf.kmip.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
+    let params = params_with_allowlists(conf);
 
     let op = Operation::Encrypt(Box::new(Encrypt {
         unique_identifier: None,
@@ -266,8 +266,8 @@ fn default_policy_denies_disallowed_block_cipher_mode_ecb() {
 #[actix_web::test]
 async fn e2e_default_policy_denies_disallowed_block_cipher_mode_ecb() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-aes-ecb", 256)
@@ -340,9 +340,9 @@ fn default_policy_allows_curve_p256() {
 #[actix_web::test]
 async fn e2e_default_policy_allows_curve_p256() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.curves = Some(vec![RecommendedCurve::P256]);
-    conf.kmip.allowlists.algorithms = Some(vec![
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.curves = Some(vec![RecommendedCurve::P256]);
+    conf.kmip_policy.allowlists.algorithms = Some(vec![
         CryptographicAlgorithm::EC,
         CryptographicAlgorithm::ECDH,
     ]);
@@ -364,9 +364,9 @@ async fn e2e_default_policy_allows_curve_p256() {
 #[test]
 fn default_policy_denies_padding_method_none_allowed_list() {
     let mut conf = crate::config::ClapConfig::default();
-    conf.kmip.allowlists.padding_methods = Some(vec![PaddingMethod::PKCS5]);
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::PKCS5]);
+    let params = params_with_allowlists(conf);
 
     let op = Operation::Encrypt(Box::new(Encrypt {
         unique_identifier: None,
@@ -390,8 +390,8 @@ fn default_policy_denies_padding_method_none_allowed_list() {
 #[actix_web::test]
 async fn e2e_default_policy_denies_padding_method_none_allowed_list() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.padding_methods = Some(vec![PaddingMethod::PKCS5]);
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::PKCS5]);
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-padding-deny", 256)
@@ -418,17 +418,17 @@ async fn e2e_default_policy_denies_padding_method_none_allowed_list() {
 #[test]
 fn enforced_policy_with_empty_allowlists_denies_all_operations() {
     let mut conf = crate::config::ClapConfig::default();
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
 
-    conf.kmip.allowlists.algorithms = Some(vec![]);
-    conf.kmip.allowlists.hashes = Some(vec![]);
-    conf.kmip.allowlists.signature_algorithms = Some(vec![]);
-    conf.kmip.allowlists.curves = Some(vec![]);
-    conf.kmip.allowlists.block_cipher_modes = Some(vec![]);
-    conf.kmip.allowlists.padding_methods = Some(vec![]);
-    conf.kmip.allowlists.mgf_hashes = Some(vec![]);
+    conf.kmip_policy.allowlists.algorithms = Some(vec![]);
+    conf.kmip_policy.allowlists.hashes = Some(vec![]);
+    conf.kmip_policy.allowlists.signature_algorithms = Some(vec![]);
+    conf.kmip_policy.allowlists.curves = Some(vec![]);
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![]);
+    conf.kmip_policy.allowlists.padding_methods = Some(vec![]);
+    conf.kmip_policy.allowlists.mgf_hashes = Some(vec![]);
 
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    let params = params_with_allowlists(conf);
 
     for alg in CryptographicAlgorithm::iter() {
         let create = Operation::Create(Create {

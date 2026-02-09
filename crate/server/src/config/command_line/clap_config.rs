@@ -59,7 +59,7 @@ impl Default for ClapConfig {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
-            kmip: KmipPolicyConfig::default(),
+            kmip_policy: KmipPolicyConfig::default(),
         }
     }
 }
@@ -168,12 +168,15 @@ pub struct ClapConfig {
     ///
     /// This policy is configured via parameter-specific allowlists under `[kmip.allowlists]`.
     ///
-    /// By default, enforcement is disabled (`kmip.enforce = false`) and the server runs without
-    /// KMIP restrictions. When enabled, default allowlists are conservative and aligned with
-    /// ANSSI/NIST/FIPS recommendations.
-    #[clap(skip)]
-    #[serde(default)]
-    pub kmip: KmipPolicyConfig,
+    /// Policy selection is controlled by `kmip.policy_id` (accepted values: `NONE`, `DEFAULT`, `CUSTOM`).
+    ///
+    /// By default, `kmip.policy_id = "NONE"` and the server runs without KMIP restrictions.
+    ///
+    /// When `kmip.policy_id = "DEFAULT"`, built-in conservative allowlists are enforced (aligned
+    /// with ANSSI/NIST/FIPS recommendations).
+    #[clap(flatten)]
+    #[serde(rename = "kmip")]
+    pub kmip_policy: KmipPolicyConfig,
 }
 
 impl ClapConfig {
@@ -359,7 +362,7 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
-        let x = x.field("kmip", &self.kmip);
+        let x = x.field("kmip", &self.kmip_policy);
 
         x.finish()
     }

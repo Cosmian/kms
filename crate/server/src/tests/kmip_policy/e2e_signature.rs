@@ -18,8 +18,8 @@ use crate::{
 #[actix_web::test]
 async fn e2e_signature_algorithm_allowlist_is_enforced_on_sign() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip.enforce = true;
-    conf.kmip.allowlists.signature_algorithms =
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.allowlists.signature_algorithms =
         Some(vec![DigitalSignatureAlgorithm::SHA256WithRSAEncryption]);
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 

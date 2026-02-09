@@ -206,6 +206,32 @@ impl ServerParams {
             })
             .collect();
 
+        let kmip_policy_id = {
+            let normalized = conf.kmip_policy.policy_id.trim().to_ascii_uppercase();
+            if normalized == "NONE" || normalized == "DEFAULT" || normalized == "CUSTOM" {
+                normalized
+            } else {
+                return Err(KmsError::ServerError(format!(
+                    "Invalid kmip.policy_id: '{}'. Valid values are: NONE, DEFAULT, CUSTOM",
+                    conf.kmip_policy.policy_id
+                )));
+            }
+        };
+
+        let kmip_allowlists = match kmip_policy_id.as_str() {
+            // Policy disabled.
+            "NONE" => crate::config::KmipPolicyConfig::unrestricted_allowlists(),
+            // Built-in conservative allowlists.
+            "DEFAULT" => crate::config::KmipAllowlistsConfig::default(),
+            // User-provided allowlists.
+            "CUSTOM" => conf.kmip_policy.allowlists,
+            _ => {
+                return Err(KmsError::ServerError(format!(
+                    "Invalid kmip.policy_id: '{kmip_policy_id}'. Valid values are: NONE, DEFAULT, CUSTOM"
+                )));
+            }
+        };
+
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
@@ -299,18 +325,18 @@ impl ServerParams {
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
             kmip_policy: KmipPolicyParams {
-                enforce: conf.kmip.enforce,
+                policy_id: kmip_policy_id,
                 allowlists: KmipAllowlistsParams {
-                    algorithms: conf.kmip.allowlists.algorithms,
-                    hashes: conf.kmip.allowlists.hashes,
-                    signature_algorithms: conf.kmip.allowlists.signature_algorithms,
-                    curves: conf.kmip.allowlists.curves,
-                    block_cipher_modes: conf.kmip.allowlists.block_cipher_modes,
-                    padding_methods: conf.kmip.allowlists.padding_methods,
-                    mgf_hashes: conf.kmip.allowlists.mgf_hashes,
-                    mask_generators: conf.kmip.allowlists.mask_generators,
-                    rsa_key_sizes: conf.kmip.allowlists.rsa_key_sizes,
-                    aes_key_sizes: conf.kmip.allowlists.aes_key_sizes,
+                    algorithms: kmip_allowlists.algorithms,
+                    hashes: kmip_allowlists.hashes,
+                    signature_algorithms: kmip_allowlists.signature_algorithms,
+                    curves: kmip_allowlists.curves,
+                    block_cipher_modes: kmip_allowlists.block_cipher_modes,
+                    padding_methods: kmip_allowlists.padding_methods,
+                    mgf_hashes: kmip_allowlists.mgf_hashes,
+                    mask_generators: kmip_allowlists.mask_generators,
+                    rsa_key_sizes: kmip_allowlists.rsa_key_sizes,
+                    aes_key_sizes: kmip_allowlists.aes_key_sizes,
                 },
             },
         };
@@ -353,7 +379,7 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("default_unwrap_types", unwrap_types);
         }
 
-        debug_struct.field("kmip_policy_enforce", &self.kmip_policy.enforce);
+        debug_struct.field("kmip_policy_id", &self.kmip_policy.policy_id);
         if let Some(ref wl) = self.kmip_policy.allowlists.algorithms {
             debug_struct.field("kmip_allowed_algorithms", wl);
         }

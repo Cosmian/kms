@@ -24,20 +24,20 @@ use crate::tests::test_utils::{post_2_1, test_app_with_clap_config};
 #[test]
 fn override_allowlists_can_tighten_policy() {
     let mut conf = crate::config::ClapConfig::default();
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
 
-    conf.kmip.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
-    conf.kmip.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
-    conf.kmip.allowlists.signature_algorithms = Some(vec![
+    conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
+    conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
+    conf.kmip_policy.allowlists.signature_algorithms = Some(vec![
         DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
         DigitalSignatureAlgorithm::RSASSAPSS,
     ]);
-    conf.kmip.allowlists.curves = Some(vec![RecommendedCurve::P256]);
-    conf.kmip.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
-    conf.kmip.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
-    conf.kmip.allowlists.mgf_hashes = Some(vec![HashingAlgorithm::SHA512]);
+    conf.kmip_policy.allowlists.curves = Some(vec![RecommendedCurve::P256]);
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
+    conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
+    conf.kmip_policy.allowlists.mgf_hashes = Some(vec![HashingAlgorithm::SHA512]);
 
-    let mut params = params_with_allowlists(conf);
-    params.kmip_policy.enforce = true;
+    let params = params_with_allowlists(conf);
 
     let create_aes = Operation::Create(Create {
         object_type: ObjectType::SymmetricKey,
@@ -82,18 +82,18 @@ fn override_allowlists_can_tighten_policy() {
 #[actix_web::test]
 async fn e2e_override_allowlists_can_tighten_policy() {
     let mut conf = https_clap_config_opts(None);
+    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
 
-    conf.kmip.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
-    conf.kmip.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
-    conf.kmip.allowlists.signature_algorithms = Some(vec![
+    conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
+    conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
+    conf.kmip_policy.allowlists.signature_algorithms = Some(vec![
         DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
         DigitalSignatureAlgorithm::RSASSAPSS,
     ]);
-    conf.kmip.allowlists.curves = Some(vec![RecommendedCurve::P256]);
-    conf.kmip.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
-    conf.kmip.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
-    conf.kmip.allowlists.mgf_hashes = Some(vec![HashingAlgorithm::SHA512]);
-    conf.kmip.enforce = true;
+    conf.kmip_policy.allowlists.curves = Some(vec![RecommendedCurve::P256]);
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
+    conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
+    conf.kmip_policy.allowlists.mgf_hashes = Some(vec![HashingAlgorithm::SHA512]);
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 

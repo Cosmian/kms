@@ -1,20 +1,26 @@
+use clap::Args;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, MaskGenerator, PaddingMethod},
     kmip_2_1::kmip_types::{CryptographicAlgorithm, DigitalSignatureAlgorithm, RecommendedCurve},
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Args)]
+#[serde(default, deny_unknown_fields)]
 pub struct KmipPolicyConfig {
-    /// Enable KMIP algorithm policy enforcement.
+    /// KMIP algorithm policy selector.
     ///
-    /// When `false` (default), the server accepts any KMIP algorithm/parameter values supported
-    /// by the implementation.
-    ///
-    /// When `true`, requests are checked against the allowlists below (or their defaults).
-    /// Requests using a non-allowed algorithm/parameter are rejected.
-    pub enforce: bool,
+    /// Accepted values (case-insensitive):
+    /// - `NONE` (default): do not enforce the KMIP algorithm policy.
+    /// - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST/FIPS).
+    /// - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
+    #[clap(
+        long = "kmip-policy-id",
+        env = "KMS_POLICY_ID",
+        default_value = "NONE",
+        verbatim_doc_comment
+    )]
+    pub policy_id: String,
 
     /// Parameter-specific allowlists.
     ///
@@ -22,7 +28,39 @@ pub struct KmipPolicyConfig {
     /// against KMIP enum Display names.
     ///
     /// If a list is `None`, no allowlist restriction is applied for that parameter.
+    #[clap(skip)]
+    #[serde(default = "KmipPolicyConfig::unrestricted_allowlists")]
     pub allowlists: KmipAllowlistsConfig,
+}
+
+impl KmipPolicyConfig {
+    /// Unrestricted allowlists (all `None`). Useful as the default when policy selection is
+    /// `CUSTOM` but no explicit restrictions are provided.
+    #[must_use]
+    pub const fn unrestricted_allowlists() -> KmipAllowlistsConfig {
+        KmipAllowlistsConfig {
+            algorithms: None,
+            hashes: None,
+            signature_algorithms: None,
+            curves: None,
+            block_cipher_modes: None,
+            padding_methods: None,
+            rsa_key_sizes: None,
+            aes_key_sizes: None,
+            mgf_hashes: None,
+            mask_generators: None,
+        }
+    }
+}
+
+impl Default for KmipPolicyConfig {
+    fn default() -> Self {
+        // The default profile can be enabled by setting `kmip.policy_id = "DEFAULT"`.
+        Self {
+            policy_id: "NONE".to_owned(),
+            allowlists: Self::unrestricted_allowlists(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,37 +118,37 @@ pub struct KmipAllowlistsConfig {
     /// Allowed KMIP `CryptographicAlgorithm` values (e.g. "AES", "RSA").
     ///
     /// - `None`: do not restrict algorithms (any supported algorithm is accepted).
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub algorithms: Option<Vec<CryptographicAlgorithm>>,
 
     /// Allowed KMIP `HashingAlgorithm` values used by operations like Hash / MAC / MGF.
     ///
     /// - `None`: do not restrict hashes.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub hashes: Option<Vec<HashingAlgorithm>>,
 
     /// Allowed KMIP `DigitalSignatureAlgorithm` values (e.g. `ECDSAWithSHA256`).
     ///
     /// - `None`: do not restrict signature algorithms.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub signature_algorithms: Option<Vec<DigitalSignatureAlgorithm>>,
 
     /// Allowed KMIP `RecommendedCurve` values for EC keys (e.g. "P256", "CURVE25519").
     ///
     /// - `None`: do not restrict curves.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub curves: Option<Vec<RecommendedCurve>>,
 
     /// Allowed KMIP `BlockCipherMode` values (e.g. "GCM", "XTS").
     ///
     /// - `None`: do not restrict modes.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub block_cipher_modes: Option<Vec<BlockCipherMode>>,
 
     /// Allowed KMIP `PaddingMethod` values (e.g. "OAEP", "PSS", `PKCS1v15`).
     ///
     /// - `None`: do not restrict paddings.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub padding_methods: Option<Vec<PaddingMethod>>,
 
     /// Allowed RSA key sizes (in bits), matched against KMIP `CryptographicLength`.
@@ -118,7 +156,7 @@ pub struct KmipAllowlistsConfig {
     /// Example: `[3072, 4096]`.
     ///
     /// - `None`: do not restrict RSA key sizes.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub rsa_key_sizes: Option<Vec<RsaKeySize>>,
 
     /// Allowed AES key sizes (in bits), matched against KMIP `CryptographicLength`.
@@ -126,13 +164,13 @@ pub struct KmipAllowlistsConfig {
     /// Example: `[128, 192, 256]`.
     ///
     /// - `None`: do not restrict AES key sizes.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub aes_key_sizes: Option<Vec<AesKeySize>>,
 
     /// Allowed mask generator hash values (MGF1), used by RSA-OAEP / RSA-PSS.
     ///
     /// - `None`: do not restrict MGF hashes.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub mgf_hashes: Option<Vec<HashingAlgorithm>>,
 
     /// Allowed KMIP `MaskGenerator` values (e.g. "MGF1").
@@ -140,7 +178,7 @@ pub struct KmipAllowlistsConfig {
     /// This is used by RSA-OAEP / RSA-PSS.
     ///
     /// - `None`: do not restrict mask generators.
-    /// - `[]` (empty): reject everything when `kmip.enforce = true`.
+    /// - `[]` (empty): reject everything when the policy is enforced.
     pub mask_generators: Option<Vec<MaskGenerator>>,
 }
 
@@ -148,7 +186,7 @@ pub struct KmipAllowlistsConfig {
 impl Default for KmipAllowlistsConfig {
     fn default() -> Self {
         // Default is a conservative, recommended allowlist aligned with ANSSI/NIST/FIPS guidance.
-        // Enforcement is gated by `kmip.enforce`.
+        // Enforcement is controlled by `kmip.policy_id`.
         #[cfg(feature = "non-fips")]
         let algorithms = vec![
             // AES: the default symmetric primitive for encryption/wrapping (widest KMIP support).
@@ -168,7 +206,7 @@ impl Default for KmipAllowlistsConfig {
             CryptographicAlgorithm::ChaCha20Poly1305,
             CryptographicAlgorithm::Ed25519,
             // ECIES fixed internal KDF/hash for standard curves uses SHAKE128.
-            // When `kmip.enforce = true`, ECIES is denied unless SHAKE128 is allowlisted.
+            // When policy is enforced, ECIES is denied unless SHAKE128 is allowlisted.
             CryptographicAlgorithm::SHAKE128,
             // Standard curves P-384/P-521 use SHAKE256 internally.
             // In strict mode (when the exact curve is not known), ECIES requires both SHAKE128 and SHAKE256.
