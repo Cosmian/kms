@@ -487,6 +487,10 @@ test_command() {
   if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_HSM=1
   fi
+  # For WASM/UI tests, ensure shell.nix includes Node.js + wasm-pack (+ pnpm).
+  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "all" ]; then
+    export WITH_WASM=1
+  fi
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
@@ -507,6 +511,7 @@ test_command() {
         --keep WITH_CURL \
         --keep WITH_DOCKER \
         --keep WITH_HSM \
+        --keep WITH_WASM \
           --keep WITH_PYTHON \
           --keep VARIANT \
           --keep LINK \
@@ -794,10 +799,11 @@ run_in_nix_shell() {
       EXTRA_PKGS=""
     else
       if [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "wasm" ]; then
-        PURE_FLAG=""
-        KEEP_ARGS=""
-        EXTRA_PKGS="-p nodejs wasm-pack"
-        SHELL_PATH="<nixpkgs>"
+        # Use the project shell.nix so the server build uses nix/openssl.nix.
+        PURE_FLAG="--pure"
+        KEEP_ARGS="$KEEP_VARS"
+        EXTRA_PKGS=""
+        SHELL_PATH="$REPO_ROOT/shell.nix"
       elif [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "otel_export" ]; then
         PURE_FLAG=""
       else

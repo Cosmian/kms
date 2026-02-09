@@ -1,7 +1,0 @@
----
-# KMS server only (default args) for UI integration tests
-services:
-    kms:
-        image: ghcr.io/cosmian/kms:5.15.0
-        ports:
-            - 9998:9998

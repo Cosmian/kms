@@ -2,31 +2,29 @@
 set -euo pipefail
 
 # Run wasm tests for cosmian_kms_client_wasm
-REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
-# Parse optional flags
-PROFILE="${PROFILE:-${BUILD_PROFILE:-debug}}"
-VARIANT="${VARIANT:-fips}"
-while [ $# -gt 0 ]; do
-  case "$1" in
-  --profile)
-    PROFILE="${2:-$PROFILE}"
-    shift 2 || true
-    ;;
-  --variant)
-    VARIANT="${2:-$VARIANT}"
-    shift 2 || true
-    ;;
-  --)
-    shift
-    break
-    ;;
-  *)
-    break
-    ;;
-  esac
-done
+init_build_env "$@"
+setup_test_logging
+
+ensure_wasm_target() {
+  if [ -d "$(rustc --print sysroot 2>/dev/null)/lib/rustlib/wasm32-unknown-unknown/lib" ]; then
+    return 0
+  fi
+
+  if command -v rustup >/dev/null 2>&1; then
+    rustup target add wasm32-unknown-unknown
+  fi
+
+  if [ ! -d "$(rustc --print sysroot 2>/dev/null)/lib/rustlib/wasm32-unknown-unknown/lib" ]; then
+    echo "Error: wasm32-unknown-unknown target is not installed (and rustup is unavailable to install it)" >&2
+    exit 1
+  fi
+}
 
 node_major_version() {
   if ! command -v node >/dev/null 2>&1; then
@@ -50,16 +48,6 @@ if [ "${IN_NIX_NODE_SHELL:-0}" != "1" ]; then
   fi
 fi
 
-FEATURES_ARGS=()
-if [ "$VARIANT" = "non-fips" ]; then
-  FEATURES_ARGS+=(--features non-fips)
-fi
-
-PROFILE_ARGS=()
-if [ "$PROFILE" = "release" ]; then
-  PROFILE_ARGS+=(--release)
-fi
-
 # In the Nix CI/test environment we don't necessarily have rustup, extra Rust std
 # components, Node.js, or a browser available. Since WASM tests are an optional
 # tier, skip them there when prerequisites are missing.
@@ -67,19 +55,24 @@ if [ -n "${IN_NIX_SHELL:-}" ]; then
   # Prefer the Node runner; without it, the script would fall back to a browser
   # runner which is typically unavailable in minimal Nix shells.
   if ! command -v node >/dev/null 2>&1; then
-    echo "Skipping WASM tests in Nix shell: Node.js is not available"
-    exit 0
-  fi
-
-  sysroot="$(rustc --print sysroot 2>/dev/null || true)"
-  if [ -z "$sysroot" ] || [ ! -d "$sysroot/lib/rustlib/wasm32-unknown-unknown/lib" ]; then
-    echo "Skipping WASM tests in Nix shell: wasm32-unknown-unknown target is not installed"
-    exit 0
+    echo "Error: Node.js is not available (required for WASM tests in this environment)" >&2
+    exit 1
   fi
 fi
 
 ensure_pnpm() {
-  if command -v pnpm >/dev/null 2>&1; then
+  pnpm_major_version() {
+    if ! command -v pnpm >/dev/null 2>&1; then
+      echo 0
+      return 0
+    fi
+    local v
+    v="$(pnpm --version 2>/dev/null || true)"
+    echo "${v%%.*}"
+  }
+
+  pnpm_major="$(pnpm_major_version)"
+  if [ "$pnpm_major" -ge 9 ]; then
     return 0
   fi
 
@@ -88,7 +81,8 @@ ensure_pnpm() {
     corepack prepare pnpm@9 --activate >/dev/null 2>&1 || true
   fi
 
-  if command -v pnpm >/dev/null 2>&1; then
+  pnpm_major="$(pnpm_major_version)"
+  if [ "$pnpm_major" -ge 9 ]; then
     return 0
   fi
 
@@ -100,21 +94,33 @@ ensure_pnpm() {
   # Avoid installing into read-only prefixes (e.g. /nix/store). Prefer a
   # user-writable prefix and update PATH.
   if npm install -g pnpm@9 >/dev/null 2>&1; then
-    return 0
+    pnpm_major="$(pnpm_major_version)"
+    [ "$pnpm_major" -ge 9 ] && return 0
   fi
 
   local prefix_dir
   prefix_dir="${PNPM_PREFIX_DIR:-$HOME/.local}"
   npm install -g pnpm@9 --prefix "$prefix_dir" >/dev/null
   export PATH="$prefix_dir/bin:$PATH"
+
+  pnpm_major="$(pnpm_major_version)"
+  [ "$pnpm_major" -ge 9 ]
+}
+
+run_ui() {
+  (
+    cd ui
+    unset OPENSSL_CONF OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
+    "$@"
+  )
 }
 
 # nix.sh runs this script *inside* a nix-shell for wasm tests (nodejs + wasm-pack).
 # Keep this script runnable standalone too.
 if ! command -v wasm-pack >/dev/null 2>&1; then
   if command -v nix-shell >/dev/null 2>&1; then
-    nix-shell -p nodejs wasm-pack --run "cd '$REPO_ROOT/crate/wasm' && wasm-pack test --node ${PROFILE_ARGS[*]} ${FEATURES_ARGS[*]}"
-    exit 0
+    printf -v quoted_args '%q ' "$@"
+    exec nix-shell -p nodejs wasm-pack --run "cd '$REPO_ROOT' && IN_NIX_NODE_SHELL=1 bash .github/scripts/test_wasm.sh ${quoted_args}"
   fi
   echo "Error: wasm-pack not available (expected nix-shell or cargo-installed wasm-pack)." >&2
   exit 1
@@ -125,15 +131,34 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v rustc >/dev/null 2>&1; then
+  echo "Error: rustc not found (wasm-pack requires Rust toolchain)." >&2
+  exit 1
+fi
+
+ensure_wasm_target
+
 if command -v node >/dev/null 2>&1; then
-  (cd crate/wasm && wasm-pack test --node "${PROFILE_ARGS[@]}" "${FEATURES_ARGS[@]}")
+  if [ -n "${RELEASE_FLAG:-}" ]; then
+    (cd crate/wasm && wasm-pack test --node "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+  else
+    (cd crate/wasm && wasm-pack test --node "${FEATURES_FLAG[@]}")
+  fi
 else
   echo "Node.js not found; falling back to Chrome headless" >&2
-  (cd crate/wasm && RUSTFLAGS="--cfg wasm_test_browser" wasm-pack test --headless --chrome "${PROFILE_ARGS[@]}" "${FEATURES_ARGS[@]}")
+  if [ -n "${RELEASE_FLAG:-}" ]; then
+    (cd crate/wasm && RUSTFLAGS="--cfg wasm_test_browser" wasm-pack test --headless --chrome "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+  else
+    (cd crate/wasm && RUSTFLAGS="--cfg wasm_test_browser" wasm-pack test --headless --chrome "${FEATURES_FLAG[@]}")
+  fi
 fi
 
 # Build the web-target WASM package and run React unit tests using the real artifacts.
-(cd crate/wasm && wasm-pack build --target web "${PROFILE_ARGS[@]}" "${FEATURES_ARGS[@]}")
+if [ -n "${RELEASE_FLAG:-}" ]; then
+  (cd crate/wasm && wasm-pack build --target web "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+else
+  (cd crate/wasm && wasm-pack build --target web "${FEATURES_FLAG[@]}")
+fi
 
 WASM_DIR="ui/src/wasm"
 rm -rf "$WASM_DIR"
@@ -154,36 +179,105 @@ if (!pkg.main) {
 NODE
 fi
 
-if [ -f ui/pnpm-lock.yaml ]; then
-  ensure_pnpm
-  (cd ui && pnpm install --frozen-lockfile && pnpm run lint && pnpm run test:unit)
+if [ -n "${IN_NIX_SHELL:-}" ] && [ -f ui/package-lock.json ]; then
+  run_ui npm ci
+  run_ui npm run lint
+  run_ui npm run test:unit
+elif [ -f ui/pnpm-lock.yaml ]; then
+  if ensure_pnpm; then
+    run_ui pnpm install --frozen-lockfile
+    run_ui pnpm run lint
+    run_ui pnpm run test:unit
+  elif [ -f ui/package-lock.json ]; then
+    run_ui npm ci
+    run_ui npm run lint
+    run_ui npm run test:unit
+  else
+    run_ui npm install
+    run_ui npm run lint
+    run_ui npm run test:unit
+  fi
 elif [ -f ui/package-lock.json ]; then
-  (cd ui && npm ci && npm run lint && npm run test:unit)
+  run_ui npm ci
+  run_ui npm run lint
+  run_ui npm run test:unit
 else
-  (cd ui && npm install && npm run lint && npm run test:unit)
+  run_ui npm install
+  run_ui npm run lint
+  run_ui npm run test:unit
 fi
 
-# Run UI integration tests against a local dockerized KMS (when Docker is available).
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  if [ -f ui/docker-compose.yml ]; then
-    echo "Starting KMS server for UI integration tests (docker compose)…" >&2
-    docker compose -f ui/docker-compose.yml up -d
-    cleanup() {
-      docker compose -f ui/docker-compose.yml down >/dev/null 2>&1 || true
-    }
-    trap cleanup EXIT
+# Run UI integration tests against a locally started KMS server.
+# Always run the server in debug (no --release), even if wasm/ui builds are in release.
+if command -v cargo >/dev/null 2>&1; then
+  echo "Starting KMS server for UI integration tests (cargo run)…" >&2
 
-    if [ -f ui/pnpm-lock.yaml ]; then
-      ensure_pnpm
-      (cd ui && KMS_URL="http://localhost:9998" pnpm run test:integration)
-    elif [ -f ui/package-lock.json ]; then
-      (cd ui && KMS_URL="http://localhost:9998" npm run test:integration)
-    else
-      (cd ui && KMS_URL="http://localhost:9998" npm run test:integration)
+  KMS_SQLITE_DIR="${KMS_SQLITE_DIR:-}"
+  if [ -z "$KMS_SQLITE_DIR" ]; then
+    KMS_SQLITE_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t kms-ui-integration)"
+  fi
+
+  KMS_LOG_FILE="${KMS_LOG_FILE:-/tmp/kms-ui-integration.log}"
+  : >"$KMS_LOG_FILE"
+
+  cargo run -p cosmian_kms_server --bin cosmian_kms "${FEATURES_FLAG[@]}" -- \
+    --database-type sqlite \
+    --sqlite-path "$KMS_SQLITE_DIR" \
+    --hostname 127.0.0.1 \
+    --port 9998 \
+    >"$KMS_LOG_FILE" 2>&1 &
+
+  kms_pid="$!"
+  cleanup() {
+    if kill -0 "$kms_pid" >/dev/null 2>&1; then
+      kill "$kms_pid" >/dev/null 2>&1 || true
+      wait "$kms_pid" >/dev/null 2>&1 || true
+    fi
+    if [ -n "${KMS_SQLITE_DIR:-}" ] && [ -d "$KMS_SQLITE_DIR" ]; then
+      rm -rf "$KMS_SQLITE_DIR" >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup EXIT
+
+  # Wait for the server to accept connections (may take time on cold builds).
+  if command -v curl >/dev/null 2>&1; then
+    ready=0
+    for _i in {1..300}; do
+      if ! kill -0 "$kms_pid" >/dev/null 2>&1; then
+        echo "Error: KMS server exited before becoming ready (see $KMS_LOG_FILE)" >&2
+        tail -n 120 "$KMS_LOG_FILE" >&2 || true
+        exit 1
+      fi
+      if curl -sS --max-time 1 -o /dev/null "http://127.0.0.1:9998/"; then
+        ready=1
+        break
+      fi
+      sleep 1
+    done
+
+    if [ "$ready" = "0" ]; then
+      echo "Error: KMS server did not become ready in time (see $KMS_LOG_FILE)" >&2
+      tail -n 120 "$KMS_LOG_FILE" >&2 || true
+      exit 1
     fi
   else
-    echo "Warning: ui/docker-compose.yml not found; skipping UI integration tests" >&2
+    sleep 2
+  fi
+
+  if [ -n "${IN_NIX_SHELL:-}" ] && [ -f ui/package-lock.json ]; then
+    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
+  elif [ -f ui/pnpm-lock.yaml ]; then
+    if ensure_pnpm; then
+      KMS_URL="http://127.0.0.1:9998" run_ui pnpm run test:integration
+    else
+      KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
+    fi
+  elif [ -f ui/package-lock.json ]; then
+    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
+  else
+    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
   fi
 else
-  echo "Warning: docker/docker compose not available; skipping UI integration tests" >&2
+  echo "Error: cargo not available; cannot run UI integration tests" >&2
+  exit 1
 fi

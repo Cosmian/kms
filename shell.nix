@@ -36,6 +36,15 @@ let
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
+  withWasm = (builtins.getEnv "WITH_WASM") == "1";
+
+  rustToolchain =
+    if withWasm then
+      pkgs.rust-bin.stable.latest.default.override {
+        targets = [ "wasm32-unknown-unknown" ];
+      }
+    else
+      pkgs.rust-bin.stable.latest.default;
   # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds
   openssl312Fips = import ./nix/openssl.nix {
     inherit (pkgs)
@@ -79,9 +88,18 @@ pkgs.mkShell {
     pkgs.openssl
     pkgs.pkg-config
     pkgs.gcc
-    pkgs.rust-bin.stable.latest.default
+    rustToolchain
     opensslFipsBootstrap
   ]
+  ++ (
+    if withWasm then
+      [
+        pkgs.nodejs
+        pkgs.wasm-pack
+      ]
+    else
+      [ ]
+  )
   ++ (if withCurl then [ pkgs.curl ] else [ ])
   ++ (
     if withHsm then
