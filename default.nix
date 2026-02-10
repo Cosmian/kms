@@ -143,7 +143,7 @@ let
       sha256 = "sha256-esp3MJ24RQpMFn9zPgccp7NESoFAUPU7y+YRsJBVVr4=";
     };
     # Pinned cargo vendor hash for reproducible builds
-    cargoSha256 = "sha256-vXb6O9xoYRVAbFGlhbPE6xYYqjSWT/fvoXYl4dkMxEg=";
+    cargoSha256 = "sha256-mUsoPBgv60Eir/uIK+Xe+GmXdSFKXoopB4PlvFvHZuA=";
     nativeBuildInputs = [
       rustToolchain
       pkgs.pkg-config
