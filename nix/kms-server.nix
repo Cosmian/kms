@@ -1,12 +1,12 @@
 {
   pkgs ? import <nixpkgs> { },
-  pkgs228 ? pkgs, # Older nixpkgs with glibc 2.27 (for flake builds)
+  pkgs240 ? pkgs, # nixpkgs 24.11 with glibc 2.40 (Debian 13 compatibility)
   lib ? pkgs.lib,
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
   openssl312 ? null,
   # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
-  # links against pkgs228 (glibc 2.27) on Linux for maximum compatibility.
+  # links against pkgs240 (glibc 2.40) on Linux for Debian 13 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)
   version,
@@ -24,9 +24,9 @@
 let
   isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
   baseVariant = if isFips then "fips" else "non-fips";
-  # Use older nixpkgs (pkgs228) to build OpenSSL on Linux to ensure
-  # glibc compatibility (avoid __isoc23_strtol symbol mismatches).
-  opensslPkgs = if pkgs.stdenv.isLinux then pkgs228 else pkgs;
+  # Use nixpkgs 24.11 (pkgs240) to build OpenSSL on Linux to ensure
+  # glibc 2.40 compatibility (Debian 13).
+  opensslPkgs = if pkgs.stdenv.isLinux then pkgs240 else pkgs;
   # Construct OpenSSL 3.6.0 (main) and 3.1.2 (FIPS provider) if not provided
   openssl36_ =
     if openssl36 != null then
@@ -194,10 +194,10 @@ let
         ldd "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
       ''}
 
-      # Check GLIBC version <= 2.28 (Linux only)
+      # Check GLIBC version <= 2.40 (Linux only, Debian 13 compatibility)
       MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
-      [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {
-        echo "ERROR: GLIBC $MAX_VER > 2.28"; exit 1;
+      [ "$(printf '%s\n' "$MAX_VER" "2.40" | sort -V | tail -n1)" = "2.40" ] || {
+        echo "ERROR: GLIBC $MAX_VER > 2.40"; exit 1;
       }
 
       # Deterministic hash check
@@ -481,7 +481,7 @@ rustPlatform.buildRustPackage rec {
     uiPath = ui;
     src = filteredSrc;
     inherit version;
-    hostTriple = pkgs228.stdenv.hostPlatform.config;
+    hostTriple = pkgs240.stdenv.hostPlatform.config;
   };
 
   meta = with lib; {

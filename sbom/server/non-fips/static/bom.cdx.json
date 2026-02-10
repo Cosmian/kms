@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:e5a18fdc-0425-4c87-b864-157b75ff67dc",
+  "serialNumber": "urn:uuid:2287d647-0754-41c9-b185-7f02830a9c33",
   "metadata": {
-    "timestamp": "2026-01-04T09:21:47.785041+01:00",
+    "timestamp": "2026-02-10T14:08:36.216341+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,19 +20,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv",
+      "bom-ref": "/nix/store/wjw9vx3jr7pfcifxcd594kbxg2hcjxf4-cosmian-kms-server-rebuild-1-5.15.0.drv",
       "name": "cosmian-kms-server-rebuild-1",
-      "version": "5.14.1",
-      "purl": "pkg:nix/cosmian-kms-server-rebuild-1@5.14.1",
-      "cpe": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.14.1:*:*:*:*:*:*:*",
+      "version": "5.15.0",
+      "purl": "pkg:nix/cosmian-kms-server-rebuild-1@5.15.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.15.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/m50237gj93rj6f5kfh1pkh8kax83ld3v-cosmian-kms-server-rebuild-1-5.14.1"
+          "value": "/nix/store/iaivdnvw9wqlm739pr8gr4q3cki5d36c-cosmian-kms-server-rebuild-1-5.15.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv"
+          "value": "/nix/store/wjw9vx3jr7pfcifxcd594kbxg2hcjxf4-cosmian-kms-server-rebuild-1-5.15.0.drv"
         }
       ]
     }
@@ -40,155 +40,61 @@
   "components": [
     {
       "type": "library",
-      "bom-ref": "/nix/store/cffvxixn9i2255mld565r7k14m8k37zk-acl-2.2.53.drv",
-      "name": "acl-2.2.53",
-      "version": "",
-      "purl": "pkg:nix/acl-2.2.53",
-      "cpe": "cpe:2.3:a:acl-2.2.53:acl-2.2.53::*:*:*:*:*:*:*",
+      "bom-ref": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv",
+      "name": "glibc",
+      "version": "2.40-66",
+      "purl": "pkg:nix/glibc@2.40-66",
+      "cpe": "cpe:2.3:a:glibc:glibc:2.40-66:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/5s4v1ska7pgdfj4brzkcab9kq56a0jzc-acl-2.2.53"
+          "value": "/nix/store/5m9amsvvh2z8sl7jrnc87hzy21glw6k1-glibc-2.40-66"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/cffvxixn9i2255mld565r7k14m8k37zk-acl-2.2.53.drv"
+          "value": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/72gw72p0c8vbinx422awrps821rpy45d-attr-2.4.48.drv",
-      "name": "attr-2.4.48",
-      "version": "",
-      "purl": "pkg:nix/attr-2.4.48",
-      "cpe": "cpe:2.3:a:attr-2.4.48:attr-2.4.48::*:*:*:*:*:*:*",
+      "bom-ref": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
+      "name": "libidn2",
+      "version": "2.3.7",
+      "purl": "pkg:nix/libidn2@2.3.7",
+      "cpe": "cpe:2.3:a:gnu:libidn2:2.3.7:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/jyxphfkij1il4ip6y34832v9gakg3pqy-attr-2.4.48"
+          "value": "/nix/store/c47b963idja6h1d8n91pf28v2jcq96kp-libidn2-2.3.7"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/72gw72p0c8vbinx422awrps821rpy45d-attr-2.4.48.drv"
+          "value": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/32lyy7qa3c7diagyk5ixpzlizmjwc2sd-coreutils-8.30.drv",
-      "name": "coreutils-8.30",
-      "version": "",
-      "purl": "pkg:nix/coreutils-8.30",
-      "cpe": "cpe:2.3:a:coreutils-8.30:coreutils-8.30::*:*:*:*:*:*:*",
+      "bom-ref": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv",
+      "name": "libunistring",
+      "version": "1.2",
+      "purl": "pkg:nix/libunistring@1.2",
+      "cpe": "cpe:2.3:a:libunistring:libunistring:1.2:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/q2s80z6hhw1gi3wa14v5a1zppkqk9c2p-coreutils-8.30"
+          "value": "/nix/store/2745pvn6cv32yn9gp2rlqiqhqgs01pb5-libunistring-1.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/32lyy7qa3c7diagyk5ixpzlizmjwc2sd-coreutils-8.30.drv"
+          "value": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv",
-      "name": "gcc-7.4.0",
-      "version": "",
-      "purl": "pkg:nix/gcc-7.4.0",
-      "cpe": "cpe:2.3:a:gcc-7.4.0:gcc-7.4.0::*:*:*:*:*:*:*",
-      "properties": [
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/0dr9rz1qjvxlg9mnknw5ycaj51mwc6ji-gcc-7.4.0"
-        },
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/f09zmq3sqiy0dnx8g4f1arngkjd4kih7-gcc-7.4.0-lib"
-        },
-        {
-          "name": "nix:drv_path",
-          "value": "/nix/store/srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv",
-      "name": "glibc-2.27",
-      "version": "2.27",
-      "purl": "pkg:nix/glibc-2.27@2.27",
-      "cpe": "cpe:2.3:a:glibc-2.27:glibc-2.27:2.27:*:*:*:*:*:*:*",
-      "pedigree": {
-        "patches": [
-          {
-            "type": "unofficial",
-            "resolves": [
-              {
-                "type": "security",
-                "id": "CVE-2018-11236",
-                "references": [
-                  "file:///nix/store/fzcpm4yl1svg3ghp0p7q0y89d2bs178c-CVE-2018-11236.patch"
-                ]
-              }
-            ]
-          },
-          {
-            "type": "unofficial",
-            "resolves": [
-              {
-                "type": "security",
-                "id": "CVE-2018-11237",
-                "references": [
-                  "file:///nix/store/phcbxfjh8mrq3bkdyjrv6f8gw9gdi609-CVE-2018-11237.patch"
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "properties": [
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/g5ga1j3q4nla5w5x45sh3n4rjjb0qdb6-glibc-2.27-bin"
-        },
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/h0p0h3rh1q4i2yavzm3yqi716s9yaj2f-glibc-2.27"
-        },
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/lxjv8m13lqrllzgs1vxjlx36m5rbpb4s-glibc-2.27-dev"
-        },
-        {
-          "name": "nix:drv_path",
-          "value": "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "/nix/store/3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv",
-      "name": "linux-headers-4.19.16",
-      "version": "",
-      "purl": "pkg:nix/linux-headers-4.19.16",
-      "cpe": "cpe:2.3:a:linux-headers-4.19.16:linux-headers-4.19.16::*:*:*:*:*:*:*",
-      "properties": [
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/5lyvydxv0w4f2s1ba84pjlbpvqkgn1ni-linux-headers-4.19.16"
-        },
-        {
-          "name": "nix:drv_path",
-          "value": "/nix/store/3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "/nix/store/8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
+      "bom-ref": "/nix/store/160qs2fr4f386wg0101k4lnk1vnqhwj2-openssl-3.6.0.drv",
       "name": "openssl",
       "version": "3.6.0",
       "purl": "pkg:nix/openssl@3.6.0",
@@ -196,115 +102,64 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/x7p2n3pgzk256q3ffby4j2rdm84a44p9-openssl-3.6.0"
+          "value": "/nix/store/hxk1cf86ws5ni6yzj5hl5n063i51gci2-openssl-3.6.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv"
+          "value": "/nix/store/160qs2fr4f386wg0101k4lnk1vnqhwj2-openssl-3.6.0.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv",
-      "name": "perl-5.28.1",
-      "version": "5.28.1",
-      "purl": "pkg:nix/perl-5.28.1@5.28.1",
-      "cpe": "cpe:2.3:a:perl-5.28.1:perl-5.28.1:5.28.1:*:*:*:*:*:*:*",
+      "bom-ref": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv",
+      "name": "xgcc",
+      "version": "13.3.0",
+      "purl": "pkg:nix/xgcc@13.3.0",
+      "cpe": "cpe:2.3:a:xgcc:xgcc:13.3.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/3ihhfch33n7s8rmglbqlsr1770vpqk3m-perl-5.28.1"
+          "value": "/nix/store/y4d9iir0yqmrcswaqfi368d8m1rkv14s-xgcc-13.3.0-libgcc"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "/nix/store/r8gwvrii05723baxmcdiamyibvrwp19g-zlib-1.2.11.drv",
-      "name": "zlib-1.2.11",
-      "version": "1.2.11",
-      "purl": "pkg:nix/zlib-1.2.11@1.2.11",
-      "cpe": "cpe:2.3:a:zlib-1.2.11:zlib-1.2.11:1.2.11:*:*:*:*:*:*:*",
-      "properties": [
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/0f1bal83favkgrr5mp5crw9mqrzi85b7-zlib-1.2.11"
-        },
-        {
-          "name": "nix:drv_path",
-          "value": "/nix/store/r8gwvrii05723baxmcdiamyibvrwp19g-zlib-1.2.11.drv"
+          "value": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
         }
       ]
     }
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/cffvxixn9i2255mld565r7k14m8k37zk-acl-2.2.53.drv",
+      "ref": "/nix/store/wjw9vx3jr7pfcifxcd594kbxg2hcjxf4-cosmian-kms-server-rebuild-1-5.15.0.drv",
       "dependsOn": [
-        "/nix/store/72gw72p0c8vbinx422awrps821rpy45d-attr-2.4.48.drv",
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
+        "/nix/store/160qs2fr4f386wg0101k4lnk1vnqhwj2-openssl-3.6.0.drv"
       ]
     },
     {
-      "ref": "/nix/store/72gw72p0c8vbinx422awrps821rpy45d-attr-2.4.48.drv",
+      "ref": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv",
       "dependsOn": [
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
+        "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
+        "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
       ]
     },
     {
-      "ref": "/nix/store/32lyy7qa3c7diagyk5ixpzlizmjwc2sd-coreutils-8.30.drv",
+      "ref": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
       "dependsOn": [
-        "/nix/store/72gw72p0c8vbinx422awrps821rpy45d-attr-2.4.48.drv",
-        "/nix/store/cffvxixn9i2255mld565r7k14m8k37zk-acl-2.2.53.drv",
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
+        "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
       ]
     },
     {
-      "ref": "/nix/store/mmw6psyijxqhzn904xnq1hiffzj9qbdf-cosmian-kms-server-rebuild-1-5.14.1.drv",
+      "ref": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
+    },
+    {
+      "ref": "/nix/store/160qs2fr4f386wg0101k4lnk1vnqhwj2-openssl-3.6.0.drv",
       "dependsOn": [
-        "/nix/store/8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv"
+        "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv"
       ]
     },
     {
-      "ref": "/nix/store/srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv",
-      "dependsOn": [
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv",
-        "/nix/store/r8gwvrii05723baxmcdiamyibvrwp19g-zlib-1.2.11.drv"
-      ]
-    },
-    {
-      "ref": "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv",
-      "dependsOn": [
-        "/nix/store/3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv"
-      ]
-    },
-    {
-      "ref": "/nix/store/3ixypiqybv0f4zfcv1qhdn4kald479py-linux-headers-4.19.16.drv"
-    },
-    {
-      "ref": "/nix/store/8j0mj6mv24amdvapai2zmljcgkgzb33b-openssl-3.6.0.drv",
-      "dependsOn": [
-        "/nix/store/204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv",
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv",
-        "/nix/store/srsapnr4pgjmkpbfjfb4cm29a7f19l2y-gcc-7.4.0.drv"
-      ]
-    },
-    {
-      "ref": "/nix/store/204zd94fggzj9zdn1za5gm73mhaz9ic3-perl-5.28.1.drv",
-      "dependsOn": [
-        "/nix/store/32lyy7qa3c7diagyk5ixpzlizmjwc2sd-coreutils-8.30.drv",
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
-      ]
-    },
-    {
-      "ref": "/nix/store/r8gwvrii05723baxmcdiamyibvrwp19g-zlib-1.2.11.drv",
-      "dependsOn": [
-        "/nix/store/iyx2bcg592imcfw8rg0fv3pjlar5ic1q-glibc-2.27.drv"
-      ]
+      "ref": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
     }
   ]
 }
