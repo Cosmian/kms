@@ -54,8 +54,9 @@ echo "Fetching failed jobs..."
 
 # Get all failed jobs from this run (id + name)
 # We rely on the job name to infer platform/linkage for server vendor hashes.
+# Filter out ARM and Docker builds to speed up the process (keep Ubuntu x86_64 and macOS only)
 FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
+  --jq '.jobs[] | select(.conclusion == "failure") | select(.name | test("arm|docker"; "i") | not) | [.id, .name] | @tsv' 2>/dev/null || echo "")
 
 if [ -z "$FAILED_JOBS" ]; then
   echo "No failed jobs found in run $RUN_ID. Nothing to update."
