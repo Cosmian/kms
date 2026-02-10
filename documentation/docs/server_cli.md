@@ -377,6 +377,17 @@ Options:
           List of users who have the right to create and import Objects
           and grant access rights for Create Kmip Operation.
 
+      --kmip-policy-id <POLICY_ID>
+          KMIP algorithm policy selector.
+          
+          Accepted values (case-insensitive):
+          - `NONE` (default): do not enforce the KMIP algorithm policy.
+          - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST).
+          - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
+          
+          [env: KMS_POLICY_ID=]
+          [default: NONE]
+
   -h, --help
           Print help (see a summary with '-h')
 
