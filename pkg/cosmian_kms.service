@@ -14,13 +14,18 @@ Environment="OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf"
 Environment="OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules"
 StandardOutput=journal+console
 
+# Runtime directories (created automatically by systemd)
+StateDirectory=cosmian
+LogsDirectory=cosmian
+
 # Hardening: Filesystem protections
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/var/lib/cosmian /var/log/cosmian /etc/cosmian
-NoExecPaths=/
-ExecPaths=/usr/sbin /usr/bin /usr/local/cosmian
+
+# Avoid ExecPaths/NoExecPaths and manual ReadWritePaths here: they rely on
+# bind-mounts in a private mount namespace and can fail at startup on some
+# systems (resulting in status=226/NAMESPACE).
 
 # Hardening: Kernel protections
 ProtectKernelTunables=yes
