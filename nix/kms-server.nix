@@ -303,13 +303,9 @@ rustPlatform.buildRustPackage rec {
       sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
       parts = lib.splitString "-" sys;
       os = builtins.elemAt parts 1;
-      # Darwin uses separate vendor files for static/dynamic; Linux uses one shared file
-      linkSuffix = if pkgs.stdenv.isDarwin then (if static then "static" else "dynamic") else "";
-      vendorFile =
-        if linkSuffix != "" then
-          ./expected-hashes + "/server.vendor.${linkSuffix}.${os}.sha256"
-        else
-          ./expected-hashes + "/server.vendor.${os}.sha256";
+      # Both Darwin and Linux now use separate vendor files for static/dynamic (glibc 2.40 requirement)
+      linkSuffix = if static then "static" else "dynamic";
+      vendorFile = ./expected-hashes + "/server.vendor.${linkSuffix}.${os}.sha256";
       placeholder = "sha256-BBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
     if builtins.pathExists vendorFile then
