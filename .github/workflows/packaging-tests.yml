@@ -164,6 +164,12 @@ jobs:
           # Use apt to handle dependencies when installing local .deb files
           sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
 
+      - name: systemd-analyze security cosmian_kms.service
+        shell: bash
+        run: |
+          set -ex
+          systemd-analyze security cosmian_kms.service
+
       - name: Enable info flag in config
         shell: bash
         run: |
