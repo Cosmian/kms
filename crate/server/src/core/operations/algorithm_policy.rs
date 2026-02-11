@@ -529,13 +529,11 @@ fn validate_attributes(attrs: &Attributes, wl: &KmipWhitelists) -> KResult<()> {
         validate_algorithm(alg, wl.algorithms.as_ref())?;
     }
 
-    // Some KMIP requests provide the `CryptographicAlgorithm` only inside
+    // Some KMIP requests provide a `CryptographicAlgorithm` inside the
     // `CryptographicParameters`.
-    if attrs.cryptographic_algorithm.is_none() {
-        if let Some(params) = &attrs.cryptographic_parameters {
-            if let Some(alg) = params.cryptographic_algorithm {
-                validate_algorithm(alg, wl.algorithms.as_ref())?;
-            }
+    if let Some(params) = &attrs.cryptographic_parameters {
+        if let Some(alg) = params.cryptographic_algorithm {
+            validate_algorithm(alg, wl.algorithms.as_ref())?;
         }
     }
 
@@ -655,7 +653,7 @@ fn validate_algorithm(
     alg: CryptographicAlgorithm,
     whitelist: Option<&HashSet<CryptographicAlgorithm>>,
 ) -> KResult<()> {
-    // Default blacklist (deprecated/broken or not in requested scope)
+    // Hard-coded blacklist (deprecated/broken or not in requested scope)
     match alg {
         CryptographicAlgorithm::DES
         | CryptographicAlgorithm::THREE_DES
@@ -701,12 +699,17 @@ fn validate_algorithm(
         | CryptographicAlgorithm::HMACSHA3224
         | CryptographicAlgorithm::HMACSHA3256
         | CryptographicAlgorithm::HMACSHA3384
-        | CryptographicAlgorithm::HMACSHA3512 => {}
-        #[cfg(feature = "non-fips")]
-        CryptographicAlgorithm::Ed25519
+        | CryptographicAlgorithm::HMACSHA3512
         | CryptographicAlgorithm::Ed448
         | CryptographicAlgorithm::CoverCrypt
         | CryptographicAlgorithm::CoverCryptBulk => {}
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::Ed25519 => {}
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::ConfigurableKEM => {
+            // Configurable KEM is always allowed, its variant may not.
+            return Ok(());
+        }
         _ => {
             return deny(
                 ErrorReason::Constraint_Violation,

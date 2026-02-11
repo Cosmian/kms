@@ -1,5 +1,8 @@
-use std::path::PathBuf;
-
+use crate::{
+    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
+    cli_bail,
+    error::result::KmsCliResult,
+};
 use clap::{Parser, Subcommand};
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
@@ -23,12 +26,7 @@ use cosmian_kms_crypto::{
         cosmian_crypto_core::bytes_ser_de::Serializable,
     },
 };
-
-use crate::{
-    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
-    cli_bail,
-    error::result::KmsCliResult,
-};
+use std::path::PathBuf;
 
 /// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]
@@ -78,6 +76,7 @@ pub struct ViewAction {
     #[clap(long = "key-file", short = 'f')]
     pub(crate) key_file: Option<PathBuf>,
 }
+
 impl ViewAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<AccessStructure> {
         let object: Object = if let Some(id) = &self.key_id {
@@ -134,6 +133,7 @@ pub struct AddQualifiedAttributeAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
 }
+
 impl AddQualifiedAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
@@ -142,7 +142,11 @@ impl AddQualifiedAttributeAction {
             &id,
             &RekeyEditAction::AddAttribute(vec![(
                 QualifiedAttribute::try_from(self.attribute.as_str())?,
-                EncryptionHint::new(self.hybridized),
+                if self.hybridized {
+                    EncryptionHint::Hybridized
+                } else {
+                    EncryptionHint::Classic
+                },
                 None,
             )]),
         )?;
@@ -188,6 +192,7 @@ pub struct RenameAttributeAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
 }
+
 impl RenameAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(
@@ -221,8 +226,11 @@ impl RenameAttributeAction {
     }
 }
 
-/// Disable an attribute from the access structure of an existing private master key.
-/// Prevents the creation of new ciphertexts for this attribute while keeping the ability to decrypt existing ones.
+/// Disable an attribute from the access structure of an existing private master
+/// key.
+///
+/// Prevents the creation of new ciphertexts for this attribute while keeping
+/// the ability to decrypt existing ones.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct DisableAttributeAction {
@@ -241,6 +249,7 @@ pub struct DisableAttributeAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
 }
+
 impl DisableAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(
@@ -297,6 +306,7 @@ pub struct RemoveAttributeAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     pub(crate) tags: Option<Vec<String>>,
 }
+
 impl RemoveAttributeAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let id = get_key_uid(

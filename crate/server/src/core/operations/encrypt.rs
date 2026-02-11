@@ -658,6 +658,27 @@ fn encrypt_with_public_key(
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEM => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+                crypto::kem::ConfigurableKEM,
+                reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+            };
+            let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let (key, enc) = ConfigurableKEM::enc(&ek_bytes, request.data.as_ref())?;
+            Ok(EncryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(
+                    (key, enc)
+                        .serialize()
+                        .map_err(|e| KmsError::ConversionError(e.to_string()))?
+                        .to_vec(),
+                ),
+                i_v_counter_nonce: None,
+                correlation_value: None,
+                authenticated_encryption_tag: None,
+            })
+        }
+        #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
             CoverCryptEncryption::instantiate(Covercrypt::default(), owm.id(), owm.object())?
                 .encrypt(request)

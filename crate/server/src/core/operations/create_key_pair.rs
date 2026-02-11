@@ -5,6 +5,8 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_secp_key_pair, create_x448_key_pair, create_x25519_key_pair
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::ConfigurableKEM;
 use cosmian_kms_server_database::reexport::{cosmian_kmip, cosmian_kms_crypto::crypto::{
     elliptic_curves::operation::{
         create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair
@@ -37,7 +39,6 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
@@ -274,6 +275,7 @@ pub(super) fn generate_key_pair(
                 "the cryptographic algorithm must be specified for key pair creation".to_owned()
             ))
         };
+
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
 
     // Generate the key pair based on the cryptographic algorithm.
@@ -446,6 +448,14 @@ pub(super) fn generate_key_pair(
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
+        ),
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::ConfigurableKEM => ConfigurableKEM::keygen(
+            private_key_uid.to_owned(),
+            request.private_key_attributes,
+            public_key_uid.to_owned(),
+            request.public_key_attributes,
+            common_attributes,
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::CoverCrypt => {

@@ -5,7 +5,8 @@ use cosmian_kms_crypto::{
     crypto::cover_crypt::access_structure::access_structure_from_json_file,
     reexport::{
         cosmian_cover_crypt::{
-            AccessPolicy, EncryptedHeader, MasterSecretKey, UserSecretKey, api::Covercrypt,
+            AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt,
+            encrypted_header::EncryptedHeader,
         },
         cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
     },
