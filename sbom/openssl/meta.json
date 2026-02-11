@@ -3,15 +3,15 @@
   "build": {
     "variant": "fips",
     "derivation": "openssl312",
-    "output_path": "/nix/store/1kj6z4xvgdmxx7m752mv03sqrav98dlq-openssl-3.1.2",
-    "timestamp": "2026-02-10T12:46:33Z",
+    "output_path": "/nix/store/jp0by8s94570i76bxgx30j941kx7c3jv-openssl-3.1.2",
+    "timestamp": "2026-02-11T15:49:14Z",
     "generator": {
       "tool": "sbomnix",
       "version": "1.7.3"
     }
   },
-  "component_count": 5,
-  "vulnerability_count": 385,
+  "component_count": 4,
+  "vulnerability_count": 486,
   "notes": [
     "OpenSSL is statically linked in the binary",
     "All dependencies are from Nix store with pinned versions",

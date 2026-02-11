@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:f5d773de-505f-4d67-9001-4d103a0ba84b",
+  "serialNumber": "urn:uuid:de4677bf-7423-4b85-88ce-85f5883929f4",
   "metadata": {
-    "timestamp": "2026-02-10T13:46:16.897488+01:00",
+    "timestamp": "2026-02-11T16:48:04.282305+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,7 +20,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/s0ljvc5mvkl5iikd4yx2psiadjb0spgj-openssl-3.1.2.drv",
+      "bom-ref": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv",
       "name": "openssl",
       "version": "3.1.2",
       "purl": "pkg:nix/openssl@3.1.2",
@@ -28,11 +28,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/1kj6z4xvgdmxx7m752mv03sqrav98dlq-openssl-3.1.2"
+          "value": "/nix/store/jp0by8s94570i76bxgx30j941kx7c3jv-openssl-3.1.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/s0ljvc5mvkl5iikd4yx2psiadjb0spgj-openssl-3.1.2.drv"
+          "value": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv"
         }
       ]
     }
@@ -40,102 +40,80 @@
   "components": [
     {
       "type": "library",
-      "bom-ref": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv",
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "name": "glibc",
-      "version": "2.40-66",
-      "purl": "pkg:nix/glibc@2.40-66",
-      "cpe": "cpe:2.3:a:glibc:glibc:2.40-66:*:*:*:*:*:*:*",
+      "version": "2.34-210",
+      "purl": "pkg:nix/glibc@2.34-210",
+      "cpe": "cpe:2.3:a:glibc:glibc:2.34-210:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/5m9amsvvh2z8sl7jrnc87hzy21glw6k1-glibc-2.40-66"
+          "value": "/nix/store/b2hc0i92l22ir2kavnjn3z5z6mzabbvm-glibc-2.34-210"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv"
+          "value": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
+      "bom-ref": "/nix/store/k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv",
       "name": "libidn2",
-      "version": "2.3.7",
-      "purl": "pkg:nix/libidn2@2.3.7",
-      "cpe": "cpe:2.3:a:gnu:libidn2:2.3.7:*:*:*:*:*:*:*",
+      "version": "2.3.2",
+      "purl": "pkg:nix/libidn2@2.3.2",
+      "cpe": "cpe:2.3:a:gnu:libidn2:2.3.2:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/c47b963idja6h1d8n91pf28v2jcq96kp-libidn2-2.3.7"
+          "value": "/nix/store/9jqiw71lq60sdpiniywq3msknf3wmd9c-libidn2-2.3.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv"
+          "value": "/nix/store/k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv"
         }
       ]
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv",
+      "bom-ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv",
       "name": "libunistring",
-      "version": "1.2",
-      "purl": "pkg:nix/libunistring@1.2",
-      "cpe": "cpe:2.3:a:libunistring:libunistring:1.2:*:*:*:*:*:*:*",
+      "version": "1.0",
+      "purl": "pkg:nix/libunistring@1.0",
+      "cpe": "cpe:2.3:a:libunistring:libunistring:1.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/2745pvn6cv32yn9gp2rlqiqhqgs01pb5-libunistring-1.2"
+          "value": "/nix/store/gfqwbax0x58mjnh89ca6milx41bw49lr-libunistring-1.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv",
-      "name": "xgcc",
-      "version": "13.3.0",
-      "purl": "pkg:nix/xgcc@13.3.0",
-      "cpe": "cpe:2.3:a:xgcc:xgcc:13.3.0:*:*:*:*:*:*:*",
-      "properties": [
-        {
-          "name": "nix:output_path",
-          "value": "/nix/store/y4d9iir0yqmrcswaqfi368d8m1rkv14s-xgcc-13.3.0-libgcc"
-        },
-        {
-          "name": "nix:drv_path",
-          "value": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
+          "value": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
         }
       ]
     }
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv",
+      "ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "dependsOn": [
-        "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
-        "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
+        "/nix/store/k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv"
       ]
     },
     {
-      "ref": "/nix/store/dc035pbndywzgnj7mh4wnjgj6h6d0352-libidn2-2.3.7.drv",
+      "ref": "/nix/store/k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv",
       "dependsOn": [
-        "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
+        "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
       ]
     },
     {
-      "ref": "/nix/store/k67vi0d42n33f1zr4wnym7dmcyhm4q54-libunistring-1.2.drv"
+      "ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "ref": "/nix/store/s0ljvc5mvkl5iikd4yx2psiadjb0spgj-openssl-3.1.2.drv",
+      "ref": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv",
       "dependsOn": [
-        "/nix/store/q8capfh88g65xmsrcv6qaczgy804n7gi-glibc-2.40-66.drv"
+        "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
       ]
-    },
-    {
-      "ref": "/nix/store/fwh0qbryiqv54xj9mrhdky1rj8d9xn8n-xgcc-13.3.0.drv"
     }
   ]
 }
