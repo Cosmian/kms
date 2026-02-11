@@ -1,12 +1,12 @@
 {
   pkgs ? import <nixpkgs> { },
-  pkgs240 ? pkgs, # nixpkgs 24.11 with glibc 2.40 (Debian 13 compatibility)
+  pkgs234 ? pkgs, # nixpkgs 22.05 with glibc 2.34 (Rocky Linux 9 compatibility)
   lib ? pkgs.lib,
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
   openssl312 ? null,
   # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
-  # links against pkgs240 (glibc 2.40) on Linux for Debian 13 compatibility.
+  # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)
   version,
@@ -24,9 +24,9 @@
 let
   isFips = (builtins.length features) == 0 || !(builtins.elem "non-fips" features);
   baseVariant = if isFips then "fips" else "non-fips";
-  # Use nixpkgs 24.11 (pkgs240) to build OpenSSL on Linux to ensure
-  # glibc 2.40 compatibility (Debian 13).
-  opensslPkgs = if pkgs.stdenv.isLinux then pkgs240 else pkgs;
+  # Use nixpkgs 22.05 (pkgs234) to build OpenSSL on Linux to ensure
+  # glibc 2.34 compatibility (Rocky Linux 9).
+  opensslPkgs = if pkgs.stdenv.isLinux then pkgs234 else pkgs;
   # Construct OpenSSL 3.6.0 (main) and 3.1.2 (FIPS provider) if not provided
   openssl36_ =
     if openssl36 != null then
@@ -194,10 +194,10 @@ let
         ldd "$BIN" | grep -qi "libssl\|libcrypto" || { echo "ERROR: Missing dynamic OpenSSL"; exit 1; }
       ''}
 
-      # Check GLIBC version <= 2.40 (Linux only, Debian 13 compatibility)
+      # Check GLIBC version <= 2.34 (Linux only, Rocky Linux 9 compatibility)
       MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
-      [ "$(printf '%s\n' "$MAX_VER" "2.40" | sort -V | tail -n1)" = "2.40" ] || {
-        echo "ERROR: GLIBC $MAX_VER > 2.40"; exit 1;
+      [ "$(printf '%s\n' "$MAX_VER" "2.34" | sort -V | tail -n1)" = "2.34" ] || {
+        echo "ERROR: GLIBC $MAX_VER > 2.34"; exit 1;
       }
 
       # Deterministic hash check
@@ -303,7 +303,7 @@ rustPlatform.buildRustPackage rec {
       sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
       parts = lib.splitString "-" sys;
       os = builtins.elemAt parts 1;
-      # Both Darwin and Linux now use separate vendor files for static/dynamic (glibc 2.40 requirement)
+      # Both Darwin and Linux now use separate vendor files for static/dynamic (glibc 2.34 requirement)
       linkSuffix = if static then "static" else "dynamic";
       vendorFile = ./expected-hashes + "/server.vendor.${linkSuffix}.${os}.sha256";
       placeholder = "sha256-BBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -477,7 +477,7 @@ rustPlatform.buildRustPackage rec {
     uiPath = ui;
     src = filteredSrc;
     inherit version;
-    hostTriple = pkgs240.stdenv.hostPlatform.config;
+    hostTriple = pkgs234.stdenv.hostPlatform.config;
   };
 
   meta = with lib; {

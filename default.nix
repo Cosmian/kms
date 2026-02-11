@@ -93,30 +93,32 @@ let
     targets = [ "wasm32-unknown-unknown" ];
   };
 
-  # For Linux, we use glibc 2.40 to match Debian 13. Import nixpkgs 24.11 to get its stdenv.
-  pkgs240 =
+  # For Linux, we need GLIBC <= 2.34 to support Rocky Linux 9.
+  # Import nixpkgs 22.05 to get its stdenv (glibc 2.34) while still using a modern
+  # Rust toolchain (1.90.0) from rust-overlay.
+  pkgs234 =
     if pkgs.stdenv.isLinux then
       (
         let
-          nixpkgs2411 = builtins.getEnv "NIXPKGS_GLIBC_240_URL";
+          nixpkgs2205 = builtins.getEnv "NIXPKGS_GLIBC_234_URL";
         in
         import (builtins.fetchTarball {
           url =
-            if nixpkgs2411 != "" then
-              nixpkgs2411
+            if nixpkgs2205 != "" then
+              nixpkgs2205
             else
-              # Pin to 24.11 stable tag tarball (glibc 2.40 for Debian 13 compatibility)
-              "https://github.com/NixOS/nixpkgs/archive/nixos-24.11.tar.gz";
+              # Pin to 22.05 stable tag tarball (glibc 2.34 for Rocky Linux 9 compatibility)
+              "https://github.com/NixOS/nixpkgs/archive/nixos-22.05.tar.gz";
         }) { config.allowUnfree = true; }
       )
     else
       pkgs;
 
-  # Create rustPlatform: on Linux use pkgs240.makeRustPlatform (glibc 2.40),
+  # Create rustPlatform: on Linux use pkgs234.makeRustPlatform (glibc 2.34),
   # but with modern Rust toolchain
   rustPlatform190 =
     if pkgs.stdenv.isLinux then
-      pkgs240.makeRustPlatform {
+      pkgs234.makeRustPlatform {
         cargo = rustToolchain;
         rustc = rustToolchain;
       }
@@ -126,10 +128,10 @@ let
         rustc = rustToolchain;
       };
 
-  # Build OpenSSL 3.1.2 with nixpkgs 24.11 stdenv (glibc 2.40 for Debian 13)
+  # Build OpenSSL 3.1.2 with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9)
   # Create both static and dynamic versions
-  openssl312-static = pkgs240.callPackage ./nix/openssl.nix { static = true; };
-  openssl312-dynamic = pkgs240.callPackage ./nix/openssl.nix { static = false; };
+  openssl312-static = pkgs234.callPackage ./nix/openssl.nix { static = true; };
+  openssl312-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
   # Default to static for backward compatibility
   openssl312 = openssl312-static;
 
@@ -208,7 +210,7 @@ let
     }:
     pkgs.callPackage ./nix/kms-server.nix {
       openssl312 = if static then openssl312-static else openssl312-dynamic;
-      inherit pkgs240;
+      inherit pkgs234;
       rustPlatform = rustPlatform190;
       version = kmsVersion;
       inherit
