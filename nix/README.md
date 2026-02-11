@@ -323,7 +323,7 @@ Goals:
 
 `nix/kms-server.nix` builds FIPS binaries inside a hermetic, pinned environment with controlled inputs:
 
-1. **Pinned nixpkgs (24.11)**: Frozen package set prevents upstream drift (glibc 2.40)
+1. **Pinned nixpkgs (24.11)**: Frozen package set prevents upstream drift (Linux builds target glibc 2.34)
 2. **Source cleaning**: `cleanSourceWith` removes non-input artifacts (`result-*`, reports, caches)
 3. **Locked dependencies**: Cargo dependency graph frozen via `cargoHash` (reproducible vendoring)
 4. **Deterministic compilation flags**: Rust codegen flags minimize non-determinism (FIPS builds):
@@ -352,7 +352,7 @@ INPUT LAYER (All Cryptographically Pinned)
 │  Pinned nixpkgs 24.11                                                    │
 │  • Hash: sha256-abc123... (tarball hash)                                 │
 │  • Frozen package set (no upstream drift)                                │
-│  • Provides: gcc, binutils, glibc 2.40, coreutils                        │
+│  • Provides: gcc, binutils, coreutils (Linux builds target glibc 2.34)   │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -421,7 +421,7 @@ BUILD LAYER (Hermetic Execution)
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Static Linking                                                          │
 │  • OpenSSL 3.1.2 statically linked (no .so dependency)                   │
-│  • GLIBC dynamically linked (version ≤ 2.40 for Debian 13 compatibility) │
+│  • GLIBC dynamically linked (version ≤ 2.34 for Rocky Linux 9 compatibility) │
 │  • No RPATH (would contain /nix/store paths)                             │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -455,7 +455,7 @@ OUTPUT LAYER (Hash Verification)
 │  Additional checks:                                                      │
 │    • OpenSSL version exactly 3.1.2                                       │
 │    • ldd shows no libssl.so (static linkage)                             │
-│    • GLIBC symbols ≤ 2.40                                                │
+│    • GLIBC symbols ≤ 2.34                                                │
 │    • FIPS mode operational (if FIPS variant)                             │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -467,7 +467,7 @@ OUTPUT LAYER (Hash Verification)
 │  Properties:                                                             │
 │  • Hash-verified (FIPS: bit-for-bit reproducible)                         │
 │  • Statically linked OpenSSL                                             │
-│  • Portable across Linux distributions (GLIBC ≥ 2.40, Debian 13+)        │
+│  • Portable across Linux distributions (GLIBC ≥ 2.34, Rocky Linux 9+)    │
 │  • No /nix/store runtime dependencies                                    │
 │  • Ready for packaging (DEB/RPM/DMG)                                     │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -593,7 +593,7 @@ During the build process, Nix enforces all hashes at multiple stages:
 ├─────────────────────────────────────────────────────────────────┤
 │ • Assert: OpenSSL version = 3.1.2                                │
 │ • Assert: Static linkage (no libssl.so)                          │
-│ • Assert: GLIBC symbols ≤ 2.40                                   │
+│ • Assert: GLIBC symbols ≤ 2.34                                   │
 │ • Assert: FIPS mode if variant=fips                              │
 │ • ❌ Any assertion fails → BUILD FAILS                          │
 │ • ✅ All pass → BUILD SUCCESS                                   │
@@ -650,7 +650,7 @@ Layer 4: Runtime Assertions
 │  installCheckPhase validation                                            │
 │  ├─ OpenSSL version check (exactly 3.1.2)                                │
 │  ├─ Static linkage verification (ldd shows no libssl.so)                 │
-│  ├─ GLIBC symbol version ≤ 2.40 (Debian 13+ Linux compatibility)         │
+│  ├─ GLIBC symbol version ≤ 2.34 (Rocky Linux 9+ Linux compatibility)     │
 │  ├─ FIPS mode operational check (if FIPS variant)                        │
 │  └─ Protection: Correct dependencies linked at runtime                   │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -704,7 +704,7 @@ During `installCheckPhase` we:
       - `<variant>` is `fips` or `non-fips` depending on Cargo features
       - `<system>` is the Nix system triple (e.g., `x86_64-linux`, `aarch64-darwin`)
 - Fail immediately on mismatch or if the required file is missing (no fallbacks)
-- Assert static OpenSSL linkage, GLIBC symbol ceiling (≤ 2.40), OpenSSL version/mode
+- Assert static OpenSSL linkage, GLIBC symbol ceiling (≤ 2.34), OpenSSL version/mode
 
 Update an expected hash after a legitimate change:
 
@@ -1110,7 +1110,7 @@ Benefits: consistent versions, no rustup downloads, contributes to build reprodu
 
 The prewarm steps populate the following paths so packaging can run fully offline:
 
-- Pinned nixpkgs (24.11): realized to a store path and exported as `NIXPKGS_STORE` (glibc 2.40)
+- Pinned nixpkgs (24.11): realized to a store path and exported as `NIXPKGS_STORE` (Linux builds target glibc 2.34)
       - Example: `/nix/store/<hash>-source`
 - Nix derivations realized locally (symlinks point into the store):
       - `result-openssl-312` → `/nix/store/<hash>-openssl-3.1.2`
@@ -1164,7 +1164,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
   │              │ │ package_     │ │ • signing_key│
   │ Validates:   │ │  common.sh   │ └──────────────┘
   │ • Hash       │ └──────────────┘
-  │ • GLIBC ≤2.40│
+   │ • GLIBC ≤2.34│
   │ • Version    │         │
   └──────────────┘         │
          │                 │
@@ -1250,7 +1250,7 @@ User invokes: bash .github/scripts/nix.sh build --variant fips
                   │ • ldd       │  │ • otool -L   │
                   │ • readelf   │  │ • dylib deps │
                   │ • GLIBC ≤   │  │              │
-                  │   2.40      │  └──────────────┘
+                  │   2.34      │  └──────────────┘
                   │ • No /nix/  │
                   │   store refs│
                   └─────────────┘

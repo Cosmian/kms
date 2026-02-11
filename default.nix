@@ -1,6 +1,6 @@
 {
   # Pin nixpkgs so nix-build works without '-I nixpkgs=…' or channels
-  # Use nixpkgs 24.11 for glibc 2.40 (Debian 13 compatibility)
+  # Pin nixpkgs for a stable toolchain; Linux builds target glibc 2.34 compatibility.
   pkgs ?
     let
       nixpkgsSrc = builtins.fetchTarball {
@@ -70,7 +70,7 @@ let
   kmsVersion = extractVersion lines;
 
   # Reuse the same pinned nixpkgs for internal imports/overlays
-  # Use nixpkgs 24.11 for glibc 2.40 (Debian 13 compatibility)
+  # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
   };

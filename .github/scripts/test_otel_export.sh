@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Enable xtrace only when explicitly requested. Unconditional xtrace makes CI logs
-# extremely noisy (and can lead to spurious job termination).
-case "${KMS_TEST_TRACE:-0}" in
-  1|true|TRUE|yes|YES)
-    set -x
-    ;;
-esac
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/common.sh"
