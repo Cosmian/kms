@@ -44,13 +44,13 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 |-----------|---------|---------------|
 | **MySQL Enterprise Server** | 8.4.7-commercial | Generic Linux x86_64 binary (glibc 2.28) |
 | **Cosmian KMS** | 5.14+ | KMIP 1.1 server with socket support |
-| **Operating System** | Ubuntu 24.04 LTS (Noble) | Debian 10+ | RHEL 8+ | or any modern Linux | x86_64 architecture
-| **OpenSSL** | 3.1.2 | For TLS/mTLS communication |
+| **Operating System** | Ubuntu 24.04 LTS (Noble) | Debian 10+, RHEL 8+, or any modern Linux (x86_64) |
+| **OpenSSL** | 3.6.0 (+ 3.1.2 FIPS provider) | For TLS/mTLS communication |
 | **Network** | Dedicated subnet | Low-latency, isolated lab network |
 
 ### Network Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
 │                  Isolated Lab Network                    │
 ├──────────────────────────────────────────────────────────┤
@@ -69,7 +69,7 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 
 ### Key Management Flow
 
-```
+```text
 MySQL InnoDB
      │
      ├─ Generates encryption key (TEK)
@@ -92,6 +92,7 @@ MySQL InnoDB
 ### Component Roles
 
 **Cosmian KMS (v5.14+):**
+
 - Acts as external Key Management System
 - Manages encryption keys for MySQL
 - Provides KMIP 1.1 protocol support
@@ -100,6 +101,7 @@ MySQL InnoDB
 - Independent of MySQL lifecycle
 
 **MySQL Enterprise (v8.0.13+, ideally 8.4+):**
+
 - Runs `keyring_okv` plugin as KMIP client
 - Generates and manages Transparent Data Encryption (TDE) keys
 - Encrypts table data at rest using master key from KMS
@@ -128,11 +130,13 @@ MySQL InnoDB
 ### Software Requirements
 
 On **Cosmian KMS Host (v5.14+):**
+
 - Ubuntu 20.04+, | RHEL 8+ | or equivalent
 - Ope | x86_64 architecturenSSL 3.0+
 - Rust toolchain (if building from source)
 
 On **MySQL Enterprise Host (v8.0.13+, v8.4.7+ recommended):**
+
 - Ubuntu 24.04 LTS
 - libaio1t64 (or libaio compatibility layer)
 - libncurses-dev or libncurses6
@@ -142,6 +146,7 @@ On **MySQL Enterprise Host (v8.0.13+, v8.4.7+ recommended):**
 ### Certificates and Keys (PKI)
 
 For mutual TLS authentication:
+
 - CA certificate (`ca.crt`)
 - CA private key (`ca.key`) - for signing
 - Server certificate with key (`kms.p12` or separate files)
@@ -158,10 +163,10 @@ For mutual TLS authentication:
 
 Choose your Linux distribution and refer to [installation guide](./installation/installation_getting_started.md)
 
-# Verify version is 5.14+
-cosmian_kms --version
+Verify the installed version and configuration file location:
 
-# Check configuration file location
+```bash
+cosmian_kms --version
 cat /etc/cosmian/kms.toml
 ```
 
@@ -204,6 +209,7 @@ database-url="mysql://kms_user:kms_password@mysql-server:3306/kms"
 ```
 
 **Key Configuration Notes:**
+
 - `clients_ca_cert_file` is **required** for mTLS validation
 - `socket_server_port` 5696 is standard KMIP port
 - Ensure database path is on persistent storage
@@ -352,6 +358,7 @@ sudo chmod 600 /usr/local/mysql/mysql-keyring-okv/okvclient.ora
 ```
 
 **Configuration Notes:**
+
 - Replace `<kms-host>` with actual KMS hostname/IP
 - Port 5696 is standard KMIP port
 - SSL_DIR must point to directory containing cert, key, and CA
@@ -381,6 +388,7 @@ EOF
 ```
 
 **Critical Configuration Points:**
+
 - `early-plugin-load` must be set **before** InnoDB initialization
 - `keyring_okv_conf_dir` must point to directory with `okvclient.ora`
 - Plugin must be loaded before any encrypted tables are accessed
@@ -483,12 +491,12 @@ ALTER TABLESPACE ts_existing ENCRYPTION='Y';
 
 ```sql
 -- Check keyring plugin status
-SELECT PLUGIN_NAME, PLUGIN_STATUS 
-FROM INFORMATION_SCHEMA.PLUGINS 
+SELECT PLUGIN_NAME, PLUGIN_STATUS
+FROM INFORMATION_SCHEMA.PLUGINS
 WHERE PLUGIN_NAME = 'keyring_okv';
 
 -- Verify encryption on table
-SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES 
+SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES
 WHERE NAME = 'database/table_name';
 
 -- Verify table definition
@@ -529,14 +537,15 @@ strings /var/lib/mysql-data/database/table_name.ibd | \
 ```bash
 /usr/local/mysql/bin/mysql -u root -pYourPassword \
   --socket=/var/run/mysqld/mysqld.sock <<'EOF'
-SELECT PLUGIN_NAME, PLUGIN_STATUS 
-FROM INFORMATION_SCHEMA.PLUGINS 
+SELECT PLUGIN_NAME, PLUGIN_STATUS
+FROM INFORMATION_SCHEMA.PLUGINS
 WHERE PLUGIN_NAME = 'keyring_okv';
 EOF
 ```
 
 **Expected Output:**
-```
+
+```text
 | keyring_okv | ACTIVE |
 ```
 
@@ -556,7 +565,7 @@ CREATE TABLE mysql.test_tde (
 ) ENCRYPTION='Y';
 
 -- Insert test data
-INSERT INTO mysql.test_tde (id, secret) VALUES 
+INSERT INTO mysql.test_tde (id, secret) VALUES
   (1, 'Sensitive-Data-001'),
   (2, 'Sensitive-Data-002');
 
@@ -564,18 +573,20 @@ INSERT INTO mysql.test_tde (id, secret) VALUES
 SELECT * FROM mysql.test_tde;
 
 -- Verify encryption setting
-SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES 
+SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES
 WHERE NAME = 'mysql/test_tde';
 EOF
 ```
 
 **Expected Output:**
-```
+
+```text
 | ENCRYPTION: Y |
 | STATE: normal |
 ```
 
-**Pass Criteria:** 
+**Pass Criteria:**
+
 - Table created successfully
 - Data inserted and retrieved
 - ENCRYPTION field shows 'Y'
@@ -607,7 +618,7 @@ CREATE TABLE mysql.test_unencrypted (
 ) ENCRYPTION='N';
 
 -- Insert test data
-INSERT INTO mysql.test_unencrypted (id, secret) VALUES 
+INSERT INTO mysql.test_unencrypted (id, secret) VALUES
   (1, 'Plaintext-Data-001'),
   (2, 'Plaintext-Data-002'),
   (3, 'Plaintext-Data-003');
@@ -627,7 +638,7 @@ strings /var/lib/mysql-data/mysql/test_unencrypted.ibd | \
 ALTER TABLE mysql.test_unencrypted ENCRYPTION='Y';
 
 -- Verify encryption is now active
-SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES 
+SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES
 WHERE NAME = 'mysql/test_unencrypted';
 
 -- Verify data is still accessible
@@ -655,6 +666,7 @@ sleep 5
 ```
 
 **Pass Criteria:**
+
 - Table encryption conversion succeeds
 - Data remains accessible before and after conversion
 - Plaintext data encrypted at rest
@@ -679,11 +691,13 @@ EOF
 ```
 
 **Expected Output:**
-```
+
+```text
 Query OK, 0 rows affected (0.58 sec)
 ```
 
-**Pass Criteria:** 
+**Pass Criteria:**
+
 - Key rotation succeeds
 - Data remains accessible and intact
 
@@ -717,7 +731,8 @@ EOF
 ```
 
 **Expected Output:**
-```
+
+```text
 | id  | secret             |
 |-----|--------------------|
 | 999 | Persistence-Check  |
@@ -725,7 +740,8 @@ EOF
 rows_after_restart: (same as before restart)
 ```
 
-**Pass Criteria:** 
+**Pass Criteria:**
+
 - Data persists after MySQL restart
 - Master key successfully retrieved from KMS
 - Row count unchanged
@@ -744,7 +760,8 @@ timeout 5 openssl s_client -connect <kms-host>:5696 \
 ```
 
 **Expected Output:**
-```
+
+```text
 Verify return code: 0 (ok)
 ```
 
@@ -783,7 +800,8 @@ systemctl start cosmian_kms
 ```
 
 **Results:**
-```
+
+```text
 ✓ Data accessible while KMS down (cache hit)
 ✓ Data accessible after KMS restart
 ✓ No service interruption during brief outage
@@ -816,13 +834,15 @@ sleep 5
 ```
 
 **Expected Error:**
-```
-ERROR 3185 (HY000): Can't find master key from keyring, 
+
+```text
+ERROR 3185 (HY000): Can't find master key from keyring,
 please check in the server log if a keyring is loaded and initialized successfully.
 ```
 
 **Result:**
-```
+
+```text
 ✓ Security working correctly
 ✓ Encrypted data inaccessible without KMS
 ✓ MySQL started but cannot decrypt
@@ -862,22 +882,24 @@ sleep 5
 ```
 
 **Results:**
-```
+
+```text
 ✓ KMS restart does NOT automatically recover cached state
 ✓ MySQL restart required to re-establish KMS connection
 ✓ Data fully recoverable with proper startup order
 ```
 
 **Lessons Learned:**
+
 1. Keep KMS and MySQL in sync (start/stop in order)
 2. Monitor KMS availability separately
 3. Set up automated alerts for KMS downtime
 
 ---
 
-# TDE Benchmark Report (1,000,000 rows)
+## TDE Benchmark Report (1,000,000 rows)
 
-## Execution Times
+### Execution Times
 
 | Operation | Encrypted Table (TDE) | Non-Encrypted Table | TDE Overhead |
 |-----------|----------------------|--------------------|--------------|
@@ -885,7 +907,6 @@ sleep 5
 | Full scan SELECT (cold cache) | 2.06 s | 1.41 s | **+47%** |
 | Full scan SELECT (warm cache) | 2.26 s | 1.46 s | **+55%** |
 | Lookup SELECT (PK, warm) | 0.018 s | 0.015 s | **≈ 0%** |
-
 
 ## Performance by Workload Type
 
@@ -902,12 +923,14 @@ sleep 5
 ### Issue: "Can't find master key from keyring"
 
 **Symptom:**
-```
-ERROR 3185 (HY000): Can't find master key from keyring, 
+
+```text
+ERROR 3185 (HY000): Can't find master key from keyring,
 please check in the server log if a keyring is loaded and initialized successfully.
 ```
 
 **Root Causes:**
+
 1. Cosmian KMS (v5.14+) is not running or unreachable
 2. Network connectivity issue between MySQL and KMS
 3. Certificate authentication failed
@@ -916,49 +939,58 @@ please check in the server log if a keyring is loaded and initialized successful
 **Solutions:**
 
 1. **Verify Cosmian KMS (v5.14+) is running:**
+
    ```bash
    ps aux | grep cosmian_kms | grep -v grep
    ss -lntp | grep 5696
    ```
 
 2. **Check network connectivity:**
+
    ```bash
    nc -zv <kms-host> 5696
    ping <kms-host>
    ```
 
 3. **Verify certificate validity:**
+
    ```bash
    openssl x509 -in /usr/local/mysql/mysql-keyring-okv/ssl/cert.pem -text -noout
    # Check NotBefore and NotAfter dates
    ```
 
 4. **Check MySQL error log:**
+
    ```bash
    tail -n 100 /var/log/mysql/mysqld.log | grep -i "keyring\|error\|tls"
    ```
 
 5. **Verify okvclient.ora configuration:**
+
    ```bash
    cat /usr/local/mysql/mysql-keyring-okv/okvclient.ora
    ```
 
 6. **Verify MySQL Enterprise version has keyring_okv support:**
+
    ```bash
    /usr/local/mysql/bin/mysql --version
    # Must be MySQL 8.0 Enterprise Edition or higher
    ```
+
 ---
 
 ### Issue: "Encryption information can't be decrypted"
 
 **Symptom:**
-```
-ERROR 12226: Encryption information in datafile: ./mysql/test_tde.ibd 
+
+```text
+ERROR 12226: Encryption information in datafile: ./mysql/test_tde.ibd
 can't be decrypted
 ```
 
 **Causes:**
+
 - Table was created with a key that's no longer accessible
 - Datafile corruption
 - KMS unavailable during startup
@@ -966,17 +998,18 @@ can't be decrypted
 **Solutions:**
 
 1. **If test/development data:**
+
    ```bash
    # Remove problematic datafile
    sudo mv /var/lib/mysql-data/mysql/test_tde.ibd \
            /var/lib/mysql-data/mysql/test_tde.ibd.backup
-   
+
    # Restart MySQL
    sudo systemctl stop mysqld
    sleep 3
    sudo -u mysql /usr/local/mysql/bin/mysqld \
      --defaults-file=/etc/my.cnf &
-   
+
    # Drop table and recreate
    /usr/local/mysql/bin/mysql -u root -pYourPassword \
      --socket=/var/run/mysqld/mysqld.sock \
@@ -994,7 +1027,8 @@ can't be decrypted
 ### Issue: Certificate Expiry
 
 **Symptom:**
-```
+
+```text
 SSL: CERTIFICATE_VERIFY_FAILED
 ```
 
@@ -1076,10 +1110,10 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 **SECURITY NOTE:** Change all default credentials before production use.
 
 ---
+
 ## Contact and Support
 
 For issues related to:
 
 - **MySQL Enterprise:** [Oracle MySQL Support](https://www.mysql.com/products/enterprise/)
 - **Cosmian KMS:** [Cosmian GitHub Issues](https://github.com/Cosmian/kms/issues)
-
