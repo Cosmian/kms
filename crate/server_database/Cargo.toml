@@ -35,7 +35,7 @@ cosmian_kms_crypto = { path = "../crypto", version = "5.15.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.15.0" }
 cosmian_findex = { git = "https://github.com/Cosmian/findex.git", branch = "tbz/upgrade-crypto-core", optional = true }
 cosmian_logger = { workspace = true }
-cosmian_sse_memories = { version = "8.0", optional = true }
+cosmian_sse_memories = { git = "https://github.com/Cosmian/findex.git", branch = "tbz/upgrade-crypto-core", optional = true }
 lru = { workspace = true }
 num_cpus = { workspace = true }
 rawsql = "0.1"

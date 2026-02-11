@@ -3,16 +3,20 @@
 //!
 //! Implementations of the concrete variants are chosen at compile-time.
 
-use crate::{CryptoError, crypto::KeyPair};
-#[cfg(feature = "non-fips")]
+use crate::{
+    CryptoError,
+    crypto::{KeyPair, cover_crypt::attributes::access_structure_from_attributes},
+};
 use cosmian_cover_crypt::{
-    AccessPolicy, AccessStructure, Covercrypt, MasterPublicKey, UserSecretKey, XEnc, traits::KemAc,
+    AccessPolicy, Covercrypt, MasterPublicKey, UserSecretKey, XEnc,
+    kem::mlkem::{MlKem512, MlKem768},
+    traits::KemAc,
 };
 use cosmian_crypto_core::{
-    Aes256Gcm, SymmetricKey,
-    bytes_ser_de::Serializable,
-    reexport::rand_core::CryptoRngCore,
-    traits::{AE_InPlace, KEM, cyclic_group_to_kem::GenericKem},
+    CsRng, SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::rand_core::{CryptoRngCore, SeedableRng},
+    traits::{KEM, cyclic_group_to_kem::GenericKem},
 };
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -22,13 +26,13 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
             CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            RecommendedCurve,
         },
     },
 };
 use cosmian_logger::debug;
 use cosmian_openssl_provider::{hash::Sha256, kem::MonadicKEM, p256::P256};
 use cosmian_rust_curve25519_provider::R25519;
-use std::collections::HashSet;
 use zeroize::Zeroizing;
 
 // In order to avoid defining one enumeration type per KEM object with one
@@ -59,10 +63,10 @@ where
 }
 
 fn generic_enc<const KEY_LENGTH: usize, Kem: KEM<KEY_LENGTH>>(
-    pk: &[u8],
+    ek: &[u8],
     rng: &mut impl CryptoRngCore,
 ) -> Result<(SymmetricKey<KEY_LENGTH>, Zeroizing<Vec<u8>>), CryptoError> {
-    let ek = <Kem as KEM<KEY_LENGTH>>::EncapsulationKey::deserialize(pk)
+    let ek = <Kem as KEM<KEY_LENGTH>>::EncapsulationKey::deserialize(ek)
         .map_err(|e| CryptoError::Default(format!("EK deserialization error in KEM: {e}")))?;
     let (key, enc) = Kem::enc(&ek, rng).map_err(|e| CryptoError::Default(e.to_string()))?;
     Ok((
@@ -96,7 +100,6 @@ pub enum KemTag {
     PreQuantum(PreQuantumKemTag),
     PostQuantum(PostQuantumKemTag),
     Hybridized(PreQuantumKemTag, PostQuantumKemTag),
-    #[cfg(feature = "non-fips")]
     Abe,
 }
 
@@ -106,23 +109,104 @@ pub enum PreQuantumKemTag {
     R25519,
 }
 
+impl TryFrom<RecommendedCurve> for PreQuantumKemTag {
+    type Error = CryptoError;
+
+    fn try_from(curve: RecommendedCurve) -> Result<Self, Self::Error> {
+        match curve {
+            RecommendedCurve::P256 => Ok(Self::P256),
+            RecommendedCurve::CURVE25519 => Ok(Self::R25519),
+            curve => {
+                return Err(CryptoError::Kmip(format!(
+                    "curve {curve:?} not supported as basis for a pre-quantum KEM"
+                )));
+            }
+        }
+    }
+}
+
+impl Serializable for PreQuantumKemTag {
+    type Error = CryptoError;
+
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+        match self {
+            Self::P256 => ser.write(&1_u64),
+            Self::R25519 => ser.write(&2_u64),
+        }
+        .map_err(CryptoError::from)
+    }
+
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        match de.read::<u64>()? {
+            1 => Ok(Self::P256),
+            2 => Ok(Self::R25519),
+            n => Err(CryptoError::ConversionError(format!(
+                "{n} is not a valid pre-quantum-KEM tag"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PostQuantumKemTag {
-    MlKem,
+    MlKem512,
+    MlKem768,
+}
+
+impl TryFrom<CryptographicAlgorithm> for PostQuantumKemTag {
+    type Error = CryptoError;
+
+    fn try_from(alg: CryptographicAlgorithm) -> Result<Self, Self::Error> {
+        match alg {
+            CryptographicAlgorithm::MLKEM_512 => Ok(Self::MlKem512),
+            CryptographicAlgorithm::MLKEM_768 => Ok(Self::MlKem768),
+            alg => {
+                return Err(CryptoError::Kmip(format!(
+                    "{alg:?} not supported as post-quantum KEM"
+                )));
+            }
+        }
+    }
+}
+
+impl Serializable for PostQuantumKemTag {
+    type Error = CryptoError;
+
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+        match self {
+            Self::MlKem512 => ser.write(&1_u64),
+            Self::MlKem768 => ser.write(&2_u64),
+        }
+        .map_err(CryptoError::from)
+    }
+
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        match de.read::<u64>()? {
+            1 => Ok(Self::MlKem512),
+            2 => Ok(Self::MlKem768),
+            n => Err(CryptoError::ConversionError(format!(
+                "{n} is not a valid post-quantum-KEM tag"
+            ))),
+        }
+    }
 }
 
 impl Serializable for KemTag {
-    // NOTE: the correctness of this serialization relies on the unicity of
-    // algorithm IDs.
-
     type Error = CryptoError;
 
     fn length(&self) -> usize {
         match self {
             Self::PreQuantum(_) | Self::PostQuantum(_) => 2,
             Self::Hybridized(_, _) => 3,
-            #[cfg(feature = "non-fips")]
-            Self::Abe => 2,
+            Self::Abe => 1,
         }
     }
 
@@ -131,75 +215,39 @@ impl Serializable for KemTag {
         ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
     ) -> Result<usize, Self::Error> {
         match self {
-            Self::PreQuantum(tag) => (0_u64, KemAlgorithm::from(tag)).write(ser),
-            Self::PostQuantum(tag) => (1_u64, KemAlgorithm::from(tag)).write(ser),
+            Self::PreQuantum(tag) => Ok(ser.write(&1_u64)? + ser.write(tag)?),
+            Self::PostQuantum(tag) => Ok(ser.write(&2_u64)? + ser.write(tag)?),
             Self::Hybridized(tag1, tag2) => {
-                (2_u64, (KemAlgorithm::from(tag1), KemAlgorithm::from(tag2))).write(ser)
+                Ok(ser.write(&3_u64)? + ser.write(tag1)? + ser.write(tag2)?)
             }
-            #[cfg(feature = "non-fips")]
-            Self::Abe => 3_u64.write(ser),
+            Self::Abe => Ok(ser.write(&4_u64)?),
         }
-        .map_err(|e| {
-            Self::Error::ConversionError(format!("error upon writing KEM tag {self:?}: {e}"))
-        })
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let value = de.read::<usize>()?;
-        match value {
-            0 => de
-                .read::<KemAlgorithm>()
-                .and_then(PreQuantumKemTag::try_from)
-                .map(Self::PreQuantum),
-            1 => de
-                .read::<KemAlgorithm>()
-                .and_then(PostQuantumKemTag::try_from)
-                .map(Self::PostQuantum),
-            2 => de
-                .read::<(KemAlgorithm, KemAlgorithm)>()
-                .map_err(|e| {
-                    Self::Error::ConversionError(format!(
-                        "error upon reading pair of KEM algorithms: {e}"
-                    ))
-                })
-                .and_then(|(algo1, algo2)| {
-                    Ok(Self::Hybridized(
-                        PreQuantumKemTag::try_from(algo1)?,
-                        PostQuantumKemTag::try_from(algo2)?,
-                    ))
-                }),
-            #[cfg(feature = "non-fips")]
-            3 => Ok(Self::Abe),
-            _ => Err(Self::Error::ConversionError(format!(
-                "value {value} is not a valid KEM tag"
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        match de.read::<usize>()? {
+            1 => de.read::<PreQuantumKemTag>().map(Self::PreQuantum),
+            2 => de.read::<PostQuantumKemTag>().map(Self::PostQuantum),
+            3 => de
+                .read::<(PreQuantumKemTag, PostQuantumKemTag)>()
+                .map(|(tag1, tag2)| Self::Hybridized(tag1, tag2))
+                .map_err(Self::Error::from),
+            4 => Ok(Self::Abe),
+            n => Err(Self::Error::ConversionError(format!(
+                "{n} is not a valid KEM tag"
             ))),
         }
     }
 }
 
-// Those tags can be used to dynamically check that the intended KEM
-// implementation is authorized on the running instance by testing for its
-// membership in a set of authorized KEM algorithms. This allows to parameterize
-// a KMS instance at initialization time by reading this set of authorized KEM
-// algorithm from a configuration file.
-
-/// Available KEM algorithms.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum KemAlgorithm {
-    P256,
-    R25519,
-    MlKem,
-    #[cfg(feature = "non-fips")]
-    Covercrypt,
-}
+// Finally, we can implement a KEM-like interface for our configurable KEM which
+// deserializes KEM objects as couple (tag, bytes), checks tag legality and
+// compatibility across objects before the KEM operation with corresponding
+// implementation, and finally serializes returned objects as (tag, bytes)
+// couples.
 
 type P256Kem = MonadicKEM<32, P256, Sha256>;
 type R25519Kem = GenericKem<32, R25519, Sha256>;
-
-//
-// TODO: use a proper ML-KEM provider.
-//
-type MlKem = GenericKem<32, P256, Sha256>;
 
 // Even though lengths of the keys encapsulated by the two combined KEM schemes
 // can vary, it is much simpler to enforce their equality, which is performed
@@ -212,181 +260,92 @@ type KemCombiner<const LENGTH: usize, Kem1, Kem2> =
         LENGTH,
         Kem1,
         Kem2,
-        Sha256,
+        Sha256, // SHA256 from the OpenSSL provider.
     >;
-
-impl KemAlgorithm {
-    /// Asserts the given KEM tag corresponds to an authorized KEM algorithm.
-    ///
-    /// A hybridized KEM is authorized as long as both underlying KEM algorithms
-    /// are authorized.
-    fn check_tag(tag: KemTag, authorized_algorithms: &HashSet<Self>) -> Result<(), CryptoError> {
-        match tag {
-            KemTag::PreQuantum(tag) => Self::from(&tag).check_algorithm(authorized_algorithms),
-            KemTag::PostQuantum(tag) => Self::from(&tag).check_algorithm(authorized_algorithms),
-            KemTag::Hybridized(tag1, tag2) => Self::from(&tag1)
-                .check_algorithm(authorized_algorithms)
-                .and_then(|()| Self::from(&tag2).check_algorithm(authorized_algorithms)),
-            #[cfg(feature = "non-fips")]
-            KemTag::Abe => Self::Covercrypt.check_algorithm(authorized_algorithms),
-        }
-    }
-
-    fn check_algorithm(self, authorized_algorithms: &HashSet<Self>) -> Result<(), CryptoError> {
-        if authorized_algorithms.contains(&self) {
-            Ok(())
-        } else {
-            Err(CryptoError::NotSupported(format!(
-                "unauthorized KEM algorithm: {self:?}"
-            )))
-        }
-    }
-}
-
-impl From<&PreQuantumKemTag> for KemAlgorithm {
-    fn from(tag: &PreQuantumKemTag) -> Self {
-        match tag {
-            PreQuantumKemTag::P256 => Self::P256,
-            PreQuantumKemTag::R25519 => Self::R25519,
-        }
-    }
-}
-
-impl TryFrom<KemAlgorithm> for PreQuantumKemTag {
-    type Error = CryptoError;
-
-    fn try_from(algorithm: KemAlgorithm) -> Result<Self, Self::Error> {
-        #[allow(clippy::match_wildcard_for_single_variants)]
-        match algorithm {
-            KemAlgorithm::P256 => Ok(Self::P256),
-            KemAlgorithm::R25519 => Ok(Self::R25519),
-            _ => Err(Self::Error::ConversionError(format!(
-                "algorithm {algorithm:?} is no a valid pre-quantum KEM"
-            ))),
-        }
-    }
-}
-
-impl From<&PostQuantumKemTag> for KemAlgorithm {
-    fn from(tag: &PostQuantumKemTag) -> Self {
-        match tag {
-            PostQuantumKemTag::MlKem => Self::MlKem,
-        }
-    }
-}
-
-impl TryFrom<KemAlgorithm> for PostQuantumKemTag {
-    type Error = CryptoError;
-
-    fn try_from(algorithm: KemAlgorithm) -> Result<Self, Self::Error> {
-        match algorithm {
-            KemAlgorithm::MlKem => Ok(Self::MlKem),
-            _ => Err(Self::Error::ConversionError(format!(
-                "algorithm {algorithm:?} is no a valid post-quantum KEM"
-            ))),
-        }
-    }
-}
-
-impl Serializable for KemAlgorithm {
-    type Error = CryptoError;
-
-    fn length(&self) -> usize {
-        1
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        match self {
-            Self::P256 => ser.write(&1_usize),
-            Self::R25519 => ser.write(&2_usize),
-            Self::MlKem => ser.write(&3_usize),
-            #[cfg(feature = "non-fips")]
-            Self::Covercrypt => ser.write(&4_usize),
-        }
-        .map_err(|e| {
-            CryptoError::ConversionError(format!("error upon writing KEM algorithm {self:?}: {e}"))
-        })
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let value = de.read::<usize>().map_err(|e| {
-            CryptoError::ConversionError(format!("error upon reading KEM algorithm: {e}"))
-        })?;
-        match value {
-            1 => Ok(Self::P256),
-            2 => Ok(Self::R25519),
-            3 => Ok(Self::MlKem),
-            #[cfg(feature = "non-fips")]
-            4 => Ok(Self::Covercrypt),
-            _ => Err(CryptoError::ConversionError(format!(
-                "value {value} is not a valid KEM algorithm"
-            ))),
-        }
-    }
-}
-
-// Finally, we can implement a KEM-like interface for our configurable KEM which
-// deserializes KEM objects as couple (tag, bytes), checks tag legality and
-// compatibility across objects before the KEM operation with corresponding
-// implementation, and finally serializes returned objects as (tag, bytes)
-// couples.
 
 pub struct ConfigurableKEM;
 
 impl ConfigurableKEM {
-    /// Length of the key encapsulated by this configurable KEM.
-    // NOTE: the type-system ensures that all concrete KEM implementations used
-    // indeed return 32-byte keys.
-    pub const KEY_LENGTH: usize = 32;
-
     #[allow(clippy::too_many_arguments)]
     pub fn keygen(
-        tag: KemTag,
-        authorized_algorithms: &HashSet<KemAlgorithm>,
         dk_uid: String,
         dk_attributes: Option<Attributes>,
         ek_uid: String,
         ek_attributes: Option<Attributes>,
         common_attributes: Attributes,
-        #[cfg(feature = "non-fips")] access_structure: Option<AccessStructure>,
-        sensitive: bool,
-        rng: &mut impl CryptoRngCore,
     ) -> Result<KeyPair, CryptoError> {
-        KemAlgorithm::check_tag(tag, authorized_algorithms)?;
+        let rng = &mut CsRng::from_entropy();
+
+        let tag = match (
+            common_attributes
+                .cryptographic_domain_parameters
+                .and_then(|params| params.recommended_curve),
+            common_attributes
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|params| params.cryptographic_algorithm),
+        ) {
+            (None, None) => {
+                return Err(CryptoError::Kmip(
+                    "no KEM configuration defined".to_string(),
+                ));
+            }
+            (None, Some(alg)) => {
+                if CryptographicAlgorithm::CoverCrypt == alg {
+                    KemTag::Abe
+                } else {
+                    KemTag::PostQuantum(alg.try_into()?)
+                }
+            }
+            (Some(curve), None) => KemTag::PreQuantum(curve.try_into()?),
+            (Some(curve), Some(alg)) => KemTag::Hybridized(curve.try_into()?, alg.try_into()?),
+        };
 
         let (dk_bytes, ek_bytes) = match tag {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
-                generic_keygen::<{ Self::KEY_LENGTH }, P256Kem>(rng)
+                generic_keygen::<{ P256Kem::KEY_LENGTH }, P256Kem>(rng)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
-                generic_keygen::<{ Self::KEY_LENGTH }, R25519Kem>(rng)
+                generic_keygen::<{ R25519Kem::KEY_LENGTH }, R25519Kem>(rng)
             }
-            KemTag::PostQuantum(PostQuantumKemTag::MlKem) => {
-                generic_keygen::<{ Self::KEY_LENGTH }, MlKem>(rng)
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
+                generic_keygen::<{ MlKem512::KEY_LENGTH }, MlKem512>(rng)
             }
-            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem) => {
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
+                generic_keygen::<{ MlKem768::KEY_LENGTH }, MlKem768>(rng)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
                 generic_keygen::<
-                    { Self::KEY_LENGTH },
-                    KemCombiner<{ Self::KEY_LENGTH }, P256Kem, MlKem>,
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
                 >(rng)
             }
-            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem) => {
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
                 generic_keygen::<
-                    { Self::KEY_LENGTH },
-                    KemCombiner<{ Self::KEY_LENGTH }, R25519Kem, MlKem>,
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
                 >(rng)
             }
-            #[cfg(feature = "non-fips")]
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_keygen::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(rng)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_keygen::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(rng)
+            }
             KemTag::Abe => {
-                let access_structure = access_structure.ok_or_else(|| {
-                    CryptoError::Default(
+                let access_structure = access_structure_from_attributes(&common_attributes)
+                    .map_err(|_| {
+                        CryptoError::Default(
                         "cannot execute a Covercrypt key generation without an access structure"
                             .to_owned(),
                     )
-                })?;
+                    })?;
                 let cc = Covercrypt::default();
                 let (mut msk, _) = cc.setup()?;
                 msk.access_structure = access_structure;
@@ -400,7 +359,6 @@ impl ConfigurableKEM {
                 (tag, dk_bytes).serialize()?,
                 dk_attributes.unwrap_or_else(|| common_attributes.clone()),
                 ek_uid,
-                sensitive,
             )?,
             Self::create_ek_object(
                 (tag, ek_bytes).serialize()?,
@@ -411,93 +369,133 @@ impl ConfigurableKEM {
     }
 
     pub fn enc(
-        ek: &[u8],
-        rng: &mut impl CryptoRngCore,
-        #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
-    ) -> Result<(SymmetricKey<{ Self::KEY_LENGTH }>, Zeroizing<Vec<u8>>), CryptoError> {
-        let (tag, pk_bytes) = <(KemTag, Vec<u8>)>::deserialize(ek).map_err(|e| {
+        ek_bytes: &[u8],
+        access_policy: Option<&Zeroizing<Vec<u8>>>,
+    ) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+        let (tag, ek_bytes) = <(KemTag, Vec<u8>)>::deserialize(ek_bytes).map_err(|e| {
             CryptoError::Default(format!(
                 "failed deserializing the tag and encapsulation key in configurable KEM: {e}"
             ))
         })?;
 
-        match tag {
+        let rng = &mut CsRng::from_entropy();
+
+        let (key, enc) = match tag {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
-                generic_enc::<{ Self::KEY_LENGTH }, P256Kem>(&pk_bytes, rng)
+                generic_enc::<{ P256Kem::KEY_LENGTH }, P256Kem>(&ek_bytes, rng)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
-                generic_enc::<{ Self::KEY_LENGTH }, R25519Kem>(&pk_bytes, rng)
+                generic_enc::<{ R25519Kem::KEY_LENGTH }, R25519Kem>(&ek_bytes, rng)
             }
-            KemTag::PostQuantum(PostQuantumKemTag::MlKem) => {
-                generic_enc::<{ Self::KEY_LENGTH }, MlKem>(&pk_bytes, rng)
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
+                generic_enc::<{ MlKem512::KEY_LENGTH }, MlKem512>(&ek_bytes, rng)
             }
-            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem) => {
-                generic_enc::<{ Self::KEY_LENGTH }, KemCombiner<{ Self::KEY_LENGTH }, P256Kem, MlKem>>(
-                    ek, rng,
-                )
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
+                generic_enc::<{ MlKem768::KEY_LENGTH }, MlKem768>(&ek_bytes, rng)
             }
-            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem) => {
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
                 generic_enc::<
-                    { Self::KEY_LENGTH },
-                    KemCombiner<{ Self::KEY_LENGTH }, R25519Kem, MlKem>,
-                >(ek, rng)
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
+                >(&ek_bytes, rng)
             }
-            #[cfg(feature = "non-fips")]
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
+                generic_enc::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
+                >(&ek_bytes, rng)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_enc::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(&ek_bytes, rng)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_enc::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(&ek_bytes, rng)
+            }
             KemTag::Abe => {
-                let ap = access_policy.as_ref().ok_or_else(|| {
-                    CryptoError::Default(
-                        "cannot create a Covercrypt encapsulation without an access policy"
-                            .to_owned(),
-                    )
-                })?;
-                let mpk = MasterPublicKey::deserialize(&pk_bytes)?;
-                let (key, ctx) = Covercrypt::default().encaps(&mpk, ap)?;
+                let ap = access_policy
+                    .ok_or_else(|| {
+                        CryptoError::Default(
+                            "cannot create a Covercrypt encapsulation without an access policy"
+                                .to_owned(),
+                        )
+                    })
+                    .and_then(|ap| {
+                        AccessPolicy::parse(&String::from_utf8_lossy(&*ap).to_owned())
+                            .map_err(CryptoError::from)
+                    })?;
+                let mpk = MasterPublicKey::deserialize(&ek_bytes)?;
+                let (key, ctx) = Covercrypt::default().encaps(&mpk, &ap)?;
                 Ok((SymmetricKey::from(key), ctx.serialize()?))
             }
-        }
+        }?;
+
+        let mut key_bytes = Zeroizing::new(vec![0; key.len()]);
+        key_bytes.copy_from_slice(&*key);
+        Ok((key_bytes, enc))
     }
 
-    pub fn dec(dk: &[u8], enc: &[u8]) -> Result<SymmetricKey<{ Self::KEY_LENGTH }>, CryptoError> {
-        let (tag, dk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(dk).map_err(|e| {
+    pub fn dec(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        let (dk_tag, dk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(dk).map_err(|e| {
             CryptoError::Default(format!(
                 "failed deserializing the tag and decapsulation key in configurable KEM: {e}"
             ))
         })?;
 
-        let (tag_, enc_bytes) = <(KemTag, Vec<u8>)>::deserialize(enc).map_err(|e| {
+        let (enc_tag, enc_bytes) = <(KemTag, Vec<u8>)>::deserialize(enc).map_err(|e| {
             CryptoError::Default(format!(
                 "failed deserializing the tag and encapsulation in configurable KEM: {e}"
             ))
         })?;
 
-        if tag != tag_ {
+        if dk_tag != enc_tag {
             return Err(CryptoError::Default(format!(
-                "heterogeneous decapsulation-key and encapsulation tags: {tag:?} != {tag_:?}"
+                "heterogeneous decapsulation-key and encapsulation tags: {dk_tag:?} != {enc_tag:?}"
             )));
         }
 
-        match tag {
+        let key = match dk_tag {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
-                generic_dec::<{ Self::KEY_LENGTH }, P256Kem>(&dk_bytes, &enc_bytes)
+                generic_dec::<{ P256Kem::KEY_LENGTH }, P256Kem>(&dk_bytes, &enc_bytes)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
-                generic_dec::<{ Self::KEY_LENGTH }, R25519Kem>(&dk_bytes, &enc_bytes)
+                generic_dec::<{ R25519Kem::KEY_LENGTH }, R25519Kem>(&dk_bytes, &enc_bytes)
             }
-            KemTag::PostQuantum(PostQuantumKemTag::MlKem) => {
-                generic_dec::<{ Self::KEY_LENGTH }, MlKem>(&dk_bytes, &enc_bytes)
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
+                generic_dec::<{ MlKem512::KEY_LENGTH }, MlKem512>(&dk_bytes, &enc_bytes)
             }
-            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem) => {
-                generic_dec::<{ Self::KEY_LENGTH }, KemCombiner<{ Self::KEY_LENGTH }, P256Kem, MlKem>>(
-                    &dk_bytes, &enc_bytes,
-                )
+            KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
+                generic_dec::<{ MlKem768::KEY_LENGTH }, MlKem768>(&dk_bytes, &enc_bytes)
             }
-            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem) => {
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
                 generic_dec::<
-                    { Self::KEY_LENGTH },
-                    KemCombiner<{ Self::KEY_LENGTH }, R25519Kem, MlKem>,
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
                 >(&dk_bytes, &enc_bytes)
             }
-            #[cfg(feature = "non-fips")]
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
+                generic_dec::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
+                >(&dk_bytes, &enc_bytes)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_dec::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(&dk_bytes, &enc_bytes)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_dec::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(&dk_bytes, &enc_bytes)
+            }
             KemTag::Abe => {
                 let usk = UserSecretKey::deserialize(&dk_bytes)?;
                 let enc = XEnc::deserialize(&enc_bytes)?;
@@ -507,53 +505,19 @@ impl ConfigurableKEM {
                             .to_owned(),
                     )
                 })?;
-                Ok(SymmetricKey::<{ Self::KEY_LENGTH }>::from(key))
+                Ok(SymmetricKey::from(key))
             }
-        }
-    }
+        }?;
 
-    pub fn encrypt(
-        pk: &[u8],
-        ptx: &[u8],
-        #[cfg(feature = "non-fips")] access_policy: &Option<AccessPolicy>,
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-        let (key, enc) = Self::enc(
-            pk,
-            rng,
-            #[cfg(feature = "non-fips")]
-            access_policy,
-        )?;
-
-        let mut ctx = ptx.to_vec();
-
-        let mut nonce = [0; 12];
-        rng.fill_bytes(&mut nonce);
-
-        let tag = Aes256Gcm::encrypt_in_place(&key, &mut ctx, &nonce)
-            .map_err(|e| CryptoError::Default(format!("AE encryption error in PKE: {e}")))?;
-
-        (enc, nonce, ctx, tag).serialize().map_err(|e| {
-            CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
-        })
-    }
-
-    pub fn decrypt(dk: &[u8], ctx: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-        let (enc, nonce, mut ctx, tag) =
-            <(Vec<u8>, [u8; 12], Zeroizing<Vec<u8>>, [u8; 16])>::deserialize(ctx).map_err(|e| {
-                CryptoError::Default(format!("serialization encryption error in PKE: {e}"))
-            })?;
-        let key = Self::dec(dk, &enc)?;
-        Aes256Gcm::decrypt_in_place(&key, &mut ctx, &nonce, &tag)
-            .map_err(|e| CryptoError::Default(format!("AE decryption error in PKE: {e}")))?;
-        Ok(ctx)
+        let mut key_bytes = Zeroizing::new(vec![0; key.len()]);
+        key_bytes.copy_from_slice(&*key);
+        Ok(key_bytes)
     }
 
     fn create_dk_object(
         dk_bytes: Zeroizing<Vec<u8>>,
         mut attributes: Attributes,
         ek_uid: String,
-        sensitive: bool,
     ) -> Result<Object, CryptoError> {
         debug!(
             "create_dk_object: key len: {}, attributes: {attributes}",
@@ -561,18 +525,13 @@ impl ConfigurableKEM {
         );
 
         attributes.object_type = Some(ObjectType::PrivateKey);
-
-        //
-        // TODO: use the proper key-format type.
-        //
-        attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
-
+        attributes.key_format_type = Some(KeyFormatType::ConfigurableKEM);
         attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
         attributes.link = Some(vec![Link {
             link_type: LinkType::PublicKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(ek_uid),
         }]);
-        attributes.sensitive = sensitive.then_some(true);
+        attributes.sensitive = attributes.sensitive.or(Some(true));
 
         let mut tags = attributes.get_tags();
         tags.insert("_sk".to_owned());
@@ -581,10 +540,7 @@ impl ConfigurableKEM {
         let cryptographic_length = Some(i32::try_from(dk_bytes.len())? * 8);
         Ok(Object::PrivateKey(PrivateKey {
             key_block: KeyBlock {
-                //
-                // TODO: add a new KEM cryptographic algorithm.
-                //
-                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
@@ -604,14 +560,8 @@ impl ConfigurableKEM {
     ) -> Result<Object, CryptoError> {
         attributes.sensitive = None;
         attributes.object_type = Some(ObjectType::PublicKey);
-
-        //
-        // TODO: use the proper key-format type.
-        //
-        attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
-        // Covercrypt keys are set to have unrestricted usage.
-        attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
-
+        attributes.key_format_type = Some(KeyFormatType::ConfigurableKEM);
+        attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Encrypt);
         attributes.link = Some(vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(dk_uid),
@@ -625,10 +575,7 @@ impl ConfigurableKEM {
         let cryptographic_length = Some(i32::try_from(ek_bytes.len())? * 8);
         Ok(Object::PublicKey(PublicKey {
             key_block: KeyBlock {
-                //
-                // TODO: add a new KEM cryptographic algorithm.
-                //
-                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
                 key_format_type: KeyFormatType::CoverCryptPublicKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
@@ -652,18 +599,17 @@ mod tests {
         // Exhaustively test serializations.
         test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::P256)).unwrap();
         test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::R25519)).unwrap();
-        test_serialization(&KemTag::PostQuantum(PostQuantumKemTag::MlKem)).unwrap();
+        test_serialization(&KemTag::PostQuantum(PostQuantumKemTag::MlKem512)).unwrap();
         test_serialization(&KemTag::Hybridized(
             PreQuantumKemTag::P256,
-            PostQuantumKemTag::MlKem,
+            PostQuantumKemTag::MlKem512,
         ))
         .unwrap();
         test_serialization(&KemTag::Hybridized(
             PreQuantumKemTag::R25519,
-            PostQuantumKemTag::MlKem,
+            PostQuantumKemTag::MlKem512,
         ))
         .unwrap();
-        #[cfg(feature = "non-fips")]
         test_serialization(&KemTag::Abe).unwrap();
     }
 }

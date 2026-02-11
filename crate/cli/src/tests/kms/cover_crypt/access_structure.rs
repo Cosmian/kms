@@ -69,7 +69,7 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
     assert!(output.contains("RnD"));
     assert!(
         output.contains(
-            "Attribute { id: 6, encryption_hint: Classic, write_status: EncryptDecrypt }"
+            "Attribute { id: 6, security_mode: Classic, encryption_status: EncryptDecrypt }"
         )
     );
 

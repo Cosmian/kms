@@ -1,5 +1,18 @@
-use std::borrow::Cow;
-
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
+use crate::{
+    config::ServerParams,
+    core::{
+        KMS,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+        },
+        uid_utils::{has_prefix, uids_from_unique_identifier},
+    },
+    error::KmsError,
+    kms_bail,
+    result::{KResult, KResultHelper},
+};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
@@ -36,23 +49,8 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
+use std::borrow::Cow;
 use zeroize::Zeroizing;
-
-#[cfg(feature = "non-fips")]
-use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
-use crate::{
-    config::ServerParams,
-    core::{
-        KMS,
-        operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
-        },
-        uid_utils::{has_prefix, uids_from_unique_identifier},
-    },
-    error::KmsError,
-    kms_bail,
-    result::{KResult, KResultHelper},
-};
 
 const EMPTY_SLICE: &[u8] = &[];
 
@@ -390,6 +388,21 @@ fn decrypt_single(
     trace!("entering");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
+        #[cfg(feature = "non-fips")]
+        KeyFormatType::ConfigurableKEM => {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::ConfigurableKEM;
+            let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            let enc = request
+                .data
+                .as_ref()
+                .ok_or_else(|| KmsError::InvalidRequest("missing KEM encapsulation".to_owned()))?;
+            let key = ConfigurableKEM::dec(&dk_bytes, enc)?;
+            Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(key),
+                correlation_value: None,
+            })
+        }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => decrypt_with_covercrypt(owm, request),
 
