@@ -44,7 +44,7 @@ In particular, it allowlists:
 - Block cipher modes: `GCM`, `CCM`, `XTS`, `NISTKeyWrap`, `AESKeyWrapPadding`, `GCMSIV`
 - Padding methods: `OAEP`, `PSS`, `PKCS5`
 - MGF hashes: `SHA256`, `SHA384`, `SHA512`
-- Mask generators: `MFG1`
+- Mask generators: `MGF1`
 
 It also enforces key-size constraints:
 
@@ -53,13 +53,13 @@ It also enforces key-size constraints:
 
 ### Scheme-to-policy mapping
 
-This table links the documentation scheme names in the [Algorithms](./algorithms.md) page to the minimal `kms.toml` allowlist values needed to keep each scheme reachable when `kmip.policy_id = "DEFAULT"`.
+This table links the [Algorithms](./algorithms.md) to the minimal `kms.toml` allowlist values needed to keep each scheme reachable when `kmip.policy_id = "DEFAULT"`.
 
 | Documentation scheme name | KMIP operation(s) | KMIP `CryptographicAlgorithm` | Minimal `kms.toml` allowlist values |
 | ------------------------- | ----------------- | ----------------------------- | ---------------------------------- |
 | AES-KWP (RFC 5649) | `Import` / `Export` (wrap/unwrap) | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["AESKeyWrapPadding"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
 | NIST KW (RFC 3394) | `Import` / `Export` (wrap/unwrap) | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["NISTKeyWrap"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
-| CKM_RSA_PKCS_OAEP | `Encrypt` / `Decrypt` (and RSA-wrap paths using OAEP) | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["OAEP"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MFG1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| CKM_RSA_PKCS_OAEP | `Encrypt` / `Decrypt` (and RSA-wrap paths using OAEP) | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["OAEP"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MGF1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
 | CKM_RSA_AES_KEY_WRAP | `Import` / `Export` (wrap/unwrap) | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["None"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
 | CKM_RSA_PKCS (PKCS#1 v1.5) | `Encrypt` / `Decrypt` | `RSA` | `algorithms=["RSA"]`<br>`padding_methods=["PKCS1v15"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
 | ECIES (NIST curves) | `Encrypt` / `Decrypt` | (key-type driven) | `curves=["P256","P384","P521"]`<br>(and if restricting key creation/import: `algorithms=["EC","ECDH","ECDSA"]`) |
@@ -68,6 +68,6 @@ This table links the documentation scheme names in the [Algorithms](./algorithms
 | AES XTS | `Encrypt` / `Decrypt` | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["XTS"]`<br>`aes_key_sizes=[512]` (or `[256,512]` depending on client encoding) |
 | AES GCM-SIV | `Encrypt` / `Decrypt` | `AES` | `algorithms=["AES"]`<br>`block_cipher_modes=["GCMSIV"]`<br>`aes_key_sizes=[256]` (or `[128,192,256]`) |
 | ChaCha20-Poly1305 | `Encrypt` / `Decrypt` | `ChaCha20Poly1305` | `algorithms=["ChaCha20Poly1305"]` |
-| RSASSA-PSS | `Sign` / `SignatureVerify` | `RSA` | `algorithms=["RSA"]`<br>`signature_algorithms=["RSASSAPSS"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MFG1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
+| RSASSA-PSS | `Sign` / `SignatureVerify` | `RSA` | `algorithms=["RSA"]`<br>`signature_algorithms=["RSASSAPSS"]`<br>`hashes=["SHA256","SHA384","SHA512"]`<br>`mask_generators=["MGF1"]`<br>`mgf_hashes=["SHA256","SHA384","SHA512"]`<br>`rsa_key_sizes=[2048,3072,4096]` |
 | ECDSA (with SHA-2) | `Sign` / `SignatureVerify` | `ECDSA` | `algorithms=["ECDSA","EC"]`<br>`signature_algorithms=["ECDSAWithSHA256","ECDSAWithSHA384","ECDSAWithSHA512"]`<br>`curves=["P256","P384","P521"]` |
 | EdDSA | `Sign` / `SignatureVerify` | `Ed25519` / `Ed448` | `algorithms=["Ed25519","Ed448"]`<br>`curves=["CURVEED25519","CURVEED448"]` |
