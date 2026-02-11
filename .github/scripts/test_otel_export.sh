@@ -28,11 +28,24 @@ OTEL_EXPORT_SCRAPE_URL="${OTEL_EXPORT_SCRAPE_URL:-http://127.0.0.1:${PROM_PORT}/
 
 KMS_PID=""
 
+# In the FIPS Nix shell, we intentionally export OPENSSL_* and may set
+# LD_LIBRARY_PATH/LD_PRELOAD to force the server to use the FIPS-validated
+# OpenSSL runtime. That global override can break Nix-provided tools built
+# against newer OpenSSL (e.g., curl/libcurl requiring OPENSSL_3.2.0+).
+#
+# For this test we only use curl for plain HTTP probes/scrapes; it does not
+# need the server's OpenSSL runtime. Run curl in a clean environment so it
+# uses its own Nix rpaths.
+curl_clean_env() {
+  env -u LD_LIBRARY_PATH -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
+    curl "$@"
+}
+
 collector_metrics_probe() {
   # Emit a single-line probe result that is easy to log and parse under bash 3.2+.
   # Example: "curl_exit=0 http=200 size=8714"
   local out curl_status http_code size
-  if out=$(curl -sS --max-time 2 -o /dev/null -w "%{http_code} %{size_download}" "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null); then
+  if out=$(curl_clean_env -sS --max-time 2 -o /dev/null -w "%{http_code} %{size_download}" "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null); then
     curl_status=0
   else
     curl_status=$?
@@ -50,7 +63,7 @@ collector_metrics_probe() {
 }
 
 collector_metrics_body() {
-  if curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
+  if curl_clean_env -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
     return 0
   fi
   return 0
@@ -111,12 +124,12 @@ dump_debug_state() {
   collector_metrics_probe >&2
 
   echo "-- Collector /metrics headers" >&2
-  if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+  if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
     echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
   fi
 
   echo "-- Collector /metrics size" >&2
-  if ! curl -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null | wc -c >&2; then
+  if ! curl_clean_env -fsS --max-time 2 "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null | wc -c >&2; then
     echo "Failed to fetch collector metrics body from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
   fi
 }
@@ -126,7 +139,7 @@ wait_for_collector_http_endpoint() {
   # KMS starts exporting.
   # CI can be slow to pull/start the collector image; allow a bit more time.
   for _ in {1..240}; do
-    if curl -fsS -o /dev/null "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
+    if curl_clean_env -fsS -o /dev/null "${OTEL_EXPORT_SCRAPE_URL}" 2>/dev/null; then
       return 0
     fi
     sleep 0.5
@@ -134,7 +147,7 @@ wait_for_collector_http_endpoint() {
 
   echo "OTEL collector did not become ready (HTTP endpoint not responding) at ${OTEL_EXPORT_SCRAPE_URL}" >&2
   echo "Collector /metrics headers:" >&2
-  if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+  if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
     echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
   fi
   echo "Collector /metrics size:" >&2
@@ -195,7 +208,7 @@ wait_for_kms_listen() {
     fi
 
     # Probe KMIP endpoint with empty JSON body. Any HTTP response code means the server is up.
-    if curl -sS -o /dev/null -w "%{http_code}" -X POST "${url}" -H "Content-Type: application/json" -d '{}' 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+    if curl_clean_env -sS -o /dev/null -w "%{http_code}" -X POST "${url}" -H "Content-Type: application/json" -d '{}' 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
       return 0
     fi
 
@@ -213,7 +226,7 @@ wait_for_kms_listen() {
 kmip_post() {
   local payload="$1"
   # Don't use -f: we want the response body even on HTTP 4xx.
-  curl -sS -X POST "http://${KMS_HTTP_HOST}:${KMS_HTTP_PORT}/kmip/2_1" \
+  curl_clean_env -sS -X POST "http://${KMS_HTTP_HOST}:${KMS_HTTP_PORT}/kmip/2_1" \
     -H "Content-Type: application/json" \
     -d "${payload}"
 }
@@ -296,7 +309,7 @@ wait_for_metric_gt() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+        if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
           echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
         fi
         echo "Collector /metrics probe:" >&2
@@ -340,7 +353,7 @@ wait_for_metric_eq() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+        if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
           echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
         fi
         echo "Collector /metrics probe:" >&2
@@ -382,7 +395,7 @@ wait_for_metric_any_uptime_gt() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+        if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
           echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
         fi
         echo "Collector /metrics probe:" >&2
@@ -427,7 +440,7 @@ wait_for_server_uptime_using_start_time() {
       echo "${body}" >&2
       if [ -z "${body}" ]; then
         echo "Collector /metrics headers:" >&2
-        if ! curl -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
+        if ! curl_clean_env -sS -D - "${OTEL_EXPORT_SCRAPE_URL}" -o /dev/null >&2; then
           echo "Failed to fetch collector headers from: ${OTEL_EXPORT_SCRAPE_URL}" >&2
         fi
         echo "Collector /metrics probe:" >&2

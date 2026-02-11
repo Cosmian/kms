@@ -98,8 +98,8 @@ pkgs.mkShell {
   ++ (
     if withPython then
       [
-        pkgs.python3
-        pkgs.python3Packages.virtualenv
+        pkgs.python311
+        pkgs.python311Packages.virtualenv
       ]
     else
       [ ]
