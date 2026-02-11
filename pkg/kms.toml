@@ -109,8 +109,12 @@ unwrapped_cache_max_age = 15 # minutes
 [http]
 # The KMS server port - defaults to 9998
 port = 9998
-# The KMS server hostname - defaults to 0.0.0.0
-hostname = "0.0.0.0"
+# The KMS server hostname.
+#
+# Packaged default is localhost-only so the systemd unit can apply strict
+# network sandboxing (e.g. IPAddressDeny/Allow) while still starting cleanly.
+# Change this to "0.0.0.0" if you want to expose the service externally.
+hostname = "127.0.0.1"
 
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.

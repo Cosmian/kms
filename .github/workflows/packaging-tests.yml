@@ -221,11 +221,11 @@ jobs:
           sleep 5
 
           # Check systemd service status
-          sudo systemctl status cosmian_kms --no-pager
+          sudo systemctl status cosmian_kms --no-pager || true
           if ! systemctl is-active --quiet cosmian_kms; then
             echo "ERROR: cosmian_kms service is not active"
-            sudo systemctl status cosmian_kms --no-pager
-            sudo journalctl -u cosmian_kms --no-pager -n 50
+            sudo systemctl status cosmian_kms --no-pager || true
+            sudo journalctl -u cosmian_kms --no-pager -n 200 || true
             exit 1
           fi
 
