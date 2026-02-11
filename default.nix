@@ -1,9 +1,10 @@
 {
   # Pin nixpkgs so nix-build works without '-I nixpkgs=…' or channels
+  # Use nixpkgs 24.11 for glibc 2.40 (Debian 13 compatibility)
   pkgs ?
     let
       nixpkgsSrc = builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
+        url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
       };
     in
     import nixpkgsSrc { config.allowUnfree = true; },
@@ -69,8 +70,9 @@ let
   kmsVersion = extractVersion lines;
 
   # Reuse the same pinned nixpkgs for internal imports/overlays
+  # Use nixpkgs 24.11 for glibc 2.40 (Debian 13 compatibility)
   nixpkgsSrc = builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
+    url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (

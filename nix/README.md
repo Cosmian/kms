@@ -323,7 +323,7 @@ Goals:
 
 `nix/kms-server.nix` builds FIPS binaries inside a hermetic, pinned environment with controlled inputs:
 
-1. **Pinned nixpkgs (24.05)**: Frozen package set prevents upstream drift
+1. **Pinned nixpkgs (24.11)**: Frozen package set prevents upstream drift (glibc 2.40)
 2. **Source cleaning**: `cleanSourceWith` removes non-input artifacts (`result-*`, reports, caches)
 3. **Locked dependencies**: Cargo dependency graph frozen via `cargoHash` (reproducible vendoring)
 4. **Deterministic compilation flags**: Rust codegen flags minimize non-determinism (FIPS builds):
@@ -349,7 +349,7 @@ Goals:
 INPUT LAYER (All Cryptographically Pinned)
 ═══════════════════════════════════════════════════════════════════════════
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Pinned nixpkgs 24.05                                                    │
+│  Pinned nixpkgs 24.11                                                    │
 │  • Hash: sha256-abc123... (tarball hash)                                 │
 │  • Frozen package set (no upstream drift)                                │
 │  • Provides: gcc, binutils, glibc 2.40, coreutils                        │
@@ -803,7 +803,7 @@ PHASE 1: PREWARM (Online - One Time Setup)
               ▼                ▼                ▼
       ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
       │   nixpkgs    │  │  Cargo Deps  │  │   OpenSSL    │
-      │   24.05      │  │  Registry    │  │   3.1.2      │
+      │   24.11      │  │  Registry    │  │   3.1.2      │
       │              │  │              │  │   Tarball    │
       │ Downloaded   │  │ cargo fetch  │  │ Cached in    │
       │ to /nix/     │  │ --locked     │  │ resources/   │
@@ -1110,7 +1110,7 @@ Benefits: consistent versions, no rustup downloads, contributes to build reprodu
 
 The prewarm steps populate the following paths so packaging can run fully offline:
 
-- Pinned nixpkgs (24.05): realized to a store path and exported as `NIXPKGS_STORE`
+- Pinned nixpkgs (24.11): realized to a store path and exported as `NIXPKGS_STORE` (glibc 2.40)
       - Example: `/nix/store/<hash>-source`
 - Nix derivations realized locally (symlinks point into the store):
       - `result-openssl-312` → `/nix/store/<hash>-openssl-3.1.2`

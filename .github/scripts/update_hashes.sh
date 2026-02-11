@@ -30,16 +30,16 @@ else
     echo "Error: Could not determine current git branch" >&2
     exit 1
   fi
-  
+
   echo "Fetching latest packaging workflow run for branch: $CURRENT_BRANCH..."
-  
+
   # Fetch recent workflow runs and filter by current branch
   # Prioritize failed runs (which likely have hash mismatches), then fall back to any completed run
-  RUN_ID=$(gh run list --limit 50 --json databaseId,status,conclusion,headBranch,name | \
+  RUN_ID=$(gh run list --limit 50 --json databaseId,status,conclusion,headBranch,name |
     jq -r --arg branch "$CURRENT_BRANCH" \
-    '.[] | select(.headBranch == $branch and .name == "Packaging" and .status == "completed") | 
+      '.[] | select(.headBranch == $branch and .name == "Packaging" and .status == "completed") | 
      {databaseId, conclusion, priority: (if .conclusion == "failure" then 0 elif .conclusion == "success" then 1 else 2 end)} | 
-     select(.conclusion != "cancelled")' | \
+     select(.conclusion != "cancelled")' |
     jq -s 'sort_by(.priority) | .[0].databaseId' || echo "")
 
   if [ -z "$RUN_ID" ]; then

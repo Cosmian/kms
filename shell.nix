@@ -9,8 +9,7 @@
       pinned =
         import
           (builtins.fetchTarball {
-            url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
-            sha256 = "1lr1h35prqkd1mkmzriwlpvxcb34kmhc9dnr48gkm8hh089hifmx";
+            url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
           })
           {
             overlays = [ rustOverlay ];
@@ -30,7 +29,7 @@ let
   # the derivation's generated fipsmodule.cnf. This avoids generating configs
   # inside nix/openssl.nix and strictly reuses the derivation outputs.
   # SoftHSM override with OpenSSL-only backend (Botan disabled)
-  # Note: softhsm 2.5.x in nixos-19.03 uses autotools (configure), not CMake
+  # Note: softhsm 2.6.x uses autotools (configure), not CMake
   # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
@@ -91,7 +90,7 @@ pkgs.mkShell {
       ]
       # Utimaco HSM simulator is only available on x86_64-linux
       ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]
-      # psmisc is only available on Linux; macOS has killall built-in
+      # psmimic is only available on Linux; macOS has killall built-in
       ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.psmisc ]
     else
       [ ]
@@ -111,6 +110,11 @@ pkgs.mkShell {
 
     # Unset any OpenSSL variables that might be set by Nix before we configure them
     unset OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_CONF OPENSSL_MODULES || true
+
+    # Add softhsm2 binaries to PATH when WITH_HSM=1
+    if [ "''${WITH_HSM:-}" = "1" ]; then
+      export PATH="${softhsmDrv}/bin:$PATH"
+    fi
 
     # Configure OpenSSL based on requested variant
     export OPENSSL_NO_VENDOR=1

@@ -41,8 +41,11 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
+                       Default: generates all combinations (openssl + server fips/non-fips × static/dynamic)
                        Options:
-                         --target <openssl|server>  Choose SBOM target (default: openssl)
+                         --target <openssl|server>  Choose specific SBOM target
+                         --variant <fips|non-fips>  Specific variant (server target only)
+                         --link <static|dynamic>    Specific linkage (server target only)
     update-hashes [options]
                Update expected hashes for current platform (release profile mandatory)
       --variant <fips|non-fips>  Update specific variant (default: fips)
@@ -88,9 +91,10 @@ usage() {
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate SBOM (OpenSSL by default)
-    $0 sbom --target openssl                # SBOM for OpenSSL 3.1.2
-    $0 sbom --target server                 # SBOM for KMS server (fips, static OpenSSL)
+    $0 sbom                                 # Generate all SBOMs (OpenSSL + all server combinations)
+    $0 sbom --target openssl                # SBOM for OpenSSL 3.1.2 only
+    $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
+    $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
     $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
 EOF
   exit 1
@@ -517,8 +521,59 @@ sbom_command() {
   # SBOM generation using sbomnix - runs OUTSIDE nix-shell
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
-  echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
-  bash "$SCRIPT" --variant "$VARIANT" --link "$LINK" "$@"
+
+  # Parse arguments to check if --target is specified
+  local target=""
+  local args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --target)
+      target="${2:-}"
+      args+=("$1" "$2")
+      shift 2
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+    esac
+  done
+
+  # If target is server or not specified (defaults to openssl in script), generate all server combinations
+  if [ "$target" = "server" ] || [ -z "$target" ]; then
+    echo "========================================="
+    echo "Generating SBOMs for all combinations"
+    echo "========================================="
+    echo ""
+
+    # Generate SBOM for OpenSSL first
+    echo ">>> Generating SBOM for OpenSSL 3.1.2..."
+    bash "$SCRIPT" --target openssl || {
+      echo "ERROR: OpenSSL SBOM generation failed" >&2
+      exit 1
+    }
+    echo ""
+
+    # Generate SBOMs for all server combinations
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        echo ">>> Generating SBOM for server ($variant, $link)..."
+        bash "$SCRIPT" --target server --variant "$variant" --link "$link" || {
+          echo "ERROR: Server SBOM generation failed for $variant/$link" >&2
+          exit 1
+        }
+        echo ""
+      done
+    done
+
+    echo "========================================="
+    echo "✓ All SBOMs generated successfully"
+    echo "========================================="
+  else
+    # Single target requested, use provided arguments
+    echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
+    bash "$SCRIPT" "${args[@]}"
+  fi
   exit $?
 }
 
