@@ -2,10 +2,9 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path, Query},
 };
-use cosmian_logger::{info, trace, warn};
+use cosmian_logger::{info, trace};
 use serde::Deserialize;
-use std::{sync::Arc, time::Duration};
-use tokio::time::timeout;
+use std::sync::Arc;
 
 use crate::{
     core::KMS,
@@ -23,11 +22,11 @@ pub(crate) mod error;
 pub(crate) mod handlers;
 pub(crate) mod models;
 
-/// The proxy is expected to respond to API calls within 250 milliseconds. If Managed HSM
-/// does not receive a response within this period, it will time out.
-/// This timeout is only set on the wrap/unwrap endpoints, since they can take time, in order to avoid
-/// wasteful computing.
-const AZURE_EKM_TIMEOUT_MS: u64 = 250;
+// /// The proxy is expected to respond to API calls within 250 milliseconds. If Managed HSM
+// /// does not receive a response within this period, it will time out.
+// /// This timeout is only set on the wrap/unwrap endpoints, since they can take time, in order to avoid
+// /// wasteful computing.
+// const AZURE_EKM_TIMEOUT_MS: u64 = 250;
 
 /// List of API versions supported by this implementation
 pub(crate) const SUPPORTED_API_VERSIONS: [&str; 1] = [
@@ -155,20 +154,10 @@ pub(crate) async fn wrap_key(
         return e.into();
     }
 
-    (timeout(Duration::from_millis(AZURE_EKM_TIMEOUT_MS), async {
-        match wrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
-            Ok(response) => HttpResponse::Ok().json(response),
-            Err(e) => e.into(),
-        }
-    })
-    .await)
-        .unwrap_or_else(|_| {
-            warn!("Azure EKM /{}/wrapkey request timeout", key_name);
-            AzureEkmErrorReply::internal_error(
-                "Request timeout: operation exceeded HSM timeout delay, aborting.",
-            )
-            .into()
-        })
+    match wrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => e.into(),
+    }
 }
 
 #[post("/{key_name}/unwrapkey")]
@@ -196,19 +185,8 @@ pub(crate) async fn unwrap_key(
         return e.into();
     }
 
-    (timeout(Duration::from_millis(AZURE_EKM_TIMEOUT_MS), async {
-        // Call implementation
-        match unwrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
-            Ok(response) => HttpResponse::Ok().json(response),
-            Err(e) => e.into(),
-        }
-    })
-    .await)
-        .unwrap_or_else(|_| {
-            warn!("Azure EKM /{}/wrapkey request timeout", key_name);
-            AzureEkmErrorReply::internal_error(
-                "Request timeout: operation exceeded HSM timeout delay, aborting.",
-            )
-            .into()
-        })
+    match unwrap_key_handler(&kms, &key_name, &user, body.into_inner()).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => e.into(),
+    }
 }
