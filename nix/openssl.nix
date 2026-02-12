@@ -31,7 +31,7 @@
 # Note: The FIPS provider module (fips.so) is a shared library that will be
 # dynamically loaded at runtime. It must be built with a glibc version compatible
 # with your target deployment environment. For maximum compatibility,
-# use an older nixpkgs snapshot (e.g., nixos-19.03 with glibc <= 2.28).
+# use a stdenv with glibc 2.34 (Rocky Linux 9 compatibility).
 
 let
   tarballName = "openssl-${version}.tar.gz";

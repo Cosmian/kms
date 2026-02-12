@@ -582,7 +582,7 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
               │                              │
               │  Linux:                      │
               │   • Strip /nix/store paths   │
-              │   • Check GLIBC ≤ 2.28       │
+              │   • Check GLIBC ≤ 2.34       │
               │   • Verify static OpenSSL    │
               │                              │
               │  macOS:                      │

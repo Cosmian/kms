@@ -18,7 +18,7 @@ if [ "$(uname)" = "Linux" ]; then
   # 2) Start from a clean RUSTFLAGS to avoid inherited Nix link-args/rpaths
   export RUSTFLAGS=""
 
-  # 3) Use the Nix cc wrapper to link against the pinned glibc (ensures GLIBC<=2.28),
+  # 3) Use the Nix cc wrapper to link against the pinned glibc (ensures GLIBC<=2.34),
   #    but we will override the runtime interpreter and suppress rpaths below.
 
   # 4) Explicitly set the system dynamic linker (avoids /nix/store/…/ld-linux-x86-64.so.2)
@@ -88,13 +88,13 @@ if [ "$UNAME" = "Linux" ]; then
     fi
   fi
 
-  # Verify GLIBC symbol versions are <= 2.28
+  # Verify GLIBC symbol versions are <= 2.34 (Rocky Linux 9 compatibility)
   GLIBC_SYMS=$(readelf -sW "$COSMIAN_KMS_EXE" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu)
   echo "$GLIBC_SYMS"
   MAX_GLIBC_VER=""
   [ -n "$GLIBC_SYMS" ] && MAX_GLIBC_VER=$(echo "$GLIBC_SYMS" | sed 's/^GLIBC_//' | sort -V | tail -n1)
-  [ -n "$MAX_GLIBC_VER" ] && [ "$(printf '%s\n' "$MAX_GLIBC_VER" "2.28" | sort -V | tail -n1)" != "2.28" ] && {
-    echo "Error: GLIBC symbols exceed 2.28 (max found: $MAX_GLIBC_VER)." >&2
+  [ -n "$MAX_GLIBC_VER" ] && [ "$(printf '%s\n' "$MAX_GLIBC_VER" "2.34" | sort -V | tail -n1)" != "2.34" ] && {
+    echo "Error: GLIBC symbols exceed 2.34 (max found: $MAX_GLIBC_VER)." >&2
     exit 1
   }
 else

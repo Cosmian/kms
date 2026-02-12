@@ -24,23 +24,39 @@ if [ $# -ge 1 ]; then
   RUN_ID="$1"
   echo "Using provided workflow run: $RUN_ID"
 else
-  echo "Fetching latest packaging workflow run..."
-  RUN_ID=$(gh api repos/Cosmian/kms/actions/workflows/pr.yml/runs \
-    --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
-
-  if [ -z "$RUN_ID" ]; then
-    echo "Error: Could not fetch latest workflow run. Make sure you're authenticated with 'gh auth login'." >&2
+  # Get current git branch
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ -z "$CURRENT_BRANCH" ]; then
+    echo "Error: Could not determine current git branch" >&2
     exit 1
   fi
-  echo "Found workflow run: $RUN_ID"
+
+  echo "Fetching latest packaging workflow run for branch: $CURRENT_BRANCH..."
+
+  # Fetch recent workflow runs and filter by current branch
+  # Prioritize failed runs (which likely have hash mismatches), then fall back to any completed run
+  RUN_ID=$(gh run list --limit 50 --json databaseId,status,conclusion,headBranch,name |
+    jq -r --arg branch "$CURRENT_BRANCH" \
+      '.[] | select(.headBranch == $branch and .name == "Packaging" and .status == "completed") | 
+     {databaseId, conclusion, priority: (if .conclusion == "failure" then 0 elif .conclusion == "success" then 1 else 2 end)} | 
+     select(.conclusion != "cancelled")' |
+    jq -s 'sort_by(.priority) | .[0].databaseId' || echo "")
+
+  if [ -z "$RUN_ID" ]; then
+    echo "Error: Could not fetch latest workflow run for branch '$CURRENT_BRANCH'." >&2
+    echo "Make sure you're authenticated with 'gh auth login' and the branch has CI runs." >&2
+    exit 1
+  fi
+  echo "Found workflow run: $RUN_ID (branch: $CURRENT_BRANCH)"
 fi
 
 echo "Fetching failed jobs..."
 
 # Get all failed jobs from this run (id + name)
 # We rely on the job name to infer platform/linkage for server vendor hashes.
+# Filter out ARM and Docker builds to speed up the process (keep Ubuntu x86_64 and macOS only)
 FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
+  --jq '.jobs[] | select(.conclusion == "failure") | select(.name | test("arm|docker"; "i") | not) | [.id, .name] | @tsv' 2>/dev/null || echo "")
 
 if [ -z "$FAILED_JOBS" ]; then
   echo "No failed jobs found in run $RUN_ID. Nothing to update."

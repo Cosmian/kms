@@ -251,6 +251,28 @@ Two paths are supported:
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
+### GLIBC Support
+
+The following table shows the GLIBC versions and distribution support for **Cosmian KMS**:
+
+| Distribution    | Version            | GLIBC | Support | End of Support |
+| --------------- | ------------------ | ----- | ------- | -------------- |
+| **Debian**      | 13 (Trixie)        | 2.40  | ✅      | TBD            |
+| **Debian**      | 12 (Bookworm)      | 2.36  | ✅      | ~2028 (LTS)    |
+| **Debian**      | 11 (Bullseye)      | 2.31  | ❌      | ~2026 (LTS)    |
+| **Debian**      | 10 (Buster)        | 2.28  | ❌      | Jun 2024 (LTS) |
+| **Debian**      | 9 (Stretch)        | 2.24  | ❌      | Jun 2022 (LTS) |
+| **Rocky Linux** | 10                 | 2.40  | ✅      | TBD            |
+| **Rocky Linux** | 9                  | 2.34  | ✅      | May 2032       |
+| **Rocky Linux** | 8                  | 2.28  | ❌      | May 2029       |
+| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅      | Jan 2026       |
+| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅      | Apr 2029       |
+| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅      | Apr 2027       |
+| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌      | Apr 2025       |
+| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌      | Apr 2023       |
+
+**Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
+
 ### OpenSSL prerequisite
 
 The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
