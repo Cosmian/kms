@@ -112,8 +112,8 @@ pub enum KeyFormatType {
     #[cfg(feature = "non-fips")]
     Pkcs12Legacy = 0x8880_0001,
     PKCS7 = 0x8880_0002,
-    ConfigurableKEM = 0x8880_0003,
-    // Available slot 0x8880_0004,
+    ConfigurableKEMSecretKey = 0x8880_0003,
+    ConfigurableKEMPublicKey = 0x8880_0004,
     EnclaveECKeyPair = 0x8880_0005,
     EnclaveECSharedKey = 0x8880_0006,
     // Available slot 0x8880_0007,

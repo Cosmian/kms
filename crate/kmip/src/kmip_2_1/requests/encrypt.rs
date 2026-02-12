@@ -26,11 +26,15 @@ pub fn encrypt_request(
     cryptographic_parameters: Option<CryptographicParameters>,
 ) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = if encryption_policy.is_some() {
-        DataToEncrypt {
+        let dte = DataToEncrypt {
             encryption_policy,
             plaintext,
-        }
-        .to_bytes()?
+        };
+
+        let bytes = dte.to_bytes()?;
+        let dte_ = DataToEncrypt::try_from_bytes(&bytes)?;
+        assert_eq!(dte, dte_);
+        bytes
     } else {
         plaintext
     };

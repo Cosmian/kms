@@ -17,7 +17,7 @@ use crate::{
 
 /// Create a new Configurable-KEM keypair and return the key IDs.
 ///
-/// In case the targeted KEM algorithm is `CoverCrypt`, passing an access
+/// In case the targeted KEM algorithm is CoverCrypt, passing an access
 /// structure is mandatory, it is otherwise ignored.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
@@ -49,7 +49,7 @@ pub struct CreateKemKeyPairAction {
     /// | ML-KEM768/P256       |  101 |
     /// | ML-KEM512/Curve25519 |  110 |
     /// | ML-KEM768/Curve25519 |  111 |
-    /// | `CoverCrypt`         | 1000 |
+    /// | CoverCrypt           | 1000 |
     /// +----------------------+------+
     #[clap(long = "kem", short = 'k')]
     pub(crate) kem_tag: usize,
@@ -92,10 +92,10 @@ impl CreateKemKeyPairAction {
                 self.wrapping_key_id.as_ref(),
             )?)
             .await
-            .with_context(|| "failed creating a Covercrypt Master Key Pair")?;
+            .with_context(|| "failed creating a configurable-KEM key-pair")?;
 
         let mut stdout =
-            console::Stdout::new("The Configurable-KEM keypair has properly been generated.");
+            console::Stdout::new("The configurable-KEM keypair has properly been generated.");
         stdout.set_tags(Some(&self.tags));
         stdout.set_key_pair_unique_identifier(
             &res.private_key_unique_identifier,

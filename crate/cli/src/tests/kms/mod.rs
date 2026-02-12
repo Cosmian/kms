@@ -3,6 +3,7 @@ mod attributes;
 mod auth_tests;
 mod azure;
 mod certificates;
+mod configurable_kem;
 #[cfg(feature = "non-fips")]
 mod configurable_kem;
 #[cfg(feature = "non-fips")]

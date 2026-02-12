@@ -768,9 +768,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.55"
+version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47b26a0954ae34af09b50f0de26458fa95369a0d478d8236d3f93082b219bd29"
+checksum = "aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1031,9 +1031,9 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "15.0.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=tbz%2Fcovercrypt-wrapper#036e7a0e7cc5aa9c90bc8b80c35d3d654e152941"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=tbz%2Fcovercrypt-wrapper#78f2ab438ba907ed8776aca46e69a629bad86486"
 dependencies = [
- "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "cosmian_openssl_provider",
  "cosmian_rust_curve25519_provider",
  "ml-kem",
@@ -1053,10 +1053,14 @@ dependencies = [
  "chacha20",
  "chacha20poly1305",
  "crypto_box",
+ "curve25519-dalek",
+ "ed25519-dalek",
  "getrandom 0.2.17",
  "leb128",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
+ "sha2",
+ "signature",
  "tiny-keccak",
  "zeroize",
 ]
@@ -1066,17 +1070,11 @@ name = "cosmian_crypto_core"
 version = "10.4.0"
 source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
 dependencies = [
- "aead",
- "aes-gcm",
- "curve25519-dalek",
- "ed25519-dalek",
  "gensym",
  "getrandom 0.2.17",
  "leb128",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
- "sha2",
- "signature",
  "tiny-keccak",
  "zeroize",
 ]
@@ -1407,9 +1405,9 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
- "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "openssl",
  "zeroize",
 ]
@@ -1417,9 +1415,9 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
- "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "curve25519-dalek",
  "zeroize",
 ]
@@ -2868,9 +2866,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.181"
+version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "459427e2af2b9c839b132acb702a1c654d95e10f8c326bfc2ad11310e458b1c5"
+checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 
 [[package]]
 name = "libloading"
@@ -3157,9 +3155,9 @@ dependencies = [
 
 [[package]]
 name = "native-tls"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87de3442987e9dbec73158d5c715e7ad9072fda936bb03d19d7fa10e00520f0e"
+checksum = "6cdede44f9a69cab2899a2049e2c3bd49bf911a157f6a3353d4a91c61abbce44"
 dependencies = [
  "libc",
  "log",
@@ -4531,9 +4529,9 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "simple_asn1"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "297f631f50729c8c99b84667867963997ec0b50f32b2a7dbcab828ef0541e8bb"
+checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -4665,9 +4663,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"
-version = "2.0.114"
+version = "2.0.115"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4d107df263a3013ef9b1879b0df87d706ff80f65a86ea879bd9c31f9b307c2a"
+checksum = "6e614ed320ac28113fa64972c4262d5dbc89deacdfd00c34a3e4cea073243c12"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5094,9 +5092,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.7+spec-1.1.0"
+version = "1.0.8+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "247eaa3197818b831697600aadf81514e577e0cba5eab10f7e064e78ae154df1"
+checksum = "0742ff5ff03ea7e67c8ae6c93cac239e0d9784833362da3f9a9c1da8dfefcbdc"
 dependencies = [
  "winnow",
 ]
@@ -6163,9 +6161,9 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4de98dfa5d5b7fef4ee834d0073d560c9ca7b6c46a71d058c48db7960f8cfaf7"
+checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zstd"

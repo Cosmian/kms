@@ -659,15 +659,13 @@ fn encrypt_with_public_key(
 
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
-        KeyFormatType::ConfigurableKEM => {
+        KeyFormatType::ConfigurableKEMPublicKey => {
             use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
                 crypto::kem::kem_encaps, reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
             };
 
             let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
-
             let (key, enc) = kem_encaps(&ek_bytes, request.data.as_ref())?;
-
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
                 data: Some(
@@ -675,8 +673,8 @@ fn encrypt_with_public_key(
                         .serialize()
                         .map_err(|e| {
                             KmsError::ConversionError(format!(
-                                "failed serializing the configurable-KEM \
-                                 encapsulation results: {e}"
+                                "failed serializing the configurable-KEM encapsulation \
+                                 results: {e}"
                             ))
                         })?
                         .to_vec(),

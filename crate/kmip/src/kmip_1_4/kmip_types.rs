@@ -85,7 +85,8 @@ pub enum KeyFormatType {
     TransparentECPublicKey = 0x15,
     PKCS12 = 0x16,
     // Extensions
-    ConfigurableKEM = 0x8880_0003,
+    ConfigurableKEMSecretKey = 0x8880_0003,
+    ConfigurableKEMPublicKey = 0x8880_0004,
     CoverCryptSecretKey = 0x8880_000C,
     CoverCryptPublicKey = 0x8880_000D,
 }
@@ -115,7 +116,8 @@ impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
             | KeyFormatType::TransparentECDSAPrivateKey
             | KeyFormatType::TransparentECPrivateKey => Self::TransparentECPrivateKey,
             KeyFormatType::PKCS12 => Self::PKCS12,
-            KeyFormatType::ConfigurableKEM => Self::ConfigurableKEM,
+            KeyFormatType::ConfigurableKEMSecretKey => Self::ConfigurableKEMSecretKey,
+            KeyFormatType::ConfigurableKEMPublicKey => Self::ConfigurableKEMPublicKey,
             KeyFormatType::CoverCryptSecretKey => Self::CoverCryptSecretKey,
             KeyFormatType::CoverCryptPublicKey => Self::CoverCryptPublicKey,
         }
@@ -154,7 +156,12 @@ impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
             kmip_2_1::kmip_types::KeyFormatType::TransparentDHPublicKey => {
                 Ok(Self::TransparentDHPublicKey)
             }
-            kmip_2_1::kmip_types::KeyFormatType::ConfigurableKEM => Ok(Self::ConfigurableKEM),
+            kmip_2_1::kmip_types::KeyFormatType::ConfigurableKEMSecretKey => {
+                Ok(Self::ConfigurableKEMSecretKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::ConfigurableKEMPublicKey => {
+                Ok(Self::ConfigurableKEMPublicKey)
+            }
             kmip_2_1::kmip_types::KeyFormatType::CoverCryptSecretKey => {
                 Ok(Self::CoverCryptSecretKey)
             }
