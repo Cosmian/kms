@@ -1,5 +1,3 @@
-use super::KMS;
-use crate::{error::KmsError, kms_bail, result::KResult};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -23,6 +21,9 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
+
+use super::KMS;
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 /// Create a User Decryption Key in the KMS.
 ///

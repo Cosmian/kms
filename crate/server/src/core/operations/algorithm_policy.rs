@@ -710,8 +710,8 @@ fn validate_algorithm(
         CryptographicAlgorithm::Ed25519 => {}
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::ConfigurableKEM => {
-            // Configurable KEM is always allowed, its variant may not.
-            return Ok(());
+            // Configurable KEM is in-scope in non-FIPS mode.
+            // If an allowlist is configured, it must still be explicitly allowed.
         }
         _ => {
             return deny(

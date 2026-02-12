@@ -1,4 +1,3 @@
-use crate::{cover_crypt_utils::VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, error::UtilsError};
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -12,8 +11,9 @@ use cosmian_kmip::{
         },
     },
     time_normalize,
-    ttlv::{from_ttlv, to_ttlv},
 };
+
+use crate::{cover_crypt_utils::VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, error::UtilsError};
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
@@ -142,10 +142,6 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()
     };
-
-    let ttlv = to_ttlv(&request).unwrap();
-    let request_ = from_ttlv::<CreateKeyPair>(ttlv).unwrap();
-    assert_eq!(request, request_);
 
     Ok(request)
 }

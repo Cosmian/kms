@@ -1,7 +1,7 @@
 pub mod attributes_utils;
 pub mod certificate_utils;
-pub mod cover_crypt_utils;
 pub mod configurable_kem_utils;
+pub mod cover_crypt_utils;
 pub mod create_utils;
 pub mod error;
 pub mod export_utils;

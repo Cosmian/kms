@@ -663,7 +663,6 @@ fn encrypt_with_public_key(
             use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
                 crypto::kem::kem_encaps, reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
             };
-            println!("HERE");
 
             let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
 
@@ -677,7 +676,7 @@ fn encrypt_with_public_key(
                         .map_err(|e| {
                             KmsError::ConversionError(format!(
                                 "failed serializing the configurable-KEM \
-                                 encapsulation \results: {e}"
+                                 encapsulation results: {e}"
                             ))
                         })?
                         .to_vec(),

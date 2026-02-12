@@ -39,8 +39,6 @@ argon2 = { version = "0.5", optional = true }
 base64 = { workspace = true }
 cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", branch = "tbz/covercrypt-wrapper", optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
-cosmian_openssl_provider = { workspace = true }
-cosmian_rust_curve25519_provider = { workspace = true }
 cosmian_kmip = { path = "../kmip", version = "5.15.0" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }
