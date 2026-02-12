@@ -13,11 +13,14 @@ use cosmian_kms_server_database::reexport::{
         crypto::cover_crypt::{
             attributes::RekeyEditAction,
             master_keys::{
-                cc_master_keypair_from_kmip_objects, kmip_objects_from_cc_master_keypair, KmipKeyUidObject
+                KmipKeyUidObject, cc_master_keypair_from_kmip_objects,
+                kmip_objects_from_cc_master_keypair,
             },
             user_key::UserDecryptionKeysHandler,
         },
-        reexport::cosmian_cover_crypt::{api::Covercrypt, AccessPolicy, MasterPublicKey, MasterSecretKey},
+        reexport::cosmian_cover_crypt::{
+            AccessPolicy, MasterPublicKey, MasterSecretKey, api::Covercrypt,
+        },
     },
 };
 use cosmian_logger::trace;

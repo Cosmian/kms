@@ -1,10 +1,3 @@
-use crate::{
-    actions::kms::{labels::KEY_ID, shared::get_key_uid},
-    error::{
-        KmsCliError,
-        result::{KmsCliResult, KmsCliResultHelper},
-    },
-};
 use clap::Parser;
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{
@@ -14,6 +7,14 @@ use cosmian_kms_client::{
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
+
+use crate::{
+    actions::kms::{labels::KEY_ID, shared::get_key_uid},
+    error::{
+        KmsCliError,
+        result::{KmsCliResult, KmsCliResultHelper},
+    },
+};
 
 /// Encapsulate a new symmetric key.
 #[derive(Parser, Debug)]

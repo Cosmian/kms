@@ -10,7 +10,7 @@ use cosmian_kmip::{
             VendorAttribute, VendorAttributeValue,
         },
     },
-    time_normalize, ttlv::{from_ttlv, to_ttlv},
+    time_normalize,
 };
 
 use crate::error::UtilsError;
@@ -52,10 +52,6 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()
     };
-
-    let ttlv = to_ttlv(&request)?;
-    let request_ = from_ttlv::<CreateKeyPair>(ttlv)?;
-    assert_eq!(request, request_);
 
     Ok(request)
 }

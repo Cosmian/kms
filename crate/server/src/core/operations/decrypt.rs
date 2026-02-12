@@ -1,18 +1,5 @@
-#[cfg(feature = "non-fips")]
-use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
-use crate::{
-    config::ServerParams,
-    core::{
-        KMS,
-        operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
-        },
-        uid_utils::{has_prefix, uids_from_unique_identifier},
-    },
-    error::KmsError,
-    kms_bail,
-    result::{KResult, KResultHelper},
-};
+use std::borrow::Cow;
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
@@ -49,8 +36,23 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
-use std::borrow::Cow;
 use zeroize::Zeroizing;
+
+#[cfg(feature = "non-fips")]
+use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
+use crate::{
+    config::ServerParams,
+    core::{
+        KMS,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+        },
+        uid_utils::{has_prefix, uids_from_unique_identifier},
+    },
+    error::KmsError,
+    kms_bail,
+    result::{KResult, KResultHelper},
+};
 
 const EMPTY_SLICE: &[u8] = &[];
 

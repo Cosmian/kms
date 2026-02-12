@@ -1,8 +1,5 @@
-use crate::{
-    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
-    cli_bail,
-    error::result::KmsCliResult,
-};
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
@@ -26,7 +23,12 @@ use cosmian_kms_crypto::{
         cosmian_crypto_core::bytes_ser_de::Serializable,
     },
 };
-use std::path::PathBuf;
+
+use crate::{
+    actions::kms::{console, labels::KEY_ID, shared::get_key_uid},
+    cli_bail,
+    error::result::KmsCliResult,
+};
 
 /// Extract, view, or edit policies of existing keys
 #[derive(Subcommand)]

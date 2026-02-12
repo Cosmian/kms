@@ -82,7 +82,7 @@ pub(super) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
     }
     .run(ctx.get_owner_client())
     .await?;
-    println!("Wrapping key id: {public_key_id}");
+    info!("Wrapping key id: {public_key_id}");
 
     let dek = CreateKeyAction {
         key_id: Some(Uuid::new_v4().to_string()),

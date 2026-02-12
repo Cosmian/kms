@@ -119,7 +119,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
-        upsert_access_policy_in_attributes(&mut attributes, &access_policy)?;
+        upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
 
         // Add the link to the master secret key
         attributes.link = Some(vec![Link {

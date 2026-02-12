@@ -1,7 +1,3 @@
-use crate::{
-    actions::kms::{labels::KEY_ID, shared::get_key_uid},
-    error::result::{KmsCliResult, KmsCliResultHelper},
-};
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
@@ -10,6 +6,11 @@ use cosmian_kms_client::{
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
+
+use crate::{
+    actions::kms::{labels::KEY_ID, shared::get_key_uid},
+    error::result::{KmsCliResult, KmsCliResultHelper},
+};
 
 /// Open a Configurable-KEM encapsulation.
 #[derive(Parser, Debug)]

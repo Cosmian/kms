@@ -1033,7 +1033,7 @@ name = "cosmian_cover_crypt"
 version = "15.0.0"
 source = "git+https://github.com/Cosmian/cover_crypt.git?branch=tbz%2Fcovercrypt-wrapper#036e7a0e7cc5aa9c90bc8b80c35d3d654e152941"
 dependencies = [
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "cosmian_openssl_provider",
  "cosmian_rust_curve25519_provider",
  "ml-kem",
@@ -1045,7 +1045,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "10.4.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1053,6 +1053,21 @@ dependencies = [
  "chacha20",
  "chacha20poly1305",
  "crypto_box",
+ "getrandom 0.2.17",
+ "leb128",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+ "tiny-keccak",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_crypto_core"
+version = "10.4.0"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+dependencies = [
+ "aead",
+ "aes-gcm",
  "curve25519-dalek",
  "ed25519-dalek",
  "gensym",
@@ -1072,7 +1087,7 @@ version = "8.0.1"
 source = "git+https://github.com/Cosmian/findex.git?branch=tbz%2Fupgrade-crypto-core#f9af23ec32b99446027906e779f74c07dfd0000e"
 dependencies = [
  "aes 0.8.4",
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "cosmian_sse_memories",
  "xts-mode",
 ]
@@ -1156,7 +1171,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
@@ -1190,7 +1205,7 @@ dependencies = [
 name = "cosmian_kms_client"
 version = "5.15.0"
 dependencies = [
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "cosmian_http_client",
  "cosmian_kms_client_utils",
  "cosmian_logger",
@@ -1249,11 +1264,9 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "cosmian_cover_crypt",
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=develop)",
  "cosmian_kmip",
  "cosmian_logger",
- "cosmian_openssl_provider",
- "cosmian_rust_curve25519_provider",
  "ctor",
  "hex",
  "k256",
@@ -1396,7 +1409,7 @@ name = "cosmian_openssl_provider"
 version = "1.0.0"
 source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
 dependencies = [
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "openssl",
  "zeroize",
 ]
@@ -1406,7 +1419,7 @@ name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
 source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
 dependencies = [
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "curve25519-dalek",
  "zeroize",
 ]
@@ -1416,7 +1429,7 @@ name = "cosmian_sse_memories"
 version = "8.0.1"
 source = "git+https://github.com/Cosmian/findex.git?branch=tbz%2Fupgrade-crypto-core#f9af23ec32b99446027906e779f74c07dfd0000e"
 dependencies = [
- "cosmian_crypto_core",
+ "cosmian_crypto_core 10.4.0 (git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider)",
  "redis",
 ]
 

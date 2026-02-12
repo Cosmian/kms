@@ -1,3 +1,12 @@
+use std::path::PathBuf;
+
+use clap::Parser;
+use cosmian_kms_client::{
+    KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
+    reexport::cosmian_kms_client_utils::configurable_kem_utils::build_create_configurable_kem_keypair_request,
+};
+use cosmian_logger::debug;
+
 use crate::{
     actions::kms::console,
     error::{
@@ -5,17 +14,10 @@ use crate::{
         result::{KmsCliResult, KmsCliResultHelper},
     },
 };
-use clap::Parser;
-use cosmian_kms_client::{
-    KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
-    reexport::cosmian_kms_client_utils::configurable_kem_utils::build_create_configurable_kem_keypair_request,
-};
-use cosmian_logger::debug;
-use std::path::PathBuf;
 
 /// Create a new Configurable-KEM keypair and return the key IDs.
 ///
-/// In case the targeted KEM algorithm is CoverCrypt, passing an access
+/// In case the targeted KEM algorithm is `CoverCrypt`, passing an access
 /// structure is mandatory, it is otherwise ignored.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
@@ -47,9 +49,8 @@ pub struct CreateKemKeyPairAction {
     /// | ML-KEM768/P256       |  101 |
     /// | ML-KEM512/Curve25519 |  110 |
     /// | ML-KEM768/Curve25519 |  111 |
-    /// | CoverCrypt           | 1000 |
+    /// | `CoverCrypt`         | 1000 |
     /// +----------------------+------+
-    ///
     #[clap(long = "kem", short = 'k')]
     pub(crate) kem_tag: usize,
 
@@ -76,7 +77,7 @@ impl CreateKemKeyPairAction {
             .access_structure
             .as_ref()
             .map(|path| {
-                let access_structure = std::fs::read_to_string(&path)?;
+                let access_structure = std::fs::read_to_string(path)?;
                 debug!("access_structure: {access_structure:?}");
                 Ok::<_, KmsCliError>(access_structure)
             })

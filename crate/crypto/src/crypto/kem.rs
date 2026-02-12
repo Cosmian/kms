@@ -3,10 +3,6 @@
 //!
 //! Implementations of the concrete variants are chosen at compile-time.
 
-use crate::{
-    CryptoError,
-    crypto::{KeyPair, cover_crypt::attributes::access_structure_from_attributes},
-};
 use cosmian_cover_crypt::{
     AccessPolicy, ConfigurableKEM, ConfigurableKemDk, ConfigurableKemEk, ConfigurableKemEnc,
     KemTag, PostQuantumKemTag, PreQuantumKemTag,
@@ -28,17 +24,24 @@ use cosmian_kmip::{
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
+use crate::{
+    CryptoError,
+    crypto::{KeyPair, cover_crypt::attributes::access_structure_from_attributes},
+};
+
+pub type KemSharedSecret = Zeroizing<Vec<u8>>;
+pub type KemEncapsulation = Zeroizing<Vec<u8>>;
+pub type KemEncapsOutput = (KemSharedSecret, KemEncapsulation);
+
 fn cryptographic_algorithm_to_post_quantum_kem_tag(
     alg: CryptographicAlgorithm,
 ) -> Result<PostQuantumKemTag, CryptoError> {
     match alg {
         CryptographicAlgorithm::MLKEM_512 => Ok(PostQuantumKemTag::MlKem512),
         CryptographicAlgorithm::MLKEM_768 => Ok(PostQuantumKemTag::MlKem768),
-        alg => {
-            return Err(CryptoError::Kmip(format!(
-                "{alg:?} not supported as post-quantum KEM"
-            )));
-        }
+        alg => Err(CryptoError::Kmip(format!(
+            "{alg:?} not supported as post-quantum KEM"
+        ))),
     }
 }
 
@@ -48,11 +51,9 @@ fn recommended_curve_to_pre_quantum_kem_tag(
     match curve {
         RecommendedCurve::P256 => Ok(PreQuantumKemTag::P256),
         RecommendedCurve::CURVE25519 => Ok(PreQuantumKemTag::R25519),
-        curve => {
-            return Err(CryptoError::Kmip(format!(
-                "curve {curve:?} not supported as basis for a pre-quantum KEM"
-            )));
-        }
+        curve => Err(CryptoError::Kmip(format!(
+            "curve {curve:?} not supported as basis for a pre-quantum KEM"
+        ))),
     }
 }
 
@@ -74,9 +75,7 @@ pub fn kem_keygen(
             .and_then(|params| params.cryptographic_algorithm),
     ) {
         (None, None) => {
-            return Err(CryptoError::Kmip(
-                "no KEM configuration defined".to_string(),
-            ));
+            return Err(CryptoError::Kmip("no KEM configuration defined".to_owned()));
         }
         (None, Some(alg)) => {
             if CryptographicAlgorithm::CoverCrypt == alg {
@@ -92,7 +91,7 @@ pub fn kem_keygen(
         ),
     };
 
-    let access_structure = access_structure_from_attributes(&common_attributes).map_or(None, Some);
+    let access_structure = access_structure_from_attributes(&common_attributes).ok();
     let (dk, ek) = ConfigurableKEM::keygen(tag, access_structure)?;
 
     Ok(KeyPair::new(
@@ -112,7 +111,7 @@ pub fn kem_keygen(
 pub fn kem_encaps(
     ek: &[u8],
     data: Option<&Zeroizing<Vec<u8>>>,
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+) -> Result<KemEncapsOutput, CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"
@@ -127,7 +126,7 @@ pub fn kem_encaps(
                     .to_owned(),
             )
         })?;
-        let data = DataToEncrypt::try_from_bytes(&data).map_err(|e| {
+        let data = DataToEncrypt::try_from_bytes(data).map_err(|e| {
             CryptoError::ConversionError(format!(
                 "failed deserializing data to encrypt the configurable-KEM \
                  encapsulation: {e}"
@@ -198,7 +197,7 @@ fn create_dk_object(
     Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
-            key_format_type: KeyFormatType::CoverCryptSecretKey,
+            key_format_type: KeyFormatType::ConfigurableKEM,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(dk_bytes),
@@ -233,7 +232,7 @@ fn create_ek_object(
     Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
-            key_format_type: KeyFormatType::CoverCryptPublicKey,
+            key_format_type: KeyFormatType::ConfigurableKEM,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(ek_bytes),
