@@ -1,21 +1,45 @@
 # SBOM (Software Bill of Materials)
 
-This directory contains a comprehensive Software Bill of Materials (SBOM) for the Cosmian KMS server, generated using industry-standard tools and formats.
+This directory contains Software Bill of Materials (SBOM) reports for Cosmian KMS builds generated from Nix outputs, using industry-standard tools and formats.
 
 ## 📋 Overview
 
-An SBOM is a formal record containing the details and supply chain relationships of components used in building software. This SBOM was generated from the Nix build output, providing a complete and reproducible view of all runtime dependencies.
+An SBOM is a formal record containing the details and supply chain relationships of components used in building software. These SBOMs are generated from the Nix build outputs, providing a complete and reproducible view of dependencies.
 
-## 📁 Generated Files
+Report locations:
 
-| File | Format | Standard | Description |
-|------|--------|----------|-------------|
-| `bom.cdx.json` | CycloneDX 1.5 | OWASP | Industry-standard SBOM format, compatible with Dependency-Track |
-| `bom.spdx.json` | SPDX 2.3 | ISO/IEC 5962:2021 | ISO-standard SBOM format, widely used for compliance |
-| `sbom.csv` | CSV | - | Simple tabular format for spreadsheet analysis |
-| `vulns.csv` | CSV | - | Vulnerability scan results from multiple sources |
-| `graph.png` | PNG | - | Visual dependency graph showing relationships |
-| `meta.json` | JSON | - | Build metadata (variant, timestamp, component counts) |
+- `sbom/openssl/` — SBOM + vulnerability scan for the OpenSSL derivation used by the builds
+- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
+    - `<variant>`: `fips` | `non-fips`
+    - `<link>`: `static` | `dynamic`
+
+## 📁 Reports (and purpose)
+
+The SBOM generator produces several "base" reports.
+
+Important: folders are kept clean on purpose. Each SBOM output directory contains only **two CSV files**:
+
+- `sbom.csv` — component inventory
+- `vulns.csv` — vulnerability rows (CVE-like duplicates removed in-place)
+
+| Report | Where | Purpose |
+|------|------|---------|
+| `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM for import into SBOM platforms (e.g., Dependency-Track) |
+| `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM for compliance workflows and SPDX tooling |
+| `sbom.csv` | `sbom/**/` | Tabular component inventory (package name/version/system metadata) |
+| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan`, then deduplicated by CVE YEAR-ID (see below) |
+| `graph.png` | `sbom/**/` | Visual dependency graph |
+| `meta.json` | `sbom/**/` | Build metadata (target/variant/link, counts, timestamps) |
+
+### CVE deduplication
+
+During generation, `vulns.csv` is deduplicated in-place by an external script:
+
+- `nix/scripts/dedup_cves.py`
+
+It removes duplicate CVE-like rows based on the normalized **YEAR-ID** key, so e.g. `CVE-2026-0915`, `UBUNTU-CVE-2026-0915`, and `DEBIAN-CVE-2026-0915` collapse to a single row.
+
+This script intentionally does **not** treat advisory IDs such as `RHSA-2026:0794` as CVEs.
 
 ## 🔧 Tools Used
 
@@ -43,6 +67,8 @@ An SBOM is a formal record containing the details and supply chain relationships
 - Provides unified vulnerability reports
 - Filters false positives and patched vulnerabilities
 
+Note: the current `vulns.csv` includes an `osv` column as well, since `vulnxscan` also queries OSV.
+
 ### [Vulnix](https://github.com/nix-community/vulnix)
 
 **Purpose:** NixOS vulnerability scanner
@@ -67,6 +93,11 @@ An SBOM is a formal record containing the details and supply chain relationships
 - Supports multiple package ecosystems
 - Detailed CVE reporting with CVSS scores
 
+### [OSV](https://osv.dev/)
+
+**Purpose:** Vulnerability database and API
+**Description:** `vulnxscan` queries OSV to enrich vulnerability coverage across multiple ecosystems.
+
 ### [nixgraph](https://github.com/tiiuae/sbomnix)
 
 **Purpose:** Nix dependency graph visualization
@@ -82,6 +113,8 @@ An SBOM is a formal record containing the details and supply chain relationships
 ## 📊 Usage Examples
 
 ### Import to Dependency-Track
+
+Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl/bom.cdx.json`).
 
 ```bash
 curl -X POST "https://dtrack.example.com/api/v1/bom" \
@@ -132,14 +165,15 @@ awk -F',' '$5 > 7.0' vulns.csv | column -t -s,
 tail -n +2 vulns.csv | cut -d',' -f3 | sort | uniq -c | sort -rn
 ```
 
-## 🔍 Vulnerability Analysis
+## 🔍 Vulnerability analysis notes
 
-Note: `vulnxscan` has no CPU-architecture filtering; `vulns.csv` (and `vulns.runtime.csv` when generated) may include CVEs for non-target architectures (e.g., PowerPC, ARMv7).
+Note: `vulnxscan` aggregates multiple sources, so the raw scan may contain multiple rows for the same underlying CVE. The generator deduplicates CVE-like rows into a single `vulns.csv` to keep the output directory tidy.
 
 The vulnerability scan combines results from multiple sources:
 
 - **Grype**: Scans against NVD, GitHub Security Advisories, and other databases
 - **Vulnix**: Scans against NixOS security tracker and NVD with Nix-specific context
+- **OSV**: Queries the OSV database (<https://osv.dev>)
 - **Combined Coverage**: Both scanners complement each other, with Vulnix excelling at Nix packages and Grype providing broader coverage
 
 ### Vulnerability Report Structure
@@ -162,7 +196,7 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 
 ## 🔒 Security Notes
 
-1. **OpenSSL**: Statically linked in the binary (not a runtime dependency)
+1. **OpenSSL**: For server `--link static`, OpenSSL is statically linked; for `--link dynamic`, it is a runtime dependency
 2. **Nix Store**: All dependencies are from Nix store with cryptographically verified, pinned versions
 3. **Reproducibility**: The SBOM reflects the exact build output, ensuring reproducibility
 4. **Coverage**: SBOM includes runtime dependencies only (build-time dependencies excluded)
@@ -171,14 +205,25 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 ## 🔄 Regenerating the SBOM
 
 ```bash
-# From repository root
+# From repository root (generates OpenSSL + all server combinations)
 bash .github/scripts/nix.sh sbom
 
-# For non-FIPS variant
-bash .github/scripts/nix.sh --variant non-fips sbom
+# OpenSSL derivation only (writes under sbom/openssl)
+bash .github/scripts/nix.sh sbom --target openssl
 
-# Custom output directory
-nix/scripts/generate_sbom.sh --output /custom/path
+# All server combinations (writes under sbom/server/<variant>/<link>)
+bash .github/scripts/nix.sh sbom --target server
+
+# One specific server combination
+bash .github/scripts/nix.sh sbom --target server --variant fips --link static
+
+# Notes:
+# - --variant/--link are only valid with: --target server (otherwise the command errors)
+# - `vulns.csv` is deduplicated in-place (no extra CSV/TXT reports are generated)
+# - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
+
+# Run the generator script directly (supports --target/--variant/--link/--output)
+nix/scripts/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
 ```
 
 ## 📚 Standards & Specifications
@@ -209,7 +254,8 @@ nix/scripts/generate_sbom.sh --output /custom/path
     serverhostname: 'dtrack.example.com'
     apikey: ${{ secrets.DTRACK_API_KEY }}
     project: 'cosmian-kms'
-    bomfilename: 'sbom/bom.cdx.json'
+    # Choose one SBOM artifact to upload (example: server fips/static)
+    bomfilename: 'sbom/server/fips/static/bom.cdx.json'
 
 - name: Archive SBOM artifacts
   uses: actions/upload-artifact@v3

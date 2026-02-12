@@ -1,9 +1,10 @@
 {
   # Pin nixpkgs so nix-build works without '-I nixpkgs=…' or channels
+  # Pin nixpkgs for a stable toolchain; Linux builds target glibc 2.34 compatibility.
   pkgs ?
     let
       nixpkgsSrc = builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
+        url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
       };
     in
     import nixpkgsSrc { config.allowUnfree = true; },
@@ -69,8 +70,9 @@ let
   kmsVersion = extractVersion lines;
 
   # Reuse the same pinned nixpkgs for internal imports/overlays
+  # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz";
+    url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
@@ -91,30 +93,32 @@ let
     targets = [ "wasm32-unknown-unknown" ];
   };
 
-  # For Linux, we need glibc <= 2.28. Import older nixpkgs to get its stdenv (2.28).
-  pkgs228 =
+  # For Linux, we need GLIBC <= 2.34 to support Rocky Linux 9.
+  # Import nixpkgs 22.05 to get its stdenv (glibc 2.34) while still using a modern
+  # Rust toolchain (1.90.0) from rust-overlay.
+  pkgs234 =
     if pkgs.stdenv.isLinux then
       (
         let
-          nixpkgs1903 = builtins.getEnv "NIXPKGS_GLIBC_228_URL";
+          nixpkgs2205 = builtins.getEnv "NIXPKGS_GLIBC_234_URL";
         in
         import (builtins.fetchTarball {
           url =
-            if nixpkgs1903 != "" then
-              nixpkgs1903
+            if nixpkgs2205 != "" then
+              nixpkgs2205
             else
-              # Pin to a stable tag tarball (glibc 2.28 lives in 19.03)
-              "https://github.com/NixOS/nixpkgs/archive/nixos-19.03.tar.gz";
+              # Pin to 22.05 stable tag tarball (glibc 2.34 for Rocky Linux 9 compatibility)
+              "https://github.com/NixOS/nixpkgs/archive/nixos-22.05.tar.gz";
         }) { config.allowUnfree = true; }
       )
     else
       pkgs;
 
-  # Create rustPlatform: on Linux use pkgs228.makeRustPlatform (glibc 2.27),
+  # Create rustPlatform: on Linux use pkgs234.makeRustPlatform (glibc 2.34),
   # but with modern Rust toolchain
   rustPlatform190 =
     if pkgs.stdenv.isLinux then
-      pkgs228.makeRustPlatform {
+      pkgs234.makeRustPlatform {
         cargo = rustToolchain;
         rustc = rustToolchain;
       }
@@ -124,10 +128,10 @@ let
         rustc = rustToolchain;
       };
 
-  # Build OpenSSL 3.1.2 with old nixpkgs stdenv (glibc 2.27)
+  # Build OpenSSL 3.1.2 with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9)
   # Create both static and dynamic versions
-  openssl312-static = pkgs228.callPackage ./nix/openssl.nix { static = true; };
-  openssl312-dynamic = pkgs228.callPackage ./nix/openssl.nix { static = false; };
+  openssl312-static = pkgs234.callPackage ./nix/openssl.nix { static = true; };
+  openssl312-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
   # Default to static for backward compatibility
   openssl312 = openssl312-static;
 
@@ -143,7 +147,7 @@ let
       sha256 = "sha256-esp3MJ24RQpMFn9zPgccp7NESoFAUPU7y+YRsJBVVr4=";
     };
     # Pinned cargo vendor hash for reproducible builds
-    cargoSha256 = "sha256-vXb6O9xoYRVAbFGlhbPE6xYYqjSWT/fvoXYl4dkMxEg=";
+    cargoSha256 = "sha256-mUsoPBgv60Eir/uIK+Xe+GmXdSFKXoopB4PlvFvHZuA=";
     nativeBuildInputs = [
       rustToolchain
       pkgs.pkg-config
@@ -206,7 +210,7 @@ let
     }:
     pkgs.callPackage ./nix/kms-server.nix {
       openssl312 = if static then openssl312-static else openssl312-dynamic;
-      inherit pkgs228;
+      inherit pkgs234;
       rustPlatform = rustPlatform190;
       version = kmsVersion;
       inherit

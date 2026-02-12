@@ -136,7 +136,8 @@ ensure_macos_frameworks_ldflags() {
 
 # Unified nixpkgs pin (used by all scripts)
 # Keep a single source of truth for the pinned nixpkgs URL.
-export PIN_URL="https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz"
+# Pin nixpkgs for a stable toolchain; Linux builds target GLIBC <= 2.34.
+export PIN_URL="https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz"
 # Backward-compatible alias used by some scripts
 export PINNED_NIXPKGS_URL="$PIN_URL"
 

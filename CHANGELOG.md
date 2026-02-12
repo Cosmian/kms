@@ -15,6 +15,20 @@ All notable changes to this project will be documented in this file.
         - otel_metrics.rs: ensure active_keys_count time series exists even when 0.
         - cron.rs: fall back to default username if hsm_admin is empty.
 
+- Fix Linux packaging smoke tests when the host has `/etc/cosmian/kms.toml` present by running with an explicit temp config.
+- Make OpenTelemetry export tests resilient under FIPS Nix shells by running `curl` in a clean environment (avoid inherited OpenSSL/LD overrides).
+
+### ⚙️ Build
+
+- Nix builds now target GLIBC ≤ 2.34 (Rocky Linux 9 compatibility) by updating pins and building Linux OpenSSL/server outputs against a glibc 2.34 stdenv; server vendor hash expectations are split by static/dynamic on Linux.
+- SBOM generation improvements:
+  - `.github/scripts/nix.sh sbom` strictly validates `--target/--variant/--link`, defaults to generating all combinations, and supports generating a specific server subset.
+  - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place (via `nix/scripts/dedup_cves.py`, with optional filtering helper `nix/scripts/filter_vulns.py`).
+
+### 📚 Documentation
+
+- Update SBOM documentation to match the generator output layout and behavior.
+
 ## [5.15.0] - 2026-01-21
 
 ### 🚀 Features

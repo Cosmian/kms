@@ -46,7 +46,6 @@ Generated files:
   - vulns.csv                  Vulnerability scan results
   - graph.png                  Dependency graph visualization
   - meta.json                  Build metadata
-  - README.txt                 Documentation and integration guide
 EOF
 }
 
@@ -133,6 +132,27 @@ fi
 # Create output directory (after adjusting default path)
 mkdir -p "$OUTPUT_DIR"
 
+# sbomnix may emit default output files (sbom.csv/sbom.cdx.json/sbom.spdx.json)
+# into the current working directory, even when explicit output paths are
+# provided. To ensure this script only updates the requested OUTPUT_DIR,
+# run sbomnix/vulnxscan from an isolated temporary work directory.
+SBOM_WORKDIR="$(mktemp -d -t cosmian-kms-sbom.XXXXXX)"
+cleanup() {
+  rm -rf "$SBOM_WORKDIR" || true
+}
+trap cleanup EXIT
+
+# Keep the output directory clean: remove previously generated derived
+# artifacts (older runs may have created extra post-processed reports).
+rm -f \
+  "$OUTPUT_DIR/sbom.runtime.csv" \
+  "$OUTPUT_DIR/vulns.runtime.csv" \
+  "$OUTPUT_DIR/vulns.pc.deb-ubu-rocky.csv" \
+  "$OUTPUT_DIR/vulns.runtime.pc.deb-ubu-rocky.csv" \
+  "$OUTPUT_DIR/cves.pc.deb-ubu-rocky.txt" \
+  "$OUTPUT_DIR/cves.runtime.pc.deb-ubu-rocky.txt" \
+  || true
+
 echo "========================================="
 echo "SBOM Generation"
 echo "========================================="
@@ -193,19 +213,19 @@ echo ""
 # Note: "Failed reading nix meta information" warning is expected when scanning store paths
 # The SBOM still includes all package information, just without Nixpkgs-specific metadata
 echo "Generating CycloneDX SBOM..."
-run_sbomnix "$NIX_RESULT" --impure --cdx="$OUTPUT_DIR/bom.cdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --cdx="$OUTPUT_DIR/bom.cdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ bom.cdx.json"
 echo ""
 
 # Generate SPDX SBOM (JSON format - ISO standard)
 echo "Generating SPDX SBOM..."
-run_sbomnix "$NIX_RESULT" --impure --spdx="$OUTPUT_DIR/bom.spdx.json" 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --spdx="$OUTPUT_DIR/bom.spdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ bom.spdx.json"
 echo ""
 
 # Generate CSV format
 echo "Generating CSV report..."
-run_sbomnix "$NIX_RESULT" --impure --csv="$OUTPUT_DIR/sbom.csv" 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --csv="$OUTPUT_DIR/sbom.csv") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ sbom.csv"
 echo ""
 
@@ -213,9 +233,28 @@ echo ""
 echo "Running vulnerability scan..."
 # Enable experimental Nix features required by vulnix
 export NIX_CONFIG="experimental-features = nix-command flakes"
-run_vulnxscan "$NIX_RESULT" --out "$OUTPUT_DIR/vulns.csv"
+VULNXSCAN_LOG="$SBOM_WORKDIR/vulnxscan.log"
+# vulnxscan writes a large console report to stderr. Keep output quiet on success,
+# but show the log if the scan fails.
+if ! (cd "$SBOM_WORKDIR" && run_vulnxscan "$NIX_RESULT" --out "$OUTPUT_DIR/vulns.csv") \
+  >/dev/null 2>"$VULNXSCAN_LOG"; then
+  echo "Error: vulnerability scan failed" >&2
+  if [ -s "$VULNXSCAN_LOG" ]; then
+    echo "--- vulnxscan log ---" >&2
+    cat "$VULNXSCAN_LOG" >&2
+    echo "---------------------" >&2
+  fi
+  exit 1
+fi
 if [ -f "$OUTPUT_DIR/vulns.csv" ] && [ -s "$OUTPUT_DIR/vulns.csv" ]; then
   echo "  ✓ vulns.csv"
+
+  # Deduplicate CVE-like rows in-place so the final output stays a single CSV.
+  # This removes duplicates like DEBIAN-CVE-YYYY-NNNN / UBUNTU-CVE-YYYY-NNNN / CVE-YYYY-NNNN.
+  if command -v python3 >/dev/null 2>&1 && [ -f "$REPO_ROOT/nix/scripts/dedup_cves.py" ]; then
+    echo "Deduplicating CVE rows in vulns.csv..."
+    python3 "$REPO_ROOT/nix/scripts/dedup_cves.py" --csv "$OUTPUT_DIR/vulns.csv" --inplace --strategy debian || true
+  fi
 else
   echo "  ⚠ Vulnerability scan produced no results"
 fi
@@ -237,78 +276,20 @@ else
 fi
 echo ""
 
-# Optionally filter to runtime-only dependencies for the server target
-runtime_filter() {
-  local bin
-  bin="$(readlink -f "$NIX_RESULT")/bin/cosmian_kms"
-  if [ ! -x "$bin" ]; then
-    echo "  ⚠ Runtime filter: binary not found at $bin, skipping"
-    return 0
-  fi
-
-  if ! command -v readelf >/dev/null 2>&1; then
-    echo "  ⚠ Runtime filter: 'readelf' not available, skipping"
-    return 0
-  fi
-
-  # Collect DT_NEEDED shared library basenames
-  mapfile -t needed_libs < <(readelf -d "$bin" 2>/dev/null | awk '/NEEDED/ {gsub(/\[|\]/,"",$5); print $5}')
-
-  if [ ${#needed_libs[@]} -eq 0 ]; then
-    echo "  ⚠ Runtime filter: no DT_NEEDED entries found, skipping"
-    return 0
-  fi
-
-  # Map library basenames to package families for CSV filtering
-  # - glibc: libc.so.6 libm.so.6 ld-linux* librt.so.1 libdl.so.2 libpthread.so.0 libresolv.so.2 libnss_*.so*
-  # - gcc:   libgcc_s.so.*
-  # - openssl: libssl.so.* libcrypto.so.*
-  # - zlib:  libz.so.*
-  declare -A fam
-  for lib in "${needed_libs[@]}"; do
-    case "$lib" in
-    libgcc_s.so.*) fam[gcc]=1 ;;
-    libc.so.* | libm.so.* | ld-linux*.so* | librt.so.* | libdl.so.* | libpthread.so.* | libresolv.so.* | libnss_*.so*) fam[glibc]=1 ;;
-    libssl.so.* | libcrypto.so.*) fam[openssl]=1 ;;
-    libz.so.*) fam[zlib]=1 ;;
-    *) : ;;
-    esac
-  done
-
-  if [ ${#fam[@]} -eq 0 ]; then
-    echo "  ⚠ Runtime filter: no mapped families from DT_NEEDED, skipping"
-    return 0
-  fi
-
-  # Build regex for package name matching
-  local families pkg_regex pname_regex
-  families=$(printf "%s|" "${!fam[@]}" | sed 's/|$//')
-  pkg_regex="^(${families})$"
-  pname_regex="^(${families})"
-
-  # Filter vulns.csv where the 3rd column is 'package'
-  if [ -f "$OUTPUT_DIR/vulns.csv" ]; then
-    awk -F',' -v OFS=',' -v rx="$pkg_regex" 'NR==1{print; next} { col=$3; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/vulns.csv" >"$OUTPUT_DIR/vulns.runtime.csv" || true
-    if [ -s "$OUTPUT_DIR/vulns.runtime.csv" ]; then
-      echo "  ✓ vulns.runtime.csv"
-    else
-      echo "  ⚠ Runtime filter: produced empty vulns.runtime.csv"
-    fi
-  fi
-
-  # Filter sbom.csv where the 2nd column is 'pname'
-  if [ -f "$OUTPUT_DIR/sbom.csv" ]; then
-    awk -F',' -v OFS=',' -v rx="$pname_regex" 'NR==1{print; next} { col=$2; gsub(/"/,"",col); if (col ~ rx) print }' "$OUTPUT_DIR/sbom.csv" >"$OUTPUT_DIR/sbom.runtime.csv" || true
-    if [ -s "$OUTPUT_DIR/sbom.runtime.csv" ]; then
-      echo "  ✓ sbom.runtime.csv"
-    else
-      echo "  ⚠ Runtime filter: produced empty sbom.runtime.csv"
-    fi
-  fi
-}
-
 # Generate build metadata
 echo "Generating metadata..."
+
+OPENSSL_NOTE=""
+if [ "$TARGET" = "server" ]; then
+  if [ "$LINK" = "static" ]; then
+    OPENSSL_NOTE="OpenSSL is statically linked in the binary"
+  else
+    OPENSSL_NOTE="OpenSSL is dynamically linked in the binary"
+  fi
+else
+  OPENSSL_NOTE="SBOM targets the OpenSSL derivation itself"
+fi
+
 cat >"$OUTPUT_DIR/meta.json" <<EOF
 {
   "spec_version": "1.0.0",
@@ -325,9 +306,9 @@ cat >"$OUTPUT_DIR/meta.json" <<EOF
   "component_count": $(wc -l <"$OUTPUT_DIR/sbom.csv" 2>/dev/null | awk '{print $1-1}' || echo 0),
   "vulnerability_count": $(wc -l <"$OUTPUT_DIR/vulns.csv" 2>/dev/null | awk '{print $1-1}' || echo 0),
   "notes": [
-    "OpenSSL is statically linked in the binary",
+    "$OPENSSL_NOTE",
     "All dependencies are from Nix store with pinned versions",
-    "SBOM includes runtime dependencies only"
+    "SBOM reflects the exact Nix build output (derivation closure)"
   ]
 }
 EOF
@@ -351,13 +332,7 @@ echo "  ✓ CycloneDX 1.5 (OWASP)"
 echo "  ✓ SPDX 2.3 (ISO/IEC 5962:2021)"
 echo ""
 echo "Next steps:"
-echo "  - Review: cat $OUTPUT_DIR/README.md"
+echo "  - Review: cat $REPO_ROOT/sbom/README.md"
 echo "  - Import to Dependency-Track or other SBOM platform"
 echo "  - Integrate into CI/CD pipeline"
 echo ""
-
-# Invoke runtime filter if requested and applicable
-if [ "$TARGET" = "server" ]; then
-  echo "Applying runtime-only filter based on DT_NEEDED..."
-  runtime_filter
-fi

@@ -1016,8 +1016,8 @@ ensure_cargo_deb() {
     :
   else
     rm -f "$link" 2>/dev/null || true
-    # Build cargo-deb from pinned nixpkgs and link it for PATH usage
-    nix-build -I "nixpkgs=${PIN_URL}" -E 'with import <nixpkgs> {}; cargo-deb' -o "$link"
+    # Build cargo-deb from pinned nixpkgs with tests disabled (tests fail in nixpkgs 24.11)
+    nix-build -I "nixpkgs=${PIN_URL}" -E 'with import <nixpkgs> {}; cargo-deb.overrideAttrs (old: { doCheck = false; })' -o "$link"
   fi
   export PATH="$link/bin:$PATH"
 }
