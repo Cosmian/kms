@@ -67,68 +67,68 @@ This directory contains the reproducible Nix derivations and helper scripts used
 ## Table of Contents
 
 - [Nix builds: reproducibility, offline guarantees \& idempotent packaging](#nix-builds-reproducibility-offline-guarantees--idempotent-packaging)
-    - [Quick Visual Overview](#quick-visual-overview)
-    - [Table of Contents](#table-of-contents)
-    - [Why Nix?](#why-nix)
-        - [The Challenge](#the-challenge)
-        - [Why We Chose Nix Over Alternatives](#why-we-chose-nix-over-alternatives)
-        - [History \& Origins](#history--origins)
-        - [Core Philosophy](#core-philosophy)
-        - [Major Projects Using Nix](#major-projects-using-nix)
-            - [Technology Companies](#technology-companies)
-            - [Open Source Projects](#open-source-projects)
-            - [Research \& Academia](#research--academia)
-            - [Government \& High-Assurance](#government--high-assurance)
-        - [Why Nix Matters for Cosmian KMS](#why-nix-matters-for-cosmian-kms)
-            - [Reproducible FIPS Builds](#reproducible-fips-builds)
-            - [Dependency Transparency](#dependency-transparency)
-            - [Offline Air-Gapped Builds](#offline-air-gapped-builds)
-    - [Build reproducibility foundations](#build-reproducibility-foundations)
-        - [How reproducible builds work (FIPS only)](#how-reproducible-builds-work-fips-only)
-        - [Reproducibility Architecture Diagram](#reproducibility-architecture-diagram)
-        - [Build hash inventory](#build-hash-inventory)
-        - [Hash verification flow](#hash-verification-flow)
-            - [Hash Verification Details](#hash-verification-details)
-    - [Native hash verification (installCheckPhase)](#native-hash-verification-installcheckphase)
-    - [Proving determinism locally (FIPS builds only)](#proving-determinism-locally-fips-builds-only)
-    - [Unified \& idempotent packaging](#unified--idempotent-packaging)
-    - [Offline packaging flow](#offline-packaging-flow)
-        - [Offline Build Visual Flow](#offline-build-visual-flow)
-        - [Step 1: Prewarm all dependencies (first-time setup)](#step-1-prewarm-all-dependencies-first-time-setup)
-        - [Step 2: Verify offline capability](#step-2-verify-offline-capability)
-        - [Step 3: Package signing (optional)](#step-3-package-signing-optional)
-        - [What gets cached offline?](#what-gets-cached-offline)
-        - [Offline verification](#offline-verification)
-    - [Package signing](#package-signing)
-        - [Setup signing key](#setup-signing-key)
-        - [Sign packages during build](#sign-packages-during-build)
-        - [Verify signatures](#verify-signatures)
-    - [Rust toolchain (no rustup)](#rust-toolchain-no-rustup)
-    - [Notes](#notes)
-    - [Troubleshooting](#troubleshooting)
-    - [Files overview](#files-overview)
-    - [Offline dependencies location](#offline-dependencies-location)
-    - [Nix Scripts Documentation](#nix-scripts-documentation)
-        - [Scripts Architecture](#scripts-architecture)
-        - [Scripts Overview](#scripts-overview)
-        - [Quick Reference](#quick-reference)
-        - [Script Execution Flow Diagram](#script-execution-flow-diagram)
-        - [Package Creation Pipeline](#package-creation-pipeline)
-        - [Hash Update Visual Flow](#hash-update-visual-flow)
-        - [SBOM Generation Flow](#sbom-generation-flow)
-    - [Learning Resources \& Official Documentation](#learning-resources--official-documentation)
-        - [Official Nix Documentation](#official-nix-documentation)
-            - [Core Documentation](#core-documentation)
-            - [Language \& Expression Reference](#language--expression-reference)
-        - [Learning Paths by Experience Level](#learning-paths-by-experience-level)
-            - [Beginners (New to Nix)](#beginners-new-to-nix)
-            - [Intermediate (Familiar with Nix basics)](#intermediate-familiar-with-nix-basics)
-            - [Advanced (Optimizing builds, contributing)](#advanced-optimizing-builds-contributing)
-        - [Cosmian KMS-Specific Topics](#cosmian-kms-specific-topics)
-        - [Community Resources](#community-resources)
-            - [Discussion Forums \& Help](#discussion-forums--help)
-            - [Ecosystem Tools \& Extensions](#ecosystem-tools--extensions)
-        - [Research Papers \& Academic Background](#research-papers--academic-background)
+  - [Quick Visual Overview](#quick-visual-overview)
+  - [Table of Contents](#table-of-contents)
+  - [Why Nix?](#why-nix)
+    - [The Challenge](#the-challenge)
+    - [Why We Chose Nix Over Alternatives](#why-we-chose-nix-over-alternatives)
+    - [History \& Origins](#history--origins)
+    - [Core Philosophy](#core-philosophy)
+    - [Major Projects Using Nix](#major-projects-using-nix)
+      - [Technology Companies](#technology-companies)
+      - [Open Source Projects](#open-source-projects)
+      - [Research \& Academia](#research--academia)
+      - [Government \& High-Assurance](#government--high-assurance)
+    - [Why Nix Matters for Cosmian KMS](#why-nix-matters-for-cosmian-kms)
+      - [Reproducible FIPS Builds](#reproducible-fips-builds)
+      - [Dependency Transparency](#dependency-transparency)
+      - [Offline Air-Gapped Builds](#offline-air-gapped-builds)
+  - [Build reproducibility foundations](#build-reproducibility-foundations)
+    - [How reproducible builds work (FIPS only)](#how-reproducible-builds-work-fips-only)
+    - [Reproducibility Architecture Diagram](#reproducibility-architecture-diagram)
+    - [Build hash inventory](#build-hash-inventory)
+    - [Hash verification flow](#hash-verification-flow)
+      - [Hash Verification Details](#hash-verification-details)
+  - [Native hash verification (installCheckPhase)](#native-hash-verification-installcheckphase)
+  - [Proving determinism locally (FIPS builds only)](#proving-determinism-locally-fips-builds-only)
+  - [Unified \& idempotent packaging](#unified--idempotent-packaging)
+  - [Offline packaging flow](#offline-packaging-flow)
+    - [Offline Build Visual Flow](#offline-build-visual-flow)
+    - [Step 1: Prewarm all dependencies (first-time setup)](#step-1-prewarm-all-dependencies-first-time-setup)
+    - [Step 2: Verify offline capability](#step-2-verify-offline-capability)
+    - [Step 3: Package signing (optional)](#step-3-package-signing-optional)
+    - [What gets cached offline?](#what-gets-cached-offline)
+    - [Offline verification](#offline-verification)
+  - [Package signing](#package-signing)
+    - [Setup signing key](#setup-signing-key)
+    - [Sign packages during build](#sign-packages-during-build)
+    - [Verify signatures](#verify-signatures)
+  - [Rust toolchain (no rustup)](#rust-toolchain-no-rustup)
+  - [Notes](#notes)
+  - [Troubleshooting](#troubleshooting)
+  - [Files overview](#files-overview)
+  - [Offline dependencies location](#offline-dependencies-location)
+  - [Nix Scripts Documentation](#nix-scripts-documentation)
+    - [Scripts Architecture](#scripts-architecture)
+    - [Scripts Overview](#scripts-overview)
+    - [Quick Reference](#quick-reference)
+    - [Script Execution Flow Diagram](#script-execution-flow-diagram)
+    - [Package Creation Pipeline](#package-creation-pipeline)
+    - [Hash Update Visual Flow](#hash-update-visual-flow)
+    - [SBOM Generation Flow](#sbom-generation-flow)
+  - [Learning Resources \& Official Documentation](#learning-resources--official-documentation)
+    - [Official Nix Documentation](#official-nix-documentation)
+      - [Core Documentation](#core-documentation)
+      - [Language \& Expression Reference](#language--expression-reference)
+    - [Learning Paths by Experience Level](#learning-paths-by-experience-level)
+      - [Beginners (New to Nix)](#beginners-new-to-nix)
+      - [Intermediate (Familiar with Nix basics)](#intermediate-familiar-with-nix-basics)
+      - [Advanced (Optimizing builds, contributing)](#advanced-optimizing-builds-contributing)
+    - [Cosmian KMS-Specific Topics](#cosmian-kms-specific-topics)
+    - [Community Resources](#community-resources)
+      - [Discussion Forums \& Help](#discussion-forums--help)
+      - [Ecosystem Tools \& Extensions](#ecosystem-tools--extensions)
+    - [Research Papers \& Academic Background](#research-papers--academic-background)
 
 ---
 
@@ -160,7 +160,7 @@ Modern software projects face critical challenges in build reproducibility and s
 
 1. **Supply Chain Security & Auditability**: Reproducible builds with cryptographic hash verification enable independent verification of binaries. While not required by FIPS 140-3, this provides strong supply chain security guarantees.
 
-2. **Static OpenSSL Linking**: Need to bundle OpenSSL 3.1.2 FIPS provider without runtime dependencies. Nix allows precise control over linkage and eliminates `/nix/store` paths in final binaries.
+2. **Static OpenSSL Linking**: KMS links against OpenSSL 3.6.0, but needs to bundle the OpenSSL 3.1.2 FIPS provider without runtime dependencies (official FIPS provider version; no more recent FIPS provider version). Nix allows precise control over linkage and eliminates `/nix/store` paths in final binaries.
 
 3. **Multi-Platform Support**: Single build system for Linux (x86_64, ARM64) and macOS (Apple Silicon) without Docker limitations.
 
@@ -271,12 +271,21 @@ Every dependency (80+ Rust crates, OpenSSL, glibc) is pinned by cryptographic ha
 # nix/kms-server.nix
 cargoHash = "sha256-xyz789...";  # Locks ALL Cargo dependencies
 
-# OpenSSL 3.1.2 pinned by nixpkgs hash
-openssl312 = pkgs.openssl_3_1.overrideAttrs {
-  src = fetchurl {
-    url = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
-    sha256 = "sha256-abc123...";  # Exact tarball hash
-  };
+# OpenSSL note:
+# - KMS links against OpenSSL 3.6.0 (runtime/library)
+# - FIPS variants also ship the OpenSSL 3.1.2 FIPS provider + fipsmodule.cnf
+openssl36 = opensslPkgs.callPackage ./openssl.nix {
+   static = true;
+   version = "3.6.0";
+   enableLegacy = true;
+   srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+   sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
+   expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+};
+
+openssl312 = opensslPkgs.callPackage ./openssl.nix {
+   static = true;
+   version = "3.1.2";
 };
 ```
 
@@ -332,7 +341,8 @@ Goals:
    - `-Cincremental=false` — No incremental compilation cache
    - `-C link-arg=-Wl,--build-id=none` — No build-id section
    - `SOURCE_DATE_EPOCH` — Normalized embedded timestamps
-5. **Pinned OpenSSL 3.1.2**: Local tarball or fetched by SRI hash (FIPS 140-3 certified)
+5. **Pinned OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS provider)**: Local tarball or fetched by SRI hash (FIPS 140-3 certified)
+   - Note: OpenSSL 3.1.2 is kept for the FIPS provider.
 6. **Sanitized binaries**: RPATH removed, interpreter fixed to avoid volatile store paths
 
 **Result for FIPS builds**: Identical inputs ⇒ identical binary hash. Hash drift always means an intentional or accidental input change.
@@ -512,31 +522,31 @@ Use case: FIPS for compliance/audits, non-FIPS for general deployment
 
 ### Build hash inventory
 
-All hashes are committed in the repository and verified during builds:
+Cargo/UI vendor hashes are committed in the repository and verified during builds. Expected **binary** hashes can also be committed under `nix/expected-hashes/` when strict deterministic enforcement is enabled; otherwise the build still computes and writes the actual binary hash to `$out/bin/` for review/copying.
 
 | Hash Type             | Purpose                                                 | Location                                                   | Example (x86_64-linux FIPS)                                        |
 | --------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
-| **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix:122`                                   | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
-| **OpenSSL source**    | FIPS 140-3 certified crypto library                     | `nix/openssl-3_1_2.nix:14`                                 | `sha256-BPedCZMRpt6FvPc3WDopPx8DAag0Gbu6N6hqdHvomso=`              |
-| **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/fips.openssl.x86_64.linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
-| **Binary (non-FIPS)** | Non-FIPS server (tracked hash, not fully deterministic) | `nix/expected-hashes/non-fips.openssl.x86_64.linux.sha256` | `2eb034667cde901bb85b195d58b48a32ff4028f785bd977acdb689ea42268f1b` |
+| **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix`                                       | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
+| **OpenSSL sources**   | OpenSSL 3.6.0 (runtime) + OpenSSL 3.1.2 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=`              |
+| **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
+| **Binary (non-FIPS)** | Non-FIPS server (tracked hash, not fully deterministic) | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256` | `2eb034667cde901bb85b195d58b48a32ff4028f785bd977acdb689ea42268f1b` |
 
 Platform-specific binary hashes:
 
 | Platform       | Variant  | Hash File                                                    | Enforced At          | Deterministic?                 |
 | -------------- | -------- | ------------------------------------------------------------ | -------------------- | ------------------------------ |
-| x86_64-linux   | FIPS     | `nix/expected-hashes/fips.openssl.x86_64.linux.sha256`       | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
-| x86_64-linux   | non-FIPS | `nix/expected-hashes/non-fips.openssl.x86_64.linux.sha256`   | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
-| aarch64-linux  | FIPS     | `nix/expected-hashes/fips.openssl.aarch64.linux.sha256`      | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
-| aarch64-linux  | non-FIPS | `nix/expected-hashes/non-fips.openssl.aarch64.linux.sha256`  | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
-| aarch64-darwin | FIPS     | `nix/expected-hashes/fips.openssl.aarch64.darwin.sha256`     | Not enforced (macOS) | ⚠️ No (macOS builds)            |
-| aarch64-darwin | non-FIPS | `nix/expected-hashes/non-fips.openssl.aarch64.darwin.sha256` | Not enforced (macOS) | ⚠️ No (macOS builds)            |
+| x86_64-linux   | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`       | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
+| x86_64-linux   | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256`   | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
+| aarch64-linux  | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.aarch64.linux.sha256`      | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
+| aarch64-linux  | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.aarch64.linux.sha256`  | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
+| aarch64-darwin | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.aarch64.darwin.sha256`     | Not enforced (macOS) | ⚠️ No (macOS builds)            |
+| aarch64-darwin | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.aarch64.darwin.sha256` | Not enforced (macOS) | ⚠️ No (macOS builds)            |
 
 **Note**:
 
 - The Cargo vendor hash may differ between macOS and Linux due to platform-specific dependencies
 - OpenSSL and binary hashes are platform-specific by design
-- Hash enforcement only runs on Linux builds (see `kms-server.nix` line 359)
+- Expected-binary-hash enforcement is opt-in (via `enforceDeterministicHash`) and only runs on Linux
 - **Only FIPS builds on Linux are bit-for-bit deterministic**; non-FIPS hashes are tracked for build consistency but not reproducibility guarantees
 
 ### Hash verification flow
@@ -563,10 +573,11 @@ During the build process, Nix enforces all hashes at multiple stages:
 ┌─────────────────────────────────────────────────────────────────┐
 │ Step 3: OpenSSL Source Hash Check                               │
 ├─────────────────────────────────────────────────────────────────┤
-│ • Expected: sha256 in openssl-3_1_2.nix                          │
-│ • Actual: SHA-256 of openssl-3.1.2.tar.gz                        │
+│ • Expected: pinned SRI/hash for OpenSSL 3.6.0 in kms-server.nix   │
+│           + pinned hash defaults for OpenSSL 3.1.2 in openssl.nix │
+│ • Actual: SHA-256 of openssl-*.tar.gz (local tarball or fetch)    │
 │ • ❌ Mismatch → BUILD FAILS                                     │
-│ • ✅ Match → Build OpenSSL 3.1.2 (FIPS 140-3)                   │
+│ • ✅ Match → Build OpenSSL (3.6.0 runtime + 3.1.2 FIPS provider) │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -648,7 +659,8 @@ Layer 3: Final Binary
 Layer 4: Runtime Assertions
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  installCheckPhase validation                                            │
-│  ├─ OpenSSL version check (exactly 3.1.2)                                │
+│  ├─ OpenSSL linkage checks (static vs dynamic)                            │
+│  ├─ Static Linux builds assert OpenSSL 3.6.0 is statically linked         │
 │  ├─ Static linkage verification (ldd shows no libssl.so)                 │
 │  ├─ GLIBC symbol version ≤ 2.34 (Rocky Linux 9+ Linux compatibility)     │
 │  ├─ FIPS mode operational check (if FIPS variant)                        │
@@ -684,12 +696,14 @@ Script performs:
   2. Compute SHA-256
   3. Update hash files
          ↓
-Verify: bash .github/scripts/nix.sh build
+Verify: bash .github/scripts/nix.sh test sqlite
          ↓
 Commit updated hashes
 ```
 
-Every build enforces all hashes on Linux — **no fallbacks, no approximations**.
+Tip: for a quick end-to-end check after updates, use `bash .github/scripts/nix.sh test sqlite` or build a package with `bash .github/scripts/nix.sh package`.
+
+Hash enforcement is configurable: some expected-hash checks are only enforced when `enforceDeterministicHash`/`--enforce-deterministic-hash true` is enabled.
 
 **Note on non-FIPS hashes**: Non-FIPS builds are tracked with expected hashes for consistency monitoring,
 but these hashes may change across different build environments even with identical source code. Hash changes
@@ -700,34 +714,22 @@ should still be reviewed, but they don't necessarily indicate a source change fo
 During `installCheckPhase` we:
 
 - Compute `sha256` of `$out/bin/cosmian_kms`
-- Compare against a strict, platform-specific file: `nix/expected-hashes/<variant>.<system>.sha256`
-      - `<variant>` is `fips` or `non-fips` depending on Cargo features
-      - `<system>` is the Nix system triple (e.g., `x86_64-linux`, `aarch64-darwin`)
-- Fail immediately on mismatch or if the required file is missing (no fallbacks)
+- (Optional) Compare against a strict, platform-specific expected-hash file when deterministic enforcement is enabled:
+  `nix/expected-hashes/cosmian-kms-server.<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256`
+    - `<variant>` is `fips` or `non-fips`
+    - `<arch>.<os>` matches the system triple split (e.g., `x86_64.linux`, `aarch64.darwin`)
+- Fail on mismatch when enforcement is enabled; otherwise the check is skipped
 - Assert static OpenSSL linkage, GLIBC symbol ceiling (≤ 2.34), OpenSSL version/mode
 
 Update an expected hash after a legitimate change:
 
 ```bash
-# Automated method (recommended) - integrated into nix.sh
-bash .github/scripts/nix.sh update-hashes
-
-# Update only vendor hash (after Cargo.lock changes)
-bash .github/scripts/nix.sh update-hashes --vendor-only
-
-# Update only binary hashes (after code changes)
-bash .github/scripts/nix.sh update-hashes --binary-only
-
-# Update specific variant (hash shown in build output)
-bash .github/scripts/nix.sh --variant non-fips build
+# Automated method (fixed-output hashes) - update from CI logs (requires `gh auth login`)
+bash .github/scripts/nix.sh update-hashes [RUN_ID]
 
 # Hash update method - Example for x86_64 Linux
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # Check the installCheckPhase output for the hash and update command
-
-# Linux x86_64 example
-nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
-sha256sum result-server-non-fips/bin/cosmian_kms | cut -d' ' -f1 > nix/expected-hashes/non-fips.x86_64-linux.sha256
 ```
 
 The `update-hashes` command is integrated into the main `nix.sh` script for convenience.
@@ -782,41 +784,37 @@ bash .github/scripts/nix.sh package deb    # Reuses binary; no compilation
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    Offline Build Process (Air-Gapped)                   │
+│                 Expected Hash Update Workflow (CI-driven)               │
 └─────────────────────────────────────────────────────────────────────────┘
 
-PHASE 1: PREWARM (Online - One Time Setup)
-═══════════════════════════════════════════════════════════════════════════
+Trigger: CI packaging job fails with a fixed-output derivation hash mismatch
+                   │
+                   ▼
+           ┌──────────────────────────┐
+           │ bash .github/scripts/    │
+           │ nix.sh update-hashes     │
+           │   [RUN_ID]               │
+           └──────────┬───────────────┘
+                │
+                ▼
+           ┌──────────────────────────┐
+           │ update_hashes.sh         │
+           │  • requires `gh`         │
+           │  • downloads job logs    │
+           │  • parses specified/got  │
+           └──────────┬───────────────┘
+                │
+                ▼
+           ┌──────────────────────────┐
+           │ Updates files in         │
+           │ nix/expected-hashes/     │
+           │  • ui.npm.sha256         │
+           │  • ui.vendor.*.sha256    │
+           │  • server.vendor.*.sha256│
+           └──────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Internet Connected Environment                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Fetch & Cache All       │
-                    │  Dependencies            │
-                    └──────────┬───────────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-      ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-      │   nixpkgs    │  │  Cargo Deps  │  │   OpenSSL    │
-      │   24.11      │  │  Registry    │  │   3.1.2      │
-      │              │  │              │  │   Tarball    │
-      │ Downloaded   │  │ cargo fetch  │  │ Cached in    │
-      │ to /nix/     │  │ --locked     │  │ resources/   │
-      │ store        │  │              │  │ tarballs/    │
-      └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-             │                 │                 │
-             └─────────────────┴─────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Build Server Binaries   │
-                    │  (both variants)         │
-                    └──────────┬───────────────┘
+Note: deterministic *binary* hash enforcement is optional in Nix derivations;
+when enabled, builds emit a `cosmian-kms-server.*.sha256` file with copy instructions.
                                │
                                ▼
                     ┌──────────────────────────┐
@@ -1100,8 +1098,8 @@ Benefits: consistent versions, no rustup downloads, contributes to build reprodu
 ## Files overview
 
 - `kms-server.nix` — derivation + install checks
-- `openssl-3_1_2.nix` — pinned OpenSSL
-- `expected-hashes/` — authoritative binary hashes
+- `openssl.nix` — OpenSSL builder (used for 3.6.0 runtime and 3.1.2 FIPS provider)
+- `expected-hashes/` — vendor/UI hash inputs + optional expected binary hashes (when enforcement is enabled)
 - `scripts/package_common.sh` — shared packaging logic
 - `scripts/package_deb.sh` / `scripts/package_rpm.sh` — thin wrappers
 - `README.md` — this document
@@ -1175,8 +1173,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
          │  Nix Derivations │
          │                  │
          │ • kms-server.nix │
-         │ • openssl-3_1_2  │
-         │   .nix           │
+         │ • openssl.nix    │
          │ • package.nix    │
          └──────────────────┘
 ```
@@ -1192,9 +1189,9 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 ### Quick Reference
 
-| Task                     | Recommended Command (via nix.sh)          | Direct Command (advanced)                                    |
+| Task                     | Recommended Command                         | Direct Command (advanced)                                    |
 | ------------------------ | ----------------------------------------- | ------------------------------------------------------------ |
-| **Build server**         | `bash .github/scripts/nix.sh build`       | `bash nix/scripts/build.sh --variant fips --profile release` |
+| **Build server**         | `bash nix/scripts/build.sh --variant fips --profile release` | `nix-build -A kms-server-fips-static-openssl`                |
 | **Package DEB**          | `bash .github/scripts/nix.sh package deb` | `bash nix/scripts/package_deb.sh --variant fips`             |
 | **Package RPM**          | `bash .github/scripts/nix.sh package rpm` | `bash nix/scripts/package_rpm.sh --variant fips`             |
 | **Package DMG**          | `bash .github/scripts/nix.sh package dmg` | `bash nix/scripts/package_dmg.sh --variant fips`             |
@@ -1210,7 +1207,7 @@ This diagram shows how Nix scripts interact with the Nix derivation system:
 │                    Build Script Execution Flow                          │
 └─────────────────────────────────────────────────────────────────────────┘
 
-User invokes: bash .github/scripts/nix.sh build --variant fips
+User invokes: bash nix/scripts/build.sh --variant fips --profile release
                                   │
                                   ▼
                     ┌──────────────────────────┐
@@ -1381,50 +1378,36 @@ Entry: bash nix/scripts/package_<type>.sh --variant <fips|non-fips>
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│              Hash Update Workflow (Integrated in Build)                 │
+│         Expected-Hash Update Workflow (GitHub Actions Logs)              │
 └─────────────────────────────────────────────────────────────────────────┘
 
-Trigger: Code change, dependency update, or manual build
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Build Target            │
-                    │  (installCheckPhase)     │
-                    │                          │
-                    │  • --vendor-only         │
-                    │  • --binary-only         │
-                    │  • --variant <variant>   │
-                    │  • (none) = both         │
-                    └──────────┬───────────────┘
-                               │
-                    ┌──────────┴───────────┐
-                    │                      │
-              vendor-only                binary-only
-                    │                      │  (or both)
-                    │                      │
-                    ▼                      ▼
-    ┌────────────────────────┐   ┌─────────────────────────┐
-    │ Update Cargo Vendor    │   │ Update Binary Hashes    │
-    │ Hash                   │   │                         │
-    └────────┬───────────────┘   └──────────┬──────────────┘
-             │                              │
-             │                              │
-             ▼                              ▼
-┌──────────────────────────┐    ┌──────────────────────────┐
-│ Step 1:                  │    │ For each variant:        │
-│ Trigger intentional      │    │   fips, non-fips         │
-│ Cargo vendor failure     │    │                          │
-│                          │    └──────────┬───────────────┘
-│ nix-build -A kms-server  │               │
-│  (will fail)             │               ▼
-└──────────┬───────────────┘    ┌──────────────────────────┐
-           │                    │ nix-build -A kms-server- │
-           ▼                    │   <variant>              │
-┌──────────────────────────┐    │                          │
-│ Step 2:                  │    │ Builds binary in Nix     │
-│ Extract correct hash     │    │ sandbox with all hash    │
-│ from error message       │    │ checks                   │
-│                          │    └──────────┬───────────────┘
+Trigger: Nix build fails due to a fixed-output hash mismatch
+(e.g., Cargo vendor, UI npm/vendor)
+                   │
+                   ▼
+           ┌──────────────────────────┐
+           │ Run CI packaging workflow │
+           │ (or use an existing run) │
+           └──────────┬───────────────┘
+                │
+                ▼
+           ┌──────────────────────────┐
+           │ Parse failing job logs   │
+           │ with `gh`                │
+           └──────────┬───────────────┘
+                │
+                ▼
+           ┌──────────────────────────┐
+           │ Update files under       │
+           │ nix/expected-hashes/     │
+           │ (ui + server vendor)     │
+           └──────────┬───────────────┘
+                │
+                ▼
+           ┌──────────────────────────┐
+           │ Re-run build/package     │
+           │ and commit changes       │
+           └──────────────────────────┘
 │ Error shows:             │               │
 │ "got: sha256-xyz..."     │               ▼
 └──────────┬───────────────┘    ┌──────────────────────────┐
@@ -1482,10 +1465,12 @@ Trigger: Code change, dependency update, or manual build
 
 When to update hashes:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  --vendor-only      → After Cargo.lock changes (dependency updates)
-  --binary-only      → After source code changes (cargo hash unchanged)
-  (no flags)         → After both changed OR initial setup
-  --variant <v>      → Update only specific variant (faster for iteration)
+   bash .github/scripts/nix.sh update-hashes [RUN_ID]
+                              → After a CI packaging job fails with a fixed-output hash mismatch
+
+   (Optional) deterministic binary-hash enforcement
+                              → Follow the installCheckPhase output and copy the emitted
+                                 cosmian-kms-server.*.sha256 file into nix/expected-hashes/
 ```
 
 ### SBOM Generation Flow
@@ -1665,7 +1650,7 @@ Understanding specific techniques used in this project:
 | **Reproducible builds** | [Build reproducibility foundations](#build-reproducibility-foundations)      | [reproducible-builds.org](https://reproducible-builds.org/)                                                                       |
 | **Hash verification**   | [Native hash verification](#native-hash-verification-installcheckphase)      | [Nix Manual: Fixed-output derivations](https://nixos.org/manual/nix/stable/language/advanced-attributes.html#adv-attr-outputHash) |
 | **Offline builds**      | [Offline packaging flow](#offline-packaging-flow)                            | [Nixpkgs: Offline evaluation](https://nixos.org/manual/nixpkgs/stable/#sec-offline-mode)                                          |
-| **Static linking**      | `nix/openssl-3_1_2.nix`                                                      | [Static binaries in Nix](https://nixos.wiki/wiki/Static_binaries)                                                                 |
+| **Static linking**      | `nix/openssl.nix`                                                           | [Static binaries in Nix](https://nixos.wiki/wiki/Static_binaries)                                                                 |
 | **FIPS compliance**     | [Proving determinism locally](#proving-determinism-locally-fips-builds-only) | [OpenSSL FIPS 140-3](https://www.openssl.org/docs/fips.html)                                                                      |
 
 ### Community Resources

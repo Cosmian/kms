@@ -14,47 +14,57 @@ The primary entrypoint is `nix.sh`, which provides a unified interface to all wo
                                  │
                     ┌────────────┴─────────────┐
                     │    Commands Available    │
-                    └──┬───┬───┬───┬────┬──────┘
-                       │   │   │   │    │
-           ┌───────────┘   │   │   │    └────────────┐
-           │               │   │   │                 │
-           ▼               ▼   ▼   ▼                 ▼
-      ┌────────┐      ┌──────────────┐         ┌──────────┐
-      │ build  │      │     test     │         │ package  │
-      │        │      │              │         │          │
-      │ Compile│      │ • sqlite     │         │ • deb    │
-      │  KMS   │      │ • psql       │         │ • rpm    │
-      │ binary │      │ • mysql      │         │ • dmg    │
-      └────────┘      │ • redis      │         └──────────┘
-                      │ • google_cse │
-                      │ • pykmip     │         ┌──────────┐
-                      │ • hsm        │         │   sbom   │
-                      └──────────────┘         │          │
-                                               │ Generate │
-                      ┌──────────────┐         │  supply  │
-                      │update-hashes │         │  chain   │
-                      │              │         │   docs   │
-                      │ Maintain Nix │         └──────────┘
-                      │ build hashes │
+                    └──┬───┬───┬───┬──────────────┘
+                       │   │   │   │
+           ┌───────────┘   │   │   └────────────┐
+           │               │   │                │
+           ▼               ▼   ▼                ▼
+      ┌────────┐      ┌──────────────┐    ┌──────────┐
+      │ docker │      │     test     │    │ package  │
+      │        │      │              │    │          │
+      │ Build  │      │ • all (def)  │    │ • deb    │
+      │ image  │      │ • sqlite     │    │ • rpm    │
+      │ tarball│      │ • mysql      │    │ • dmg    │
+      └────────┘      │ • percona    │    └──────────┘
+                      │ • mariadb    │
+                      │ • psql       │    ┌──────────┐
+                      │ • redis      │    │   sbom   │
+                      │ • google_cse │    │          │
+                      │ • pykmip     │    │ Generate │
+                      │ • otel_export│    │ SBOMs    │
+                      │ • wasm       │    └──────────┘
+                      │ • hsm[...]   │
                       └──────────────┘
 
-                         Options (all commands):
+                      ┌──────────────┐
+                      │update-hashes │
+                      │              │
+                      │ Update Nix   │
+                      │ expected     │
+                      │ hash inputs  │
+                      └──────────────┘
+
+                         Global options:
                          • --profile <debug|release>
                          • --variant <fips|non-fips>
+                         • --link <static|dynamic>
+                         • --enforce-deterministic-hash <true|false>
 ```
 
-**🚀 Common workflows:**
+**Common workflows:**
 
 ```bash
 # Development iteration
 bash nix.sh test sqlite
 
-# Full release build
-bash nix.sh test all
+# Build packages + run smoke tests
 bash nix.sh package
 
 # SBOM for compliance
 bash nix.sh sbom
+
+# Docker image tarball (optional)
+bash nix.sh docker --load
 ```
 
 **📊 For detailed visual execution flows, see [Script Ecosystem → Visual Execution Diagrams](#visual-execution-diagrams)**
@@ -76,10 +86,12 @@ bash nix.sh sbom
 
 Cosmian KMS uses **Nix** to achieve:
 
-- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.1.2)
+- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.6.0 + OpenSSL 3.1.2 FIPS provider)
 - **Hermetic packaging**: Static linking, no runtime /nix/store paths
 - **Offline capability**: Pre-warming enables network-free builds
 - **Variant isolation**: FIPS and non-FIPS builds with controlled feature sets
+
+**OpenSSL note**: KMS links against OpenSSL **3.6.0**, but OpenSSL **3.1.2** must still be used for the **FIPS provider** because it is the official FIPS provider version available today (no more recent FIPS provider version).
 
 **Key principle**: `nix.sh` is the single entrypoint for developers and CI; it orchestrates all other scripts within controlled Nix environments.
 
@@ -89,14 +101,37 @@ Cosmian KMS uses **Nix** to achieve:
 
 ### Commands
 
-#### 1. `test` — Run Test Suites
+#### 1. `docker` — Build Docker Image Tarball
+
+Builds a Docker image tarball via Nix attributes, and can optionally load and test it.
+
+**Syntax:**
+
+```bash
+bash .github/scripts/nix.sh docker [--variant <fips|non-fips>] [--force] [--load] [--test]
+```
+
+**Examples:**
+
+```bash
+# Build and load a non-FIPS image
+bash .github/scripts/nix.sh docker --variant non-fips --load
+
+# Build, load and run container tests
+bash .github/scripts/nix.sh docker --variant fips --load --test
+```
+
+---
+
+#### 2. `test` — Run Test Suites
 
 Executes comprehensive test suites across databases, cryptographic backends, and client protocols.
 
 **Syntax:**
 
 ```bash
-bash .github/scripts/nix.sh test [type] [backend] [--profile <debug|release>] [--variant <fips|non-fips>]
+# Global options must come before the command token (except `docker`, which parses `--variant` itself)
+bash .github/scripts/nix.sh [--profile <debug|release>] [--variant <fips|non-fips>] [--link <static|dynamic>] test [type] [backend]
 ```
 
 **Test Types:**
@@ -106,10 +141,14 @@ bash .github/scripts/nix.sh test [type] [backend] [--profile <debug|release>] [-
 | `all`           | Run complete test suite (default)         | `test_all.sh`        | Includes DB + HSM (if release)  |
 | `sqlite`        | SQLite embedded database tests            | `test_sqlite.sh`     | Always run; core functionality  |
 | `mysql`         | MySQL backend tests                       | `test_mysql.sh`      | Requires MySQL server           |
+| `percona`       | Percona XtraDB Cluster tests              | `test_percona.sh`    | Requires Percona server         |
+| `mariadb`       | MariaDB backend tests                     | `test_maria.sh`      | Requires MariaDB server         |
 | `psql`          | PostgreSQL backend tests                  | `test_psql.sh`       | Requires PostgreSQL server      |
 | `redis`         | Redis-findex encrypted index tests        | `test_redis.sh`      | Non-FIPS only; requires Redis   |
 | `google_cse`    | Google Client-Side Encryption integration | `test_google_cse.sh` | Requires OAuth credentials      |
-| `pykmip`        | PyKMIP client compatibility tests         | `test_pykmip.sh`     | Non-FIPS only; uses Python venv |
+| `pykmip`        | PyKMIP client compatibility tests         | `test_pykmip.sh`     | Non-FIPS only; runs against a running KMS |
+| `otel_export`   | OTEL export integration tests             | `test_otel_export.sh`| Requires Docker                 |
+| `wasm`          | WASM tests                                | `test_wasm.sh`       | Uses Node + wasm-pack           |
 | `hsm [backend]` | Hardware Security Module tests            | `test_hsm*.sh`       | Linux only; see backends below  |
 
 **HSM Backends** (used with `test hsm [backend]`):
@@ -125,6 +164,8 @@ Database connections:
 
 - `REDIS_HOST`, `REDIS_PORT`
 - `MYSQL_HOST`, `MYSQL_PORT`
+- `PERCONA_HOST`, `PERCONA_PORT`
+- `MARIADB_HOST`, `MARIADB_PORT`
 - `POSTGRES_HOST`, `POSTGRES_PORT`
 
 Google CSE (required for `google_cse` tests):
@@ -144,11 +185,21 @@ bash .github/scripts/nix.sh test
 bash .github/scripts/nix.sh test sqlite
 bash .github/scripts/nix.sh test psql
 
+# Percona / MariaDB
+bash .github/scripts/nix.sh test percona
+bash .github/scripts/nix.sh test mariadb
+
 # Redis tests (non-FIPS required)
 bash .github/scripts/nix.sh --variant non-fips test redis
 
 # PyKMIP client tests (non-FIPS, includes Python environment)
 bash .github/scripts/nix.sh --variant non-fips test pykmip
+
+# OTEL export integration tests (requires Docker)
+bash .github/scripts/nix.sh test otel_export
+
+# WASM tests
+bash .github/scripts/nix.sh test wasm
 
 # Google CSE tests (with credentials)
 TEST_GOOGLE_OAUTH_CLIENT_ID=... \
@@ -170,14 +221,15 @@ bash .github/scripts/nix.sh test hsm all
 
 ---
 
-#### 2. `package` — Build Distribution Packages
+#### 3. `package` — Build Distribution Packages
 
 Creates platform-native packages (DEB, RPM, DMG) using Nix derivations, with mandatory smoke tests.
 
 **Syntax:**
 
 ```bash
-bash .github/scripts/nix.sh package [type] [--variant <fips|non-fips>]
+bash .github/scripts/nix.sh [--variant <fips|non-fips>] [--link <static|dynamic>] \
+   [--enforce-deterministic-hash <true|false>] package [type]
 ```
 
 **Package Types:**
@@ -201,7 +253,7 @@ bash .github/scripts/nix.sh package [type] [--variant <fips|non-fips>]
 3. **Smoke Test** (mandatory):
    - Extract package to temp directory
    - Run `cosmian_kms --info`
-   - Verify OpenSSL version is exactly `3.1.2`
+   - Verify OpenSSL versions are as expected (runtime/library is typically `3.6.0`; for FIPS variants the FIPS provider remains `3.1.2`)
    - Fail entire build if test fails
 4. **Checksum**:
    - Generate SHA-256 checksum file (`.sha256`) alongside package
@@ -212,6 +264,9 @@ bash .github/scripts/nix.sh package [type] [--variant <fips|non-fips>]
 # Build all packages for current platform (Linux: deb+rpm; macOS: dmg)
 bash .github/scripts/nix.sh package
 
+# Build the full matrix (fips/non-fips × static/dynamic) when no variant/link is explicitly provided
+# (this is the default behavior for `package` on Linux when invoked as `bash nix.sh package`)
+
 # Build specific package type (FIPS variant)
 bash .github/scripts/nix.sh package deb
 bash .github/scripts/nix.sh package rpm
@@ -219,37 +274,40 @@ bash .github/scripts/nix.sh package rpm
 # Build non-FIPS variant
 bash .github/scripts/nix.sh --variant non-fips package deb
 bash .github/scripts/nix.sh --variant non-fips package dmg
+
+# Build dynamic OpenSSL linkage (system OpenSSL; packaging still bundles needed libs)
+bash .github/scripts/nix.sh --link dynamic package deb
 ```
 
 **Output Locations:**
 
-- DEB: `result-deb-<variant>/` symlink
-- RPM: `result-rpm-<variant>/` symlink
-- DMG: `result-dmg-<variant>/` symlink
+- DEB: `result-deb-<variant>-<link>/` symlink
+- RPM: `result-rpm-<variant>-<link>/` symlink
+- DMG: `result-dmg-<variant>-<link>/` symlink
 
 **Offline Builds:**
 After one successful online run, subsequent package builds work offline (network disconnected) if:
 
 - Nix store contains pinned nixpkgs
 - Cargo vendor cache is populated
-- OpenSSL 3.1.2 tarball is cached
+- OpenSSL 3.1.2 tarball (FIPS provider) is cached (runtime OpenSSL is 3.6.0)
 
 ---
 
-#### 3. `sbom` — Generate Software Bill of Materials
+#### 4. `sbom` — Generate Software Bill of Materials
 
 Produces comprehensive SBOM files using `sbomnix` tools for supply chain transparency and compliance.
 
 **Syntax:**
 
 ```bash
-bash .github/scripts/nix.sh sbom [--variant <fips|non-fips>]
+bash .github/scripts/nix.sh [--variant <fips|non-fips>] [--link <static|dynamic>] sbom [--target <openssl|server>]
 ```
 
 **What it does:**
 
-- Automatically builds the server if not already built (works from scratch)
-- Analyzes the Nix derivation for the specified variant
+- Default target is `openssl`: generates an SBOM for the OpenSSL **3.1.2** derivation (`openssl312`)
+- Target `server`: generates an SBOM for the KMS server derivation (selected by `--variant` and `--link`)
 - Generates multiple SBOM formats + vulnerability reports
 - Runs **outside** `nix-shell` (sbomnix needs direct `nix` commands)
 
@@ -268,11 +326,17 @@ bash .github/scripts/nix.sh sbom [--variant <fips|non-fips>]
 **Examples:**
 
 ```bash
-# Generate SBOM for FIPS variant
+# Default: SBOM for OpenSSL 3.1.2 derivation
 bash .github/scripts/nix.sh sbom
 
-# Generate SBOM for non-FIPS variant
-bash .github/scripts/nix.sh --variant non-fips sbom
+# SBOM for KMS server (FIPS, static)
+bash .github/scripts/nix.sh sbom --target server
+
+# SBOM for KMS server (non-FIPS, static)
+bash .github/scripts/nix.sh --variant non-fips --link static sbom --target server
+
+# SBOM for KMS server (FIPS, dynamic)
+bash .github/scripts/nix.sh --variant fips --link dynamic sbom --target server
 ```
 
 **Use Cases:**
@@ -284,51 +348,41 @@ bash .github/scripts/nix.sh --variant non-fips sbom
 
 ---
 
-#### 4. `update-hashes` — Update Expected Hashes
+#### 5. `update-hashes` — Update Expected Hashes
 
-Automated hash maintenance for Nix build reproducibility verification.
+Updates Nix expected-hash inputs by parsing **GitHub Actions** packaging logs (fixed-output derivation hash mismatches).
+
+This command is meant to be used after a CI packaging job fails with a message like:
+
+- `specified: sha256-...`
+- `got: sha256-...`
+
+**Prerequisite:** `gh` CLI installed and authenticated (`gh auth login`).
 
 **Syntax:**
 
 ```bash
-bash .github/scripts/nix.sh update-hashes [options]
+# Optional argument: a GitHub Actions workflow RUN_ID
+bash .github/scripts/nix.sh update-hashes [RUN_ID]
 ```
 
-**Options:**
+**What it updates (in nix/expected-hashes/):**
 
-| Flag                         | Effect                                      | Use Case                            |
-| ---------------------------- | ------------------------------------------- | ----------------------------------- |
-| `--vendor-only`              | Update only Cargo vendor hash (`cargoHash`) | After `Cargo.lock` changes          |
-| `--binary-only`              | Update only binary hashes                   | After code changes (deps unchanged) |
-| `--variant <fips\|non-fips>` | Update specific variant only                | Single-variant changes              |
-| (no flags)                   | Update all hashes (vendor + binaries)       | Full dependency + code update       |
-
-**What it does:**
-
-1. **Vendor Hash** (`--vendor-only` or default):
-   - Triggers intentional Cargo vendor fetch failure
-   - Extracts correct hash from Nix error message
-   - Updates `nix/kms-server.nix` `cargoHash` field
-
-2. **Binary Hashes** (`--binary-only` or default):
-   - Builds FIPS and/or non-FIPS variants (static and dynamic)
-   - Computes SHA-256 of resulting `cosmian_kms` binary
-   - Updates `nix/expected-hashes/cosmian-kms-server.<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256`
+- `ui.npm.sha256`
+- `ui.vendor.fips.sha256`
+- `ui.vendor.non-fips.sha256`
+- `server.vendor.linux.sha256`
+- `server.vendor.static.darwin.sha256`
+- `server.vendor.dynamic.darwin.sha256`
 
 **Examples:**
 
 ```bash
-# Update all hashes after dependency upgrade
+# Use the latest packaging workflow run
 bash .github/scripts/nix.sh update-hashes
 
-# Update only vendor hash after Cargo.lock change
-bash .github/scripts/nix.sh update-hashes --vendor-only
-
-# Update only binary hashes after code change
-bash .github/scripts/nix.sh update-hashes --binary-only
-
-# Update only FIPS variant hashes
-bash .github/scripts/nix.sh update-hashes --variant fips
+# Use a specific workflow run
+bash .github/scripts/nix.sh update-hashes 123456789
 ```
 
 **Platform Support:**
@@ -347,19 +401,21 @@ bash .github/scripts/nix.sh update-hashes --variant fips
 
 ### Global Options
 
-All commands support these flags:
+All commands support these flags (place them **before** the command token; `docker` additionally accepts `--variant` after the command):
 
 | Flag              | Values             | Default                               | Effect                    |
 | ----------------- | ------------------ | ------------------------------------- | ------------------------- |
-| `-p`, `--profile` | `debug`, `release` | `debug` (test)<br>`release` (package) | Cargo build profile       |
+| `-p`, `--profile` | `debug`, `release` | `debug`                               | Cargo build profile (test flows) |
 | `-v`, `--variant` | `fips`, `non-fips` | `fips`                                | Cryptographic feature set |
+| `-l`, `--link`    | `static`, `dynamic`| `static`                              | OpenSSL linkage mode      |
+| `--enforce-deterministic-hash` | `true`, `false` | `false`                      | Enforce expected-hash checks in Nix derivations |
 | `-h`, `--help`    | —                  | —                                     | Show usage and exit       |
 
 **Feature Set Differences:**
 
 | Aspect          | FIPS Variant                      | Non-FIPS Variant                |
 | --------------- | --------------------------------- | ------------------------------- |
-| Crypto backend  | OpenSSL 3.1.2 FIPS module         | OpenSSL 3.1.2 (standard)        |
+| Crypto backend  | OpenSSL 3.6.0 runtime + OpenSSL 3.1.2 FIPS provider | OpenSSL 3.6.0 runtime (default/legacy providers) |
 | Redis-findex    | Disabled                          | Enabled                         |
 | Reproducibility | Bit-for-bit deterministic (Linux) | Hash-verified (may vary by env) |
 | Target users    | Government, regulated industries  | General enterprise              |
@@ -381,19 +437,23 @@ All commands support these flags:
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. Parse CLI arguments (profile, variant, command)         │
+│ 1. Parse CLI arguments (profile, variant, link, command)    │
 └────────────────┬────────────────────────────────────────────┘
                  │
-                 ├──[build/test]─→ Select script, enter nix-shell ──→ Run script
-                 │                  (pure mode unless HSM/macOS DMG)
+                 ├──[docker]──────→ nix-build docker image tarball ──→ (optional) docker load/test
+                 │
+                 ├──[test]────────→ Select script, enter nix-shell ──→ Run script
+                 │                  (pure mode unless HSM/otel_export/wasm)
                  │
                  ├──[package]────→ Prewarm (unless NO_PREWARM) ──────→ For each type:
                  │                                                       ├─ Build via Nix
                  │                                                       ├─ Smoke test
                  │                                                       └─ Generate .sha256
                  │
-                 └──[sbom]───────→ Delegate to generate_sbom.sh ────────→ Run sbomnix
-                                   (outside nix-shell)
+                 ├──[sbom]───────→ Delegate to generate_sbom.sh ────────→ Run sbomnix
+                 │                 (outside nix-shell)
+                 │
+                 └──[update-hashes]→ Delegate to update_hashes.sh ──────→ gh API + update nix/expected-hashes/
 ```
 
 **Pure vs Non-Pure Shell:**
@@ -416,7 +476,7 @@ Nix provides the foundation for deterministic, auditable builds:
 | -------------------------- | --------------------------------------------- | ------------------------------------------------ |
 | **Pinned Dependencies**    | nixpkgs 24.05 tarball locked by hash          | Identical build environment across machines/time |
 | **Reproducible Toolchain** | Rust 1.90.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
-| **Static OpenSSL**         | Vendored 3.1.2 source tarball                 | No runtime SSL dependency; portable binaries     |
+| **Static OpenSSL**         | Link against OpenSSL 3.6.0; vendored 3.1.2 tarball for the FIPS provider | No runtime SSL dependency; portable binaries     |
 | **Hash Enforcement**       | Binary SHA-256 checked in `installCheckPhase` | Detects drift/tampering (FIPS builds on Linux)   |
 | **Offline Capability**     | Pre-warmed store + Cargo offline cache        | Air-gapped builds after first online run         |
 | **Variant Isolation**      | Separate derivations for FIPS/non-FIPS        | Controlled cryptographic footprint               |
@@ -432,13 +492,14 @@ Nix provides the foundation for deterministic, auditable builds:
 
 ### Hash Update Workflow
 
-When binary hash mismatches occur:
+When an expected-hash mismatch occurs:
 
-1. **Investigate**: Determine if change is expected (code/dep update) or unexpected (supply chain issue)
-2. **Rebuild**: `nix-build -A kms-server-<variant>`
-3. **Verify**: `./result/bin/cosmian_kms --info` (check version, OpenSSL)
-4. **Update**: Run `bash .github/scripts/nix.sh update-hashes` (or use `--binary-only`)
-5. **Commit**: Include updated hash files in PR with justification
+1. **Investigate**: confirm the change is expected (dependency bump vs. suspicious drift)
+2. **If CI failed on a fixed-output derivation hash** (Cargo vendor / UI deps):
+   - Run `bash .github/scripts/nix.sh update-hashes [RUN_ID]` to update `nix/expected-hashes/*` from CI logs
+3. **If you enabled deterministic *binary* hash enforcement** (optional in Nix):
+   - Rebuild the relevant derivation and copy the generated `cosmian-kms-server.*.sha256` file into `nix/expected-hashes/` as instructed by the build output
+4. **Commit**: include updated hash files in the PR with a short rationale
 
 ---
 
@@ -457,7 +518,7 @@ This section provides both tabular reference and visual execution diagrams to un
 The following diagrams illustrate how commands flow through the script ecosystem. Each diagram focuses on a specific aspect:
 
 1. **High-Level Command Flow** - Overview of nix.sh dispatch logic
-2. **Build Command Flow** - Detailed build execution path
+2. **Docker Command Flow** - Docker image build/load/test path
 3. **Test Command Dispatch Tree** - How test types route to scripts
 4. **Package Command Workflow** - Packaging process with smoke tests
 5. **SBOM Generation Flow** - Supply chain documentation workflow
@@ -499,14 +560,18 @@ The following diagrams illustrate how commands flow through the script ecosystem
 | SQLite       | `test_sqlite.sh` | None (embedded)   | Bins, benchmarks, DB tests           |
 | PostgreSQL   | `test_psql.sh`   | PostgreSQL server | Connection check + targeted tests    |
 | MySQL        | `test_mysql.sh`  | MySQL server      | Connection check + targeted tests    |
+| Percona      | `test_percona.sh`| Percona server    | Connection check + targeted tests    |
+| MariaDB      | `test_maria.sh`  | MariaDB server    | Connection check + targeted tests    |
 | Redis-findex | `test_redis.sh`  | Redis server      | Non-FIPS only; encrypted index tests |
 
 #### Specialized Tests
 
-| Test Type  | Script               | Requirements                   | Key Features                       |
-| ---------- | -------------------- | ------------------------------ | ---------------------------------- |
-| Google CSE | `test_google_cse.sh` | OAuth credentials (4 env vars) | Client-Side Encryption integration |
-| PyKMIP     | `test_pykmip.sh`     | Python 3.11 + virtualenv       | KMIP protocol compatibility        |
+| Test Type    | Script                 | Requirements                   | Key Features                                 |
+| ------------ | ---------------------- | ------------------------------ | -------------------------------------------- |
+| Google CSE   | `test_google_cse.sh`   | OAuth credentials (4 env vars) | Client-Side Encryption integration           |
+| PyKMIP       | `test_pykmip.sh`       | Running KMS + Python tooling   | KMIP protocol compatibility (non-FIPS only)  |
+| OTEL export  | `test_otel_export.sh`  | Docker                          | OTEL collector + export integration tests    |
+| WASM         | `test_wasm.sh`         | Node.js + wasm-pack            | WASM build/tests in a non-pure nix-shell     |
 
 #### HSM Tests
 
@@ -534,39 +599,40 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 │                     nix.sh (Unified Entrypoint)                         │
 │                                                                         │
 │  Parses: --profile <debug|release>  --variant <fips|non-fips>           │
+│          --link <static|dynamic>    --enforce-deterministic-hash <bool> │
 └────┬─────────────┬────────────┬────────────┬──────────────┬─────────────┘
      │             │            │            │              │
      ▼             ▼            ▼            ▼              ▼
   ┌──────┐    ┌───────┐   ┌──────────┐  ┌──────┐    ┌──────────────┐
-  │BUILD │    │ TEST  │   │ PACKAGE  │  │ SBOM │    │UPDATE-HASHES │
+  │DOCKER│    │ TEST  │   │ PACKAGE  │  │ SBOM │    │UPDATE-HASHES │
   └──┬───┘    └───┬───┘   └─────┬────┘  └──┬───┘    └──────┬───────┘
      │            │             │          │               │
      │            │             │          │               │
      │            │             │          │               │
-  Pure Nix    Pure/Non-Pure  Prewarm+   Outside        Update Nix
-   Shell         Shell        Build     nix-shell       Files
+ nix-build    nix-shell      Prewarm+   Outside        gh API +
+ (tarball)   (pure/non-pure) Build+     nix-shell      update files
+                            smoke tests
 ```
 
-#### Build Command Flow
+#### Docker Command Flow
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh build --profile release --variant fips                   │
+│  $ bash nix.sh docker --variant <fips|non-fips> [--force] [--load]      │
+│                     [--test]                                           │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
                                  ▼
                     ┌────────────────────────┐
-                    │   Enter nix-shell      │
-                    │   (--pure mode)        │
-                    │                        │
-                    │  • Rust 1.90.0         │
-                    │  • OpenSSL 3.1.2       │
-                    │  • Build tools         │
+                    │ nix-build              │
+                    │  -A docker-image-<v>   │
+                    │  -o result-docker-...  │
                     └────────┬───────────────┘
                              │
                              ▼
                     ┌────────────────────────┐
-                    │  nix/scripts/build.sh  │
+                    │ Output tarball         │
+                    │ result-docker-...      │
                     └────────┬───────────────┘
                              │
                              ▼
@@ -611,9 +677,9 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
         ┌─────────────┘      │      │       │      │      │      └──────────────┐
         │                    │      │       │      │      │                     │
         ▼                    ▼      ▼       ▼      ▼      ▼                     ▼
-   ┌────────┐         ┌─────────────────────────────┐  ┌─────────┐      ┌──────────┐
-   │  all   │         │  Individual DB Tests        │  │google   │      │   hsm    │
-   └───┬────┘         │  (sqlite|psql|mysql|redis)  │  │  _cse   │      └────┬─────┘
+   ┌────────┐         ┌──────────────────────────────────────────────┐  ┌─────────┐      ┌──────────┐
+   │  all   │         │  Individual DB Tests                         │  │google   │      │   hsm    │
+   └───┬────┘         │ (sqlite|psql|mysql|percona|mariadb|redis)     │  │  _cse   │      └────┬─────┘
        │              └──────────┬──────────────────┘  └────┬────┘            │
        │                         │                          │                 │
        │                         │                          │                 │
@@ -647,6 +713,9 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
                                                           │ test_hsm.sh          │
                                                           │ (orchestrates all)   │
                                                           └──────────────────────┘
+
+                                 Notes:
+                                 - Additional supported test types not drawn above: `wasm`, `otel_export` (Docker-required), and `pykmip` (non-FIPS; requires a running KMS).
 ```
 
 #### Package Command Workflow
@@ -694,7 +763,9 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
                     │  1. Extract package  │
                     │  2. Run --info       │
                     │  3. Verify OpenSSL   │
-                    │     version = 3.1.2  │
+                    │     runtime (3.6.0;  │
+                    │     FIPS+dynamic: 3.1.2)
+                    │  4. Verify FIPS provider = 3.1.2 (FIPS only)
                     └──────────┬───────────┘
                                │
                          Pass  │  Fail
@@ -710,7 +781,7 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
           ┌──────────────────┐
           │ Output:          │
           │ result-<type>-   │
-          │   <variant>/     │
+          │   <variant>-<link>/│
           │ • package file   │
           │ • .sha256        │
           └──────────────────┘
@@ -780,44 +851,37 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh update-hashes [--vendor-only|--binary-only] [--variant]   │
+│  $ bash nix.sh update-hashes [RUN_ID]                                     │
 └────────────────────────────────┬─────────────────────────────────────────┘
                                  │
                                  ▼
                     ┌────────────────────────┐
-                    │   Hash Update Process  │
-                    │  (Integrated in build) │
+                    │ update_hashes.sh       │
+                    │ (requires `gh`)        │
                     └────────┬───────────────┘
                              │
-                    ┌────────┴──────────────┐
-                    │  Build & Compute Hash │
-                    └───────────────────────┘
-          vendor-only │                     │ binary-only
-                      │                     │  (or default: both)
-                      │                     │
-                      ▼                     ▼
-        ┌──────────────────────┐   ┌──────────────────────┐
-        │ Update Cargo         │   │ Build Binaries       │
-        │ Vendor Hash          │   │                      │
-        │                      │   │ For each variant:    │
-        │ 1. Trigger nix-build │   │  • nix-build         │
-        │    (intentional fail)│   │  • Compute SHA-256   │
-        │ 2. Extract hash from │   │                      │
-        │    error message     │   │ For each platform:   │
-        │ 3. Update            │   │  • x86_64-linux      │
-        │    kms-server.nix    │   │  • aarch64-linux     │
-        │    cargoHash field    │   │  • aarch64-darwin    │
-        └──────────────────────┘   │                      │
-                                   │ Update files in:     │
-                                   │ nix/expected-hashes/ │
-                                   │ cosmian-kms-server.<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256 │
-                                   └──────────────────────┘
-                                              │
-                                              ▼
-                                   ┌──────────────────────┐
-                                   │ Git diff summary     │
-                                   │ (show what changed)  │
-                                   └──────────────────────┘
+                             ▼
+                    ┌────────────────────────┐
+                    │ gh api                 │
+                    │  - find workflow run   │
+                    │  - list failed jobs    │
+                    │  - download logs       │
+                    └────────┬───────────────┘
+                             │
+                             ▼
+                    ┌────────────────────────┐
+                    │ Parse log lines:       │
+                    │  specified: sha256-... │
+                    │  got: sha256-...       │
+                    └────────┬───────────────┘
+                             │
+                             ▼
+                    ┌─────────────────────────────┐
+                    │ Update nix/expected-hashes/ │
+                    │  - ui.npm.sha256            │
+                    │  - ui.vendor.*.sha256       │
+                    │  - server.vendor.*.sha256   │
+                    └─────────────────────────────┘
 ```
 
 #### Nix Shell Environment Modes
@@ -832,7 +896,6 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
 │                                                                          │
 │  Use Cases:                                                              │
-│   • Standard builds (build command)                                      │
 │   • Database tests (sqlite, psql, mysql)                                 │
 │   • Most test scenarios                                                  │
 │                                                                          │
@@ -845,7 +908,7 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 │  Environment:                                                            │
 │   ┌──────────────────────────────────────────────────────────────┐       │
 │   │  • Rust 1.90.0 (from Nix)                                    │       │
-│   │  • OpenSSL 3.1.2 (vendored)                                  │       │
+│   │  • OpenSSL 3.6.0 + 3.1.2 (FIPS provider)                      │       │
 │   │  • Build tools (cargo, gcc, etc.)                            │       │
 │   │  • Test databases (if requested via WITH_* vars)             │       │
 │   │  • /nix/store/... paths ONLY                                 │       │
@@ -883,7 +946,7 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 │                                                                          │
 │  Use Cases:                                                              │
 │   • SBOM generation (sbomnix needs direct nix commands)                  │
-│   • Hash updates (nix-build outside shell)                               │
+│   • Expected-hash updates (gh CLI + log parsing)                         │
 │                                                                          │
 │  Characteristics:                                                        │
 │   ✓ Direct system environment                                            │
@@ -911,32 +974,43 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
 │              │          │            │              │                 │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │              │          │            │              │  PostgreSQL     │
-│ psql         │ Release  │  Any       │  Any         │  server running │
-│              │ only     │            │              │                 │
+│ psql         │ Any      │  Any       │  Any         │  server running │
+│              │          │            │              │                 │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │              │          │            │              │  MySQL server   │
-│ mysql        │ Release  │  Any       │  Any         │  running        │
-│              │ only     │            │              │                 │
+│ mysql        │ Any      │  Any       │  Any         │  running        │
+│              │          │            │              │                 │
+├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
+│              │          │            │              │  Percona server │
+│ percona      │ Any      │  Any       │  Any         │  running        │
+│              │          │            │              │                 │
+├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
+│              │          │            │              │  MariaDB server │
+│ mariadb      │ Any      │  Any       │  Any         │  running        │
+│              │          │            │              │                 │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │              │          │ non-FIPS   │              │  Redis server   │
-│ redis        │ Release  │  ONLY      │  Any         │  running        │
-│              │ only     │            │              │                 │
+│ redis        │ Any      │  ONLY      │  Any         │  running        │
+│              │          │            │              │                 │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │              │          │            │              │  4 OAuth env    │
-│ google_cse   │ Release  │  Any       │  Any         │  variables set  │
-│              │ only     │            │              │                 │
+│ google_cse   │ Any      │  Any       │  Any         │  variables set  │
+│              │          │            │              │                 │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │              │          │            │              │  Python 3.11    │
-│ pykmip       │ Any      │ non-FIPS   │  Any         │  + venv         │
-│              │          │  ONLY      │              │                 │
+│ pykmip       │ Any      │ non-FIPS   │  Any         │  + running KMS  │
+│              │          │  ONLY      │              │  (Python in Nix)│
+├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
+│ otel_export  │ Any      │  Any       │  Any         │  Docker         │
+├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
+│ wasm         │ Any      │  Any       │  Any         │  Node + wasm    │
 ├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
 │ hsm          │          │            │              │  PKCS#11 libs   │
-│ (all types)  │ Release  │  Any       │ Linux ONLY   │  (vendor-       │
-│              │ only     │            │              │   specific)     │
+│ (all types)  │ Any      │  Any       │ Linux ONLY   │  (vendor-       │
+│              │          │            │              │   specific)     │
 └──────────────┴──────────┴────────────┴──────────────┴─────────────────┘
 
 Legend:
-  Release only = Skipped in debug profile (per test_all.sh logic)
   non-FIPS ONLY = Feature not available in FIPS variant
   Linux ONLY = HSM vendor libraries not available on macOS
 ```
@@ -970,13 +1044,13 @@ Legend:
        │
        │ calls
        │
-       ├────────────┬────────────┬─────────────┐
-       │            │            │             │
-       ▼            ▼            ▼             ▼
-┌──────────┐ ┌──────────┐ ┌──────────┐  ┌──────────┐
-│test_hsm_ │ │test_hsm_ │ │test_hsm_ │  │test_     │
-│softhsm2  │ │utimaco   │ │proteccio │  │pykmip.sh │
-│   .sh    │ │   .sh    │ │   .sh    │  └──────────┘
+       ├────────────┬────────────┬
+       │            │            │
+       ▼            ▼            ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│test_hsm_ │ │test_hsm_ │ │test_hsm_ │
+│softhsm2  │ │utimaco   │ │proteccio │
+│   .sh    │ │   .sh    │ │   .sh    │
 └──────────┘ └──────────┘ └──────────┘
 
 
@@ -1014,54 +1088,46 @@ This diagram shows the complete artifact generation pipeline for a production re
 │                    (Typical CI/CD workflow)                             │
 └─────────────────────────────────────────────────────────────────────────┘
 
-Step 1: BUILD BINARIES (both variants)
+Step 1: RUN COMPREHENSIVE TESTS
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                                                                          │
-│  bash nix.sh build --profile release --variant fips                      │
-│       └──→ target/release/cosmian_kms (FIPS)                             │
-│                                                                          │
-│  bash nix.sh build --profile release --variant non-fips                  │
-│       └──→ target/release/cosmian_kms (non-FIPS)                         │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-Step 2: RUN COMPREHENSIVE TESTS
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  bash nix.sh test all --profile release --variant fips                   │
+│  bash nix.sh --profile release --variant fips test all                   │
 │    ├─ SQLite tests      ✓                                                │
+│    ├─ WASM tests        ✓                                                │
+│    ├─ OTEL export       ✓  (if Docker is available)                      │
 │    ├─ PostgreSQL tests  ✓                                                │
 │    ├─ MySQL tests       ✓                                                │
+│    ├─ Redis-findex      ✗  (FIPS mode)                                   │
 │    ├─ Google CSE tests  ✓  (if credentials available)                    │
 │    └─ HSM tests         ✓  (Linux only)                                  │
 │                                                                          │
-│  bash nix.sh test all --profile release --variant non-fips               │
+│  bash nix.sh --profile release --variant non-fips test all               │
 │    ├─ (all above)       ✓                                                │
-│    ├─ Redis-findex      ✓  (non-FIPS only)                               │
-│    └─ PyKMIP client     ✓  (non-FIPS only)                               │
+│    └─ Redis-findex      ✓  (non-FIPS only)                               │
 │                                                                          │
+│  # Optional, separate test types:
+│  bash nix.sh --variant non-fips test pykmip                              │
+│  bash nix.sh test percona                                                │
+│  bash nix.sh test mariadb                                                │
 └──────────────────────────────────────────────────────────────────────────┘
                                  │
                                  ▼
-Step 3: BUILD PACKAGES (all platforms × variants)
+Step 2: BUILD PACKAGES (build + smoke test)
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                                                                          │
-│  For each variant (fips, non-fips):                                      │
+│  Linux: default `package` builds a matrix when variant/link are not explicit
+│    bash nix.sh package                                                   │
 │                                                                          │
-│    Linux x86_64:                                                         │
-│      bash nix.sh package deb --variant <variant>                         │
-│        └──→ result-deb-<variant>/cosmian-kms_<ver>_amd64.deb             │
-│        └──→ result-deb-<variant>/cosmian-kms_<ver>_amd64.deb.sha256      │
+│  Explicit builds (examples):                                             │
+│    bash nix.sh --variant fips --link static package deb                  │
+│      └──→ result-deb-fips-static/.../*.deb (+ .sha256)                   │
 │                                                                          │
-│      bash nix.sh package rpm --variant <variant>                         │
-│        └──→ result-rpm-<variant>/cosmian-kms-<ver>.x86_64.rpm            │
-│        └──→ result-rpm-<variant>/cosmian-kms-<ver>.x86_64.rpm.sha256     │
+│    bash nix.sh --variant non-fips --link dynamic package rpm             │
+│      └──→ result-rpm-non-fips-dynamic/.../*.rpm (+ .sha256)              │
 │                                                                          │
-│    macOS ARM64:                                                          │
-│      bash nix.sh package dmg --variant <variant>                         │
-│        └──→ result-dmg-<variant>/cosmian-kms-<ver>-aarch64.dmg           │
-│        └──→ result-dmg-<variant>/cosmian-kms-<ver>-aarch64.dmg.sha256    │
+│    macOS:                                                                │
+│      bash nix.sh --variant <variant> --link <static|dynamic> package dmg │
+│        └──→ result-dmg-<variant>-<link>/*.dmg (+ .sha256)                │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
                                  │
@@ -1069,18 +1135,18 @@ Step 3: BUILD PACKAGES (all platforms × variants)
 Step 4: GENERATE SBOM DOCUMENTATION
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                                                                          │
-│  bash nix.sh sbom --variant fips                                         │
-│    └──→ sbom/                                                            │
-│         ├─ bom.cdx.json       (CycloneDX format)                         │
-│         ├─ bom.spdx.json      (SPDX format)                              │
-│         ├─ sbom.csv           (Spreadsheet view)                         │
-│         ├─ vulns.csv          (Vulnerability scan)                       │
-│         ├─ graph.png          (Dependency visualization)                 │
-│         ├─ meta.json          (Build metadata)                           │
-│         └─ README.txt         (Usage instructions)                       │
+│  bash nix.sh sbom                                                      │
+│    └──→ sbom/openssl/                                                   │
+│         ├─ bom.cdx.json   (CycloneDX)                                    │
+│         ├─ bom.spdx.json  (SPDX)                                         │
+│         ├─ sbom.csv       (Spreadsheet view)                             │
+│         ├─ vulns.csv      (Vulnerability scan)                           │
+│         ├─ graph.png      (Dependency graph)                             │
+│         ├─ meta.json      (Build metadata)                               │
+│         └─ README.txt     (Usage instructions)                           │
 │                                                                          │
-│  bash nix.sh sbom --variant non-fips                                     │
-│    └──→ sbom-non-fips/ (same structure)                                  │
+│  bash nix.sh sbom --target server                                       │
+│    └──→ sbom/server/fips/static/ (same structure)                        │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
                                  │
@@ -1088,13 +1154,12 @@ Step 4: GENERATE SBOM DOCUMENTATION
 Step 5: VERIFY REPRODUCIBILITY
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                                                                          │
-│  # Hash verification (Linux FIPS builds only - bit-for-bit identical)    │
-│  sha256sum target/release/cosmian_kms                                    │
-│  compare with: nix/expected-hashes/fips.openssl.x86_64.linux.sha256      │
+│  # Fixed-output hash mismatches (Cargo/UI deps) are expected-hash driven │
+│  # If CI fails on a fixed-output derivation hash, update from CI logs:   │
+│    bash nix.sh update-hashes [RUN_ID]                                    │
 │                                                                          │
-│  # If hashes don't match (unexpected):                                   │
-│    1. Investigate reason (code change? dep update? tampering?)           │
-│    2. Update if legitimate: bash nix.sh update-hashes                    │
+│  # Optional: deterministic *binary* hash enforcement can be enabled in   │
+│  # Nix derivations and uses nix/expected-hashes/cosmian-kms-server.*.sha256
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
                                  │
@@ -1108,8 +1173,8 @@ Step 5: VERIFY REPRODUCIBILITY
 │    • macOS DMG (.dmg) + checksum                                         │
 │                                                                          │
 │  SBOM Files (2 directories):                                             │
-│    • sbom/ (FIPS variant)                                                │
-│    • sbom-non-fips/ (non-FIPS variant)                                   │
+│    • sbom/openssl/                                                       │
+│    • sbom/server/<variant>/<link>/                                       │
 │                                                                          │
 │  Source Code:                                                            │
 │    • Git tag (e.g., v4.17.0)                                             │
@@ -1189,27 +1254,25 @@ Source Code                  Build Outputs              Distribution
 
 **When to update:**
 
-- After modifying source code (binary hash changes)
-- After updating dependencies (`Cargo.lock` changes → vendor hash)
-- After Nix derivation changes (build flags, OpenSSL version)
+- After updating dependencies that affect fixed-output derivations (Cargo vendor, UI npm deps)
+- After CI packaging failures due to `specified:`/`got:` hash mismatch errors
+- After Nix derivation changes that alter vendoring inputs
 
 **Process:**
 
 ```bash
-# Automatic (recommended):
-bash .github/scripts/nix.sh update-hashes [--vendor-only | --binary-only]
+# Automatic (recommended): update from CI logs (requires `gh auth login`)
+bash .github/scripts/nix.sh update-hashes [RUN_ID]
 
-# Manual (for verification):
-nix-build -A kms-server-fips-static-openssl
-sha256sum result/bin/cosmian_kms
-# Update nix/expected-hashes/cosmian-kms-server.fips.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256
+# Optional: deterministic *binary* hash enforcement (if enabled) writes a
+# cosmian-kms-server.*.sha256 file into the Nix output with copy instructions.
 ```
 
 **Review checklist:**
 
 - [ ] Understand why hash changed (code change, dep update, etc.)
 - [ ] Verify `cosmian_kms --info` shows correct version
-- [ ] Smoke test passes (OpenSSL 3.1.2 present)
+- [ ] Smoke test passes (OpenSSL 3.6.0 runtime; 3.1.2 provider for FIPS)
 - [ ] No unexpected `/nix/store` paths in binary (Linux: `ldd`, `readelf -d`)
 - [ ] Document reason in commit message
 
@@ -1254,20 +1317,22 @@ sha256sum result/bin/cosmian_kms
 
 ```bash
 # Development
-bash .github/scripts/nix.sh build                      # Debug FIPS build
 bash .github/scripts/nix.sh test sqlite                # Quick test iteration
 
+# Build a package (this also builds the server)
+bash .github/scripts/nix.sh package deb
+
 # Release preparation
-bash .github/scripts/nix.sh build --profile release --variant fips
-bash .github/scripts/nix.sh build --profile release --variant non-fips
-bash .github/scripts/nix.sh test all                   # Full test suite
+bash .github/scripts/nix.sh --profile release --variant fips test all
+bash .github/scripts/nix.sh --profile release --variant non-fips test all
 bash .github/scripts/nix.sh package                    # All packages
-bash .github/scripts/nix.sh sbom                       # FIPS SBOM
-bash .github/scripts/nix.sh --variant non-fips sbom    # Non-FIPS SBOM
+bash .github/scripts/nix.sh sbom                       # OpenSSL 3.1.2 derivation SBOM
+bash .github/scripts/nix.sh sbom --target server       # Server SBOM (default fips/static)
+bash .github/scripts/nix.sh --variant non-fips sbom --target server
 
 # Hash maintenance
-bash .github/scripts/nix.sh update-hashes --vendor-only    # After Cargo.lock change
-bash .github/scripts/nix.sh update-hashes --binary-only    # After code change
+bash .github/scripts/nix.sh update-hashes                 # Update expected-hashes from latest CI logs
+bash .github/scripts/nix.sh update-hashes 123456789       # Use a specific workflow run
 
 # CI simulation
 NO_PREWARM=1 bash .github/scripts/nix.sh package deb   # Skip prewarm (cached store)

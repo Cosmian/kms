@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unified entrypoint to run nix-shell commands: build, test, or packages
+# Unified entrypoint to run nix-shell commands: test and packaging workflows
 set -euo pipefail
 
 # Source shared helpers and unified pins
@@ -16,13 +16,15 @@ usage() {
   cat <<EOF
 
   Commands:
-    docker [--force] [--load] [--test]
-                       Build Docker image tarball (static OpenSSL)
+    docker [--variant <fips|non-fips>] [--force] [--load] [--test]
+                       Build Docker image tarball (always static OpenSSL)
+                       --variant: fips|non-fips (default: fips)
                        --force: Force rebuild image tarball, do not reuse cache
                        --load: Load image into Docker
                        --test: Run test_docker_image.sh after loading
     test [type] [args] Run tests inside nix-shell
       all                    Run all available tests (default)
+      wasm                   Run WASM tests
       sqlite                 Run SQLite tests
       mysql                  Run MySQL tests (requires MySQL server)
       percona                Run Percona XtraDB Cluster tests (requires Percona server)
@@ -31,6 +33,8 @@ usage() {
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
       pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
+      otel_export            Run OTEL export tests (requires Docker)
+                             Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux only)
                              backend: softhsm2 | utimaco | proteccio | all (default)
     package [type]
@@ -47,13 +51,12 @@ usage() {
                          --target <openssl|server>  Choose specific SBOM target
                          --variant <fips|non-fips>  Specific variant (server target only)
                          --link <static|dynamic>    Specific linkage (server target only)
-    update-hashes [options]
-               Update expected hashes for current platform (release profile mandatory)
-      --variant <fips|non-fips>  Update specific variant (default: fips)
-      --link <static|dynamic>    Limit to a specific server linkage (default: both)
+    update-hashes [RUN_ID]
+               Update expected hashes by parsing GitHub Actions packaging logs.
+               RUN_ID is optional; if omitted, uses the latest packaging workflow run.
 
   Global options:
-    -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
+    -p, --profile <debug|release>   Build/test profile (default: debug)
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
                     static: statically link OpenSSL 3.6.0
@@ -93,10 +96,11 @@ usage() {
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
     $0 sbom                                 # Generate all SBOMs (OpenSSL + all server combinations)
-    $0 sbom --target openssl                # SBOM for OpenSSL 3.1.2 only
+    $0 sbom --target openssl                # SBOM for the OpenSSL 3.1.2 only derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
-    $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
+    $0 update-hashes                        # Update expected hashes from the latest packaging workflow
+    $0 update-hashes 123456789              # Update expected hashes from a specific workflow run
 EOF
   exit 1
 }
@@ -504,10 +508,12 @@ test_command() {
   KEEP_VARS=" \
         --keep REDIS_HOST --keep REDIS_PORT \
         --keep MYSQL_HOST --keep MYSQL_PORT \
+        --keep PERCONA_HOST --keep PERCONA_PORT \
+        --keep MARIADB_HOST --keep MARIADB_PORT \
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
         --keep PROTECCIO_IP --keep PROTECCIO_PASSWORD --keep PROTECCIO_SLOT \
         --keep PROTECCIO_PKCS11_LIB --keep PROTECCIO_PORT \
-      --keep VARIANT \
+        --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
         --keep TEST_GOOGLE_OAUTH_REFRESH_TOKEN \
@@ -516,11 +522,10 @@ test_command() {
         --keep WITH_CURL \
         --keep WITH_DOCKER \
         --keep WITH_HSM \
-        --keep WITH_WASM \
-          --keep WITH_PYTHON \
-          --keep VARIANT \
-          --keep LINK \
-          --keep BUILD_PROFILE"
+        --keep WITH_PYTHON \
+        --keep VARIANT \
+        --keep LINK \
+        --keep BUILD_PROFILE"
 }
 
 sbom_command() {
