@@ -15,7 +15,7 @@ use cosmian_kmip::{
 
 use crate::{cover_crypt_utils::VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE, error::UtilsError};
 
-/// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
+/// Build a configurable KEM `CreateKeyPair`.
 pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     access_structure: Option<&str>,
     tags: T,
@@ -123,7 +123,7 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
-        key_format_type: Some(KeyFormatType::ConfigurableKEM),
+        key_format_type: Some(KeyFormatType::ConfigurableKEMSecretKey),
         vendor_attributes,
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive: sensitive.then_some(true),

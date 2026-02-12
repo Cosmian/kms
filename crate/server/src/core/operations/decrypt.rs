@@ -391,7 +391,7 @@ fn decrypt_single(
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
-        KeyFormatType::ConfigurableKEM => {
+        KeyFormatType::ConfigurableKEMSecretKey => {
             use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_decaps;
 
             let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;

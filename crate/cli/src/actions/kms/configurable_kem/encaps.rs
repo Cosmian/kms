@@ -39,7 +39,7 @@ impl EncapsAction {
         &self,
         kms_rest_client: KmsClient,
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)> {
-        let encrypt_request = encrypt_request(
+        let request = encrypt_request(
             &get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?,
             self.encryption_policy.clone(),
             Vec::new(),
@@ -51,17 +51,15 @@ impl EncapsAction {
             }),
         )?;
 
-        debug!("{encrypt_request}");
+        debug!("{request}");
 
-        let encrypt_response = kms_rest_client
-            .encrypt(encrypt_request)
+        let response = kms_rest_client
+            .encrypt(request)
             .await
-            .with_context(|| "Can't execute the query on the kms server")?;
+            .with_context(|| "Can't execute the request on the KMS server")?;
 
         <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(
-            &encrypt_response
-                .data
-                .context("The encrypted-data field is empty")?,
+            &response.data.context("The encrypted-data field is empty")?,
         )
         .map_err(|e| {
             KmsCliError::Conversion(format!(

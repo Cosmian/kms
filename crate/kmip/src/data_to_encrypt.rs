@@ -49,16 +49,21 @@ impl DataToEncrypt {
         // Read the encryption policy
         let encryption_policy = de
             .read_vec()
-            .map(|ep| (!ep.is_empty()).then_some(ep))?
-            .map(|ep| {
-                String::from_utf8(ep).map_err(|e| {
-                    KmipError::Kmip21(
-                        ErrorReason::Invalid_Message,
-                        format!("failed deserializing the encryption policy string: {e}"),
-                    )
+            .map(|ep| (!ep.is_empty()).then_some(ep))
+            .and_then(|ep| {
+                ep.map(|ep| {
+                    String::from_utf8(ep).map_err(|e| {
+                        KmipError::Kmip21(
+                            ErrorReason::Invalid_Message,
+                            format!("failed deserializing the encryption policy string: {e}"),
+                        )
+                    })
                 })
+                .transpose()
             })
-            .transpose()?;
+            .map_err(|e| {
+                KmipError::ConversionError(format!("failed deserializing data to encrypt: {e}"))
+            })?;
 
         // Remaining is the plaintext to encrypt
         let plaintext = de.finalize();

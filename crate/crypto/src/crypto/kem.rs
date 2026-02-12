@@ -29,10 +29,6 @@ use crate::{
     crypto::{KeyPair, cover_crypt::attributes::access_structure_from_attributes},
 };
 
-pub type KemSharedSecret = Zeroizing<Vec<u8>>;
-pub type KemEncapsulation = Zeroizing<Vec<u8>>;
-pub type KemEncapsOutput = (KemSharedSecret, KemEncapsulation);
-
 fn cryptographic_algorithm_to_post_quantum_kem_tag(
     alg: CryptographicAlgorithm,
 ) -> Result<PostQuantumKemTag, CryptoError> {
@@ -75,7 +71,9 @@ pub fn kem_keygen(
             .and_then(|params| params.cryptographic_algorithm),
     ) {
         (None, None) => {
-            return Err(CryptoError::Kmip("no KEM configuration defined".to_owned()));
+            return Err(CryptoError::Kmip(
+                "no KEM configuration defined".to_string(),
+            ));
         }
         (None, Some(alg)) => {
             if CryptographicAlgorithm::CoverCrypt == alg {
@@ -111,7 +109,7 @@ pub fn kem_keygen(
 pub fn kem_encaps(
     ek: &[u8],
     data: Option<&Zeroizing<Vec<u8>>>,
-) -> Result<KemEncapsOutput, CryptoError> {
+) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"
@@ -181,7 +179,7 @@ fn create_dk_object(
     );
 
     attributes.object_type = Some(ObjectType::PrivateKey);
-    attributes.key_format_type = Some(KeyFormatType::ConfigurableKEM);
+    attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMSecretKey);
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
@@ -197,7 +195,7 @@ fn create_dk_object(
     Ok(Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
-            key_format_type: KeyFormatType::ConfigurableKEM,
+            key_format_type: KeyFormatType::ConfigurableKEMSecretKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(dk_bytes),
@@ -216,7 +214,7 @@ fn create_ek_object(
 ) -> Result<Object, CryptoError> {
     attributes.sensitive = None;
     attributes.object_type = Some(ObjectType::PublicKey);
-    attributes.key_format_type = Some(KeyFormatType::ConfigurableKEM);
+    attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMPublicKey);
     attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Encrypt);
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
@@ -229,10 +227,11 @@ fn create_ek_object(
     attributes.set_tags(tags)?;
 
     let cryptographic_length = Some(i32::try_from(ek_bytes.len())? * 8);
+
     Ok(Object::PublicKey(PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
-            key_format_type: KeyFormatType::ConfigurableKEM,
+            key_format_type: KeyFormatType::ConfigurableKEMPublicKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(ek_bytes),

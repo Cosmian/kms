@@ -516,7 +516,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS12
                 | KeyFormatType::PKCS8
                 | KeyFormatType::X509
-                | KeyFormatType::ConfigurableKEM
+                | KeyFormatType::ConfigurableKEMSecretKey
+                | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
@@ -729,7 +730,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS12
                     | KeyFormatType::PKCS8
                     | KeyFormatType::X509
-                    | KeyFormatType::ConfigurableKEM
+                    | KeyFormatType::ConfigurableKEMSecretKey
+                    | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
