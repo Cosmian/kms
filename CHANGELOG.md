@@ -7,8 +7,11 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Add server-side KMIP algorithm policy allowlists (enforcement via `kmip.policy_id` and `[kmip.allowlists]`) [#700](https://github.com/Cosmian/kms/pull/700)
-    - Default policy (when `kmip.policy_id = "DEFAULT"`): conservative allowlists are applied, including SHA-2/3 hashes, P-256/P-384/P-521 and Curve25519, AEAD/wrapping modes (GCM/CCM/XTS/NISTKeyWrap/AESKeyWrapPadding/GCMSIV), OAEP/PSS/PKCS5 paddings, RSA sizes 3072/4096.
-        - `None` vs `[]` semantics: `None` means "no restriction for this parameter", while an empty list `[]` means "deny all" when enforcement is enabled.
+    - `kmip.policy_id` selects a policy (case-insensitive):
+        - `DEFAULT`: built-in conservative allowlists (e.g., SHA-2/3, P-256/P-384/P-521 + Curve25519/448, AEAD/wrapping modes, OAEP/PSS/PKCS5, RSA 3072/4096).
+        - `CUSTOM`: enforce the allowlists you set under `[kmip.allowlists]`.
+    - If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
+    - `None` vs `[]` semantics (for each allowlist): `None` means "no restriction", while an empty list `[]` means "deny all" when enforcement is enabled.
 
 ### 🐛 Bug Fixes
 

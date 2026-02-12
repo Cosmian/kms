@@ -24,7 +24,7 @@ use crate::tests::test_utils::{post_2_1, test_app_with_clap_config};
 #[test]
 fn override_allowlists_can_tighten_policy() {
     let mut conf = crate::config::ClapConfig::default();
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
@@ -82,7 +82,7 @@ fn override_allowlists_can_tighten_policy() {
 #[actix_web::test]
 async fn e2e_override_allowlists_can_tighten_policy() {
     let mut conf = https_clap_config_opts(None);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);

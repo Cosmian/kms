@@ -76,7 +76,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_kw_suite_requires_aes_and_nist_key_wra
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::AES]);
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::NISTKeyWrap]);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
@@ -103,7 +103,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_kwp_suite_requires_aes_and_kwp_mode() 
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::AES]);
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::AESKeyWrapPadding]);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
@@ -130,7 +130,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_gcm_suite_requires_aes_and_gcm() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::AES]);
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
@@ -161,7 +161,7 @@ async fn e2e_kmip_policy_key_wrapping_rsa_oaep_sha256_suite_requires_rsa_oaep_an
     ]);
     conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA256]);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
     let (_kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
@@ -202,7 +202,7 @@ async fn e2e_kmip_policy_key_wrapping_rsa_aes_key_wrap_sha256_suite_requires_rsa
     ]);
     conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::None]);
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA256]);
-    conf.kmip_policy.policy_id = "CUSTOM".to_owned();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
     let (_kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;

@@ -14,7 +14,7 @@ pub struct KmipPolicyParams {
     ///
     /// Normalized to uppercase and validated at startup.
     /// Accepted values: `DEFAULT`, `CUSTOM`.
-    pub policy_id: String,
+    pub policy_id: Option<String>,
 
     /// Parameter-specific allowlists.
     ///

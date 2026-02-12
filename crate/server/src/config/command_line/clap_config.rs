@@ -168,12 +168,12 @@ pub struct ClapConfig {
     ///
     /// This policy is configured via parameter-specific allowlists under `[kmip.allowlists]`.
     ///
-    /// Policy selection is controlled by `kmip.policy_id` (accepted values: `NONE`, `DEFAULT`, `CUSTOM`).
+    /// Policy selection is controlled by `kmip.policy_id` (accepted values: `DEFAULT`, `CUSTOM`).
     ///
-    /// By default, `kmip.policy_id = "NONE"` and the server runs without KMIP restrictions.
+    /// If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
     ///
-    /// When `kmip.policy_id = "DEFAULT"`, built-in conservative allowlists are enforced (aligned
-    /// with ANSSI/NIST/FIPS recommendations).
+    /// The `DEFAULT` policy enforces built-in conservative allowlists (aligned with ANSSI/NIST/FIPS
+    /// recommendations).
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,

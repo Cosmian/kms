@@ -30,7 +30,7 @@ use crate::{
 
 pub(super) fn params_with_default_policy() -> ServerParams {
     let mut conf = ClapConfig::default();
-    conf.kmip_policy.policy_id = "DEFAULT".to_owned();
+    conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
     ServerParams::try_from(conf).expect("default policy config should build")
 }
 

@@ -43,7 +43,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     operation_tag: &str,
     ttlv: &TTLV,
 ) -> KResult<()> {
-    if params.kmip_policy.policy_id == "NONE" {
+    if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
     let ttlv_tag_for_error = &ttlv.tag;
@@ -211,7 +211,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
     uid_for_error: &str,
     owm: &ObjectWithMetadata,
 ) -> KResult<()> {
-    if params.kmip_policy.policy_id == "NONE" {
+    if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
@@ -293,7 +293,7 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     key_id: &str,
     pkey_id: openssl::pkey::Id,
 ) -> KResult<()> {
-    if params.kmip_policy.policy_id == "NONE" {
+    if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
@@ -416,7 +416,7 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
     key_id: &str,
     attrs: &Attributes,
 ) -> KResult<()> {
-    if params.kmip_policy.policy_id == "NONE" {
+    if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);

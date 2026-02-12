@@ -11,16 +11,10 @@ pub struct KmipPolicyConfig {
     /// KMIP algorithm policy selector.
     ///
     /// Accepted values (case-insensitive):
-    /// - `NONE` (default): do not enforce the KMIP algorithm policy.
     /// - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST/FIPS).
     /// - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
-    #[clap(
-        long = "kmip-policy-id",
-        env = "KMS_POLICY_ID",
-        default_value = "NONE",
-        verbatim_doc_comment
-    )]
-    pub policy_id: String,
+    #[clap(long = "kmip-policy-id", env = "KMS_POLICY_ID", verbatim_doc_comment)]
+    pub policy_id: Option<String>,
 
     /// Parameter-specific allowlists.
     ///
@@ -55,9 +49,10 @@ impl KmipPolicyConfig {
 
 impl Default for KmipPolicyConfig {
     fn default() -> Self {
-        // The default profile can be enabled by setting `kmip.policy_id = "DEFAULT"`.
+        // Keep this unset at the CLI/config layer: the effective default is decided when building
+        // `ServerParams` (see `ServerParams::try_from`).
         Self {
-            policy_id: "NONE".to_owned(),
+            policy_id: None,
             allowlists: Self::unrestricted_allowlists(),
         }
     }

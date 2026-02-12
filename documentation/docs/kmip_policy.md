@@ -6,13 +6,14 @@ The policy selector is `kmip.policy_id`.
 
 Accepted values (case-insensitive):
 
-- `NONE` (default): disable KMIP algorithm policy enforcement (use with caution).
 - `DEFAULT`: enforce the built-in conservative allowlists.
 - `CUSTOM`: enforce the allowlists you provide under `[kmip.allowlists]` (use with caution).
 
 ## Enabling the default policy
 
-To enable the built-in default policy, set `kmip.policy_id = "DEFAULT"` in `kms.toml` (or pass it on the command line):
+If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
+
+To explicitly select the built-in default policy, set `kmip.policy_id = "DEFAULT"` in `kms.toml` (or pass it on the command line):
 
 ```toml
 [kmip]
@@ -27,7 +28,6 @@ cosmian_kms --kmip-policy-id DEFAULT
 
 ## Policies to use with caution
 
-- `NONE`: disables the KMIP policy layer checks; requests are only subject to general KMIP validation and whatever constraints the underlying cryptographic implementation enforces.
 - `CUSTOM`: lets you override allowlists under `[kmip.allowlists]`. Misconfiguration can unintentionally allow weak choices or, conversely, deny most operations (e.g., if you set an empty list `[]`).
 
 ## What the `DEFAULT` policy enforces

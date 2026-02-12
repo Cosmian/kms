@@ -206,30 +206,27 @@ impl ServerParams {
             })
             .collect();
 
-        let kmip_policy_id = {
-            let normalized = conf.kmip_policy.policy_id.trim().to_ascii_uppercase();
-            if normalized == "NONE" || normalized == "DEFAULT" || normalized == "CUSTOM" {
-                normalized
-            } else {
-                return Err(KmsError::ServerError(format!(
-                    "Invalid kmip.policy_id: '{}'. Valid values are: NONE, DEFAULT, CUSTOM",
-                    conf.kmip_policy.policy_id
-                )));
-            }
-        };
+        let kmip_policy_id: Option<String> = conf
+            .kmip_policy
+            .policy_id
+            .as_deref()
+            .map(|raw| {
+                let normalized = raw.trim().to_ascii_uppercase();
+                if normalized == "DEFAULT" || normalized == "CUSTOM" {
+                    Ok(normalized)
+                } else {
+                    Err(KmsError::ServerError(format!(
+                        "Invalid kmip.policy_id: '{raw}'. Valid values are: DEFAULT, CUSTOM",
+                    )))
+                }
+            })
+            .transpose()?;
 
-        let kmip_allowlists = match kmip_policy_id.as_str() {
-            // Policy disabled.
-            "NONE" => crate::config::KmipPolicyConfig::unrestricted_allowlists(),
-            // Built-in conservative allowlists.
-            "DEFAULT" => crate::config::KmipAllowlistsConfig::default(),
-            // User-provided allowlists.
-            "CUSTOM" => conf.kmip_policy.allowlists,
-            _ => {
-                return Err(KmsError::ServerError(format!(
-                    "Invalid kmip.policy_id: '{kmip_policy_id}'. Valid values are: NONE, DEFAULT, CUSTOM"
-                )));
-            }
+        // Invalid values are rejected above when building `kmip_policy_id`.
+        let kmip_allowlists = if kmip_policy_id.as_deref() == Some("DEFAULT") {
+            crate::config::KmipAllowlistsConfig::default()
+        } else {
+            conf.kmip_policy.allowlists
         };
 
         let res = Self {
