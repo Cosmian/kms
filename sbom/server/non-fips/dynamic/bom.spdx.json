@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-6zrsy7wl8ap70vzm6mdf4dipmas64xa8-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
-  "documentNamespace": "sbomnix://93a04ee5-4947-4e68-9025-85c405f7d6a4",
+  "name": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+  "documentNamespace": "sbomnix://a1132d42-93fc-432c-a4f3-dec2cc42cec4",
   "creationInfo": {
-    "created": "2026-02-11T17:30:26.563798+01:00",
+    "created": "2026-02-12T07:14:05.786635+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -14,7 +14,7 @@
   "packages": [
     {
       "name": "cosmian-kms-server-dynamic-rebuild-1",
-      "SPDXID": "SPDXRef-nix-store-6zrsy7wl8ap70vzm6mdf4dipmas64xa8-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+      "SPDXID": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
       "versionInfo": "5.15.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -120,7 +120,7 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-6zrsy7wl8ap70vzm6mdf4dipmas64xa8-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-74hh5shwd63bla2yyhq17c2irx1y528w-openssl-3.6.0.drv"
     },

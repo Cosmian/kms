@@ -42,6 +42,7 @@ usage() {
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
                        Default: generates all combinations (openssl + server fips/non-fips × static/dynamic)
+                       Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
                          --target <openssl|server>  Choose specific SBOM target
                          --variant <fips|non-fips>  Specific variant (server target only)
@@ -522,9 +523,12 @@ sbom_command() {
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
 
-  # Parse arguments to check if --target is specified
+  # Parse arguments to check if --target/--variant/--link are specified.
   local target=""
+  local variant=""
+  local link=""
   local args=()
+  local -a unknown_args=()
   while [ $# -gt 0 ]; do
     case "$1" in
     --target)
@@ -532,15 +536,50 @@ sbom_command() {
       args+=("$1" "$2")
       shift 2
       ;;
-    *)
+    --variant)
+      variant="${2:-}"
+      args+=("$1" "$2")
+      shift 2
+      ;;
+    --link)
+      link="${2:-}"
+      args+=("$1" "$2")
+      shift 2
+      ;;
+    -h|--help)
       args+=("$1")
+      shift
+      ;;
+    *)
+      unknown_args+=("$1")
       shift
       ;;
     esac
   done
 
-  # If target is server or not specified (defaults to openssl in script), generate all server combinations
-  if [ "$target" = "server" ] || [ -z "$target" ]; then
+  # Do not silently ignore extra args for `sbom`.
+  if [ ${#unknown_args[@]} -ne 0 ]; then
+    echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
+    echo "Valid sbom options: --target <openssl|server> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
+    exit 1
+  fi
+
+  # Avoid confusing no-ops: --variant/--link are meaningful only for --target server.
+  if { [ -n "$variant" ] || [ -n "$link" ]; } && [ "$target" != "server" ]; then
+    if [ -z "$target" ]; then
+      echo "Error: --variant/--link require --target server (otherwise they are ignored)." >&2
+    else
+      echo "Error: --variant/--link are only valid with --target server (got --target $target)." >&2
+    fi
+    exit 1
+  fi
+
+  # Behavior matrix:
+  # - no --target: generate everything (openssl + all server combos)
+  # - --target openssl: generate openssl only
+  # - --target server (no --variant/--link): generate all server combos
+  # - --target server with --variant and/or --link: generate only the requested server subset
+  if [ -z "$target" ]; then
     echo "========================================="
     echo "Generating SBOMs for all combinations"
     echo "========================================="
@@ -568,6 +607,30 @@ sbom_command() {
 
     echo "========================================="
     echo "✓ All SBOMs generated successfully"
+    echo "========================================="
+  elif [ "$target" = "server" ] && { [ -n "$variant" ] || [ -n "$link" ]; }; then
+    # Specific server subset requested
+    echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
+    bash "$SCRIPT" "${args[@]}"
+  elif [ "$target" = "server" ]; then
+    echo "========================================="
+    echo "Generating SBOMs for server combinations"
+    echo "========================================="
+    echo ""
+
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        echo ">>> Generating SBOM for server ($variant, $link)..."
+        bash "$SCRIPT" --target server --variant "$variant" --link "$link" || {
+          echo "ERROR: Server SBOM generation failed for $variant/$link" >&2
+          exit 1
+        }
+        echo ""
+      done
+    done
+
+    echo "========================================="
+    echo "✓ All server SBOMs generated successfully"
     echo "========================================="
   else
     # Single target requested, use provided arguments
