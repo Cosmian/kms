@@ -10,7 +10,7 @@ use cosmian_kmip::{
             VendorAttribute, VendorAttributeValue,
         },
     },
-    time_normalize,
+    time_normalize, ttlv::{from_ttlv, to_ttlv},
 };
 
 use crate::error::UtilsError;
@@ -31,6 +31,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(access_structure.as_bytes().to_vec()),
     };
+
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -42,13 +43,21 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         ..Attributes::default()
     };
     attributes.set_tags(tags)?;
+
     if let Some(wrap_key_id) = wrapping_key_id {
         attributes.set_wrapping_key_id(wrap_key_id);
     }
-    Ok(CreateKeyPair {
+
+    let request = CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()
-    })
+    };
+
+    let ttlv = to_ttlv(&request)?;
+    let request_ = from_ttlv::<CreateKeyPair>(ttlv)?;
+    assert_eq!(request, request_);
+
+    Ok(request)
 }
 
 /// Build a `Create` request for a `CoverCrypt` USK
@@ -84,9 +93,12 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
     if let Some(wrap_key_id) = wrapping_key_id {
         attributes.set_wrapping_key_id(wrap_key_id);
     }
-    Ok(Create {
+
+    let request = Create {
         attributes,
         object_type: ObjectType::PrivateKey,
         protection_storage_masks: None,
-    })
+    };
+
+    Ok(request)
 }

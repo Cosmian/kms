@@ -1,12 +1,12 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize;
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_secp_key_pair, create_x448_key_pair, create_x25519_key_pair
 };
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::ConfigurableKEM;
 use cosmian_kms_server_database::reexport::{cosmian_kmip, cosmian_kms_crypto::crypto::{
     elliptic_curves::operation::{
         create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair
@@ -450,7 +450,7 @@ pub(super) fn generate_key_pair(
             request.public_key_attributes,
         ),
         #[cfg(feature = "non-fips")]
-        CryptographicAlgorithm::ConfigurableKEM => ConfigurableKEM::keygen(
+        CryptographicAlgorithm::ConfigurableKEM => kem_keygen(
             private_key_uid.to_owned(),
             request.private_key_attributes,
             public_key_uid.to_owned(),

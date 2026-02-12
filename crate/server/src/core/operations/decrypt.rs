@@ -390,13 +390,14 @@ fn decrypt_single(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::ConfigurableKEM => {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::ConfigurableKEM;
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_decaps;
+
             let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
             let enc = request
                 .data
                 .as_ref()
                 .ok_or_else(|| KmsError::InvalidRequest("missing KEM encapsulation".to_owned()))?;
-            let key = ConfigurableKEM::dec(&dk_bytes, enc)?;
+            let key = kem_decaps(&dk_bytes, enc)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
                 data: Some(key),
