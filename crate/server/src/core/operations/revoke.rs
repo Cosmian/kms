@@ -92,7 +92,6 @@ pub(crate) async fn recursively_revoke_key(
 
     let mut count = 0;
     for uid in uids {
-        let op_start = std::time::Instant::now();
         // Revoke does not apply to prefixed objects
         // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
         if let Some(prefix) = has_prefix(&uid) {
@@ -269,13 +268,6 @@ pub(crate) async fn recursively_revoke_key(
             x => kms_bail!(KmsError::NotSupported(format!(
                 "revoke operation is not supported for object type {x:?}"
             ))),
-        }
-
-        // Per-object KMIP metrics recording
-        if let Some(metrics) = &kms.metrics {
-            metrics.record_kmip_operation("Revoke", user);
-            let duration = op_start.elapsed().as_secs_f64();
-            metrics.record_kmip_operation_duration("Revoke", duration);
         }
 
         info!(
