@@ -80,7 +80,7 @@ let
   # Build a matching wasm-bindgen-cli to the version used by the crates
   wasmBindgenCli = rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
-    version = "0.2.106";
+    version = "0.2.108";
 
     src = pkgs.fetchCrate {
       inherit pname version;
