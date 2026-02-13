@@ -61,11 +61,8 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
             })
         };
     }
-
     // The root TTLV tag is the operation name (e.g. "Create").
-    //
-    // Deserialize the *operation payload* (the struct), then wrap it into the
-    // `Operation` enum.
+    // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.
     let op = match operation_tag {
         "Create" => Operation::Create(deserialize_op!(Create, "Create")?),
         "CreateKeyPair" => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
@@ -656,7 +653,7 @@ fn validate_algorithm(
     alg: CryptographicAlgorithm,
     whitelist: Option<&HashSet<CryptographicAlgorithm>>,
 ) -> KResult<()> {
-    // Hard-coded blacklist (deprecated/broken or not in requested scope)
+    // Default blacklist (deprecated/broken or not in requested scope)
     match alg {
         CryptographicAlgorithm::DES
         | CryptographicAlgorithm::THREE_DES

@@ -39,6 +39,7 @@ pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
+
     privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
@@ -275,7 +276,6 @@ pub(super) fn generate_key_pair(
                 "the cryptographic algorithm must be specified for key pair creation".to_owned()
             ))
         };
-
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
 
     // Generate the key pair based on the cryptographic algorithm.
