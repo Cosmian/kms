@@ -96,6 +96,7 @@ impl EncryptAction {
         data = encrypt_response
             .data
             .context("The encrypted data are empty")?;
+
         // Write the encrypted data
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             write_bulk_encrypted_data(&data, &self.input_files, self.output_file.as_ref())?;
