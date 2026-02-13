@@ -70,9 +70,7 @@ pub fn kem_keygen(
             .and_then(|params| params.cryptographic_algorithm),
     ) {
         (None, None) => {
-            return Err(CryptoError::Kmip(
-                "no KEM configuration defined".to_owned(),
-            ));
+            return Err(CryptoError::Kmip("no KEM configuration defined".to_owned()));
         }
         (None, Some(alg)) => {
             if CryptographicAlgorithm::CoverCrypt == alg {
