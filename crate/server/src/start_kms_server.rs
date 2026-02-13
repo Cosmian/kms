@@ -800,7 +800,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     ),
                 );
             }
-            // Add static files service
             auth_routes = auth_routes.service(
                 Files::new("/", ui_index_folder)
                     .index_file("index.html")

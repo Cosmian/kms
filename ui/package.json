@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
+        "build:wasm": "cd .. && (cd crate/wasm && wasm-pack build --target web --release --features non-fips) && mkdir -p ui/src/wasm && rm -rf ui/src/wasm/pkg && cp -R crate/wasm/pkg ui/src/wasm/",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
         "fix": "eslint . --fix",

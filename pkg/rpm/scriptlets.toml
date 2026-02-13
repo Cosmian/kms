@@ -1,13 +1,32 @@
 pre_install_script = '''
 #!/bin/bash -ex
 
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 # Backup existing configuration
 KMS_CONFIG="/etc/cosmian/kms.toml"
 if [ -f $KMS_CONFIG ]; then
+  mkdir -p /etc/cosmian
   timestamp=$(date '+%Y%m%d_%H%M%S')
   # Double backup just in case
   cp $KMS_CONFIG /etc/cosmian/"$timestamp"_kms.toml
   cp $KMS_CONFIG /etc/cosmian/kms.toml.bak
+fi
+
+# Backup existing UI branding overrides (if any)
+UI_DIST="/usr/local/cosmian/ui/dist"
+UI_BACKUP_DIR="/var/lib/cosmian/ui"
+if [ -d "$UI_DIST" ]; then
+  mkdir -p "$UI_BACKUP_DIR"
+  if [ -f "$UI_DIST/branding.json" ]; then
+    cp "$UI_DIST/branding.json" "$UI_BACKUP_DIR/branding.json.bak"
+  fi
+  if [ -d "$UI_DIST/themes" ]; then
+    rm -rf "$UI_BACKUP_DIR/themes.bak"
+    cp -R "$UI_DIST/themes" "$UI_BACKUP_DIR/themes.bak"
+  fi
 fi
 
 '''
@@ -15,16 +34,45 @@ fi
 post_install_script = '''
 #!/bin/bash -ex
 
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 # Restore existing configuration
 KMS_CONFIG="/etc/cosmian/kms.toml.bak"
 if [ -f $KMS_CONFIG ]; then
+  mkdir -p /etc/cosmian
   cp $KMS_CONFIG /etc/cosmian/kms.toml
 fi
 
-systemctl enable cosmian_kms.service
-systemctl stop cosmian_kms.service
+# Do not hard-fail or auto-enable/start services at install time.
+# Some environments have systemctl but no running systemd (containers/chroots).
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
 
-systemctl daemon-reload
+# Restore UI branding overrides (if any)
+UI_DIST="/usr/local/cosmian/ui/dist"
+UI_BACKUP_DIR="/var/lib/cosmian/ui"
+if [ -d "$UI_DIST" ]; then
+  if [ -f "$UI_BACKUP_DIR/branding.json.bak" ]; then
+    if [ ! -f "$UI_DIST/branding.json" ]; then
+      cp "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json"
+    else
+      if ! cmp -s "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json"; then
+        cp "$UI_BACKUP_DIR/branding.json.bak" "$UI_DIST/branding.json.rpmold"
+      fi
+    fi
+  fi
+
+  if [ -d "$UI_BACKUP_DIR/themes.bak" ]; then
+    if [ ! -d "$UI_DIST/themes" ]; then
+      cp -R "$UI_BACKUP_DIR/themes.bak" "$UI_DIST/themes"
+    else
+      cp -R "$UI_BACKUP_DIR/themes.bak" "$UI_DIST/themes.rpmold"
+    fi
+  fi
+fi
 
 '''
 
@@ -33,12 +81,20 @@ post_uninstall_script = '''
 
 set -x
 
-systemctl daemon-reload
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if ! has_systemd; then
+  exit 0
+fi
+
+systemctl daemon-reload >/dev/null 2>&1 || true
 
 # Check if the service is active (running)
 if systemctl is-active --quiet cosmian_kms.service; then
   echo "Service is running. Stopping the service..."
-  systemctl stop cosmian_kms.service
+  systemctl stop cosmian_kms.service >/dev/null 2>&1 || true
 
   # Verify if the service was stopped
   if systemctl is-active --quiet cosmian_kms.service; then
@@ -47,17 +103,17 @@ if systemctl is-active --quiet cosmian_kms.service; then
     echo "Service stopped successfully. Disabling it"
     if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
       echo "Service exists. Disabling the service..."
-      systemctl disable cosmian_kms.service
+      systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
     fi
   fi
 else
   echo "Service is not running. Disabling it"
   if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
     echo "Service exists. Disabling the service..."
-    systemctl disable cosmian_kms.service
+    systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
   fi
 fi
 
-systemctl daemon-reload
+systemctl daemon-reload >/dev/null 2>&1 || true
 
 '''

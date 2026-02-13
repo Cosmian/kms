@@ -1,0 +1,22 @@
+{
+  "title": "Example",
+  "faviconUrl": "/ui/themes/example/favicon-32x32.png",
+  "logoAlt": "Example Key Management",
+  "logoLightUrl": "/ui/themes/example/example-logo-light.svg",
+  "logoDarkUrl": "/ui/themes/example/example-logo-dark.svg",
+  "loginTitle": "Example Console",
+  "loginSubtitle": "White-label demo via branding.json",
+  "backgroundImageUrl": "/ui/themes/example/example-login-bg.jpg",
+  "menuTheme": "dark",
+  "tokens": {
+    "light": {
+      "colorPrimary": "#0057ff",
+      "colorText": "#111827"
+    },
+    "dark": {
+      "colorPrimary": "#22c55e",
+      "colorText": "#e5e7eb",
+      "colorBgBase": "#0b1220"
+    }
+  }
+}

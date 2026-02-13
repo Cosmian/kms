@@ -11,6 +11,7 @@ import AttributeSetForm from "./AttributeSet";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ExportAzureBYOKForm from "./AzureExportByok";
 import ImportAzureKekForm from "./AzureImportKek";
+import { useBranding } from "./BrandingContext";
 import CertificateCertifyForm from "./CertificateCertify";
 import CertificateDecryptForm from "./CertificateDecrypt";
 import CertificateEncryptForm from "./CertificateEncrypt";
@@ -213,6 +214,7 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
 
 function App() {
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const branding = useBranding();
 
     useEffect(() => {
         async function loadWasm() {
@@ -313,7 +315,16 @@ function App() {
 
     return (
         <BrowserRouter basename="/ui">
-            <ConfigProvider theme={{...theme.defaultConfig, ...(isDarkMode ? darkTheme : lightTheme)}}>
+            <ConfigProvider
+                theme={{
+                    ...theme.defaultConfig,
+                    ...(isDarkMode ? darkTheme : lightTheme),
+                    token: {
+                        ...((isDarkMode ? darkTheme : lightTheme).token ?? {}),
+                        ...(isDarkMode ? branding.tokens?.dark : branding.tokens?.light),
+                    },
+                }}
+            >
                 <AuthProvider>
                     <AppContent isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}/>
                 </AuthProvider>

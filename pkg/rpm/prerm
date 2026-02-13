@@ -2,10 +2,16 @@
 # RPM pre-remove script for Cosmian KMS
 set -e
 
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 case "$1" in
 0 | 1)
   # 0: erase, 1: upgrade
-  :
+  if has_systemd; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
   ;;
 esac
 
