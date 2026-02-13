@@ -1,16 +1,22 @@
 #!/bin/sh -ex
 
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 # Restore existing configuration
 KMS_CONFIG="/etc/cosmian/kms.toml.bak"
 if [ -f $KMS_CONFIG ]; then
+  mkdir -p /etc/cosmian
   cp $KMS_CONFIG /etc/cosmian/kms.toml
 fi
 
-systemctl unmask cosmian_kms.service
-systemctl enable cosmian_kms.service
-systemctl stop cosmian_kms.service
-
-systemctl daemon-reload
+# Service management is handled by the deb-systemd-* helpers that cargo-deb
+# injects below. Avoid hard-failing on environments without systemd (containers,
+# WSL, chroots).
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
 
 # Restore UI branding overrides (if any)
 UI_DIST="/usr/local/cosmian/ui/dist"

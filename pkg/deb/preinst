@@ -3,6 +3,7 @@
 # Backup existing configuration
 KMS_CONFIG="/etc/cosmian/kms.toml"
 if [ -f $KMS_CONFIG ]; then
+  mkdir -p /etc/cosmian
   timestamp=$(date '+%Y%m%d_%H%M%S')
   # Double backup just in case
   cp $KMS_CONFIG /etc/cosmian/"$timestamp"_kms.toml

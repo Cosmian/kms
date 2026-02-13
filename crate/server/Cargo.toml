@@ -140,6 +140,8 @@ changelog = "../../CHANGELOG.md"
 section = "security"
 priority = "optional"
 depends = ""
+conflicts = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
+replaces = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
 assets = [
     [
         "../../ui_non_fips/dist/**/*",
