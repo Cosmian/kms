@@ -116,7 +116,7 @@ pub fn kem_encaps(
         ))
     })?;
 
-    let ap = if ek.get_tag()? == KemTag::Abe {
+    let ap = if ek.get_tag() == KemTag::Abe {
         let data = data.ok_or_else(|| {
             CryptoError::ObjectNotFound(
                 "a data field containing an access policy must be given \
