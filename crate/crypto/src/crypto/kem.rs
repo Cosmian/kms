@@ -4,12 +4,11 @@
 //! Implementations of the concrete variants are chosen at compile-time.
 
 use cosmian_cover_crypt::{
-    AccessPolicy, ConfigurableKEM, ConfigurableKemDk, ConfigurableKemEk, ConfigurableKemEnc,
-    KemTag, PostQuantumKemTag, PreQuantumKemTag,
+    ConfigurableKEM, ConfigurableKemDk, ConfigurableKemEk, ConfigurableKemEnc, KemTag,
+    PostQuantumKemTag, PreQuantumKemTag,
 };
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
-    DataToEncrypt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -77,7 +76,9 @@ pub fn kem_keygen(
         }
         (None, Some(alg)) => {
             if CryptographicAlgorithm::CoverCrypt == alg {
-                KemTag::Abe
+                return Err(CryptoError::NotSupported(
+                    "CoverCrypt is not supported by the configurable-KEM yet".to_owned(),
+                ));
             } else {
                 KemTag::PostQuantum(cryptographic_algorithm_to_post_quantum_kem_tag(alg)?)
             }
@@ -108,7 +109,7 @@ pub fn kem_keygen(
 
 pub fn kem_encaps(
     ek: &[u8],
-    data: Option<&Zeroizing<Vec<u8>>>,
+    _data: Option<&Zeroizing<Vec<u8>>>,
 ) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
@@ -117,32 +118,9 @@ pub fn kem_encaps(
     })?;
 
     let ap = if ek.get_tag() == KemTag::Abe {
-        let data = data.ok_or_else(|| {
-            CryptoError::ObjectNotFound(
-                "a data field containing an access policy must be given \
-                 in order to create a CoverCrypt encapsulation"
-                    .to_owned(),
-            )
-        })?;
-        let data = DataToEncrypt::try_from_bytes(data).map_err(|e| {
-            CryptoError::ConversionError(format!(
-                "failed deserializing data to encrypt the configurable-KEM \
-                 encapsulation: {e}"
-            ))
-        })?;
-        let ap = data.encryption_policy.ok_or_else(|| {
-            CryptoError::ObjectNotFound(
-                "access-policy field must be given in the data to create \
-                 a CoverCrypt encapsulation"
-                    .to_owned(),
-            )
-        })?;
-        Some(AccessPolicy::parse(&ap).map_err(|e| {
-            CryptoError::ConversionError(format!(
-                "failed parsing the access policy for the configurable-KEM \
-                 encapsulation: {e}"
-            ))
-        })?)
+        return Err(CryptoError::NotSupported(
+            "CoverCrypt is not supported by the configurable-KEM yet".to_owned(),
+        ));
     } else {
         None
     };
@@ -163,6 +141,13 @@ pub fn kem_encaps(
 
 pub fn kem_decaps(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let dk = ConfigurableKemDk::deserialize(dk)?;
+
+    if dk.get_tag() == KemTag::Abe {
+        return Err(CryptoError::NotSupported(
+            "CoverCrypt is not supported by the configurable-KEM yet".to_owned(),
+        ));
+    }
+
     let enc = ConfigurableKemEnc::deserialize(enc)?;
     let key = ConfigurableKEM::dec(&dk, &enc)?;
     Ok(key)

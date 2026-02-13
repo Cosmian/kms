@@ -62,19 +62,5 @@ pub(crate) async fn test_create_configurable_kem_key_pair() -> KmsCliResult<()> 
     test_kem(ctx, "ML-KEM512/CURVE25519 KEM", 110).await?;
     test_kem(ctx, "ML-KEM768/CURVE25519 KEM", 111).await?;
 
-    Box::pin(
-        CreateKemKeyPairAction {
-            access_structure: Some(PathBuf::from(
-                "../../test_data/access_structure_specifications.json",
-            )),
-            tags: vec!["CoverCrypt KEM".to_owned()],
-            sensitive: false,
-            kem_tag: 1000,
-            wrapping_key_id: None,
-        }
-        .run(ctx.get_owner_client()),
-    )
-    .await?;
-
     Ok(())
 }
