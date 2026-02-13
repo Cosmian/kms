@@ -280,6 +280,8 @@ stdenv.mkDerivation {
     export default init;
     EOF
 
+      # Avoid depending on pnpm being present in the Nix build env.
+      # Use npm directly to run TypeScript + Vite build.
       npm run build
 
       # Return to root directory after build

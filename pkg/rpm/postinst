@@ -2,9 +2,13 @@
 # RPM post-install script for Cosmian KMS
 set -e
 
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 # Reload systemd to pick up the service file, but don't enable/start automatically here
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload || true
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
 exit 0

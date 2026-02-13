@@ -1,11 +1,19 @@
 #!/bin/sh
 
-systemctl daemon-reload
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if ! has_systemd; then
+  exit 0
+fi
+
+systemctl daemon-reload >/dev/null 2>&1 || true
 
 # Check if the service is active (running)
 if systemctl is-active --quiet cosmian_kms.service; then
   echo "Service is running. Stopping the service..."
-  systemctl stop cosmian_kms.service
+  systemctl stop cosmian_kms.service >/dev/null 2>&1 || true
 
   # Verify if the service was stopped
   if systemctl is-active --quiet cosmian_kms.service; then
@@ -14,17 +22,17 @@ if systemctl is-active --quiet cosmian_kms.service; then
     echo "Service stopped successfully. Disabling it"
     if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
       echo "Service exists. Disabling the service..."
-      systemctl disable cosmian_kms.service
+      systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
     fi
   fi
 else
   echo "Service is not running. Disabling it"
   if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
     echo "Service exists. Disabling the service..."
-    systemctl disable cosmian_kms.service
+    systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
   fi
 fi
 
-systemctl daemon-reload
+systemctl daemon-reload >/dev/null 2>&1 || true
 
 #DEBHELPER#

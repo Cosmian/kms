@@ -2,6 +2,7 @@ import { Button, message, Spin } from "antd";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { useBranding } from "./BrandingContext";
 
 interface LoginProps {
     auth: boolean;
@@ -12,6 +13,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
+    const branding = useBranding();
 
     const handleLogin = async () => {
         try {
@@ -30,11 +32,14 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
             {/* Background Image */}
             <div
                 className="absolute inset-0 bg-cover bg-center flex"
-                style={{ backgroundImage: "url('/ui/login_page_background_image.png')" }}
+                style={{ backgroundImage: `url('${branding.backgroundImageUrl}')` }}
             />
             <div className="relative w-2/3 shadow-2xl rounded-lg p-20 flex flex-col items-center bg-purple-700/30">
-                <img src="/ui/Cosmian-Logo-Dark.svg" alt="Cosmian Logo" className="z-10 w-40 mb-20" />
-                <div className="text-center text-7xl font-bold text-white mb-20 z-10">Cosmian KMS user interface</div>
+                <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />
+                <div className="text-center text-7xl font-bold text-white mb-10 z-10">{branding.loginTitle}</div>
+                {branding.loginSubtitle && (
+                    <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>
+                )}
                 <div className="space-y-6 text-center w-1/2">
                     {auth && <p className="text-white">Sign up for free and explore rights delegation for multiple users</p>}
                     {error && <p className="text-purple-700">{error}</p>}

@@ -2,6 +2,7 @@ import { Layout, Menu, MenuProps, Tooltip } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
+import { useBranding } from "./BrandingContext";
 import { MenuItem, menuItems } from "./menuItems.tsx";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
@@ -18,6 +19,7 @@ const Sidebar: React.FC = () => {
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
+    const branding = useBranding();
     const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
 
     const fetchCreatePermission = useCallback(async () => {
@@ -116,7 +118,7 @@ const Sidebar: React.FC = () => {
             collapsed={collapsed}
             onCollapse={setCollapsed}
             className="h-full"
-            theme="light"
+            theme={branding.menuTheme ?? "light"}
             style={{ position: "sticky", top: 0, overflow: "auto" }}
         >
             {authMethod === "JWT" && !idToken && (
