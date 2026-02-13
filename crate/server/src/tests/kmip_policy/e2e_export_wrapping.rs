@@ -1,3 +1,5 @@
+#[cfg(feature = "non-fips")]
+use cosmian_kms_client_utils::configurable_kem_utils::build_create_configurable_kem_keypair_request;
 use cosmian_kms_client_utils::export_utils::export_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{
@@ -7,11 +9,17 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, CreateResponse, ExportResponse},
+        kmip_operations::{Create, CreateKeyPairResponse, CreateResponse, DecryptResponse, EncryptResponse, ExportResponse},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        requests::{decrypt_request, encrypt_request},
     },
     time_normalize,
 };
+
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable;
+#[cfg(feature = "non-fips")]
+use zeroize::Zeroizing;
 
 use crate::{
     error::KmsError,
@@ -232,4 +240,76 @@ async fn e2e_kmip_policy_key_wrapping_rsa_aes_key_wrap_sha256_suite_requires_rsa
         ),
         "should not fail at KMIP policy level"
     );
+}
+
+#[cfg(feature = "non-fips")]
+#[actix_web::test]
+async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
+    let mut conf = https_clap_config_opts(None);
+    conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
+
+    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+
+    // Use a pre-quantum KEM tag (P-256) so the request does not include a nested
+    // post-quantum `CryptographicAlgorithm` in `CryptographicParameters`.
+    let create_kp = build_create_configurable_kem_keypair_request(
+        None,
+        ["e2e-configurable-kem"],
+        10,
+        false,
+        None,
+    )
+    .expect("build_create_configurable_kem_keypair_request should build");
+    let create_resp: CreateKeyPairResponse = post_2_1(&app, &create_kp).await.unwrap();
+
+    let pk_uid = create_resp
+        .public_key_unique_identifier
+        .as_str()
+        .expect("public key uid should be a string")
+        .to_owned();
+    let pk_uid_for_encrypt = if pk_uid.ends_with("_pk") {
+        pk_uid
+    } else {
+        format!("{pk_uid}_pk")
+    };
+    let sk_uid = create_resp
+        .private_key_unique_identifier
+        .as_str()
+        .expect("private key uid should be a string")
+        .to_owned();
+
+    let enc_req = encrypt_request(
+        &pk_uid_for_encrypt,
+        None,
+        Vec::new(),
+        None,
+        None,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
+            ..Default::default()
+        }),
+    )
+    .expect("encrypt_request should build");
+    let enc_resp: EncryptResponse = post_2_1(&app, &enc_req).await.unwrap();
+    let enc_data = enc_resp.data.expect("encrypt response should include data");
+
+    let (expected_key, encapsulation) =
+        <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&enc_data)
+            .expect("configurable-kem encrypt response should deserialize");
+
+    let dec_req = decrypt_request(
+        &sk_uid,
+        None,
+        encapsulation.to_vec(),
+        None,
+        None,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
+            ..Default::default()
+        }),
+    );
+    let dec_resp: DecryptResponse = post_2_1(&app, &dec_req).await.unwrap();
+    let recovered_key = dec_resp.data.expect("decrypt response should include data");
+
+    assert_eq!(recovered_key.to_vec(), expected_key.to_vec());
 }

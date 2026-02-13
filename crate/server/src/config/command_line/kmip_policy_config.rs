@@ -206,6 +206,8 @@ impl Default for KmipAllowlistsConfig {
             // Standard curves P-384/P-521 use SHAKE256 internally.
             // In strict mode (when the exact curve is not known), ECIES requires both SHAKE128 and SHAKE256.
             CryptographicAlgorithm::SHAKE256,
+            // Configurable KEM (PQC/hybrid KEM selection at runtime).
+            CryptographicAlgorithm::ConfigurableKEM,
         ];
 
         #[cfg(not(feature = "non-fips"))]

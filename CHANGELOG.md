@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
         - `CUSTOM`: enforce the allowlists you set under `[kmip.allowlists]`.
     - If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
     - `None` vs `[]` semantics (for each allowlist): `None` means "no restriction", while an empty list `[]` means "deny all" when enforcement is enabled.
+- Add `ConfigurableKEM` (non-FIPS) support end-to-end (KMIP + server + CLI):
+    - New KMIP `CryptographicAlgorithm`/`KeyFormatType` values (ML-KEM + Configurable-KEM keys).
+    - Server supports `CreateKeyPair` for Configurable-KEM and `Encrypt`/`Decrypt` encapsulation/decapsulation flows.
 
 ### 🐛 Bug Fixes
 
@@ -134,7 +137,9 @@ jwt_auth_provider = [
 
 ### 🚜 Refactor
 
-- Server: Consolidate KMIP operations `Sign` and `SignatureVerify` for RSA and Elliptic Curves (`crate/server/src/core/operations/sign.rs`, `signature_verify.rs`; routes updated). Supported signature schemes: RSASSA-PSS, ECDSA, EdDSA (Ed25519, Ed448).
+- Server: Consolidate KMIP operations `Sign` and `SignatureVerify` for RSA and Elliptic Curves
+  (`crate/server/src/core/operations/sign.rs`, `signature_verify.rs`; routes updated).
+  Supported signature schemes: RSASSA-PSS, ECDSA, EdDSA (Ed25519, Ed448).
 - Digest (pre-hashed) mode for signing and verification ([#619](https://github.com/Cosmian/kms/issues/619)):
     - Introduced `digested=true` handling so inputs are treated as final digests (no implicit hashing) across RSA and EC paths (crypto + server).
     - RSA: Added verify support using pre-hashed input, including PKCS#1 v1.5 and RSASSA-PSS flows (`crate/crypto/src/crypto/rsa/verify.rs`).
@@ -373,7 +378,10 @@ jwt_auth_provider = [
 
 **🚨 IMPORTANT: Back up your Redis database before upgrading to version 5.12.0.** 🚨
 
-- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats (PKCS#8, PEM, etc.) and re-import them after clearing the redis store. Databases created with version 4.x.x are not compatible with the automated migration routine and won't start if the `db_version` key is unset.
+- If you're upgrading from a version prior to 5.0.0 : Please export your keys using standard formats
+  (PKCS#8, PEM, etc.) and re-import them after clearing the redis store.
+  Databases created with version 4.x.x are not compatible with the automated migration routine and
+  won't start if the `db_version` key is unset.
 - If you're upgrading from a 5.x DB : A transparent migration process will occur and should typically take less than a minute.
 
 ## [5.11.2] - 2025-11-12
