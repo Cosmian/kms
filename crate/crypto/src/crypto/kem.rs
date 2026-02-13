@@ -71,7 +71,7 @@ pub fn kem_keygen(
     ) {
         (None, None) => {
             return Err(CryptoError::Kmip(
-                "no KEM configuration defined".to_string(),
+                "no KEM configuration defined".to_owned(),
             ));
         }
         (None, Some(alg)) => {
@@ -79,9 +79,8 @@ pub fn kem_keygen(
                 return Err(CryptoError::NotSupported(
                     "CoverCrypt is not supported by the configurable-KEM yet".to_owned(),
                 ));
-            } else {
-                KemTag::PostQuantum(cryptographic_algorithm_to_post_quantum_kem_tag(alg)?)
             }
+            KemTag::PostQuantum(cryptographic_algorithm_to_post_quantum_kem_tag(alg)?)
         }
         (Some(curve), None) => KemTag::PreQuantum(recommended_curve_to_pre_quantum_kem_tag(curve)?),
         (Some(curve), Some(alg)) => KemTag::Hybridized(
@@ -107,6 +106,7 @@ pub fn kem_keygen(
     ))
 }
 
+#[allow(clippy::type_complexity)]
 pub fn kem_encaps(
     ek: &[u8],
     _data: Option<&Zeroizing<Vec<u8>>>,

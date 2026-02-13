@@ -17,7 +17,7 @@ use crate::{
 
 /// Create a new Configurable-KEM keypair and return the key IDs.
 ///
-/// In case the targeted KEM algorithm is CoverCrypt, passing an access
+/// In case the targeted KEM algorithm is `CoverCrypt`, passing an access
 /// structure is mandatory, it is otherwise ignored.
 #[derive(Parser, Default)]
 #[clap(verbatim_doc_comment)]
@@ -36,6 +36,7 @@ pub struct CreateKemKeyPairAction {
     #[clap(long = "sensitive", default_value = "false")]
     pub(crate) sensitive: bool,
 
+    #[allow(clippy::doc_markdown)]
     /// The tag specifying which KEM algorithm to use:
     ///
     /// +----------------------+------+

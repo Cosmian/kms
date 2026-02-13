@@ -32,7 +32,7 @@ impl ConfigurableKemCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::KeyGen(action) => {
-                action.run(kms_rest_client).await?;
+                drop(Box::pin(action.run(kms_rest_client)).await?);
             }
             Self::Encrypt(action) => {
                 let (key, encapsulation) = action.run(kms_rest_client).await?;
