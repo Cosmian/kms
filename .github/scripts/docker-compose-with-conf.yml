@@ -8,4 +8,4 @@ services:
     volumes:
       - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
     ports:
-      - 9998:9998
+      - ${KMS_HTTP_PORT:-9998}:9998

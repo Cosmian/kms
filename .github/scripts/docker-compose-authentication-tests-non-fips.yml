@@ -4,7 +4,7 @@ services:
     image: ${DOCKER_IMAGE_NAME}
     command: --database-type sqlite --sqlite-path /tmp/kms-data
     ports:
-      - 9998:9998
+      - ${KMS_HTTP_PORT:-9998}:9998
   tls-authentication:
     image: ${DOCKER_IMAGE_NAME}
     volumes:
@@ -28,8 +28,8 @@ services:
       - --socket-server-hostname
       - 0.0.0.0
     ports:
-      - 9999:9999
-      - 5696:5696
+      - ${KMS_TLS_PORT:-9999}:9999
+      - ${KMS_SOCKET_TLS_PORT:-5696}:5696
   tls13-authentication:
     image: ${DOCKER_IMAGE_NAME}
     volumes:
@@ -55,5 +55,5 @@ services:
       - --socket-server-hostname
       - 0.0.0.0
     ports:
-      - 10000:10000
-      - 5697:5697
+      - ${KMS_TLS13_PORT:-10000}:10000
+      - ${KMS_SOCKET_TLS13_PORT:-5697}:5697

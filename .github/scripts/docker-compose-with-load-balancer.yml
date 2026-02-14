@@ -17,8 +17,6 @@ services:
       POSTGRES_USER: kms
       POSTGRES_PASSWORD: kms
       POSTGRES_DB: kms
-    ports:
-      - 5432:5432
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -104,7 +102,7 @@ services:
       - kms2
       - kms3
     ports:
-      - 18080:8080
+      - ${LB_PORT:-18080}:8080
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 

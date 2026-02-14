@@ -4,5 +4,5 @@ services:
   kms:
     image: ${DOCKER_IMAGE_NAME}
     ports:
-      - 9998:9998
+      - ${KMS_HTTP_PORT:-9998}:9998
     restart: no
