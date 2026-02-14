@@ -381,10 +381,8 @@ Options:
           KMIP algorithm policy selector.
           
           Accepted values (case-insensitive):
-          - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST).
+          - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST/FIPS).
           - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
-          
-          If unset, the KMIP policy layer is disabled.
           
           [env: KMS_POLICY_ID=]
 

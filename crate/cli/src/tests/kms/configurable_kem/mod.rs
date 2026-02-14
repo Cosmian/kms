@@ -1,4 +1,5 @@
 use cosmian_logger::debug;
+use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
 use crate::{
@@ -23,27 +24,37 @@ async fn test_kem(ctx: &TestsContext, name: &str, tag: usize) -> KmsCliResult<()
     )
     .await?;
 
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let encapsulation_file = tmp_path.join("encapsulation.enc");
+    let session_key_file = tmp_path.join("session_key.plain");
+
     debug!("Encapsulation");
 
-    let (key, enc) = EncapsAction {
+    EncapsAction {
         key_id: Some(ek_id.to_string()),
         encryption_policy: None,
         tags: None,
+        output_file: Some(encapsulation_file.clone()),
     }
     .run(ctx.get_owner_client())
     .await?;
 
     debug!("Decapsulation");
 
-    let key_ = DecapsAction {
+    DecapsAction {
+        input_file: encapsulation_file,
         key_id: Some(dk_id.to_string()),
-        encapsulation: enc.to_vec(),
         tags: None,
+        output_file: Some(session_key_file.clone()),
     }
     .run(ctx.get_owner_client())
     .await?;
 
-    assert_eq!(key, key_);
+    // Verify the session key was written to the output file
+    assert!(session_key_file.exists());
+    let session_key = std::fs::read(&session_key_file)?;
+    assert!(!session_key.is_empty());
 
     Ok(())
 }
