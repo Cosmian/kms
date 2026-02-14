@@ -12,6 +12,7 @@ pub(crate) mod decaps;
 pub(crate) mod encaps;
 pub(crate) mod keygen;
 
+/// Manage Configurable KEM keys. Encrypt and decrypt data.
 #[derive(Parser)]
 pub enum ConfigurableKemCommands {
     KeyGen(CreateKemKeyPairAction),

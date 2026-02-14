@@ -1,3 +1,4 @@
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::configurable_kem_utils::KemAlgorithm;
 use cosmian_logger::debug;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
@@ -9,7 +10,7 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-async fn test_kem(ctx: &TestsContext, name: &str, tag: usize) -> KmsCliResult<()> {
+async fn test_kem(ctx: &TestsContext, name: &str, kem_algorithm: KemAlgorithm) -> KmsCliResult<()> {
     debug!("Key generation ({name})");
 
     let (dk_id, ek_id) = Box::pin(
@@ -17,7 +18,7 @@ async fn test_kem(ctx: &TestsContext, name: &str, tag: usize) -> KmsCliResult<()
             access_structure: None,
             tags: vec![name.to_owned()],
             sensitive: false,
-            kem_tag: tag,
+            kem_algorithm,
             wrapping_key_id: None,
         }
         .run(ctx.get_owner_client()),
@@ -63,14 +64,24 @@ async fn test_kem(ctx: &TestsContext, name: &str, tag: usize) -> KmsCliResult<()
 pub(crate) async fn test_create_configurable_kem_key_pair() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
 
-    test_kem(ctx, "ML-KEM512 KEM", 0).await?;
-    test_kem(ctx, "ML-KEM768 KEM", 1).await?;
-    test_kem(ctx, "P256 KEM", 10).await?;
-    test_kem(ctx, "CURVE25519 KEM", 11).await?;
-    test_kem(ctx, "ML-KEM512/P256 KEM", 100).await?;
-    test_kem(ctx, "ML-KEM768/P256 KEM", 101).await?;
-    test_kem(ctx, "ML-KEM512/CURVE25519 KEM", 110).await?;
-    test_kem(ctx, "ML-KEM768/CURVE25519 KEM", 111).await?;
+    test_kem(ctx, "ML-KEM512 KEM", KemAlgorithm::MlKem512).await?;
+    test_kem(ctx, "ML-KEM768 KEM", KemAlgorithm::MlKem768).await?;
+    test_kem(ctx, "P256 KEM", KemAlgorithm::P256).await?;
+    test_kem(ctx, "CURVE25519 KEM", KemAlgorithm::Curve25519).await?;
+    test_kem(ctx, "ML-KEM512/P256 KEM", KemAlgorithm::MlKem512P256).await?;
+    test_kem(ctx, "ML-KEM768/P256 KEM", KemAlgorithm::MlKem768P256).await?;
+    test_kem(
+        ctx,
+        "ML-KEM512/CURVE25519 KEM",
+        KemAlgorithm::MlKem512Curve25519,
+    )
+    .await?;
+    test_kem(
+        ctx,
+        "ML-KEM768/CURVE25519 KEM",
+        KemAlgorithm::MlKem768Curve25519,
+    )
+    .await?;
 
     Ok(())
 }

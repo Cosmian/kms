@@ -1,5 +1,7 @@
 #[cfg(feature = "non-fips")]
-use cosmian_kms_client_utils::configurable_kem_utils::build_create_configurable_kem_keypair_request;
+use cosmian_kms_client_utils::configurable_kem_utils::{
+    KemAlgorithm, build_create_configurable_kem_keypair_request,
+};
 use cosmian_kms_client_utils::export_utils::export_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{
@@ -258,7 +260,7 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
     let create_kp = build_create_configurable_kem_keypair_request(
         None,
         ["e2e-configurable-kem"],
-        10,
+        KemAlgorithm::P256,
         false,
         None,
     )

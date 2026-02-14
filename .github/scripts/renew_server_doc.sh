@@ -4,7 +4,8 @@
 
 set -e
 
-./result-server-non-fips-static/bin/cosmian_kms --help | tail -n +2 | {
+cargo build -p cosmian_kms_server --features non-fips
+./target/debug/cosmian_kms --help | tail -n +2 | {
   printf '```text\n'
   cat
   printf '```\n'

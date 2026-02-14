@@ -2,8 +2,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
-    reexport::cosmian_kms_client_utils::configurable_kem_utils::build_create_configurable_kem_keypair_request,
+    KmsClient,
+    kmip_2_1::kmip_types::UniqueIdentifier,
+    reexport::cosmian_kms_client_utils::configurable_kem_utils::{
+        KemAlgorithm, build_create_configurable_kem_keypair_request,
+    },
 };
 use cosmian_logger::debug;
 
@@ -19,7 +22,7 @@ use crate::{
 ///
 /// In case the targeted KEM algorithm is `CoverCrypt`, passing an access
 /// structure is mandatory, it is otherwise ignored.
-#[derive(Parser, Default)]
+#[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKemKeyPairAction {
     /// The JSON access structure specifications file to use to generate the keys.
@@ -36,24 +39,9 @@ pub struct CreateKemKeyPairAction {
     #[clap(long = "sensitive", default_value = "false")]
     pub(crate) sensitive: bool,
 
-    #[allow(clippy::doc_markdown)]
-    /// The tag specifying which KEM algorithm to use:
-    ///
-    /// +----------------------+------+
-    /// | KEM algorithm        | code |
-    /// +----------------------+------+
-    /// | ML-KEM512            |    0 |
-    /// | ML-KEM768            |    1 |
-    /// | P256                 |   10 |
-    /// | Curve25519           |   11 |
-    /// | ML-KEM512/P256       |  100 |
-    /// | ML-KEM768/P256       |  101 |
-    /// | ML-KEM512/Curve25519 |  110 |
-    /// | ML-KEM768/Curve25519 |  111 |
-    /// | CoverCrypt           | 1000 |
-    /// +----------------------+------+
-    #[clap(long = "kem", short = 'k')]
-    pub(crate) kem_tag: usize,
+    /// The KEM algorithm to use for key pair generation.
+    #[clap(long = "kem", short = 'k', value_enum)]
+    pub(crate) kem_algorithm: KemAlgorithm,
 
     /// The key encryption key (KEK) used to wrap the keypair with.
     /// If the wrapping key is:
@@ -88,7 +76,7 @@ impl CreateKemKeyPairAction {
             .create_key_pair(build_create_configurable_kem_keypair_request(
                 access_structure.as_deref(),
                 &self.tags,
-                self.kem_tag,
+                self.kem_algorithm,
                 self.sensitive,
                 self.wrapping_key_id.as_ref(),
             )?)
