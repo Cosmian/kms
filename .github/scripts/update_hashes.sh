@@ -2,16 +2,18 @@
 # Update expected hashes by reading the last packaging pipeline from GitHub Actions
 # and extracting hash mismatches with pattern: specified: sha256-XXX / got: sha256-YYY
 #
-# Usage:
-#   update_hashes.sh [RUN_ID]
+# To keep this fast, we only parse the failed step output for the
+# "Package with GPG signature" step via `gh run view --log-failed`.
 #
-# If RUN_ID is not provided, the latest packaging workflow run will be used.
+# Usage:
+#   update_hashes.sh
+#
+# This script takes no arguments.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 EXPECTED_DIR="$REPO_ROOT/nix/expected-hashes"
-LOG_DIR="${TMPDIR:-/tmp}/kms-update-hashes"
-mkdir -p "$LOG_DIR"
+shopt -s nocasematch
 
 # Check if gh CLI is available
 if ! command -v gh &>/dev/null; then
@@ -19,21 +21,20 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 
-# Get the run ID from argument or fetch the latest
-if [ $# -ge 1 ]; then
-  RUN_ID="$1"
-  echo "Using provided workflow run: $RUN_ID"
-else
-  echo "Fetching latest packaging workflow run..."
-  RUN_ID=$(gh api repos/Cosmian/kms/actions/workflows/pr.yml/runs \
-    --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
-
-  if [ -z "$RUN_ID" ]; then
-    echo "Error: Could not fetch latest workflow run. Make sure you're authenticated with 'gh auth login'." >&2
-    exit 1
-  fi
-  echo "Found workflow run: $RUN_ID"
+if [ $# -ne 0 ]; then
+  echo "Error: update_hashes.sh takes no arguments" >&2
+  exit 2
 fi
+
+echo "Fetching latest workflow run..."
+RUN_ID=$(gh api repos/Cosmian/kms/actions/workflows/pr.yml/runs \
+  --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
+
+if [ -z "$RUN_ID" ]; then
+  echo "Error: Could not fetch latest workflow run. Make sure you're authenticated with 'gh auth login'." >&2
+  exit 1
+fi
+echo "Found workflow run: $RUN_ID"
 
 echo "Fetching failed jobs..."
 
@@ -55,14 +56,13 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   [ -z "${JOB_ID:-}" ] && continue
   JOB_NAME=${JOB_NAME:-""}
 
-  echo "Processing job $JOB_ID${JOB_NAME:+ ($JOB_NAME)}..."
-  LOG_FILE="$LOG_DIR/job_${JOB_ID}.log"
-
-  # Download job logs
-  gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID/logs" >"$LOG_FILE" 2>&1 || {
-    echo "Warning: Could not fetch logs for job $JOB_ID, skipping..."
+  # Fast path: only scan packaging matrix jobs (both fips + non-fips, static + dynamic).
+  # Packaging jobs are named like: ubuntu-24.04-fips-static, macos-15-non-fips-dynamic, ...
+  if ! echo "$JOB_NAME" | grep -qE '^(ubuntu-|macos-).+-(fips|non-fips)-(static|dynamic)$'; then
     continue
-  }
+  fi
+
+  echo "Processing job $JOB_ID${JOB_NAME:+ ($JOB_NAME)}..."
 
   # Parse logs for hash mismatches
   # Pattern:
@@ -70,45 +70,58 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   #            specified: sha256-XXXX
   #               got:    sha256-YYYY
 
+  # Stream only failed-step logs for this job (much smaller than full job log archives).
+  # Output format is typically: "<STEP NAME> | <log line>".
   last_drv_name=""
-  while IFS= read -r line; do
-    # Capture derivation name from error line
-    if echo "$line" | grep -q "hash mismatch in fixed-output derivation"; then
-      drv_path=$(echo "$line" | grep -Eo "'/nix/store/[^']+'" | tr -d "'" || echo "")
-      if [ -n "$drv_path" ]; then
-        # Extract the package name from the derivation path
-        # e.g., /nix/store/xxx-cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps.drv -> cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps
-        last_drv_name=$(basename "$drv_path" | sed 's/\.drv$//')
+  while IFS= read -r raw_line; do
+    line="$raw_line"
+
+    # If `gh` associates log lines with steps, filter to the packaging step.
+    # If not (e.g., UNKNOWN STEP), keep the line (still only failed steps).
+    if [[ "$line" == *"|"* ]]; then
+      step_name=${line%%|*}
+      step_name=${step_name%" "}
+      msg=${line#*|}
+      msg=${msg#" "}
+      if [[ "$step_name" != *"Package with GPG signature"* ]] && [[ "$step_name" != *"UNKNOWN STEP"* ]]; then
+        continue
       fi
+      line="$msg"
+    fi
+
+    # Capture derivation name from error line
+    if [[ "$line" =~ hash\ mismatch\ in\ fixed-output\ derivation.*\'(/nix/store/[^\']+)\' ]]; then
+      drv_path="${BASH_REMATCH[1]}"
+      drv_name="${drv_path##*/}"
+      last_drv_name="${drv_name%.drv}"
+      continue
     fi
 
     # Capture the "got" hash
-    if echo "$line" | grep -q "got:"; then
-      got_hash=$(echo "$line" | grep -Eo "sha256-[A-Za-z0-9+/=]+" | head -n1 || echo "")
+    if [[ "$line" == *"got:"* ]] && [[ "$line" =~ (sha256-[A-Za-z0-9+/=]+) ]]; then
+      got_hash="${BASH_REMATCH[1]}"
 
       if [ -n "$got_hash" ] && [ -n "$last_drv_name" ]; then
-        # Map derivation name to expected hash file
         target_file=""
 
         # UI npm deps (both fips and non-fips share the same npm deps)
-        if echo "$last_drv_name" | grep -qE "ui-deps-(fips|non-fips).*-npm-deps"; then
+        if [[ "$last_drv_name" =~ ui-deps-(fips|non-fips).*-npm-deps ]]; then
           target_file="$EXPECTED_DIR/ui.npm.sha256"
         # UI wasm vendor - fips
-        elif echo "$last_drv_name" | grep -qE "ui-wasm-fips.*-vendor"; then
+        elif [[ "$last_drv_name" =~ ui-wasm-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.fips.sha256"
         # UI wasm vendor - non-fips
-        elif echo "$last_drv_name" | grep -qE "ui-wasm-non-fips.*-vendor"; then
+        elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
         # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
         # infer those from the GitHub Actions job name.
-        elif echo "$last_drv_name" | grep -qiE "(kms-server|server).*vendor|(^|-)vendor($|-)"; then
-          if echo "$JOB_NAME" | grep -qiE "macos|darwin"; then
-            if echo "$JOB_NAME" | grep -qiE "static"; then
+        elif [[ "$last_drv_name" =~ (kms-server|server).*vendor|(^|-)vendor($|-) ]]; then
+          if [[ "$JOB_NAME" == *"macos"* ]] || [[ "$JOB_NAME" == *"darwin"* ]]; then
+            if [[ "$JOB_NAME" == *"static"* ]]; then
               target_file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
-            elif echo "$JOB_NAME" | grep -qiE "dynamic"; then
+            elif [[ "$JOB_NAME" == *"dynamic"* ]]; then
               target_file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
             else
-              # Default for macOS packaging jobs: update both (some job names don't include link)
               FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.darwin.sha256"]="$got_hash"
               FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"]="$got_hash"
               echo "  Found hash for $EXPECTED_DIR/server.vendor.static.darwin.sha256: $got_hash"
@@ -116,7 +129,6 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
               target_file=""
             fi
           else
-            # Default to Linux (most common in CI)
             target_file="$EXPECTED_DIR/server.vendor.linux.sha256"
           fi
         fi
@@ -129,7 +141,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         last_drv_name=""
       fi
     fi
-  done <"$LOG_FILE"
+  done < <(gh run view "$RUN_ID" --log-failed --job "$JOB_ID" 2>/dev/null || true)
 done <<<"$FAILED_JOBS"
 
 # Apply updates

@@ -43,10 +43,8 @@ usage() {
                        with full dependency graphs (runtime and buildtime)
                        Options:
                          --target <openssl|server>  Choose SBOM target (default: openssl)
-    update-hashes [options]
-               Update expected hashes for current platform (release profile mandatory)
-      --variant <fips|non-fips>  Update specific variant (default: fips)
-      --link <static|dynamic>    Limit to a specific server linkage (default: both)
+    update-hashes
+           Update expected hashes for current platform (release profile mandatory)
 
   Global options:
     -p, --profile <debug|release>   Build/test profile (default: debug for build/test; release for package)
@@ -91,7 +89,7 @@ usage() {
     $0 sbom                                 # Generate SBOM (OpenSSL by default)
     $0 sbom --target openssl                # SBOM for OpenSSL 3.1.2
     $0 sbom --target server                 # SBOM for KMS server (fips, static OpenSSL)
-    $0 update-hashes                        # Update (server+ui, fips, static+dynamic)
+    $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
 EOF
   exit 1
 }
