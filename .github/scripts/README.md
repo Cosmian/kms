@@ -352,6 +352,8 @@ bash .github/scripts/nix.sh --variant fips --link dynamic sbom --target server
 
 Updates Nix expected-hash inputs by parsing **GitHub Actions** packaging logs (fixed-output derivation hash mismatches).
 
+This works even if the workflow run is still in progress (it fetches per-job logs directly when needed).
+
 This command is meant to be used after a CI packaging job fails with a message like:
 
 - `specified: sha256-...`

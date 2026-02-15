@@ -27,7 +27,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Fix SQL Locate request for OpenTelemetry metrics collector:
+- Fix SQL Locate request for OpenTelemetry metrics collector (#694):
     - Refactored SQL Locate query building in locate_query.rs to use bound, typed parameters (LocateQuery + LocateParam) instead of interpolating values into SQL (safer + fixes type/cast handling across SQLite/Postgres/MySQL).
     - Updated the SQL backends to consume the new LocateQuery API: crate/server_database/src/stores/sql/{mysql,pgsql,sqlite}.rs.
     - Improved DB test error context in json_access_test.rs to make failures easier to diagnose.
@@ -35,8 +35,10 @@ All notable changes to this project will be documented in this file.
         - mod.rs: add OTEL resource attributes (service name/version + optional environment).
         - otel_metrics.rs: ensure active_keys_count time series exists even when 0.
         - cron.rs: fall back to default username if hsm_admin is empty.
+- Fix regression on KMIP 1.0 (Fresh and InitialDate attributes) (#689)
 - Fix Linux packaging smoke tests when the host has `/etc/cosmian/kms.toml` present by running with an explicit temp config.
 - Make OpenTelemetry export tests resilient under FIPS Nix shells by running `curl` in a clean environment (avoid inherited OpenSSL/LD overrides).
+- *(ui)* Azure BYOK export (#697)
 
 ### ⚙️ Build
 
@@ -44,10 +46,15 @@ All notable changes to this project will be documented in this file.
 - SBOM generation improvements:
     - `.github/scripts/nix.sh sbom` strictly validates `--target/--variant/--link`, defaults to generating all combinations, and supports generating a specific server subset.
     - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place (via `nix/scripts/dedup_cves.py`, with optional filtering helper `nix/scripts/filter_vulns.py`).
+- *(deps)* Bump jsonwebtoken in the cargo group across 1 directory (#702)
+- *(deps)* Bump bytes in the cargo group across 1 directory (#703)
+- *(deps)* Bump time in the cargo group across 1 directory (#706)
+- *(deps)* Bump actix-files in the cargo group across 1 directory (#707)
 
 ### 📚 Documentation
 
 - Update SBOM documentation to match the generator output layout and behavior.
+- Update OpenSSL versions (#713)
 
 ## [5.15.0] - 2026-01-21
 

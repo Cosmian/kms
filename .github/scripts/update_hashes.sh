@@ -114,16 +114,43 @@ else
   # Get all failed jobs from this run (id + name).
   # We rely on the job name (when available) to infer platform/linkage for server vendor hashes.
   FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-    --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
+    --jq '.jobs[]
+          | select((.conclusion == "failure") or (.status == "in_progress"))
+          | [.id, .name] | @tsv' 2>/dev/null || echo "")
 
   if [ -z "$FAILED_JOBS" ]; then
-    echo "No failed jobs found in run $RUN_ID. Nothing to update."
+    echo "No failed or in-progress jobs found in run $RUN_ID. Nothing to update."
     exit 0
   fi
 fi
 
 # Declare associative array to store hash updates
 declare -A FILE_TO_HASH
+
+stream_job_logs() {
+  local run_id="$1"
+  local job_id="$2"
+  local tmp
+  tmp=$(mktemp -t gha-job-log.XXXXXX)
+
+  # Prefer `gh run view` (nice formatting and smaller for failed steps),
+  # but it may refuse logs while the overall run is still in progress.
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+    cat "$tmp"
+    rm -f "$tmp"
+    return 0
+  fi
+
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+    cat "$tmp"
+    rm -f "$tmp"
+    return 0
+  fi
+
+  # Fallback: fetch raw job logs directly (works even if run is still running).
+  rm -f "$tmp"
+  gh api "repos/Cosmian/kms/actions/jobs/$job_id/logs" 2>/dev/null || true
+}
 
 # Process each failed job
 while IFS=$'\t' read -r JOB_ID JOB_NAME; do
@@ -142,10 +169,6 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   # If a specific job was requested and it didn't fail, fall back to the full job log.
   # Output format is typically: "<STEP NAME> | <log line>".
   last_drv_name=""
-  log_cmd=(gh run view "$RUN_ID" --log-failed --job "$JOB_ID")
-  if ! "${log_cmd[@]}" >/dev/null 2>&1; then
-    log_cmd=(gh run view "$RUN_ID" --log --job "$JOB_ID")
-  fi
 
   while IFS= read -r raw_line; do
     line="$raw_line"
@@ -221,7 +244,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         last_drv_name=""
       fi
     fi
-  done < <("${log_cmd[@]}" 2>/dev/null || true)
+  done < <(stream_job_logs "$RUN_ID" "$JOB_ID")
 done <<<"$FAILED_JOBS"
 
 # Apply updates

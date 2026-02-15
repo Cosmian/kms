@@ -70,11 +70,11 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.15.0" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.15.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.15.0" }
+cosmian_kms_access = { path = "../access", version = "5.16.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.16.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.16.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.15.0" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.16.0" }
 dotenvy = "0.15"
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
@@ -90,7 +90,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.15.0" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.16.0" }
 reqwest = { workspace = true, features = [
     # Remove "default" which includes rustls
     "json",
@@ -99,8 +99,8 @@ reqwest = { workspace = true, features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.15.0" }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.15.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.16.0" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.16.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -108,15 +108,15 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.15.0" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.16.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.15.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.15.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.16.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.16.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
 
