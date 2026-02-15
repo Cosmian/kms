@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:24c6d7a6-cdca-4a09-9799-24d8acd908c4",
+  "serialNumber": "urn:uuid:6c339dee-cc13-4849-9c91-8808c3692a99",
   "metadata": {
-    "timestamp": "2026-02-12T07:13:22.927788+01:00",
+    "timestamp": "2026-02-15T14:34:42.385921+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,19 +20,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/jhxpdvqsh5v3jwfkfc27307jjj3nrhi3-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+      "bom-ref": "/nix/store/hcc1i493434q9wriv6cycgli74yy1j6h-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv",
       "name": "cosmian-kms-server-dynamic-rebuild-1",
-      "version": "5.15.0",
-      "purl": "pkg:nix/cosmian-kms-server-dynamic-rebuild-1@5.15.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic-rebuild-1:cosmian-kms-server-dynamic-rebuild-1:5.15.0:*:*:*:*:*:*:*",
+      "version": "5.16.0",
+      "purl": "pkg:nix/cosmian-kms-server-dynamic-rebuild-1@5.16.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic-rebuild-1:cosmian-kms-server-dynamic-rebuild-1:5.16.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/4khk99768xj54lmgycv5nyiwzp2cgc7j-cosmian-kms-server-dynamic-rebuild-1-5.15.0"
+          "value": "/nix/store/sw1q49nbj2dp484qq8gji8aq59z3z20h-cosmian-kms-server-dynamic-rebuild-1-5.16.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/jhxpdvqsh5v3jwfkfc27307jjj3nrhi3-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv"
+          "value": "/nix/store/hcc1i493434q9wriv6cycgli74yy1j6h-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv"
         }
       ]
     }
@@ -94,7 +94,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/85lvwfgnpdbkppfalflqcd067jxbhl0c-openssl-3.1.2.drv",
+      "bom-ref": "/nix/store/ziagfxa8arz406r32rqn0dllbk9aia1v-openssl-3.1.2.drv",
       "name": "openssl",
       "version": "3.1.2",
       "purl": "pkg:nix/openssl@3.1.2",
@@ -102,11 +102,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/gadgj85i4b9c8i9vgg1b1xh8a6bw71az-openssl-3.1.2"
+          "value": "/nix/store/q4cy8l5brp85ggx69wd4aakvjs0d007s-openssl-3.1.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/85lvwfgnpdbkppfalflqcd067jxbhl0c-openssl-3.1.2.drv"
+          "value": "/nix/store/ziagfxa8arz406r32rqn0dllbk9aia1v-openssl-3.1.2.drv"
         }
       ]
     },
@@ -131,10 +131,10 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/jhxpdvqsh5v3jwfkfc27307jjj3nrhi3-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+      "ref": "/nix/store/hcc1i493434q9wriv6cycgli74yy1j6h-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv",
       "dependsOn": [
         "/nix/store/74hh5shwd63bla2yyhq17c2irx1y528w-openssl-3.6.0.drv",
-        "/nix/store/85lvwfgnpdbkppfalflqcd067jxbhl0c-openssl-3.1.2.drv"
+        "/nix/store/ziagfxa8arz406r32rqn0dllbk9aia1v-openssl-3.1.2.drv"
       ]
     },
     {
@@ -153,7 +153,7 @@
       "ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "ref": "/nix/store/85lvwfgnpdbkppfalflqcd067jxbhl0c-openssl-3.1.2.drv",
+      "ref": "/nix/store/ziagfxa8arz406r32rqn0dllbk9aia1v-openssl-3.1.2.drv",
       "dependsOn": [
         "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
       ]

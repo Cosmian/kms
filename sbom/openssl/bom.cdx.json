@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:f497ef10-ffa6-434c-aada-c01bed2b02e6",
+  "serialNumber": "urn:uuid:cda70178-7926-47f0-b9f4-0cf47d59261a",
   "metadata": {
-    "timestamp": "2026-02-12T07:12:46.108143+01:00",
+    "timestamp": "2026-02-15T14:15:23.106209+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,7 +20,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv",
+      "bom-ref": "/nix/store/fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv",
       "name": "openssl",
       "version": "3.1.2",
       "purl": "pkg:nix/openssl@3.1.2",
@@ -28,11 +28,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/jp0by8s94570i76bxgx30j941kx7c3jv-openssl-3.1.2"
+          "value": "/nix/store/6w5ixffqmjdbgz79v9f6ahqhc790x0ks-openssl-3.1.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv"
+          "value": "/nix/store/fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv"
         }
       ]
     }
@@ -110,7 +110,7 @@
       "ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "ref": "/nix/store/crzlbjvcnf843yy99icdf6dgbzfhrn8w-openssl-3.1.2.drv",
+      "ref": "/nix/store/fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv",
       "dependsOn": [
         "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
       ]

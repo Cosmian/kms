@@ -3,8 +3,8 @@
   "build": {
     "variant": "fips",
     "derivation": "openssl312",
-    "output_path": "/nix/store/jp0by8s94570i76bxgx30j941kx7c3jv-openssl-3.1.2",
-    "timestamp": "2026-02-12T06:13:04Z",
+    "output_path": "/nix/store/6w5ixffqmjdbgz79v9f6ahqhc790x0ks-openssl-3.1.2",
+    "timestamp": "2026-02-15T13:16:25Z",
     "generator": {
       "tool": "sbomnix",
       "version": "1.7.3"
