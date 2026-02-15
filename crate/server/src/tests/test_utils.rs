@@ -183,6 +183,69 @@ pub(crate) async fn test_app(
     test::init_service(app).await
 }
 
+/// Creates a test application instance using an explicit `ClapConfig`.
+///
+/// This is useful for end-to-end KMIP policy tests that need to tune allowlists
+/// and enforcement settings and then validate behavior through the HTTP stack.
+pub(crate) async fn test_app_with_clap_config(
+    clap_config: ClapConfig,
+    privileged_users: Option<Vec<String>>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
+
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .expect("cannot instantiate KMS server"),
+    );
+
+    if server_params.google_cse.google_cse_enable {
+        handle_google_cse_rsa_keypair(&kms_server, &server_params)
+            .await
+            .expect("start KMS server: failed managing Google CSE RSA Keypair");
+    }
+
+    let mut app = App::new()
+        .app_data(Data::new(kms_server.clone()))
+        .app_data(Data::new(privileged_users))
+        .service(routes::root_redirect::root_redirect_to_ui)
+        .service(routes::health::get_health)
+        .service(routes::get_version)
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
+        .service(routes::access::list_owned_objects)
+        .service(routes::access::list_access_rights_obtained)
+        .service(routes::access::list_accesses)
+        .service(routes::access::grant_access)
+        .service(routes::access::revoke_access)
+        .service(routes::access::get_create_access)
+        .service(routes::access::get_privileged_access);
+
+    let google_cse_jwt_config = google_cse_auth(None)
+        .await
+        .expect("cannot setup Google CSE auth");
+
+    let google_cse_scope = web::scope("/google_cse")
+        .app_data(Data::new(Some(google_cse_jwt_config)))
+        .service(routes::google_cse::get_status)
+        .service(routes::google_cse::wrap)
+        .service(routes::google_cse::unwrap)
+        .service(routes::google_cse::private_key_sign)
+        .service(routes::google_cse::private_key_decrypt)
+        .service(routes::google_cse::privileged_wrap)
+        .service(routes::google_cse::privileged_unwrap)
+        .service(routes::google_cse::privileged_private_key_decrypt)
+        .service(routes::google_cse::digest)
+        .service(routes::google_cse::certs)
+        .service(routes::google_cse::rewrap)
+        .service(routes::google_cse::delegate);
+
+    app = app.service(google_cse_scope);
+
+    test::init_service(app).await
+}
+
 pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,

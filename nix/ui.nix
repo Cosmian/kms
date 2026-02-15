@@ -80,14 +80,14 @@ let
   # Build a matching wasm-bindgen-cli to the version used by the crates
   wasmBindgenCli = rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
-    version = "0.2.106";
+    version = "0.2.108";
 
     src = pkgs.fetchCrate {
       inherit pname version;
-      sha256 = "sha256-M6WuGl7EruNopHZbqBpucu4RWz44/MSdv6f0zkYw+44=";
+      sha256 = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
     };
 
-    cargoHash = "sha256-/zJzxtzOZuGyvDLdJNEQFPzFHC6IbEiWOeZYrKgGxEk=";
+    cargoHash = "sha256-IZ/BxfY4UljVVeXl4AeRLmJzZGuzP10/0WOgWyvqjrs=";
     doCheck = false;
   };
 

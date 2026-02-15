@@ -381,7 +381,10 @@ async fn ed448_deterministic_cli() -> KmsCliResult<()> {
     Ok(())
 }
 
-// ECDSA sign/verify across supported curves (gated for non-FIPS extras)
+// ECDSA sign/verify across supported curves.
+//
+// Note: KMIP policy defaults may deprecate/deny some curves (e.g. P-224).
+// This test should only exercise curves expected to be allowed by default.
 #[tokio::test]
 async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
     log_init(None);
@@ -390,23 +393,16 @@ async fn ecdsa_sign_verify_supported_curves_cli() -> KmsCliResult<()> {
     let data = std::fs::read("../../test_data/plain.txt")?;
     let digest = sha2::Sha256::digest(&data);
 
-    // Build curve list according to feature gating
+    // Build curve list according to feature gating and default KMIP policy.
     #[cfg(not(feature = "non-fips"))]
-    let curves = vec![
-        Curve::NistP224,
-        Curve::NistP256,
-        Curve::NistP384,
-        Curve::NistP521,
-    ];
+    let curves = vec![Curve::NistP256, Curve::NistP384, Curve::NistP521];
     #[cfg(feature = "non-fips")]
     let curves = vec![
-        Curve::NistP224,
         Curve::NistP256,
         Curve::NistP384,
         Curve::NistP521,
         Curve::Ed448,
         Curve::Ed25519,
-        Curve::NistP192,
         Curve::Secp256k1,
         Curve::Secp224k1,
     ];

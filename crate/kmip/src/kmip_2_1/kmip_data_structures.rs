@@ -1157,6 +1157,8 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::PKCS7
                 | KeyFormatType::PKCS8
                 | KeyFormatType::X509
+                | KeyFormatType::ConfigurableKEMSecretKey
+                | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
                 #[cfg(feature = "non-fips")]
@@ -1342,6 +1344,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::PKCS7
                     | KeyFormatType::PKCS8
                     | KeyFormatType::X509
+                    | KeyFormatType::ConfigurableKEMSecretKey
+                    | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))

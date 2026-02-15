@@ -21,7 +21,10 @@ use cosmian_logger::debug;
 use openssl::pkey::{Id, PKey, Public};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+        retrieve_object_utils::retrieve_object_for_operation,
+    },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -76,6 +79,14 @@ pub(crate) async fn signature_verify(
         user,
     ))
     .await?;
+
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(
+        &kms.params,
+        "SignatureVerify",
+        &unique_identifier,
+        &uid_owm,
+    )?;
 
     // Lifecycle gating (mirror Sign operation behavior): deny verification if outside allowed
     // usage window. Mandatory profile CS-AC-M-8-21 expects Wrong_Key_Lifecycle_State for

@@ -1,0 +1,87 @@
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::configurable_kem_utils::KemAlgorithm;
+use cosmian_logger::debug;
+use tempfile::TempDir;
+use test_kms_server::{TestsContext, start_default_test_kms_server};
+
+use crate::{
+    actions::kms::configurable_kem::{
+        decaps::DecapsAction, encaps::EncapsAction, keygen::CreateKemKeyPairAction,
+    },
+    error::result::KmsCliResult,
+};
+
+async fn test_kem(ctx: &TestsContext, name: &str, kem_algorithm: KemAlgorithm) -> KmsCliResult<()> {
+    debug!("Key generation ({name})");
+
+    let (dk_id, ek_id) = Box::pin(
+        CreateKemKeyPairAction {
+            access_structure: None,
+            tags: vec![name.to_owned()],
+            sensitive: false,
+            kem_algorithm,
+            wrapping_key_id: None,
+        }
+        .run(ctx.get_owner_client()),
+    )
+    .await?;
+
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let encapsulation_file = tmp_path.join("encapsulation.enc");
+    let session_key_file = tmp_path.join("session_key.plain");
+
+    debug!("Encapsulation");
+
+    EncapsAction {
+        key_id: Some(ek_id.to_string()),
+        encryption_policy: None,
+        tags: None,
+        output_file: Some(encapsulation_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    debug!("Decapsulation");
+
+    DecapsAction {
+        input_file: encapsulation_file,
+        key_id: Some(dk_id.to_string()),
+        tags: None,
+        output_file: Some(session_key_file.clone()),
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // Verify the session key was written to the output file
+    assert!(session_key_file.exists());
+    let session_key = std::fs::read(&session_key_file)?;
+    assert!(!session_key.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(crate) async fn test_create_configurable_kem_key_pair() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+
+    test_kem(ctx, "ML-KEM512 KEM", KemAlgorithm::MlKem512).await?;
+    test_kem(ctx, "ML-KEM768 KEM", KemAlgorithm::MlKem768).await?;
+    test_kem(ctx, "P256 KEM", KemAlgorithm::P256).await?;
+    test_kem(ctx, "CURVE25519 KEM", KemAlgorithm::Curve25519).await?;
+    test_kem(ctx, "ML-KEM512/P256 KEM", KemAlgorithm::MlKem512P256).await?;
+    test_kem(ctx, "ML-KEM768/P256 KEM", KemAlgorithm::MlKem768P256).await?;
+    test_kem(
+        ctx,
+        "ML-KEM512/CURVE25519 KEM",
+        KemAlgorithm::MlKem512Curve25519,
+    )
+    .await?;
+    test_kem(
+        ctx,
+        "ML-KEM768/CURVE25519 KEM",
+        KemAlgorithm::MlKem768Curve25519,
+    )
+    .await?;
+
+    Ok(())
+}
