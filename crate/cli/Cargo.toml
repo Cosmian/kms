@@ -47,6 +47,7 @@ cosmian_kmip = { path = "../kmip", version = "5.15.0" } # only to be reexported,
 cosmian_kms_client = { path = "../kms_client", version = "5.15.0" }
 cosmian_kms_crypto = { path = "../crypto", version = "5.15.0" }
 cosmian_logger = { workspace = true }
+cosmian_crypto_core = { workspace = true, default-features = false }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
 jsonwebtoken = "10.3"

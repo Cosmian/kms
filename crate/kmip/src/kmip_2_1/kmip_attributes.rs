@@ -402,9 +402,9 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_offset: Option<i32>,
 
-    /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
-    // wrapped by another key. The server SHALL set the value to False if the value is not provided by the
-    // client.
+    /// If True then the server SHALL prevent the object value being retrieved
+    /// (via the Get operation) unless it is wrapped by another key. The server
+    /// SHALL set the value to False if the value is not provided by the client.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sensitive: Option<bool>,
 

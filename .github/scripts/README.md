@@ -371,7 +371,8 @@ bash .github/scripts/nix.sh update-hashes [RUN_ID]
 - `ui.npm.sha256`
 - `ui.vendor.fips.sha256`
 - `ui.vendor.non-fips.sha256`
-- `server.vendor.linux.sha256`
+- `server.vendor.static.linux.sha256`
+- `server.vendor.dynamic.linux.sha256`
 - `server.vendor.static.darwin.sha256`
 - `server.vendor.dynamic.darwin.sha256`
 

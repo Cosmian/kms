@@ -183,11 +183,12 @@ Options:
           DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:\
           EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:\
           AES256-SHA:DES-CBC3-SHA:!DSS"
-          Otherwise, ANSSI-recommended cipher suites (RFC 8446 compliant) are:
-          - For TLS 1.3 (preferred): `TLS_AES_256_GCM_SHA384`, `TLS_AES_128_GCM_SHA256`, `TLS_CHACHA20_POLY1305_SHA256`, `TLS_AES_128_CCM_SHA256`, `TLS_AES_128_CCM_8_SHA256`
-          - For TLS 1.2 (compatibility): `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`, `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`,
-            `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256`, `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`,
-            `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`, `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
+          Otherwise, the ANSSI TLS 1.2 guide recommends prioritizing AEAD suites using ECDHE
+          key exchange, with AES-GCM/AES-CCM (preferred) and ChaCha20-Poly1305 as an acceptable
+          alternative.
+          
+          Example (TLS 1.2):
+          `TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_CCM:TLS_ECDHE_ECDSA_WITH_AES_128_CCM:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
           
           [env: KMS_TLS_CIPHER_SUITES=]
 
@@ -375,6 +376,15 @@ Options:
       --privileged-users <PRIVILEGED_USERS>
           List of users who have the right to create and import Objects
           and grant access rights for Create Kmip Operation.
+
+      --kmip-policy-id <POLICY_ID>
+          KMIP algorithm policy selector.
+          
+          Accepted values (case-insensitive):
+          - `DEFAULT`: enforce the built-in conservative allowlists (aligned with ANSSI/NIST/FIPS).
+          - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
+          
+          [env: KMS_POLICY_ID=]
 
   -h, --help
           Print help (see a summary with '-h')

@@ -2,25 +2,18 @@
 
 The Cosmian server supports a large, and growing, list of cryptographic algorithms.
 This page lists the supported algorithms, their details and their reference in various standards.
-FIPS compliant
-algorithms are also listed with the corresponding NIST standard.
+FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using
-the Cosmian KMS server [API](./kmip/json_ttlv_api.md)
-or [Cosmian CLI](../cosmian_cli/index.md)
+unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [Cosmian CLI](../cosmian_cli/index.md)
 
-Should you require a specific algorithm or standard to be supported, please directly open a ticket
-or pull request on
-the [Github repository](https://github.com/Cosmian/kms).
+Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
 ## Key-wrapping schemes
 
-The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip
-operations.
+The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip operations.
 The (un)wrapping key identifier may be that of a key or a certificate.
-In the latter case, the public key (or the associated private key for unwrapping, if any) will be
-retrieved and used.
+In the latter case, the public key (or the associated private key for unwrapping, if any) will be retrieved and used.
 
 The supported key-wrapping algorithms are:
 
@@ -31,7 +24,7 @@ The supported key-wrapping algorithms are:
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
 | CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
 | Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-192, P-224, P-256, P-384, P-521    | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-192, P-224, P-256) AES 256 GCM otherwise.        |
+| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-256) AES 256 GCM otherwise.        |
 
 Any encryption scheme below can be used for key-wrapping as well.
 
@@ -56,7 +49,7 @@ The supported encryption algorithms are:
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
-| ECIES             | P-192, P-224, P-256, P-384, P-521                       | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
+| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
 
 ## Algorithms Details
 
@@ -176,17 +169,47 @@ An Ed25519 key can be used; it will be automatically converted to X25519 first.
 
 Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is
 based on FIPS compliant cryptographic primitives only and uses the same algorithm as the Salsa
-Sealed Boxes. It supports the entire family of NIST P curves, with the exception of `P-192` in FIPS
-mode, and uses AES-128-GCM and SHAKE128 for curves with security strength $s \leq 128$ bits:
+Sealed Boxes. It supports the NIST P curves starting at P-256, and uses AES-128-GCM and SHAKE128
+for curves with security strength $s \leq 128$ bits:
 
-- `P-192`
-- `P-224`
 - `P-256`
 
 and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 
 - `P-384`
-- `P-512`
+- `P-521`
+
+### PQC Hybridized KEM
+
+The Cosmian KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
+via the [cosmian_cover_crypt](https://github.com/Cosmian/cover_crypt) crate. This crate provides
+a configurable KEM framework that can operate in pure classical, pure post-quantum, or hybrid mode
+by combining a pre-quantum KEM with a post-quantum KEM through a KEM combiner (using SHA-256).
+
+The available pre-quantum KEMs are:
+
+- **P-256** — ECDH-based KEM on the NIST P-256 curve (via OpenSSL).
+- **Curve25519** — ECDH-based KEM on Curve25519.
+
+The available post-quantum KEMs are:
+
+- **ML-KEM-512** — NIST [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) lattice-based KEM at security level 1.
+- **ML-KEM-768** — NIST FIPS 203 lattice-based KEM at security level 3.
+
+The hybridized combinations pair one classical and one post-quantum KEM:
+
+| Hybrid variant            | Pre-quantum | Post-quantum | Approximate security |
+| ------------------------- | ----------- | ------------ | -------------------- |
+| ML-KEM-512 + P-256        | P-256       | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + P-256        | P-256       | ML-KEM-768   | ~192 bits            |
+| ML-KEM-512 + Curve25519   | Curve25519  | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + Curve25519   | Curve25519  | ML-KEM-768   | ~192 bits            |
+
+The hybrid approach ensures that security is maintained even if one of the two underlying KEMs
+is broken: the combined shared secret remains secure as long as at least one component KEM is secure.
+
+Key generation, encapsulation and decapsulation are exposed via the Cosmian CLI under
+`cosmian kms kem` (non-FIPS builds only).
 
 ## Signature schemes
 
@@ -202,14 +225,14 @@ The `Sign` operation is used to perform digital signature operations on provided
 | Algorithm  | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
 | ---------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                          | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
-| ECDSA      | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| ECDSA      | P-256, P-384, P-521, X25519, X448 | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA      | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 ### Digital Signature Operations
 
 - `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
 - `ECDSA` performs digital signatures on elliptic
-  curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512`, `X25519` and `X448`.
+  curves `P-256`, `P-384`, `P-521`, `X25519` and `X448`.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
 
 ## Password-based key derivation

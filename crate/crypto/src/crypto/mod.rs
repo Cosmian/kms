@@ -15,6 +15,8 @@ pub mod certificates;
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
+#[cfg(feature = "non-fips")]
+pub mod kem;
 pub mod password_derivation;
 pub mod rsa;
 pub mod secret;
@@ -40,6 +42,7 @@ pub trait DecryptionSystem {
 /// Note: this object does not exist in the KMIP specs,
 /// hence its definition here
 pub struct KeyPair(pub (Object, Object));
+
 impl KeyPair {
     /// Create a new `KeyPair` from a private and public key
     #[must_use]

@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{AccessPolicy, AccessStructure, EncryptionHint, QualifiedAttribute};
+use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
     extra::VENDOR_ID_COSMIAN,
@@ -138,14 +138,6 @@ pub fn upsert_access_policy_in_attributes(
     attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY);
     attributes.add_vendor_attribute(va);
     Ok(())
-}
-
-pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, CryptoError> {
-    AccessPolicy::parse(ap).map_err(|e| {
-        CryptoError::Kmip(format!(
-            "failed to deserialize the given Access Policy string: {e}"
-        ))
-    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]

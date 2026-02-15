@@ -73,7 +73,7 @@ pub(crate) async fn create_user_decryption_key(
         }
 
         let access_policy = access_policy_from_attributes(&create_request.attributes)?;
-        debug!("create_user_decryption_key_: Access Policy: {access_policy}");
+        debug!("create_user_decryption_key_: Access Policy: {access_policy:?}");
 
         let (msk_obj, usk_obj) = create_user_decryption_key_(
             &owm,

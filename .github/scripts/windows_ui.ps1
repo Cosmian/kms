@@ -16,8 +16,8 @@ function Build-UI {
     rustup target add wasm32-unknown-unknown
 
     # Install wasm-bindgen-cli with matching version
-    Write-Host "Installing wasm-bindgen-cli 0.2.106..."
-    cargo install wasm-bindgen-cli --version 0.2.106 --force
+    Write-Host "Installing wasm-bindgen-cli 0.2.108..."
+    cargo install wasm-bindgen-cli --version 0.2.108 --force
 
     # Build WASM package
     Write-Host "Building WASM package..."

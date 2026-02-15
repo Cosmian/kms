@@ -5,8 +5,6 @@ pub mod azure;
 pub mod bench;
 pub mod certificates;
 pub mod console;
-#[cfg(feature = "non-fips")]
-pub mod cover_crypt;
 pub mod derive_key;
 pub mod elliptic_curves;
 pub mod google;
@@ -21,3 +19,8 @@ pub mod secret_data;
 pub mod shared;
 pub mod symmetric;
 pub mod version;
+
+#[cfg(feature = "non-fips")]
+pub mod configurable_kem;
+#[cfg(feature = "non-fips")]
+pub mod cover_crypt;

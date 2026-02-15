@@ -14,6 +14,7 @@ use crate::{
     core::{
         KMS,
         operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
             get_attribute_list::get_attribute_list, mac::mac_verify,
             modify_attribute::modify_attribute, query::query as query_op,
         },
@@ -40,8 +41,6 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Opera
         if result.is_err() {
             metrics.record_error(&operation_tag);
         }
-
-        // Active keys metric refresh moved to standalone background task
     }
 
     result
@@ -53,6 +52,10 @@ async fn dispatch_inner(
     user: &str,
     operation_tag: &str,
 ) -> KResult<Operation> {
+    // For operations where the request carries algorithm choices, validate them
+    // before executing any cryptographic action.
+    enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+
     Ok(match operation_tag {
         "Activate" => {
             let req = from_ttlv::<Activate>(ttlv)?;
