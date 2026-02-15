@@ -26,8 +26,8 @@ non-fips = ["cosmian_kmip/non-fips"]
 base64 = { workspace = true }
 clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.15.0" }
-cosmian_kms_access = { path = "../access", version = "5.15.0" }
+cosmian_kmip = { path = "../kmip", version = "5.16.0" }
+cosmian_kms_access = { path = "../access", version = "5.16.0" }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
 serde = { workspace = true }

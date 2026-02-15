@@ -63,3 +63,4 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com
 
 bash .github/scripts/build_ui.sh
 bash .github/scripts/nix.sh update-hashes
+bash .github/scripts/nix.sh sbom
