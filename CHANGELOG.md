@@ -12,8 +12,11 @@ All notable changes to this project will be documented in this file.
         - `CUSTOM`: enforce the allowlists you set under `[kmip.allowlists]`.
     - If `kmip.policy_id` is unset, the KMIP policy layer is disabled.
     - `None` vs `[]` semantics (for each allowlist): `None` means "no restriction", while an empty list `[]` means "deny all" when enforcement is enabled.
-- Add `ConfigurableKEM` (non-FIPS) support end-to-end (KMIP + server + CLI):
-    - New KMIP `CryptographicAlgorithm`/`KeyFormatType` values (ML-KEM + Configurable-KEM keys).
+- Add PQC hybridized KEM support via `cosmian_cover_crypt`:
+    - The Cosmian KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
+      via the [cosmian_cover_crypt](https://github.com/Cosmian/cover_crypt) crate. This crate provides
+      a configurable KEM framework that can operate in pure classical, pure post-quantum, or hybrid mode
+      by combining a pre-quantum KEM with a post-quantum KEM through a KEM combiner (using SHA-256).
     - Server supports `CreateKeyPair` for Configurable-KEM and `Encrypt`/`Decrypt` encapsulation/decapsulation flows.
 
 ### 🐛 Bug Fixes

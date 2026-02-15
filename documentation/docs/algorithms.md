@@ -179,6 +179,38 @@ and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 - `P-384`
 - `P-521`
 
+### PQC Hybridized KEM
+
+The Cosmian KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
+via the [cosmian_cover_crypt](https://github.com/Cosmian/cover_crypt) crate. This crate provides
+a configurable KEM framework that can operate in pure classical, pure post-quantum, or hybrid mode
+by combining a pre-quantum KEM with a post-quantum KEM through a KEM combiner (using SHA-256).
+
+The available pre-quantum KEMs are:
+
+- **P-256** — ECDH-based KEM on the NIST P-256 curve (via OpenSSL).
+- **Curve25519** — ECDH-based KEM on Curve25519.
+
+The available post-quantum KEMs are:
+
+- **ML-KEM-512** — NIST [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) lattice-based KEM at security level 1.
+- **ML-KEM-768** — NIST FIPS 203 lattice-based KEM at security level 3.
+
+The hybridized combinations pair one classical and one post-quantum KEM:
+
+| Hybrid variant            | Pre-quantum | Post-quantum | Approximate security |
+| ------------------------- | ----------- | ------------ | -------------------- |
+| ML-KEM-512 + P-256        | P-256       | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + P-256        | P-256       | ML-KEM-768   | ~192 bits            |
+| ML-KEM-512 + Curve25519   | Curve25519  | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + Curve25519   | Curve25519  | ML-KEM-768   | ~192 bits            |
+
+The hybrid approach ensures that security is maintained even if one of the two underlying KEMs
+is broken: the combined shared secret remains secure as long as at least one component KEM is secure.
+
+Key generation, encapsulation and decapsulation are exposed via the Cosmian CLI under
+`cosmian kms kem` (non-FIPS builds only).
+
 ## Signature schemes
 
 Digital signature signing and verification are supported via both the `Certify` operation (for certificate signing) and the `Sign` operation (for direct data signing).
