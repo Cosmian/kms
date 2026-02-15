@@ -62,5 +62,4 @@ git cliff -w "$PWD" -u -p CHANGELOG.md -t "$NEW_VERSION"
 ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com\/Cosmian\/kms\/pull\/\1))/g' CHANGELOG.md
 
 bash .github/scripts/build_ui.sh
-bash .github/scripts/nix.sh update-hashes
 bash .github/scripts/nix.sh sbom

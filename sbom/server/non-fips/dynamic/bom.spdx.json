@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
-  "documentNamespace": "sbomnix://a1132d42-93fc-432c-a4f3-dec2cc42cec4",
+  "name": "SPDXRef-nix-store-f85xm0zama9gc9f81w8077b9jj3rbril-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv",
+  "documentNamespace": "sbomnix://81653b1e-d020-402a-b0d1-8b49c5e78163",
   "creationInfo": {
-    "created": "2026-02-12T07:14:05.786635+01:00",
+    "created": "2026-02-15T14:52:46.505939+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -14,8 +14,8 @@
   "packages": [
     {
       "name": "cosmian-kms-server-dynamic-rebuild-1",
-      "SPDXID": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
-      "versionInfo": "5.15.0",
+      "SPDXID": "SPDXRef-nix-store-f85xm0zama9gc9f81w8077b9jj3rbril-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv",
+      "versionInfo": "5.16.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-dynamic-rebuild-1:cosmian-kms-server-dynamic-rebuild-1:5.15.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-dynamic-rebuild-1:cosmian-kms-server-dynamic-rebuild-1:5.16.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server-dynamic-rebuild-1@5.15.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-server-dynamic-rebuild-1@5.16.0"
         }
       ]
     },
@@ -120,7 +120,7 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-58narzc5nka19lfx3zhy128bqaq2c8fp-cosmian-kms-server-dynamic-rebuild-1-5.15.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-f85xm0zama9gc9f81w8077b9jj3rbril-cosmian-kms-server-dynamic-rebuild-1-5.16.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-74hh5shwd63bla2yyhq17c2irx1y528w-openssl-3.6.0.drv"
     },

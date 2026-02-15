@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:d29ed88a-a46d-48b8-beed-4c6253c3a6ce",
+  "serialNumber": "urn:uuid:b08800e9-7564-47f3-8841-8bcacda39e30",
   "metadata": {
-    "timestamp": "2026-02-12T07:13:45.582310+01:00",
+    "timestamp": "2026-02-15T14:46:19.913752+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,19 +20,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/1v6ax8ln7k23p3l5yvkgnvd8bbsxk3kd-cosmian-kms-server-rebuild-1-5.15.0.drv",
+      "bom-ref": "/nix/store/s6sbjgh5dq4zql852jrp2k0c5rnl90jj-cosmian-kms-server-rebuild-1-5.16.0.drv",
       "name": "cosmian-kms-server-rebuild-1",
-      "version": "5.15.0",
-      "purl": "pkg:nix/cosmian-kms-server-rebuild-1@5.15.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.15.0:*:*:*:*:*:*:*",
+      "version": "5.16.0",
+      "purl": "pkg:nix/cosmian-kms-server-rebuild-1@5.16.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-server-rebuild-1:cosmian-kms-server-rebuild-1:5.16.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/8402d5q3sdzdhqahpicyad4g8iin63si-cosmian-kms-server-rebuild-1-5.15.0"
+          "value": "/nix/store/i6p0g1sab5lvclvvp1a1vi8ji4z371z6-cosmian-kms-server-rebuild-1-5.16.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/1v6ax8ln7k23p3l5yvkgnvd8bbsxk3kd-cosmian-kms-server-rebuild-1-5.15.0.drv"
+          "value": "/nix/store/s6sbjgh5dq4zql852jrp2k0c5rnl90jj-cosmian-kms-server-rebuild-1-5.16.0.drv"
         }
       ]
     }
@@ -113,7 +113,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/1v6ax8ln7k23p3l5yvkgnvd8bbsxk3kd-cosmian-kms-server-rebuild-1-5.15.0.drv",
+      "ref": "/nix/store/s6sbjgh5dq4zql852jrp2k0c5rnl90jj-cosmian-kms-server-rebuild-1-5.16.0.drv",
       "dependsOn": [
         "/nix/store/gclfapdylmsmw25fg4rb8kji5gfqwdp2-openssl-3.6.0.drv"
       ]
