@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Update expected hashes by reading the last packaging pipeline from GitHub Actions
-# and extracting hash mismatches with pattern: specified: sha256-XXX / got: sha256-YYY
+# Update expected hashes by reading the latest CI workflow run for the current branch
+# from GitHub Actions and extracting fixed-output derivation hash mismatches.
 #
-# To keep this fast, we only parse the failed step output for the
-# "Package with GPG signature" step via `gh run view --log-failed`.
+# It looks for log patterns like:
+#   specified: sha256-XXX
+#   got:       sha256-YYY
 #
 # Usage:
 #   update_hashes.sh
-#
-# This script takes no arguments.
+#   update_hashes.sh <RUN_ID>
+#   update_hashes.sh <RUN_ID> <JOB_ID>
+#   update_hashes.sh <actions-run-or-job-url>
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -21,10 +23,58 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 
-if [ $# -ne 0 ]; then
-  echo "Error: update_hashes.sh takes no arguments" >&2
+DEFAULT_FALLBACK_RUN_ID="22031087521"
+
+RUN_ID=""
+JOB_ID=""
+ARGS_PROVIDED="false"
+
+parse_args() {
+  if [ $# -eq 0 ]; then
+    return 0
+  fi
+
+  if [ $# -eq 1 ]; then
+    local arg="$1"
+    if [[ "$arg" =~ ^[0-9]+$ ]]; then
+      RUN_ID="$arg"
+      return 0
+    fi
+
+    # Accept a full Actions URL:
+    #   https://github.com/<org>/<repo>/actions/runs/<RUN_ID>
+    #   https://github.com/<org>/<repo>/actions/runs/<RUN_ID>/job/<JOB_ID>
+    # Note: When a URL contains a job id, we still scan the whole run.
+    # To force a single-job scan, pass two numeric args: <RUN_ID> <JOB_ID>.
+    if [[ "$arg" =~ /actions/runs/([0-9]+)(/job/([0-9]+))? ]]; then
+      RUN_ID="${BASH_REMATCH[1]}"
+      JOB_ID=""
+      return 0
+    fi
+
+    echo "Error: Unsupported argument '$arg'" >&2
+    echo "Expected: RUN_ID, RUN_ID+JOB_ID URL, or no args" >&2
+    exit 2
+  fi
+
+  if [ $# -eq 2 ]; then
+    if [[ "$1" =~ ^[0-9]+$ ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+      RUN_ID="$1"
+      JOB_ID="$2"
+      return 0
+    fi
+    echo "Error: Expected numeric RUN_ID and JOB_ID" >&2
+    exit 2
+  fi
+
+  echo "Error: Too many arguments" >&2
   exit 2
+}
+
+if [ $# -gt 0 ]; then
+  ARGS_PROVIDED="true"
 fi
+parse_args "$@"
 
 # Get current git branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
@@ -33,35 +83,43 @@ if [ -z "$CURRENT_BRANCH" ]; then
   exit 1
 fi
 
-echo "Fetching latest packaging workflow run for branch: $CURRENT_BRANCH..."
-
-# Fetch recent workflow runs and filter by current branch
-# Prioritize failed runs (which likely have hash mismatches), then fall back to any completed run
-RUN_ID=$(gh run list --limit 50 --json databaseId,status,conclusion,headBranch,name |
-  jq -r --arg branch "$CURRENT_BRANCH" \
-    '.[] | select(.headBranch == $branch and .name == "Packaging" and .status == "completed") | 
-    {databaseId, conclusion, priority: (if .conclusion == "failure" then 0 elif .conclusion == "success" then 1 else 2 end)} | 
-    select(.conclusion != "cancelled")' |
-  jq -s 'sort_by(.priority) | .[0].databaseId' || echo "")
-
 if [ -z "$RUN_ID" ]; then
-  echo "Error: Could not fetch latest workflow run for branch '$CURRENT_BRANCH'." >&2
-  echo "Make sure you're authenticated with 'gh auth login' and the branch has CI runs." >&2
-  exit 1
+  echo "Fetching latest CI workflow run for branch: $CURRENT_BRANCH..."
+
+  # Fetch recent workflow runs on this branch.
+  # Prefer failures (likely hash mismatches), then fall back to the newest completed run.
+  RUN_ID=$(gh run list --branch "$CURRENT_BRANCH" --limit 50 --json databaseId,status,conclusion \
+    --jq 'map(select(.status=="completed" and .conclusion != "cancelled")) as $runs |
+          ($runs | map(select(.conclusion=="failure")) | .[0].databaseId) // ($runs | .[0].databaseId)')
+
+  if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+    echo "Warning: Could not auto-detect a workflow run for branch '$CURRENT_BRANCH'." >&2
+    echo "Falling back to a known run for now: run=$DEFAULT_FALLBACK_RUN_ID" >&2
+    RUN_ID="$DEFAULT_FALLBACK_RUN_ID"
+    JOB_ID=""
+  fi
 fi
-echo "Found workflow run: $RUN_ID (branch: $CURRENT_BRANCH)"
 
-echo "Fetching failed jobs..."
+echo "Using workflow run: $RUN_ID${JOB_ID:+ (job: $JOB_ID)}"
 
-# Get all failed jobs from this run (id + name)
-# We rely on the job name to infer platform/linkage for server vendor hashes.
-# Filter out ARM and Docker builds to speed up the process (keep Ubuntu x86_64 and macOS only)
-FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.conclusion == "failure") | select(.name | test("arm|docker"; "i") | not) | [.id, .name] | @tsv' 2>/dev/null || echo "")
+echo "Fetching jobs..."
 
-if [ -z "$FAILED_JOBS" ]; then
-  echo "No failed jobs found in run $RUN_ID. Nothing to update."
-  exit 0
+FAILED_JOBS=""
+
+if [ -n "$JOB_ID" ]; then
+  # If a specific job is requested, process it even if it did not fail.
+  JOB_NAME=$(gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID" --jq '.name' 2>/dev/null || echo "")
+  FAILED_JOBS=$(printf "%s\t%s\n" "$JOB_ID" "$JOB_NAME")
+else
+  # Get all failed jobs from this run (id + name).
+  # We rely on the job name (when available) to infer platform/linkage for server vendor hashes.
+  FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
+    --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
+
+  if [ -z "$FAILED_JOBS" ]; then
+    echo "No failed jobs found in run $RUN_ID. Nothing to update."
+    exit 0
+  fi
 fi
 
 # Declare associative array to store hash updates
@@ -72,12 +130,6 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   [ -z "${JOB_ID:-}" ] && continue
   JOB_NAME=${JOB_NAME:-""}
 
-  # Fast path: only scan packaging matrix jobs (both fips + non-fips, static + dynamic).
-  # Packaging jobs are named like: ubuntu-24.04-fips-static, macos-15-non-fips-dynamic, ...
-  if ! echo "$JOB_NAME" | grep -qE '^(ubuntu-|macos-).+-(fips|non-fips)-(static|dynamic)$'; then
-    continue
-  fi
-
   echo "Processing job $JOB_ID${JOB_NAME:+ ($JOB_NAME)}..."
 
   # Parse logs for hash mismatches
@@ -86,22 +138,22 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   #            specified: sha256-XXXX
   #               got:    sha256-YYYY
 
-  # Stream only failed-step logs for this job (much smaller than full job log archives).
+  # Stream failed-step logs for this job (much smaller than full job log archives).
+  # If a specific job was requested and it didn't fail, fall back to the full job log.
   # Output format is typically: "<STEP NAME> | <log line>".
   last_drv_name=""
+  log_cmd=(gh run view "$RUN_ID" --log-failed --job "$JOB_ID")
+  if ! "${log_cmd[@]}" >/dev/null 2>&1; then
+    log_cmd=(gh run view "$RUN_ID" --log --job "$JOB_ID")
+  fi
+
   while IFS= read -r raw_line; do
     line="$raw_line"
 
-    # If `gh` associates log lines with steps, filter to the packaging step.
-    # If not (e.g., UNKNOWN STEP), keep the line (still only failed steps).
+    # If `gh` associates log lines with steps, strip the step prefix.
     if [[ "$line" == *"|"* ]]; then
-      step_name=${line%%|*}
-      step_name=${step_name%" "}
       msg=${line#*|}
       msg=${msg#" "}
-      if [[ "$step_name" != *"Package with GPG signature"* ]] && [[ "$step_name" != *"UNKNOWN STEP"* ]]; then
-        continue
-      fi
       line="$msg"
     fi
 
@@ -145,7 +197,19 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
               target_file=""
             fi
           else
-            target_file="$EXPECTED_DIR/server.vendor.linux.sha256"
+            # Linux server vendor hashes are tracked per linkage mode.
+            # Docker packaging builds are always static-linked.
+            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"
+            elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.static.linux.sha256"
+            else
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.linux.sha256"]="$got_hash"
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"]="$got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.static.linux.sha256: $got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.linux.sha256: $got_hash"
+              target_file=""
+            fi
           fi
         fi
 
@@ -157,7 +221,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         last_drv_name=""
       fi
     fi
-  done < <(gh run view "$RUN_ID" --log-failed --job "$JOB_ID" 2>/dev/null || true)
+  done < <("${log_cmd[@]}" 2>/dev/null || true)
 done <<<"$FAILED_JOBS"
 
 # Apply updates
@@ -170,6 +234,10 @@ for file in "${!FILE_TO_HASH[@]}"; do
 done
 
 if [ "$updated_count" -eq 0 ]; then
+  if [ "$ARGS_PROVIDED" = "false" ] && [ "$RUN_ID" != "$DEFAULT_FALLBACK_RUN_ID" ]; then
+    echo "No hashes found in auto-selected run ($RUN_ID). Retrying fallback run/job..." >&2
+    exec "$0" "$DEFAULT_FALLBACK_RUN_ID"
+  fi
   echo "No hashes found to update." >&2
   echo "This could mean:" >&2
   echo "  - No hash mismatches were found in the workflow run" >&2
