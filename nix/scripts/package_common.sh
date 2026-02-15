@@ -271,6 +271,39 @@ build_or_reuse_ui() {
   UI_DIST_PATH="$REAL_UI/dist"
 }
 
+# Fail fast if UI dist is missing expected runtime files.
+# This prevents producing packages missing index.html/assets/themes.
+validate_ui_dist() {
+  local ui_dist="$1"
+
+  if [ ! -d "$ui_dist" ]; then
+    echo "ERROR: UI dist directory not found: $ui_dist" >&2
+    exit 1
+  fi
+
+  if [ ! -f "$ui_dist/index.html" ]; then
+    echo "ERROR: UI dist missing index.html: $ui_dist/index.html" >&2
+    exit 1
+  fi
+
+  if [ ! -d "$ui_dist/assets" ]; then
+    echo "ERROR: UI dist missing assets/: $ui_dist/assets" >&2
+    exit 1
+  fi
+
+  # themes/ is required for runtime theme switching / white-labeling.
+  if [ ! -d "$ui_dist/themes" ]; then
+    echo "ERROR: UI dist missing themes/: $ui_dist/themes" >&2
+    exit 1
+  fi
+
+  # branding.json is expected by runtime branding loader.
+  if [ ! -f "$ui_dist/branding.json" ]; then
+    echo "ERROR: UI dist missing branding.json: $ui_dist/branding.json" >&2
+    exit 1
+  fi
+}
+
 # Enforce expected deterministic hash even on reuse path.
 resolve_expected_hash_file() {
   # Naming convention:
@@ -801,6 +834,7 @@ prepare_workspace() {
   fi
 
   echo "Copying UI assets from $UI_SRC to $UI_DEST"
+  validate_ui_dist "$UI_SRC"
   if [ -d "$UI_DEST" ]; then
     chmod -R u+w "$UI_DEST" 2>/dev/null || true
     rm -rf "$UI_DEST"
@@ -809,6 +843,23 @@ prepare_workspace() {
   cp -r "$UI_SRC"/* "$UI_DEST/"
   echo "UI assets copied successfully. Contents:"
   find "$UI_DEST" -maxdepth 1 -print | head -n 20
+
+  # Also mirror UI dist to workspace root to satisfy packaging globs that
+  # intentionally reference ../../ui*/dist from crate/server/Cargo.toml.
+  local ui_root_dest
+  if [ "$VARIANT" = "non-fips" ]; then
+    ui_root_dest="$REPO_ROOT/ui_non_fips/dist"
+  else
+    ui_root_dest="$REPO_ROOT/ui/dist"
+  fi
+  echo "Mirroring UI dist to $ui_root_dest (for cargo-deb/cargo-generate-rpm assets globs)"
+  if [ -d "$ui_root_dest" ]; then
+    chmod -R u+w "$ui_root_dest" 2>/dev/null || true
+    rm -rf "$ui_root_dest"
+  fi
+  mkdir -p "$ui_root_dest"
+  cp -r "$UI_SRC"/* "$ui_root_dest/"
+  validate_ui_dist "$ui_root_dest"
 
   export HOME="${TMPDIR:-/tmp}"
   # Keep a persistent CARGO_HOME if already set (from prewarm); otherwise fallback to temp
@@ -1016,8 +1067,8 @@ ensure_cargo_deb() {
     :
   else
     rm -f "$link" 2>/dev/null || true
-    # Build cargo-deb from pinned nixpkgs and link it for PATH usage
-    nix-build -I "nixpkgs=${PIN_URL}" -E 'with import <nixpkgs> {}; cargo-deb' -o "$link"
+    # Build cargo-deb from pinned nixpkgs with tests disabled (tests fail in nixpkgs 24.11)
+    nix-build -I "nixpkgs=${PIN_URL}" -E 'with import <nixpkgs> {}; cargo-deb.overrideAttrs (old: { doCheck = false; })' -o "$link"
   fi
   export PATH="$link/bin:$PATH"
 }

@@ -88,62 +88,6 @@ async fn test_single_signature(
     Ok(())
 }
 
-/// Test streaming signature with multiple calls
-async fn _test_streaming_signature(
-    kms: Arc<KMS>,
-    owner: &str,
-    private_key_id: &UniqueIdentifier,
-) -> KResult<Vec<u8>> {
-    // Split test data into chunks for streaming
-    let chunk_size = TEST_DATA.len() / 3;
-    let chunks: Vec<&[u8]> = TEST_DATA.chunks(chunk_size).collect();
-
-    // First call - init with first chunk
-    let init_request = Sign {
-        unique_identifier: Some(private_key_id.clone()),
-        data: Some(Zeroizing::new(chunks[0].to_vec())),
-        init_indicator: Some(true),
-        final_indicator: Some(false),
-        ..Default::default()
-    };
-
-    let init_response: SignResponse = kms.sign(init_request, owner).await?;
-    assert_eq!(init_response.unique_identifier, *private_key_id);
-    let mut correlation_value = init_response.correlation_value;
-
-    // Middle calls - continue with remaining chunks except the last
-    for chunk in chunks.iter().skip(1).take(chunks.len() - 2) {
-        let continue_request = Sign {
-            unique_identifier: Some(private_key_id.clone()),
-            data: Some(Zeroizing::new(chunk.to_vec())),
-            correlation_value: correlation_value.clone(),
-            init_indicator: Some(false),
-            final_indicator: Some(false),
-            ..Default::default()
-        };
-
-        let continue_response: SignResponse = kms.sign(continue_request, owner).await?;
-        assert_eq!(continue_response.unique_identifier, *private_key_id);
-        correlation_value = continue_response.signature_data;
-    }
-
-    // Final call - finalize with last chunk
-    let final_request = Sign {
-        unique_identifier: Some(private_key_id.clone()),
-        data: Some(Zeroizing::new(chunks.last().unwrap().to_vec())),
-        correlation_value: correlation_value.clone(),
-        init_indicator: Some(false),
-        final_indicator: Some(true),
-        ..Default::default()
-    };
-    let final_response: SignResponse = kms.sign(final_request, owner).await?;
-
-    assert_eq!(final_response.unique_identifier, *private_key_id);
-    assert!(final_response.signature_data.is_some());
-
-    Ok(final_response.signature_data.unwrap())
-}
-
 /// Test streaming signature verification with multiple calls
 async fn test_streaming_signature_verification(
     kms: Arc<KMS>,
@@ -305,8 +249,8 @@ async fn test_sign_ecdsa_p256() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_sign_ecdsa_p192() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::P192, "p192").await
+async fn test_sign_ecdsa_p384() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P384, "p384").await
 }
 
 #[cfg(feature = "non-fips")]
@@ -323,6 +267,6 @@ async fn test_sign_ecdsa_k256() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_sign_secp224r1() -> KResult<()> {
-    test_sign_ec_curve(RecommendedCurve::P224, "p224").await
+async fn test_sign_ecdsa_p521() -> KResult<()> {
+    test_sign_ec_curve(RecommendedCurve::P521, "p521").await
 }

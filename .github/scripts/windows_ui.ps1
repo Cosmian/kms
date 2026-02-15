@@ -16,8 +16,8 @@ function Build-UI {
     rustup target add wasm32-unknown-unknown
 
     # Install wasm-bindgen-cli with matching version
-    Write-Host "Installing wasm-bindgen-cli 0.2.106..."
-    cargo install wasm-bindgen-cli --version 0.2.106 --force
+    Write-Host "Installing wasm-bindgen-cli 0.2.108..."
+    cargo install wasm-bindgen-cli --version 0.2.108 --force
 
     # Build WASM package
     Write-Host "Building WASM package..."
@@ -57,7 +57,7 @@ function Build-UI {
 {
   "name": "cosmian_kms_client_wasm",
   "type": "module",
-  "version": "5.15.0",
+  "version": "5.16.0",
   "main": "cosmian_kms_client_wasm.js",
   "types": "cosmian_kms_client_wasm.d.ts"
 }

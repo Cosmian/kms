@@ -3,7 +3,6 @@ use std::sync::Arc;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     result::KResult,
-    start_kms_server::start_kms_server,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
@@ -132,7 +131,11 @@ async fn run() -> KResult<()> {
     info!("Feature Test enabled");
 
     // Start the KMS
-    Box::pin(start_kms_server(server_params, None)).await?;
+    Box::pin(cosmian_kms_server::start_kms_server::start_kms_server(
+        server_params,
+        None,
+    ))
+    .await?;
 
     Ok(())
 }
@@ -144,8 +147,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, LoggingConfig, MainDBConfig,
-        OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, LoggingConfig,
+        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
+        WorkspaceConfig,
     };
 
     #[cfg(feature = "non-fips")]
@@ -219,6 +223,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),

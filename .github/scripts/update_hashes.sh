@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# Update expected hashes by reading the last packaging pipeline from GitHub Actions
-# and extracting hash mismatches with pattern: specified: sha256-XXX / got: sha256-YYY
+# Update expected hashes by reading the latest CI workflow run for the current branch
+# from GitHub Actions and extracting fixed-output derivation hash mismatches.
+#
+# It looks for log patterns like:
+#   specified: sha256-XXX
+#   got:       sha256-YYY
 #
 # Usage:
-#   update_hashes.sh [RUN_ID]
-#
-# If RUN_ID is not provided, the latest packaging workflow run will be used.
+#   update_hashes.sh
+#   update_hashes.sh <RUN_ID>
+#   update_hashes.sh <RUN_ID> <JOB_ID>
+#   update_hashes.sh <actions-run-or-job-url>
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 EXPECTED_DIR="$REPO_ROOT/nix/expected-hashes"
-LOG_DIR="${TMPDIR:-/tmp}/kms-update-hashes"
-mkdir -p "$LOG_DIR"
+shopt -s nocasematch
 
 # Check if gh CLI is available
 if ! command -v gh &>/dev/null; then
@@ -19,36 +23,134 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 
-# Get the run ID from argument or fetch the latest
-if [ $# -ge 1 ]; then
-  RUN_ID="$1"
-  echo "Using provided workflow run: $RUN_ID"
-else
-  echo "Fetching latest packaging workflow run..."
-  RUN_ID=$(gh api repos/Cosmian/kms/actions/workflows/pr.yml/runs \
-    --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
+DEFAULT_FALLBACK_RUN_ID="22031087521"
 
-  if [ -z "$RUN_ID" ]; then
-    echo "Error: Could not fetch latest workflow run. Make sure you're authenticated with 'gh auth login'." >&2
-    exit 1
+RUN_ID=""
+JOB_ID=""
+ARGS_PROVIDED="false"
+
+parse_args() {
+  if [ $# -eq 0 ]; then
+    return 0
   fi
-  echo "Found workflow run: $RUN_ID"
+
+  if [ $# -eq 1 ]; then
+    local arg="$1"
+    if [[ "$arg" =~ ^[0-9]+$ ]]; then
+      RUN_ID="$arg"
+      return 0
+    fi
+
+    # Accept a full Actions URL:
+    #   https://github.com/<org>/<repo>/actions/runs/<RUN_ID>
+    #   https://github.com/<org>/<repo>/actions/runs/<RUN_ID>/job/<JOB_ID>
+    # Note: When a URL contains a job id, we still scan the whole run.
+    # To force a single-job scan, pass two numeric args: <RUN_ID> <JOB_ID>.
+    if [[ "$arg" =~ /actions/runs/([0-9]+)(/job/([0-9]+))? ]]; then
+      RUN_ID="${BASH_REMATCH[1]}"
+      JOB_ID=""
+      return 0
+    fi
+
+    echo "Error: Unsupported argument '$arg'" >&2
+    echo "Expected: RUN_ID, RUN_ID+JOB_ID URL, or no args" >&2
+    exit 2
+  fi
+
+  if [ $# -eq 2 ]; then
+    if [[ "$1" =~ ^[0-9]+$ ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+      RUN_ID="$1"
+      JOB_ID="$2"
+      return 0
+    fi
+    echo "Error: Expected numeric RUN_ID and JOB_ID" >&2
+    exit 2
+  fi
+
+  echo "Error: Too many arguments" >&2
+  exit 2
+}
+
+if [ $# -gt 0 ]; then
+  ARGS_PROVIDED="true"
+fi
+parse_args "$@"
+
+# Get current git branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ -z "$CURRENT_BRANCH" ]; then
+  echo "Error: Could not determine current git branch" >&2
+  exit 1
 fi
 
-echo "Fetching failed jobs..."
+if [ -z "$RUN_ID" ]; then
+  echo "Fetching latest CI workflow run for branch: $CURRENT_BRANCH..."
 
-# Get all failed jobs from this run (id + name)
-# We rely on the job name to infer platform/linkage for server vendor hashes.
-FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' 2>/dev/null || echo "")
+  # Fetch recent workflow runs on this branch.
+  # Prefer failures (likely hash mismatches), then fall back to the newest completed run.
+  RUN_ID=$(gh run list --branch "$CURRENT_BRANCH" --limit 50 --json databaseId,status,conclusion \
+    --jq 'map(select(.status=="completed" and .conclusion != "cancelled")) as $runs |
+          ($runs | map(select(.conclusion=="failure")) | .[0].databaseId) // ($runs | .[0].databaseId)')
 
-if [ -z "$FAILED_JOBS" ]; then
-  echo "No failed jobs found in run $RUN_ID. Nothing to update."
-  exit 0
+  if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+    echo "Warning: Could not auto-detect a workflow run for branch '$CURRENT_BRANCH'." >&2
+    echo "Falling back to a known run for now: run=$DEFAULT_FALLBACK_RUN_ID" >&2
+    RUN_ID="$DEFAULT_FALLBACK_RUN_ID"
+    JOB_ID=""
+  fi
+fi
+
+echo "Using workflow run: $RUN_ID${JOB_ID:+ (job: $JOB_ID)}"
+
+echo "Fetching jobs..."
+
+FAILED_JOBS=""
+
+if [ -n "$JOB_ID" ]; then
+  # If a specific job is requested, process it even if it did not fail.
+  JOB_NAME=$(gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID" --jq '.name' 2>/dev/null || echo "")
+  FAILED_JOBS=$(printf "%s\t%s\n" "$JOB_ID" "$JOB_NAME")
+else
+  # Get all failed jobs from this run (id + name).
+  # We rely on the job name (when available) to infer platform/linkage for server vendor hashes.
+  FAILED_JOBS=$(gh api "repos/Cosmian/kms/actions/runs/$RUN_ID/jobs" \
+    --jq '.jobs[]
+          | select((.conclusion == "failure") or (.status == "in_progress"))
+          | [.id, .name] | @tsv' 2>/dev/null || echo "")
+
+  if [ -z "$FAILED_JOBS" ]; then
+    echo "No failed or in-progress jobs found in run $RUN_ID. Nothing to update."
+    exit 0
+  fi
 fi
 
 # Declare associative array to store hash updates
 declare -A FILE_TO_HASH
+
+stream_job_logs() {
+  local run_id="$1"
+  local job_id="$2"
+  local tmp
+  tmp=$(mktemp -t gha-job-log.XXXXXX)
+
+  # Prefer `gh run view` (nice formatting and smaller for failed steps),
+  # but it may refuse logs while the overall run is still in progress.
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+    cat "$tmp"
+    rm -f "$tmp"
+    return 0
+  fi
+
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+    cat "$tmp"
+    rm -f "$tmp"
+    return 0
+  fi
+
+  # Fallback: fetch raw job logs directly (works even if run is still running).
+  rm -f "$tmp"
+  gh api "repos/Cosmian/kms/actions/jobs/$job_id/logs" 2>/dev/null || true
+}
 
 # Process each failed job
 while IFS=$'\t' read -r JOB_ID JOB_NAME; do
@@ -56,13 +158,6 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   JOB_NAME=${JOB_NAME:-""}
 
   echo "Processing job $JOB_ID${JOB_NAME:+ ($JOB_NAME)}..."
-  LOG_FILE="$LOG_DIR/job_${JOB_ID}.log"
-
-  # Download job logs
-  gh api "repos/Cosmian/kms/actions/jobs/$JOB_ID/logs" >"$LOG_FILE" 2>&1 || {
-    echo "Warning: Could not fetch logs for job $JOB_ID, skipping..."
-    continue
-  }
 
   # Parse logs for hash mismatches
   # Pattern:
@@ -70,45 +165,54 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   #            specified: sha256-XXXX
   #               got:    sha256-YYYY
 
+  # Stream failed-step logs for this job (much smaller than full job log archives).
+  # If a specific job was requested and it didn't fail, fall back to the full job log.
+  # Output format is typically: "<STEP NAME> | <log line>".
   last_drv_name=""
-  while IFS= read -r line; do
+
+  while IFS= read -r raw_line; do
+    line="$raw_line"
+
+    # If `gh` associates log lines with steps, strip the step prefix.
+    if [[ "$line" == *"|"* ]]; then
+      msg=${line#*|}
+      msg=${msg#" "}
+      line="$msg"
+    fi
+
     # Capture derivation name from error line
-    if echo "$line" | grep -q "hash mismatch in fixed-output derivation"; then
-      drv_path=$(echo "$line" | grep -Eo "'/nix/store/[^']+'" | tr -d "'" || echo "")
-      if [ -n "$drv_path" ]; then
-        # Extract the package name from the derivation path
-        # e.g., /nix/store/xxx-cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps.drv -> cosmian-kms-ui-deps-fips-X.Y.Z-npm-deps
-        last_drv_name=$(basename "$drv_path" | sed 's/\.drv$//')
-      fi
+    if [[ "$line" =~ hash\ mismatch\ in\ fixed-output\ derivation.*\'(/nix/store/[^\']+)\' ]]; then
+      drv_path="${BASH_REMATCH[1]}"
+      drv_name="${drv_path##*/}"
+      last_drv_name="${drv_name%.drv}"
+      continue
     fi
 
     # Capture the "got" hash
-    if echo "$line" | grep -q "got:"; then
-      got_hash=$(echo "$line" | grep -Eo "sha256-[A-Za-z0-9+/=]+" | head -n1 || echo "")
+    if [[ "$line" == *"got:"* ]] && [[ "$line" =~ (sha256-[A-Za-z0-9+/=]+) ]]; then
+      got_hash="${BASH_REMATCH[1]}"
 
       if [ -n "$got_hash" ] && [ -n "$last_drv_name" ]; then
-        # Map derivation name to expected hash file
         target_file=""
 
         # UI npm deps (both fips and non-fips share the same npm deps)
-        if echo "$last_drv_name" | grep -qE "ui-deps-(fips|non-fips).*-npm-deps"; then
+        if [[ "$last_drv_name" =~ ui-deps-(fips|non-fips).*-npm-deps ]]; then
           target_file="$EXPECTED_DIR/ui.npm.sha256"
         # UI wasm vendor - fips
-        elif echo "$last_drv_name" | grep -qE "ui-wasm-fips.*-vendor"; then
+        elif [[ "$last_drv_name" =~ ui-wasm-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.fips.sha256"
         # UI wasm vendor - non-fips
-        elif echo "$last_drv_name" | grep -qE "ui-wasm-non-fips.*-vendor"; then
+        elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
         # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
         # infer those from the GitHub Actions job name.
-        elif echo "$last_drv_name" | grep -qiE "(kms-server|server).*vendor|(^|-)vendor($|-)"; then
-          if echo "$JOB_NAME" | grep -qiE "macos|darwin"; then
-            if echo "$JOB_NAME" | grep -qiE "static"; then
+        elif [[ "$last_drv_name" =~ (kms-server|server).*vendor|(^|-)vendor($|-) ]]; then
+          if [[ "$JOB_NAME" == *"macos"* ]] || [[ "$JOB_NAME" == *"darwin"* ]]; then
+            if [[ "$JOB_NAME" == *"static"* ]]; then
               target_file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
-            elif echo "$JOB_NAME" | grep -qiE "dynamic"; then
+            elif [[ "$JOB_NAME" == *"dynamic"* ]]; then
               target_file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
             else
-              # Default for macOS packaging jobs: update both (some job names don't include link)
               FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.darwin.sha256"]="$got_hash"
               FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"]="$got_hash"
               echo "  Found hash for $EXPECTED_DIR/server.vendor.static.darwin.sha256: $got_hash"
@@ -116,8 +220,19 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
               target_file=""
             fi
           else
-            # Default to Linux (most common in CI)
-            target_file="$EXPECTED_DIR/server.vendor.linux.sha256"
+            # Linux server vendor hashes are tracked per linkage mode.
+            # Docker packaging builds are always static-linked.
+            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"
+            elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.static.linux.sha256"
+            else
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.linux.sha256"]="$got_hash"
+              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"]="$got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.static.linux.sha256: $got_hash"
+              echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.linux.sha256: $got_hash"
+              target_file=""
+            fi
           fi
         fi
 
@@ -129,7 +244,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         last_drv_name=""
       fi
     fi
-  done <"$LOG_FILE"
+  done < <(stream_job_logs "$RUN_ID" "$JOB_ID")
 done <<<"$FAILED_JOBS"
 
 # Apply updates
@@ -142,6 +257,10 @@ for file in "${!FILE_TO_HASH[@]}"; do
 done
 
 if [ "$updated_count" -eq 0 ]; then
+  if [ "$ARGS_PROVIDED" = "false" ] && [ "$RUN_ID" != "$DEFAULT_FALLBACK_RUN_ID" ]; then
+    echo "No hashes found in auto-selected run ($RUN_ID). Retrying fallback run/job..." >&2
+    exec "$0" "$DEFAULT_FALLBACK_RUN_ID"
+  fi
   echo "No hashes found to update." >&2
   echo "This could mean:" >&2
   echo "  - No hash mismatches were found in the workflow run" >&2

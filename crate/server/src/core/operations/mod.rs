@@ -65,6 +65,7 @@ pub(crate) use modify_attribute::modify_attribute;
 pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;
+pub(crate) mod algorithm_policy;
 pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
 #[cfg(feature = "non-fips")]

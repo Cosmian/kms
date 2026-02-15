@@ -601,6 +601,69 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
             }
         }
     }
+
+    // KMIP 1.0 interoperability: the Fresh attribute does not exist in KMIP 1.0.
+    // Our internal models are KMIP 1.4/2.1, so strip it from any 1.0 response.
+    if major == 1 && minor == 0 {
+        for batch_item in &mut response.batch_item {
+            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue;
+            };
+
+            // GetResponse / ExportResponse may carry attributes inside the returned object.
+            // GetAttributesResponse carries attributes at top-level.
+            match item.response_payload.as_mut() {
+                Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) => {
+                    if let Ok(kb) = gr.object.key_block_mut() {
+                        if let Some(kv) = kb.key_value.as_mut() {
+                            if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
+                                attribute: Some(attrs),
+                                ..
+                            } = kv
+                            {
+                                // KMIP 1.0 interoperability: keep KeyValue attributes (known to
+                                // work with Percona), but drop attributes not supported in 1.0.
+                                // - Fresh does not exist in KMIP 1.0
+                                // - Initial Date is rejected by Percona in KMIP 1.0 sessions
+                                attrs.retain(|a| {
+                                    !matches!(
+                                        a,
+                                        cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
+                                            | cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::InitialDate(_)
+                                    )
+                                });
+                                if attrs.is_empty() {
+                                    if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
+                                        attribute,
+                                        ..
+                                    } = kv
+                                    {
+                                        *attribute = None;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(
+                    cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetAttributesResponse(gar),
+                ) => {
+                    if let Some(attributes) = gar.attribute.as_mut() {
+                        attributes.retain(|a| {
+                            !matches!(
+                                a,
+                                cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
+                            )
+                        });
+                        if attributes.is_empty() {
+                            gar.attribute = None;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1

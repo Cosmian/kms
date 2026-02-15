@@ -1,12 +1,9 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_operations::{Locate, LocateResponse},
-            kmip_types::UniqueIdentifier,
-        },
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{
+        kmip_operations::{Locate, LocateResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_crypto::crypto::access_policy_from_attributes,
 };
 use cosmian_logger::trace;
 
@@ -29,10 +26,10 @@ pub(crate) async fn locate(
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
-    // Filter the uids that match the access structure.
-    // If no explicit state is requested, exclude Destroyed objects by default per KMIP.
-    let mut uids = Vec::new();
-    if access_policy_from_attributes(&request.attributes).is_err() {
+
+    #[cfg(not(feature = "non-fips"))]
+    let mut uids = {
+        let mut uids = Vec::new();
         for (uid, state_found, attributes) in uids_attrs {
             trace!(
                 "UID: {:?}, State: {:?}, Attributes: {}",
@@ -49,12 +46,49 @@ pub(crate) async fn locate(
                     continue;
                 }
             }
-            // If there is no access structure, accept; otherwise would compare the access policies
+            // If there is no access structure, accept; otherwise would compare
+            // the access policies
             uids.push(UniqueIdentifier::TextString(uid));
         }
-    }
+        uids
+    };
 
-    // Respect MaximumItems only when explicitly provided. If absent, return all matches.
+    #[cfg(feature = "non-fips")]
+    let mut uids = {
+        // Filter the uids that match the access structure.
+        //
+        // If no explicit state is requested, exclude Destroyed objects by
+        // default per KMIP.
+        use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+
+        let mut uids = Vec::new();
+        if access_policy_from_attributes(&request.attributes).is_err() {
+            for (uid, state_found, attributes) in uids_attrs {
+                trace!(
+                    "UID: {:?}, State: {:?}, Attributes: {}",
+                    uid, state_found, attributes
+                );
+                // If an explicit state filter is provided, enforce it strictly.
+                if let Some(s) = effective_state {
+                    if state_found != s {
+                        continue;
+                    }
+                } else {
+                    // Otherwise, exclude destroyed objects
+                    if matches!(state_found, State::Destroyed | State::Destroyed_Compromised) {
+                        continue;
+                    }
+                }
+                // If there is no access structure, accept; otherwise would
+                // compare the access policies
+                uids.push(UniqueIdentifier::TextString(uid));
+            }
+        }
+        uids
+    };
+
+    // Respect `MaximumItems` only when explicitly provided. If absent, return
+    // all matches.
     if let Some(mi) = request.maximum_items {
         let max_items = usize::try_from(mi.max(0))?;
         if uids.len() > max_items {

@@ -1077,24 +1077,25 @@ pub(super) async fn find_(
     user_must_be_owner: bool,
     pool: &Pool,
 ) -> DbResult<Vec<(String, State, Attributes)>> {
-    let sql = query_from_attributes::<MySqlPlaceholder>(
+    let locate = query_from_attributes::<MySqlPlaceholder>(
         researched_attributes,
         state,
         user,
         user_must_be_owner,
     );
-    trace!("find_: {sql:?}");
+    trace!("find_: {:?}", locate.sql);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let params: Vec<mysql_async::Value> = if user_must_be_owner {
-        vec![mysql_async::Value::Bytes(user.as_bytes().to_vec())]
-    } else {
-        vec![
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-            mysql_async::Value::Bytes(user.as_bytes().to_vec()),
-        ]
-    };
-    let rows: Vec<mysql_async::Row> = conn.exec(sql, params).await.map_err(DbError::from)?;
+    let params: Vec<mysql_async::Value> = locate
+        .params
+        .into_iter()
+        .map(|p| match p {
+            crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                mysql_async::Value::Bytes(s.into_bytes())
+            }
+            crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
+        })
+        .collect();
+    let rows: Vec<mysql_async::Row> = conn.exec(locate.sql, params).await.map_err(DbError::from)?;
     to_qualified_uids(&rows)
 }
 

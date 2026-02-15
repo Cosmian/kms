@@ -34,6 +34,16 @@ use crate::{
 };
 
 impl KMS {
+    fn allowed_dsa_key_sizes_bits() -> Vec<u32> {
+        // DSA/DH key-size policy is distinct from RSA.
+        // Keep it conservative and aligned with what we can actually generate
+        // via OpenSSL in both FIPS and non-FIPS builds.
+        //
+        // Note: even if RSA allowlists include 4096, DSA/DH do not reliably
+        // support 4096 in this implementation.
+        vec![2048, 3072]
+    }
+
     /// Unwrap the object (if need be) and return the unwrapped object.
     /// The unwrapped object is cached in memory.
     /// # Arguments
@@ -220,19 +230,19 @@ impl KMS {
                 use num_bigint_dig::BigInt;
                 use openssl::dsa::Dsa;
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
-                // Build allowed sizes list from env or fallback
-                let allowed: Vec<i32> = vec![2048, 3072];
-                if !allowed.contains(&requested_bits) {
+                let allowed = Self::allowed_dsa_key_sizes_bits();
+                let requested_bits_u32 = u32::try_from(requested_bits).map_err(|e| {
+                    KmsError::NotSupported(format!(
+                        "Requested DSA bit length out of range: {requested_bits}: {e}"
+                    ))
+                })?;
+                if !allowed.contains(&requested_bits_u32) {
                     return Err(KmsError::NotSupported(format!(
                         "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
                     )));
                 }
                 // OpenSSL expects bit length as i32
-                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
-                    KmsError::NotSupported(format!(
-                        "Requested DSA bit length out of range: {requested_bits}: {e}"
-                    ))
-                })?;
+                let dsa_bits = requested_bits_u32;
                 let dsa = Dsa::generate(dsa_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Failed to generate DSA parameters ({requested_bits} bits): {e}"
@@ -342,17 +352,18 @@ impl KMS {
             }
             CryptographicAlgorithm::DSA => {
                 let requested_bits = attributes.cryptographic_length.unwrap_or(3072);
-                let allowed: Vec<i32> = vec![2048, 3072];
-                if !allowed.contains(&requested_bits) {
-                    return Err(KmsError::NotSupported(format!(
-                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
-                    )));
-                }
-                let dsa_bits = u32::try_from(requested_bits).map_err(|e| {
+                let allowed = Self::allowed_dsa_key_sizes_bits();
+                let requested_bits_u32 = u32::try_from(requested_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Requested DSA bit length out of range: {requested_bits}; error: {e}"
                     ))
                 })?;
+                if !allowed.contains(&requested_bits_u32) {
+                    return Err(KmsError::NotSupported(format!(
+                        "unsupported DSA cryptographic_length {requested_bits}; allowed: {allowed:?}"
+                    )));
+                }
+                let dsa_bits = requested_bits_u32;
                 let dsa = openssl::dsa::Dsa::generate(dsa_bits).map_err(|e| {
                     KmsError::NotSupported(format!(
                         "Failed to generate DSA parameters ({requested_bits} bits): {e}"

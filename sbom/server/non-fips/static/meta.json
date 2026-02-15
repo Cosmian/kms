@@ -3,18 +3,18 @@
   "build": {
     "variant": "non-fips",
     "derivation": "kms-server-non-fips-static-openssl",
-    "output_path": "/nix/store/m50237gj93rj6f5kfh1pkh8kax83ld3v-cosmian-kms-server-rebuild-1-5.14.1",
-    "timestamp": "2026-01-04T08:22:04Z",
+    "output_path": "/nix/store/i6p0g1sab5lvclvvp1a1vi8ji4z371z6-cosmian-kms-server-rebuild-1-5.16.0",
+    "timestamp": "2026-02-15T13:46:35Z",
     "generator": {
       "tool": "sbomnix",
       "version": "1.7.3"
     }
   },
-  "component_count": 10,
-  "vulnerability_count": 181,
+  "component_count": 5,
+  "vulnerability_count": 305,
   "notes": [
     "OpenSSL is statically linked in the binary",
     "All dependencies are from Nix store with pinned versions",
-    "SBOM includes runtime dependencies only"
+    "SBOM reflects the exact Nix build output (derivation closure)"
   ]
 }

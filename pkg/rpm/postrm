@@ -2,8 +2,12 @@
 # RPM post-remove script for Cosmian KMS
 set -e
 
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload || true
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
 exit 0

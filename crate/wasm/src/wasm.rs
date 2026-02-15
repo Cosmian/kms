@@ -1670,6 +1670,32 @@ pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue,
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
 
+/// Same as `get_attributes_ttlv_request`, but can force requesting tags.
+///
+/// Some callers (notably UI/WASM) rely on tags being returned, but the server may not include
+/// `Tag::Tag` unless explicitly requested.
+#[wasm_bindgen]
+pub fn get_attributes_ttlv_request_with_options(
+    unique_identifier: String,
+    force_tags: bool,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+
+    let attribute_reference = if force_tags {
+        Some(vec![AttributeReference::Standard(Tag::Tag)])
+    } else {
+        None
+    };
+
+    let request = GetAttributes {
+        unique_identifier: Some(unique_identifier),
+        attribute_reference,
+    };
+
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
 #[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn parse_get_attributes_ttlv_response(

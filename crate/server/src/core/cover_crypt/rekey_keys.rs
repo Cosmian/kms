@@ -11,14 +11,16 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::{
         crypto::cover_crypt::{
-            attributes::{RekeyEditAction, deserialize_access_policy},
+            attributes::RekeyEditAction,
             master_keys::{
                 KmipKeyUidObject, cc_master_keypair_from_kmip_objects,
                 kmip_objects_from_cc_master_keypair,
             },
             user_key::UserDecryptionKeysHandler,
         },
-        reexport::cosmian_cover_crypt::{MasterPublicKey, MasterSecretKey, api::Covercrypt},
+        reexport::cosmian_cover_crypt::{
+            AccessPolicy, MasterPublicKey, MasterSecretKey, api::Covercrypt,
+        },
     },
 };
 use cosmian_logger::trace;
@@ -52,7 +54,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 &msk_uid,
                 async |msk, mpk| {
-                    let ap = deserialize_access_policy(&access_policy)?;
+                    let ap = AccessPolicy::parse(&access_policy)?;
                     *mpk = cover_crypt.rekey(msk, &ap)?;
                     update_all_active_usk(
                         kmip_server,
@@ -75,7 +77,7 @@ pub(crate) async fn rekey_keypair_cover_crypt(
                 owner,
                 &msk_uid,
                 async |msk, _mpk| {
-                    let ap = deserialize_access_policy(&access_policy)?;
+                    let ap = AccessPolicy::parse(&access_policy)?;
                     cover_crypt.prune_master_secret_key(msk, &ap)?;
                     update_all_active_usk(
                         kmip_server,

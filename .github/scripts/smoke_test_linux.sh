@@ -310,9 +310,26 @@ verify_openssl_runtime_version() {
     export OPENSSL_MODULES="${OPENSSL_MODULES:-$temp_dir/usr/local/cosmian/lib/ossl-modules}"
   fi
 
+  # Always run with an explicit config file to avoid host contamination.
+  # If the host has `/etc/cosmian/kms.toml` present (possibly unreadable), the binary will try to
+  # load it and ignore args/env vars, which makes `--info` unreliable during package extraction.
+  local smoke_conf_dir="$temp_dir/tmp/kms-smoketest-conf"
+  mkdir -p "$smoke_conf_dir"
+  local smoke_conf="$smoke_conf_dir/kms.toml"
+  cat >"$smoke_conf" <<EOF
+info = true
+
+# Keep all runtime state inside the extracted package temp directory
+root_data_path = "$smoke_conf_dir/root-data"
+tmp_path = "$smoke_conf_dir/tmp"
+
+# Ensure DB init succeeds without touching the host
+database_type = "sqlite"
+sqlite_path = "$smoke_conf_dir/sqlite-data"
+EOF
+
   local info_output
-  if ! info_output=$("$binary_path" --info 2>&1); then
-    # Fallback: perform a static inspection for OpenSSL version
+  if ! info_output=$("$binary_path" -c "$smoke_conf" 2>&1); then
     echo "$info_output" >&2 || true
     info "Falling back to static inspection for OpenSSL version…"
     if readelf -d "$binary_path" | grep -q 'NEEDED.*libssl\.so'; then
@@ -327,54 +344,55 @@ verify_openssl_runtime_version() {
       else
         info "✓ OpenSSL $expected_version confirmed via static inspection"
       fi
+      info "✓ OpenSSL $expected_version confirmed via static inspection"
     fi
-  else
-    if [ "$is_fips" = true ]; then
-      # In FIPS mode, --info reports the core OpenSSL version (linked runtime)
-      echo "$info_output" | grep -q "OpenSSL $expected_version" || {
-        echo "$info_output" >&2
-        error "Smoke test failed: FIPS build expected OpenSSL $expected_version in --info"
-      }
-      info "✓ OpenSSL runtime version is $expected_version"
+  fi
 
-      # Additionally confirm the packaged FIPS provider version
-      local fips_module="$temp_dir/usr/local/cosmian/lib/ossl-modules/fips.so"
-      if [ -f "$fips_module" ]; then
-        # Ensure strings command is available (from binutils)
-        if ! command -v strings >/dev/null 2>&1; then
-          error "strings command not found - binutils package may not be in nix-shell"
-        fi
-        # Capture strings output once to avoid multiple reads
-        local strings_output
-        strings_output=$(strings "$fips_module")
+  if [ "$is_fips" = true ]; then
+    # In FIPS mode, the log line reports the core OpenSSL version (linked runtime)
+    echo "$info_output" | grep -q "OpenSSL $expected_version" || {
+      echo "$info_output" >&2
+      error "Smoke test failed: FIPS build expected OpenSSL $expected_version at runtime"
+    }
+    info "✓ OpenSSL runtime version is $expected_version"
 
-        # For FIPS dynamic builds, FIPS provider should match runtime (3.1.2)
-        # For FIPS static builds, FIPS provider is 3.1.2 but runtime is 3.6.0
-        local expected_fips_version
-        if [ "$is_dynamic" = true ]; then
-          expected_fips_version="3.1.2"
-        else
-          expected_fips_version="3.1.2"
-        fi
+    # Additionally confirm the packaged FIPS provider version
+    local fips_module="$temp_dir/usr/local/cosmian/lib/ossl-modules/fips.so"
+    if [ -f "$fips_module" ]; then
+      # Ensure strings command is available (from binutils)
+      if ! command -v strings >/dev/null 2>&1; then
+        error "strings command not found - binutils package may not be in nix-shell"
+      fi
+      # Capture strings output once to avoid multiple reads
+      local strings_output
+      strings_output=$(strings "$fips_module")
 
-        # Use bash pattern matching instead of grep
-        if [[ "$strings_output" == *"$expected_fips_version"* ]]; then
-          info "✓ FIPS provider $expected_fips_version confirmed in fips.so"
-        else
-          local version_found
-          version_found=$(echo "$strings_output" | grep -E '^[0-9]+\.[0-9]' | head -1)
-          error "FIPS provider $expected_fips_version string not found in fips.so (found version: ${version_found:-none})"
-        fi
+      # For FIPS dynamic builds, FIPS provider should match runtime (3.1.2)
+      # For FIPS static builds, FIPS provider is 3.1.2 but runtime is 3.6.0
+      local expected_fips_version
+      if [ "$is_dynamic" = true ]; then
+        expected_fips_version="3.1.2"
       else
-        error "FIPS module file not found at expected location: $fips_module"
+        expected_fips_version="3.1.2"
+      fi
+
+      # Use bash pattern matching instead of grep
+      if [[ "$strings_output" == *"$expected_fips_version"* ]]; then
+        info "✓ FIPS provider $expected_fips_version confirmed in fips.so"
+      else
+        local version_found
+        version_found=$(echo "$strings_output" | grep -E '^[0-9]+\.[0-9]' | head -1)
+        error "FIPS provider $expected_fips_version string not found in fips.so (found version: ${version_found:-none})"
       fi
     else
-      echo "$info_output" | grep -q "OpenSSL $expected_version" || {
-        echo "$info_output" >&2
-        error "Smoke test failed: non-FIPS build expected OpenSSL $expected_version at runtime"
-      }
-      info "✓ OpenSSL runtime version is $expected_version"
+      error "FIPS module file not found at expected location: $fips_module"
     fi
+  else
+    echo "$info_output" | grep -q "OpenSSL $expected_version" || {
+      echo "$info_output" >&2
+      error "Smoke test failed: non-FIPS build expected OpenSSL $expected_version at runtime"
+    }
+    info "✓ OpenSSL runtime version is $expected_version"
   fi
 }
 

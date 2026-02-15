@@ -43,13 +43,14 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.15.0" } # only to be reexported, not used directly
-cosmian_kms_client = { path = "../kms_client", version = "5.15.0" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.15.0" }
+cosmian_kmip = { path = "../kmip", version = "5.16.0" } # only to be reexported, not used directly
+cosmian_kms_client = { path = "../kms_client", version = "5.16.0" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.16.0" }
 cosmian_logger = { workspace = true }
+cosmian_crypto_core = { workspace = true, default-features = false }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 leb128 = { workspace = true }
 num-format = { workspace = true }
 pem = { workspace = true }

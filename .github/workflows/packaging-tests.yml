@@ -29,20 +29,12 @@ jobs:
           - ubuntu:25.04
           - ubuntu:24.04
           - ubuntu:22.04
-          - ubuntu:20.04
-          # Cannot download artifacts using actions/download-artifact@v7 - Glibc v2.28 required
-          # - ubuntu:18.04
           # Debian stable releases within the last ~10 years
           - debian:trixie-slim # Debian 13
           - debian:bookworm-slim # Debian 12
-          - debian:bullseye-slim # Debian 11
-          - debian:buster-slim # Debian 10
-          # Cannot download artifacts using actions/download-artifact@v7 - Glibc v2.28 required
-          # - debian:stretch-slim # Debian 9
           # Rocky Linux releases
           - rockylinux/rockylinux:10
           - rockylinux/rockylinux:9
-          - rockylinux/rockylinux:8
         features: [fips, non-fips]
         link: [static, dynamic]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
@@ -54,7 +46,6 @@ jobs:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
       - name: List downloaded artifacts
-        if: ${{ matrix.container != 'rockylinux/rockylinux:8' }}
         run: find .
 
       - name: Install package
@@ -250,3 +241,58 @@ jobs:
             set -e
             exit $rc
           fi
+
+      - name: Override branding.json and verify served
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BRANDING_FILE="/usr/local/cosmian/ui/dist/branding.json"
+          if [ ! -f "$BRANDING_FILE" ]; then
+            echo "ERROR: branding file not found: $BRANDING_FILE" >&2
+            sudo find /usr/local/cosmian -maxdepth 5 -type f -name branding.json -print || true
+            exit 1
+          fi
+
+          export MARKER="CI_BRANDING_OVERRIDE_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$(date +%s)"
+          echo "Using marker: $MARKER"
+
+          # Update JSON safely (avoid brittle sed on JSON)
+          sudo env MARKER="$MARKER" python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/usr/local/cosmian/ui/dist/branding.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          marker = __import__("os").environ["MARKER"]
+          # This field is rendered on the login page; also easy to assert via /ui/branding.json
+          data["loginSubtitle"] = marker
+          path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          sudo -E systemctl restart cosmian_kms
+          sleep 3
+
+          if ! systemctl is-active --quiet cosmian_kms; then
+            echo "ERROR: cosmian_kms service is not active after restart" >&2
+            sudo systemctl status cosmian_kms --no-pager || true
+            sudo journalctl -u cosmian_kms --no-pager -n 100 || true
+            exit 1
+          fi
+
+          # Verify the served branding contains our marker (use cache-busting query param).
+          curl -fsS "http://127.0.0.1:9998/ui/branding.json?cb=${MARKER}" | tee /tmp/branding.json | grep -F "${MARKER}" >/dev/null
+
+          # Also verify at least one referenced asset URL resolves (proves theme URLs work).
+          python3 - <<'PY'
+          import json, os, subprocess
+          marker = os.environ["MARKER"]
+          with open("/tmp/branding.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+          # Prefer logos as they should exist in the packaged theme.
+          candidates = [data.get("logoLightUrl"), data.get("logoDarkUrl"), data.get("faviconUrl")]
+          url = next((u for u in candidates if isinstance(u, str) and u.startswith("/ui/")), None)
+          if not url:
+            raise SystemExit("ERROR: no /ui/... asset URL found in branding.json to validate")
+          full = f"http://127.0.0.1:9998{url}?cb={marker}"
+          subprocess.check_call(["curl", "-fsSI", full])
+          print(f"Validated asset: {full}")
+          PY

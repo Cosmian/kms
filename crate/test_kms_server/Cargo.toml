@@ -27,10 +27,10 @@ harness = false
 
 [dependencies]
 actix-server = { workspace = true }
-cosmian_kms_client = { path = "../kms_client", version = "5.15.0" }
+cosmian_kms_client = { path = "../kms_client", version = "5.16.0" }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
-], version = "5.15.0" }
+], version = "5.16.0" }
 cosmian_logger = { workspace = true }
 serde_json = { workspace = true }
 time = { workspace = true }

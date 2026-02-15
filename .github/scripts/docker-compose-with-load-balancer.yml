@@ -31,7 +31,7 @@ services:
   # If your server is TLS-only in your deployment, you can still keep this as plain HTTP
   # for local smoke tests, or update Nginx to proxy_pass https://... with cert config.
   kms1:
-    image: ghcr.io/cosmian/kms:pr-690
+    image: ${DOCKER_IMAGE_NAME}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,7 +58,7 @@ services:
       retries: 60
 
   kms2:
-    image: ghcr.io/cosmian/kms:pr-690
+    image: ${DOCKER_IMAGE_NAME}
     depends_on:
       kms1:
         condition: service_healthy
@@ -78,7 +78,7 @@ services:
       retries: 60
 
   kms3:
-    image: ghcr.io/cosmian/kms:pr-690
+    image: ${DOCKER_IMAGE_NAME}
     depends_on:
       kms1:
         condition: service_healthy
@@ -104,7 +104,7 @@ services:
       - kms2
       - kms3
     ports:
-      - 8080:8080
+      - 18080:8080
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 

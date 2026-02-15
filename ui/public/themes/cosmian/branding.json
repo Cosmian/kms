@@ -1,0 +1,22 @@
+{
+  "title": "Cosmian KMS",
+  "faviconUrl": "/ui/themes/cosmian/cropped-favicon-cosmian-32x32.png",
+  "logoAlt": "Key Management System",
+  "logoLightUrl": "/ui/themes/cosmian/Cosmian-Logo.svg",
+  "logoDarkUrl": "/ui/themes/cosmian/Cosmian-Logo-Dark.svg",
+  "loginTitle": "Cosmian KMS user interface",
+  "loginSubtitle": "",
+  "backgroundImageUrl": "/ui/themes/cosmian/login_page_background_image.png",
+  "menuTheme": "light",
+  "tokens": {
+    "light": {
+      "colorPrimary": "#e34319",
+      "colorText": "#292f52"
+    },
+    "dark": {
+      "colorPrimary": "#9e6eff",
+      "colorText": "#e4dddd",
+      "colorBgBase": "#2a2d30"
+    }
+  }
+}

@@ -95,9 +95,49 @@ ensure_macos_sdk_env() {
   fi
 }
 
+# Ensure Apple SDK frameworks are linkable (important inside Nix shells).
+# In some environments, the compiler picks up headers from the Apple SDK but
+# fails to locate the corresponding frameworks at link time.
+ensure_macos_frameworks_ldflags() {
+  if [ "$(uname -s)" != "Darwin" ]; then
+    return 0
+  fi
+
+  if [ -z "${SDKROOT:-}" ] || [ ! -d "${SDKROOT}" ]; then
+    # Best-effort attempt to populate SDKROOT.
+    ensure_macos_sdk_env || true
+  fi
+
+  if [ -z "${SDKROOT:-}" ] || [ ! -d "${SDKROOT}" ]; then
+    return 0
+  fi
+
+  local frameworks_dir
+  frameworks_dir="${SDKROOT}/System/Library/Frameworks"
+  if [ ! -d "${frameworks_dir}" ]; then
+    return 0
+  fi
+
+  local fw_ldflags
+  fw_ldflags="-F${frameworks_dir} -Wl,-F,${frameworks_dir}"
+
+  if [ -n "${LDFLAGS:-}" ]; then
+    export LDFLAGS="${fw_ldflags} ${LDFLAGS}"
+  else
+    export LDFLAGS="${fw_ldflags}"
+  fi
+
+  if [ -n "${RUSTFLAGS:-}" ]; then
+    export RUSTFLAGS="-C link-arg=-F${frameworks_dir} -C link-arg=-Wl,-F,${frameworks_dir} ${RUSTFLAGS}"
+  else
+    export RUSTFLAGS="-C link-arg=-F${frameworks_dir} -C link-arg=-Wl,-F,${frameworks_dir}"
+  fi
+}
+
 # Unified nixpkgs pin (used by all scripts)
 # Keep a single source of truth for the pinned nixpkgs URL.
-export PIN_URL="https://github.com/NixOS/nixpkgs/archive/24.05.tar.gz"
+# Pin nixpkgs for a stable toolchain; Linux builds target GLIBC <= 2.34.
+export PIN_URL="https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz"
 # Backward-compatible alias used by some scripts
 export PINNED_NIXPKGS_URL="$PIN_URL"
 
@@ -206,6 +246,7 @@ init_build_env() {
   fi
 
   ensure_macos_sdk_env
+  ensure_macos_frameworks_ldflags
   export VARIANT VARIANT_NAME BUILD_PROFILE RELEASE_FLAG LINK
 }
 
@@ -320,22 +361,42 @@ _run_workspace_tests() {
     ;;
   esac
 
-  # shellcheck disable=SC2086
-  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
-
-  # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
-  # For sqlite, skip this step since all non-ignored tests already ran above
-  if [ "$KMS_TEST_DB" != "sqlite" ]; then
-    # shellcheck disable=SC2086
-    cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
+  local -a cargo_test_args
+  cargo_test_args=(--workspace --lib)
+  if [ -n "${RELEASE_FLAG:-}" ]; then
+    cargo_test_args+=("$RELEASE_FLAG")
   fi
-  cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- $test_args $test_filter
+  if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+    cargo_test_args+=("${FEATURES_FLAG[@]}")
+  fi
+  cargo_test_args+=(--)
+  cargo_test_args+=(--nocapture)
+  case "$KMS_TEST_DB" in
+  postgresql | mysql | redis-findex)
+    cargo_test_args+=(--ignored)
+    ;;
+  esac
+  if [ -n "${test_filter:-}" ]; then
+    # Split filter into tokens (Rust test name filters are space-separated here by design)
+    read -r -a _test_filter_tokens <<<"$test_filter"
+    cargo_test_args+=("${_test_filter_tokens[@]}")
+  fi
+
+  cargo test "${cargo_test_args[@]}"
 
   # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
   # For sqlite, skip this step since all non-ignored tests already ran above
   if [ "$KMS_TEST_DB" != "sqlite" ]; then
-    # shellcheck disable=SC2086
-    cargo test --workspace --lib $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --
+    local -a cargo_test_non_ignored_args
+    cargo_test_non_ignored_args=(--workspace --lib)
+    if [ -n "${RELEASE_FLAG:-}" ]; then
+      cargo_test_non_ignored_args+=("$RELEASE_FLAG")
+    fi
+    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+      cargo_test_non_ignored_args+=("${FEATURES_FLAG[@]}")
+    fi
+    cargo_test_non_ignored_args+=(--)
+    cargo test "${cargo_test_non_ignored_args[@]}"
   fi
 }
 

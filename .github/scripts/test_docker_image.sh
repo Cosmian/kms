@@ -1,6 +1,20 @@
 #!/bin/bash
 
-set -ex
+set -exuo pipefail
+
+# Prefer cargo-installed binaries if present.
+export PATH="$HOME/.cargo/bin:$PATH"
+
+cleanup() {
+    set +e
+    docker compose -f .github/scripts/docker-compose-with-conf.yml down --remove-orphans || true
+    docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down --remove-orphans || true
+    docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down --remove-orphans || true
+    docker compose -f .github/scripts/docker-compose.example.yml down --remove-orphans || true
+    docker compose -f .github/scripts/docker-compose-with-load-balancer.yml down --remove-orphans || true
+}
+
+trap cleanup EXIT
 
 # Detect FIPS vs non-FIPS from image name robustly
 # FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:* -fips (not -non-fips)
@@ -18,7 +32,10 @@ else
 fi
 
 # Config paths
-CLI_VERSION="1.5.2"
+# NOTE: keep in sync with crates.io versions that compile on CI runners.
+# cosmian_cli 1.8.0 currently fails to build due to upstream dependency version
+# skew (multiple cosmian_crypto_core versions). 1.8.1 fixes this.
+CLI_VERSION="${CLI_VERSION:-1.8.1}"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"
@@ -30,19 +47,37 @@ CLIENT_CERT="test_data/certificates/client_server/owner/owner.client.acme.com.cr
 CLIENT_KEY="test_data/certificates/client_server/owner/owner.client.acme.com.key"
 CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme.com.p12"
 
-set -ex
+# Install/ensure the desired CLI version.
+# CI runners may have no preinstalled `cosmian`, while developer machines can.
+# If the binary exists but is the wrong version, upgrade it (when cargo is available).
+COSMIAN_BIN=""
+if command -v cosmian >/dev/null 2>&1; then
+    COSMIAN_BIN="$(command -v cosmian)"
+fi
 
-# install cli (skip if already available or if cargo is not available)
-if ! command -v cosmian >/dev/null 2>&1; then
-    if command -v cargo >/dev/null 2>&1; then
-        cargo install cosmian_cli --version "$CLI_VERSION"
-    else
-        echo "Warning: cargo not available and cosmian CLI not installed. Skipping CLI installation."
+if command -v cargo >/dev/null 2>&1; then
+    current_version=""
+    if [[ -n "$COSMIAN_BIN" ]]; then
+        current_version="$($COSMIAN_BIN --version 2>/dev/null | awk '{print $2}' || true)"
+    fi
+
+    if [[ "$current_version" != "$CLI_VERSION" ]]; then
+        cargo install cosmian_cli --locked --version "$CLI_VERSION" --force
+        hash -r
+        COSMIAN_BIN="$(command -v cosmian)"
+    fi
+else
+    if [[ -z "$COSMIAN_BIN" ]]; then
+        echo "Warning: cargo not available and cosmian CLI not installed. Skipping CLI-dependent tests."
         echo "Some tests may be skipped."
     fi
 fi
 
-cosmian --version
+if [[ -z "$COSMIAN_BIN" ]]; then
+    echo "Warning: cosmian CLI not available; skipping CLI-dependent tests."
+else
+    $COSMIAN_BIN --version
+fi
 
 # update cli conf
 mkdir -p ~/.cosmian
@@ -68,9 +103,7 @@ ssl_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
 
 # Ensure any previous stacks are down to avoid port conflicts
-docker compose -f .github/scripts/docker-compose-with-conf.yml down || true
-docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down || true
-docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down || true
+cleanup
 
 # Run docker containers
 docker compose -f "$COMPOSE_FILE" up -d
@@ -171,8 +204,12 @@ test_tls_failure() {
 }
 
 # Create symmetric keys
-cosmian -c "$CONFIG" kms sym keys create
-cosmian -c "$TLS_CONFIG" kms sym keys create
+if [[ -n "$COSMIAN_BIN" ]]; then
+    $COSMIAN_BIN -c "$CONFIG" kms sym keys create
+    $COSMIAN_BIN -c "$TLS_CONFIG" kms sym keys create
+else
+    echo "Skipping key creation: cosmian CLI not available"
+fi
 
 # Test TLS on HTTP server with default options
 openssl_test "127.0.0.1:9999" "tls1_2"
@@ -222,3 +259,40 @@ docker compose -f .github/scripts/docker-compose-with-conf.yml logs --tail=120 |
 
 # Tear down config-based stack
 docker compose -f .github/scripts/docker-compose-with-conf.yml down || true
+
+# === Example docker-compose smoke test ===
+# Run the minimal example compose to ensure a default container boots.
+echo "Running example compose test (.github/scripts/docker-compose.example.yml)"
+docker compose -f .github/scripts/docker-compose.example.yml down || true
+docker compose -f .github/scripts/docker-compose.example.yml up -d --force-recreate --remove-orphans
+
+# Probe server on 9998 (health if available, else a KMIP probe)
+for i in {1..30}; do
+    if curl -s -f http://127.0.0.1:9998/health >/dev/null 2>&1; then
+        echo "Example-compose KMS server on port 9998 is ready (/health)"
+        break
+    fi
+    if curl -s -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:9998/kmip/2_1 >/dev/null 2>&1; then
+        echo "Example-compose KMS server on port 9998 is ready (/kmip probe)"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Example-compose KMS server on port 9998 failed to start"
+        docker compose -f .github/scripts/docker-compose.example.yml ps -a || true
+        docker compose -f .github/scripts/docker-compose.example.yml logs || true
+        exit 1
+    fi
+    sleep 1
+done
+
+docker compose -f .github/scripts/docker-compose.example.yml logs --tail=120 || true
+docker compose -f .github/scripts/docker-compose.example.yml down || true
+
+# === Load balancer shutdown behavior test ===
+echo "Running load balancer shutdown test (.github/scripts/test_lb_kms_shutdown.sh)"
+LB_PORT="18080"
+export LB_PORT
+bash .github/scripts/test_lb_kms_shutdown.sh
+
+# Ensure LB stack is cleaned up after the test
+docker compose -f .github/scripts/docker-compose-with-load-balancer.yml down || true

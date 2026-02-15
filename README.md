@@ -20,10 +20,10 @@ The **Cosmian KMS** presents some unique features, such as:
 - [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
-- MongoDB (./documentation/docs/mongodb.md)
-- Mysql Enterprise (./documentation/docs/mysql.md)
+- [MongoDB](./documentation/docs/mongodb.md)
+- [Mysql Enterprise](./documentation/docs/mysql.md)
 - Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
-- Percona Postgresql DB (./documentation/docs/percona.md)
+- [Percona Postgresql DB](./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
 - a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
@@ -34,15 +34,13 @@ The **Cosmian KMS** is both a Key Management System and a Public Key Infrastruct
 
 The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
 
-As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use their public keys to encrypt and decrypt data.
-Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor,
-to be used in various applications, such as in _S/MIME_ encrypted emails.
+As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use their public keys to encrypt and decrypt data. Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor, to be used in various applications, such as in _S/MIME_ encrypted emails.
 
 The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.com/key_management_system/).
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.15.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.16.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -114,9 +112,9 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - FIPS 140-3 mode on by default; switch to `--features non-fips` for extended algorithms.
 - Reproducible builds via Nix; release artifacts ship with SHA-256 checksums.
 - Software Bill of Materials (SBOM) and vulnerability reports:
-    - CycloneDX: [`sbom/bom.cdx.json`](sbom/bom.cdx.json)
-    - SPDX: [`sbom/bom.spdx.json`](sbom/bom.spdx.json)
-    - Vulnerabilities: [`sbom/vulns.csv`](sbom/vulns.csv)
+    - CycloneDX: [`sbom/bom.cdx.json`](sbom/server/fips/static/bom.cdx.json)
+    - SPDX: [`sbom/bom.spdx.json`](sbom/server/fips/static/bom.spdx.json)
+    - Vulnerabilities: [`sbom/vulns.csv`](sbom/server/fips/static/vulns.csv)
     - Overview: [`sbom/README.md`](sbom/README.md)
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
@@ -177,6 +175,29 @@ The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organiz
 - **`server_database`** - Database abstraction layer supporting SQLite, PostgreSQL, MySQL, and Redis
 - **`access`** - Permission and access control management system
 
+Cosmian-only crate dependencies for the server crate (`crate/server`):
+
+```mermaid
+flowchart TD
+    server[server]
+
+    server --> access
+    server --> base_hsm
+    server --> server_database
+    base_hsm --> hsm_loaders
+
+    hsm_loaders --> smartcardhsm
+    hsm_loaders --> crypt2pay
+    hsm_loaders --> proteccio
+    hsm_loaders --> softhsm2
+    hsm_loaders --> utimaco
+    hsm_loaders --> other
+
+    server_database --> kmip
+    server_database --> crypto
+    server_database --> interfaces
+```
+
 #### 🧑‍💻 Client Libraries
 
 - **`kms_client`** - High-level Rust client library for KMS server communication
@@ -229,6 +250,28 @@ Two paths are supported:
 - For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
+
+### GLIBC Support
+
+The following table shows the GLIBC versions and distribution support for **Cosmian KMS**:
+
+| Distribution    | Version            | GLIBC | Support | End of Support |
+| --------------- | ------------------ | ----- | ------- | -------------- |
+| **Debian**      | 13 (Trixie)        | 2.40  | ✅      | TBD            |
+| **Debian**      | 12 (Bookworm)      | 2.36  | ✅      | ~2028 (LTS)    |
+| **Debian**      | 11 (Bullseye)      | 2.31  | ❌      | ~2026 (LTS)    |
+| **Debian**      | 10 (Buster)        | 2.28  | ❌      | Jun 2024 (LTS) |
+| **Debian**      | 9 (Stretch)        | 2.24  | ❌      | Jun 2022 (LTS) |
+| **Rocky Linux** | 10                 | 2.40  | ✅      | TBD            |
+| **Rocky Linux** | 9                  | 2.34  | ✅      | May 2032       |
+| **Rocky Linux** | 8                  | 2.28  | ❌      | May 2029       |
+| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅      | Jan 2026       |
+| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅      | Apr 2029       |
+| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅      | Apr 2027       |
+| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌      | Apr 2025       |
+| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌      | Apr 2023       |
+
+**Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
 
 ### OpenSSL prerequisite
 

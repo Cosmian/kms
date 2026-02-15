@@ -110,10 +110,12 @@ nav:
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
       - User interface: ui.md
+      - UI branding: ui_branding.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:
           - Algorithms: algorithms.md
+          - KMIP algorithm policy: kmip_policy.md
           - Benchmarks:
               - Standard algorithms: benchmarks.md
               - DKE and Google CSE: google_dke_benchmarks.md

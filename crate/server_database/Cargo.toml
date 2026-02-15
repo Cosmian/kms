@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.15.0"
+version = "5.16.0"
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
@@ -30,12 +30,12 @@ interop = ["cosmian_kmip/interop"]
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.15.0" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.15.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.15.0" }
-cosmian_findex = { version = "8.0", optional = true }
+cosmian_kmip = { path = "../kmip", version = "5.16.0" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.16.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.16.0" }
+cosmian_findex = { version = "8.0.2", optional = true }
 cosmian_logger = { workspace = true }
-cosmian_sse_memories = { version = "8.0", optional = true }
+cosmian_sse_memories = { version = "8.0.2", optional = true }
 lru = { workspace = true }
 num_cpus = { workspace = true }
 rawsql = "0.1"

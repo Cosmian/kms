@@ -51,7 +51,7 @@ interop = ["cosmian_kms_server_database/interop"]
 
 [dependencies]
 actix-cors = "0.6"
-actix-files = "0.6.6"
+actix-files = "0.6.10"
 actix-identity = "0.6"
 actix-rt = { workspace = true }
 actix-session = { version = "0.8", features = ["cookie-session"] }
@@ -70,15 +70,15 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.15.0" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.15.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.15.0" }
+cosmian_kms_access = { path = "../access", version = "5.16.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.16.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.16.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.15.0" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.16.0" }
 dotenvy = "0.15"
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
@@ -90,7 +90,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.15.0" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.16.0" }
 reqwest = { workspace = true, features = [
     # Remove "default" which includes rustls
     "json",
@@ -99,8 +99,8 @@ reqwest = { workspace = true, features = [
 ] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.15.0" }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.15.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.16.0" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.16.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -108,15 +108,15 @@ tokio = { workspace = true, features = ["full"] }
 toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.15.0" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.16.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.15.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.15.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.16.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.16.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
 
@@ -140,15 +140,12 @@ changelog = "../../CHANGELOG.md"
 section = "security"
 priority = "optional"
 depends = ""
+conflicts = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
+replaces = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
 assets = [
     [
-        "ui_non_fips/dist/*",
+        "../../ui_non_fips/dist/**/*",
         "usr/local/cosmian/ui/dist/",
-        "644",
-    ],
-    [
-        "ui_non_fips/dist/assets/*",
-        "usr/local/cosmian/ui/dist/assets/",
         "644",
     ],
     [
@@ -180,13 +177,8 @@ systemd-units = [
 features = []
 assets = [
     [
-        "ui/dist/*",
+        "../../ui/dist/**/*",
         "usr/local/cosmian/ui/dist/",
-        "644",
-    ],
-    [
-        "ui/dist/assets/*",
-        "usr/local/cosmian/ui/dist/assets/",
         "644",
     ],
     [
@@ -230,13 +222,8 @@ depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
     [
-        "ui/dist/*",
+        "../../ui/dist/**/*",
         "usr/local/cosmian/ui/dist/",
-        "500",
-    ],
-    [
-        "ui/dist/assets/*",
-        "usr/local/cosmian/ui/dist/assets/",
         "500",
     ],
     [
@@ -289,13 +276,8 @@ depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
     [
-        "ui_non_fips/dist/*",
+        "../../ui_non_fips/dist/**/*",
         "usr/local/cosmian/ui/dist/",
-        "500",
-    ],
-    [
-        "ui_non_fips/dist/assets/*",
-        "usr/local/cosmian/ui/dist/assets/",
         "500",
     ],
     [
@@ -338,8 +320,7 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
-    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "644" },
+    { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
     { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
@@ -354,8 +335,7 @@ require-sh = true
 license = "BUSL-1.1"
 assets = [
     # Use FIPS UI assets for the FIPS variant
-    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
-    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "644" },
+    { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
     { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
@@ -374,8 +354,7 @@ features = []
 license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    { source = "ui/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "ui/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
     { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
@@ -396,8 +375,7 @@ features = []
 license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    { source = "ui_non_fips/dist/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "ui_non_fips/dist/assets/*", dest = "/usr/local/cosmian/ui/dist/assets/", mode = "500" },
+    { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },

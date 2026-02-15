@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_kms_client::{
     KmsClient,
     reexport::cosmian_kms_client_utils::import_utils::{ImportKeyFormat, KeyUsage},
@@ -30,7 +31,7 @@ pub struct ImportKekAction {
 }
 
 impl ImportKekAction {
-    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<()> {
+    pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let import_action = ImportSecretDataOrKeyAction {
             key_file: self.kek_file.clone(),
             key_id: self.key_id.clone(),
@@ -45,6 +46,6 @@ impl ImportKekAction {
             wrapping_key_id: None,
         };
 
-        import_action.run(kms_client).await.map(|_| ())
+        import_action.run(kms_client).await
     }
 }

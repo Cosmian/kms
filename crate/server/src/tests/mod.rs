@@ -10,6 +10,7 @@ mod hsm;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;
+mod kmip_policy;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod locate;

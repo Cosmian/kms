@@ -27,7 +27,7 @@ wasm-pack build --target web --release --features non-fips
 
 ### Copy the WASM Package
 
-Then copy the generated `pkg` directory into the React app's source tree:
+Then copy the generated `pkg` directory into the React app's source tree (optional if you use `pnpm build`, see below):
 
 ```bash
 mkdir ../../ui/src/wasm/
@@ -72,6 +72,13 @@ To build the production-ready UI:
 ```bash
 pnpm run build
 ```
+
+This command now automatically:
+
+- Builds the WASM package from `crate/wasm` (via `wasm-pack`)
+- Copies the generated `pkg` into `ui/src/wasm/pkg`
+
+So the manual "Build the WASM Package" / "Copy the WASM Package" steps are only needed if you want to build WASM separately.
 
 This will generate a `dist` directory containing all static assets.
 
