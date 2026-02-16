@@ -17,6 +17,7 @@ StandardOutput=journal+console
 # Runtime directories (created automatically by systemd)
 StateDirectory=cosmian
 LogsDirectory=cosmian
+WorkingDirectory=/var/lib/cosmian
 
 # Hardening: Filesystem protections
 ProtectSystem=strict
