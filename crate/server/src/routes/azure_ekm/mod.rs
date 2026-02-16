@@ -22,12 +22,6 @@ pub(crate) mod error;
 pub(crate) mod handlers;
 pub(crate) mod models;
 
-// /// The proxy is expected to respond to API calls within 250 milliseconds. If Managed HSM
-// /// does not receive a response within this period, it will time out.
-// /// This timeout is only set on the wrap/unwrap endpoints, since they can take time, in order to avoid
-// /// wasteful computing.
-// const AZURE_EKM_TIMEOUT_MS: u64 = 250;
-
 /// List of API versions supported by this implementation
 pub(crate) const SUPPORTED_API_VERSIONS: [&str; 1] = [
     "0.1-preview",

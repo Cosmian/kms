@@ -364,11 +364,10 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
             None,
         )
         .await?;
-    let key_id_public = create_keys.public_key_unique_identifier.to_string();
     let key_id_private = create_keys.private_key_unique_identifier.to_string();
     warn!(
-        "Created RSA key pair with Public Key ID: {} and Private Key ID: {}",
-        key_id_public, key_id_private
+        "Created RSA key pair with Private Key ID: {}",
+        key_id_private
     );
 
     let mut rng = CsRng::from_entropy();
@@ -387,7 +386,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         value: URL_SAFE_NO_PAD.encode(&valid_random_plaintext),
     };
 
-    let wrap_response = wrap_key_handler(&kms, &key_id_public, owner, wrap_request)
+    let wrap_response = wrap_key_handler(&kms, &key_id_private, owner, wrap_request)
         .await
         .unwrap();
 

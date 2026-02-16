@@ -14,7 +14,7 @@ The Cosmian KMS implementation follows and implements the Microsoft EKM Proxy AP
 - [Getting started](#getting-started)
   - [Azure Managed HSM Setup](#azure-managed-hsm-setup)
   - [Cosmian KMS setup](#cosmian-kms-setup)
-    - [TLS Configuration](#tls-configuration)
+    - [mTLS Configuration](#mtls-configuration)
     - [Azure EKM Configuration](#azure-ekm-configuration)
 - [Testing the integration](#testing-the-integration)
 <!-- TOC -->
@@ -58,7 +58,7 @@ The following diagram illustrates a possible use case where Cosmian KMS acts as 
 ![Sequence diagram: Using an Azure Service with keys saved on customer's infrastructure](sequence.svg)
 
 <!--
-Keep this comment in case you need to redraw or edit the diagram in the future
+Mermaid chart of sequence diagram
 
 sequenceDiagram
     participant Azure as Azure Service -<br/>(must support CMK)
@@ -111,6 +111,7 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 | Wrap Key         | POST   | /azureekm/[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
 | Unwrap Key       | POST   | /azureekm/[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
 
+
 ### Supported algorithms
 
 | Algorithm    | Key Type | Description                          |
@@ -118,6 +119,8 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 | A256KW       | AES-256  | AES Key Wrap (RFC 3394)              |
 | A256KWP      | AES-256  | AES Key Wrap with Padding (RFC 5649) |
 | RSA-OAEP-256 | RSA      | RSA-OAEP using SHA-256 and MGF1      |
+
+> **⚠️ Notice:** For RSA operations, always use the **private key reference** as `{key-name}` in **all** endpoints, including wrap operations. The KMS will automatically derive and use the associated public key for encryption (wrap) operations. Passing the public key ID might lead to errors.
 
 ## Getting started
 
@@ -127,7 +130,7 @@ You must have an Azure Managed HSM Pool already created and activated in your Az
 
 Once the configuration is done, you will need the root CA certificate that the Azure Managed HSM uses for client authentication. This certificate will be configured in Cosmian KMS to validate incoming mTLS connections.
 
-Save this as **`mhsm-root-ca.pem`** - We will need it in the next step.
+Let's save the root CA as **`mhsm-root-ca.pem`** - We will need it in the next step.
 
 ### Cosmian KMS setup
 
@@ -139,8 +142,9 @@ Environment variables can also be used for all the configurations below.
 
 **The following guide will consider running Cosmian KMS on confidential VM in non-FIPS mode.**
 
-#### TLS Configuration
+#### mTLS Configuration
 Configure mutual TLS authentication to accept connections from Azure Managed HSM by adding of editing to following lines in your configuration file:
+For detailed information about TLS client certificate authentication, see the [TLS Client Certificate configuration guide](../../configurations.md#tls-client-cert).
 
 ```toml
 [tls]
@@ -207,9 +211,8 @@ For testing purposes or for debugging, you can temporarily disable client authen
 # clients_ca_cert_file = "/etc/cosmian/mhsm-root-ca.pem"
 
 [azure_ekm_config]
-# chor change to false
+# change to false
 # azure_ekm_disable_client_auth = false
-
 ```
 
 Restart the KMS server:
@@ -230,7 +233,6 @@ curl -X POST "https://ekm.yourdomain.com/azureekm/cosmian0/info?api-version=0.1-
       "pool_name": "test-pool"
     }
   }'
-
 ```
 
 Expected response (if you used the config above):
