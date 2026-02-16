@@ -133,9 +133,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cosmian_kms_server::config::{
-        AzureEkmConfig,ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, LoggingConfig,
-        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
-        WorkspaceConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
+        LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
+        UiConfig, WorkspaceConfig,
     };
 
     #[cfg(feature = "non-fips")]
@@ -320,6 +320,8 @@ rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 ansi_colors = false
+
+[kmip.allowlists]
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
