@@ -3,7 +3,9 @@
 use actix_web::{HttpResponse, web::Data};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_2_1::kmip_types::KeyFormatType,
     kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial},
         kmip_objects::Object,
@@ -14,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
 };
-use num_bigint_dig::BigInt;
+use cosmian_logger::trace;
 use std::sync::Arc;
 use zeroize::Zeroizing;
 
@@ -32,6 +34,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::manual_let_else)] // debug
 pub(crate) async fn get_key_metadata_handler(
     key_name: String,
     user: String,
@@ -73,7 +76,7 @@ pub(crate) async fn get_key_metadata_handler(
                                 .into())
                             }
                         }
-                        CryptographicAlgorithm::RSA => Ok({
+                        CryptographicAlgorithm::RSA => {
                             if !SUPPORTED_RSA_LENGTHS.contains(&key_length) {
                                 return Ok(AzureEkmErrorReply::operation_not_allowed(
                                     &format!(
@@ -85,54 +88,29 @@ pub(crate) async fn get_key_metadata_handler(
                             }
                             let key_material = key_block.key_material()?;
 
-                            let modulus;
-                            let public_exponent: Box<BigInt>; // solves ownership issues - strongly typed on purpose
-
-                            match key_material {
-                                KeyMaterial::TransparentRSAPublicKey {
-                                    modulus: m,
-                                    public_exponent: pe,
-                                } => {
-                                    modulus = m;
-                                    public_exponent = pe.clone();
-                                }
+                            let (mod_bytes, exp_bytes) = match key_material {
+                                // In the best case, the private key contains both modulus and public exponent, and we can directly return them
                                 KeyMaterial::TransparentRSAPrivateKey {
                                     modulus: m,
-                                    public_exponent: pe,
+                                    public_exponent: Some(pe),
                                     ..
-                                } => {
-                                    modulus = m;
-                                    let pub_exp = if let Some(exp) = pe {
-                                        exp.clone()
-                                    } else {
-                                        // Fetch and store in outer scope
-                                        // This function is not called in the other branches, which makes the cloning
-                                        // mandatory - I do not think there's a more efficient way to this
-                                        // TODO(review): This fallback mechanism is not explicitly mentioned in spec, and it's odd
-                                        // that the private key would not have the public exponent stored - double check this behavior...
-                                        get_public_exponent_from_linked_key(key_block, &user, &kms)
-                                            .await?
-                                    };
-                                    public_exponent = pub_exp;
-                                }
+                                } => (m.to_bytes_be().1, pe.to_bytes_be().1),
+                                // However, like in the ms dke route, we will most likely fallback to fetching them from the associated public key
                                 _ => {
-                                    return Err(KmsError::ServerError(
-                                        "RSA key has missing metadata parameters".to_owned(),
-                                    ));
+                                    get_rsa_key_metadata_from_public_key(&kms, &key_name, &user)
+                                        .await?
                                 }
-                            }
+                            };
 
-                            let modulus_bytes = modulus.to_bytes_be().1; // .1 to skip sign
-                            let exponent_bytes = public_exponent.to_bytes_be().1;
+                            let n_base64url = URL_SAFE_NO_PAD.encode(&mod_bytes);
+                            let e_base64url = URL_SAFE_NO_PAD.encode(&exp_bytes);
 
-                            let n_base64url = URL_SAFE_NO_PAD.encode(&modulus_bytes);
-                            let e_base64url = URL_SAFE_NO_PAD.encode(&exponent_bytes);
-                            HttpResponse::Ok().json(KeyMetadataResponse::rsa(
+                            Ok(HttpResponse::Ok().json(KeyMetadataResponse::rsa(
                                 key_length,
                                 n_base64url,
                                 e_base64url,
-                            ))
-                        }),
+                            )))
+                        }
                         _ => Err(KmsError::ServerError(format!(
                             "Unsupported key algorithm: {algorithm:?}. Only AES and RSA are supported"
                         ))),
@@ -151,6 +129,52 @@ pub(crate) async fn get_key_metadata_handler(
             // Otherwise, it's an internal error
             Ok(AzureEkmErrorReply::internal_error(format!("Failed to retrieve key: {e}")).into())
         }
+    }
+}
+
+/// Extract RSA public key metadata (modulus and exponent) for Azure EKM response
+async fn get_rsa_key_metadata_from_public_key(
+    kms: &KMS,
+    key_name: &str,
+    user: &str,
+) -> KResult<(Vec<u8>, Vec<u8>)> {
+    let public_key_name = format!("{key_name}_pk");
+    trace!(
+        "Fetching public key: {public_key_name} and attempting to extract RSA modulus and public exponent from key material"
+    );
+    let public_key_response = kms
+        .get(
+            Get {
+                unique_identifier: Some(UniqueIdentifier::TextString(public_key_name.clone())),
+                key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
+                key_wrap_type: Some(KeyWrapType::NotWrapped),
+                ..Default::default()
+            },
+            user,
+        )
+        .await
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to retrieve public key {public_key_name}: {e}"
+            ))
+        })?;
+
+    let pub_key_block = public_key_response.object.key_block()?;
+    let key_material = pub_key_block.key_material()?;
+
+    match key_material {
+        KeyMaterial::TransparentRSAPublicKey {
+            modulus,
+            public_exponent,
+        } => {
+            let mod_bytes = modulus.to_bytes_be().1;
+            let exp_bytes = public_exponent.to_bytes_be().1;
+
+            Ok((mod_bytes, exp_bytes))
+        }
+        _ => Err(KmsError::ServerError(
+            "Public key does not contain RSA public key material".to_owned(),
+        )),
     }
 }
 
@@ -350,7 +374,7 @@ async fn wrap_with_rsa(
     correlation_id: String, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     let encrypt_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(format!("{key_name}_pk"))),
         cryptographic_parameters: Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
@@ -361,8 +385,6 @@ async fn wrap_with_rsa(
         correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
-
-    // let rep = kms.
 
     let response = kms.encrypt(encrypt_request, user).await?;
 
@@ -490,6 +512,7 @@ async fn unwrap_with_rsa(
 }
 
 /// If the public exponent is missing from the private key, fetch it from a linked RSA public key
+#[allow(dead_code)]
 async fn get_public_exponent_from_linked_key(
     key_block: &KeyBlock,
     user: &str,
