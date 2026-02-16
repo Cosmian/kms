@@ -174,7 +174,6 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
             );
         }
     }
-    // TODO(review): propose any other cases that might have been forgotten
     Ok(())
 }
 
