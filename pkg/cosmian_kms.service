@@ -79,13 +79,10 @@ SystemCallFilter=~@debug
 SystemCallFilter=~@module
 SystemCallFilter=~@mount
 SystemCallFilter=~@obsolete
-SystemCallFilter=~@privileged
 SystemCallFilter=~@raw-io
 SystemCallFilter=~@reboot
-SystemCallFilter=~@resources
 SystemCallFilter=~@swap
 SystemCallFilter=~ptrace
-SystemCallFilter=~madvise
 
 # Hardening: Network restrictions
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
