@@ -208,6 +208,11 @@ impl Default for KmipAllowlistsConfig {
             CryptographicAlgorithm::SHAKE256,
             // Configurable KEM (PQC/hybrid KEM selection at runtime).
             CryptographicAlgorithm::ConfigurableKEM,
+            // ML-KEM (post-quantum lattice-based KEM) variants used as the inner algorithm
+            // inside ConfigurableKEM requests.
+            CryptographicAlgorithm::MLKEM_512,
+            CryptographicAlgorithm::MLKEM_768,
+            CryptographicAlgorithm::MLKEM_1024,
         ];
 
         #[cfg(not(feature = "non-fips"))]

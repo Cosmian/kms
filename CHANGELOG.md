@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.16.1] - 2026-02-15
+
+### 🐛 Bug Fixes
+
+- Add MLKEM algorithms to the predefined DEFAULT KMIP policy
+
 ## [5.16.0] - 2026-02-04
 
 ### 🚀 Features
@@ -63,10 +69,10 @@ All notable changes to this project will be documented in this file.
 - Upgrade OpenSSL to 3.6.0 but keep 3.1.2 for FIPS crypto provider [#667](https://github.com/Cosmian/kms/pull/667)
     - Summary of changes:
 
-      | OpenSSL Linkage | FIPS | Non‑FIPS |
-      | --- | --- | --- |
-      | Static | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers |
-      | Dynamic | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
+      | OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
+      | --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
+      | Static          | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers    |
+      | Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
 
 - Provide /health endpoint [#690](https://github.com/Cosmian/kms/pull/690)
 - Add k256 (RFC6979) curve for sign/verify for non-fips builds [#671](https://github.com/Cosmian/kms/pull/671)
