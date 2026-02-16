@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig,ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
