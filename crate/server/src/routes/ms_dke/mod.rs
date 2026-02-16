@@ -8,14 +8,10 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{HashingAlgorithm, KeyWrapType, PaddingMethod},
+    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, PublicKey},
-        kmip_operations::{Decrypt, Get},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
-        },
+        kmip_operations::Decrypt,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
 use cosmian_logger::{info, trace};
@@ -23,7 +19,9 @@ use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{core::KMS, kms_bail, kms_error, result::KResult};
+use crate::{
+    core::KMS, kms_error, result::KResult, routes::utils::get_rsa_key_metadata_from_public_key,
+};
 
 #[derive(Serialize, Debug)]
 pub enum KeyType {
@@ -127,65 +125,42 @@ async fn internal_get_key(
         .ok_or_else(|| kms_error!("MS DKE: The MS DKE service URL is not configured"))?;
     let mut dke_service_url = Url::parse(dke_service_url)
         .map_err(|_e| kms_error!("MS DKE: Invalid MS DKE Service URL: {}", dke_service_url))?;
-    let op = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(
-            serde_json::to_string(&vec![key_tag, "_pk"]).map_err(|e| kms_error!(e))?,
-        )),
-        key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
-        key_wrap_type: Some(KeyWrapType::NotWrapped),
-        key_compression_type: None,
-        key_wrapping_specification: None,
-    };
-    let resp = kms.get(op, &user).await?;
-    match resp.object {
-        Object::PublicKey(PublicKey { key_block, .. }) => {
-            let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()
-            else {
-                kms_bail!("MS DKE: The public key block does not contain the key value")
-            };
-            match key_material {
-                KeyMaterial::TransparentRSAPublicKey {
-                    modulus,
-                    public_exponent,
-                } => {
-                    let key_id = resp.unique_identifier.as_str().ok_or_else(|| {
-                        kms_error!(
-                            "MS DKE: The RSA public key does not have a text unique identifier. \
+    let unique_identifier = UniqueIdentifier::TextString(
+        serde_json::to_string(&vec![key_tag, "_pk"]).map_err(|e| kms_error!(e))?,
+    );
+    let key_id = unique_identifier.as_str().ok_or_else(|| {
+        kms_error!(
+            "MS DKE: The RSA public key does not have a text unique identifier. \
                              This is not supported"
-                        )
-                    })?;
-                    let mut existing_path = dke_service_url.path().to_owned();
-                    // remove the trailing / if any
-                    if existing_path.ends_with('/') {
-                        existing_path.pop();
-                    }
-                    dke_service_url.set_path(&format!("{existing_path}/{key_tag}/{key_id}"));
-                    Ok(KeyData {
-                        key: DkePublicKey {
-                            key_type: KeyType::RSA,
-                            modulus: STANDARD.encode(modulus.to_bytes_be().1),
-                            exponent: big_int_to_u32(public_exponent),
-                            algorithm: Algorithm::Rs256,
-                            key_id: dke_service_url.to_string(),
-                        },
-                        cache: DkePublicKeyCache {
-                            expiration: {
-                                // make the key valid for one day
-                                let now = Utc::now();
-                                let later = now + Duration::days(1);
+        )
+    })?;
+    let (modulus, public_exponent) =
+        get_rsa_key_metadata_from_public_key(kms, key_id, &user).await?;
 
-                                later.format("%Y-%m-%dT%H:%M:%S").to_string()
-                            },
-                        },
-                    })
-                }
-                _ => {
-                    kms_bail!("MS DKE: Invalid Key Material for a transparent RSA public key")
-                }
-            }
-        }
-        _ => kms_bail!("MS DKE: Invalid key type {}", resp.object_type),
+    let mut existing_path = dke_service_url.path().to_owned();
+    // remove the trailing / if any
+    if existing_path.ends_with('/') {
+        existing_path.pop();
     }
+    dke_service_url.set_path(&format!("{existing_path}/{key_tag}/{key_id}"));
+    Ok(KeyData {
+        key: DkePublicKey {
+            key_type: KeyType::RSA,
+            modulus: STANDARD.encode(modulus.to_bytes_be().1),
+            exponent: big_int_to_u32(&public_exponent),
+            algorithm: Algorithm::Rs256,
+            key_id: dke_service_url.to_string(),
+        },
+        cache: DkePublicKeyCache {
+            expiration: {
+                // make the key valid for one day
+                let now = Utc::now();
+                let later = now + Duration::days(1);
+
+                later.format("%Y-%m-%dT%H:%M:%S").to_string()
+            },
+        },
+    })
 }
 
 #[derive(Serialize, Debug)]
