@@ -16,7 +16,7 @@ The OpenSSL FIPS provider is certified under
   when used on Red Hat Enterprise Linux 9 (RHEL 9)
 
 Cosmian
-produces [pre-built Debian based Linux packages](https://package.cosmian.com/kms/5.16.0/deb/)
+produces [pre-built Debian based Linux packages](https://package.cosmian.com/kms/5.16.1/deb/)
 and docker containers of the KMS (on gcr.io).
 
 By default, the Cosmian KMS is built with FIPS compliance enabled.
