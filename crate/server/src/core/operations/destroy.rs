@@ -74,6 +74,7 @@ pub(crate) async fn recursively_destroy_object(
     let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context("Destroy")?;
+    let op_start = std::time::Instant::now();
 
     let mut count = 0;
     for uid in uids {
@@ -250,6 +251,7 @@ pub(crate) async fn recursively_destroy_object(
                                 ids_to_skip.clone(),
                             )
                             .await?;
+                            record_cascading_destroy_metrics(op_start, kms, user);
                         }
                     }
                 }
@@ -308,6 +310,7 @@ pub(crate) async fn recursively_destroy_object(
                                     private_key_id_clone, e
                                 );
                             }
+                            record_cascading_destroy_metrics(op_start, kms, user);
                         }
                     }
                 }
@@ -435,4 +438,13 @@ async fn update_as_destroyed(
     );
 
     Ok(())
+}
+
+// Record cascading destroy operations for linked objects
+fn record_cascading_destroy_metrics(op_start: std::time::Instant, kms: &KMS, user: &str) {
+    if let Some(metrics) = &kms.metrics {
+        metrics.record_kmip_operation("Destroy", user);
+        let duration = op_start.elapsed().as_secs_f64();
+        metrics.record_kmip_operation_duration("Destroy", duration);
+    }
 }
