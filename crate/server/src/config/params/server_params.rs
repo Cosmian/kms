@@ -224,7 +224,7 @@ impl ServerParams {
 
         // Invalid values are rejected above when building `kmip_policy_id`.
         let kmip_allowlists = if kmip_policy_id.as_deref() == Some("DEFAULT") {
-            crate::config::KmipAllowlistsConfig::default()
+            crate::config::KmipAllowlistsConfig::conservative()
         } else {
             conf.kmip_policy.allowlists
         };
@@ -377,32 +377,39 @@ impl fmt::Debug for ServerParams {
         }
 
         debug_struct.field("kmip_policy_id", &self.kmip_policy.policy_id);
-        if let Some(ref wl) = self.kmip_policy.allowlists.algorithms {
-            debug_struct.field("kmip_allowed_algorithms", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.hashes {
-            debug_struct.field("kmip_allowed_hashes", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.signature_algorithms {
-            debug_struct.field("kmip_allowed_signature_algorithms", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.curves {
-            debug_struct.field("kmip_allowed_curves", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.block_cipher_modes {
-            debug_struct.field("kmip_allowed_block_cipher_modes", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.padding_methods {
-            debug_struct.field("kmip_allowed_padding_methods", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.mgf_hashes {
-            debug_struct.field("kmip_allowed_mgf_hashes", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.rsa_key_sizes {
-            debug_struct.field("kmip_allowed_rsa_key_sizes", wl);
-        }
-        if let Some(ref wl) = self.kmip_policy.allowlists.aes_key_sizes {
-            debug_struct.field("kmip_allowed_aes_key_sizes", wl);
+        if self.kmip_policy.policy_id.is_none() {
+            debug_struct.field(
+                "kmip_algorithm_policy",
+                &"no restrictions — all supported algorithms are allowed",
+            );
+        } else {
+            if let Some(ref wl) = self.kmip_policy.allowlists.algorithms {
+                debug_struct.field("kmip_allowed_algorithms", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.hashes {
+                debug_struct.field("kmip_allowed_hashes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.signature_algorithms {
+                debug_struct.field("kmip_allowed_signature_algorithms", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.curves {
+                debug_struct.field("kmip_allowed_curves", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.block_cipher_modes {
+                debug_struct.field("kmip_allowed_block_cipher_modes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.padding_methods {
+                debug_struct.field("kmip_allowed_padding_methods", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.mgf_hashes {
+                debug_struct.field("kmip_allowed_mgf_hashes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.rsa_key_sizes {
+                debug_struct.field("kmip_allowed_rsa_key_sizes", wl);
+            }
+            if let Some(ref wl) = self.kmip_policy.allowlists.aes_key_sizes {
+                debug_struct.field("kmip_allowed_aes_key_sizes", wl);
+            }
         }
 
         if self.start_socket_server {

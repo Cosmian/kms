@@ -106,7 +106,7 @@ impl AesKeySize {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 #[allow(clippy::derivable_impls)]
 pub struct KmipAllowlistsConfig {
@@ -177,11 +177,11 @@ pub struct KmipAllowlistsConfig {
     pub mask_generators: Option<Vec<MaskGenerator>>,
 }
 
-#[allow(clippy::derivable_impls)]
-impl Default for KmipAllowlistsConfig {
-    fn default() -> Self {
-        // Default is a conservative, recommended allowlist aligned with ANSSI/NIST/FIPS guidance.
-        // Enforcement is controlled by `kmip.policy_id`.
+impl KmipAllowlistsConfig {
+    /// Conservative allowlists aligned with ANSSI/NIST/FIPS guidance.
+    /// Used when `policy_id = "DEFAULT"`.
+    #[must_use]
+    pub fn conservative() -> Self {
         #[cfg(feature = "non-fips")]
         let algorithms = vec![
             // AES: the default symmetric primitive for encryption/wrapping (widest KMIP support).
