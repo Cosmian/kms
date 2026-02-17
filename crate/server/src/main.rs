@@ -144,13 +144,12 @@ async fn run() -> KResult<()> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 mod tests {
-    use std::path::PathBuf;
-
     use cosmian_kms_server::config::{
         AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
         LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
         UiConfig, WorkspaceConfig,
     };
+    use std::path::PathBuf;
 
     #[cfg(feature = "non-fips")]
     #[test]
