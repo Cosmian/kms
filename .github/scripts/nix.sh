@@ -518,11 +518,10 @@ test_command() {
         --keep WITH_CURL \
         --keep WITH_DOCKER \
         --keep WITH_HSM \
-        --keep WITH_WASM \
-          --keep WITH_PYTHON \
-          --keep VARIANT \
-          --keep LINK \
-          --keep BUILD_PROFILE"
+        --keep WITH_PYTHON \
+        --keep VARIANT \
+        --keep LINK \
+        --keep BUILD_PROFILE"
 }
 
 sbom_command() {
