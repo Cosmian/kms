@@ -11,7 +11,6 @@ source "$REPO_ROOT/.github/scripts/common.sh"
 # Determine variant and link mode from CLI arguments
 VARIANT="fips"
 LINK="static"
-ENFORCE_DETERMINISTIC_HASH="${ENFORCE_DETERMINISTIC_HASH:-false}"
 while [ $# -gt 0 ]; do
   case "$1" in
   -v | --variant)
@@ -20,10 +19,6 @@ while [ $# -gt 0 ]; do
     ;;
   -l | --link)
     LINK="${2:-}"
-    shift 2 || true
-    ;;
-  --enforce-deterministic-hash | --enforce_deterministic_hash)
-    ENFORCE_DETERMINISTIC_HASH="${2:-}"
     shift 2 || true
     ;;
   *) shift ;;
@@ -40,16 +35,6 @@ case "$LINK" in
 static | dynamic) : ;;
 *)
   echo "Error: --link must be 'static' or 'dynamic'" >&2
-  exit 1
-  ;;
-esac
-
-# Normalize boolean-ish inputs
-case "${ENFORCE_DETERMINISTIC_HASH}" in
-true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
-false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
-*)
-  echo "Error: --enforce-deterministic-hash must be true/false" >&2
   exit 1
   ;;
 esac
@@ -91,7 +76,7 @@ else
   echo "Building server derivation (variant: $VARIANT) via nix-build…"
   # Preserve existing link if reuse failed; replace atomically.
   rm -f "$OUT_LINK" 2>/dev/null || true
-  nix-build -I "nixpkgs=${PIN_URL}" --arg enforceDeterministicHash "$ENFORCE_DETERMINISTIC_HASH" -A "$ATTR" -o "$OUT_LINK"
+  nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
   REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
 fi
 

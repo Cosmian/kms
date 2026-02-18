@@ -6,8 +6,6 @@
   version,
   features ? [ ], # [ "non-fips" ] or []
   rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
-  # Allow callers to bypass strict enforcement for NPM deps hash discovery
-  enforceDeterministicHash ? false,
 }:
 
 let
@@ -36,17 +34,10 @@ let
         raw = builtins.readFile hashFile;
         trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
       in
-      if enforceDeterministicHash then
-        (
-          assert trimmed != placeholder && trimmed != "";
-          trimmed
-        )
-      else
-        trimmed
-    else if enforceDeterministicHash then
-      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile)
+      assert trimmed != placeholder && trimmed != "";
+      trimmed
     else
-      placeholder;
+      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile);
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -205,17 +196,10 @@ let
           raw = builtins.readFile hashFile;
           trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
         in
-        if enforceDeterministicHash then
-          (
-            assert trimmed != placeholder && trimmed != "";
-            trimmed
-          )
-        else
-          trimmed
-      else if enforceDeterministicHash then
-        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile)
+        assert trimmed != placeholder && trimmed != "";
+        trimmed
       else
-        placeholder;
+        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile);
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;

@@ -114,6 +114,17 @@ stdenv.mkDerivation rec {
     # Configure with production openssldir path for portability
     # This hardcodes /usr/local/cosmian/lib/ssl into the library, making binaries portable
     # During build, we'll create this directory structure in $out for FIPS module generation
+    #
+    # Use fixed (non-Nix-store) paths for enginesdir and modulesdir so that
+    # these compiled-in strings are identical across machines, regardless of the
+    # OpenSSL derivation's Nix store hash.  For static builds these directories
+    # are never opened at runtime; for dynamic/FIPS builds the provider is
+    # loaded from /usr/local/cosmian/lib/ossl-modules via openssl.cnf.
+    #
+    # Note: OpenSSL 3.x Configure does NOT support --enginesdir / --modulesdir
+    # as separate flags (they are misinterpreted as CFLAGS).  Instead, we
+    # override the Makefile variables ENGINESDIR and MODULESDIR after Configure
+    # so the -D defines compiled into libcrypto use fixed paths.
     perl ./Configure \
       ${if static then "no-shared" else "shared"} \
       no-zlib \
@@ -124,12 +135,36 @@ stdenv.mkDerivation rec {
       --libdir=lib \
       ${target}
 
+    # Override compiled-in ENGINESDIR and MODULESDIR in the generated Makefile
+    # to avoid embedding Nix store paths.  The Makefile derives these from
+    # --prefix, so without this patch they would contain $out (/nix/store/...).
+    echo "Patching Makefile to use fixed ENGINESDIR / MODULESDIR..."
+    sed -i 's|^ENGINESDIR=.*|ENGINESDIR=/usr/local/cosmian/lib/engines-3|' Makefile
+    sed -i 's|^MODULESDIR=.*|MODULESDIR=/usr/local/cosmian/lib/ossl-modules|' Makefile
+    echo "ENGINESDIR=$(grep '^ENGINESDIR=' Makefile)"
+    echo "MODULESDIR=$(grep '^MODULESDIR=' Makefile)"
+
   '';
 
   buildPhase = ''
     runHook preBuild
+
+    # Apply deterministic timestamp for reproducible builds
+    export SOURCE_DATE_EPOCH=1
+    export ZERO_AR_DATE=1
+
     echo "Building OpenSSL ${version}..."
     make depend > /dev/null 2>&1
+
+    # Scrub Nix store paths from buildinf.h to ensure deterministic builds.
+    # OpenSSL generates this file during `make depend`, embedding the CC path and flags.
+    # The compiler wrapper may contain /nix/store/... paths that vary between machines.
+    if [ -f "crypto/buildinf.h" ]; then
+      echo "Scrubbing Nix store paths from crypto/buildinf.h..."
+      sed -i 's|/nix/store/[a-z0-9]\{32\}-[^/"]*|/usr/bin|g' crypto/buildinf.h
+      echo "buildinf.h after scrub:"
+      cat crypto/buildinf.h
+    fi
     # Determine job count as (cores - 1), minimum 1
     if command -v nproc >/dev/null 2>&1; then
       CORES=$(nproc)
@@ -148,6 +183,11 @@ stdenv.mkDerivation rec {
 
   installPhase = ''
     runHook preInstall
+
+    # Apply deterministic timestamp for reproducible builds
+    export SOURCE_DATE_EPOCH=1
+    export ZERO_AR_DATE=1
+
     echo "Installing OpenSSL ${version} to target paths..."
     # Determine job count as (cores - 1), minimum 1
     if command -v nproc >/dev/null 2>&1; then
@@ -162,8 +202,11 @@ stdenv.mkDerivation rec {
     JOBS=$(( CORES > 1 ? CORES - 1 : 1 ))
 
     # Install OpenSSL binaries and libraries only (not ssldirs - we'll handle that manually)
+    # Override ENGINESDIR and MODULESDIR back to $out paths for the install step,
+    # since the Makefile values were patched to fixed /usr/local/cosmian paths
+    # (needed for deterministic compile-time defines, but install must write to $out).
     echo "Running make install_sw..."
-    if ! make -j"$JOBS" install_sw; then
+    if ! make -j"$JOBS" install_sw ENGINESDIR=$out/lib/engines-3 MODULESDIR=$out/lib/ossl-modules; then
       echo "ERROR: make install_sw failed"
       exit 1
     fi
@@ -194,6 +237,9 @@ stdenv.mkDerivation rec {
         echo "Found legacy module at providers/legacy.${soExt}"
         cp "providers/legacy.${soExt}" "$out/usr/local/cosmian/lib/ossl-modules/"
         cp "providers/legacy.${soExt}" "$out/lib/ossl-modules/"
+        # Normalize timestamps for deterministic builds
+        touch --date=@1 "$out/usr/local/cosmian/lib/ossl-modules/legacy.${soExt}"
+        touch --date=@1 "$out/lib/ossl-modules/legacy.${soExt}"
       else
         echo "WARNING: legacy provider not found at providers/legacy.${soExt}"
         ls -la providers/ || true
@@ -222,74 +268,148 @@ stdenv.mkDerivation rec {
     # Ensure dev copy exists
     cp "$out/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/ssl/"
 
-    # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
-    # This ensures FIPS works during both development/testing and production
-    # For production path, use the runtime path not the build path
-    for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
-      # Determine the appropriate include path based on the config directory
-      if [ "$conf_dir" = "$out/usr/local/cosmian/lib/ssl" ]; then
-        # Production path: use runtime location
-        include_path="/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+    ${
+      if enableLegacy then
+        # Non-FIPS build (enableLegacy=true): configure default + legacy + base providers.
+        # Do NOT reference fipsmodule.cnf or fips_sect — the FIPS provider may not be
+        # present at runtime in non-FIPS deployments.
+        ''
+          echo "Configuring openssl.cnf for non-FIPS mode (default + legacy + base providers)..."
+          for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
+            # Write a clean provider configuration for non-FIPS usage
+            # Remove any leftover FIPS references from the default openssl.cnf
+            sed -i '/^# \.include fipsmodule\.cnf/d' "$conf_dir/openssl.cnf"
+            sed -i '/^\.include.*fipsmodule\.cnf/d' "$conf_dir/openssl.cnf"
+            sed -i '/^# fips = fips_sect/d' "$conf_dir/openssl.cnf"
+            sed -i '/^fips = fips_sect/d' "$conf_dir/openssl.cnf"
+
+            # Ensure providers section is enabled under [openssl_init]
+            if ! grep -q "^providers[[:space:]]*=" "$conf_dir/openssl.cnf"; then
+              awk '
+                BEGIN{in_init=0}
+                /^\[ *openssl_init *\]/{in_init=1; print; next}
+                in_init && /^[[:space:]]*#?[[:space:]]*providers[[:space:]]*=/{in_init=0}
+                in_init && NF==0{print "providers = provider_sect"; in_init=0}
+                {print}
+              ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
+            fi
+
+            # Ensure provider_sect references default + legacy + base
+            # The stock openssl.cnf may already have [provider_sect] with just `default = default_sect`
+            if grep -q "^\[ *provider_sect *\]" "$conf_dir/openssl.cnf"; then
+              # Add legacy and base references if missing
+              if ! awk 'f&&/^[[:space:]]*legacy[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /provider_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
+                sed -i '/^default = default_sect/a legacy = legacy_sect' "$conf_dir/openssl.cnf"
+              fi
+              if ! awk 'f&&/^[[:space:]]*base[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /provider_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
+                sed -i '/^legacy = legacy_sect/a base = base_sect' "$conf_dir/openssl.cnf"
+              fi
+            else
+              {
+                echo ""
+                echo "[ provider_sect ]"
+                echo "default = default_sect"
+                echo "legacy = legacy_sect"
+                echo "base = base_sect"
+              } >> "$conf_dir/openssl.cnf"
+            fi
+
+            # Activate default_sect — the stock config has `# activate = 1` commented out.
+            # When we explicitly list providers, default must be activated.
+            if grep -q "^\[ *default_sect *\]" "$conf_dir/openssl.cnf"; then
+              # Uncomment activate = 1 if it's commented
+              sed -i '/^\[ *default_sect *\]/,/^\[/ s/^# *activate *= *1/activate = 1/' "$conf_dir/openssl.cnf"
+              # If no activate line at all, add one
+              if ! awk 'f&&/^[[:space:]]*activate[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /default_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
+                sed -i '/^\[ *default_sect *\]/a activate = 1' "$conf_dir/openssl.cnf"
+              fi
+            else
+              echo "" >> "$conf_dir/openssl.cnf"
+              echo "[ default_sect ]" >> "$conf_dir/openssl.cnf"
+              echo "activate = 1" >> "$conf_dir/openssl.cnf"
+            fi
+
+            # Add legacy_sect
+            if ! grep -q "^\[ *legacy_sect *\]" "$conf_dir/openssl.cnf"; then
+              echo "" >> "$conf_dir/openssl.cnf"
+              echo "[ legacy_sect ]" >> "$conf_dir/openssl.cnf"
+              echo "activate = 1" >> "$conf_dir/openssl.cnf"
+            fi
+
+            # Add base_sect
+            if ! grep -q "^\[ *base_sect *\]" "$conf_dir/openssl.cnf"; then
+              echo "" >> "$conf_dir/openssl.cnf"
+              echo "[ base_sect ]" >> "$conf_dir/openssl.cnf"
+              echo "activate = 1" >> "$conf_dir/openssl.cnf"
+            fi
+          done
+          echo "Non-FIPS openssl.cnf configured with default + legacy + base providers"
+        ''
       else
-        # Dev/test path: use Nix store path for development
-        include_path="$conf_dir/fipsmodule.cnf"
-      fi
+        # FIPS build (enableLegacy=false): configure fips + base providers with fipsmodule.cnf
+        ''
+          echo "Configuring openssl.cnf for FIPS mode (fips + base providers)..."
+          # Enable FIPS in both locations (original $out/ssl and target usr/local/cosmian/lib/ssl)
+          for conf_dir in "$out/ssl" "$out/usr/local/cosmian/lib/ssl"; do
+            # Determine the appropriate include path based on the config directory
+            if [ "$conf_dir" = "$out/usr/local/cosmian/lib/ssl" ]; then
+              include_path="/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+            else
+              include_path="$conf_dir/fipsmodule.cnf"
+            fi
 
-      # Use absolute path for .include to ensure it finds fipsmodule.cnf reliably
-      # OpenSSL 3.x supports absolute paths in .include directives
-      sed -i "s|^# \\.include fipsmodule\\.cnf|.include $include_path|g" "$conf_dir/openssl.cnf"
+            sed -i "s|^# \\.include fipsmodule\\.cnf|.include $include_path|g" "$conf_dir/openssl.cnf"
+            sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"
 
-      # Uncomment the fips provider line
-      sed -i 's|^# fips = fips_sect|fips = fips_sect|g' "$conf_dir/openssl.cnf"
+            # Ensure providers section is enabled
+            if ! grep -q "^providers[[:space:]]*=" "$conf_dir/openssl.cnf"; then
+              awk '
+                BEGIN{in_init=0}
+                /^\[ *openssl_init *\]/{in_init=1; print; next}
+                in_init && /^[[:space:]]*#?[[:space:]]*providers[[:space:]]*=/{in_init=0}
+                in_init && NF==0{print "providers = provider_sect"; in_init=0}
+                {print}
+              ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
+            fi
 
-      # Ensure providers section is enabled and includes provider_sect
-      if ! grep -q "^providers[[:space:]]*=" "$conf_dir/openssl.cnf"; then
-        # Add providers = provider_sect under [openssl_init]
-        awk '
-          BEGIN{in_init=0}
-          /^\[ *openssl_init *\]/{in_init=1; print; next}
-          in_init && /^[[:space:]]*#?[[:space:]]*providers[[:space:]]*=/{in_init=0}
-          in_init && NF==0{print "providers = provider_sect"; in_init=0}
-          {print}
-        ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
-      fi
+            # Ensure provider_sect exists with fips + base
+            if ! grep -q "^\[ *provider_sect *\]" "$conf_dir/openssl.cnf"; then
+              {
+                echo ""
+                echo "[ provider_sect ]"
+                echo "fips = fips_sect"
+                echo "base = base_sect"
+              } >> "$conf_dir/openssl.cnf"
+            else
+              if ! awk 'f&&/^[[:space:]]*base[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /provider_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
+                awk '
+                  BEGIN{in_prov=0}
+                  /^\[ *provider_sect *\]/{in_prov=1; print; next}
+                  in_prov && NF==0{print "base = base_sect"; in_prov=0}
+                  {print}
+                ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
+              fi
+            fi
 
-      # Ensure provider_sect exists and references both fips and base
-      if ! grep -q "^\[ *provider_sect *\]" "$conf_dir/openssl.cnf"; then
-        {
-          echo "";
-          echo "[ provider_sect ]";
-          echo "fips = fips_sect";
-          echo "base = base_sect";
-        } >> "$conf_dir/openssl.cnf"
-      else
-        # If provider_sect exists, ensure base reference is present
-        if ! awk 'f&&/^[[:space:]]*base[[:space:]]*=/{found=1} /^\[/{f=($0 ~ /provider_sect/)} END{exit found?0:1}' "$conf_dir/openssl.cnf"; then
-          awk '
-            BEGIN{in_prov=0}
-            /^\[ *provider_sect *\]/{in_prov=1; print; next}
-            in_prov && NF==0{print "base = base_sect"; in_prov=0}
-            {print}
-          ' "$conf_dir/openssl.cnf" > "$conf_dir/openssl.cnf.tmp" && mv "$conf_dir/openssl.cnf.tmp" "$conf_dir/openssl.cnf"
-        fi
-      fi
+            if ! grep -q "^base = base_sect" "$conf_dir/openssl.cnf"; then
+              sed -i '/^fips = fips_sect/a base = base_sect' "$conf_dir/openssl.cnf"
+            fi
 
-      # Add base provider (for non-FIPS algorithms still needed)
-      # First check if base_sect already exists to avoid duplication
-      if ! grep -q "^base = base_sect" "$conf_dir/openssl.cnf"; then
-        sed -i '/^fips = fips_sect/a base = base_sect' "$conf_dir/openssl.cnf"
-      fi
+            if ! grep -q "^\[ base_sect \]" "$conf_dir/openssl.cnf"; then
+              echo "" >> "$conf_dir/openssl.cnf"
+              echo "[ base_sect ]" >> "$conf_dir/openssl.cnf"
+              echo "activate = 1" >> "$conf_dir/openssl.cnf"
+            fi
+          done
+          echo "FIPS openssl.cnf configured with fips + base providers"
+        ''
+    }
 
-      # Add base_sect configuration if not already present
-      if ! grep -q "^\[ base_sect \]" "$conf_dir/openssl.cnf"; then
-        echo "" >> "$conf_dir/openssl.cnf"
-        echo "[ base_sect ]" >> "$conf_dir/openssl.cnf"
-        echo "activate = 1" >> "$conf_dir/openssl.cnf"
-      fi
-    done
+    echo "OpenSSL modules and config installed to $out/usr/local/cosmian/lib/"
 
-    echo "OpenSSL FIPS modules and config installed to $out/usr/local/cosmian/lib/"
-    echo "OpenSSL FIPS config also enabled in $out/ssl/ for development/testing"
+    # Normalize all file timestamps for deterministic builds
+    echo "Normalizing timestamps for reproducibility..."
+    find "$out" -exec touch --date=@1 {} +
 
     runHook postInstall
   '';
