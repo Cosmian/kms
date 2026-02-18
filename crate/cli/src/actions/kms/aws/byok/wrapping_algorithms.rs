@@ -28,8 +28,4 @@ pub enum AwsKmsWrappingAlgorithm {
     /// Required for importing RSA private keys.
     #[clap(name = "RSA_AES_KEY_WRAP_SHA_256")]
     RsaAesKeyWrapSha256,
-
-    /// Chinese SM2 public key encryption algorithm.
-    #[clap(name = "SM2PKE")]
-    Sm2Pke,
 }
