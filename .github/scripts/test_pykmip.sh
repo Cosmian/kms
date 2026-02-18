@@ -21,9 +21,12 @@ FEATURES_FLAG=(--features non-fips)
 : "${COSMIAN_KMS_CONF:=$REPO_ROOT/scripts/kms.toml}"
 export COSMIAN_KMS_CONF
 
-# Ensure Python's ssl module can initialize: avoid custom OpenSSL config used by Rust OpenSSL.
-# Do NOT clear LD_LIBRARY_PATH; keep Nix-provided runtime consistent to avoid GLIBC mismatches.
-unset OPENSSL_CONF OPENSSL_MODULES || true
+# Note: OPENSSL_CONF and OPENSSL_MODULES are intentionally kept set here so the KMS
+# server process can find the OpenSSL providers (e.g. legacy.dylib) in the Nix store.
+# The compiled-in MODULESDIR is /usr/local/cosmian/lib/ossl-modules (production path),
+# which does not exist in the nix-shell dev environment.
+# All Python invocations below already use `env -u OPENSSL_CONF -u OPENSSL_MODULES`
+# to isolate Python's ssl module from the Rust/KMS OpenSSL configuration.
 
 # Ensure Python is available (nix.sh sets WITH_PYTHON=1 which adds python311 + virtualenv)
 require_cmd python3 "Python 3 is required. Re-run via 'bash .github/scripts/nix.sh test pykmip' so nix-shell can provide it."

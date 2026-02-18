@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
-    result::KResult,
+    openssl_providers::safe_openssl_version_info,
+    result::{KResult, KResultHelper},
 };
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::KmipResultHelper;
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
-use openssl::provider::Provider;
 use tracing::span;
 
 /// Get the default `RUST_LOG` configuration if not set
@@ -85,36 +83,24 @@ async fn run() -> KResult<()> {
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
-    info!(
-        "OpenSSL version: {}, in {}, number: {:x}",
-        openssl::version::version(),
-        openssl::version::dir(),
-        openssl::version::number()
-    );
+    let (ossl_version, ossl_dir, ossl_number) = safe_openssl_version_info();
+    if ossl_number == 0 {
+        tracing::error!(
+            "OpenSSL does not appear to be available (version number is 0). \
+             Please verify that OpenSSL is correctly installed and accessible."
+        );
+        return Err(cosmian_kms_server::error::KmsError::ServerError(
+            "OpenSSL is not available – cannot start the KMS server".to_owned(),
+        ));
+    }
+    info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
 
     // For an explanation of OpenSSL providers,
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the FIPS provider
-    #[cfg(not(feature = "non-fips"))]
-    {
-        info!("Load FIPS provider");
-        Provider::load(None, "fips")?;
-    }
-
-    // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
-    // so that we can use the legacy algorithms.
-    // particularly those used for old PKCS#12 formats
-    #[cfg(feature = "non-fips")]
-    if openssl::version::number() >= 0x3000_0000 {
-        info!("Load legacy provider");
-        Provider::try_load(None, "legacy", true)
-            .context("unable to load the openssl legacy provider")?;
-    } else {
-        // In version < 3.0, we only load the default provider
-        info!("Load default provider");
-        Provider::load(None, "default")?;
-    }
+    // Load the appropriate OpenSSL provider based on FIPS mode and OpenSSL version
+    cosmian_kms_server::openssl_providers::init_openssl_providers()
+        .context("unable to load the required OpenSSL provider")?;
 
     // Instantiate a config object using the env variables and the args of the binary
     info!("Command line / file config: {clap_config:#?}");

@@ -1317,6 +1317,7 @@ dependencies = [
  "native-tls",
  "num-bigint-dig",
  "openssl",
+ "openssl-sys",
  "opentelemetry 0.27.1",
  "opentelemetry-otlp 0.27.0",
  "opentelemetry_sdk 0.27.1",

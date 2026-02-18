@@ -63,7 +63,7 @@ UTIMACO_LIB_DIR="$(dirname "$UTIMACO_PKCS11_LIB")"
 
 # Utimaco integration test (KMS)
 
-env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
+env -u LD_PRELOAD \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
   HSM_MODEL="utimaco" \
@@ -80,7 +80,7 @@ env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
 
 # Utimaco loader test (pure Nix, scoped runtime)
 
-env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
+env -u LD_PRELOAD \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
   HSM_MODEL="utimaco" \
@@ -98,7 +98,7 @@ env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
 # Optionally run Google CSE CLI tests if environment is provided
 if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT_SECRET:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_REFRESH_TOKEN:-}" ]; then
   # shellcheck disable=SC2086
-  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES "PATH=$PATH" \
+  env -u LD_PRELOAD "PATH=$PATH" \
     LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
     HSM_MODEL="utimaco" \
     HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -114,7 +114,7 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
     -- --nocapture kmip_2_1_xml_pkcs11_m_1_21 --ignored
 
   # shellcheck disable=SC2086
-  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES "PATH=$PATH" \
+  env -u LD_PRELOAD "PATH=$PATH" \
     LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
     HSM_MODEL="utimaco" \
     HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \

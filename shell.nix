@@ -17,7 +17,8 @@
           };
     in
     pinned,
-# Explicit variant argument to avoid relying on builtins.getEnv during evaluation
+  # Explicit variant argument to avoid relying on builtins.getEnv during evaluation
+  variant ? "fips",
 }:
 
 let
@@ -46,6 +47,22 @@ let
       ;
     static = true;
   };
+  # Import non-FIPS OpenSSL 3.6.0 - will be used for non-FIPS builds
+  openssl360NonFips = import ./nix/openssl.nix {
+    inherit (pkgs)
+      stdenv
+      lib
+      fetchurl
+      perl
+      coreutils
+      ;
+    static = false;
+    version = "3.6.0";
+    enableLegacy = true;
+    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+    sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
+    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+  };
   # Shared (dynamic) build for components that require .so (e.g., SoftHSM2)
   openssl312FipsShared = import ./nix/openssl.nix {
     inherit (pkgs)
@@ -67,15 +84,16 @@ let
   softhsmDrv = import ./nix/softhsm2.nix {
     inherit pkgs;
     # Use FIPS shared OpenSSL when running in FIPS variant so SoftHSM2 links to it
-    openssl = if (builtins.getEnv "VARIANT") == "fips" then openssl312FipsShared else pkgs.openssl;
+    # For non-FIPS, use OpenSSL 3.6.0 instead of pkgs.openssl (3.3.2)
+    openssl = if variant == "fips" then openssl312FipsShared else openssl360NonFips;
   };
 in
 pkgs.mkShell {
   buildInputs = [
-    # Provide both OpenSSL packages - the shellHook will configure which one to use
+    # Provide OpenSSL packages - the shellHook will configure which one to use
     openssl312Fips
     openssl312FipsShared
-    pkgs.openssl
+    openssl360NonFips
     pkgs.pkg-config
     pkgs.gcc
     pkgs.rust-bin.stable.latest.default
@@ -120,8 +138,9 @@ pkgs.mkShell {
     export OPENSSL_NO_VENDOR=1
 
     # Check which variant is requested (defaults to non-fips if not set)
-    # VARIANT should be set by nix.sh via the command string
-    VARIANT_MODE="''${VARIANT:-non-fips}"
+    # VARIANT should be set by nix.sh via the command string OR via --argstr
+    # Prefer the Nix argument passed via --argstr, fall back to environment variable
+    VARIANT_MODE="${variant}"
 
     if [ "$VARIANT_MODE" = "fips" ]; then
       # Use Nix-provided FIPS OpenSSL 3.1.2 (shared) for dynamic linking in Rust
@@ -147,15 +166,15 @@ pkgs.mkShell {
       echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
 
       # Verify FIPS OpenSSL shared library presence
-      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ]; then
-        echo "FIPS OpenSSL libcrypto.so.3 found (shared)"
+      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
+        echo "FIPS OpenSSL 3.1.2 libcrypto library found (shared)"
       else
-        echo "WARNING: FIPS OpenSSL libcrypto.so.3 NOT found at $OPENSSL_PKG_PATH/lib"
+        echo "WARNING: FIPS OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
       fi
 
       # Verify FIPS module
-      if [ -f "$OPENSSL_MODULES/fips.so" ]; then
-        echo "FIPS provider module found: $OPENSSL_MODULES/fips.so"
+      if [ -f "$OPENSSL_MODULES/fips.so" ] || [ -f "$OPENSSL_MODULES/fips.dylib" ]; then
+        echo "FIPS provider module found: $OPENSSL_MODULES/"
       else
         echo "WARNING: FIPS provider module NOT found"
       fi
@@ -174,25 +193,26 @@ pkgs.mkShell {
         echo "LD_PRELOAD set to bootstrap OpenSSL FIPS providers"
       fi
     else
-      # Use standard nixpkgs OpenSSL for non-FIPS
-      # Note: pkgs.openssl.dev has headers, pkgs.openssl.out has libraries
-      OPENSSL_PKG_PATH="${pkgs.openssl.out}"
+      # Use OpenSSL 3.6.0 for non-FIPS builds (matches server build)
+      OPENSSL_PKG_PATH="${openssl360NonFips}"
 
       export OPENSSL_DIR="$OPENSSL_PKG_PATH"
       export OPENSSL_LIB_DIR="$OPENSSL_PKG_PATH/lib"
-      export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
+      export OPENSSL_INCLUDE_DIR="$OPENSSL_PKG_PATH/include"
 
-      # Use the standard OpenSSL config from nixpkgs
-      export OPENSSL_CONF="$OPENSSL_PKG_PATH/etc/ssl/openssl.cnf"
+      # Use the OpenSSL 3.6.0 config
+      export OPENSSL_CONF="$OPENSSL_PKG_PATH/ssl/openssl.cnf"
+      export OPENSSL_MODULES="$OPENSSL_PKG_PATH/lib/ossl-modules"
 
-      echo "Using standard OpenSSL (non-FIPS): $OPENSSL_PKG_PATH"
+      echo "Using OpenSSL 3.6.0 (non-FIPS): $OPENSSL_PKG_PATH"
       echo "  OPENSSL_CONF=$OPENSSL_CONF"
+      echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
 
       # Verify non-FIPS OpenSSL library presence
-      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ]; then
-        echo "OpenSSL libcrypto.so.3 found"
+      if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
+        echo "OpenSSL 3.6.0 libcrypto library found"
       else
-        echo "WARNING: OpenSSL libcrypto.so.3 NOT found at $OPENSSL_PKG_PATH/lib"
+        echo "WARNING: OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
       fi
 
       # Runtime library path for non-FIPS

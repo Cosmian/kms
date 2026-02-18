@@ -7,6 +7,26 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Add MLKEM algorithms to the predefined DEFAULT KMIP policy
+- Fix non-FIPS `openssl.cnf` provider configuration: the FIPS provider was incorrectly
+  activated in non-FIPS builds via `nix/openssl.nix`, blocking default-provider algorithms
+  (ChaCha20, secp256k1) and causing 6 crypto test failures. `nix/openssl.nix` now generates
+  distinct provider configurations per build variant: FIPS builds use `fips+base`, non-FIPS
+  builds use `default+legacy+base`.
+- Fix `KResultHelper` import in `main.rs` being feature-gated to `non-fips` only, causing a
+  missing `.context()` method on `init_openssl_providers()` result in FIPS builds.
+
+### ⚙️ Build
+
+- Refactor OpenSSL provider management into a dedicated `openssl_providers` module in
+  `crate/server/src/`, consolidating `safe_openssl_version_info()`, `init_openssl_providers()`
+  (production), and `init_openssl_providers_for_tests()` (test environments) into a single place.
+- Improve determinism of `nix/openssl.nix` OpenSSL builds:
+    - Patch `ENGINESDIR`/`MODULESDIR` in the generated Makefile to fixed
+      `/usr/local/cosmian/lib/...` paths, preventing Nix store path embedding in compiled
+      `libcrypto` strings.
+    - Scrub Nix store paths from `crypto/buildinf.h` after `make depend`.
+    - Set `SOURCE_DATE_EPOCH=1` and `ZERO_AR_DATE=1` in build and install phases.
+    - Normalize all output file timestamps with `find $out -exec touch --date=@1 {} +`.
 
 ### ⚙️ Build
 

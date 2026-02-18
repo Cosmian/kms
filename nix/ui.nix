@@ -125,6 +125,7 @@ let
     nativeBuildInputs = [
       wasmBindgenCli
       pkgs.llvmPackages.lld
+      pkgs.binaryen
     ];
     # Ensure wasm linking uses lld provided by Nix
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${pkgs.llvmPackages.lld}/bin/wasm-ld";
@@ -162,6 +163,16 @@ let
         --typescript \
         --out-dir $out/pkg \
         "$WASM_PATH"
+
+      # Optional size optimization: shrink the emitted wasm-bindgen binary.
+      # binaryen is provided by Nix, so this is deterministic.
+      if command -v wasm-opt >/dev/null 2>&1; then
+        echo "Optimizing WASM with wasm-opt -Oz"
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int "$out/pkg/cosmian_kms_client_wasm_bg.wasm" -o "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt"
+        mv "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt" "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
+      else
+        echo "WARNING: wasm-opt not found; skipping wasm optimization" >&2
+      fi
 
       # Basic sanity check
       test -f "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
