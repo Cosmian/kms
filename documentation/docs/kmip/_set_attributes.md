@@ -10,7 +10,7 @@ This operation can be applied to all [supported objects](./objects.md). One or m
 
 Set an attribute of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 First, create a symmetric key:
 
@@ -90,7 +90,7 @@ Attribute set successfully
 
 Set the links on a certificate object. It will set 2 KMIP attributes.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 ```bash
   cosmian kms attributes set -i 03948573-9348-aaaa-aaaa-93857383 --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz

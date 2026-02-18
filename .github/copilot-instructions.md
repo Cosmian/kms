@@ -23,20 +23,15 @@ cargo test --features non-fips
 
 ```bash
 # Run all tests (FIPS mode is default)
-cargo test
+cargo test-fips
+cargo test-non-fips
+
+# Run Clippy on all code paths
+cargo clippy-all
 
 # Run tests for a specific package
 cargo test -p cosmian_kms_server
 cargo test -p cosmian_kms_cli
-
-# Run specific test suites
-cargo test sqlite       # SQLite tests
-cargo test postgres     # PostgreSQL tests (requires local PostgreSQL)
-cargo test redis        # Redis tests
-
-# Run tests in non-FIPS mode (includes additional algorithms)
-cargo test --features non-fips
-cargo test --features non-fips sqlite
 ```
 
 Environment variables for DB tests:

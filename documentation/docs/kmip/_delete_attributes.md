@@ -16,7 +16,7 @@ First, for the demo purpose create a certificate:
 
 Delete the links on a certificate object.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 ```bash
   cosmian kms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz

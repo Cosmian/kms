@@ -34,6 +34,11 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
+  forward-proxy:
+    uses: ./.github/workflows/forward_proxy.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
   cargo-test:
     name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ${{ matrix.runner }}

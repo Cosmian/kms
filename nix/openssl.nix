@@ -67,6 +67,20 @@ let
         # SRI hash pinned by caller or defaults (3.1.2)
         sha256 = sri;
       };
+
+  # Compute optimal make job count: (nCores - 1), minimum 1
+  coresJobsSnippet = ''
+    if command -v nproc >/dev/null 2>&1; then
+      CORES=$(nproc)
+    elif command -v sysctl >/dev/null 2>&1; then
+      CORES=$(sysctl -n hw.ncpu)
+    elif command -v getconf >/dev/null 2>&1; then
+      CORES=$(getconf _NPROCESSORS_ONLN)
+    else
+      CORES=2
+    fi
+    JOBS=$(( CORES > 1 ? CORES - 1 : 1 ))
+  '';
 in
 stdenv.mkDerivation rec {
   pname = "openssl";
@@ -189,17 +203,7 @@ stdenv.mkDerivation rec {
     export ZERO_AR_DATE=1
 
     echo "Installing OpenSSL ${version} to target paths..."
-    # Determine job count as (cores - 1), minimum 1
-    if command -v nproc >/dev/null 2>&1; then
-      CORES=$(nproc)
-    elif command -v sysctl >/dev/null 2>&1; then
-      CORES=$(sysctl -n hw.ncpu)
-    elif command -v getconf >/dev/null 2>&1; then
-      CORES=$(getconf _NPROCESSORS_ONLN)
-    else
-      CORES=2
-    fi
-    JOBS=$(( CORES > 1 ? CORES - 1 : 1 ))
+    ${coresJobsSnippet}
 
     # Install OpenSSL binaries and libraries only (not ssldirs - we'll handle that manually)
     # Override ENGINESDIR and MODULESDIR back to $out paths for the install step,

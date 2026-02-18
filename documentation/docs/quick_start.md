@@ -48,7 +48,7 @@ Open your web browser and navigate to `http://localhost:9998/ui` to access the G
 
 ## Using the CLI
 
-Get the [Cosmian CLI](../cosmian_cli/index.md) from [Cosmian packages](https://package.cosmian.com/cli/).
+Get the [Cosmian CLI](ckms/index.md) from [Cosmian packages](https://package.cosmian.com/cli/).
 You can then easily manage the server:
 
 1. Create a 256-bit symmetric key

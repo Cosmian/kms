@@ -15,7 +15,7 @@ Once created the Client ID should look like this
 
 !!! warning
     Do not forget to add <http://localhost:17899/authorization> in the Authorized redirect URIs list.
-    It will allow the [Cosmian CLI](../../cosmian_cli/index.md) to authenticate with Google.
+    It will allow the [Cosmian CLI](../kms_clients/index.md) to authenticate with Google.
 
 The list of URLs for _Authorized origins_ and _Authorized redirect_ are available in the Google documentation above, in paragraph _Create a client ID for Google identity_.
 

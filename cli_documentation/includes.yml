@@ -1,0 +1,38 @@
+---
+title: Cosmian KMS Clients
+subtitle: Command Line Interface & PKCS#11 Provider
+citation_package: biblatex
+csl: https://raw.githubusercontent.com/citation-style-language/styles/master/ieee.csl
+version: Version 5.16
+author: |
+  Date: 02/17/2026 \linebreak Authors:
+  \linebreak \quad Bruno Grieder \quad CTO
+  \linebreak \quad Emmanuel Coste \quad VP Engineering
+titlepage: true
+titlepage-rule-height: 0
+title-meta: Cosmian KMS Clients Documentation
+link-citations: true
+toc-own-page: true
+toc: true
+toc-title: Table Of Contents
+toc-depth: 3
+titlepage-logo: ./pandoc/cosmian.png
+logo-width: 200pt
+lang: en-US
+footer-left: Confidential
+footer-center: © Copyright 2018-2026 Cosmian. All rights reserved
+header-left: ./pandoc/favicon.png
+header-includes:
+  - \setcounter{page}{0} # So that the titlepage is the zeroth page
+pandoc-latex-admonition:
+  # order is important
+  - color: firebrick
+    classes: [admonition, danger]
+  - color: darkturquoise
+    classes: [admonition, info]
+  - color: forestgreen
+    classes: [admonition, important]
+  - color: dodgerblue
+    classes: [admonition, note]
+  - color: orange
+    classes: [admonition, warning]

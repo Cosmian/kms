@@ -1,0 +1,104 @@
+[package]
+name = "ckms"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["ckms", "kms", "cosmian"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = """
+Command Line Interface used to manage the Cosmian KMS server.
+
+If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
+or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
+"""
+
+[[bin]]
+name = "ckms"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+non-fips = [
+  "cosmian_kms_cli/non-fips",
+  "test_kms_server/non-fips",
+]
+
+[dependencies]
+base64 = { workspace = true }
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cosmian_config_utils = { workspace = true }
+cosmian_kms_cli = { path = "../../cli", version = "5.16.1" }
+cosmian_logger = { workspace = true }
+csv = "1.3"
+der = { workspace = true, features = ["pem"] }
+hex = { workspace = true }
+dialoguer = { version = "0.11", default-features = false, features = ["fuzzy-select", "password", "editor"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+openssl = { workspace = true }
+predicates = "3.1"
+regex = { version = "1.11", default-features = false }
+reqwest = { workspace = true }
+tempfile = { workspace = true }
+test_kms_server = { path = "../../test_kms_server" }
+x509-parser = { workspace = true, features = ["verify"] }
+
+# ------------------------------------------------------------------------------
+# START DEBIAN PACKAGING
+[package.metadata.deb]
+maintainer = "Cosmian support team <tech@cosmian.com>"
+copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../../LICENSE", "0"]
+changelog = "../../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+assets = [
+  [
+    "target/release/ckms",
+    "usr/sbin/",
+    "555",
+  ],
+]
+features = ["non-fips"]
+
+# END DEBIAN PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START RPM PACKAGING
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+]
+auto-req = "no" # do not try to discover .so dependencies
+require-sh = true
+
+# END RPM PACKAGING
+# ------------------------------------------------------------------------------

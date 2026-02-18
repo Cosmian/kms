@@ -21,7 +21,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
 ## Modern technology
 
 - [Source Available](https://github.com/Cosmian/kms) server application written in [Rust](https://www.rust-lang.org/)
-- Full-featured [Web UI](#user-interface) with client [command line and graphical interface](../cosmian_cli/index.md)
+- Full-featured [Web UI](#user-interface) with client [command line and graphical interface](ckms/index.md)
 - Advanced [authentication mechanisms](./authentication.md)
 - [High-availability mode](installation/high_availability_mode.md) with simple horizontal scaling
 - Multi-language client support: Python, JavaScript, Dart, Rust, C/C++, and Java (see the `cloudproof` libraries on [Cosmian GitHub](https://github.com/Cosmian))
@@ -37,10 +37,10 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./ms_dke/index.md)
 - **Transparent data encryption**:
-    - [Veracrypt](../cosmian_cli/pkcs11/veracrypt.md)
-    - [LUKS](../cosmian_cli/pkcs11/luks.md)
+    - [Veracrypt](ckms/pkcs11/veracrypt.md)
+    - [LUKS](ckms/pkcs11/luks.md)
     - [VMware](./vcenter.md)
-    - [Oracle Database TDE](../cosmian_cli/pkcs11/oracle/tde.md),
+    - [Oracle Database TDE](ckms/pkcs11/oracle/tde.md),
     - [MongoDB](./mongodb.md),
     - [Mysql Enterprise](./mysql.md)
     - [PostgreSQL](./percona.md)
@@ -80,9 +80,9 @@ token authentication.
 
 ## Client CLI
 
-The [Cosmian CLI](../cosmian_cli/index.md) provides a powerful command-line interface for managing the server, handling keys, and performing encryption/decryption operations. It features integrated help and is available for multiple operating systems.
+The [Cosmian CLI](ckms/index.md) provides a powerful command-line interface for managing the server, handling keys, and performing encryption/decryption operations. It features integrated help and is available for multiple operating systems.
 
-The **[Cosmian CLI](../cosmian_cli/index.md)** is packaged as:
+The **[Cosmian CLI](ckms/index.md)** is packaged as:
 
 - [Debian](https://package.cosmian.com/kms/5.16.1/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/5.16.1/rockylinux9/) package
 - [Pre-built binaries](https://package.cosmian.com/cli/) for Linux, Windows, and macOS

@@ -739,7 +739,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on .deb package..."
             echo "=========================================="
-            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
+            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -752,6 +752,23 @@ package_command() {
               fi
             else
               echo "Warning: .deb file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI .deb package..."
+            echo "=========================================="
+            CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
+            if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_deb.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .deb file not found in $REAL_OUT" >&2
             fi
           else
             echo "DEB packaging is only supported on Linux in this flow." >&2
@@ -772,7 +789,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on RPM package..."
             echo "=========================================="
-            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
+            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -785,6 +802,23 @@ package_command() {
               fi
             else
               echo "Warning: RPM file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI RPM package..."
+            echo "=========================================="
+            CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
+            if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_rpm.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .rpm file not found in $REAL_OUT" >&2
             fi
           else
             echo "RPM packaging is only supported on Linux in this flow." >&2
@@ -832,20 +866,22 @@ package_command() {
 
         case "$TYPE" in
         deb)
-          deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
-          if [ -n "${deb_file:-}" ] && [ -f "$deb_file" ]; then
+          # Write checksums for all .deb files (server + cli)
+          while IFS= read -r deb_file; do
+            if [ -z "$deb_file" ] || [ ! -f "$deb_file" ]; then continue; fi
             sum=$(compute_sha256 "$deb_file")
             echo "$sum  $(basename "$deb_file")" >"$deb_file.sha256"
             echo "Wrote checksum: $deb_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' 2>/dev/null || true)
           ;;
         rpm)
-          rpm_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
-          if [ -n "${rpm_file:-}" ] && [ -f "$rpm_file" ]; then
+          # Write checksums for all .rpm files (server + cli)
+          while IFS= read -r rpm_file; do
+            if [ -z "$rpm_file" ] || [ ! -f "$rpm_file" ]; then continue; fi
             sum=$(compute_sha256 "$rpm_file")
             echo "$sum  $(basename "$rpm_file")" >"$rpm_file.sha256"
             echo "Wrote checksum: $rpm_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' 2>/dev/null || true)
           ;;
         dmg)
           dmg_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)

@@ -41,7 +41,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/cli/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -72,7 +72,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ui/public
+        exclude: ui/public|cli_documentation/docs/pkcs11/images
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals
@@ -91,7 +91,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests|crate/cli/src/tests/kms/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs
+        exclude: test_data|documentation/docs|crate/clap/src/tests/kms/google_cmd/identities.rs|crate/clients/ckms/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests|crate/clap/src/tests/kms/shared/export_import.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/cli/src/tests/kms/shared/export_import.rs|crate/cli/src/tests/kms/google_cmd/identities.rs
 
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
@@ -160,6 +160,8 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
+      - id: clippy-all-targets-all-features
+      - id: clippy-all-targets
       - id: docker-compose-up
 
   - repo: local
@@ -201,10 +203,11 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
-      - id: nix-cargo-test-fips
-        name: Nix cargo test (sqlite fips)
-        entry: bash .github/scripts/nix.sh --variant fips test sqlite
+      - id: nix-cargo-test-non-fips
+        name: Nix cargo test (redis non-fips)
+        entry: bash .github/scripts/nix.sh --variant non-fips test redis
         language: system
         types: [rust]
         pass_filenames: false
@@ -223,6 +226,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: renew-server-doc
         name: renew server cli doc
@@ -237,8 +241,6 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
-      - id: clippy-all-targets-all-features
-      - id: clippy-all-targets
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 

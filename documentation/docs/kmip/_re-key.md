@@ -16,7 +16,7 @@ The `Re-Key` Operation refreshes Symmetric keys.
 
 ### Example - Refresh a Symmetric Key
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 ```bash
 cosmian kms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3

@@ -1,0 +1,77 @@
+---
+site_name: Cosmian KMS Clients
+site_url: https://docs.cosmian.com/kms_clients/
+copyright: © Copyright 2018-2026 Cosmian. All rights reserved
+dev_addr: localhost:8004
+theme:
+  name: material
+  language: en
+  font:
+    text: Open Sans
+  favicon: docs/favicon.png
+  logo: docs/images/docslogo-2x.png
+  custom_dir: theme_overrides
+  features:
+    - content.tabs.link
+extra:
+  homepage: https://docs.cosmian.com/
+markdown_extensions:
+  - tables
+  - smarty
+  - abbr
+  - admonition
+  - toc:
+      permalink: true
+      baselevel: 1
+  - pymdownx.superfences:
+      # make exceptions to highlighting of code:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          # Uncomment the following line to check Mermaid figures
+          # format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.tasklist
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - attr_list
+  - markdown_katex:
+      no_inline_svg: true
+      insert_fonts_css: true
+  - markdown_include.include:
+      base_path: docs
+      inheritHeadingDepth: true
+extra_javascript: #see this for Katex: https://squidfunk.github.io/mkdocs-material/reference/math/#katex
+  - javascripts/katex.js
+  - https://unpkg.com/katex@0/dist/katex.min.js
+  - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
+  - javascripts/macros.js
+extra_css:
+  - https://unpkg.com/katex@0/dist/katex.min.css
+plugins:
+  - search
+  - kroki
+  - meta-descriptions
+nav:
+  - Getting started: index.md
+  - Installation: installation.md
+  - Configuration:
+      - Authentication: authentication.md
+      - Examples: configuration.md
+  - Usage:
+      - Command Line Interface: usage.md
+      - CLI Reference: cli/main_commands.md
+      - PKCS#11 Usage:
+          - Disk Encryption:
+              - Veracrypt: pkcs11/veracrypt.md
+              - LUKS: pkcs11/luks.md
+              - Cryhod: pkcs11/cryhod.md
+          - Oracle:
+              - Oracle Database TDE: pkcs11/oracle/tde.md
+  - Access Rights: authorization.md
+  - S/MIME Gmail: smime_gmail.md

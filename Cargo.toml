@@ -6,6 +6,9 @@ members = [
     "crate/kms_client",
     "crate/wasm",
     "crate/cli",
+    "crate/clients/ckms",
+    "crate/clients/pkcs11/module",
+    "crate/clients/pkcs11/provider",
     # Server crates
     "crate/access",
     "crate/crypto",
@@ -143,6 +146,7 @@ hex = { version = "0.4", default-features = false }
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
+log = { version = "0.4", default-features = false }
 lru = "0.16"
 native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
@@ -169,6 +173,7 @@ tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false }
 url = "2.5"
 uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }

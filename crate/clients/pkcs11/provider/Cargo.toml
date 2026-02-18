@@ -1,0 +1,51 @@
+[package]
+name = "cosmian_pkcs11"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["pkcs11", "cryptoki", "hsm", "kms"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "HSM PKCS#11 provider for Cosmian KMS"
+
+[lints]
+workspace = true
+
+[lib]
+name = "cosmian_pkcs11"
+crate-type = ["rlib", "cdylib"]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
+
+[dependencies]
+ckms = { path = "../../ckms", version = "5.16.1" }
+cosmian_pkcs11_module = { path = "../module", version = "5.16.1" }
+etcetera = "0.8.0"
+hex = "0.4"
+p256 = { version = "0.13.2", default-features = false, features = [
+  "arithmetic",
+  "pkcs8",
+  "std",
+] }
+pkcs1 = "0.7.5"
+pkcs11-sys = { workspace = true }
+serde_json = { workspace = true }
+sha3 = { version = "0.10", default-features = false }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+cosmian_logger = { workspace = true }
+tracing-error = "0.2.1"
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+x509-cert = { version = "0.2", default-features = false }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+cosmian_config_utils = { workspace = true }
+serial_test = { version = "3.2.0", default-features = true }
+test_kms_server = { path = "../../../test_kms_server" }
