@@ -224,6 +224,9 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 
 /// TLS + certificate authentication
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
+    // Initialize OpenSSL legacy provider before any P12 parsing
+    crate::init_openssl_providers_for_tests();
+
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {

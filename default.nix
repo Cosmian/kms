@@ -4,14 +4,12 @@
   pkgs ?
     let
       nixpkgsSrc = builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
+        # Use an immutable commit tarball so builds are deterministic across machines.
+        url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+        sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
       };
     in
     import nixpkgsSrc { config.allowUnfree = true; },
-  # Allow callers (e.g., Docker) to toggle deterministic hash enforcement.
-  # Default is relaxed (false) so builds don't fail when hashes drift; CI/scripts
-  # can enable it explicitly when needed.
-  enforceDeterministicHash ? false,
 }:
 
 let
@@ -72,12 +70,16 @@ let
   # Reuse the same pinned nixpkgs for internal imports/overlays
   # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
+    # Use an immutable commit tarball so builds are deterministic across machines.
+    url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+    sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
-      url = "https://github.com/oxalica/rust-overlay/archive/refs/heads/master.tar.gz";
+      # Pin rust-overlay to an immutable commit (master is moving).
+      url = "https://github.com/oxalica/rust-overlay/archive/23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+      sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
     }
   );
   pkgsWithRust = import nixpkgsSrc {
@@ -93,24 +95,15 @@ let
     targets = [ "wasm32-unknown-unknown" ];
   };
 
-  # For Linux, we need GLIBC <= 2.34 to support Rocky Linux 9.
-  # Import nixpkgs 22.05 to get its stdenv (glibc 2.34) while still using a modern
-  # Rust toolchain (1.90.0) from rust-overlay.
+  # For Linux, pin nixpkgs 22.05 (glibc 2.34) to get its stdenv while using a modern
+  # Rust toolchain (1.90.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
+  # Hardcoded URL+hash for full determinism — override via `--arg pkgs234 ...` if needed.
   pkgs234 =
     if pkgs.stdenv.isLinux then
-      (
-        let
-          nixpkgs2205 = builtins.getEnv "NIXPKGS_GLIBC_234_URL";
-        in
-        import (builtins.fetchTarball {
-          url =
-            if nixpkgs2205 != "" then
-              nixpkgs2205
-            else
-              # Pin to 22.05 stable tag tarball (glibc 2.34 for Rocky Linux 9 compatibility)
-              "https://github.com/NixOS/nixpkgs/archive/nixos-22.05.tar.gz";
-        }) { config.allowUnfree = true; }
-      )
+      import (builtins.fetchTarball {
+        url = "https://github.com/NixOS/nixpkgs/archive/380be19fbd2d9079f677978361792cb25e8a3635.tar.gz";
+        sha256 = "sha256-Zffu01pONhs/pqH07cjlF10NnMDLok8ix5Uk4rhOnZQ=";
+      }) { config.allowUnfree = true; }
     else
       pkgs;
 
@@ -134,6 +127,18 @@ let
   openssl312-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
   # Default to static for backward compatibility
   openssl312 = openssl312-static;
+
+  # Build OpenSSL 3.6.0 with legacy provider for non-FIPS builds
+  # Common parameters for both static and dynamic builds
+  openssl36Args = {
+    version = "3.6.0";
+    enableLegacy = true;
+    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+    sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
+    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+  };
+  openssl36-static = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
+  openssl36-dynamic = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = false; });
 
   # Tool: cargo-generate-rpm (not available in some nixpkgs pins). Build it from crates.io.
   # Build cargo-generate-rpm with the same modern Rust toolchain (Cargo 1.90)
@@ -191,13 +196,13 @@ let
   ui-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ ];
     version = kmsVersion;
-    inherit rustToolchain enforceDeterministicHash;
+    inherit rustToolchain;
   };
 
   ui-non-fips = pkgs.callPackage ./nix/ui.nix {
     features = [ "non-fips" ];
     version = kmsVersion;
-    inherit rustToolchain enforceDeterministicHash;
+    inherit rustToolchain;
   };
 
   # DRY helper to build servers for both variants and both linkage modes
@@ -206,10 +211,10 @@ let
       features,
       ui,
       static ? true,
-      enforceDeterministicHash ? true,
     }:
     pkgs.callPackage ./nix/kms-server.nix {
       openssl312 = if static then openssl312-static else openssl312-dynamic;
+      openssl36 = if static then openssl36-static else openssl36-dynamic;
       inherit pkgs234;
       rustPlatform = rustPlatform190;
       version = kmsVersion;
@@ -217,7 +222,6 @@ let
         features
         ui
         static
-        enforceDeterministicHash
         ;
     };
 
@@ -226,14 +230,12 @@ let
     features = [ ];
     ui = ui-fips;
     static = true;
-    inherit enforceDeterministicHash;
   };
 
   kms-server-non-fips-static-openssl = mkKmsServer {
     features = [ "non-fips" ];
     ui = ui-non-fips;
     static = true;
-    enforceDeterministicHash = false;
   };
 
   # Build KMS server with dynamic OpenSSL linking
@@ -241,14 +243,12 @@ let
     features = [ ];
     ui = ui-fips;
     static = false;
-    enforceDeterministicHash = false;
   };
 
   kms-server-non-fips-dynamic-openssl = mkKmsServer {
     features = [ "non-fips" ];
     ui = ui-non-fips;
     static = false;
-    enforceDeterministicHash = false;
   };
 
   # Docker images using dockerTools (minimal images)
@@ -263,7 +263,8 @@ let
     kmsServer = kms-server-non-fips-static-openssl;
     variant = "non-fips";
     version = kmsVersion;
-    # non-FIPS image doesn't require a specific OpenSSL derivation for provider config
+    # Provide OpenSSL 3.6.0 so the Docker image ships legacy provider + non-FIPS openssl.cnf
+    opensslDrv = openssl36-static;
   };
 
 in
@@ -287,6 +288,9 @@ rec {
 
   # Export OpenSSL 3.1.2 FIPS derivations for tooling (packaging script)
   inherit openssl312 openssl312-static openssl312-dynamic;
+
+  # Export OpenSSL 3.6.0 derivations (with legacy provider for non-FIPS)
+  inherit openssl36-static openssl36-dynamic;
 
   # Export cargo-packager and cargo-generate-rpm tools for scripts and dev shell
   inherit cargoPackagerTool cargoGenerateRpmTool;
@@ -394,6 +398,36 @@ rec {
         [ -x "$bin" ] || { echo "Missing binary: $bin" >&2; exit 1; }
         hash="$(${pkgs.openssl}/bin/openssl dgst -sha256 -r "$bin" | awk '{print $1}')"
         printf '%s\n' "$hash" >"$out/${name}"
+      '';
+
+  # Expected hash for OpenSSL legacy provider module
+  expected-hash-openssl-legacy-provider =
+    let
+      sys = pkgs.stdenv.hostPlatform.system;
+      parts = pkgs.lib.splitString "-" sys;
+      arch = builtins.elemAt parts 0;
+      os = builtins.elemAt parts 1;
+      name = "openssl-legacy-provider.3.6.0.${arch}.${os}.sha256";
+      soExt = if pkgs.stdenv.isDarwin then "dylib" else "so";
+    in
+    pkgs.runCommand "expected-hash-openssl-legacy-provider"
+      {
+        buildInputs = [
+          pkgs.openssl
+          pkgs.coreutils
+        ];
+      }
+      ''
+        set -euo pipefail
+        mkdir -p "$out"
+        legacy='${openssl36-static}/lib/ossl-modules/legacy.${soExt}'
+        if [ -f "$legacy" ]; then
+          hash="$(${pkgs.openssl}/bin/openssl dgst -sha256 -r "$legacy" | awk '{print $1}')"
+          printf '%s\n' "$hash" >"$out/${name}"
+        else
+          echo "Legacy provider not found at $legacy" >&2
+          exit 1
+        fi
       '';
 
 }
