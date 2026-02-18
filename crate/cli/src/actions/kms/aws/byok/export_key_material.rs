@@ -1,17 +1,5 @@
 use std::{fs, path::PathBuf};
 
-use base64::Engine;
-use clap::Parser;
-use cosmian_kmip::{
-    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
-    kmip_2_1::{
-        kmip_data_structures::KeyValue,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, Tag},
-    },
-};
-use cosmian_kms_client::{ExportObjectParams, KmsClient, export_object};
-use cosmian_logger::warn;
-
 use crate::{
     actions::kms::{
         attributes::get_attributes, aws::byok::wrapping_algorithms::AwsKmsWrappingAlgorithm,
@@ -23,6 +11,16 @@ use crate::{
         result::{KmsCliResult, KmsCliResultHelper},
     },
 };
+use base64::Engine;
+use clap::Parser;
+use cosmian_kmip::{
+    kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::KeyValue,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, Tag},
+    },
+};
+use cosmian_kms_client::{ExportObjectParams, KmsClient, export_object};
 
 /// Wrap a KMS key with an AWS Key Encryption Key (KEK).
 #[derive(Parser)]
@@ -113,19 +111,6 @@ impl ExportByokAction {
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             },
-            // SM2PKE: SM2 public key encryption (China Regions only)
-            // Supported for: RSA private keys, ECC private keys, SM2 private keys
-            // TODO: gate this
-            AwsKmsWrappingAlgorithm::Sm2Pke => {
-                warn!(
-                    "This encrypted key material can only be imported into AWS KMS in China Regions."
-                );
-                CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::SM2),
-                    padding_method: None, // SM2 uses its own encryption scheme per GM/T 0003.4-2012
-                    ..CryptographicParameters::default()
-                }
-            }
         });
 
         // Export the key wrapped with the KEK
