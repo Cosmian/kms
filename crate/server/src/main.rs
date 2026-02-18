@@ -148,8 +148,9 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
-            OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
+            LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
+            UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
