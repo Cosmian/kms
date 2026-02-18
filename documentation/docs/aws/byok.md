@@ -21,6 +21,7 @@ Supported wrapping algorithms:
 | **RSA_AES_KEY_WRAP_SHA_256**<br>**RSA_AES_KEY_WRAP_SHA_1** | Hybrid wrapping (RSA + AES Key Wrap) with SHA-256 or SHA-1 hash function. | • Asymmetric RSA private keys<br>• Asymmetric ECC private keys |
 
 **Wrapping Key Specs :**
+
 - RSA_2048 (***Note**: cannot be used to wrap _ECC_NIST_P521_ keys with _RSAES_OAEP_SHA_*_ )
 - RSA_3072
 - RSA_4096
@@ -84,7 +85,6 @@ You should have the following response :
 
 ```
 symmetric_key_material has been created.
-```
 arn:aws:kms:eu-west-3:447182645454:key/a68f40da-85e6-4798-b147-2bf096d29a70
 
 {
@@ -98,7 +98,7 @@ arn:aws:kms:eu-west-3:447182645454:key/a68f40da-85e6-4798-b147-2bf096d29a70
 ~
 ~
 (END)
-
+```
 
 ## 3. Download the wrapping public key and import token from AWS
 
@@ -149,6 +149,3 @@ You
 - [AWS KMS Developer Guide – Importing Key Material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys.html)
 - [AWS KMS – Requirements for Imported Key Material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html#importing-keys-material-requirements)
 - [AWS KMS – Get Public Key and Import Token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html)
-- [RFC 3447 – PKCS #1: RSA Cryptography Specifications](https://tools.ietf.org/html/rfc3447)
-- [RFC 5208 – PKCS #8: Private-Key Information Syntax](https://tools.ietf.org/html/rfc5208)
-- [RFC 5649 – AES Key Wrap with Padding](https://tools.ietf.org/html/rfc5649)

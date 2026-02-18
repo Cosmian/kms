@@ -18,12 +18,15 @@ type KeyImportResponse = {
     UniqueIdentifier: string;
 };
 
+// These values MUST match the WrappingAlgorithm enum's strum kebab-case serialization
+// in crate/client_utils/src/export_utils.rs (used by wasm.export_ttlv_request).
+// RsaOaepSha1 -> "rsa-oaep-sha1", RsaOaep (SHA-256) -> "rsa-oaep",
+// RsaAesKeyWrapSha1 -> "rsa-aes-key-wrap-sha1", RsaAesKeyWrap (SHA-256) -> "rsa-aes-key-wrap"
 const WRAPPING_ALGORITHMS = [
-    { label: "RSAES_OAEP_SHA_1", value: "rsaes-oaep-sha1" },
-    { label: "RSAES_OAEP_SHA_256", value: "rsaes-oaep-sha256" },
+    { label: "RSAES_OAEP_SHA_1", value: "rsa-oaep-sha1" },
+    { label: "RSAES_OAEP_SHA_256", value: "rsa-oaep" },
     { label: "RSA_AES_KEY_WRAP_SHA_1", value: "rsa-aes-key-wrap-sha1" },
-    { label: "RSA_AES_KEY_WRAP_SHA_256", value: "rsa-aes-key-wrap-sha256" },
-    { label: "SM2PKE (China region only)", value: "sm2pke" },
+    { label: "RSA_AES_KEY_WRAP_SHA_256", value: "rsa-aes-key-wrap" },
 ];
 
 const ImportAwsKekForm: React.FC = () => {
