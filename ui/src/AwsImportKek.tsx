@@ -10,7 +10,7 @@ interface ImportAwsKekFormData {
     kekFile?: Uint8Array;
     kekBase64?: string;
     keyArn?: string;
-    wrappingAlgorithm: string;
+    wrappingAlgorithm: WrappingAlgorithm;
     keyId?: string;
 }
 
@@ -20,13 +20,18 @@ type KeyImportResponse = {
 
 // These values MUST match the WrappingAlgorithm enum's strum kebab-case serialization
 // in crate/client_utils/src/export_utils.rs (used by wasm.export_ttlv_request).
-// RsaOaepSha1 -> "rsa-oaep-sha1", RsaOaep (SHA-256) -> "rsa-oaep",
-// RsaAesKeyWrapSha1 -> "rsa-aes-key-wrap-sha1", RsaAesKeyWrap (SHA-256) -> "rsa-aes-key-wrap"
+export enum WrappingAlgorithm {
+    RsaOaepSha1 = "rsa-oaep-sha1",
+    RsaOaepSha256 = "rsa-oaep",
+    RsaAesKeyWrapSha1 = "rsa-aes-key-wrap-sha1",
+    RsaAesKeyWrapSha256 = "rsa-aes-key-wrap",
+}
+
 const WRAPPING_ALGORITHMS = [
-    { label: "RSAES_OAEP_SHA_1", value: "rsa-oaep-sha1" },
-    { label: "RSAES_OAEP_SHA_256", value: "rsa-oaep" },
-    { label: "RSA_AES_KEY_WRAP_SHA_1", value: "rsa-aes-key-wrap-sha1" },
-    { label: "RSA_AES_KEY_WRAP_SHA_256", value: "rsa-aes-key-wrap" },
+    { label: "RSAES_OAEP_SHA_1", value: WrappingAlgorithm.RsaOaepSha1 },
+    { label: "RSAES_OAEP_SHA_256", value: WrappingAlgorithm.RsaOaepSha256 },
+    { label: "RSA_AES_KEY_WRAP_SHA_1", value: WrappingAlgorithm.RsaAesKeyWrapSha1 },
+    { label: "RSA_AES_KEY_WRAP_SHA_256", value: WrappingAlgorithm.RsaAesKeyWrapSha256 },
 ];
 
 const ImportAwsKekForm: React.FC = () => {
