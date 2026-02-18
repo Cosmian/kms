@@ -2,7 +2,6 @@ import { render, type RenderResult } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BrandingProvider } from "../../src/BrandingContext";
-import type { Branding } from "../../src/branding";
 
 import { AuthProvider } from '../../src/AuthContext'
 
