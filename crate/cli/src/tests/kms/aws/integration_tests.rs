@@ -383,31 +383,3 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
 
     Ok(())
 }
-
-// #[cfg(feature = "non-fips")]
-// pub(crate) fn sm2pke_unwrap(
-//     ciphertext: &[u8],
-//     private_key: &PKey<Private>,
-// ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-//     // Verify the key is an SM2 key
-
-//     use openssl::pkey_ctx::PkeyCtx;
-//     if private_key.id() != openssl::pkey::Id::SM2 {
-//         return Err("Private key is not an SM2 key".into());
-//     }
-
-//     // Create decryption context
-//     let mut ctx = PkeyCtx::new(private_key)?;
-//     ctx.decrypt_init()?;
-
-//     // Calculate buffer size for decryption
-//     let buffer_len = ctx.decrypt(ciphertext, None)?;
-//     let mut plaintext = vec![0_u8; buffer_len];
-
-//     // Perform decryption
-//     let plaintext_len = ctx.decrypt(ciphertext, Some(&mut plaintext))?;
-//     plaintext.truncate(plaintext_len);
-
-//     Ok(plaintext)
-// }
-
