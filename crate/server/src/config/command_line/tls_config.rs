@@ -7,11 +7,16 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 #[derive(Default)]
 pub struct TlsConfig {
-    /// The KMS server optional PKCS#12 Certificates and Key file.
-    /// Mandatory when starting the socket server.
+    /// The KMS server optional PKCS#12 Certificates and Key file as an alternative
+    /// to providing the key, certificate and chain in PEM format.
     /// When provided, the Socket and HTTP server will start in TLS Mode.
     #[cfg(feature = "non-fips")]
-    #[clap(long, env = "KMS_TLS_P12_FILE", verbatim_doc_comment)]
+    #[clap(
+        long,
+        env = "KMS_TLS_P12_FILE",
+        requires = "tls_p12_password",
+        verbatim_doc_comment
+    )]
     pub tls_p12_file: Option<PathBuf>,
 
     /// The password to open the PKCS#12 Certificates and Key file
@@ -20,22 +25,22 @@ pub struct TlsConfig {
     pub tls_p12_password: Option<String>,
 
     /// The server's X.509 certificate in PEM format.
-    /// Only used in FIPS mode (default build). Provide a PEM containing the server leaf certificate,
+    /// Provide a PEM containing the server leaf certificate,
     /// optionally followed by intermediate certificates (full chain). When provided along with
     /// `--tls-key-file`, the servers will start in TLS mode.
-    #[cfg(not(feature = "non-fips"))]
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_CERT_FILE", verbatim_doc_comment)]
     pub tls_cert_file: Option<PathBuf>,
 
     /// The server's private key in PEM format (PKCS#8 or traditional format).
-    /// Only used in FIPS mode (default build). Must correspond to the certificate in `--tls-cert-file`.
-    #[cfg(not(feature = "non-fips"))]
+    /// Must correspond to the certificate in `--tls-cert-file`.
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_KEY_FILE", verbatim_doc_comment)]
     pub tls_key_file: Option<PathBuf>,
 
     /// Optional certificate chain in PEM format (intermediate CAs).
-    /// Only used in FIPS mode. If not provided, the chain may be appended to `--tls-cert-file` instead.
-    #[cfg(not(feature = "non-fips"))]
+    /// If not provided, the chain may be appended to `--tls-cert-file` instead.
+    /// Do not use in combination with `--tls-p12-file`.
     #[clap(long, env = "KMS_TLS_CHAIN_FILE", verbatim_doc_comment)]
     pub tls_chain_file: Option<PathBuf>,
 
@@ -83,7 +88,6 @@ impl Display for TlsConfig {
                 );
             }
         }
-        #[cfg(not(feature = "non-fips"))]
         {
             if self.tls_cert_file.is_some() && self.tls_key_file.is_some() {
                 return write!(

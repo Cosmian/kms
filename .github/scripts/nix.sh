@@ -411,6 +411,9 @@ test_command() {
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
     ;;
+  xks)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_xks.sh"
+    ;;
   wasm)
     SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
     ;;
@@ -483,7 +486,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
+    echo "Valid types: xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
     usage
     ;;
   esac
@@ -495,6 +498,12 @@ test_command() {
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
+  fi
+
+  # AWS XKS curl-based test client requires extra tooling inside nix-shell
+  if [ "$TEST_TYPE" = "xks" ]; then
+    export WITH_XKS=1
+    export WITH_CURL=1
   fi
 
   KEEP_VARS=" \
@@ -512,6 +521,7 @@ test_command() {
         --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
         --keep WITH_WGET \
         --keep WITH_CURL \
+        --keep WITH_XKS \
         --keep WITH_DOCKER \
         --keep WITH_HSM \
         --keep WITH_PYTHON \
@@ -548,7 +558,7 @@ sbom_command() {
       args+=("$1" "$2")
       shift 2
       ;;
-    -h|--help)
+    -h | --help)
       args+=("$1")
       shift
       ;;

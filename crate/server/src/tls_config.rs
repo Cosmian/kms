@@ -1,9 +1,8 @@
 use cosmian_logger::trace;
 #[cfg(feature = "non-fips")]
 use openssl::pkcs12::ParsedPkcs12_2;
-#[cfg(not(feature = "non-fips"))]
-use openssl::pkey::PKey;
 use openssl::{
+    pkey::PKey,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode, SslVersion},
     x509::{X509, store::X509StoreBuilder},
 };
@@ -22,12 +21,9 @@ const TLS13_CIPHER_SUITES: &[&str] = &[
 pub struct TlsConfig<'a> {
     pub cipher_suites: Option<&'a str>,
     #[cfg(feature = "non-fips")]
-    pub p12: &'a ParsedPkcs12_2,
-    #[cfg(not(feature = "non-fips"))]
+    pub p12: Option<&'a ParsedPkcs12_2>,
     pub server_cert_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_key_pem: &'a [u8],
-    #[cfg(not(feature = "non-fips"))]
     pub server_chain_pem: Option<&'a [u8]>,
     pub client_ca_cert_pem: Option<&'a [u8]>,
 }
@@ -61,18 +57,18 @@ pub(crate) fn create_base_openssl_acceptor(
     // Configure the server certificate and private key
     #[cfg(feature = "non-fips")]
     {
-        configure_server_certificate_p12(&mut builder, config.p12, server_type)?;
+        if let Some(p12) = config.p12 {
+            configure_server_certificate_p12(&mut builder, p12, server_type)?;
+            return Ok(builder);
+        }
     }
-    #[cfg(not(feature = "non-fips"))]
-    {
-        configure_server_certificate_pem(
-            &mut builder,
-            config.server_cert_pem,
-            config.server_key_pem,
-            config.server_chain_pem,
-            server_type,
-        )?;
-    }
+    configure_server_certificate_pem(
+        &mut builder,
+        config.server_cert_pem,
+        config.server_key_pem,
+        config.server_chain_pem,
+        server_type,
+    )?;
 
     Ok(builder)
 }
@@ -156,7 +152,6 @@ fn configure_server_certificate_p12(
 }
 
 /// Configure server certificate and private key from PEM files (FIPS mode)
-#[cfg(not(feature = "non-fips"))]
 fn configure_server_certificate_pem(
     builder: &mut SslAcceptorBuilder,
     cert_pem: &[u8],

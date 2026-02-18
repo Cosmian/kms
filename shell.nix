@@ -35,6 +35,7 @@ let
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
+  withXks = (builtins.getEnv "WITH_XKS") == "1";
   # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds
   openssl312Fips = import ./nix/openssl.nix {
     inherit (pkgs)
@@ -76,12 +77,30 @@ pkgs.mkShell {
     openssl312Fips
     openssl312FipsShared
     pkgs.openssl
+    pkgs.openssl.dev
     pkgs.pkg-config
     pkgs.gcc
     pkgs.rust-bin.stable.latest.default
     opensslFipsBootstrap
   ]
   ++ (if withCurl then [ pkgs.curl ] else [ ])
+  ++ (
+    if withXks then
+      [
+        pkgs.bash
+        pkgs.curl
+        pkgs.jq
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnused
+        pkgs.vim
+        pkgs.xxd
+        # Provides `uuidgen` in the pure nix-shell environment.
+        pkgs.util-linux
+      ]
+    else
+      [ ]
+  )
   ++ (
     if withHsm then
       [

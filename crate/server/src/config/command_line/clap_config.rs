@@ -14,6 +14,7 @@ use crate::{
     config::{ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
+    routes::aws_xks::AwsXksConfig,
 };
 
 #[cfg(not(target_os = "windows"))]
@@ -59,6 +60,7 @@ impl Default for ClapConfig {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
         }
     }
@@ -163,6 +165,9 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub aws_xks_config: AwsXksConfig,
 
     /// KMIP algorithm policy.
     ///
@@ -362,6 +367,23 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
+
+        let x = x.field("aws_xks_config", &self.aws_xks_config);
+        let x = if self.aws_xks_config.aws_xks_enable {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+                .field("aws_xks_region", &self.aws_xks_config.aws_xks_region)
+                .field("aws_xks_service", &self.aws_xks_config.aws_xks_service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &self.aws_xks_config.aws_xks_sigv4_access_key_id,
+                )
+                .field(
+                    "aws_xks_sigv4_secret_access_key",
+                    &self.aws_xks_config.aws_xks_sigv4_secret_access_key,
+                )
+        } else {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+        };
         let x = x.field("kmip", &self.kmip_policy);
 
         x.finish()
