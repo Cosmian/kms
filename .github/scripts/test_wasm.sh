@@ -132,10 +132,10 @@ run_wasm_pack() {
     # Strip macOS framework linker flags from RUSTFLAGS (-C link-arg=-F<path> and
     # -C link-arg=-Wl,-F,<path>) while preserving all other flags (e.g. --cfg wasm_test_browser).
     if [ -n "${RUSTFLAGS:-}" ]; then
-      RUSTFLAGS="$(printf '%s' "${RUSTFLAGS}" \
-        | sed -e 's/-C link-arg=-F[^[:space:]]* \{0,1\}//g' \
-              -e 's/-C link-arg=-Wl,-F,[^[:space:]]* \{0,1\}//g' \
-              -e 's/[[:space:]]*$//')"
+      RUSTFLAGS="$(printf '%s' "${RUSTFLAGS}" |
+        sed -e 's/-C link-arg=-F[^[:space:]]* \{0,1\}//g' \
+          -e 's/-C link-arg=-Wl,-F,[^[:space:]]* \{0,1\}//g' \
+          -e 's/[[:space:]]*$//')"
       export RUSTFLAGS
     fi
     wasm-pack "$@"

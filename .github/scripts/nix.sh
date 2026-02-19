@@ -265,6 +265,14 @@ resolve_command_args() {
     export WITH_DOCKER=1
   fi
 
+  # WASM/UI integration tests start a KMS server via `cargo run` and poll for
+  # readiness before launching vitest.  The poll loop requires curl to avoid
+  # falling back to a bare `sleep 2` that is far too short for a cold debug
+  # build on CI.  Wire it in here so shell.nix includes it when WITH_WASM=1.
+  if [ "$COMMAND" = "test" ] && [ "${TEST_TYPE:-}" = "wasm" ]; then
+    export WITH_CURL=1
+  fi
+
   # In strict mode (`set -u`), expanding an unset array triggers an error.
   # Use the nounset-safe idiom so CI invocations without trailing args work.
   COMMAND_ARGS=("${args[@]+"${args[@]}"}")
