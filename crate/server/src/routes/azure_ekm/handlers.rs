@@ -1,19 +1,3 @@
-#![allow(clippy::panic)]
-
-use actix_web::{HttpResponse, web::Data};
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
-    kmip_2_1::{
-        kmip_data_structures::KeyMaterial,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, Encrypt, Get},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
-};
-use std::sync::Arc;
-use zeroize::Zeroizing;
-
 use crate::{
     core::KMS,
     error::KmsError,
@@ -30,6 +14,21 @@ use crate::{
         utils::get_rsa_key_metadata_from_public_key,
     },
 };
+use actix_web::{HttpResponse, web::Data};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::KeyMaterial,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, Encrypt, Get},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    },
+};
+use std::sync::Arc;
+use zeroize::Zeroizing;
+
+const AZURE_EKM_REQUIRED_AES_KEY_LENGTH: i32 = 256;
 
 pub(crate) async fn get_key_metadata_handler(
     key_name: String,
@@ -57,7 +56,7 @@ pub(crate) async fn get_key_metadata_handler(
                     // Check algorithm and build response
                     match algorithm {
                         CryptographicAlgorithm::AES => {
-                            if key_length == 256 {
+                            if key_length == AZURE_EKM_REQUIRED_AES_KEY_LENGTH {
                                 Ok(HttpResponse::Ok().json(KeyMetadataResponse::aes()))
                             } else {
                                 // It's indeed uncommon to see an error wrapped in an Ok() - this was done in purpose to reduce useless conversions
@@ -65,7 +64,7 @@ pub(crate) async fn get_key_metadata_handler(
                                 // since the key exists but its length is unsupported. The specs is not very clear on this particular case.
                                 Ok(AzureEkmErrorReply::operation_not_allowed(
                                     &format!(
-                                        "AES key has length {key_length}, only 256 is supported for now."
+                                        "AES key has length {key_length}, only {AZURE_EKM_REQUIRED_AES_KEY_LENGTH} is supported for now."
                                     ),
                                     &key_name,
                                 )
@@ -166,7 +165,6 @@ async fn get_and_validate_kek_algorithm(
     // According to KMS docs, if the algorithm is present the length is also present, so if we reach this line, there is no more error risk
     match (&kek_algorithm, request_alg) {
         (CryptographicAlgorithm::AES, WrapAlgorithm::A256KW | WrapAlgorithm::A256KWP) => {
-            // Specs mention only the usage of 256 bits keys
             let key_length = key_object
                 .key_block()
                 .map_err(KmsError::from)?
@@ -174,9 +172,9 @@ async fn get_and_validate_kek_algorithm(
                 .ok_or_else(|| {
                     AzureEkmErrorReply::internal_error("Key has no cryptographic length.")
                 })?;
-            if key_length != 256 {
+            if key_length != AZURE_EKM_REQUIRED_AES_KEY_LENGTH {
                 return Err(AzureEkmErrorReply::invalid_request(format!(
-                    "AES KEK must be 256 bits, found {key_length} bits"
+                    "AES KEK must be {AZURE_EKM_REQUIRED_AES_KEY_LENGTH} bits, found {key_length} bits"
                 )));
             }
             Ok(kek_algorithm)

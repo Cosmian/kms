@@ -108,8 +108,5 @@
   "sqltools.useNodeRuntime": true,
   "rust-analyzer.cargo.features": [
     "non-fips"
-  ],
-  "rust-analyzer.cargo.extraEnv": {
-    "CARGO_TARGET_DIR": "target/rust-analyzer" // This prevents rust-analyzer from interfering with regular cargo run builds and reduces compilation time
-  }
+  ]
 }
