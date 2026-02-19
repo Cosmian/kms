@@ -322,6 +322,8 @@ rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 ansi_colors = false
+
+[kmip.allowlists]
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
