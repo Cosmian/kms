@@ -115,6 +115,33 @@ run_ui() {
   )
 }
 
+# wasm-pack invokes cargo (for metadata fetches and compilation) which does NOT
+# need the host OpenSSL env vars set by common.sh / shell.nix.  Leaving those
+# vars in place causes cargo's libcurl-based network layer to attempt loading the
+# Nix-store OpenSSL provider (libcrypto.so.3) which is absent on macOS and
+# triggers fatal TLS errors on every crates.io download.  Unset them in the
+# subshell so wasm-pack/cargo uses its own network stack unmolested.
+#
+# Also strip macOS-specific framework linker flags that ensure_macos_frameworks_ldflags
+# injects into RUSTFLAGS for native builds: the WASM linker (rust-lld) does not
+# accept -F or -Wl,-F arguments and aborts with "unknown argument".
+run_wasm_pack() {
+  (
+    cd crate/wasm
+    unset OPENSSL_CONF OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
+    # Strip macOS framework linker flags from RUSTFLAGS (-C link-arg=-F<path> and
+    # -C link-arg=-Wl,-F,<path>) while preserving all other flags (e.g. --cfg wasm_test_browser).
+    if [ -n "${RUSTFLAGS:-}" ]; then
+      RUSTFLAGS="$(printf '%s' "${RUSTFLAGS}" \
+        | sed -e 's/-C link-arg=-F[^[:space:]]* \{0,1\}//g' \
+              -e 's/-C link-arg=-Wl,-F,[^[:space:]]* \{0,1\}//g' \
+              -e 's/[[:space:]]*$//')"
+      export RUSTFLAGS
+    fi
+    wasm-pack "$@"
+  )
+}
+
 # nix.sh runs this script *inside* a nix-shell for wasm tests (nodejs + wasm-pack).
 # Keep this script runnable standalone too.
 if ! command -v wasm-pack >/dev/null 2>&1; then
@@ -140,24 +167,24 @@ ensure_wasm_target
 
 if command -v node >/dev/null 2>&1; then
   if [ -n "${RELEASE_FLAG:-}" ]; then
-    (cd crate/wasm && wasm-pack test --node "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+    run_wasm_pack test --node "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
   else
-    (cd crate/wasm && wasm-pack test --node "${FEATURES_FLAG[@]}")
+    run_wasm_pack test --node "${FEATURES_FLAG[@]}"
   fi
 else
   echo "Node.js not found; falling back to Chrome headless" >&2
   if [ -n "${RELEASE_FLAG:-}" ]; then
-    (cd crate/wasm && RUSTFLAGS="--cfg wasm_test_browser" wasm-pack test --headless --chrome "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+    RUSTFLAGS="--cfg wasm_test_browser" run_wasm_pack test --headless --chrome "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
   else
-    (cd crate/wasm && RUSTFLAGS="--cfg wasm_test_browser" wasm-pack test --headless --chrome "${FEATURES_FLAG[@]}")
+    RUSTFLAGS="--cfg wasm_test_browser" run_wasm_pack test --headless --chrome "${FEATURES_FLAG[@]}"
   fi
 fi
 
 # Build the web-target WASM package and run React unit tests using the real artifacts.
 if [ -n "${RELEASE_FLAG:-}" ]; then
-  (cd crate/wasm && wasm-pack build --target web "$RELEASE_FLAG" "${FEATURES_FLAG[@]}")
+  run_wasm_pack build --target web "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
 else
-  (cd crate/wasm && wasm-pack build --target web "${FEATURES_FLAG[@]}")
+  run_wasm_pack build --target web "${FEATURES_FLAG[@]}"
 fi
 
 WASM_DIR="ui/src/wasm"

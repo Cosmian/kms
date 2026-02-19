@@ -95,6 +95,7 @@ pkgs.mkShell {
       [
         pkgs.nodejs
         pkgs.wasm-pack
+        pkgs.pnpm
       ]
     else
       [ ]
@@ -226,8 +227,16 @@ pkgs.mkShell {
     export SERVER_SKIP_OPENSSL_BUILD=1
     export RUST_TEST_THREADS=1
 
-    # Ensure TLS works for reqwest/native-tls inside Nix by pointing to the CA bundle
+    # Ensure TLS works for reqwest/native-tls inside Nix by pointing to the CA bundle.
+    # SSL_CERT_FILE is the OpenSSL env var; CURL_CA_BUNDLE is for curl (including cargo's
+    # internal HTTP client on macOS where OpenSSL CA auto-detection may not work);
+    # CARGO_HTTP_CAINFO lets cargo override its own curl CA bundle explicitly.
+    # NODE_EXTRA_CA_CERTS is for Node.js/npm which otherwise fails with "unable to get
+    # local issuer certificate" when the Nix pure shell strips system trust stores.
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export CURL_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export CARGO_HTTP_CAINFO="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+    export NODE_EXTRA_CA_CERTS="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
 
     if [ "''${WITH_HSM:-}" = "1" ]; then
       # Enable core dumps for post-mortem analysis of HSM-related crashes
