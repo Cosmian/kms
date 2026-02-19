@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMPOSE_FILE="${COMPOSE_FILE:-.github/scripts/docker-compose-with-load-balancer.yml}"
-LB_PORT="${LB_PORT:-18080}"
-LB_URL="${LB_URL:-http://localhost:${LB_PORT}/health}"
+COMPOSE_FILE="${COMPOSE_FILE:-.github/scripts/docker-compose.yml}"
 RECREATE_NGINX="${RECREATE_NGINX:-1}"
+LB_PORT="${LB_PORT:-8080}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
@@ -15,6 +14,18 @@ log() {
 
 dc() {
   docker compose -f "$COMPOSE_FILE" "$@"
+}
+
+ensure_running() {
+  # Prefer `start` (no-op if already running). If the service containers were
+  # never created (e.g. running this script standalone), fall back to `up -d`.
+  set +e
+  dc start "$@"
+  local rc=$?
+  set -e
+  if [[ $rc -ne 0 ]]; then
+    dc up -d "$@"
+  fi
 }
 
 http_code() {
@@ -111,17 +122,30 @@ wait_for_code() {
 }
 
 log "Using compose: ${COMPOSE_FILE}"
+log
+
+LB_URL="${LB_URL:-http://localhost:${LB_PORT}/health}"
 log "Using /health: ${LB_URL}"
 log
 
 if [[ "$RECREATE_NGINX" == "1" ]]; then
   log "Recreating nginx-load-balancer to pick up nginx.conf"
-  dc up -d --force-recreate nginx-load-balancer
+  dc stop nginx-load-balancer || true
+  dc rm -f nginx-load-balancer || true
+  set +e
+  dc create --force-recreate nginx-load-balancer
+  rc=$?
+  set -e
+  if [[ $rc -ne 0 ]]; then
+    dc up -d --force-recreate nginx-load-balancer
+  else
+    dc start nginx-load-balancer
+  fi
   log
 fi
 
-# Ensure the stack is up (no-op if already running)
-dc up -d
+# Ensure the LB stack is up (no-op if already running)
+ensure_running postgres kms1 kms2 kms3 nginx-load-balancer
 
 expect_code "baseline" "200"
 
@@ -140,7 +164,7 @@ expect_code_one_of "after stopping kms1 (no backends)" "502" "504"
 
 # Restore backends
 log "Restoring kms1..3"
-dc up -d kms1 kms2 kms3
+ensure_running kms1 kms2 kms3
 
 # Wait for recovery (nginx resolver valid=10s in our config + peer recovery).
 # In practice Nginx can briefly return 502 after all backends were down.

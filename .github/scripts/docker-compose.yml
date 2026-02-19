@@ -1,0 +1,153 @@
+---
+services:
+  # === Authentication/TLS test stack ===
+  no-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 9998
+        protocol: tcp
+
+  tls-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data:/data:ro
+      - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9999
+        published: 9999
+        protocol: tcp
+      - target: 5696
+        published: 5696
+        protocol: tcp
+
+  tls13-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data:/data:ro
+      - ../../test_data/configs/server/tls13_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 10000
+        published: 10000
+        protocol: tcp
+      - target: 5697
+        published: 5697
+        protocol: tcp
+
+  # === Config-file based smoke test ===
+  kms-with-conf:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 11098
+        protocol: tcp
+
+  # === Minimal example smoke test ===
+  kms-example:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 12098
+        protocol: tcp
+    restart: no
+
+  # === Load balancer stack ===
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kms
+      POSTGRES_PASSWORD: kms
+      POSTGRES_DB: kms
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U kms -d kms]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kms1:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms1_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  kms2:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      kms1:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms2_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  kms3:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      kms1:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms3_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  nginx-load-balancer:
+    image: nginx:1.27-alpine
+    depends_on:
+      - kms1
+      - kms2
+      - kms3
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres-data:
