@@ -45,7 +45,7 @@ function getStringArrayField(response: unknown, ...keys: string[]): string[] {
 }
 
 async function waitForKmsServer(): Promise<void> {
-    const deadline = Date.now() + 60_000;
+    const deadline = Date.now() + 120_000;
     let lastError: unknown;
 
     while (Date.now() < deadline) {
