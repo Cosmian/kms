@@ -121,3 +121,63 @@ services:
       - 4317:4317 # OTLP gRPC receiver (host)
       - 4318:4318 # OTLP HTTP receiver (host)
       - 8889:8889 # Prometheus metrics endpoint (host)
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo query
+      - "4319:4317" # OTLP gRPC (port différent pour éviter conflit avec otelco)
+      - "4320:4318" # OTLP HTTP
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoria-metrics
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--retentionPeriod=12" # 12 months
+      - "--httpListenAddr=:8428"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--search.cacheTimestampOffset=10m"
+    volumes:
+      - victoria-data:/victoria-metrics-data
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - otel-collector
+      - tempo
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    ports:
+      - "12345:12345"
+    volumes:
+      - "./config.alloy:/etc/alloy/config.alloy"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000" # Grafana UI
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - alloy
+      - victoria-metrics
