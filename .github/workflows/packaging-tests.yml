@@ -218,7 +218,7 @@ jobs:
           set -ex
 
           sudo systemctl start cosmian_kms
-          sleep 5
+          sleep 30
 
           # Check systemd service status
           sudo systemctl status cosmian_kms --no-pager || true
@@ -247,6 +247,40 @@ jobs:
             set -e
             exit $rc
           fi
+
+      - name: Create keys with cosmian CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Ensure the desired CLI version is available.
+          CLI_VERSION="${CLI_VERSION:-1.8.1}"
+          if ! command -v cosmian >/dev/null 2>&1; then
+            if command -v cargo >/dev/null 2>&1; then
+              cargo install cosmian_cli --locked --version "$CLI_VERSION" --force
+            else
+              echo "ERROR: cosmian CLI not found and cargo is not available to install it." >&2
+              exit 1
+            fi
+          fi
+
+          cosmian --version
+
+          # Configure cosmian CLI to talk to the locally running KMS.
+          mkdir -p "$HOME/.cosmian"
+          COSMIAN_CONFIG="$HOME/.cosmian/ci-kms.toml"
+          cat >"$COSMIAN_CONFIG" <<'TOML'
+          [kms_config]
+          print_json = false
+
+          [kms_config.http_config]
+          server_url = "http://127.0.0.1:9998"
+          TOML
+
+          # Create one key of each type.
+          cosmian -c "$COSMIAN_CONFIG" kms sym keys create --algorithm aes --number-of-bits 256 ci_sym_key
+          cosmian -c "$COSMIAN_CONFIG" kms rsa keys create --size_in_bits 4096 ci_rsa_key
+          cosmian -c "$COSMIAN_CONFIG" kms ec keys create --curve nist-p256 ci_ec_key
 
       - name: Override branding.json and verify served
         shell: bash
