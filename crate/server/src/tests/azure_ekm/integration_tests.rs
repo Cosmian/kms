@@ -224,8 +224,8 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
 
     let wrap_request = WrapKeyRequest {
         request_context: RequestContext {
-            request_id: Some("test-rsa-wrap".to_owned()),
-            correlation_id: "test-rsa-corr".to_owned(),
+            request_id: Some("test-aes-wrap".to_owned()),
+            correlation_id: "test-aes-corr".to_owned(),
             pool_name: "test-pool".to_owned(),
         },
         alg: WrapAlgorithm::A256KW,

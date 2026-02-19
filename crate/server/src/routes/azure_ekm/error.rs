@@ -4,6 +4,7 @@ use actix_web::HttpResponse;
 use actix_web::ResponseError;
 use cosmian_logger::debug;
 use serde::Serialize;
+use std::fmt;
 
 // If an error response is returned (with a non-200 HTTP status code), the proxy is required to
 // include the following JSON body in its response.
@@ -14,6 +15,12 @@ pub(crate) struct AzureEkmErrorReply {
     // please keep the `code` attribute private.
     code: String,
     message: String,
+}
+
+impl fmt::Display for AzureEkmErrorReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.code, self.message)
+    }
 }
 
 impl From<AzureEkmErrorReply> for HttpResponse {

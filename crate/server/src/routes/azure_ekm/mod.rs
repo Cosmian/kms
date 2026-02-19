@@ -80,7 +80,7 @@ pub(crate) async fn get_proxy_info(
     if let Err(e) = validate_api_version(&query.api_version) {
         return e.into();
     }
-    let conf = kms.params.azure_ekm.clone(); // it's an Arc, so cheap clone
+    let conf = kms.params.azure_ekm.clone();
 
     HttpResponse::Ok().json(ProxyInfoResponse {
         api_version: query.api_version.clone(),

@@ -284,7 +284,6 @@ async fn wrap_with_aes(
     alg: &WrapAlgorithm,
     correlation_id: String, // for logging purposes
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    // Determine block cipher mode and IV/nonce based on algorithm
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
         WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
@@ -356,6 +355,13 @@ pub(crate) async fn unwrap_key_handler(
             "Invalid base64url encoding in 'value' field: {e}"
         ))
     })?;
+
+    if wrapped_dek_bytes.is_empty() {
+        return Err(AzureEkmErrorReply::invalid_request(
+            "Cannot unwrap empty data",
+        ));
+    }
+    // No other length validation here: Invalid lengths produce clean crypto errors.
 
     let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
 
