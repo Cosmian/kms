@@ -167,10 +167,26 @@ if [ "$IS_FIPS" = true ]; then
   ENV_OPENSSL_MODULES="$CHECK_DIR/usr/local/cosmian/lib/ossl-modules"
 fi
 
+# For non-FIPS builds, set OPENSSL_MODULES to point to bundled provider modules
+# so the legacy provider can be loaded during smoke test execution.
+if [ "$IS_FIPS" != true ]; then
+  NON_FIPS_OSSL_MODULES="$CHECK_DIR/usr/local/cosmian/lib/ossl-modules"
+  if [ -d "$NON_FIPS_OSSL_MODULES" ]; then
+    ENV_OPENSSL_MODULES="$NON_FIPS_OSSL_MODULES"
+  fi
+  NON_FIPS_OSSL_CONF="$CHECK_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  if [ -f "$NON_FIPS_OSSL_CONF" ]; then
+    ENV_OPENSSL_CONF="$NON_FIPS_OSSL_CONF"
+  fi
+fi
+
 # Use `env` to set variables for the run
 CMD=("$BINARY_PATH" --version)
-if [ "$IS_FIPS" = true ]; then
-  VERSION_OUTPUT=$(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "${CMD[@]}" 2>&1 || true)
+if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
+  ENV_ARGS=()
+  [ -n "$ENV_OPENSSL_CONF" ] && ENV_ARGS+=(OPENSSL_CONF="$ENV_OPENSSL_CONF")
+  [ -n "$ENV_OPENSSL_MODULES" ] && ENV_ARGS+=(OPENSSL_MODULES="$ENV_OPENSSL_MODULES")
+  VERSION_OUTPUT=$(env "${ENV_ARGS[@]}" "${CMD[@]}" 2>&1 || true)
 else
   VERSION_OUTPUT=$("${CMD[@]}" 2>&1 || true)
 fi
@@ -189,8 +205,11 @@ info "\xe2\x9c\x93 Binary executed successfully"
 # - FIPS dynamic builds bundle 3.1.2 runtime libs to match the FIPS provider
 EXPECTED_VER="3.6.0"
 info "Verifying OpenSSL runtime version (expected ${EXPECTED_VER})…"
-if [ "$IS_FIPS" = true ]; then
-  INFO_CMD=(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "$BINARY_PATH" --info)
+if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
+  INFO_CMD=(env)
+  [ -n "$ENV_OPENSSL_CONF" ] && INFO_CMD+=(OPENSSL_CONF="$ENV_OPENSSL_CONF")
+  [ -n "$ENV_OPENSSL_MODULES" ] && INFO_CMD+=(OPENSSL_MODULES="$ENV_OPENSSL_MODULES")
+  INFO_CMD+=("$BINARY_PATH" --info)
 else
   INFO_CMD=("$BINARY_PATH" --info)
 fi

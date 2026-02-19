@@ -169,11 +169,12 @@ if [ -z "$APP_BUNDLE" ]; then
   exit 1
 fi
 
-# Ensure FIPS OpenSSL assets are embedded in the app bundle for FIPS variants
+# Ensure OpenSSL assets are embedded in the app bundle
+RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
+mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
+
 if [ "$VARIANT" = "fips" ]; then
-  RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
-  mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
-  # Locate the OpenSSL store path built earlier
+  # FIPS variant: embed FIPS provider and configs from OpenSSL 3.1.2
   OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name '*-openssl-3.1.2' 2>/dev/null | head -n1 || true)
   if [ -n "$OPENSSL_STORE" ]; then
     SRC_MOD="$OPENSSL_STORE/usr/local/cosmian/lib/ossl-modules/fips.dylib"
@@ -193,6 +194,19 @@ if [ "$VARIANT" = "fips" ]; then
     fi
   else
     echo "Warning: OpenSSL store path not found; skipping FIPS asset embedding" >&2
+  fi
+else
+  # Non-FIPS variant: embed legacy provider and non-FIPS openssl.cnf from the server derivation
+  SERVER_OSSL_DIR="$REAL_OUT/usr/local/cosmian/lib"
+  if [ -d "$SERVER_OSSL_DIR/ossl-modules" ]; then
+    cp -f -r "$SERVER_OSSL_DIR/ossl-modules/"* "$RES_DIR/ossl-modules/" 2>/dev/null || true
+    echo "Embedded non-FIPS OpenSSL modules from server derivation"
+  else
+    echo "Warning: No ossl-modules found in server derivation at $SERVER_OSSL_DIR" >&2
+  fi
+  if [ -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" ]; then
+    cp -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" "$RES_DIR/ssl/openssl.cnf"
+    echo "Embedded non-FIPS OpenSSL config from server derivation"
   fi
 fi
 arch_raw="$(uname -m)"
