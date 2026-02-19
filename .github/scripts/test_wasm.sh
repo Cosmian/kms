@@ -275,7 +275,7 @@ if command -v cargo >/dev/null 2>&1; then
         tail -n 120 "$KMS_LOG_FILE" >&2 || true
         exit 1
       fi
-      if curl -sS --max-time 1 -o /dev/null "http://127.0.0.1:9998/"; then
+      if env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -sS --max-time 1 -o /dev/null "http://127.0.0.1:9998/"; then
         ready=1
         break
       fi
