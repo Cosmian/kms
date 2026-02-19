@@ -822,7 +822,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
                     SslAuth,
                 ))
-                .wrap(Cors::permissive())
+                .wrap(
+                    // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
+                    Cors::default(),
+                )
                 .service(azure_ekm::get_proxy_info)
                 .service(azure_ekm::get_key_metadata)
                 .service(azure_ekm::wrap_key)
