@@ -39,7 +39,7 @@ pub struct AzureEkmConfig {
     /// Proxy name to report in /info endpoint.
     #[clap(
         long,
-        env = "KMS_AZURE_EKM_PROXY_VENDOR",
+        env = "KMS_AZURE_EKM_PROXY_NAME",
         default_value = "EKM Proxy Service v{version}"
     )]
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -54,7 +54,7 @@ pub struct AzureEkmConfig {
     #[clap(
         long,
         env = "KMS_AZURE_EKM_PRODUCT",
-        default_value_t = format!("Cosmian KMS v{}", env!("CARGO_PKG_VERSION"))
+        default_value_t = format!("EKM Proxy Service v{}", env!("CARGO_PKG_VERSION"))
     )]
     #[serde(skip_serializing_if = "String::is_empty")]
     pub azure_ekm_ekm_product: String, // again, double "ekm" is intentional
