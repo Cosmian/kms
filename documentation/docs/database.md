@@ -6,14 +6,18 @@ as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with
 <!-- TOC -->
 
 - [Selecting the database](#selecting-the-database)
-    - [Redis with Findex](#redis-with-findex)
+  - [Redis with Findex](#redis-with-findex)
 - [Configuring the database](#configuring-the-database)
-    - [SQLite](#sqlite)
-        - [PostgreSQL](#postgresql)
-        - [MySQL, MariaDB, or Percona XtraDB Cluster](#mysql-mariadb-or-percona-xtradb-cluster)
-        - [Redis with Findex](#redis-with-findex-1)
+  - [SQLite](#sqlite)
+    - [PostgreSQL](#postgresql)
+    - [MySQL, MariaDB, or Percona XtraDB Cluster](#mysql-mariadb-or-percona-xtradb-cluster)
+    - [Redis with Findex](#redis-with-findex-1)
+- [Securing database connections with TLS / mTLS](#securing-database-connections-with-tls--mtls)
+  - [PostgreSQL TLS / mTLS](#postgresql-tls--mtls)
+  - [MySQL / MariaDB TLS / mTLS](#mysql--mariadb-tls--mtls)
 - [Clearing the database](#clearing-the-database)
 - [Database migration](#database-migration)
+  - [MySQL schema update (5.13.0)](#mysql-schema-update-5130)
 - [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
 
 <!-- TOC -->
@@ -195,6 +199,141 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
     ```
 
 - Redis (with-Findex), use:
+
+## Securing database connections with TLS / mTLS
+
+The KMS supports TLS-encrypted connections and mutual TLS (mTLS) client-certificate authentication
+for PostgreSQL and MySQL-compatible databases. All TLS parameters are configured directly in the
+`database-url` as query parameters — no extra CLI flags or TOML keys are needed.
+
+!!! warning "Production certificates must be issued by a trusted Certificate Authority"
+    For production deployments, all TLS certificates (CA, server, and client certificates) must be
+    issued by a trusted Certificate Authority (CA). Self-signed certificates should only be used
+    for testing and development environments.
+    
+    Using certificates from an untrusted or self-signed CA may expose your KMS deployment to
+    man-in-the-middle (MITM) attacks and should never be done in production.
+
+### PostgreSQL TLS / mTLS
+
+PostgreSQL TLS is configured using the standard `libpq`-style query parameters in the connection URL.
+
+| Parameter     | Description                                     |
+|---------------|-------------------------------------------------|
+| `sslmode`     | TLS mode: `disable`, `prefer` (default), `require`, `verify-ca`, `verify-full` |
+| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server |
+| `sslcert`     | Path to the client certificate (PEM) for mTLS   |
+| `sslkey`      | Path to the client private key (PEM) for mTLS   |
+
+**Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "postgresql"
+    database_url = "postgres://kms:kms@pgsql-server:5432/kms?sslmode=verify-ca&sslrootcert=/path/to/ca.crt"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=postgresql \
+    --database-url="postgres://kms:kms@pgsql-server:5432/kms?sslmode=verify-ca&sslrootcert=/path/to/ca.crt"
+    ```
+
+**Mutual TLS (mTLS)** (encrypt + verify server certificate + present a client certificate):
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "postgresql"
+    database_url = "postgres://kms:kms@pgsql-server:5432/kms?sslmode=verify-full&sslrootcert=/path/to/ca.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=postgresql \
+    --database-url="postgres://kms:kms@pgsql-server:5432/kms?sslmode=verify-full&sslrootcert=/path/to/ca.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key"
+    ```
+
+!!! note "sslmode behaviour"
+    - `disable` – no TLS at all.
+    - `prefer` (default) / `require` – TLS is used but the server certificate is **not** verified.
+    - `verify-ca` – the server certificate is verified against the CA but the hostname is **not** checked.
+    - `verify-full` – the server certificate is verified against the CA **and** the hostname must match.
+
+    All certificates must be in **PEM** format.
+
+### MySQL / MariaDB TLS / mTLS
+
+MySQL TLS is configured using query parameters in the connection URL.
+Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
+
+| Parameter                       | Description                                                |
+|---------------------------------|------------------------------------------------------------|
+| `ssl-mode`                      | TLS mode: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY` |
+| `ssl-ca`                        | Path to the CA certificate (PEM) for server verification   |
+| `ssl-client-identity`           | Path to the client PKCS#12 (`.p12`) bundle for mTLS        |
+| `ssl-client-identity-password`  | Password protecting the PKCS#12 bundle                     |
+
+**Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "mysql"
+    database_url = "mysql://kms:kms@mysql-server:3306/kms?ssl-mode=VERIFY_CA&ssl-ca=/path/to/ca.crt"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=mysql \
+    --database-url="mysql://kms:kms@mysql-server:3306/kms?ssl-mode=VERIFY_CA&ssl-ca=/path/to/ca.crt"
+    ```
+
+**Mutual TLS (mTLS)** (encrypt + verify server certificate + present a client certificate):
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "mysql"
+    database_url = "mysql://kms:kms@mysql-server:3306/kms?ssl-mode=VERIFY_CA&ssl-ca=/path/to/ca.crt&ssl-client-identity=/path/to/client.p12&ssl-client-identity-password=secret"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=mysql \
+    --database-url="mysql://kms:kms@mysql-server:3306/kms?ssl-mode=VERIFY_CA&ssl-ca=/path/to/ca.crt&ssl-client-identity=/path/to/client.p12&ssl-client-identity-password=secret"
+    ```
+
+!!! note "ssl-mode behaviour"
+    - `DISABLED` – no TLS at all.
+    - `PREFERRED` / `REQUIRED` – TLS is used but the server certificate is **not** verified.
+    - `VERIFY_CA` – the server certificate is verified against the CA.
+    - `VERIFY_IDENTITY` – the server certificate is verified against the CA **and** the hostname must match.
+
+!!! warning "PKCS#12 client identity"
+    MySQL client-certificate authentication requires the certificate and private key bundled as a
+    **PKCS#12** (`.p12`) file — PEM files are not supported.
+
+    You can create the bundle using OpenSSL:
+
+    ```sh
+    openssl pkcs12 -export \
+        -in client.crt -inkey client.key \
+        -out client.p12 -passout pass:secret
+    ```
+
+!!! warning "FIPS mode restriction"
+    PKCS#12 client identity (`ssl-client-identity`) is **not available** in FIPS mode.
+    MySQL mTLS with client certificates requires the `non-fips` feature.
 
 ## Clearing the database
 
