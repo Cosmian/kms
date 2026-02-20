@@ -8,6 +8,16 @@ All notable changes to this project will be documented in this file.
 
 - Add MLKEM algorithms to the predefined DEFAULT KMIP policy
 
+### ⚙️ Build
+
+- Non-FIPS Nix Linux builds are now bit-for-bit reproducible (`nix-build --check` passes for all four Linux variants: FIPS/non-FIPS × static/dynamic OpenSSL):
+    - Removed `${toString ../.}` from RUSTFLAGS `-C remap-path-prefix` — it embedded the machine-specific workspace path into the derivation, causing cross-machine hash divergence.
+    - Added `-C strip=symbols` and `-C symbol-mangling-version=v0` to strip residual host-path artefacts from symbol tables.
+    - Scrub the Nix-store path from OpenSSL's `buildinf.h` at build time so the OpenSSL derivation hash is identical across machines.
+- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05) — eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
+- Non-FIPS Docker image now ships OpenSSL 3.6.0 provider modules (`legacy.so`, `openssl.cnf`) and sets `OPENSSL_CONF`/`OPENSSL_MODULES` environment variables, matching the FIPS image layout.
+- macOS packaging fixes in `nix/scripts/package_dmg.sh` and related CI scripts.
+
 ## [5.16.0] - 2026-02-04
 
 ### 🚀 Features

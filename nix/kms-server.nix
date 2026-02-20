@@ -316,8 +316,6 @@ rustPlatform.buildRustPackage rec {
   # Disable cargo-auditable wrapper; it doesn't understand edition=2024 yet
   auditable = false;
   # Run tests only for static builds (self-contained OpenSSL); dynamic builds may lack runtime libssl in sandbox
-  # NOTE: temporarily disabled — pre-existing test failures (KMS server handle disconnected in sandbox)
-  doCheck = false; # TODO: restore to `static` once sandbox test infrastructure is fixed
 
   # Provide the whole workspace but filtered; build only the server crate.
   src = filteredSrc;
