@@ -560,7 +560,7 @@ sbom_command() {
       args+=("$1" "$2")
       shift 2
       ;;
-    -h|--help)
+    -h | --help)
       args+=("$1")
       shift
       ;;

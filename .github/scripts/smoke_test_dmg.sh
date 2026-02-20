@@ -35,8 +35,6 @@ if [[ "$DMG_FILE" == *"fips"* ]] && [[ "$DMG_FILE" != *"non-fips"* ]]; then
   IS_FIPS=true
 fi
 
-
-
 [ -f "$DMG_FILE" ] || error "DMG not found: $DMG_FILE"
 
 info "Starting smoke test for: $DMG_FILE"
@@ -127,8 +125,8 @@ if [ "$IS_FIPS" = true ]; then
     fi
     info "\xe2\x9c\x93 OpenSSL config free of Nix paths"
     # Accept either absolute include to /usr/local path or a relative include
-    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF" || \
-       grep -q '^.include\s\+fipsmodule.cnf' "$OSSL_CONF"; then
+    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF" ||
+      grep -q '^.include\s\+fipsmodule.cnf' "$OSSL_CONF"; then
       info "\xe2\x9c\x93 openssl.cnf include directive present"
     else
       warn ".include directive missing or unexpected in openssl.cnf"
