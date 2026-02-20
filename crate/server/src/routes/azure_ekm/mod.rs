@@ -37,9 +37,9 @@ fn validate_api_version(version: &str) -> Result<(), AzureEkmErrorReply> {
 }
 
 fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
-    if key_name.is_empty() || key_name.len() > 127 {
+    if key_name.is_empty() || key_name.len() > 64 {
         return Err(AzureEkmErrorReply::invalid_request(
-            "Key name length must be between 1 and 127 characters",
+            "Key name length must be between 1 and 64 characters",
         ));
     }
 

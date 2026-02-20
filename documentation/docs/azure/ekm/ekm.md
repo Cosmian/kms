@@ -195,7 +195,7 @@ azure_ekm_disable_client_auth = false
 | `azure_ekm_enable` | boolean | `false` | Enable/disable Azure EKM API endpoints. |
 | `azure_ekm_path_prefix` | string | none | Optional path prefix for routing and multi-tenant isolation. Max 64 chars: `a-z`, `A-Z`, `0-9`, `/`, `-`. Example: `"cosmian0"`, `"customer-a/prod"` |
 | `azure_ekm_proxy_vendor` | string | `"Cosmian"` | Proxy vendor name reported in `/info` endpoint. |
-| `azure_ekm_proxy_name` | string | `"EKM Proxy Service v{version}"` | Proxy name and version reported in `/info` endpoint. Auto-inserts API version by default. |
+| `azure_ekm_proxy_name` | string | `"EKM Proxy Service"` | Proxy name and version reported in `/info` endpoint. Auto-inserts the KMS package version by default. |
 | `azure_ekm_ekm_vendor` | string | `"Cosmian"` | EKMS vendor name reported in `/info` endpoint.|
 | `azure_ekm_ekm_product` | string | `"Cosmian KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
 | `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
@@ -207,12 +207,12 @@ For testing purposes or for debugging, you can temporarily disable client authen
 
 ```toml
 [tls]
-# Comment this field to disable client auth and allow upcoming requests from anyone
+# Comment this field to disable client auth and allow incoming requests from anyone
 # clients_ca_cert_file = "/etc/cosmian/mhsm-root-ca.pem"
 
 [azure_ekm_config]
-# change to false
-# azure_ekm_disable_client_auth = false
+# Set to true to bypass mTLS for local testing only — NEVER use in production
+azure_ekm_disable_client_auth = true
 ```
 
 Restart the KMS server:

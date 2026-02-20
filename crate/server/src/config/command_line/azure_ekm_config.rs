@@ -40,7 +40,7 @@ pub struct AzureEkmConfig {
     #[clap(
         long,
         env = "KMS_AZURE_EKM_PROXY_NAME",
-        default_value_t = format!("EKM Proxy Service v{}", env!("CARGO_PKG_VERSION"))
+        default_value = "EKM Proxy Service"
     )]
     #[serde(skip_serializing_if = "String::is_empty")]
     pub azure_ekm_proxy_name: String,
