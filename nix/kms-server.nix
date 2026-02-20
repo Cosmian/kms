@@ -565,26 +565,35 @@ rustPlatform.buildRustPackage rec {
   NIX_DONT_SET_RPATH = lib.optionalString pkgs.stdenv.isLinux "1";
   NIX_ENFORCE_PURITY = lib.optionalString pkgs.stdenv.isLinux "1";
   dontCargoCheck = true;
-  dontCheck = !static;
+  # Run tests only for static builds (self-contained OpenSSL); dynamic builds
+  # lack runtime libssl in the Nix sandbox. Use doCheck (not dontCheck) for
+  # reliable behaviour across nixpkgs versions.
+  doCheck = static;
   dontUseCargoParallelTests = true;
   doInstallCheck = true; # Always run install checks to generate/verify hashes
   dontInstallCheck = false;
   cargoCheckHook = "";
   cargoNextestHook = "";
-  checkPhase = ''
-    runHook preCheck
-    echo "== cargo test cosmian_kms_server (release) =="
-    export RUST_BACKTRACE=1
-    export OPENSSL_DIR="${openssl312}"
-    export OPENSSL_LIB_DIR="${openssl312}/lib"
-    export OPENSSL_INCLUDE_DIR="${openssl312}/include"
-    export OPENSSL_NO_VENDOR=1
+  checkPhase =
+    if static then
+      ''
+        runHook preCheck
+        echo "== cargo test cosmian_kms_server (release) =="
+        export RUST_BACKTRACE=1
+        export OPENSSL_DIR="${openssl312}"
+        export OPENSSL_LIB_DIR="${openssl312}/lib"
+        export OPENSSL_INCLUDE_DIR="${openssl312}/include"
+        export OPENSSL_NO_VENDOR=1
 
-    cargo test --release -p cosmian_kms_server --no-default-features \
-      ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"}
+        cargo test --release -p cosmian_kms_server --no-default-features \
+          ${lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"}
 
-    runHook postCheck
-  '';
+        runHook postCheck
+      ''
+    else
+      ''
+        echo "== Skipping cargo test for dynamic build (libssl.so.3 unavailable in Nix sandbox) =="
+      '';
   configurePhase = ''
     export CARGO_HOME="$(pwd)/.cargo-home"
   '';
