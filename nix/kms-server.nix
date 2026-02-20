@@ -580,9 +580,31 @@ rustPlatform.buildRustPackage rec {
         runHook preCheck
         echo "== cargo test cosmian_kms_server (release) =="
         export RUST_BACKTRACE=1
-        export OPENSSL_DIR="${openssl312}"
-        export OPENSSL_LIB_DIR="${openssl312}/lib"
-        export OPENSSL_INCLUDE_DIR="${openssl312}/include"
+      ''
+      + (
+        if isFips then
+          ''
+            # FIPS: tests use the 3.1.2 provider
+            export OPENSSL_DIR="${openssl312_}"
+            export OPENSSL_LIB_DIR="${openssl312_}/lib"
+            export OPENSSL_INCLUDE_DIR="${openssl312_}/include"
+            export OPENSSL_CONF="${openssl312_}/ssl/openssl.cnf"
+            export OPENSSL_MODULES="${openssl312_}/lib/ossl-modules"
+          ''
+        else
+          ''
+            # Non-FIPS: the binary needs the legacy provider at runtime.
+            # Point OPENSSL_CONF/MODULES to the Nix-store copy so legacy.so
+            # is found (compiled-in OPENSSLDIR=/usr/local/cosmian/… doesn't
+            # exist in the sandbox).
+            export OPENSSL_DIR="${openssl36_}"
+            export OPENSSL_LIB_DIR="${openssl36_}/lib"
+            export OPENSSL_INCLUDE_DIR="${openssl36_}/include"
+            export OPENSSL_CONF="${openssl36_}/ssl/openssl.cnf"
+            export OPENSSL_MODULES="${openssl36_}/lib/ossl-modules"
+          ''
+      )
+      + ''
         export OPENSSL_NO_VENDOR=1
 
         cargo test --release -p cosmian_kms_server --no-default-features \
