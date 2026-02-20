@@ -181,3 +181,8 @@ services:
     depends_on:
       - alloy
       - victoria-metrics
+
+volumes:
+  grafana-data:
+  victoria-data:
+  tempo-data:
