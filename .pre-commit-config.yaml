@@ -178,7 +178,7 @@ repos:
         entry: bash .github/scripts/test_wasm.sh
         language: system
         pass_filenames: false
-        always_run: true
+        types_or: [javascript, jsx, ts, tsx]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)

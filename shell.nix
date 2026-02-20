@@ -93,7 +93,7 @@ pkgs.mkShell {
   ++ (
     if withWasm then
       [
-        pkgs.nodejs
+        pkgs.nodejs_22
         pkgs.wasm-pack
         pkgs.pnpm
       ]

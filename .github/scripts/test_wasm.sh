@@ -210,28 +210,35 @@ if [ -n "${IN_NIX_SHELL:-}" ] && [ -f ui/package-lock.json ]; then
   run_ui npm ci
   run_ui npm run lint
   run_ui npm run test:unit
+  run_ui npm audit --audit-level=high
+
 elif [ -f ui/pnpm-lock.yaml ]; then
   if ensure_pnpm; then
     run_ui pnpm install --frozen-lockfile
     run_ui pnpm run lint
     run_ui pnpm run test:unit
+    run_ui pnpm audit --audit-level high
   elif [ -f ui/package-lock.json ]; then
     run_ui npm ci
     run_ui npm run lint
     run_ui npm run test:unit
+    run_ui npm audit --audit-level=high
   else
     run_ui npm install
     run_ui npm run lint
     run_ui npm run test:unit
+    run_ui npm audit --audit-level=high
   fi
 elif [ -f ui/package-lock.json ]; then
   run_ui npm ci
   run_ui npm run lint
   run_ui npm run test:unit
+  run_ui npm audit --audit-level=high
 else
   run_ui npm install
   run_ui npm run lint
   run_ui npm run test:unit
+  run_ui npm audit --audit-level=high
 fi
 
 # Run UI integration tests against a locally started KMS server.
