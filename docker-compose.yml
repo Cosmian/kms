@@ -108,19 +108,19 @@ services:
   # KMS -> otel-collector -> scrape collector Prometheus endpoint
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.144.0
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    environment:
-      # Kept for local setups that also export somewhere else; not used by test assertions.
-      - OTLP_ENDPOINT=jaeger:4317
-      - ENVIRONMENT=test
-      - KMS_VERSION=dev
     ports:
-      - 4317:4317 # OTLP gRPC receiver (host)
-      - 4318:4318 # OTLP HTTP receiver (host)
-      - 8889:8889 # Prometheus metrics endpoint (host)
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8888:8888" # Collector metrics
+    environment:
+      - OTLP_ENDPOINT=tempo:4317 # Forward to Tempo
+      - ENVIRONMENT=development
+      - KMS_VERSION=5.15.0
 
   tempo:
     image: grafana/tempo:latest
