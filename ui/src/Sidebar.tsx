@@ -55,10 +55,10 @@ const Sidebar: React.FC = () => {
                 // Check if item is an Import item
                 const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
 
-                // Handle disabled state based on access rights
-                if (isCreateItem || isImportItem) {
-                    newItem.disabled = !hasCreateAccess;
-                }
+                // // Handle disabled state based on access rights
+                // if (isCreateItem || isImportItem) {
+                //     newItem.disabled = !hasCreateAccess;
+                // }
 
                 // Process children recursively if they exist
                 if (newItem.children) {
@@ -99,7 +99,9 @@ const Sidebar: React.FC = () => {
                 .findIndex((key: string) => levelKeys[key] === levelKeys[currentOpenKey]);
 
             setStateOpenKeys(
-                openKeys.filter((_, index: number) => index !== repeatIndex).filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
+                openKeys
+                    .filter((_, index: number) => index !== repeatIndex)
+                    .filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey]),
             );
         } else {
             // close

@@ -1,6 +1,7 @@
 mod access;
 mod attributes;
 mod auth_tests;
+mod aws;
 mod azure;
 mod certificates;
 #[cfg(feature = "non-fips")]

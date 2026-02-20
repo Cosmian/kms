@@ -157,7 +157,16 @@ const baseMenu: MenuItem[] = [
         collapsedlabel: "Azure",
         children: [
             {key: "azure/import-kek", label: "Import KEK"},
-            {key: "azure/export-byok", label: "Export BYOK"},
+            {key: "azure/export-key-material", label: "Export BYOK"},
+        ],
+    },
+    {
+        key: "aws",
+        label: "AWS",
+        collapsedlabel: "AWS",
+        children: [
+            { key: "aws/import-kek", label: "Import KEK" },
+            { key: "aws/export-key-material", label: "Export key material" },
         ],
     },
     {

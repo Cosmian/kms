@@ -13,10 +13,10 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
 ## Standards' compliance
 
 - [FIPS 140-3](./fips.md) mode
-- KMIP support (versions 1.0-1.4, 2.0-2.1) in both binary and JSON formats - see [KMIP documentation](./kmip/index.md)
-- [HSM support](./hsms/index.md) for Trustway Proteccio & Crypt2Pay, Utimaco general purpose, Nitrokey HSM 2, Smartcard HSMs, etc. with KMS keys wrapped by the HSM
-- Developed in Rust, a memory safe language, with the source code available on [GitHub](https://github.com/Cosmian/kms)
-- 100% developed in the European Union
+- KMIP support (versions 1.0-1.4, 2.0-2.1) in both binary and JSON formats - see [KMIP documentation](./kmip/index.md).
+- [HSM support](./hsms/index.md) for Trustway Proteccio & Crypt2Pay, Utimaco general purpose, Nitrokey HSM 2, Smartcard HSMs, etc. with KMS keys wrapped by the HSM.
+- Developed in Rust, a memory safe language, with the source code available on [GitHub](https://github.com/Cosmian/kms).
+- 100% developed in the European Union.
 
 ## Modern technology
 
@@ -32,6 +32,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
 - **Cloud integrations**:
     - [Azure BYOK](./azure/byok.md)
     - [GCP CSEK](./google_gcp/csek.md) and [Google CMEK](./google_gcp/cmek.md)
+    - [AWS BYOK](./aws/byok.md) and [AWS Fargate](./aws/fargate.md)
     - ...
 - **Workplace security**:
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
@@ -77,6 +78,8 @@ The **Cosmian KMS** includes an intuitive graphical user interface (GUI) with su
 token authentication.
 
 ![Cosmian KMS UI](./images/kms-ui.png)
+
+The UI can be [fully customized](./ui_branding.md) to match your organization's branding.
 
 ## Client CLI
 
