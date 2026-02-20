@@ -713,8 +713,8 @@ All test scripts are called via `nix.sh test <type>` for reproducible environmen
 
 ### Docker Compose Configurations
 
-- `docker-compose-authentication-tests-fips.yml`: FIPS authentication test services
-- `docker-compose-authentication-tests-non-fips.yml`: Non-FIPS authentication test services
+- `.github/scripts/docker-compose.yml`: Single compose file for docker image smoke tests (auth/TLS, config-based, example, and load-balancer stacks)
+- `test_data/configs/server/{no_auth,tls_auth_*,tls13_auth_*,lb_kms*_postgres}.toml`: Dedicated server configuration files mounted via `COSMIAN_KMS_CONF` (used by the compose services)
 
 ---
 

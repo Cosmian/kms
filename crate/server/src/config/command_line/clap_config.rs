@@ -231,13 +231,19 @@ impl ClapConfig {
         };
 
         if let Some(path) = explicit {
-            if path.exists() {
+            if path.is_file() {
                 println!(
                     "Configuration file {} found (via -c/--config). Command line arguments and \
                      env variables are ignored.",
                     path.display()
                 );
                 return load_file(&path);
+            }
+            if path.exists() {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file specified with -c/--config is not a regular file: {}",
+                    path.display()
+                )));
             }
             return Err(KmsError::ServerError(format!(
                 "Configuration file specified with -c/--config not found: {}",
@@ -246,7 +252,7 @@ impl ClapConfig {
         }
 
         if let Some(env_path) = env_path {
-            if env_path.exists() {
+            if env_path.is_file() {
                 println!(
                     "Configuration file {} found (via COSMIAN_KMS_CONF). Command line arguments \
                      and env variables are ignored.",
@@ -254,13 +260,21 @@ impl ClapConfig {
                 );
                 return load_file(&env_path);
             }
-            println!(
-                "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
-                env_path.display()
-            );
+            if env_path.exists() {
+                println!(
+                    "WARNING: COSMIAN_KMS_CONF path {} exists but is not a regular file (e.g. a \
+                     directory). Ignoring and falling back.",
+                    env_path.display()
+                );
+            } else {
+                println!(
+                    "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
+                    env_path.display()
+                );
+            }
         }
 
-        if default_path.exists() {
+        if default_path.is_file() {
             println!(
                 "Configuration file {} found (default path). Command line arguments and \
                  environment variables are ignored.",
