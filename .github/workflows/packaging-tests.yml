@@ -279,8 +279,6 @@ jobs:
 
           # Create one key of each type.
           cosmian -c "$COSMIAN_CONFIG" kms sym keys create --algorithm aes --number-of-bits 256 ci_sym_key
-          cosmian -c "$COSMIAN_CONFIG" kms rsa keys create --size_in_bits 4096 ci_rsa_key
-          cosmian -c "$COSMIAN_CONFIG" kms ec keys create --curve nist-p256 ci_ec_key
 
       - name: Override branding.json and verify served
         shell: bash
