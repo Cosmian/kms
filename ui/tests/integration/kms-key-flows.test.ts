@@ -69,7 +69,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
     beforeAll(async () => {
         await waitForKmsServer();
         const wasmBytes = await readFile(new URL("../../src/wasm/pkg/cosmian_kms_client_wasm_bg.wasm", import.meta.url));
-        await init(wasmBytes);
+        await init({ module_or_path: wasmBytes });
     });
 
     const uniqueTagSuffix = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;

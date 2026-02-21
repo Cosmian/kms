@@ -82,7 +82,7 @@ const ExportAzureBYOKForm: React.FC = () => {
             // Using "rsa-pkcs-oaep" as the wrapping algorithm
             const exportRequest = export_ttlv_request(
                 values.wrappedKeyId,
-                false, // unwrap - keep key material wrapped on export
+                true, // unwrap - export the key in wrapped form
                 "raw", // key_format - raw bytes
                 values.kekId, // wrap_key_id - the KEK to wrap with
                 "rsa-aes-key-wrap-sha1" // wrapping_algorithm

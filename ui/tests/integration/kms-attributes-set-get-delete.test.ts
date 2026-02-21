@@ -38,7 +38,7 @@ describe.sequential("KMS attributes flow (set → get → delete)", () => {
     beforeAll(async () => {
         await waitForKmsServer();
         const wasmBytes = await readFile(new URL("../../src/wasm/pkg/cosmian_kms_client_wasm_bg.wasm", import.meta.url));
-        await init(wasmBytes);
+        await init({ module_or_path: wasmBytes });
     });
 
     test("symmetric key: set public_key_id link, read it back, delete it, then cleanup", async () => {

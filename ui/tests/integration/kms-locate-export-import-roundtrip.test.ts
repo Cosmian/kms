@@ -41,7 +41,7 @@ describe.sequential("KMS locate/export/import roundtrip", () => {
     beforeAll(async () => {
         await waitForKmsServer();
         const wasmBytes = await readFile(new URL("../../src/wasm/pkg/cosmian_kms_client_wasm_bg.wasm", import.meta.url));
-        await init(wasmBytes);
+        await init({ module_or_path: wasmBytes });
     });
 
     test("symmetric key: locate by tags, export json-ttlv, import under new ID, locate imported, then cleanup", async () => {

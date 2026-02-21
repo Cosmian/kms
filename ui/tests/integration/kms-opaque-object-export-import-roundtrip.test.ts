@@ -46,7 +46,7 @@ describe.sequential("KMS opaque object export/import roundtrip", () => {
     beforeAll(async () => {
         await waitForKmsServer();
         const wasmBytes = await readFile(new URL("../../src/wasm/pkg/cosmian_kms_client_wasm_bg.wasm", import.meta.url));
-        await init(wasmBytes);
+        await init({ module_or_path: wasmBytes });
     });
 
     test("opaque object: create (from value) → locate → export json-ttlv → import under new ID → locate → cleanup", async () => {
