@@ -322,16 +322,13 @@ rustPlatform.buildRustPackage rec {
 
   # Deterministic vendoring: pinned cargo hash for workspace vendoring
   # Support cargoHash for compatibility across nixpkgs versions.
-  # Platform-specific vendor hashes (target-dependent deps). If out-of-date, temporarily set to ""
-  # and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
+  # Vendor hashes are per linkage mode (static/dynamic) and shared across platforms.
+  # If out-of-date, temporarily set to "" and rebuild to obtain the new suggested value from Nix ("got: sha256-...").
   cargoHash =
     let
-      sys = pkgs.stdenv.hostPlatform.system; # e.g., x86_64-linux
-      parts = lib.splitString "-" sys;
-      os = builtins.elemAt parts 1;
-      # Both Darwin and Linux now use separate vendor files for static/dynamic (glibc 2.34 requirement)
+      # Linux and Darwin share the same vendor hash per linkage mode.
       linkSuffix = if static then "static" else "dynamic";
-      vendorFile = ./expected-hashes + "/server.vendor.${linkSuffix}.${os}.sha256";
+      vendorFile = ./expected-hashes + "/server.vendor.${linkSuffix}.sha256";
       placeholder = "sha256-BBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
     if builtins.pathExists vendorFile then
