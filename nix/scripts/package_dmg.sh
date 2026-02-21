@@ -11,7 +11,6 @@ source "$REPO_ROOT/.github/scripts/common.sh"
 # Determine variant and link mode from CLI arguments
 VARIANT="fips"
 LINK="static"
-ENFORCE_DETERMINISTIC_HASH="${ENFORCE_DETERMINISTIC_HASH:-false}"
 while [ $# -gt 0 ]; do
   case "$1" in
   -v | --variant)
@@ -20,10 +19,6 @@ while [ $# -gt 0 ]; do
     ;;
   -l | --link)
     LINK="${2:-}"
-    shift 2 || true
-    ;;
-  --enforce-deterministic-hash | --enforce_deterministic_hash)
-    ENFORCE_DETERMINISTIC_HASH="${2:-}"
     shift 2 || true
     ;;
   *) shift ;;
@@ -40,16 +35,6 @@ case "$LINK" in
 static | dynamic) : ;;
 *)
   echo "Error: --link must be 'static' or 'dynamic'" >&2
-  exit 1
-  ;;
-esac
-
-# Normalize boolean-ish inputs
-case "${ENFORCE_DETERMINISTIC_HASH}" in
-true | TRUE | 1) ENFORCE_DETERMINISTIC_HASH="true" ;;
-false | FALSE | 0 | "") ENFORCE_DETERMINISTIC_HASH="false" ;;
-*)
-  echo "Error: --enforce-deterministic-hash must be true/false" >&2
   exit 1
   ;;
 esac
@@ -91,7 +76,7 @@ else
   echo "Building server derivation (variant: $VARIANT) via nix-build…"
   # Preserve existing link if reuse failed; replace atomically.
   rm -f "$OUT_LINK" 2>/dev/null || true
-  nix-build -I "nixpkgs=${PIN_URL}" --arg enforceDeterministicHash "$ENFORCE_DETERMINISTIC_HASH" -A "$ATTR" -o "$OUT_LINK"
+  nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
   REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
 fi
 
@@ -184,11 +169,12 @@ if [ -z "$APP_BUNDLE" ]; then
   exit 1
 fi
 
-# Ensure FIPS OpenSSL assets are embedded in the app bundle for FIPS variants
+# Ensure OpenSSL assets are embedded in the app bundle
+RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
+mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
+
 if [ "$VARIANT" = "fips" ]; then
-  RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
-  mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
-  # Locate the OpenSSL store path built earlier
+  # FIPS variant: embed FIPS provider and configs from OpenSSL 3.1.2
   OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name '*-openssl-3.1.2' 2>/dev/null | head -n1 || true)
   if [ -n "$OPENSSL_STORE" ]; then
     SRC_MOD="$OPENSSL_STORE/usr/local/cosmian/lib/ossl-modules/fips.dylib"
@@ -208,6 +194,19 @@ if [ "$VARIANT" = "fips" ]; then
     fi
   else
     echo "Warning: OpenSSL store path not found; skipping FIPS asset embedding" >&2
+  fi
+else
+  # Non-FIPS variant: embed legacy provider and non-FIPS openssl.cnf from the server derivation
+  SERVER_OSSL_DIR="$REAL_OUT/usr/local/cosmian/lib"
+  if [ -d "$SERVER_OSSL_DIR/ossl-modules" ]; then
+    cp -f -r "$SERVER_OSSL_DIR/ossl-modules/"* "$RES_DIR/ossl-modules/" 2>/dev/null || true
+    echo "Embedded non-FIPS OpenSSL modules from server derivation"
+  else
+    echo "Warning: No ossl-modules found in server derivation at $SERVER_OSSL_DIR" >&2
+  fi
+  if [ -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" ]; then
+    cp -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" "$RES_DIR/ssl/openssl.cnf"
+    echo "Embedded non-FIPS OpenSSL config from server derivation"
   fi
 fi
 arch_raw="$(uname -m)"

@@ -6,8 +6,6 @@
   version,
   features ? [ ], # [ "non-fips" ] or []
   rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
-  # Allow callers to bypass strict enforcement for NPM deps hash discovery
-  enforceDeterministicHash ? false,
 }:
 
 let
@@ -36,17 +34,10 @@ let
         raw = builtins.readFile hashFile;
         trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
       in
-      if enforceDeterministicHash then
-        (
-          assert trimmed != placeholder && trimmed != "";
-          trimmed
-        )
-      else
-        trimmed
-    else if enforceDeterministicHash then
-      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile)
+      assert trimmed != placeholder && trimmed != "";
+      trimmed
     else
-      placeholder;
+      builtins.throw ("Expected UI vendor cargo hash file not found: " + hashFile);
 
   # Filter source to exclude large directories
   sourceFilter =
@@ -134,6 +125,7 @@ let
     nativeBuildInputs = [
       wasmBindgenCli
       pkgs.llvmPackages.lld
+      pkgs.binaryen
     ];
     # Ensure wasm linking uses lld provided by Nix
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "${pkgs.llvmPackages.lld}/bin/wasm-ld";
@@ -172,6 +164,16 @@ let
         --out-dir $out/pkg \
         "$WASM_PATH"
 
+      # Optional size optimization: shrink the emitted wasm-bindgen binary.
+      # binaryen is provided by Nix, so this is deterministic.
+      if command -v wasm-opt >/dev/null 2>&1; then
+        echo "Optimizing WASM with wasm-opt -Oz"
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int "$out/pkg/cosmian_kms_client_wasm_bg.wasm" -o "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt"
+        mv "$out/pkg/cosmian_kms_client_wasm_bg.wasm.opt" "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
+      else
+        echo "WARNING: wasm-opt not found; skipping wasm optimization" >&2
+      fi
+
       # Basic sanity check
       test -f "$out/pkg/cosmian_kms_client_wasm_bg.wasm"
       test -f "$out/pkg/cosmian_kms_client_wasm.js"
@@ -205,17 +207,10 @@ let
           raw = builtins.readFile hashFile;
           trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
         in
-        if enforceDeterministicHash then
-          (
-            assert trimmed != placeholder && trimmed != "";
-            trimmed
-          )
-        else
-          trimmed
-      else if enforceDeterministicHash then
-        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile)
+        assert trimmed != placeholder && trimmed != "";
+        trimmed
       else
-        placeholder;
+        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile);
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;
