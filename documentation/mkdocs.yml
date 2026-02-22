@@ -1,7 +1,7 @@
 ---
 site_name: Key Management System
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2024 Cosmian. All rights reserved
+copyright: © Copyright 2018-2026 Cosmian. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material
@@ -76,7 +76,8 @@ nav:
       - API Endpoints: api.md
       - AWS ECS Fargate: aws_fargate.md
       - Azure:
-          - BYOK (Bring Your Own Key): azure/byok.md
+          - BYOK (Bring Your Own Key): azure/byok/byok.md
+          - EKM (External Key Management): azure/ekm/ekm.md
       - Google GCP:
           - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
           - CSEK (Customer Supplied Encryption Keys): google_gcp/csek.md
