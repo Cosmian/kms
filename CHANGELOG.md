@@ -6,41 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
-- Fix recursive revocation
-- Debug impl of ServerParams was misleading a algorithms restriction (#719)
-
-### 💼 Other
-
-- Remove useless code
-
-### 📚 Documentation
-
-- Add mTLS database configuration examples (#727)
-
-### 🧪 Testing
-
-- Add React and WASM tests (#708)
-
-### ⚙️ Build
-
-- *(deps)* Bump keccak in the cargo group across 1 directory (#728)
-
-### ⚙️ Miscellaneous Tasks
-
-- Merge branch 'release/5.16.1' into develop
-
-## [5.16.1] - 2026-02-15
-
-### 🐛 Bug Fixes
-
-- Add MLKEM algorithms to the predefined DEFAULT KMIP policy
+- [OpenTelemetry] Deduplicate OpenTelemetry export metric (Revoke and Destroy operations) ([#717](https://github.com/Cosmian/kms/pull/717))
+- Debug impl of ServerParams was misleading a algorithms restriction ([#719](https://github.com/Cosmian/kms/pull/719))
 - Fix non-FIPS `openssl.cnf` provider configuration: the FIPS provider was incorrectly
-  activated in non-FIPS builds via `nix/openssl.nix`, blocking default-provider algorithms
-  (ChaCha20, secp256k1) and causing 6 crypto test failures. `nix/openssl.nix` now generates
+  activated in non-FIPS builds via `nix/openssl.nix` that now generates
   distinct provider configurations per build variant: FIPS builds use `fips+base`, non-FIPS
   builds use `default+legacy+base`.
-- Fix `KResultHelper` import in `main.rs` being feature-gated to `non-fips` only, causing a
-  missing `.context()` method on `init_openssl_providers()` result in FIPS builds.
 
 ### ⚙️ Build
 
@@ -51,7 +22,6 @@ All notable changes to this project will be documented in this file.
     - Patch `ENGINESDIR`/`MODULESDIR` in the generated Makefile to fixed
       `/usr/local/cosmian/lib/...` paths, preventing Nix store path embedding in compiled
       `libcrypto` strings.
-    - Scrub Nix store paths from `crypto/buildinf.h` after `make depend`.
     - Set `SOURCE_DATE_EPOCH=1` and `ZERO_AR_DATE=1` in build and install phases.
     - Normalize all output file timestamps with `find $out -exec touch --date=@1 {} +`.
 - Non-FIPS Nix Linux builds are now bit-for-bit reproducible (`nix-build --check` passes for all four Linux variants: FIPS/non-FIPS × static/dynamic OpenSSL):
@@ -61,6 +31,21 @@ All notable changes to this project will be documented in this file.
 - Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05) — eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
 - Non-FIPS Docker image now ships OpenSSL 3.6.0 provider modules (`legacy.so`, `openssl.cnf`) and sets `OPENSSL_CONF`/`OPENSSL_MODULES` environment variables, matching the FIPS image layout.
 - macOS packaging fixes in `nix/scripts/package_dmg.sh` and related CI scripts.
+- *(deps)* Bump keccak in the cargo group across 1 directory ([#728](https://github.com/Cosmian/kms/pull/728))
+
+### 📚 Documentation
+
+- Add mTLS database configuration examples ([#727](https://github.com/Cosmian/kms/pull/727))
+
+### 🧪 Testing
+
+- Add React and WASM tests ([#708](https://github.com/Cosmian/kms/pull/708))
+
+## [5.16.1] - 2026-02-15
+
+### 🐛 Bug Fixes
+
+- Add MLKEM algorithms to the predefined DEFAULT KMIP policy ([#716](https://github.com/Cosmian/kms/pull/716))
 
 ## [5.16.0] - 2026-02-04
 

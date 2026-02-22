@@ -54,7 +54,7 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copil
 
 cargo build
 
-# python3 scripts/update_readme_kmip.py
+python3 scripts/update_readme_kmip.py
 
 git cliff -w "$PWD" -u -p CHANGELOG.md -t "$NEW_VERSION"
 

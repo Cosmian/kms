@@ -212,6 +212,10 @@ let
       else
         builtins.throw ("Expected UI npm deps hash file not found: " + hashFile);
 
+    # eslint-plugin-react-hooks@7 declares peer eslint@^9 but works fine with eslint@10.
+    # Pass --legacy-peer-deps so npm does not try to reach the network to resolve the conflict.
+    npmFlags = [ "--legacy-peer-deps" ];
+
     # Disable build phase - we only want dependencies installed
     dontBuild = true;
 
