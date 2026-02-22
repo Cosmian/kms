@@ -17,7 +17,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.16.1" }
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.16.2" }
 
 [dev-dependencies]
 

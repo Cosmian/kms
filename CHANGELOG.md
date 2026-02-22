@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.16.2] - 2026-02-22
+
+### 🐛 Bug Fixes
+
+- Fix recursive revocation
+- Debug impl of ServerParams was misleading a algorithms restriction (#719)
+
+### 💼 Other
+
+- Remove useless code
+
+### 📚 Documentation
+
+- Add mTLS database configuration examples (#727)
+
+### 🧪 Testing
+
+- Add React and WASM tests (#708)
+
+### ⚙️ Build
+
+- *(deps)* Bump keccak in the cargo group across 1 directory (#728)
+
+### ⚙️ Miscellaneous Tasks
+
+- Merge branch 'release/5.16.1' into develop
+
 ## [5.16.1] - 2026-02-15
 
 ### 🐛 Bug Fixes
@@ -27,9 +54,6 @@ All notable changes to this project will be documented in this file.
     - Scrub Nix store paths from `crypto/buildinf.h` after `make depend`.
     - Set `SOURCE_DATE_EPOCH=1` and `ZERO_AR_DATE=1` in build and install phases.
     - Normalize all output file timestamps with `find $out -exec touch --date=@1 {} +`.
-
-### ⚙️ Build
-
 - Non-FIPS Nix Linux builds are now bit-for-bit reproducible (`nix-build --check` passes for all four Linux variants: FIPS/non-FIPS × static/dynamic OpenSSL):
     - Removed `${toString ../.}` from RUSTFLAGS `-C remap-path-prefix` — it embedded the machine-specific workspace path into the derivation, causing cross-machine hash divergence.
     - Added `-C strip=symbols` and `-C symbol-mangling-version=v0` to strip residual host-path artefacts from symbol tables.
