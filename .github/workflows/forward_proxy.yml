@@ -1,0 +1,61 @@
+---
+name: forward proxy
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+env:
+  OPENSSL_DIR: /usr/local/openssl
+
+jobs:
+  forward-proxy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Local OpenSSL Install
+        run: |
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
+          sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
+          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
+          bash .github/reusable_scripts/get_openssl_binaries.sh
+        env:
+          OS_NAME: ubuntu_24_04
+
+      - name: Prerequisites
+        run: |
+          set -ex
+          sudo apt update
+          sudo apt install squid
+          sudo cp .github/scripts/squid/passwd /etc/squid/
+          sudo cp .github/scripts/squid/squid.conf /etc/squid/
+          sudo systemctl restart squid
+          sudo journalctl -u squid --no-pager -f &
+          sleep 5
+          curl http://localhost:8888
+          curl -v -x http://localhost:8888 -U myuser:mypwd http://example.org
+
+      - name: Forward proxy test
+        run: |
+          set -ex
+          cargo +${{ inputs.toolchain }} build -p ckms
+
+          # Get the local IP address
+          LOCAL_IP=$(hostname -I | awk '{print $1}')
+          echo "Local IP address: $LOCAL_IP"
+
+          # Export the KMS_URL environment variable
+          export KMS_URL=http://$LOCAL_IP:9998
+
+          cargo +${{ inputs.toolchain }} test --workspace --lib -- --nocapture --ignored test_server_version_using_forward_proxy

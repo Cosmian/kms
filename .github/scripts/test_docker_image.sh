@@ -32,10 +32,6 @@ else
 fi
 
 # Config paths
-# NOTE: keep in sync with crates.io versions that compile on CI runners.
-# cosmian_cli 1.8.0 currently fails to build due to upstream dependency version
-# skew (multiple cosmian_crypto_core versions). 1.8.1 fixes this.
-CLI_VERSION="${CLI_VERSION:-1.8.1}"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 KMS_URL_HTTP="http://0.0.0.0:9998"
@@ -47,30 +43,13 @@ CLIENT_CERT="test_data/certificates/client_server/owner/owner.client.acme.com.cr
 CLIENT_KEY="test_data/certificates/client_server/owner/owner.client.acme.com.key"
 CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme.com.p12"
 
-# Install/ensure the desired CLI version.
-# CI runners may have no preinstalled `cosmian`, while developer machines can.
-# If the binary exists but is the wrong version, upgrade it (when cargo is available).
-COSMIAN_BIN=""
-if command -v cosmian >/dev/null 2>&1; then
-    COSMIAN_BIN="$(command -v cosmian)"
-fi
-
+# Use cargo run to execute ckms from the workspace instead of installing
 if command -v cargo >/dev/null 2>&1; then
-    current_version=""
-    if [[ -n "$COSMIAN_BIN" ]]; then
-        current_version="$($COSMIAN_BIN --version 2>/dev/null | awk '{print $2}' || true)"
-    fi
-
-    if [[ "$current_version" != "$CLI_VERSION" ]]; then
-        cargo install cosmian_cli --locked --version "$CLI_VERSION" --force
-        hash -r
-        COSMIAN_BIN="$(command -v cosmian)"
-    fi
+    COSMIAN_BIN="cargo run -p ckms --"
+    echo "Using cargo run to execute ckms from workspace"
 else
-    if [[ -z "$COSMIAN_BIN" ]]; then
-        echo "Warning: cargo not available and cosmian CLI not installed. Skipping CLI-dependent tests."
-        echo "Some tests may be skipped."
-    fi
+    COSMIAN_BIN=""
+    echo "Warning: cargo not available; skipping CLI-dependent tests."
 fi
 
 if [[ -z "$COSMIAN_BIN" ]]; then

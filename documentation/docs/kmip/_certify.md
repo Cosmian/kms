@@ -67,7 +67,7 @@ will be generated.
 
 #### Supply X509 extensions (optional)
 
-Specify X509 extensions for a `Certify` operation is possible using the [Cosmian CLI](../../cosmian_cli/index.md).
+Specify X509 extensions for a `Certify` operation is possible using the [Cosmian CLI](../kms_clients/index.md).
 
 The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file
 written in `ini` format (roughly the same format
@@ -87,7 +87,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
 
 These extensions are embedded in the `Certify` request within the vendor attributes.
 
-Example of the corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Example of the corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 ```shell
 cosmian kms certificates certify \
@@ -101,13 +101,13 @@ Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key 
 `854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and
 the tag to `MyCert`.
 
-The corresponding [Cosmian CLI](../../cosmian_cli/index.md) command is:
+The corresponding [Cosmian CLI](../kms_clients/index.md) command is:
 
 ```shell
 cosmian kms certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
 
-Note: the [Cosmian CLI](../../cosmian_cli/index.md)ent converts the CSR from PEM TO DER before creating the JSON TTLV and sending
+Note: the [Cosmian CLI](../kms_clients/index.md)ent converts the CSR from PEM TO DER before creating the JSON TTLV and sending
 it to the
 server.
 
@@ -238,7 +238,7 @@ Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, C
 tag to `Bob` and
 the certificate requested validity to 365 days.
 
-The corresponding [Cosmian CLI](../../cosmian_cli/index.md) command is
+The corresponding [Cosmian CLI](../kms_clients/index.md) command is
 
 ```shell
 cosmian kms certificates certify -p 45e56e67-d813-468f-9116-4d1e611a1828 -k 854d7914-3b1d-461a-a2dd-7aad27043b56 \

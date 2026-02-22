@@ -1,0 +1,37 @@
+{% if config.theme.logo %}
+  <img id="site-logo" src="{{ config.theme.logo | url }}" alt="logo">
+{% else %}
+  {% set icon = config.theme.icon.logo or "material/library" %}
+  {% include ".icons/" ~ icon ~ ".svg" %}
+{% endif %}
+
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+      // Get the view-mode from localStorage
+      const viewMode = localStorage.getItem("docs.cosmian.com::view-mode");
+
+      // Get the logo element by ID
+      const logoElement = document.getElementById("site-logo");
+
+      // Set the logo based on the view-mode
+      if (viewMode === "dark") {
+          logoElement.src = "/cosmian-logo-doc-light.svg";  // Dark mode logo
+      } else {
+          logoElement.src = "/cosmian-logo-doc-black.svg";  // Light mode logo
+      }
+
+      // Optionally, add an event listener to detect theme changes dynamically
+      const observer = new MutationObserver(() => {
+          const newViewMode = localStorage.getItem("docs.cosmian.com::view-mode");
+          if (newViewMode === "dark") {
+              logoElement.src = "/cosmian-logo-doc-light.svg";
+          } else {
+              logoElement.src = "/cosmian-logo-doc-black.svg";
+          }
+      });
+
+      // Start observing changes in localStorage
+      observer.observe(document.body, { attributes: true });
+  });
+</script>

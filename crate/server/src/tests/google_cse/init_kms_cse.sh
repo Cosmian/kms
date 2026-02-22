@@ -8,7 +8,7 @@ export KMS_CLI_FORMAT=json
 
 ### Content of ~/.cosmian/kms.toml.cse
 ###
-COSMIAN_CLI_CONF="
+CKMS_CONF="
 [http_config]
 server_url = \"https://cse.cosmian.com/\"
 access_token = \"eyJhbGciOiJSUzI1NiIsImtpZ...-cf6ZDnK8ns1FynmAU2qA\"
@@ -35,7 +35,7 @@ universe_domain = \"googleapis.com\"
 "
 
 cp ~/.cosmian/kms.toml ~/.cosmian/kms.toml.old
-echo "$COSMIAN_CLI_CONF" >~/.cosmian/kms.toml
+echo "$CKMS_CONF" >~/.cosmian/kms.toml
 
 cargo run --bin cosmian kms login
 # cargo run --bin cosmian kms sym keys revoke -k google_cse "revoke google_cse key"

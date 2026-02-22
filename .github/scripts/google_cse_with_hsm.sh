@@ -29,7 +29,7 @@ ssl_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
 
 # COSMIAN="cosmian -c $TLS_CONFIG"
-COSMIAN="cargo run -p cosmian_cli -- -c $TLS_CONFIG"
+COSMIAN="cargo run -p ckms -- -c $TLS_CONFIG"
 
 
 $COSMIAN kms certificates certify \

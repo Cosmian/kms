@@ -158,16 +158,10 @@ fn list_symmetric_algorithms() -> Vec<AlgoOption> {
 fn list_ec_algorithms() -> Vec<AlgoOption> {
     // Build from client_utils' Curve enum to ensure feature gating consistency
     #[allow(unused_mut)]
-    let mut curves: Vec<Curve> = vec![
-        Curve::NistP224,
-        Curve::NistP256,
-        Curve::NistP384,
-        Curve::NistP521,
-    ];
+    let mut curves: Vec<Curve> = vec![Curve::NistP256, Curve::NistP384, Curve::NistP521];
     #[cfg(feature = "non-fips")]
     {
-        curves.insert(0, Curve::NistP192);
-        curves.push(Curve::Secp224k1);
+        curves.insert(0, Curve::Secp224k1);
         curves.push(Curve::Secp256k1);
         curves.push(Curve::X25519);
         curves.push(Curve::Ed25519);
@@ -180,9 +174,6 @@ fn list_ec_algorithms() -> Vec<AlgoOption> {
         .map(|c| {
             // Value must be kebab-case identifier that `Curve::from_str` accepts
             let (value, label): (&'static str, &'static str) = match c {
-                #[cfg(feature = "non-fips")]
-                Curve::NistP192 => ("nist-p192", "NIST P-192"),
-                Curve::NistP224 => ("nist-p224", "NIST P-224"),
                 Curve::NistP256 => ("nist-p256", "NIST P-256"),
                 Curve::NistP384 => ("nist-p384", "NIST P-384"),
                 Curve::NistP521 => ("nist-p521", "NIST P-521"),

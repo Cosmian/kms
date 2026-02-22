@@ -17,16 +17,16 @@ The **Cosmian KMS** presents some unique features, such as:
 - out-of-the-box support of [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
 - support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
+- [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - [MongoDB](./documentation/docs/mongodb.md)
 - [Mysql Enterprise](./documentation/docs/mysql.md)
-- Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
+- Oracle DB [TDE support](https://docs.cosmian.com/kms_clients/pkcs11/oracle/tde/)
 - [Percona Postgresql DB](./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/kms_clients/)
 - a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
 - integrated with [OpenTelemetry](https://opentelemetry.io/)
 
@@ -50,7 +50,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 
 Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can be either:
 
-- installed with `cargo install cosmian_cli`
+- installed with `cargo install ckms`
 - downloaded from [Cosmian packages](https://package.cosmian.com/cli/)
 - built and launched from the [GitHub project](https://github.com/Cosmian/cli) by running
 

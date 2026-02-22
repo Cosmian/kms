@@ -13,7 +13,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
 !!!info "Cosmian CLI"
     The Cosmian CLI lets you interact with the KMS from the command line.
     Install it from [Cosmian CLI](https://package.cosmian.com/cli/)
-    and [configure it](../../cosmian_cli/index.md).
+    and [configure it](../kms_clients/index.md).
 
 === "Docker"
 

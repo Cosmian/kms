@@ -34,3 +34,4 @@ vendor/
 http_cache.sqlite
 sbom.*
 resources/cli.zip
+.claude

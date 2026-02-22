@@ -25,7 +25,7 @@ For the list of supported key formats, please check the [formats page](./formats
 #### Examples -  Check `Get`
 
 An export example is provided below but it is in every point similar to the `Get` operation save for the
-name of the operation. To run `Export` instead of `Get` with he [Cosmian CLI](../../cosmian_cli/index.md), pass the `--allow-revoked` flag on the
+name of the operation. To run `Export` instead of `Get` with he [Cosmian CLI](../kms_clients/index.md), pass the `--allow-revoked` flag on the
 command line.
 
 Please check the [Get](./_get.md) page for more examples.
@@ -42,7 +42,7 @@ identified. It is possible to use multiple tags to identify a key; for instance 
 The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
 /formats.md) for details.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [Cosmian CLI](../kms_clients/index.md) command:
 
 ```bash
 cosmian kms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked

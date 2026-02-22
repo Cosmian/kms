@@ -8,9 +8,6 @@ use crate::error::UtilsError;
 #[derive(Default, Debug, Clone, Copy, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Curve {
-    #[cfg(feature = "non-fips")]
-    NistP192,
-    NistP224,
     #[default]
     NistP256,
     NistP384,
@@ -32,9 +29,6 @@ pub enum Curve {
 impl From<Curve> for RecommendedCurve {
     fn from(curve: Curve) -> Self {
         match curve {
-            #[cfg(feature = "non-fips")]
-            Curve::NistP192 => Self::P192,
-            Curve::NistP224 => Self::P224,
             Curve::NistP256 => Self::P256,
             Curve::NistP384 => Self::P384,
             Curve::NistP521 => Self::P521,
