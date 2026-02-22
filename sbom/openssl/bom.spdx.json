@@ -2,19 +2,82 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-11bv4sap4d0afzzck2ws3sxmrbn2rjd2-openssl-3.1.2.drv",
-  "documentNamespace": "sbomnix://0da86829-fb67-4982-bd9a-de4a70877eac",
+  "name": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+  "documentNamespace": "sbomnix://c0b4b23b-42d5-4949-a4a4-2e0ddc55bce0",
   "creationInfo": {
-    "created": "2026-02-22T11:05:25.068649+01:00",
+    "created": "2026-02-22T16:18:19.640887+01:00",
     "creators": [
-      "Tool: sbomnix-1.7.4"
+      "Tool: sbomnix-1.7.3"
     ]
   },
   "comment": "included dependencies: 'runtime_only'",
   "packages": [
     {
+      "name": "glibc",
+      "SPDXID": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "versionInfo": "2.34-210",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:glibc:glibc:2.34-210:*:*:*:*:*:*:*"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:nix/glibc@2.34-210"
+        }
+      ]
+    },
+    {
+      "name": "libidn2",
+      "SPDXID": "SPDXRef-nix-store-k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv",
+      "versionInfo": "2.3.2",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:gnu:libidn2:2.3.2:*:*:*:*:*:*:*"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:nix/libidn2@2.3.2"
+        }
+      ]
+    },
+    {
+      "name": "libunistring",
+      "SPDXID": "SPDXRef-nix-store-f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv",
+      "versionInfo": "1.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:libunistring:libunistring:1.0:*:*:*:*:*:*:*"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:nix/libunistring@1.0"
+        }
+      ]
+    },
+    {
       "name": "openssl",
-      "SPDXID": "SPDXRef-nix-store-11bv4sap4d0afzzck2ws3sxmrbn2rjd2-openssl-3.1.2.drv",
+      "SPDXID": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
       "versionInfo": "3.1.2",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -34,5 +97,21 @@
       ]
     }
   ],
-  "relationships": []
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-nix-store-k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv"
+    },
+    {
+      "spdxElementId": "SPDXRef-nix-store-k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-nix-store-f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
+    },
+    {
+      "spdxElementId": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
+    }
+  ]
 }
