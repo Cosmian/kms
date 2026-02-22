@@ -108,16 +108,90 @@ services:
   # KMS -> otel-collector -> scrape collector Prometheus endpoint
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.144.0
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    environment:
-      # Kept for local setups that also export somewhere else; not used by test assertions.
-      - OTLP_ENDPOINT=jaeger:4317
-      - ENVIRONMENT=test
-      - KMS_VERSION=dev
     ports:
-      - 4317:4317 # OTLP gRPC receiver (host)
-      - 4318:4318 # OTLP HTTP receiver (host)
-      - 8889:8889 # Prometheus metrics endpoint (host)
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8888:8888" # Collector metrics
+    environment:
+      - OTLP_ENDPOINT=tempo:4317 # Forward to Tempo
+      - ENVIRONMENT=development
+      - KMS_VERSION=5.15.0
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo query
+      - "4319:4317" # OTLP gRPC (port différent pour éviter conflit avec otelco)
+      - "4320:4318" # OTLP HTTP
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoria-metrics
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--retentionPeriod=12" # 12 months
+      - "--httpListenAddr=:8428"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--search.cacheTimestampOffset=10m"
+    volumes:
+      - victoria-data:/victoria-metrics-data
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - otel-collector
+      - tempo
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    ports:
+      - "12345:12345"
+    volumes:
+      - "./config.alloy:/etc/alloy/config.alloy"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000" # Grafana UI
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - alloy
+      - victoria-metrics
+
+  # when running nginx service, replace kms "ports" arguments with "expose" to avoid port conflicts
+  nginx:
+    image: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/templates
+    ports:
+      - "8080:80"
+      - "443:443"
+
+volumes:
+  grafana-data:
+  victoria-data:
+  tempo-data:

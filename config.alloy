@@ -1,0 +1,164 @@
+/// PROM - VM
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://victoria-metrics:8428/api/v1/write"
+  }
+}
+
+prometheus.scrape "otel_collector" {
+  targets = [{
+    __address__ = "otel-collector:8888",
+    service     = "otel-collector-metrics",
+  }]
+  forward_to      = [prometheus.remote_write.default.receiver]
+  job_name        = "otel-collector"
+  scrape_interval = "15s"
+}
+
+prometheus.scrape "victoria_metrics" {
+  targets = [{
+    __address__ = "victoria-metrics:8428",
+    service     = "victoria-metrics",
+  }]
+  forward_to      = [prometheus.remote_write.default.receiver]
+  job_name        = "victoria-metrics"
+  scrape_interval = "15s"
+}
+
+prometheus.scrape "tempo" {
+  targets = [{
+    __address__ = "tempo:3200",
+    service     = "tempo",
+  }]
+  forward_to      = [prometheus.remote_write.default.receiver]
+  job_name        = "tempo"
+  scrape_interval = "15s"
+}
+
+
+/// OTEL - otel-collector
+
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4319"
+  }
+  http {
+    endpoint = "0.0.0.0:4320"
+  }
+
+  output {
+    metrics = [otelcol.exporter.prometheus.vm.input]
+    logs    = []
+    traces  = [otelcol.processor.memory_limiter.default.input]
+  }
+}
+
+otelcol.exporter.prometheus "vm" {
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+otelcol.exporter.otlp "tempo" {
+  retry_on_failure {
+    max_elapsed_time = "30s"
+  }
+
+  client {
+    endpoint = "tempo:4319"
+    tls {
+      insecure = true
+    }
+  }
+}
+
+otelcol.processor.memory_limiter "default" {
+  check_interval = "1s"
+  limit          = "512MiB"
+
+  output {
+    metrics = []
+    logs    = []
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout         = "10s"
+  send_batch_size = 1024
+
+  output {
+    metrics = []
+    logs    = []
+    traces  = [
+      otelcol.processor.attributes.default.input,
+    ]
+  }
+}
+
+otelcol.processor.attributes "default" {
+  action {
+    key            = "operation_type"
+    from_attribute = "tag"
+    action         = "upsert"
+  }
+
+  action {
+    key            = "kms_user"
+    from_attribute = "user"
+    action         = "upsert"
+  }
+
+  action {
+    key            = "key_uid"
+    from_attribute = "uid"
+    action         = "upsert"
+  }
+
+  output {
+    metrics = []
+    logs    = []
+    traces  = [
+      otelcol.connector.spanmetrics.default.input,
+      otelcol.exporter.otlp.tempo.input,
+    ]
+  }
+}
+
+otelcol.connector.spanmetrics "default" {
+  dimension {
+    name    = "http.method"
+    default = "GET"
+  }
+
+  dimension {
+    name = "http.status_code"
+  }
+
+  dimension {
+    name = "operation_type"
+  }
+
+  dimension {
+    name = "kms_user"
+  }
+
+  dimension {
+    name = "span_name"
+  }
+
+  dimensions_cache_size = 10000
+
+  histogram {
+    explicit {
+      buckets = ["10ms", "50ms", "100ms", "250ms", "500ms", "1s", "2s", "5s", "10s", "30s"]
+    }
+  }
+
+  exemplars {
+    enabled = true
+  }
+
+  output {
+    metrics = [otelcol.exporter.prometheus.vm.input]
+  }
+}

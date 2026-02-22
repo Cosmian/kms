@@ -1,0 +1,49 @@
+server:
+  http_listen_port: 3200
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4319
+        http:
+          endpoint: 0.0.0.0:4320
+
+ingester:
+  max_block_duration: 5m
+  max_block_bytes: 1000000
+  complete_block_timeout: 30m
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+querier:
+  max_concurrent_queries: 20
+  frontend_worker:
+    frontend_address: tempo:9095
+
+query_frontend:
+  search:
+    max_duration: 0
+    query_backend_after: 0s
+    max_result_limit: 5000
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://victoria-metrics:8428/api/v1/write
+        send_exemplars: true

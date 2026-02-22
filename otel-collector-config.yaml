@@ -1,8 +1,3 @@
----
-# Minimal OpenTelemetry Collector config used by CI to validate that
-# KMS can export metrics via OTLP and that the collector exposes them
-# on a Prometheus scrape endpoint.
-
 receivers:
   otlp:
     protocols:
@@ -12,24 +7,79 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  batch: {}
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+  resource:
+    attributes:
+      - key: service.name
+        value: cosmian_kms
+        action: upsert
+      - key: service.version
+        value: ${env:KMS_VERSION}
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
+        action: upsert
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s]
+    dimensions:
+      - name: span_name
+    dimensions_cache_size: 10000
+    exemplars:
+      enabled: true
+    metrics_flush_interval: 15s
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
 
 exporters:
+  otlp:
+    endpoint: tempo:4319
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+  prometheusremotewrite:
+    endpoint: http://victoria-metrics:8428/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
   prometheus:
-    endpoint: 0.0.0.0:8889
-    send_timestamps: true
-    metric_expiration: 5m
+    endpoint: otel-collector:8888
+    namespace: otel
+    const_labels:
+      environment: production
   debug:
-    verbosity: detailed
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
 
 service:
   telemetry:
     logs:
-      level: debug
+      level: info
     metrics:
-      level: basic
+      level: detailed
   pipelines:
-    metrics:
+    traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheus, debug]
+      processors: [memory_limiter, batch]
+      exporters: [spanmetrics, otlp, debug]
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite, prometheus]
