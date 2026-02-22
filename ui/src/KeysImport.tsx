@@ -1,7 +1,8 @@
 import { UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from "antd";
+import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUpload } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
 
@@ -172,7 +173,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                             rules={[{ required: true, message: "Please upload a file" }]}
                             help={isSecretData ? "Upload the secret data file to import" : isOpaqueObject ? "Upload the opaque object file to import" : "Upload the key file to import"}
                         >
-                            <Upload
+                            <FormUpload
                                 beforeUpload={(file) => {
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
@@ -205,7 +206,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                                 maxCount={1}
                             >
                                 <Button icon={<UploadOutlined />}>Upload {isSecretData ? "Secret Data File" : isOpaqueObject ? "Opaque Object File" : "Key File"}</Button>
-                            </Upload>
+                            </FormUpload>
                         </Form.Item>
 
                         <Form.Item name="keyId" label="ID" help="Optional: A random UUID will be generated if not specified">

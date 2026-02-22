@@ -35,7 +35,9 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                 style={{ backgroundImage: `url('${branding.backgroundImageUrl}')` }}
             />
             <div className="relative w-2/3 shadow-2xl rounded-lg p-20 flex flex-col items-center bg-purple-700/30">
-                <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />
+                {branding.logoDarkUrl && (
+                    <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />
+                )}
                 <div className="text-center text-7xl font-bold text-white mb-10 z-10">{branding.loginTitle}</div>
                 {branding.loginSubtitle && (
                     <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>

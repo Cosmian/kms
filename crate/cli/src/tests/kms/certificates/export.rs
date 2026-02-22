@@ -21,7 +21,7 @@ use openssl::{
     x509::{X509, store::X509StoreBuilder},
 };
 use tempfile::TempDir;
-use test_kms_server::start_default_test_kms_server;
+use test_kms_server::{init_openssl_providers_for_tests, start_default_test_kms_server};
 use uuid::Uuid;
 
 use crate::{
@@ -39,6 +39,8 @@ use crate::{
 #[tokio::test]
 async fn test_import_export_p12_25519() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
+    init_openssl_providers_for_tests();
+
     // load the PKCS#12 file
     let p12_bytes =
         include_bytes!("../../../../../../test_data/certificates/another_p12/ed25519.p12");
@@ -221,6 +223,8 @@ async fn test_import_export_p12_25519() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_import_p12_rsa() {
+    init_openssl_providers_for_tests();
+
     let tmp_dir = TempDir::new().unwrap();
     let tmp_path = tmp_dir.path();
     // load the PKCS#12 file
@@ -415,6 +419,8 @@ async fn test_self_signed_export_loop() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
+    init_openssl_providers_for_tests();
+
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 
@@ -475,6 +481,8 @@ async fn test_export_root_and_intermediate_pkcs12() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_export_import_legacy_p12() -> KmsCliResult<()> {
+    init_openssl_providers_for_tests();
+
     // Create a test server
     let ctx = start_default_test_kms_server().await;
 

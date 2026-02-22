@@ -55,10 +55,40 @@ cp -R pkg "$WASM_DIR"
 # Build UI
 cd ../../ui # current path: ./ui
 rm -rf node_modules
-npm install
-npm run build
-npm run lint
-npm audit
+
+if [ -f pnpm-lock.yaml ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable || true
+      corepack prepare pnpm@9 --activate || true
+    fi
+  fi
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if ! npm install -g pnpm@9; then
+      PREFIX_DIR="${PNPM_PREFIX_DIR:-$HOME/.local}"
+      npm install -g pnpm@9 --prefix "$PREFIX_DIR"
+      export PATH="$PREFIX_DIR/bin:$PATH"
+    fi
+  fi
+
+  pnpm install --frozen-lockfile
+  pnpm run build
+  pnpm run test
+  pnpm run lint
+  pnpm audit
+elif [ -f package-lock.json ]; then
+  npm ci
+  npm run build
+  pnpm run test
+  npm run lint
+  npm audit
+else
+  npm install
+  npm run build
+  npm run test
+  npm run lint
+  npm audit
+fi
 
 # Deploy built UI to root
 cd .. # current path: ./

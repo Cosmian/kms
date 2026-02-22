@@ -336,23 +336,9 @@ pub async fn start_kms_server(
     // For an explanation of OpenSSL providers, see
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
 
-    // In FIPS mode, we only load the FIPS provider
-    #[cfg(not(feature = "non-fips"))]
-    let _provider = openssl::provider::Provider::load(None, "fips")?;
-
-    // Not in FIPS mode and version > 3.0: load the default provider and the legacy provider
-    // so that we can use the legacy algorithms,
-    // particularly those used for old PKCS#12 formats
-    #[cfg(feature = "non-fips")]
-    let _provider = if openssl::version::number() >= 0x3000_0000 {
-        debug!("OpenSSL: loading the legacy provider");
-        openssl::provider::Provider::try_load(None, "legacy", true)
-            .context("OpenSSL: unable to load the openssl legacy provider")?
-    } else {
-        debug!("OpenSSL: loading the default provider");
-        // In version < 3.0, we only load the default provider
-        openssl::provider::Provider::load(None, "default")?
-    };
+    // Load the appropriate OpenSSL provider based on FIPS mode and OpenSSL version
+    crate::openssl_providers::init_openssl_providers()
+        .context("OpenSSL: unable to load the required provider")?;
 
     // Instantiate KMS
     let kms_server = Arc::new(

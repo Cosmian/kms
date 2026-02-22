@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, Select, Space, Switch, Upload } from "antd";
+import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
 import {
     parse_signature_verify_ttlv_response,
@@ -125,7 +126,7 @@ const RsaVerifyForm: React.FC = () => {
                             <Input />
                         </Form.Item>
                         <Form.Item name="dataFile" rules={[{ required: true, message: "Please select the data file" }] }>
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("dataFileName", file.name);
                                     const reader = new FileReader();
@@ -143,7 +144,7 @@ const RsaVerifyForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag data file here</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>
@@ -152,7 +153,7 @@ const RsaVerifyForm: React.FC = () => {
                             <Input />
                         </Form.Item>
                         <Form.Item name="signatureFile" rules={[{ required: true, message: "Please select the signature file" }] }>
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("signatureFileName", file.name);
                                     const reader = new FileReader();
@@ -170,7 +171,7 @@ const RsaVerifyForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag signature file here</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>

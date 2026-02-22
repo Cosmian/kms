@@ -4,12 +4,14 @@ use cosmian_logger::log_init;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{
+    openssl_providers::init_openssl_providers_for_tests,
     socket_server::{SocketServer, SocketServerParams, create_openssl_acceptor},
     tests::ttlv_tests::TEST_HOST,
 };
 
 // Static config for tests
 static TEST_P12: LazyLock<ParsedPkcs12_2> = LazyLock::new(|| {
+    init_openssl_providers_for_tests();
     let server_p12_der = include_bytes!(
         "../../../../../test_data/certificates/client_server/server/kmserver.acme.com.p12"
     );
