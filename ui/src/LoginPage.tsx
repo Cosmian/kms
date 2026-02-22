@@ -2,7 +2,7 @@ import { Button, message, Spin } from "antd";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { useBranding } from "./BrandingContext";
+import { useBranding } from "./useBranding";
 
 interface LoginProps {
     auth: boolean;

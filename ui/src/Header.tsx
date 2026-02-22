@@ -1,5 +1,5 @@
 import React from "react";
-import { useBranding } from "./BrandingContext";
+import { useBranding } from "./useBranding";
 
 type HeaderProps = {
     isDarkMode: boolean;
