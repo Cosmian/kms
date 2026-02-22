@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv",
-  "documentNamespace": "sbomnix://24994676-efc3-42a6-96d5-b4eda44a28da",
+  "name": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+  "documentNamespace": "sbomnix://c0b4b23b-42d5-4949-a4a4-2e0ddc55bce0",
   "creationInfo": {
-    "created": "2026-02-15T14:15:24.025486+01:00",
+    "created": "2026-02-22T16:18:19.640887+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -77,7 +77,7 @@
     },
     {
       "name": "openssl",
-      "SPDXID": "SPDXRef-nix-store-fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv",
+      "SPDXID": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
       "versionInfo": "3.1.2",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -109,7 +109,7 @@
       "relatedSpdxElement": "SPDXRef-nix-store-f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-fha0ddf9ccafwypn871r17w0216wmkr1-openssl-3.1.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
     }

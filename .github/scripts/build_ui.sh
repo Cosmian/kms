@@ -60,13 +60,13 @@ if [ -f pnpm-lock.yaml ]; then
   if ! command -v pnpm >/dev/null 2>&1; then
     if command -v corepack >/dev/null 2>&1; then
       corepack enable || true
-      corepack prepare pnpm@9 --activate || true
+      corepack prepare pnpm@10 --activate || true
     fi
   fi
   if ! command -v pnpm >/dev/null 2>&1; then
-    if ! npm install -g pnpm@9; then
+    if ! npm install -g pnpm@10; then
       PREFIX_DIR="${PNPM_PREFIX_DIR:-$HOME/.local}"
-      npm install -g pnpm@9 --prefix "$PREFIX_DIR"
+      npm install -g pnpm@10 --prefix "$PREFIX_DIR"
       export PATH="$PREFIX_DIR/bin:$PATH"
     fi
   fi
@@ -79,7 +79,7 @@ if [ -f pnpm-lock.yaml ]; then
 elif [ -f package-lock.json ]; then
   npm ci
   npm run build
-  pnpm run test
+  npm run test
   npm run lint
   npm audit
 else
