@@ -400,34 +400,4 @@ rec {
         printf '%s\n' "$hash" >"$out/${name}"
       '';
 
-  # Expected hash for OpenSSL legacy provider module
-  expected-hash-openssl-legacy-provider =
-    let
-      sys = pkgs.stdenv.hostPlatform.system;
-      parts = pkgs.lib.splitString "-" sys;
-      arch = builtins.elemAt parts 0;
-      os = builtins.elemAt parts 1;
-      name = "openssl-legacy-provider.3.6.0.${arch}.${os}.sha256";
-      soExt = if pkgs.stdenv.isDarwin then "dylib" else "so";
-    in
-    pkgs.runCommand "expected-hash-openssl-legacy-provider"
-      {
-        buildInputs = [
-          pkgs.openssl
-          pkgs.coreutils
-        ];
-      }
-      ''
-        set -euo pipefail
-        mkdir -p "$out"
-        legacy='${openssl36-static}/lib/ossl-modules/legacy.${soExt}'
-        if [ -f "$legacy" ]; then
-          hash="$(${pkgs.openssl}/bin/openssl dgst -sha256 -r "$legacy" | awk '{print $1}')"
-          printf '%s\n' "$hash" >"$out/${name}"
-        else
-          echo "Legacy provider not found at $legacy" >&2
-          exit 1
-        fi
-      '';
-
 }

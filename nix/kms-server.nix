@@ -93,9 +93,6 @@ let
 
   # Compute the actual hash file path for writing during build
 
-  # Force rebuild marker - increment to invalidate cache when only Nix expressions change
-  rebuildMarker = "1";
-
   srcRoot = ../.;
   # Whitelist only files needed to build the Rust workspace
   filteredSrc = lib.cleanSourceWith {
@@ -311,11 +308,10 @@ let
   '';
 in
 rustPlatform.buildRustPackage rec {
-  pname = "cosmian-kms-server${if static then "" else "-dynamic"}-rebuild-${rebuildMarker}";
+  pname = "cosmian-kms-server${if static then "" else "-dynamic"}";
   inherit version;
   # Disable cargo-auditable wrapper; it doesn't understand edition=2024 yet
   auditable = false;
-  # Run tests only for static builds (self-contained OpenSSL); dynamic builds may lack runtime libssl in sandbox
 
   # Provide the whole workspace but filtered; build only the server crate.
   src = filteredSrc;
