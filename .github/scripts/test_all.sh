@@ -84,8 +84,12 @@ else
   echo "Skipping HSM tests (non-Linux environment)"
 fi
 
-# 7) Azure EKM (HTTP + mTLS endpoints)
-run_step "Azure EKM" "$SCRIPT_DIR/test_azure_ekm.sh"
+# 7) Azure EKM tests - this API does not need fips features, and curl command seems to not download on the FIPS machine, so skipping it
+if [ "$VARIANT_NAME" = "non-FIPS" ]; then
+  run_step "Azure EKM" "$SCRIPT_DIR/test_azure_ekm.sh"
+else
+  echo "Skipping Azure EKM (FIPS mode)"
+fi
 
 echo "========================================="
 echo "All test categories executed."

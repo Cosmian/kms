@@ -170,13 +170,13 @@ PLAINTEXT_B64=$(echo -n "${PLAINTEXT}" | base64 | tr -d '=' | tr '/+' '_-')
 WRAP_RESPONSE=$(curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/wrapkey?api-version=0.1-preview" \
     -H "Content-Type: application/json" \
     -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${PLAINTEXT_B64}\"}")
-WRAPPED_B64=$(echo "${WRAP_RESPONSE}" | jq -r .value)
+WRAPPED_B64=$(echo "${WRAP_RESPONSE}" | sed -E 's/.*"value":"([^"]+)".*/\1/')
 
 # Unwrap
 UNWRAP_RESPONSE=$(curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/unwrapkey?api-version=0.1-preview" \
     -H "Content-Type: application/json" \
     -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${WRAPPED_B64}\"}")
-UNWRAPPED_B64=$(echo "${UNWRAP_RESPONSE}" | jq -r .value)
+UNWRAPPED_B64=$(echo "${UNWRAP_RESPONSE}" | sed -E 's/.*"value":"([^"]+)".*/\1/')
 
 # Verify
 if [ "${PLAINTEXT_B64}" != "${UNWRAPPED_B64}" ]; then
