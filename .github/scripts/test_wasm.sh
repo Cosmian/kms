@@ -127,6 +127,7 @@ run_ui() {
 # accept -F or -Wl,-F arguments and aborts with "unknown argument".
 run_wasm_pack() {
   (
+    cd crate/wasm
     unset OPENSSL_CONF OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
     # Strip macOS framework linker flags from RUSTFLAGS (-C link-arg=-F<path> and
     # -C link-arg=-Wl,-F,<path>) while preserving all other flags (e.g. --cfg wasm_test_browser).
@@ -139,7 +140,7 @@ run_wasm_pack() {
     fi
     local subcmd="$1"
     shift
-    wasm-pack "$subcmd" "$@" crate/wasm
+    wasm-pack "$subcmd" "$@"
   )
 }
 

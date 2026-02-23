@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
-import { BrandingProvider } from "./BrandingContext";
+import { BrandingProvider } from "./BrandingProvider";
 import { applyBrandingToDocument, loadBranding } from "./branding";
 import "./styles.css";
 
