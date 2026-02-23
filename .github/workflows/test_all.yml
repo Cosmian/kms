@@ -30,6 +30,7 @@ jobs:
           - redis
           - pykmip
           - wasm
+          - azure_ekm
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips

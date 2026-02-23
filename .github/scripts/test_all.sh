@@ -60,6 +60,9 @@ else
   echo "Skipping Redis-findex (FIPS mode)"
 fi
 
+# 4b) Azure EKM (HTTP + mTLS endpoints)
+run_step "Azure EKM" "$SCRIPT_DIR/test_azure_ekm.sh"
+
 # 5) Google CSE (only if all creds are present)
 missing_creds=false
 for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \

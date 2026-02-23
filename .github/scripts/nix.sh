@@ -425,6 +425,9 @@ test_command() {
   redis)
     SCRIPT="$REPO_ROOT/.github/scripts/test_redis.sh"
     ;;
+  azure_ekm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
+    ;;
   google_cse)
     SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell

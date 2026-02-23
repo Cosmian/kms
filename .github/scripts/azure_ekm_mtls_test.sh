@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Azure EKM mTLS E2E Test: tests that the KMS (with EKM enabled) works only with mTLS.
 set -euo pipefail
-set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-DATA_DIR="${SCRIPT_DIR}/azure_ekm_test_data"
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
+DATA_DIR="${REPO_ROOT}/test_data/certificates/azure_ekm_test_data"
 
 source "$SCRIPT_DIR/common.sh"
 init_build_env "$@"
@@ -14,12 +14,6 @@ setup_test_logging
 CLIENT_CERT="${DATA_DIR}/client_cert.pem"
 CLIENT_KEY="${DATA_DIR}/client_key.pem"
 SERVER_CA="${DATA_DIR}/server_ca_cert.pem"
-
-# Verify test data exists; generate it if not
-if [ ! -f "${CLIENT_CERT}" ]; then
-    echo "Test data not found — running generator..."
-    bash "${DATA_DIR}/generate_azure_ekm_test_data.sh"
-fi
 
 # EKM endpoint
 KMS_PORT=6789

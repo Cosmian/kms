@@ -5,9 +5,6 @@
 #
 # No TLS or mTLS is required: the server runs in plain HTTP mode with authentication
 # disabled (--azure-ekm-disable-auth).  For a TLS + mTLS variant, see run_azure_ekm_mtls_test.sh.
-#
-# Usage:
-#   bash .github/scripts/azure_ekm_test.sh [--profile debug|release] [--variant fips|non-fips]
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -16,9 +13,7 @@ source "$SCRIPT_DIR/common.sh"
 init_build_env "$@"
 setup_test_logging
 
-# ---------------------------------------------------------------------------
 # Configuration
-# ---------------------------------------------------------------------------
 KMS_PORT=6790
 EKM_PREFIX="cosmian0"
 KMS_URL="http://localhost:${KMS_PORT}"
@@ -89,13 +84,11 @@ if ! _wait_for_port localhost "${KMS_PORT}" 60; then
     exit 1
 fi
 
-# ---------------------------------------------------------------------------
 # 2. Create an AES-256 key
-# ---------------------------------------------------------------------------
-# No need to delete the key: we are using a fresh temporary SQLite database.
+# Using a fresh temporary SQLite database.
 
 # Redefine create_aes_key to include CryptographicUsageMask (12 = Encrypt | Decrypt)
-# This is ALMOST the same one as `test_otel_export.sh`, consider refactoring if it's needed elsewhere
+# This function is ALMOST the same one as `test_otel_export.sh`, consider refactoring if it's needed elsewhere
 create_aes_key() {
   local uid="$1"
   kmip_post '{
@@ -145,23 +138,17 @@ create_aes_key() {
 create_aes_key "${AES_KEY_ID}" > /dev/null
 activate_key "${AES_KEY_ID}" > /dev/null
 
-# ---------------------------------------------------------------------------
 # 3. EKM /info endpoint
-# ---------------------------------------------------------------------------
 curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/info?api-version=0.1-preview" \
     -H "Content-Type: application/json" \
     -d "{\"request_context\":${REQCTX}}" > /dev/null
 
-# ---------------------------------------------------------------------------
 # 4. EKM /metadata — AES key
-# ---------------------------------------------------------------------------
 curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/metadata?api-version=0.1-preview" \
     -H "Content-Type: application/json" \
     -d "{\"request_context\":${REQCTX}}" > /dev/null
 
-# ---------------------------------------------------------------------------
 # 5. Sad path: /metadata for a non-existent key must return 404
-# ---------------------------------------------------------------------------
 echo "==> EKM: Sad path /metadata (non-existent key)"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/does-not-exist/metadata?api-version=0.1-preview" \
     -H "Content-Type: application/json" \
@@ -173,9 +160,7 @@ if [ "${HTTP_STATUS}" != "404" ]; then
 fi
 echo "==> Sad path successfully returned 404"
 
-# ---------------------------------------------------------------------------
 # 6. EKM Round trip: /wrapkey and /unwrapkey
-# ---------------------------------------------------------------------------
 echo "==> EKM: Running round-trip wrap/unwrap test..."
 PLAINTEXT="This is a secret message"
 # Base64URL encoding (no padding, replaces + /)
@@ -202,10 +187,4 @@ if [ "${PLAINTEXT_B64}" != "${UNWRAPPED_B64}" ]; then
 fi
 echo "==> Round trip wrap/unwrap OK."
 
-
-
-
-
-
 echo "Azure EKM test PASSED"
-
