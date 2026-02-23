@@ -493,6 +493,10 @@ test_command() {
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi
+  # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "all" ]; then
+    export WITH_CURL=1
+  fi
 
   KEEP_VARS=" \
         --keep REDIS_HOST --keep REDIS_PORT \
