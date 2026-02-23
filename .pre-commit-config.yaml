@@ -173,6 +173,13 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: ui-wasm-react-unit-tests
+        name: UI wasm + React tests (incl. integration if Docker)
+        entry: bash .github/scripts/test_wasm.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
         entry: bash .github/scripts/test_sqlite.sh --variant fips

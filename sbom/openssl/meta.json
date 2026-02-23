@@ -3,15 +3,15 @@
   "build": {
     "variant": "fips",
     "derivation": "openssl312",
-    "output_path": "/nix/store/6w5ixffqmjdbgz79v9f6ahqhc790x0ks-openssl-3.1.2",
-    "timestamp": "2026-02-15T13:16:25Z",
+    "output_path": "/nix/store/63mrpalm2shad42p07s7vrxhchy1cgxg-openssl-3.1.2",
+    "timestamp": "2026-02-22T15:18:49Z",
     "generator": {
       "tool": "sbomnix",
       "version": "1.7.3"
     }
   },
   "component_count": 4,
-  "vulnerability_count": 360,
+  "vulnerability_count": 361,
   "notes": [
     "SBOM targets the OpenSSL derivation itself",
     "All dependencies are from Nix store with pinned versions",

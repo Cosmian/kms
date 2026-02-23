@@ -2,11 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.16.2] - 2026-02-22
+
+### 🐛 Bug Fixes
+
+- [OpenTelemetry] Deduplicate OpenTelemetry export metric (Revoke and Destroy operations) ([#717](https://github.com/Cosmian/kms/pull/717))
+- Debug impl of ServerParams was misleading a algorithms restriction ([#719](https://github.com/Cosmian/kms/pull/719))
+- Fix non-FIPS `openssl.cnf` provider configuration: the FIPS provider was incorrectly
+  activated in non-FIPS builds via `nix/openssl.nix` that now generates
+  distinct provider configurations per build variant: FIPS builds use `fips+base`, non-FIPS
+  builds use `default+legacy+base`.
+
+### ⚙️ Build
+
+- Refactor OpenSSL provider management into a dedicated `openssl_providers` module in
+  `crate/server/src/`, consolidating `safe_openssl_version_info()`, `init_openssl_providers()`
+  (production), and `init_openssl_providers_for_tests()` (test environments) into a single place.
+- Improve determinism of `nix/openssl.nix` OpenSSL builds:
+    - Patch `ENGINESDIR`/`MODULESDIR` in the generated Makefile to fixed
+      `/usr/local/cosmian/lib/...` paths, preventing Nix store path embedding in compiled
+      `libcrypto` strings.
+    - Set `SOURCE_DATE_EPOCH=1` and `ZERO_AR_DATE=1` in build and install phases.
+    - Normalize all output file timestamps with `find $out -exec touch --date=@1 {} +`.
+- Non-FIPS Nix Linux builds are now bit-for-bit reproducible (`nix-build --check` passes for all four Linux variants: FIPS/non-FIPS × static/dynamic OpenSSL):
+    - Removed `${toString ../.}` from RUSTFLAGS `-C remap-path-prefix` — it embedded the machine-specific workspace path into the derivation, causing cross-machine hash divergence.
+    - Added `-C strip=symbols` and `-C symbol-mangling-version=v0` to strip residual host-path artefacts from symbol tables.
+    - Scrub the Nix-store path from OpenSSL's `buildinf.h` at build time so the OpenSSL derivation hash is identical across machines.
+- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05) — eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
+- Non-FIPS Docker image now ships OpenSSL 3.6.0 provider modules (`legacy.so`, `openssl.cnf`) and sets `OPENSSL_CONF`/`OPENSSL_MODULES` environment variables, matching the FIPS image layout.
+- macOS packaging fixes in `nix/scripts/package_dmg.sh` and related CI scripts.
+- *(deps)* Bump keccak in the cargo group across 1 directory ([#728](https://github.com/Cosmian/kms/pull/728))
+
+### 📚 Documentation
+
+- Add mTLS database configuration examples ([#727](https://github.com/Cosmian/kms/pull/727))
+
+### 🧪 Testing
+
+- Add React and WASM tests ([#708](https://github.com/Cosmian/kms/pull/708))
+
 ## [5.16.1] - 2026-02-15
 
 ### 🐛 Bug Fixes
 
-- Add MLKEM algorithms to the predefined DEFAULT KMIP policy
+- Add MLKEM algorithms to the predefined DEFAULT KMIP policy ([#716](https://github.com/Cosmian/kms/pull/716))
 
 ## [5.16.0] - 2026-02-04
 

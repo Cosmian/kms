@@ -1,6 +1,7 @@
-import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space, Upload } from "antd";
+import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
 import * as wasm from "./wasm/pkg";
 
@@ -152,7 +153,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Certificate Signing Request"
                                     rules={[{ required: true, message: "Please upload a CSR file" }]}
                                 >
-                                    <Upload.Dragger
+                                    <FormUploadDragger
                                         beforeUpload={(file) => {
                                             const reader = new FileReader();
                                             reader.onload = (e) => {
@@ -168,7 +169,7 @@ const CertificateCertifyForm: React.FC = () => {
                                         maxCount={1}
                                     >
                                         <p className="ant-upload-text">Click or drag CSR file to this area</p>
-                                    </Upload.Dragger>
+                                    </FormUploadDragger>
                                 </Form.Item>
 
                                 <Form.Item name="csrFormat" label="CSR Format" rules={[{ required: true }]}>
@@ -276,7 +277,7 @@ const CertificateCertifyForm: React.FC = () => {
                             label="X509 Extensions File"
                             help="File containing a 'v3_ca' paragraph with X509 extensions"
                         >
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
@@ -292,7 +293,7 @@ const CertificateCertifyForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag extensions file to this area</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
 
                         <Form.Item name="tags" label="Tags" help="Tags to associate with the certificate (optional)">

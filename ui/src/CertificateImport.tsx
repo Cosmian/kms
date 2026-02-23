@@ -1,7 +1,8 @@
 import { UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from "antd";
+import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUpload } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
 import { import_certificate_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
 
@@ -139,7 +140,7 @@ const CertificateImportForm: React.FC = () => {
                             rules={[{ required: true, message: "Please upload a certificate file" }]}
                             help={`Upload the certificate file in ${selectedFormat} format`}
                         >
-                            <Upload
+                            <FormUpload
                                 beforeUpload={(file) => {
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
@@ -155,7 +156,7 @@ const CertificateImportForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <Button icon={<UploadOutlined />}>Upload Certificate File</Button>
-                            </Upload>
+                            </FormUpload>
                         </Form.Item>
 
                         <Form.Item

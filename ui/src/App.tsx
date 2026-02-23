@@ -11,7 +11,7 @@ import AttributeSetForm from "./AttributeSet";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ExportAzureBYOKForm from "./AzureExportByok";
 import ImportAzureKekForm from "./AzureImportKek";
-import { useBranding } from "./BrandingContext";
+import { useBranding } from "./useBranding";
 import CertificateCertifyForm from "./CertificateCertify";
 import CertificateDecryptForm from "./CertificateDecrypt";
 import CertificateEncryptForm from "./CertificateEncrypt";

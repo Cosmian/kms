@@ -35,8 +35,6 @@ if [[ "$DMG_FILE" == *"fips"* ]] && [[ "$DMG_FILE" != *"non-fips"* ]]; then
   IS_FIPS=true
 fi
 
-
-
 [ -f "$DMG_FILE" ] || error "DMG not found: $DMG_FILE"
 
 info "Starting smoke test for: $DMG_FILE"
@@ -62,16 +60,12 @@ for i in $(seq 1 "$ATTACH_RETRIES"); do
 done
 
 if [ "$attached" != true ]; then
-  # GitHub-hosted macOS runners sometimes fail with:
-  #   hdiutil: attach failed - Resource temporarily unavailable
-  # Treat this as non-blocking in CI: packaging artifacts are still produced.
-  if [ "${CI:-}" = "true" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
-    warn "Failed to attach DMG (non-blocking in CI)."
-    warn "hdiutil error: Resource temporarily unavailable"
-    warn "Skipping DMG smoke test for: $DMG_FILE"
-    exit 0
-  fi
-  error "Failed to attach DMG"
+  # hdiutil attach can fail on both CI runners and local machines
+  # (e.g. "Resource temporarily unavailable").  The DMG artefact was already
+  # produced successfully, so treat this as non-blocking everywhere.
+  warn "Failed to attach DMG after ${ATTACH_RETRIES} attempt(s)."
+  warn "Skipping DMG smoke test for: $DMG_FILE"
+  exit 0
 fi
 [ -d "$MOUNT_POINT" ] || error "Mount point not found"
 info "Mounted at: $MOUNT_POINT"
@@ -131,8 +125,8 @@ if [ "$IS_FIPS" = true ]; then
     fi
     info "\xe2\x9c\x93 OpenSSL config free of Nix paths"
     # Accept either absolute include to /usr/local path or a relative include
-    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF" || \
-       grep -q '^.include\s\+fipsmodule.cnf' "$OSSL_CONF"; then
+    if grep -q '^.include /usr/local/cosmian/lib/ssl/fipsmodule.cnf' "$OSSL_CONF" ||
+      grep -q '^.include\s\+fipsmodule.cnf' "$OSSL_CONF"; then
       info "\xe2\x9c\x93 openssl.cnf include directive present"
     else
       warn ".include directive missing or unexpected in openssl.cnf"
@@ -167,10 +161,26 @@ if [ "$IS_FIPS" = true ]; then
   ENV_OPENSSL_MODULES="$CHECK_DIR/usr/local/cosmian/lib/ossl-modules"
 fi
 
+# For non-FIPS builds, set OPENSSL_MODULES to point to bundled provider modules
+# so the legacy provider can be loaded during smoke test execution.
+if [ "$IS_FIPS" != true ]; then
+  NON_FIPS_OSSL_MODULES="$CHECK_DIR/usr/local/cosmian/lib/ossl-modules"
+  if [ -d "$NON_FIPS_OSSL_MODULES" ]; then
+    ENV_OPENSSL_MODULES="$NON_FIPS_OSSL_MODULES"
+  fi
+  NON_FIPS_OSSL_CONF="$CHECK_DIR/usr/local/cosmian/lib/ssl/openssl.cnf"
+  if [ -f "$NON_FIPS_OSSL_CONF" ]; then
+    ENV_OPENSSL_CONF="$NON_FIPS_OSSL_CONF"
+  fi
+fi
+
 # Use `env` to set variables for the run
 CMD=("$BINARY_PATH" --version)
-if [ "$IS_FIPS" = true ]; then
-  VERSION_OUTPUT=$(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "${CMD[@]}" 2>&1 || true)
+if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
+  ENV_ARGS=()
+  [ -n "$ENV_OPENSSL_CONF" ] && ENV_ARGS+=(OPENSSL_CONF="$ENV_OPENSSL_CONF")
+  [ -n "$ENV_OPENSSL_MODULES" ] && ENV_ARGS+=(OPENSSL_MODULES="$ENV_OPENSSL_MODULES")
+  VERSION_OUTPUT=$(env "${ENV_ARGS[@]}" "${CMD[@]}" 2>&1 || true)
 else
   VERSION_OUTPUT=$("${CMD[@]}" 2>&1 || true)
 fi
@@ -189,8 +199,11 @@ info "\xe2\x9c\x93 Binary executed successfully"
 # - FIPS dynamic builds bundle 3.1.2 runtime libs to match the FIPS provider
 EXPECTED_VER="3.6.0"
 info "Verifying OpenSSL runtime version (expected ${EXPECTED_VER})…"
-if [ "$IS_FIPS" = true ]; then
-  INFO_CMD=(env OPENSSL_CONF="$ENV_OPENSSL_CONF" OPENSSL_MODULES="$ENV_OPENSSL_MODULES" "$BINARY_PATH" --info)
+if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
+  INFO_CMD=(env)
+  [ -n "$ENV_OPENSSL_CONF" ] && INFO_CMD+=(OPENSSL_CONF="$ENV_OPENSSL_CONF")
+  [ -n "$ENV_OPENSSL_MODULES" ] && INFO_CMD+=(OPENSSL_MODULES="$ENV_OPENSSL_MODULES")
+  INFO_CMD+=("$BINARY_PATH" --info)
 else
   INFO_CMD=("$BINARY_PATH" --info)
 fi

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-#[expect(clippy::struct_excessive_bools)]
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct LoggingConfig {
