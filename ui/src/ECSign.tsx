@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, Select, Space, Switch, Upload } from "antd";
+import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { downloadFile, sendKmipRequest } from "./utils";
 import * as wasmClient from "./wasm/pkg/cosmian_kms_client_wasm";
 
@@ -97,7 +98,7 @@ const ECSignForm: React.FC = () => {
                             <Input />
                         </Form.Item>
                         <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to sign" }]}>
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
                                     const reader = new FileReader();
@@ -114,7 +115,7 @@ const ECSignForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag file to this area to sign</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>

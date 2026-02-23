@@ -213,19 +213,19 @@ echo ""
 # Note: "Failed reading nix meta information" warning is expected when scanning store paths
 # The SBOM still includes all package information, just without Nixpkgs-specific metadata
 echo "Generating CycloneDX SBOM..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --cdx="$OUTPUT_DIR/bom.cdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --cdx="$OUTPUT_DIR/bom.cdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ bom.cdx.json"
 echo ""
 
 # Generate SPDX SBOM (JSON format - ISO standard)
 echo "Generating SPDX SBOM..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --spdx="$OUTPUT_DIR/bom.spdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --spdx="$OUTPUT_DIR/bom.spdx.json") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ bom.spdx.json"
 echo ""
 
 # Generate CSV format
 echo "Generating CSV report..."
-(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --csv="$OUTPUT_DIR/sbom.csv") 2>&1 | grep -v "Failed reading nix meta" || true
+(cd "$SBOM_WORKDIR" && run_sbomnix "$NIX_RESULT" --impure --include-vulns --csv="$OUTPUT_DIR/sbom.csv") 2>&1 | grep -v "Failed reading nix meta" || true
 echo "  ✓ sbom.csv"
 echo ""
 
@@ -264,7 +264,7 @@ echo ""
 echo "Generating dependency graph..."
 # Save current directory and change to output dir
 pushd "$OUTPUT_DIR" >/dev/null
-if run_nixgraph "$NIX_RESULT" 2>&1 | grep -E "INFO|Wrote" || true; then
+if run_nixgraph --depth 30 "$NIX_RESULT" 2>&1 | grep -E "INFO|Wrote" || true; then
   :
 fi
 popd >/dev/null

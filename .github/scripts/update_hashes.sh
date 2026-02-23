@@ -88,6 +88,7 @@ if [ -z "$RUN_ID" ]; then
 
   # Fetch recent workflow runs on this branch.
   # Prefer failures (likely hash mismatches), then fall back to the newest completed run.
+  # shellcheck disable=SC2016  # $runs is a jq variable, not a shell variable
   RUN_ID=$(gh run list --branch "$CURRENT_BRANCH" --limit 50 --json databaseId,status,conclusion \
     --jq 'map(select(.status=="completed" and .conclusion != "cancelled")) as $runs |
           ($runs | map(select(.conclusion=="failure")) | .[0].databaseId) // ($runs | .[0].databaseId)')
@@ -205,34 +206,19 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
         # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
-        # infer those from the GitHub Actions job name.
+        # infer linkage from the GitHub Actions job name. Linux and Darwin share the same hash files.
         elif [[ "$last_drv_name" =~ (kms-server|server).*vendor|(^|-)vendor($|-) ]]; then
-          if [[ "$JOB_NAME" == *"macos"* ]] || [[ "$JOB_NAME" == *"darwin"* ]]; then
-            if [[ "$JOB_NAME" == *"static"* ]]; then
-              target_file="$EXPECTED_DIR/server.vendor.static.darwin.sha256"
-            elif [[ "$JOB_NAME" == *"dynamic"* ]]; then
-              target_file="$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"
-            else
-              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.darwin.sha256"]="$got_hash"
-              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.darwin.sha256"]="$got_hash"
-              echo "  Found hash for $EXPECTED_DIR/server.vendor.static.darwin.sha256: $got_hash"
-              echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.darwin.sha256: $got_hash"
-              target_file=""
-            fi
+          if [[ "$JOB_NAME" == *"dynamic"* ]]; then
+            target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
+          elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
+            target_file="$EXPECTED_DIR/server.vendor.static.sha256"
           else
-            # Linux server vendor hashes are tracked per linkage mode.
             # Docker packaging builds are always static-linked.
-            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
-              target_file="$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"
-            elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
-              target_file="$EXPECTED_DIR/server.vendor.static.linux.sha256"
-            else
-              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.linux.sha256"]="$got_hash"
-              FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.linux.sha256"]="$got_hash"
-              echo "  Found hash for $EXPECTED_DIR/server.vendor.static.linux.sha256: $got_hash"
-              echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.linux.sha256: $got_hash"
-              target_file=""
-            fi
+            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.sha256"]="$got_hash"
+            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.sha256"]="$got_hash"
+            echo "  Found hash for $EXPECTED_DIR/server.vendor.static.sha256: $got_hash"
+            echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.sha256: $got_hash"
+            target_file=""
           fi
         fi
 

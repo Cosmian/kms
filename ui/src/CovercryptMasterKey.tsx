@@ -1,6 +1,7 @@
-import { Button, Card, Checkbox, Form, Input, Select, Space, Upload } from "antd";
+import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
 import { create_cc_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "./wasm/pkg";
 
@@ -127,7 +128,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
 
                             {specificationType === "json-file" && (
                                 <Form.Item name="specificationFile" rules={[{ required: true, message: "Please provide specifications" }]}>
-                                    <Upload.Dragger
+                                    <FormUploadDragger
                                         accept=".json"
                                         beforeUpload={(file) => {
                                             const reader = new FileReader();
@@ -143,7 +144,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                         maxCount={1}
                                     >
                                         <p className="ant-upload-text">Click or drag JSON specification file</p>
-                                    </Upload.Dragger>
+                                    </FormUploadDragger>
                                 </Form.Item>
                             )}
 

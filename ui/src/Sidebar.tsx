@@ -2,7 +2,7 @@ import { Layout, Menu, MenuProps, Tooltip } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
-import { useBranding } from "./BrandingContext";
+import { useBranding } from "./useBranding";
 import { MenuItem, menuItems } from "./menuItems.tsx";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 

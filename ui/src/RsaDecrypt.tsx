@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, Select, Space, Upload } from "antd";
+import { Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "./utils";
 import { decrypt_rsa_ttlv_request, parse_decrypt_ttlv_response } from "./wasm/pkg";
 
@@ -96,7 +97,7 @@ const RsaDecryptForm: React.FC = () => {
                         </Form.Item>
 
                         <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to decrypt" }]}>
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
                                     const reader = new FileReader();
@@ -113,7 +114,7 @@ const RsaDecryptForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag file to this area to decrypt</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>

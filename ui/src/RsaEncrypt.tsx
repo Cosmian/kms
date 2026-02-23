@@ -1,6 +1,7 @@
-import { Button, Card, Form, Input, Select, Space, Upload } from "antd";
+import { Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { FormUploadDragger } from "./FormUpload";
 import { downloadFile, sendKmipRequest } from "./utils";
 import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "./wasm/pkg";
 
@@ -95,7 +96,7 @@ const RsaEncryptForm: React.FC = () => {
                         </Form.Item>
 
                         <Form.Item name="inputFile" rules={[{ required: true, message: "Please select a file to encrypt" }]}>
-                            <Upload.Dragger
+                            <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("fileName", file.name);
                                     const reader = new FileReader();
@@ -112,7 +113,7 @@ const RsaEncryptForm: React.FC = () => {
                                 maxCount={1}
                             >
                                 <p className="ant-upload-text">Click or drag file to this area to encrypt</p>
-                            </Upload.Dragger>
+                            </FormUploadDragger>
                         </Form.Item>
                     </Card>
                     <Card>

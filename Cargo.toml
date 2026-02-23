@@ -85,7 +85,7 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.16.1"
+version = "5.16.2"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [

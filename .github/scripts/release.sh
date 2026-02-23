@@ -61,5 +61,8 @@ git cliff -w "$PWD" -u -p CHANGELOG.md -t "$NEW_VERSION"
 # Convert (#XXX) references to full GitHub pull request URLs
 ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com\/Cosmian\/kms\/pull\/\1))/g' CHANGELOG.md
 
+export DOCKER_IMAGE_NAME="ghcr.io/cosmian/kms:latest"
+docker compose -f .github/scripts/docker-compose.example.yml up -d
 bash .github/scripts/build_ui.sh
 bash .github/scripts/nix.sh sbom
+docker compose -f .github/scripts/docker-compose.example.yml down --remove-orphans

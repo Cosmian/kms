@@ -22,7 +22,7 @@ This directory contains the reproducible Nix derivations and helper scripts used
               ▼              ▼              ▼
       ┌──────────┐    ┌──────────┐   ┌──────────┐
       │ Cargo    │    │ OpenSSL  │   │  Rust    │
-      │  Hash    │    │  3.1.2   │   │  1.90.0  │
+      │  Hash    │    │  3.6.0   │   │  1.90.0  │
       │ Verify   │    │  Build   │   │Toolchain │
       └────┬─────┘    └────┬─────┘   └────┬─────┘
            │               │              │
@@ -51,8 +51,8 @@ This directory contains the reproducible Nix derivations and helper scripts used
             │  FIPS        │   │  non-FIPS    │
             │  Variant     │   │  Variant     │
             │              │   │              │
-            │ Bit-for-bit  │   │ Hash tracked │
-            │reproducible  │   │(consistency) │
+            │ Bit-for-bit  │   │ Bit-for-bit  │
+            │reproducible  │   │reproducible  │
             └──────────────┘   └──────────────┘
 ```
 
@@ -80,17 +80,17 @@ This directory contains the reproducible Nix derivations and helper scripts used
       - [Research \& Academia](#research--academia)
       - [Government \& High-Assurance](#government--high-assurance)
     - [Why Nix Matters for Cosmian KMS](#why-nix-matters-for-cosmian-kms)
-      - [Reproducible FIPS Builds](#reproducible-fips-builds)
+      - [Reproducible Builds](#reproducible-builds)
       - [Dependency Transparency](#dependency-transparency)
       - [Offline Air-Gapped Builds](#offline-air-gapped-builds)
   - [Build reproducibility foundations](#build-reproducibility-foundations)
-    - [How reproducible builds work (FIPS only)](#how-reproducible-builds-work-fips-only)
+    - [How reproducible builds work](#how-reproducible-builds-work)
     - [Reproducibility Architecture Diagram](#reproducibility-architecture-diagram)
     - [Build hash inventory](#build-hash-inventory)
     - [Hash verification flow](#hash-verification-flow)
       - [Hash Verification Details](#hash-verification-details)
   - [Native hash verification (installCheckPhase)](#native-hash-verification-installcheckphase)
-  - [Proving determinism locally (FIPS builds only)](#proving-determinism-locally-fips-builds-only)
+  - [Proving determinism locally](#proving-determinism-locally)
   - [Unified \& idempotent packaging](#unified--idempotent-packaging)
   - [Offline packaging flow](#offline-packaging-flow)
     - [Offline Build Visual Flow](#offline-build-visual-flow)
@@ -241,20 +241,26 @@ This purely functional approach means:
 
 ### Why Nix Matters for Cosmian KMS
 
-#### Reproducible FIPS Builds
+#### Reproducible Builds
+
+Both FIPS and non-FIPS Linux builds are **bit-for-bit deterministic**:
 
 ```bash
 # Developer build on laptop (Linux x86_64)
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
-# SHA256: abc123...
+# SHA256: 528e0f20...
 
 # CI build on GitHub Actions (same platform)
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
-# SHA256: abc123... ✅ IDENTICAL
+# SHA256: 528e0f20... ✅ IDENTICAL
+
+# Non-FIPS builds are also deterministic
+nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
+# SHA256: a921942f... ✅ REPRODUCIBLE
 
 # Security team rebuild 6 months later (same commit)
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
-# SHA256: abc123... ✅ STILL IDENTICAL
+# SHA256: 528e0f20... ✅ STILL IDENTICAL
 ```
 
 This **bit-for-bit reproducibility** is essential for:
@@ -315,7 +321,7 @@ Critical for:
 
 Goals:
 
-- **Bit-for-bit deterministic FIPS builds** on Linux (non-FIPS builds are consistent but not fully deterministic)
+- **Bit-for-bit deterministic builds** on Linux (both FIPS and non-FIPS)
 - Native hash verification inside the Nix derivation (installCheckPhase)
 - Fully offline packaging after first prewarm
 - Idempotent repeated packaging (no rebuild/download) via reuse & NO_PREWARM
@@ -326,34 +332,35 @@ Goals:
 
 ## Build reproducibility foundations
 
-### How reproducible builds work (FIPS only)
+### How reproducible builds work
 
-**IMPORTANT**: Only FIPS builds on Linux achieve bit-for-bit deterministic reproducibility. Non-FIPS builds use hash verification for consistency tracking but may not be fully reproducible across different build environments.
+All Linux builds (FIPS and non-FIPS) achieve bit-for-bit deterministic reproducibility.
 
-`nix/kms-server.nix` builds FIPS binaries inside a hermetic, pinned environment with controlled inputs:
+`nix/kms-server.nix` builds binaries inside a hermetic, pinned environment with controlled inputs:
 
 1. **Pinned nixpkgs (24.11)**: Frozen package set prevents upstream drift (Linux builds target glibc 2.34)
 2. **Source cleaning**: `cleanSourceWith` removes non-input artifacts (`result-*`, reports, caches)
 3. **Locked dependencies**: Cargo dependency graph frozen via `cargoHash` (reproducible vendoring)
-4. **Deterministic compilation flags**: Rust codegen flags minimize non-determinism (FIPS builds):
+4. **Deterministic compilation flags**: Rust codegen flags eliminate non-determinism:
    - `-Cdebuginfo=0` — No debug symbols (timestamps, paths)
    - `-Ccodegen-units=1` — Single codegen unit (deterministic order)
    - `-Cincremental=false` — No incremental compilation cache
    - `-C link-arg=-Wl,--build-id=none` — No build-id section
+   - `-C strip=symbols` — Strip all symbols
+   - `-C symbol-mangling-version=v0` — Stable symbol mangling
    - `SOURCE_DATE_EPOCH` — Normalized embedded timestamps
-5. **Pinned OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS provider)**: Local tarball or fetched by SRI hash (FIPS 140-3 certified)
+5. **Pinned OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS provider)**: Fetched by SRI hash (FIPS 140-3 certified)
    - Note: OpenSSL 3.1.2 is kept for the FIPS provider.
 6. **Sanitized binaries**: RPATH removed, interpreter fixed to avoid volatile store paths
+7. **No host-path leakage**: Build uses only `/build` and `/tmp` remap prefixes (no workspace paths in derivation)
 
-**Result for FIPS builds**: Identical inputs ⇒ identical binary hash. Hash drift always means an intentional or accidental input change.
-
-**Result for non-FIPS builds**: Builds are tracked with expected hashes for consistency, but the binaries may vary across different build environments due to non-deterministic compilation of non-FIPS cryptographic components.
+**Result**: Identical inputs ⇒ identical binary hash. Hash drift always means an intentional or accidental input change.
 
 ### Reproducibility Architecture Diagram
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│            Deterministic Build Architecture (FIPS)                      │
+│            Deterministic Build Architecture                            │
 └─────────────────────────────────────────────────────────────────────────┘
 
 INPUT LAYER (All Cryptographically Pinned)
@@ -383,10 +390,11 @@ INPUT LAYER (All Cryptographically Pinned)
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  OpenSSL 3.1.2 Source                                                    │
-│  • Hash: sha256-def456... (openssl-3.1.2.tar.gz)                         │
-│  • FIPS 140-3 certified source code                                      │
-│  • Local tarball fallback (resources/tarballs/)                          │
+│  OpenSSL 3.6.0 + 3.1.2 Source                                          │
+│  • OpenSSL 3.6.0: runtime library (statically linked)                   │
+│  • OpenSSL 3.1.2: FIPS provider (shipped separately)                    │
+│  • Both verified by SRI hash                                            │
+│  • FIPS 140-3 certified source code                                     │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -412,7 +420,7 @@ BUILD LAYER (Hermetic Execution)
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  Deterministic Compilation (FIPS Only)                                   │
+│  Deterministic Compilation                                               │
 │                                                                          │
 │  Flags preventing non-determinism:                                       │
 │  ┌────────────────────────────────────────────────────────────────┐      │
@@ -420,17 +428,18 @@ BUILD LAYER (Hermetic Execution)
 │  │ -Ccodegen-units=1          Single codegen (deterministic order)│      │
 │  │ -Cincremental=false        No incremental cache                │      │
 │  │ -Clink-arg=-Wl,--build-id=none  No build timestamp             │      │
+│  │ -Cstrip=symbols            Strip all symbols                   │      │
+│  │ -Csymbol-mangling-version=v0  Stable mangling                  │      │
 │  │ SOURCE_DATE_EPOCH=1        Normalized embedded times           │      │
 │  └────────────────────────────────────────────────────────────────┘      │
 │                                                                          │
-│  Non-FIPS builds: Flags relaxed for performance                          │
-│  (may introduce non-determinism)                                         │
+│  Applied to all Linux builds (FIPS and non-FIPS)                         │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Static Linking                                                          │
-│  • OpenSSL 3.1.2 statically linked (no .so dependency)                   │
+│  • OpenSSL 3.6.0 statically linked (no .so dependency)                   │
 │  • GLIBC dynamically linked (version ≤ 2.34 for Rocky Linux 9 compatibility) │
 │  • No RPATH (would contain /nix/store paths)                             │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -455,15 +464,15 @@ OUTPUT LAYER (Hash Verification)
 │  Computed: sha256($out/bin/cosmian_kms)                                  │
 │  Expected: nix/expected-hashes/<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256 │
 │                                                                          │
-│  FIPS on Linux:                                                          │
+│  Linux (FIPS and non-FIPS):                                              │
 │    ✅ Hashes MUST match (bit-for-bit deterministic)                      │
 │    ❌ Mismatch = BUILD FAILS (potential tampering/drift)                 │
 │                                                                          │
-│  Non-FIPS or macOS:                                                      │
+│  macOS:                                                                  │
 │    ⚠️ Hashes tracked for consistency (not guaranteed reproducible)       │
 │                                                                          │
 │  Additional checks:                                                      │
-│    • OpenSSL version exactly 3.1.2                                       │
+│    • OpenSSL 3.6.0 statically linked (strings check)                     │
 │    • ldd shows no libssl.so (static linkage)                             │
 │    • GLIBC symbols ≤ 2.34                                                │
 │    • FIPS mode operational (if FIPS variant)                             │
@@ -475,8 +484,8 @@ OUTPUT LAYER (Hash Verification)
 │  /nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms                    │
 │                                                                          │
 │  Properties:                                                             │
-│  • Hash-verified (FIPS: bit-for-bit reproducible)                         │
-│  • Statically linked OpenSSL                                             │
+│  • Hash-verified (bit-for-bit reproducible on Linux)                      │
+│  • OpenSSL 3.6.0 statically linked                                       │
 │  • Portable across Linux distributions (GLIBC ≥ 2.34, Rocky Linux 9+)    │
 │  • No /nix/store runtime dependencies                                    │
 │  • Ready for packaging (DEB/RPM/DMG)                                     │
@@ -493,29 +502,30 @@ REPRODUCIBILITY GUARANTEES
 │                    │  Same inputs → IDENTICAL binary hash             │
 │                    │  Cryptographically verifiable                     │
 ├────────────────────┼──────────────────────────────────────────────────┤
-│  Linux ARM64 FIPS  │  ✅ Bit-for-bit deterministic                    │
-│                    │  (cross-compilation from x86_64)                 │
+│  Linux x86_64      │  ✅ Bit-for-bit deterministic                    │
+│  non-FIPS          │  Same inputs → IDENTICAL binary hash             │
+│                    │  Cryptographically verifiable                     │
 ├────────────────────┼──────────────────────────────────────────────────┤
-│  Linux x86_64      │  ⚠️ Hash tracked (consistency monitoring)        │
-│  non-FIPS          │  May vary across environments                    │
-│                    │  Not guaranteed reproducible                     │
+│  Linux ARM64       │  ✅ Bit-for-bit deterministic                    │
+│  (any variant)     │  (cross-compilation from x86_64)                 │
 ├────────────────────┼──────────────────────────────────────────────────┤
 │  macOS ARM64       │  ⚠️ Hash tracked (consistency monitoring)        │
 │  (any variant)     │  macOS toolchain introduces variance             │
 │                    │  Not bit-for-bit reproducible                    │
 └────────────────────┴──────────────────────────────────────────────────┘
 
-Why FIPS builds are reproducible:
+Why Linux builds are reproducible (FIPS and non-FIPS):
   1. Deterministic compilation flags (no debug info, single codegen unit)
-  2. Normalized timestamps (SOURCE_DATE_EPOCH)
-  3. No build-id section in binary
-  4. Cleaned source tree (no artifacts)
-  5. All inputs cryptographically pinned
+  2. Symbol stripping and stable mangling (-Cstrip=symbols, -Csymbol-mangling-version=v0)
+  3. Normalized timestamps (SOURCE_DATE_EPOCH)
+  4. No build-id section in binary
+  5. Cleaned source tree (no artifacts)
+  6. All inputs cryptographically pinned (nixpkgs, rust-overlay, OpenSSL tarballs)
+  7. No host-path leakage in derivation inputs
 
-Why non-FIPS builds may vary:
-  1. Relaxed compilation flags (performance optimization)
-  2. Non-deterministic cryptographic backend components
-  3. Platform-specific optimizations
+Why macOS builds may vary:
+  1. macOS toolchain introduces non-deterministic artifacts
+  2. Platform-specific optimizations
 
 Use case: FIPS for compliance/audits, non-FIPS for general deployment
 ```
@@ -528,17 +538,17 @@ Cargo/UI vendor hashes are committed in the repository and verified during build
 | --------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix`                                       | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
 | **OpenSSL sources**   | OpenSSL 3.6.0 (runtime) + OpenSSL 3.1.2 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=`              |
-| **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`     | `90eb9f3bd0d58c521ea68dfa205bdcc6c34b4064198c9fbb51f4d753df16e1f1` |
-| **Binary (non-FIPS)** | Non-FIPS server (tracked hash, not fully deterministic) | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256` | `2eb034667cde901bb85b195d58b48a32ff4028f785bd977acdb689ea42268f1b` |
+| **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`     | `528e0f2019769afb8016bb822f640b2b8b5c5711a0e13f59062c84f9b772bed6` |
+| **Binary (non-FIPS)** | Deterministic non-FIPS server executable                | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256` | `a921942fd81bedca3438789be5580bde794d5569ce3e955f692d44391f99ff02` |
 
 Platform-specific binary hashes:
 
 | Platform       | Variant  | Hash File                                                    | Enforced At          | Deterministic?                 |
 | -------------- | -------- | ------------------------------------------------------------ | -------------------- | ------------------------------ |
 | x86_64-linux   | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`       | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
-| x86_64-linux   | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256`   | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
+| x86_64-linux   | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256`   | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
 | aarch64-linux  | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.aarch64.linux.sha256`      | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
-| aarch64-linux  | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.aarch64.linux.sha256`  | `installCheckPhase`  | ⚠️ No (tracked for consistency) |
+| aarch64-linux  | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.aarch64.linux.sha256`  | `installCheckPhase`  | ✅ Yes (bit-for-bit)            |
 | aarch64-darwin | FIPS     | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.aarch64.darwin.sha256`     | Not enforced (macOS) | ⚠️ No (macOS builds)            |
 | aarch64-darwin | non-FIPS | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.aarch64.darwin.sha256` | Not enforced (macOS) | ⚠️ No (macOS builds)            |
 
@@ -547,7 +557,7 @@ Platform-specific binary hashes:
 - The Cargo vendor hash may differ between macOS and Linux due to platform-specific dependencies
 - OpenSSL and binary hashes are platform-specific by design
 - Expected-binary-hash enforcement is opt-in (via `enforceDeterministicHash`) and only runs on Linux
-- **Only FIPS builds on Linux are bit-for-bit deterministic**; non-FIPS hashes are tracked for build consistency but not reproducibility guarantees
+- **All Linux builds (FIPS and non-FIPS) are bit-for-bit deterministic**; macOS hashes are tracked for consistency but not reproducibility guarantees
 
 ### Hash verification flow
 
@@ -581,13 +591,14 @@ During the build process, Nix enforces all hashes at multiple stages:
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 4: Compilation (deterministic for FIPS only)               │
+│ Step 4: Compilation (deterministic)                             │
 ├─────────────────────────────────────────────────────────────────┤
 │ • Flags: -Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false    │
-│ • Static OpenSSL linkage (no dynamic deps)                       │
+│ • Additional: -Cstrip=symbols -Csymbol-mangling-version=v0      │
+│ • Static OpenSSL 3.6.0 linkage (no dynamic deps)                │
 │ • SOURCE_DATE_EPOCH for normalized timestamps                   │
 │ • Build cosmian_kms binary                                       │
-│ • Note: Non-FIPS builds may have non-deterministic artifacts     │
+│ • Same flags applied to FIPS and non-FIPS                        │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -602,7 +613,7 @@ During the build process, Nix enforces all hashes at multiple stages:
 ┌─────────────────────────────────────────────────────────────────┐
 │ Step 6: Runtime Validation                                       │
 ├─────────────────────────────────────────────────────────────────┤
-│ • Assert: OpenSSL version = 3.1.2                                │
+│ • Assert: OpenSSL 3.6.0 statically linked (strings check)        │
 │ • Assert: Static linkage (no libssl.so)                          │
 │ • Assert: GLIBC symbols ≤ 2.34                                   │
 │ • Assert: FIPS mode if variant=fips                              │
@@ -614,8 +625,7 @@ During the build process, Nix enforces all hashes at multiple stages:
 │ Output: Hash-Verified Binary                                    │
 ├─────────────────────────────────────────────────────────────────┤
 │ result-server-<variant>/bin/cosmian_kms                          │
-│ • FIPS: Deterministically reproducible (bit-for-bit)            │
-│ • Non-FIPS: Hash verified for consistency (not reproducible)    │
+│ • Deterministically reproducible (bit-for-bit) on Linux          │
 │ • Ready for packaging (DEB/RPM/DMG)                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -638,9 +648,9 @@ Layer 1: Cargo Dependencies
                                   ▼
 Layer 2: System Dependencies
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  OpenSSL 3.1.2 tarball hash                                              │
-│  ├─ Cryptographic verification of openssl-3.1.2.tar.gz                   │
-│  ├─ FIPS 140-3 certified source code                                     │
+│  OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS provider) tarball hashes          │
+│  ├─ Cryptographic verification of openssl source tarballs                 │
+│  ├─ FIPS 140-3 certified source code (3.1.2 provider)                     │
 │  └─ Protection: Supply chain attack on OpenSSL = immediate detection     │
 └──────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -648,9 +658,9 @@ Layer 2: System Dependencies
 Layer 3: Final Binary
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Binary hash in expected-hashes/<variant>.<platform>.sha256              │
-│  ├─ FIPS: Bit-for-bit reproducible (Linux)                               │
+│  ├─ Linux (FIPS and non-FIPS): Bit-for-bit reproducible                 │
 │  │   → Same source + same Nix = IDENTICAL binary                         │
-│  ├─ Non-FIPS: Hash tracking for consistency                              │
+│  ├─ macOS: Hash tracking for consistency                                 │
 │  │   → Detects unexpected changes, not guaranteed reproducible           │
 │  └─ Protection: Any tampering in build process = hash mismatch           │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -705,10 +715,6 @@ Tip: for a quick end-to-end check after updates, use `bash .github/scripts/nix.s
 
 Hash enforcement is configurable: some expected-hash checks are only enforced when `enforceDeterministicHash`/`--enforce-deterministic-hash true` is enabled.
 
-**Note on non-FIPS hashes**: Non-FIPS builds are tracked with expected hashes for consistency monitoring,
-but these hashes may change across different build environments even with identical source code. Hash changes
-should still be reviewed, but they don't necessarily indicate a source change for non-FIPS builds.
-
 ## Native hash verification (installCheckPhase)
 
 During `installCheckPhase` we:
@@ -734,9 +740,9 @@ nix-build -A kms-server-fips-static-openssl -o result-server-fips
 
 The `update-hashes` command is integrated into the main `nix.sh` script for convenience.
 
-## Proving determinism locally (FIPS builds only)
+## Proving determinism locally
 
-**IMPORTANT**: Only FIPS builds on Linux are bit-for-bit deterministic. Non-FIPS builds may produce different hashes even with identical inputs.
+Both FIPS and non-FIPS Linux builds are bit-for-bit deterministic.
 
 ```bash
 # Two identical FIPS builds - hashes MUST match
@@ -745,16 +751,18 @@ nix-build -A kms-server-fips-static-openssl -o result-server-fips-2
 sha256sum result-server-fips/bin/cosmian_kms result-server-fips-2/bin/cosmian_kms
 # Expected: Identical SHA-256 hashes
 
-# Non-FIPS builds - hashes MAY differ across builds
+# Non-FIPS builds are also deterministic - hashes MUST match
 nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips
 nix-build -A kms-server-non-fips-static-openssl -o result-server-non-fips-2
 sha256sum result-server-non-fips/bin/cosmian_kms result-server-non-fips-2/bin/cosmian_kms
-# Warning: Hashes may not match even with identical source
+# Expected: Identical SHA-256 hashes
+
+# You can also use nix-build --check for a quick verification
+nix-build -A kms-server-fips-static-openssl --no-out-link --check
+nix-build -A kms-server-non-fips-static-openssl --no-out-link --check
 ```
 
-For FIPS builds, hashes must match. To test failure path: edit one character in the expected hash file and rebuild; build must fail. Restore correct hash; build succeeds.
-
-For non-FIPS builds, hash verification ensures the binary hasn't unexpectedly changed from the last known good build, but reproducibility across different machines or environments is not guaranteed.
+To test the failure path: edit one character in the expected hash file and rebuild; build must fail. Restore correct hash; build succeeds.
 
 ## Unified & idempotent packaging
 
@@ -1077,7 +1085,7 @@ nix-build -A rustToolchain -o result-rust
 export PATH="$(readlink -f result-rust)/bin:$PATH"
 ```
 
-Benefits: consistent versions, no rustup downloads, contributes to build reproducibility (FIPS) and consistency (non-FIPS).
+Benefits: consistent versions, no rustup downloads, contributes to build reproducibility.
 
 ## Notes
 
@@ -1158,7 +1166,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
   │ compilation  │ │ • package_rpm│ │ • update_    │
   │              │ │ • package_dmg│ │   hashes     │
   │ Static link  │ │              │ │ • generate_  │
-  │ OpenSSL 3.1.2│ │ Common logic:│ │   sbom       │
+  │ OpenSSL 3.6.0│ │ Common logic:│ │   sbom       │
   │              │ │ package_     │ │ • signing_key│
   │ Validates:   │ │  common.sh   │ └──────────────┘
   │ • Hash       │ └──────────────┘
@@ -1344,7 +1352,7 @@ Entry: bash nix/scripts/package_<type>.sh --variant <fips|non-fips>
                     │     --info               │
                     │  3. Verify:              │
                     │     • Version matches    │
-                    │     • OpenSSL = 3.1.2    │
+                    │     • OpenSSL = 3.6.0    │
                     │     • Binary runs        │
                     └──────┬──────────┬────────┘
                            │          │
@@ -1651,7 +1659,7 @@ Understanding specific techniques used in this project:
 | **Hash verification**   | [Native hash verification](#native-hash-verification-installcheckphase)      | [Nix Manual: Fixed-output derivations](https://nixos.org/manual/nix/stable/language/advanced-attributes.html#adv-attr-outputHash) |
 | **Offline builds**      | [Offline packaging flow](#offline-packaging-flow)                            | [Nixpkgs: Offline evaluation](https://nixos.org/manual/nixpkgs/stable/#sec-offline-mode)                                          |
 | **Static linking**      | `nix/openssl.nix`                                                           | [Static binaries in Nix](https://nixos.wiki/wiki/Static_binaries)                                                                 |
-| **FIPS compliance**     | [Proving determinism locally](#proving-determinism-locally-fips-builds-only) | [OpenSSL FIPS 140-3](https://www.openssl.org/docs/fips.html)                                                                      |
+| **FIPS compliance**     | [Proving determinism locally](#proving-determinism-locally) | [OpenSSL FIPS 140-3](https://www.openssl.org/docs/fips.html)                                                                      |
 
 ### Community Resources
 

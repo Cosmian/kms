@@ -1,4 +1,7 @@
-pub use cosmian_kms_server::config::{DEFAULT_SQLITE_PATH, HsmConfig, MainDBConfig};
+pub use cosmian_kms_server::{
+    config::{DEFAULT_SQLITE_PATH, HsmConfig, MainDBConfig},
+    openssl_providers::init_openssl_providers_for_tests,
+};
 pub use test_server::{
     ApiTokenPolicy, AuthenticationOptions, BuildServerParamsOptions, ClientAuthOptions,
     ClientCertPolicy, JwtAuth as ServerJwtAuth, JwtPolicy, TestsContext, TlsMode as ServerTlsMode,
@@ -24,6 +27,8 @@ static INIT_LOGGING: Once = Once::new();
 pub fn init_test_logging() {
     INIT_LOGGING.call_once(|| {
         cosmian_logger::log_init(option_env!("RUST_LOG"));
+        // Also initialize OpenSSL legacy provider for non-FIPS tests
+        cosmian_kms_server::openssl_providers::init_openssl_providers_for_tests();
     });
 }
 
