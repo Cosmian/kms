@@ -44,8 +44,8 @@ hostname = "127.0.0.1"
 port = ${KMS_PORT}
 
 [tls]
-tls_cert_file = "${DATA_DIR}/server_cert.pem"
-tls_key_file = "${DATA_DIR}/server_key.pem"
+tls_p12_file = "${DATA_DIR}/server.p12"
+tls_p12_password = "password"
 clients_ca_cert_file = "${DATA_DIR}/client_ca_cert.pem"
 
 [db]
