@@ -100,3 +100,17 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Images include the UI at `http://localhost:9998/ui`.
+
+# Debugging the repository
+
+Usually, when debugging, you want to run the server with maximum logging;
+
+```bash
+RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" cargo run --debug --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data # or whatever kms run command you should run
+```
+
+The previous command is a generic example, if you think that the problem, add it to the `RUST_LOG` environment variable.
+
+### Common issues
+
+- When the KMS complains about some "usage mask" on the KMIP requests, the keys might not have the correct usage masks setup (for example to decrypt/encrypt, sign/verify, etc.)
