@@ -134,13 +134,12 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
-            LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
-            UiConfig, WorkspaceConfig,
+            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
+            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
+            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
-    use std::path::PathBuf;
 
     #[cfg(feature = "non-fips")]
     #[test]

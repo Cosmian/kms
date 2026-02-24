@@ -45,7 +45,7 @@ pub(crate) async fn get_rsa_key_metadata_from_public_key(
         KeyMaterial::TransparentRSAPublicKey {
             modulus,
             public_exponent,
-        } => Ok((modulus.clone(), public_exponent.clone())), // no escape from this clone if we want to refactor
+        } => Ok((modulus.clone(), public_exponent.clone())), /* no escape from this clone if we want to refactor */
         _ => Err(KmsError::ServerError(
             "Public key does not contain RSA public key material".to_owned(),
         )),

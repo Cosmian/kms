@@ -401,7 +401,7 @@ test_command() {
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
     ;;
-  xks)
+  aws_xks)
     SCRIPT="$REPO_ROOT/.github/scripts/test_xks.sh"
     ;;
   wasm)
@@ -479,7 +479,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
     usage
     ;;
   esac
@@ -502,7 +502,7 @@ test_command() {
   fi
 
   # AWS XKS curl-based test client requires extra tooling inside nix-shell
-  if [ "$TEST_TYPE" = "xks" ]; then
+  if [ "$TEST_TYPE" = "aws_xks" ]; then
     export WITH_XKS=1
     export WITH_CURL=1
   fi

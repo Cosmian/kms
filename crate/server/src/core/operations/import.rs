@@ -44,7 +44,7 @@ use crate::{
 pub(crate) async fn import(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
@@ -65,17 +65,38 @@ pub(crate) async fn import(
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
-            owner,
+            user,
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
         )
         .await?;
 
-        if !has_permission && !users.iter().any(|u| u == owner) {
+        if !has_permission && !users.iter().any(|u| u == user) {
             kms_bail!(KmsError::Unauthorized(
                 "User does not have create access-right.".to_owned()
             ))
+        }
+    }
+
+    // When replace_existing is requested with an explicit UID, verify the caller owns the
+    // target object. Without this check, any user with Create rights could overwrite another
+    // user's object. The ownership check must happen before any processing or cache mutation.
+    if request.replace_existing.unwrap_or(false) {
+        if let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty()) {
+            if let Some(existing) = kms
+                .database
+                .retrieve_objects(uid_str)
+                .await?
+                .values()
+                .next()
+            {
+                if existing.owner() != user {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User '{user}' does not own object '{uid_str}' and cannot replace it"
+                    )));
+                }
+            }
         }
     }
 
@@ -102,11 +123,11 @@ pub(crate) async fn import(
 
     // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
-        ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, owner)).await?,
+        ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, user)).await?,
         ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => Box::pin(process_public_key(kms, request, owner)).await?,
-        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, owner)).await?,
-        ObjectType::SecretData => Box::pin(process_secret_data(kms, request, owner)).await?,
+        ObjectType::PublicKey => Box::pin(process_public_key(kms, request, user)).await?,
+        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, user)).await?,
+        ObjectType::SecretData => Box::pin(process_secret_data(kms, request, user)).await?,
         ObjectType::OpaqueObject => process_opaque_object(request)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
@@ -115,7 +136,7 @@ pub(crate) async fn import(
         }
     };
     // execute the operations
-    kms.database.atomic(owner, &operations).await?;
+    kms.database.atomic(user, &operations).await?;
     // return the uid
     debug!("Imported object with uid: {}", uid);
     Ok(ImportResponse {
@@ -150,7 +171,7 @@ pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> 
 pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -164,7 +185,7 @@ pub(super) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // Tag the object as a symmetric key
@@ -225,7 +246,7 @@ pub(super) async fn process_symmetric_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -320,7 +341,7 @@ pub(super) fn process_certificate(
 pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -329,7 +350,7 @@ pub(super) async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, owner).await?;
+            unwrap_object(&mut object, kms, user).await?;
         }
     }
 
@@ -440,7 +461,7 @@ pub(super) async fn process_public_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -461,7 +482,7 @@ pub(super) async fn process_public_key(
 pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Whether the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -469,7 +490,7 @@ pub(super) async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // PKCS12 has its own processing
@@ -477,7 +498,7 @@ pub(super) async fn process_private_key(
         // PKCS#12 contains more than just a private key, and performs specific processing
         return Box::pin(process_pkcs12(
             kms,
-            owner,
+            user,
             &request.unique_identifier,
             object,
             request.attributes,
@@ -629,7 +650,7 @@ pub(super) async fn process_private_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -670,7 +691,7 @@ fn single_operation(
 
 async fn process_pkcs12(
     kms: &KMS,
-    owner: &str,
+    user: &str,
     unique_identifier: &UniqueIdentifier,
     object: Object,
     request_attributes: Attributes,
@@ -860,7 +881,7 @@ async fn process_pkcs12(
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(private_key_id.clone()),
         &mut private_key,
     ))
@@ -998,7 +1019,7 @@ async fn process_pkcs12(
 pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("{request}");
     // check if the object will be replaced if it already exists
@@ -1013,7 +1034,7 @@ pub(super) async fn process_secret_data(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // Tag the object as a secret data
@@ -1061,7 +1082,7 @@ pub(super) async fn process_secret_data(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
