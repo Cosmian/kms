@@ -5,13 +5,12 @@ set -exuo pipefail
 # Prefer cargo-installed binaries if present.
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# Single compose file containing all test stacks.
+COMPOSE_FILE=".github/scripts/docker-compose.yml"
+
 cleanup() {
     set +e
-    docker compose -f .github/scripts/docker-compose-with-conf.yml down --remove-orphans || true
-    docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down --remove-orphans || true
-    docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down --remove-orphans || true
-    docker compose -f .github/scripts/docker-compose.example.yml down --remove-orphans || true
-    docker compose -f .github/scripts/docker-compose-with-load-balancer.yml down --remove-orphans || true
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 }
 
 trap cleanup EXIT
@@ -20,14 +19,14 @@ trap cleanup EXIT
 # FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:* -fips (not -non-fips)
 # Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:* -non-fips
 if [[ "${DOCKER_IMAGE_NAME:-}" == *"-non-fips"* ]]; then
-    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+    export KMS_TLS_CONFIG_FLAVOR="non_fips"
     echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
 elif [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
-    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-fips.yml"
+    export KMS_TLS_CONFIG_FLAVOR="fips"
     echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
 else
     # Default to non-FIPS if ambiguous
-    COMPOSE_FILE=".github/scripts/docker-compose-authentication-tests-non-fips.yml"
+    export KMS_TLS_CONFIG_FLAVOR="non_fips"
     echo "Image variant ambiguous; defaulting to non-FIPS: ${DOCKER_IMAGE_NAME}"
 fi
 
@@ -38,8 +37,18 @@ fi
 CLI_VERSION="${CLI_VERSION:-1.8.1}"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
-KMS_URL_HTTP="http://0.0.0.0:9998"
-KMS_URL_HTTPS="https://0.0.0.0:9999"
+
+# Fixed host ports (compose publishes deterministic ports).
+HOST_HTTP_PORT=9998
+HOST_TLS_PORT=9999
+HOST_TLS13_PORT=10000
+HOST_SOCKET_TLS_PORT=5696
+HOST_SOCKET_TLS13_PORT=5697
+HOST_CONF_HTTP_PORT=11098
+HOST_EXAMPLE_HTTP_PORT=12098
+
+KMS_URL_HTTP=""
+KMS_URL_HTTPS=""
 
 # Cert paths
 CA_CERT="test_data/certificates/client_server/ca/ca.crt"
@@ -81,7 +90,17 @@ fi
 
 # update cli conf
 mkdir -p ~/.cosmian
-touch $CONFIG $TLS_CONFIG
+touch "$CONFIG" "$TLS_CONFIG"
+
+# Ensure any previous stacks are down to avoid port conflicts
+cleanup
+
+# Run docker containers once (all stacks).
+# We keep host ports distinct in compose so services can run concurrently.
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+
+KMS_URL_HTTP="http://127.0.0.1:${HOST_HTTP_PORT}"
+KMS_URL_HTTPS="https://127.0.0.1:${HOST_TLS_PORT}"
 
 echo '
 [kms_config]
@@ -89,7 +108,7 @@ print_json = false
 
 [kms_config.http_config]
 server_url = "'$KMS_URL_HTTP'"
-' | tee $CONFIG
+' | tee "$CONFIG"
 
 echo '
 [kms_config]
@@ -100,13 +119,26 @@ server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
-' | tee $TLS_CONFIG
+' | tee "$TLS_CONFIG"
 
-# Ensure any previous stacks are down to avoid port conflicts
-cleanup
-
-# Run docker containers
-docker compose -f "$COMPOSE_FILE" up -d
+# Fail fast if any started service isn't running (compose can return 0 even on partial startup)
+services="no-authentication tls-authentication tls13-authentication"
+for service in $services; do
+    cid="$(docker compose -f "$COMPOSE_FILE" ps -q "$service" || true)"
+    if [[ -z "$cid" ]]; then
+        echo "ERROR: no container id for service '$service'" >&2
+        docker compose -f "$COMPOSE_FILE" ps -a || true
+        docker compose -f "$COMPOSE_FILE" logs || true
+        exit 1
+    fi
+    status="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+    if [[ "$status" != "running" ]]; then
+        echo "ERROR: service '$service' is not running (status=$status)" >&2
+        docker compose -f "$COMPOSE_FILE" ps -a || true
+        docker compose -f "$COMPOSE_FILE" logs "$service" || true
+        exit 1
+    fi
+done
 
 # Wait for the containers to be ready
 echo "Waiting for KMS servers to start..."
@@ -122,12 +154,12 @@ echo "Docker image name: ${DOCKER_IMAGE_NAME:-not set}"
 
 # Check no-authentication server (port 9998)
 for i in {1..30}; do
-    if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
-        echo "KMS server on port 9998 is ready"
+    if curl -s -f "http://127.0.0.1:${HOST_HTTP_PORT}/ui/index.html" >/dev/null 2>&1; then
+        echo "KMS server on port ${HOST_HTTP_PORT} is ready"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: KMS server on port 9998 failed to start after 30 attempts"
+        echo "ERROR: KMS server on port ${HOST_HTTP_PORT} failed to start after 30 attempts"
         echo "Compose file being used: $COMPOSE_FILE"
         echo "Showing container status:"
         docker compose -f "$COMPOSE_FILE" ps -a
@@ -139,14 +171,14 @@ for i in {1..30}; do
 done
 
 # Check TLS server (port 9999) - give it more time if needed
-echo "Checking TLS server on port 9999..."
+echo "Checking TLS server on port ${HOST_TLS_PORT}..."
 for i in {1..30}; do
-    if curl -k -s -f https://127.0.0.1:9999/ui/index.html >/dev/null 2>&1; then
-        echo "TLS server on port 9999 is ready"
+    if curl -k -s -f "https://127.0.0.1:${HOST_TLS_PORT}/ui/index.html" >/dev/null 2>&1; then
+        echo "TLS server on port ${HOST_TLS_PORT} is ready"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: TLS server on port 9999 failed to start after 30 attempts"
+        echo "ERROR: TLS server on port ${HOST_TLS_PORT} failed to start after 30 attempts"
         echo "Showing tls-authentication container logs:"
         docker compose -f "$COMPOSE_FILE" logs tls-authentication
         echo "Showing container status:"
@@ -159,14 +191,14 @@ for i in {1..30}; do
 done
 
 # Check TLS13 server (port 10000) - give it more time if needed
-echo "Checking TLS13 server on port 10000..."
+echo "Checking TLS13 server on port ${HOST_TLS13_PORT}..."
 for i in {1..30}; do
-    if curl -k -s -f https://127.0.0.1:10000/ui/index.html >/dev/null 2>&1; then
-        echo "TLS13 server on port 10000 is ready"
+    if curl -k -s -f "https://127.0.0.1:${HOST_TLS13_PORT}/ui/index.html" >/dev/null 2>&1; then
+        echo "TLS13 server on port ${HOST_TLS13_PORT} is ready"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: TLS13 server on port 10000 failed to start after 30 attempts"
+        echo "ERROR: TLS13 server on port ${HOST_TLS13_PORT} failed to start after 30 attempts"
         echo "Showing tls13-authentication container logs:"
         docker compose -f "$COMPOSE_FILE" logs tls13-authentication
         echo "Showing container status:"
@@ -212,87 +244,73 @@ else
 fi
 
 # Test TLS on HTTP server with default options
-openssl_test "127.0.0.1:9999" "tls1_2"
-openssl_test "127.0.0.1:9999" "tls1_3"
+openssl_test "127.0.0.1:${HOST_TLS_PORT}" "tls1_2"
+openssl_test "127.0.0.1:${HOST_TLS_PORT}" "tls1_3"
 
 # Test TLS socket server with default options
-openssl_test "127.0.0.1:5696" "tls1_2"
-openssl_test "127.0.0.1:5696" "tls1_3"
+openssl_test "127.0.0.1:${HOST_SOCKET_TLS_PORT}" "tls1_2"
+openssl_test "127.0.0.1:${HOST_SOCKET_TLS_PORT}" "tls1_3"
 
 # Test TLS on HTTP server with specific TLS1.3
-test_tls_failure "127.0.0.1:10000" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port 10000"
-openssl_test "127.0.0.1:10000" "tls1_3"
+test_tls_failure "127.0.0.1:${HOST_TLS13_PORT}" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port ${HOST_TLS13_PORT}"
+openssl_test "127.0.0.1:${HOST_TLS13_PORT}" "tls1_3"
 
 # Test TLS socket server with specific TLS1.3
-test_tls_failure "127.0.0.1:5697" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port 5697"
-openssl_test "127.0.0.1:5697" "tls1_3"
+test_tls_failure "127.0.0.1:${HOST_SOCKET_TLS13_PORT}" "tls1_2" "TLS 1.2 correctly rejected on TLS 1.3-only port ${HOST_SOCKET_TLS13_PORT}"
+openssl_test "127.0.0.1:${HOST_SOCKET_TLS13_PORT}" "tls1_3"
 
 # Test UI endpoints
-curl -I http://127.0.0.1:9998/ui/index.html
-curl --insecure -I https://127.0.0.1:9999/ui/index.html
-curl --insecure -I https://127.0.0.1:10000/ui/index.html
+curl -I "http://127.0.0.1:${HOST_HTTP_PORT}/ui/index.html"
+curl --insecure -I "https://127.0.0.1:${HOST_TLS_PORT}/ui/index.html"
+curl --insecure -I "https://127.0.0.1:${HOST_TLS13_PORT}/ui/index.html"
 
 # === Config-file based compose test ===
 # Use COSMIAN_KMS_CONF with mounted pkg/kms.toml and verify UI
-echo "Running config-based compose test (.github/scripts/docker-compose-with-conf.yml)"
-docker compose -f .github/scripts/docker-compose-authentication-tests-fips.yml down || true
-docker compose -f .github/scripts/docker-compose-authentication-tests-non-fips.yml down || true
-docker compose -f .github/scripts/docker-compose-with-conf.yml up -d --force-recreate --remove-orphans
+echo "Running config-based compose test ($COMPOSE_FILE:kms-with-conf)"
 
-# Probe UI on 9998
+# Probe UI
 for i in {1..30}; do
-    if curl -s -f http://127.0.0.1:9998/ui/index.html >/dev/null 2>&1; then
-        echo "Config-based KMS server on port 9998 is ready"
+    if curl -s -f "http://127.0.0.1:${HOST_CONF_HTTP_PORT}/ui/index.html" >/dev/null 2>&1; then
+        echo "Config-based KMS server on port ${HOST_CONF_HTTP_PORT} is ready"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: Config-based KMS server on port 9998 failed to start"
-        docker compose -f .github/scripts/docker-compose-with-conf.yml ps -a || true
-        docker compose -f .github/scripts/docker-compose-with-conf.yml logs || true
+        echo "ERROR: Config-based KMS server on port ${HOST_CONF_HTTP_PORT} failed to start"
+        docker compose -f "$COMPOSE_FILE" ps -a || true
+        docker compose -f "$COMPOSE_FILE" logs kms-with-conf || true
         exit 1
     fi
     sleep 1
 done
 
 # Show brief logs for verification
-docker compose -f .github/scripts/docker-compose-with-conf.yml logs --tail=120 || true
-
-# Tear down config-based stack
-docker compose -f .github/scripts/docker-compose-with-conf.yml down || true
+docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-with-conf || true
 
 # === Example docker-compose smoke test ===
 # Run the minimal example compose to ensure a default container boots.
-echo "Running example compose test (.github/scripts/docker-compose.example.yml)"
-docker compose -f .github/scripts/docker-compose.example.yml down || true
-docker compose -f .github/scripts/docker-compose.example.yml up -d --force-recreate --remove-orphans
+echo "Running example compose test ($COMPOSE_FILE:kms-example)"
 
-# Probe server on 9998 (health if available, else a KMIP probe)
+# Probe server (health if available, else a KMIP probe)
 for i in {1..30}; do
-    if curl -s -f http://127.0.0.1:9998/health >/dev/null 2>&1; then
-        echo "Example-compose KMS server on port 9998 is ready (/health)"
+    if curl -s -f "http://127.0.0.1:${HOST_EXAMPLE_HTTP_PORT}/health" >/dev/null 2>&1; then
+        echo "Example-compose KMS server on port ${HOST_EXAMPLE_HTTP_PORT} is ready (/health)"
         break
     fi
-    if curl -s -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:9998/kmip/2_1 >/dev/null 2>&1; then
-        echo "Example-compose KMS server on port 9998 is ready (/kmip probe)"
+    if curl -s -X POST -H "Content-Type: application/json" -d '{}' "http://127.0.0.1:${HOST_EXAMPLE_HTTP_PORT}/kmip/2_1" >/dev/null 2>&1; then
+        echo "Example-compose KMS server on port ${HOST_EXAMPLE_HTTP_PORT} is ready (/kmip probe)"
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "ERROR: Example-compose KMS server on port 9998 failed to start"
-        docker compose -f .github/scripts/docker-compose.example.yml ps -a || true
-        docker compose -f .github/scripts/docker-compose.example.yml logs || true
+        echo "ERROR: Example-compose KMS server on port ${HOST_EXAMPLE_HTTP_PORT} failed to start"
+        docker compose -f "$COMPOSE_FILE" ps -a || true
+        docker compose -f "$COMPOSE_FILE" logs kms-example || true
         exit 1
     fi
     sleep 1
 done
 
-docker compose -f .github/scripts/docker-compose.example.yml logs --tail=120 || true
-docker compose -f .github/scripts/docker-compose.example.yml down || true
+docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-example || true
 
 # === Load balancer shutdown behavior test ===
 echo "Running load balancer shutdown test (.github/scripts/test_lb_kms_shutdown.sh)"
-LB_PORT="18080"
-export LB_PORT
 bash .github/scripts/test_lb_kms_shutdown.sh
-
-# Ensure LB stack is cleaned up after the test
-docker compose -f .github/scripts/docker-compose-with-load-balancer.yml down || true

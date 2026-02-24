@@ -266,11 +266,19 @@ pkgs.dockerTools.buildLayeredImage {
     echo "=== fakeRootCommands: Bundling CA certificates locally ==="
     cp -L ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt || echo "Failed to copy CA bundle"
 
+    # Pre-create /etc/cosmian so Docker bind-mounts of config files (e.g.
+    # /etc/cosmian/kms.toml) land as regular files rather than directories.
+    # Without this, Docker creates the mount-point path as a directory when
+    # the parent does not exist in the image, causing the KMS server to fail
+    # with "Is a directory" when reading COSMIAN_KMS_CONF.
+    mkdir -p etc/cosmian
+
     echo "=== fakeRootCommands: Verifying installed files ==="
     ls -la bin/ || echo "ERROR: bin not found"
     ls -la usr/local/bin/ || echo "ERROR: usr/local/bin not found"
     ls -la usr/local/cosmian/ui/ || echo "ERROR: usr/local/cosmian/ui not found"
     ls -la etc/ || echo "ERROR: etc not found"
+    ls -la etc/cosmian/ || echo "ERROR: etc/cosmian not found"
     ls -la etc/ssl/certs/ || echo "ERROR: etc/ssl/certs not found"
 
     # Provide system dynamic linker and glibc locations expected by the binary

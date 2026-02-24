@@ -304,6 +304,27 @@ verify_openssl_runtime_version() {
   info "Verifying OpenSSL runtime version (expected $expected_version)…"
   export LD_LIBRARY_PATH="$temp_dir/usr/local/cosmian/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+  # Ensure we don't read the host's /etc/cosmian/kms.toml (which may exist and be root-only).
+  # We run the binary outside of a chroot, so config resolution would otherwise hit the host.
+  local smoke_test_conf_dir="$temp_dir/tmp"
+  local smoke_test_conf="$smoke_test_conf_dir/kms.smoketest.toml"
+  mkdir -p "$smoke_test_conf_dir"
+  cat >"$smoke_test_conf" <<EOF
+info = true
+
+[workspace]
+root_data_path = "${temp_dir}/var/lib/cosmian-kms"
+tmp_path = "${temp_dir}/tmp"
+
+[db]
+database_type = "sqlite"
+sqlite_path = "sqlite-data"
+
+[http]
+hostname = "127.0.0.1"
+port = 9998
+EOF
+
   # Ensure OpenSSL environment variables are set (should be from test_binary_execution, but verify)
   if [ "$is_fips" = true ]; then
     export OPENSSL_CONF="${OPENSSL_CONF:-$temp_dir/usr/local/cosmian/lib/ssl/openssl.cnf}"
