@@ -1,10 +1,11 @@
+use std::sync::Arc;
+
 use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path, Query},
 };
 use cosmian_logger::{info, trace};
 use serde::Deserialize;
-use std::sync::Arc;
 
 use crate::{
     core::KMS,

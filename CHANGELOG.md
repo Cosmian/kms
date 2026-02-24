@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.17.0] - 2026-XX-XX
+
+### 🚀 Features
+
+- Added support for AWS XKS (External Key Store)
+
 ## [5.16.2] - 2026-02-22
 
 ### 🐛 Bug Fixes

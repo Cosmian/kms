@@ -130,12 +130,16 @@ async fn run() -> KResult<()> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 mod tests {
-    use cosmian_kms_server::config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
-        LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig,
-        UiConfig, WorkspaceConfig,
-    };
     use std::path::PathBuf;
+
+    use cosmian_kms_server::{
+        config::{
+            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
+            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
+            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        },
+        routes::aws_xks::AwsXksConfig,
+    };
 
     #[cfg(feature = "non-fips")]
     #[test]
@@ -163,6 +167,7 @@ mod tests {
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
                 clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
                 tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256".to_owned()),
+                ..Default::default()
             },
             http: HttpConfig {
                 port: 443,
@@ -237,6 +242,15 @@ mod tests {
                 hsm_admin: String::new(),
                 hsm_slot: vec![],
                 hsm_password: vec![],
+            },
+            aws_xks_config: AwsXksConfig {
+                aws_xks_enable: true,
+                aws_xks_region: Some("us-east-1".to_owned()),
+                aws_xks_service: Some("xks-kms".to_owned()),
+                aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+                aws_xks_sigv4_secret_access_key: Some(
+                    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
+                ),
             },
             key_encryption_key: Some("key wrapping key".to_owned()),
             default_unwrap_type: None,
@@ -319,6 +333,14 @@ rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 ansi_colors = false
+
+[aws_xks_config]
+aws_xks_enable = true
+aws_xks_region = "us-east-1"
+aws_xks_service = "xks-kms"
+aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+aws_xks_kek_user = "kek_user"
 
 [kmip.allowlists]
 "#;

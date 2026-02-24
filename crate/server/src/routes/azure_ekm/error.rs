@@ -1,10 +1,10 @@
-use crate::error::KmsError;
-use crate::routes::azure_ekm::SUPPORTED_API_VERSIONS;
-use actix_web::HttpResponse;
-use actix_web::ResponseError;
+use std::fmt;
+
+use actix_web::{HttpResponse, ResponseError};
 use cosmian_logger::debug;
 use serde::Serialize;
-use std::fmt;
+
+use crate::{error::KmsError, routes::azure_ekm::SUPPORTED_API_VERSIONS};
 
 // If an error response is returned (with a non-200 HTTP status code), the proxy is required to
 // include the following JSON body in its response.

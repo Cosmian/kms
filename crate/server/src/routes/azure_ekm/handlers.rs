@@ -1,3 +1,18 @@
+use std::sync::Arc;
+
+use actix_web::{HttpResponse, web::Data};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_2_1::{
+        kmip_data_structures::KeyMaterial,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, Encrypt, Get},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    },
+};
+use zeroize::Zeroizing;
+
 use crate::{
     core::KMS,
     error::KmsError,
@@ -14,19 +29,6 @@ use crate::{
         utils::get_rsa_key_metadata_from_public_key,
     },
 };
-use actix_web::{HttpResponse, web::Data};
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
-    kmip_2_1::{
-        kmip_data_structures::KeyMaterial,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, Encrypt, Get},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-    },
-};
-use std::sync::Arc;
-use zeroize::Zeroizing;
 
 const AZURE_EKM_REQUIRED_AES_KEY_LENGTH: i32 = 256;
 

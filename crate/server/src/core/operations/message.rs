@@ -132,6 +132,24 @@ pub(crate) async fn message(
                         Some(error_message),
                         None,
                     ),
+                    Err(KmsError::ItemNotFound(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Item_Not_Found),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::CryptographicError(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Cryptographic_Failure),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::Unauthorized(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Permission_Denied),
+                        Some(error_message),
+                        None,
+                    ),
                     Err(err) => (
                         ResultStatusEnumeration::OperationFailed,
                         Some(ErrorReason::Operation_Not_Supported),
