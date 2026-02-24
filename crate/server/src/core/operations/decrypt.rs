@@ -387,7 +387,7 @@ fn decrypt_single(
     server_params: &crate::config::ServerParams,
     request: &Decrypt,
 ) -> KResult<DecryptResponse> {
-    trace!("entering");
+    trace!("Extracting key block for decryption to identify key format type...");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
@@ -451,6 +451,11 @@ fn decrypt_single_with_symmetric_key(
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+    trace!(
+        "got key bytes of length: {}, aead: {:?}. Proceeding to get the nonce...",
+        key_bytes.len(),
+        aead
+    );
     // For modes with nonce_size()==0 (e.g. ECB) we do not expect / require an IV.
     // For modes with nonce_size()>0 we require an IV. Some KMIP vectors supply an empty
     // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a

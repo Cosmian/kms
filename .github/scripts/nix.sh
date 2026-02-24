@@ -425,6 +425,9 @@ test_command() {
   redis)
     SCRIPT="$REPO_ROOT/.github/scripts/test_redis.sh"
     ;;
+  azure_ekm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
+    ;;
   google_cse)
     SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell
@@ -489,6 +492,10 @@ test_command() {
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
+  fi
+  # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "all" ]; then
+    export WITH_CURL=1
   fi
 
   KEEP_VARS=" \

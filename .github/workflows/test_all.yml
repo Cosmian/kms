@@ -30,6 +30,7 @@ jobs:
           - redis
           - pykmip
           - wasm
+          - azure_ekm
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -37,6 +38,9 @@ jobs:
             features: fips
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
+            features: fips
+          # azure_ekm is only run with non-fips
+          - type: azure_ekm
             features: fips
 
     steps:

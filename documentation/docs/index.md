@@ -30,7 +30,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
 ## Integrations
 
 - **Cloud integrations**:
-    - [Azure BYOK](./azure/byok.md)
+    - [Azure BYOK](./azure/byok/byok.md)
     - [GCP CSEK](./google_gcp/csek.md) and [Google CMEK](./google_gcp/cmek.md)
     - ...
 - **Workplace security**:

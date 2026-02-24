@@ -18,12 +18,14 @@ const CLI_ARCHIVE_FOLDER: &str = "./resources";
 const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 
 pub mod access;
+pub(crate) mod azure_ekm;
 pub mod google_cse;
 pub mod health;
 pub mod kmip;
 pub mod ms_dke;
 pub mod root_redirect;
 pub mod ui_auth;
+mod utils;
 
 impl actix_web::error::ResponseError for KmsError {
     fn status_code(&self) -> StatusCode {
