@@ -76,6 +76,27 @@ fi
 
 '''
 
+pre_uninstall_script = '''
+#!/bin/bash
+set -e
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+case "$1" in
+0)
+  # erase: stop and disable before rpm removes the files
+  if has_systemd; then
+    systemctl stop    cosmian_kms.service >/dev/null 2>&1 || true
+    systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  ;;
+esac
+
+'''
+
 post_uninstall_script = '''
 #!/bin/bash
 
@@ -86,6 +107,13 @@ has_systemd() {
 }
 
 if ! has_systemd; then
+  # Still clean up files even without systemd
+  case "$1" in
+  0)
+    rm -f  /usr/sbin/cosmian_kms
+    rm -rf /usr/local/cosmian
+    ;;
+  esac
   exit 0
 fi
 
@@ -115,5 +143,13 @@ else
 fi
 
 systemctl daemon-reload >/dev/null 2>&1 || true
+
+case "$1" in
+0)
+  # erase: remove binary and bundled libraries
+  rm -f  /usr/sbin/cosmian_kms
+  rm -rf /usr/local/cosmian
+  ;;
+esac
 
 '''

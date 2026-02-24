@@ -2,11 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.17.0] - 2026-XX-XX
+## [5.17.0] - 2026-02-24
 
 ### 🚀 Features
 
-- Added support for AWS XKS (External Key Store)
+#### AWS External Key Store (XKS) v2
+
+Cosmian KMS can now act as an **AWS XKS proxy** ([#644](https://github.com/Cosmian/kms/pull/644)),
+enabling transparent integration with AWS KMS External Key Store:
+
+- Implements the full XKS Proxy API — a single endpoint that gives AWS KMS live-proxy coverage
+  for all XKS-capable services (S3, EBS, RDS, DynamoDB, Secrets Manager, and more)
+- AWS SigV4 request authentication middleware
+- XKS endpoints: health status, key metadata retrieval, encrypt, decrypt
+- New `--xks-*` server configuration flags
+- New `documentation/docs/aws/xks.md` guide
+
+#### Azure External Key Manager (EKM) v0.1-preview
+
+Cosmian KMS now implements the **Azure EKM proxy API v0.1-preview**
+([#601](https://github.com/Cosmian/kms/pull/601)):
+
+- Endpoints: info, key metadata, Wrap, Unwrap — faithful to the Azure EKM specification
+- mTLS (mutual TLS) authentication
+- New `--azure-ekm-*` server configuration flags
+- Flexible versioning structure for future API versions
+- New `documentation/docs/azure/ekm/ekm.md` guide
+
+#### UI Branding
+
+- New `loginCardColor` field in `branding.json` to control the login card background color
+- New blank starter theme at `ui/public/themes/blank/` with SVG placeholder assets
+
+### 🐛 Bug Fixes
+
+- **Security**: KMIP `Import` with `replace_existing=true` now verifies the caller owns the
+  existing object before overwriting it ([#644](https://github.com/Cosmian/kms/pull/644))
+- **Packaging**: DEB and RPM removal scripts now clean up `/usr/sbin/cosmian_kms` and
+  `/usr/local/cosmian/` on uninstall
+- **macOS build**: retry loop in `nix/scripts/package_dmg.sh` handles intermittent
+  `hdiutil: create failed - Resource busy` CI errors
+
+### ⚙️ Build
+
+- Rust toolchain updated 1.90.0 → 1.91.0 ([#644](https://github.com/Cosmian/kms/pull/644))
+- Linux packages: README now installed as `README.md` (was `README` — not rendered as
+  markdown by package managers)
+- `pnpm` version pinned to 10 in `build_ui.sh`
+
+### 🔒 Security
+
+- `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
+- `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
+- `lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
+  `deny.toml` — no upstream fix available yet; severity low (CVSS 2.7)
+
+### 📚 Documentation
+
+- New `openssl_override.md`: how to point Cosmian KMS to a custom OpenSSL build using a
+  systemd drop-in override
+- New Azure EKM guide (`documentation/docs/azure/ekm/ekm.md`)
+- New AWS XKS guide (`documentation/docs/aws/xks.md`)
+- HSM operations: added `pkcs11-tool` key creation examples and label uniqueness constraint warning
+- UI branding: `loginCardColor` field reference and blank theme usage
+- README: new `🔗 Integrations` section covering cloud providers (AWS/Azure/GCP),
+  databases, and HSMs
 
 ## [5.16.2] - 2026-02-22
 

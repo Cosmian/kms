@@ -16,6 +16,8 @@ The **Cosmian KMS** presents some unique features, such as:
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
+- out-of-the-box support of [AWS External Key Store (XKS) v2](./documentation/docs/aws/xks.md) — Cosmian KMS acts as an XKS proxy; key material never enters AWS
+- out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
 - support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
@@ -103,7 +105,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Application‑level encryption at scale (files, objects, datasets) with centralized key lifecycle.
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
-- Enterprise integrations: Google Workspace CSE and Microsoft DKE.
+- Enterprise integrations: Google Workspace CSE, Microsoft DKE, AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
 - PKI operations: issue, sign, validate, and automate certificate lifecycles.
 
@@ -119,13 +121,24 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
 
+## Table of Contents
+
 - [Cosmian KMS](#cosmian-kms)
     - [🚀 Quick start](#-quick-start)
         - [▶️ Example](#️-example)
     - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
     - [🎯 Top Use Cases](#-top-use-cases)
     - [🔒 Security \& Compliance](#-security--compliance)
-    - [📦 Repository content](#-repository-content)
+    - [Table of Contents](#table-of-contents)
+    - [🔗 Integrations](#-integrations)
+        - [☁️ Cloud Provider — External Key Management](#️-cloud-provider--external-key-management)
+            - [Amazon Web Services (AWS)](#amazon-web-services-aws)
+            - [Microsoft Azure](#microsoft-azure)
+            - [Google Cloud Platform (GCP)](#google-cloud-platform-gcp)
+            - [Oracle Cloud Infrastructure (OCI)](#oracle-cloud-infrastructure-oci)
+        - [🗄️ Database \& Storage Integrations](#️-database--storage-integrations)
+        - [🔐 HSM Integrations](#-hsm-integrations)
+        - [🗄️ Repository content](#️-repository-content)
         - [🧰 Binaries](#-binaries)
         - [🧱 Core Crates](#-core-crates)
             - [🖧 Server Infrastructure](#-server-infrastructure)
@@ -136,6 +149,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
             - [🧪 Development and Testing](#-development-and-testing)
         - [📁 Additional Directories](#-additional-directories)
     - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
+        - [GLIBC Support](#glibc-support)
         - [OpenSSL prerequisite](#openssl-prerequisite)
         - [✨ Features](#-features)
         - [🖥️ Linux or macOS](#️-linux-or-macos)
@@ -159,7 +173,102 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
             - [Transparent Key Structures](#transparent-key-structures)
             - [Attributes](#attributes)
 
-## 📦 Repository content
+## 🔗 Integrations
+
+> Legend: ✅ implemented · 🚧 not yet implemented
+
+### ☁️ Cloud Provider — External Key Management
+
+Cloud providers offer mechanisms that let you hold cryptographic keys outside their infrastructure.
+There are three distinct delegation models:
+
+| Term     | Meaning                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **XKS**  | AWS External Key Store — every encrypt/decrypt is proxied live to your KMS; the key material never enters AWS.                             |
+| **EKM**  | GCP External Key Manager — same live-proxy model; Google never holds the key material.                                                     |
+| **DKE**  | Microsoft Double Key Encryption — one key lives in Azure/M365, the second key lives exclusively in your KMS; both are required to decrypt. |
+| **HYOK** | Hold Your Own Key (Oracle) — OCI Vault External KMS; every encrypt/decrypt is proxied live to your KMS; the key material never enters OCI. |
+| **BYOK** | Bring Your Own Key — you generate key material and import it into the provider's KMS; the provider then holds a copy.                      |
+| **CMK**  | Customer-Managed Key — the provider generates and stores the key in their KMS, but you control lifecycle (rotate, disable, delete).        |
+
+#### Amazon Web Services (AWS)
+
+AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service — S3, EBS, RDS, DynamoDB, Secrets Manager, etc. all route through the same endpoint. Implementing the [XKS Proxy API](https://github.com/aws/aws-kms-xks-proxy) once gives Cosmian KMS live-proxy coverage for all XKS-capable AWS services with no per-service work.
+
+| Delegation model     | Description                                                                                                                                                                                                                                                                  | Status |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **XKS** (live proxy) | Key material never enters AWS; every encrypt/decrypt is proxied to Cosmian KMS — covers all AWS services that support KMS encryption (S3, EBS, RDS, DynamoDB, Secrets Manager, SQS, SNS, Redshift, OpenSearch, EMR, Glue, Lambda…) — [docs](./documentation/docs/aws/xks.md) | ✅      |
+| **BYOK**             | Key material generated by you and imported once into AWS KMS; AWS holds a copy                                                                                                                                                                                               | 🚧      |
+| **CMK**              | Key generated and stored inside AWS KMS; you control lifecycle only                                                                                                                                                                                                          | 🚧      |
+
+#### Microsoft Azure
+
+Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service integrates with Azure Key Vault independently. DKE is the only model where key material never leaves Cosmian KMS.
+
+| Delegation model     | Description                                                                                                                                                                                                                                      | Status |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| **EKM** (live proxy) | Key material never leaves Cosmian KMS; Azure services proxy encrypt/decrypt operations to Cosmian KMS via mTLS — [docs](./documentation/docs/azure/ekm/ekm.md)                                                                                   | ✅      |
+| **DKE** (live proxy) | Key material never leaves Cosmian KMS; M365 / Purview requires both your key and Microsoft's key to decrypt                                                                                                                                      | ✅      |
+| **BYOK**             | Key material generated by you, imported once into Azure Key Vault; Azure holds a copy — applies to Azure Information Protection (AIP)                                                                                                            | 🚧      |
+| **BYOK / CMK**       | Key imported or generated inside Azure Key Vault; applies to all remaining Azure data services (Storage, Disk Encryption, SQL/Managed Instance TDE, Cosmos DB, Synapse, Databricks, Container Registry, Monitor, Service Bus, ASK etcd, Backup…) | 🚧      |
+
+#### Google Cloud Platform (GCP)
+
+GCP EKM is a **single proxy gateway** — like AWS XKS, implementing EKM once covers all CMEK-capable GCP services automatically (Cloud Storage, BigQuery, Cloud SQL, GKE, Pub/Sub, Spanner, Vertex AI, Cloud Functions, Artifact Registry, Secret Manager, Cloud Logging…). Workspace CSE uses the same live-proxy model.
+
+| Delegation model               | Description                                                                                                                                             | Status |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **EKM** (live proxy)           | Key material never enters GCP; every encrypt/decrypt is proxied to Cosmian KMS — covers all CMEK-capable GCP services                                   | ✅      |
+| **Workspace CSE** (live proxy) | Google Workspace Client-Side Encryption; keys held exclusively in Cosmian KMS                                                                           | ✅      |
+| **BYOK**                       | Key material generated by you and imported into Cloud KMS; Google holds a copy — supported by a subset of services (Cloud Storage, BigQuery, Cloud SQL) | 🚧      |
+| **CMK**                        | Key generated and stored in Cloud KMS; you control lifecycle only                                                                                       | 🚧      |
+
+#### Oracle Cloud Infrastructure (OCI)
+
+OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing it once covers all OCI services that support customer-managed keys (Block Volumes, Object Storage, File Storage, Autonomous Database, Oracle Database Service, Kubernetes Secrets in OKE, Streaming, Functions…).
+
+| Delegation model                     | Description                                                                                                                                                                                                         | Status |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **HYOK / External KMS** (live proxy) | Key material never enters OCI; every encrypt/decrypt is proxied to Cosmian KMS — covers all OCI services that support Vault External KMS (Block Volumes, Object Storage, File Storage, Autonomous DB, OKE secrets…) | 🚧      |
+| **BYOK**                             | Key material generated by you and imported once into OCI Vault; Oracle holds a copy                                                                                                                                 | 🚧      |
+| **CMK**                              | Key generated and stored in OCI Vault; you control lifecycle only                                                                                                                                                   | 🚧      |
+
+---
+
+### 🗄️ Database & Storage Integrations
+
+| Product                | Integration                                                                                          | Status |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
+| Oracle DB              | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/))                    | ✅      |
+| MongoDB                | CSFLE / Queryable Encryption via KMIP                                                                | ✅      |
+| MySQL Enterprise       | TDE via KMIP ([docs](./documentation/docs/mysql.md))                                                 | ✅      |
+| Percona PostgreSQL     | TDE via KMIP ([docs](./documentation/docs/percona.md))                                               | ✅      |
+| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/vcenter.md))                                         | ✅      |
+| VeraCrypt              | Virtual disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)) | ✅      |
+| LUKS                   | Linux disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/))        | ✅      |
+| Snowflake              | UDF-based column encryption ([docs](./documentation/docs/snowflake/index.md))                        | ✅      |
+| Big Data / Python UDFs | Bulk encrypt/decrypt ([docs](./documentation/docs/python_udf/index.md))                              | ✅      |
+| HashCorp Vault        | Key transit / secrets engine via KMIP                                                                | 🚧      |
+| CockroachDB            | TDE via KMIP                                                                                         | 🚧      |
+
+---
+
+### 🔐 HSM Integrations
+
+| HSM                                        | Status |
+| ------------------------------------------ | ------ |
+| Proteccio (Bull Atos)                      | ✅      |
+| Crypt2pay                                  | ✅      |
+| Utimaco SecurityServer                     | ✅      |
+| CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
+| SoftHSM2 (testing)                         | ✅      |
+| AWS CloudHSM                               | 🚧      |
+| Azure Dedicated HSM                        | 🚧      |
+| GCP Cloud HSM                              | 🚧      |
+
+---
+
+### 🗄️ Repository content
 
 The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organized as a Cargo workspace with multiple crates. The repository contains the following main components:
 
@@ -257,19 +366,19 @@ The following table shows the GLIBC versions and distribution support for **Cosm
 
 | Distribution    | Version            | GLIBC | Support | End of Support |
 | --------------- | ------------------ | ----- | ------- | -------------- |
-| **Debian**      | 13 (Trixie)        | 2.40  | ✅      | TBD            |
-| **Debian**      | 12 (Bookworm)      | 2.36  | ✅      | ~2028 (LTS)    |
-| **Debian**      | 11 (Bullseye)      | 2.31  | ❌      | ~2026 (LTS)    |
-| **Debian**      | 10 (Buster)        | 2.28  | ❌      | Jun 2024 (LTS) |
-| **Debian**      | 9 (Stretch)        | 2.24  | ❌      | Jun 2022 (LTS) |
-| **Rocky Linux** | 10                 | 2.40  | ✅      | TBD            |
-| **Rocky Linux** | 9                  | 2.34  | ✅      | May 2032       |
-| **Rocky Linux** | 8                  | 2.28  | ❌      | May 2029       |
-| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅      | Jan 2026       |
-| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅      | Apr 2029       |
-| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅      | Apr 2027       |
-| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌      | Apr 2025       |
-| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌      | Apr 2023       |
+| **Debian**      | 13 (Trixie)        | 2.40  | ✅       | TBD            |
+| **Debian**      | 12 (Bookworm)      | 2.36  | ✅       | ~2028 (LTS)    |
+| **Debian**      | 11 (Bullseye)      | 2.31  | ❌       | ~2026 (LTS)    |
+| **Debian**      | 10 (Buster)        | 2.28  | ❌       | Jun 2024 (LTS) |
+| **Debian**      | 9 (Stretch)        | 2.24  | ❌       | Jun 2022 (LTS) |
+| **Rocky Linux** | 10                 | 2.40  | ✅       | TBD            |
+| **Rocky Linux** | 9                  | 2.34  | ✅       | May 2032       |
+| **Rocky Linux** | 8                  | 2.28  | ❌       | May 2029       |
+| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅       | Jan 2026       |
+| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅       | Apr 2029       |
+| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅       | Apr 2027       |
+| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌       | Apr 2025       |
+| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌       | Apr 2023       |
 
 **Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
 
@@ -513,58 +622,58 @@ The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires
 
 | Message          | Support |
 | ---------------- | ------: |
-| Request Message  |      ✅ |
-| Response Message |      ✅ |
+| Request Message  |       ✅ |
+| Response Message |       ✅ |
 
 #### Operations by KMIP Version
 
 The following table shows operation support across all KMIP versions.
 
-| Operation | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
-| --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Activate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Add Attribute          |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Archive                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Cancel                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Certify                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Check                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Key Pair        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Split Key       |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Decrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Delete Attribute       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DeriveKey              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Destroy                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Discover Versions      |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Encrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Export                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Get                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attribute List     |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attributes         |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Usage Allocation   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Hash                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Import                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Join Split Key         |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Locate                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC                    |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC Verify             |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Notify                 |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
-| Obtain Lease           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Poll                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Put                    |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
-| Query                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Retrieve           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Seed               |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-certify             |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Re-key                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-key Key Pair        |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Recover                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Register               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Revoke                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Set Attribute (Modify) |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
-| Sign                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Signature Verify       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Validate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Operation              |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| ---------------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Activate               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Add Attribute          |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Archive                |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Cancel                 |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Certify                |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Check                  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Create                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Create Key Pair        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Create Split Key       |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Decrypt                |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Delete Attribute       |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| DeriveKey              |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Destroy                |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Discover Versions      |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Encrypt                |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Export                 |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Get                    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Get Attribute List     |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Get Attributes         |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Get Usage Allocation   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Hash                   |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Import                 |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Join Split Key         |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Locate                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| MAC                    |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| MAC Verify             |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Notify                 |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |
+| Obtain Lease           |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Poll                   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Put                    |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |
+| Query                  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| RNG Retrieve           |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| RNG Seed               |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Re-certify             |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Re-key                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Re-key Key Pair        |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Recover                |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Register               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Revoke                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Set Attribute (Modify) |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Sign                   |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Signature Verify       |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Validate               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
 
 #### Methodology
 
@@ -579,17 +688,17 @@ If you spot a mismatch or want to extend coverage, please open an issue or PR.
 
 The following table shows managed object support across all KMIP versions.
 
-| Managed Object | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
-| -------------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Certificate    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Symmetric Key  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Public Key     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Private Key    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Split Key      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Template       |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |   N/A   |   N/A   |
-| Secret Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Opaque Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| PGP Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Managed Object |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| -------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Certificate    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Symmetric Key  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Public Key     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Private Key    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Split Key      |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Template       |   🚫   |   🚫   |   🚫   |   🚫   |   🚫   |  N/A  |  N/A  |
+| Secret Data    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Opaque Data    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| PGP Key        |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
 
 Notes:
 
@@ -601,32 +710,32 @@ Notes:
 
 The following table shows base object support across all KMIP versions.
 
-| Base Object | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
-| ----------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Attribute                                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Credential                               |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Key Block                                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Key Value                                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Key Wrapping Data                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Key Wrapping Specification               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Transparent Key Structures               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| Template-Attribute Structures            |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| Server Information                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Extension Information                    |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Data                                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Data Length                              |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Signature Data                           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC Data                                 |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Nonce                                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Correlation Value                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Init Indicator                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
-| Final Indicator                          |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
-| Profile Information                      |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
-| Validation Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
-| Capability Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
-| Authenticated Encryption Additional Data |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Authenticated Encryption Tag             |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
+| Base Object                              |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| ---------------------------------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Attribute                                |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Credential                               |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Key Block                                |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Value                                |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Key Wrapping Data                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Wrapping Specification               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Transparent Key Structures               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |  N/A  |  N/A  |
+| Template-Attribute Structures            |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |  N/A  |  N/A  |
+| Server Information                       |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Extension Information                    |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| Data                                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Data Length                              |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Signature Data                           |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| MAC Data                                 |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Nonce                                    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Correlation Value                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Init Indicator                           |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |
+| Final Indicator                          |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |
+| RNG Parameters                           |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |
+| Profile Information                      |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |
+| Validation Information                   |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |
+| Capability Information                   |  N/A  |  N/A  |  N/A  |   ❌   |   ❌   |   ❌   |   ❌   |
+| Authenticated Encryption Additional Data |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Authenticated Encryption Tag             |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
 
 Notes:
 
@@ -638,95 +747,95 @@ Notes:
 
 The following table shows transparent key structure support across all KMIP versions.
 
-| Structure | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
-| --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Symmetric Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DSA Private Key          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DSA Public Key           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| RSA Private Key          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RSA Public Key           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DH Private Key           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| DH Public Key            |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| EC Private Key           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
-| EC Public Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| ECDSA Private Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| ECDSA Public Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
-| ECDH Public Key          |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
-| ECMQV Private Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
-| ECMQV Public Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| Structure         |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| ----------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Symmetric Key     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| DSA Private Key   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| DSA Public Key    |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| RSA Private Key   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| RSA Public Key    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| DH Private Key    |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| DH Public Key     |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |
+| EC Private Key    |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |
+| EC Public Key     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| ECDSA Private Key |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |  N/A  |  N/A  |
+| ECDSA Public Key  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |  N/A  |  N/A  |
+| ECDH Private Key  |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |  N/A  |  N/A  |
+| ECDH Public Key   |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |  N/A  |  N/A  |
+| ECMQV Private Key |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |  N/A  |  N/A  |
+| ECMQV Public Key  |   ❌   |   ❌   |   ❌   |   ❌   |   ❌   |  N/A  |  N/A  |
 
 Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
 
-| Attribute | Current |
-| --------- | ------: |
-| Activation Date                     |       ✅ |
-| Alternative Name                    |       ✅ |
-| Always Sensitive                    |       ✅ |
-| Application Specific Information    |       ✅ |
-| Archive Date                        |       ✅ |
-| Attribute Index                     |       ✅ |
-| Certificate Attributes              |       ✅ |
-| Certificate Length                  |       ✅ |
-| Certificate Type                    |       ✅ |
-| Comment                             |       ✅ |
-| Compromise Date                     |       ✅ |
-| Compromise Occurrence Date          |       ✅ |
-| Contact Information                 |       ✅ |
-| Critical                            |       ✅ |
-| Cryptographic Algorithm             |       ✅ |
-| Cryptographic Domain Parameters     |       ✅ |
-| Cryptographic Length                |       ✅ |
-| Cryptographic Parameters            |       ✅ |
-| Cryptographic Usage Mask            |       ✅ |
-| Deactivation Date                   |       ✅ |
-| Description                         |       ✅ |
-| Destroy Date                        |       ✅ |
-| Digest                              |       ✅ |
-| Digital Signature Algorithm         |       ✅ |
-| Extractable                         |       ✅ |
-| Fresh                               |       ✅ |
-| Initial Date                        |       ✅ |
-| Key Format Type                     |       ✅ |
-| Key Value Location                  |       ✅ |
-| Key Value Present                   |       ✅ |
-| Last Change Date                    |       ✅ |
-| Lease Time                          |       ✅ |
-| Link                                |       ✅ |
-| Name                                |       ✅ |
-| Never Extractable                   |       ✅ |
-| Nist Key Type                       |       ✅ |
-| Object Group                        |       ✅ |
-| Object Group Member                 |       ✅ |
-| Object Type                         |       ✅ |
-| Opaque Data Type                    |       ✅ |
-| Original Creation Date              |       ✅ |
-| PKCS#12 Friendly Name               |       ✅ |
-| Process Start Date                  |       ✅ |
-| Protect Stop Date                   |       ✅ |
-| Protection Level                    |       ✅ |
-| Protection Period                   |       ✅ |
-| Protection Storage Masks            |       ✅ |
-| Quantum Safe                        |       ✅ |
-| Random Number Generator             |       ✅ |
-| Revocation Reason                   |       ✅ |
-| Rotate Date                         |       ✅ |
-| Rotate Generation                   |       ✅ |
-| Rotate Interval                     |       ✅ |
-| Rotate Latest                       |       ✅ |
-| Rotate Name                         |       ✅ |
-| Rotate Offset                       |       ✅ |
-| Sensitive                           |       ✅ |
-| Short Unique Identifier             |       ✅ |
-| State                               |       ✅ |
-| Unique Identifier                   |       ✅ |
-| Usage Limits                        |       ✅ |
-| Vendor Attribute                    |       ✅ |
-| X.509 Certificate Identifier        |       ✅ |
-| X.509 Certificate Issuer            |       ✅ |
-| X.509 Certificate Subject           |       ✅ |
+| Attribute                        | Current |
+| -------------------------------- | ------: |
+| Activation Date                  |       ✅ |
+| Alternative Name                 |       ✅ |
+| Always Sensitive                 |       ✅ |
+| Application Specific Information |       ✅ |
+| Archive Date                     |       ✅ |
+| Attribute Index                  |       ✅ |
+| Certificate Attributes           |       ✅ |
+| Certificate Length               |       ✅ |
+| Certificate Type                 |       ✅ |
+| Comment                          |       ✅ |
+| Compromise Date                  |       ✅ |
+| Compromise Occurrence Date       |       ✅ |
+| Contact Information              |       ✅ |
+| Critical                         |       ✅ |
+| Cryptographic Algorithm          |       ✅ |
+| Cryptographic Domain Parameters  |       ✅ |
+| Cryptographic Length             |       ✅ |
+| Cryptographic Parameters         |       ✅ |
+| Cryptographic Usage Mask         |       ✅ |
+| Deactivation Date                |       ✅ |
+| Description                      |       ✅ |
+| Destroy Date                     |       ✅ |
+| Digest                           |       ✅ |
+| Digital Signature Algorithm      |       ✅ |
+| Extractable                      |       ✅ |
+| Fresh                            |       ✅ |
+| Initial Date                     |       ✅ |
+| Key Format Type                  |       ✅ |
+| Key Value Location               |       ✅ |
+| Key Value Present                |       ✅ |
+| Last Change Date                 |       ✅ |
+| Lease Time                       |       ✅ |
+| Link                             |       ✅ |
+| Name                             |       ✅ |
+| Never Extractable                |       ✅ |
+| Nist Key Type                    |       ✅ |
+| Object Group                     |       ✅ |
+| Object Group Member              |       ✅ |
+| Object Type                      |       ✅ |
+| Opaque Data Type                 |       ✅ |
+| Original Creation Date           |       ✅ |
+| PKCS#12 Friendly Name            |       ✅ |
+| Process Start Date               |       ✅ |
+| Protect Stop Date                |       ✅ |
+| Protection Level                 |       ✅ |
+| Protection Period                |       ✅ |
+| Protection Storage Masks         |       ✅ |
+| Quantum Safe                     |       ✅ |
+| Random Number Generator          |       ✅ |
+| Revocation Reason                |       ✅ |
+| Rotate Date                      |       ✅ |
+| Rotate Generation                |       ✅ |
+| Rotate Interval                  |       ✅ |
+| Rotate Latest                    |       ✅ |
+| Rotate Name                      |       ✅ |
+| Rotate Offset                    |       ✅ |
+| Sensitive                        |       ✅ |
+| Short Unique Identifier          |       ✅ |
+| State                            |       ✅ |
+| Unique Identifier                |       ✅ |
+| Usage Limits                     |       ✅ |
+| Vendor Attribute                 |       ✅ |
+| X.509 Certificate Identifier     |       ✅ |
+| X.509 Certificate Issuer         |       ✅ |
+| X.509 Certificate Subject        |       ✅ |
 
 Notes:
 

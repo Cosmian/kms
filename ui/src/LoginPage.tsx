@@ -34,7 +34,10 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                 className="absolute inset-0 bg-cover bg-center flex"
                 style={{ backgroundImage: `url('${branding.backgroundImageUrl}')` }}
             />
-            <div className="relative w-2/3 shadow-2xl rounded-lg p-20 flex flex-col items-center bg-purple-700/30">
+            <div
+                className="relative w-2/3 shadow-2xl rounded-lg p-20 flex flex-col items-center"
+                style={{ backgroundColor: branding.loginCardColor ?? "rgba(126,34,206,0.3)" }}
+            >
                 {branding.logoDarkUrl && (
                     <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />
                 )}

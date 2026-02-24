@@ -7,8 +7,16 @@ has_systemd() {
 }
 
 case "$1" in
-0 | 1)
-  # 0: erase, 1: upgrade
+0)
+  # erase: stop and disable the service before files are removed
+  if has_systemd; then
+    systemctl stop    cosmian_kms.service >/dev/null 2>&1 || true
+    systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  ;;
+1)
+  # upgrade: just reload so the new unit file is picked up
   if has_systemd; then
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
