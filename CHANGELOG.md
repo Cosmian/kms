@@ -45,7 +45,6 @@ Cosmian KMS now implements the **Azure EKM proxy API v0.1-preview**
 
 ### ⚙️ Build
 
-- Rust toolchain updated 1.90.0 → 1.91.0 ([#644](https://github.com/Cosmian/kms/pull/644))
 - Linux packages: README now installed as `README.md` (was `README` — not rendered as
   markdown by package managers)
 - `pnpm` version pinned to 10 in `build_ui.sh`
