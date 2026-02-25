@@ -5,7 +5,7 @@ use strum::{Display, EnumString};
 ///
 /// For `RSA_AES` wrapping algorithms, you encrypt your key material with an AES key
 /// that you generate, then encrypt your AES key with the RSA public key from AWS KMS.
-/// For `RSA_AES` wrapping algorithms, you encrypt your key material directly with the
+/// For `RSAES_OAEP` wrapping algorithms, you encrypt your key material directly with the
 /// RSA public key from AWS KMS.
 #[derive(Display, Parser, Debug, Clone, Copy, PartialEq, Eq, ValueEnum, EnumString)]
 pub enum AwsKmsWrappingAlgorithm {

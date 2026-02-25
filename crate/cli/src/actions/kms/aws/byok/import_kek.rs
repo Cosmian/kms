@@ -98,6 +98,14 @@ impl ImportKekAction {
             ..Default::default()
         };
 
-        import_action.run(kms_client).await
+        let res = import_action.run(kms_client).await;
+
+        // Ensure temporary file cleanup if we used base64 input
+        if self.kek_file.is_none() && self.kek_base64.is_some() {
+            // The current compilation rules don't like the let _ = ... syntax, hence the explicit drop
+            drop(std::fs::remove_file(&import_action.key_file));
+        }
+
+        res
     }
 }

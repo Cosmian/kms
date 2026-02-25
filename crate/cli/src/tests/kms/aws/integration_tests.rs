@@ -87,7 +87,6 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
     // We now have all necessary elements to start the test
     // Step 1: Import the Kek
     let import_action = ImportKekAction {
-        // TODO: check why the compiler complains abt an optional fields (the kek id)
         kek_base64: Some(public_key_base64),
         kek_file: None,
         key_arn: Some(TEST_KEY_ARN.to_owned()),
