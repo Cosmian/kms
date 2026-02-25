@@ -124,54 +124,54 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 ## Table of Contents
 
 - [Cosmian KMS](#cosmian-kms)
-    - [🚀 Quick start](#-quick-start)
-        - [▶️ Example](#️-example)
-    - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
-    - [🎯 Top Use Cases](#-top-use-cases)
-    - [🔒 Security \& Compliance](#-security--compliance)
-    - [Table of Contents](#table-of-contents)
-    - [🔗 Integrations](#-integrations)
-        - [☁️ Cloud Provider — External Key Management](#️-cloud-provider--external-key-management)
-            - [Amazon Web Services (AWS)](#amazon-web-services-aws)
-            - [Microsoft Azure](#microsoft-azure)
-            - [Google Cloud Platform (GCP)](#google-cloud-platform-gcp)
-            - [Oracle Cloud Infrastructure (OCI)](#oracle-cloud-infrastructure-oci)
-        - [🗄️ Database \& Storage Integrations](#️-database--storage-integrations)
-        - [🔐 HSM Integrations](#-hsm-integrations)
-        - [🗄️ Repository content](#️-repository-content)
-        - [🧰 Binaries](#-binaries)
-        - [🧱 Core Crates](#-core-crates)
-            - [🖧 Server Infrastructure](#-server-infrastructure)
-            - [🧑‍💻 Client Libraries](#-client-libraries)
-            - [🔐 Cryptographic Components](#-cryptographic-components)
-            - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
-            - [🗄️ Database Interfaces](#️-database-interfaces)
-            - [🧪 Development and Testing](#-development-and-testing)
-        - [📁 Additional Directories](#-additional-directories)
+  - [🚀 Quick start](#-quick-start)
+    - [▶️ Example](#️-example)
+  - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
+  - [🎯 Top Use Cases](#-top-use-cases)
+  - [🔒 Security \& Compliance](#-security--compliance)
+  - [Table of Contents](#table-of-contents)
+  - [🔗 Integrations](#-integrations)
+    - [☁️ Cloud Provider — External Key Management](#️-cloud-provider--external-key-management)
+      - [Amazon Web Services (AWS)](#amazon-web-services-aws)
+      - [Microsoft Azure](#microsoft-azure)
+      - [Google Cloud Platform (GCP)](#google-cloud-platform-gcp)
+      - [Oracle Cloud Infrastructure (OCI)](#oracle-cloud-infrastructure-oci)
+    - [🗄️ Database \& Storage Integrations](#️-database--storage-integrations)
+    - [🔐 HSM Integrations](#-hsm-integrations)
+  - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
+    - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
+    - [KMIP Coverage](#kmip-coverage)
+      - [Messages](#messages)
+      - [Operations by KMIP Version](#operations-by-kmip-version)
+      - [Methodology](#methodology)
+      - [Managed Objects](#managed-objects)
+      - [Base Objects](#base-objects)
+      - [Transparent Key Structures](#transparent-key-structures)
+      - [Attributes](#attributes)
+  - [🗄️ Repository content](#️-repository-content)
+    - [🧰 Binaries](#-binaries)
+    - [🧱 Core Crates](#-core-crates)
+      - [🖧 Server Infrastructure](#-server-infrastructure)
+      - [🧑‍💻 Client Libraries](#-client-libraries)
+      - [🔐 Cryptographic Components](#-cryptographic-components)
+      - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
+      - [🗄️ Database Interfaces](#️-database-interfaces)
+      - [🧪 Development and Testing](#-development-and-testing)
+    - [📁 Additional Directories](#-additional-directories)
     - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
-        - [GLIBC Support](#glibc-support)
-        - [OpenSSL prerequisite](#openssl-prerequisite)
-        - [✨ Features](#-features)
-        - [🖥️ Linux or macOS](#️-linux-or-macos)
-        - [🪟 Windows](#-windows)
-        - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
+      - [GLIBC Support](#glibc-support)
+      - [OpenSSL prerequisite](#openssl-prerequisite)
+      - [✨ Features](#-features)
+      - [🖥️ Linux or macOS](#️-linux-or-macos)
+      - [🪟 Windows](#-windows)
+      - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
     - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
     - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
     - [🔧 Server parameters](#-server-parameters)
-    - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    - [🏷️ Releases](#️-releases)
-    - [📈 Benchmarks](#-benchmarks)
-    - [🤝 Community \& Support](#-community--support)
-    - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
-        - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
-        - [KMIP Coverage](#kmip-coverage)
-            - [Messages](#messages)
-            - [Operations by KMIP Version](#operations-by-kmip-version)
-            - [Methodology](#methodology)
-            - [Managed Objects](#managed-objects)
-            - [Base Objects](#base-objects)
-            - [Transparent Key Structures](#transparent-key-structures)
-            - [Attributes](#attributes)
+  - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+  - [🏷️ Releases](#️-releases)
+  - [📈 Benchmarks](#-benchmarks)
+  - [🤝 Community \& Support](#-community--support)
 
 ## 🔗 Integrations
 
@@ -203,7 +203,7 @@ AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service 
 
 #### Microsoft Azure
 
-Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service integrates with Azure Key Vault independently. DKE is the only model where key material never leaves Cosmian KMS.
+Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service integrates with Azure Key Vault independently. Both EKM and DKE are live-proxy models where key material never leaves Cosmian KMS; DKE is unique in requiring both your key and Microsoft's key to decrypt.
 
 | Delegation model     | Description                                                                                                                                                                                                                                      | Status |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
@@ -267,329 +267,6 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | GCP Cloud HSM                              | 🚧      |
 
 ---
-
-### 🗄️ Repository content
-
-The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organized as a Cargo workspace with multiple crates. The repository contains the following main components:
-
-### 🧰 Binaries
-
-- **KMS Server** (`cosmian_kms`) - The main KMS server binary built from `crate/server`
-
-### 🧱 Core Crates
-
-#### 🖧 Server Infrastructure
-
-- **`server`** - Main KMS server implementation with REST API, KMIP protocol support, and web UI
-- **`server_database`** - Database abstraction layer supporting SQLite, PostgreSQL, MySQL, and Redis
-- **`access`** - Permission and access control management system
-
-Cosmian-only crate dependencies for the server crate (`crate/server`):
-
-```mermaid
-flowchart TD
-    server[server]
-
-    server --> access
-    server --> base_hsm
-    server --> server_database
-    base_hsm --> hsm_loaders
-
-    hsm_loaders --> smartcardhsm
-    hsm_loaders --> crypt2pay
-    hsm_loaders --> proteccio
-    hsm_loaders --> softhsm2
-    hsm_loaders --> utimaco
-    hsm_loaders --> other
-
-    server_database --> kmip
-    server_database --> crypto
-    server_database --> interfaces
-```
-
-#### 🧑‍💻 Client Libraries
-
-- **`kms_client`** - High-level Rust client library for KMS server communication
-- **`client_utils`** - Shared utilities for client implementations
-- **`wasm`** - WebAssembly bindings for browser-based clients
-
-#### 🔐 Cryptographic Components
-
-- **`crypto`** - Core cryptographic operations and algorithm implementations
-- **`kmip`** - Complete implementation of the KMIP (Key Management Interoperability Protocol) standard versions 1.0-2.1
-- **`kmip-derive`** - Procedural macros for KMIP protocol serialization/deserialization
-
-#### 🔐 Hardware Security Module (HSM) Support
-
-- **`hsm/base_hsm`** - Base HSM abstraction layer
-- **`hsm/smartcardhsm`** - Nitrokey HSM 2 resp. CardContact SmartCard-HSM
-- **`hsm/crypt2pay`** - Crypt2pay HSM integration
-- **`hsm/proteccio`** - Proteccio HSM integration
-- **`hsm/softhsm2`** - SoftHSM2 integration for testing and development
-- **`hsm/utimaco`** - Utimaco HSM integration
-- **`hsm/other`** - Other HSMs support
-
-#### 🗄️ Database Interfaces
-
-- **`interfaces`** - Database and storage backend abstractions
-
-#### 🧪 Development and Testing
-
-- **`test_kms_server`** - Library for programmatic KMS server instantiation in tests
-- **`cli`** - Legacy CLI crate (now primarily used for testing)
-
-### 📁 Additional Directories
-
-- **`documentation/`** - Comprehensive project documentation built with MkDocs
-- **`examples/`** - Code examples and integration samples
-- **`scripts/`** - Build and deployment scripts
-- **`test_data/`** - Test fixtures and sample data
-- **`ui/`** - Frontend web interface source code
-- **`pkg/`** - Packaging configurations for Debian and RPM distributions
-
-**Note:** Each crate contains its own README with detailed information. Please refer to these files for specific implementation details and usage instructions.
-
-Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
-directory.
-
-## 🏗️ Building and running the KMS
-
-Two paths are supported:
-
-- For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
-  reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
-- For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
-
-### GLIBC Support
-
-The following table shows the GLIBC versions and distribution support for **Cosmian KMS**:
-
-| Distribution    | Version            | GLIBC | Support | End of Support |
-| --------------- | ------------------ | ----- | ------- | -------------- |
-| **Debian**      | 13 (Trixie)        | 2.40  | ✅       | TBD            |
-| **Debian**      | 12 (Bookworm)      | 2.36  | ✅       | ~2028 (LTS)    |
-| **Debian**      | 11 (Bullseye)      | 2.31  | ❌       | ~2026 (LTS)    |
-| **Debian**      | 10 (Buster)        | 2.28  | ❌       | Jun 2024 (LTS) |
-| **Debian**      | 9 (Stretch)        | 2.24  | ❌       | Jun 2022 (LTS) |
-| **Rocky Linux** | 10                 | 2.40  | ✅       | TBD            |
-| **Rocky Linux** | 9                  | 2.34  | ✅       | May 2032       |
-| **Rocky Linux** | 8                  | 2.28  | ❌       | May 2029       |
-| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅       | Jan 2026       |
-| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅       | Apr 2029       |
-| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅       | Apr 2027       |
-| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌       | Apr 2025       |
-| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌       | Apr 2023       |
-
-**Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
-
-### OpenSSL prerequisite
-
-The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
-
-| OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
-| --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Static          | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers    |
-| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
-
-Notes:
-
-- FIPS builds include `fipsmodule.cnf` and the FIPS provider
-
-### ✨ Features
-
-From version 5.4.0, the KMS runs in FIPS mode by default.
-The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `cargo build` or `cargo run`.
-
-The `interop` feature enables KMIP interoperability test operations, which are disabled by default for security reasons.
-These operations should only be enabled during testing: `cargo build --features interop` or `cargo test --features interop`.
-
-All builds link against OpenSSL 3.6.0. FIPS variants ship the FIPS provider and `fipsmodule.cnf`; non‑FIPS variants use the default/legacy providers. For non‑Nix development, ensure OpenSSL 3.6.0+ is available.
-
-### 🖥️ Linux or macOS
-
-Nix-based (reproducible FIPS builds):
-
-```sh
-# Run tests (defaults to 'all'; DB backends require services)
-bash .github/scripts/nix.sh test
-
-# Package artifacts (Linux → deb+rpm, macOS → dmg)
-bash .github/scripts/nix.sh package
-```
-
-Simple (Cargo-only):
-
-```sh
-cargo build
-cargo test --lib --workspace
-cargo test --lib --workspace --features non-fips
-```
-
-### 🪟 Windows
-
-Follow the prerequisites below, or use the provided PowerShell helpers.
-
-Prerequisites (manual):
-
-1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
-2. Install OpenSSL 3.6.0 with vcpkg:
-
-```powershell
-vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64
-vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
-```
-
-For FIPS builds (to build fips.dll):
-
-```powershell
-Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
-vcpkg install
-vcpkg integrate install
-```
-
-PowerShell helpers (non-FIPS by default):
-
-```powershell
-. .github/scripts/cargo_build.ps1
-BuildProject -BuildType release   # or debug
-
-. .github/scripts/cargo_test.ps1
-TestProject -BuildType release    # or debug
-```
-
-### 📦 Packaging (DEB/RPM/DMG) and hashes
-
-Use the Nix entrypoint to build packages:
-
-```sh
-# Linux
-bash .github/scripts/nix.sh package           # builds deb + rpm
-bash .github/scripts/nix.sh package deb       # build deb only
-bash .github/scripts/nix.sh package rpm       # build rpm only
-
-# macOS
-bash .github/scripts/nix.sh package dmg
-```
-
-On success, a SHA-256 checksum file (.sha256) is written next to each generated package
-(.deb/.rpm/.dmg) to ease verification and artifact distribution.
-
-## 🧪 Running the unit and integration tests
-
-Pull the test data using:
-
-```sh
-git submodule update --init --recursive
-```
-
-By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
-This can be influenced by setting the `KMS_TEST_DB` environment variable to
-
-- `sqlite`, for plain SQLite
-- `mysql` (requires a running MySQL or MariaDB server connected using a
-  `"mysql://kms:kms@localhost:3306/kms"` URL)
-- `postgresql` (requires a running PostgreSQL server connected using
-  a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
-- `redis-findex` (requires a running Redis server connected using a
-  `"redis://localhost:6379"` URL)
-
-Example: testing with a plain SQLite and some logging
-
-```sh
-RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
-```
-
-Alternatively, when writing a test or running a test from your IDE, the following can be inserted
-at the top of the test:
-
-```rust
-unsafe {
-set_var("RUST_LOG", "error,cosmian_kms_server=debug,cosmian_kms_cli=info");
-set_var("RUST_BACKTRACE", "1");
-set_var("KMS_TEST_DB", "redis-findex");
-}
-log_init(option_env!("RUST_LOG"));
-```
-
-## ⚙️ Development: running the server with cargo
-
-To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
-log level and select the correct backend (which defaults to `sqlite`).
-
-```sh
-RUST_LOG="info,cosmian_kms_server=debug" \
-cargo run --bin cosmian_kms --features non-fips -- \
---database-type redis-findex --database-url redis://localhost:6379 \
---redis-master-password secret --redis-findex-label label
-```
-
-## 🔧 Server parameters
-
-If a configuration file is provided, parameters are set following this order:
-
-- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian/kms.toml`)
-- default (set on struct)
-
-Otherwise, the parameters are set following this order:
-
-- args in the command line
-- env var
-- default (set on struct)
-
-## ☁️ Use the KMS inside a Cosmian VM on SEV/TDX
-
-See the [Marketplace guide](documentation/docs/installation/marketplace_guide.md) for more details about Cosmian VM.
-
-## 🏷️ Releases
-
-All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
-
-## 📈 Benchmarks
-
-To run benchmarks, go to the `crate/test_kms_server` directory and run:
-
-```sh
-cargo bench
-```
-
-Typical values for single-threaded HTTP KMIP 2.1 requests
-(zero network latency) are as follows
-
-```text
-- RSA PKCSv1.5:
-    - encrypt
-            - 2048 bits: 128 microseconds
-            - 4096 bits: 175 microseconds
-    - decrypt
-            - 2048 bits: 830 microseconds
-            - 4096 bits: 4120 microseconds
-- RSA PKCS OAEP:
-    - encrypt
-            - 2048 bits: 134 microseconds
-            - 4096 bits: 173 microseconds
-    - decrypt
-            - 2048 bits: 849 microseconds
-            - 4096 bits: 3823 microseconds
-- RSA PKCS KEY WRP (AES):
-    - encrypt
-            - 2048 bits: 142 microseconds
-            - 4096 bits: 198 microseconds
-    - decrypt
-            - 2048 bits: 824 microseconds
-            - 4096 bits: 3768 microseconds
-- RSA Keypair creation (saved in KMS DB)
-    -  2048 bits: 33 milliseconds
-    -  4096 bits: 322 milliseconds
-```
-
-## 🤝 Community & Support
-
-- Docs: `documentation/` and online docs at <https://docs.cosmian.com/key_management_system/>
-- Issues: use GitHub Issues to report bugs and request features
-- Contributing: see [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Security disclosures: see [`SECURITY.md`](SECURITY.md)
-- License: see [`LICENSE`](LICENSE)
 
 <!-- KMIP_SUPPORT_START -->
 <!-- This section is auto-generated from documentation/docs/kmip/support.md by scripts/update_readme_kmip.py. Do not edit manually. -->
@@ -845,3 +522,327 @@ Notes:
 - Most attributes are present across all KMIP versions with some additions in newer versions.
 
 <!-- KMIP_SUPPORT_END -->
+
+
+## 🗄️ Repository content
+
+The **Cosmian KMS** is written in [Rust](https://www.rust-lang.org/) and organized as a Cargo workspace with multiple crates. The repository contains the following main components:
+
+### 🧰 Binaries
+
+- **KMS Server** (`cosmian_kms`) - The main KMS server binary built from `crate/server`
+
+### 🧱 Core Crates
+
+#### 🖧 Server Infrastructure
+
+- **`server`** - Main KMS server implementation with REST API, KMIP protocol support, and web UI
+- **`server_database`** - Database abstraction layer supporting SQLite, PostgreSQL, MySQL, and Redis
+- **`access`** - Permission and access control management system
+
+Cosmian-only crate dependencies for the server crate (`crate/server`):
+
+```mermaid
+flowchart TD
+    server[server]
+
+    server --> access
+    server --> base_hsm
+    server --> server_database
+    base_hsm --> hsm_loaders
+
+    hsm_loaders --> smartcardhsm
+    hsm_loaders --> crypt2pay
+    hsm_loaders --> proteccio
+    hsm_loaders --> softhsm2
+    hsm_loaders --> utimaco
+    hsm_loaders --> other
+
+    server_database --> kmip
+    server_database --> crypto
+    server_database --> interfaces
+```
+
+#### 🧑‍💻 Client Libraries
+
+- **`kms_client`** - High-level Rust client library for KMS server communication
+- **`client_utils`** - Shared utilities for client implementations
+- **`wasm`** - WebAssembly bindings for browser-based clients
+
+#### 🔐 Cryptographic Components
+
+- **`crypto`** - Core cryptographic operations and algorithm implementations
+- **`kmip`** - Complete implementation of the KMIP (Key Management Interoperability Protocol) standard versions 1.0-2.1
+- **`kmip-derive`** - Procedural macros for KMIP protocol serialization/deserialization
+
+#### 🔐 Hardware Security Module (HSM) Support
+
+- **`hsm/base_hsm`** - Base HSM abstraction layer
+- **`hsm/smartcardhsm`** - Nitrokey HSM 2 resp. CardContact SmartCard-HSM
+- **`hsm/crypt2pay`** - Crypt2pay HSM integration
+- **`hsm/proteccio`** - Proteccio HSM integration
+- **`hsm/softhsm2`** - SoftHSM2 integration for testing and development
+- **`hsm/utimaco`** - Utimaco HSM integration
+- **`hsm/other`** - Other HSMs support
+
+#### 🗄️ Database Interfaces
+
+- **`interfaces`** - Database and storage backend abstractions
+
+#### 🧪 Development and Testing
+
+- **`test_kms_server`** - Library for programmatic KMS server instantiation in tests
+- **`cli`** - Legacy CLI crate (now primarily used for testing)
+
+### 📁 Additional Directories
+
+- **`documentation/`** - Comprehensive project documentation built with MkDocs
+- **`examples/`** - Code examples and integration samples
+- **`scripts/`** - Build and deployment scripts
+- **`test_data/`** - Test fixtures and sample data
+- **`ui/`** - Frontend web interface source code
+- **`pkg/`** - Packaging configurations for Debian and RPM distributions
+
+**Note:** Each crate contains its own README with detailed information. Please refer to these files for specific implementation details and usage instructions.
+
+Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation`
+directory.
+
+### 🏗️ Building and running the KMS
+
+Two paths are supported:
+
+- For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
+  reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
+- For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
+
+#### GLIBC Support
+
+The following table shows the GLIBC versions and distribution support for **Cosmian KMS**:
+
+| Distribution    | Version            | GLIBC | Support | End of Support |
+| --------------- | ------------------ | ----- | ------- | -------------- |
+| **Debian**      | 13 (Trixie)        | 2.40  | ✅       | TBD            |
+| **Debian**      | 12 (Bookworm)      | 2.36  | ✅       | ~2028 (LTS)    |
+| **Debian**      | 11 (Bullseye)      | 2.31  | ❌       | ~2026 (LTS)    |
+| **Debian**      | 10 (Buster)        | 2.28  | ❌       | Jun 2024 (LTS) |
+| **Debian**      | 9 (Stretch)        | 2.24  | ❌       | Jun 2022 (LTS) |
+| **Rocky Linux** | 10                 | 2.40  | ✅       | TBD            |
+| **Rocky Linux** | 9                  | 2.34  | ✅       | May 2032       |
+| **Rocky Linux** | 8                  | 2.28  | ❌       | May 2029       |
+| **Ubuntu**      | 25.04 (Plucky)     | 2.40  | ✅       | Jan 2026       |
+| **Ubuntu**      | 24.04 LTS (Noble)  | 2.39  | ✅       | Apr 2029       |
+| **Ubuntu**      | 22.04 LTS (Jammy)  | 2.35  | ✅       | Apr 2027       |
+| **Ubuntu**      | 20.04 LTS (Focal)  | 2.31  | ❌       | Apr 2025       |
+| **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌       | Apr 2023       |
+
+**Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
+
+#### OpenSSL prerequisite
+
+The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
+
+| OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
+| --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Static          | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers    |
+| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
+
+Notes:
+
+- FIPS builds include `fipsmodule.cnf` and the FIPS provider
+
+#### ✨ Features
+
+From version 5.4.0, the KMS runs in FIPS mode by default.
+The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `cargo build` or `cargo run`.
+
+The `interop` feature enables KMIP interoperability test operations, which are disabled by default for security reasons.
+These operations should only be enabled during testing: `cargo build --features interop` or `cargo test --features interop`.
+
+All builds link against OpenSSL 3.6.0. FIPS variants ship the FIPS provider and `fipsmodule.cnf`; non‑FIPS variants use the default/legacy providers. For non‑Nix development, ensure OpenSSL 3.6.0+ is available.
+
+#### 🖥️ Linux or macOS
+
+Nix-based (reproducible FIPS builds):
+
+```sh
+# Run tests (defaults to 'all'; DB backends require services)
+bash .github/scripts/nix.sh test
+
+# Package artifacts (Linux → deb+rpm, macOS → dmg)
+bash .github/scripts/nix.sh package
+```
+
+Simple (Cargo-only):
+
+```sh
+cargo build
+cargo test --lib --workspace
+cargo test --lib --workspace --features non-fips
+```
+
+#### 🪟 Windows
+
+Follow the prerequisites below, or use the provided PowerShell helpers.
+
+Prerequisites (manual):
+
+1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
+2. Install OpenSSL 3.6.0 with vcpkg:
+
+```powershell
+vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64
+vcpkg integrate install
+$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+```
+
+For FIPS builds (to build fips.dll):
+
+```powershell
+Copy-Item -Path "vcpkg_fips.json" -Destination "vcpkg.json"
+vcpkg install
+vcpkg integrate install
+```
+
+PowerShell helpers (non-FIPS by default):
+
+```powershell
+. .github/scripts/cargo_build.ps1
+BuildProject -BuildType release   # or debug
+
+. .github/scripts/cargo_test.ps1
+TestProject -BuildType release    # or debug
+```
+
+#### 📦 Packaging (DEB/RPM/DMG) and hashes
+
+Use the Nix entrypoint to build packages:
+
+```sh
+# Linux
+bash .github/scripts/nix.sh package           # builds deb + rpm
+bash .github/scripts/nix.sh package deb       # build deb only
+bash .github/scripts/nix.sh package rpm       # build rpm only
+
+# macOS
+bash .github/scripts/nix.sh package dmg
+```
+
+On success, a SHA-256 checksum file (.sha256) is written next to each generated package
+(.deb/.rpm/.dmg) to ease verification and artifact distribution.
+
+### 🧪 Running the unit and integration tests
+
+Pull the test data using:
+
+```sh
+git submodule update --init --recursive
+```
+
+By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
+This can be influenced by setting the `KMS_TEST_DB` environment variable to
+
+- `sqlite`, for plain SQLite
+- `mysql` (requires a running MySQL or MariaDB server connected using a
+  `"mysql://kms:kms@localhost:3306/kms"` URL)
+- `postgresql` (requires a running PostgreSQL server connected using
+  a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
+- `redis-findex` (requires a running Redis server connected using a
+  `"redis://localhost:6379"` URL)
+
+Example: testing with a plain SQLite and some logging
+
+```sh
+RUST_LOG="error,cosmian_kms_server=info,cosmian_kms_cli=info" KMS_TEST_DB=sqlite cargo test
+```
+
+Alternatively, when writing a test or running a test from your IDE, the following can be inserted
+at the top of the test:
+
+```rust
+unsafe {
+set_var("RUST_LOG", "error,cosmian_kms_server=debug,cosmian_kms_cli=info");
+set_var("RUST_BACKTRACE", "1");
+set_var("KMS_TEST_DB", "redis-findex");
+}
+log_init(option_env!("RUST_LOG"));
+```
+
+### ⚙️ Development: running the server with cargo
+
+To run the server with cargo, you need to set the `RUST_LOG` environment variable to the desired
+log level and select the correct backend (which defaults to `sqlite`).
+
+```sh
+RUST_LOG="info,cosmian_kms_server=debug" \
+cargo run --bin cosmian_kms --features non-fips -- \
+--database-type redis-findex --database-url redis://localhost:6379 \
+--redis-master-password secret --redis-findex-label label
+```
+
+### 🔧 Server parameters
+
+If a configuration file is provided, parameters are set following this order:
+
+- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian/kms.toml`)
+- default (set on struct)
+
+Otherwise, the parameters are set following this order:
+
+- args in the command line
+- env var
+- default (set on struct)
+
+## ☁️ Use the KMS inside a Cosmian VM on SEV/TDX
+
+See the [Marketplace guide](documentation/docs/installation/marketplace_guide.md) for more details about Cosmian VM.
+
+## 🏷️ Releases
+
+All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
+
+## 📈 Benchmarks
+
+To run benchmarks, go to the `crate/test_kms_server` directory and run:
+
+```sh
+cargo bench
+```
+
+Typical values for single-threaded HTTP KMIP 2.1 requests
+(zero network latency) are as follows
+
+```text
+- RSA PKCSv1.5:
+    - encrypt
+            - 2048 bits: 128 microseconds
+            - 4096 bits: 175 microseconds
+    - decrypt
+            - 2048 bits: 830 microseconds
+            - 4096 bits: 4120 microseconds
+- RSA PKCS OAEP:
+    - encrypt
+            - 2048 bits: 134 microseconds
+            - 4096 bits: 173 microseconds
+    - decrypt
+            - 2048 bits: 849 microseconds
+            - 4096 bits: 3823 microseconds
+- RSA PKCS KEY WRP (AES):
+    - encrypt
+            - 2048 bits: 142 microseconds
+            - 4096 bits: 198 microseconds
+    - decrypt
+            - 2048 bits: 824 microseconds
+            - 4096 bits: 3768 microseconds
+- RSA Keypair creation (saved in KMS DB)
+    -  2048 bits: 33 milliseconds
+    -  4096 bits: 322 milliseconds
+```
+
+## 🤝 Community & Support
+
+- Docs: `documentation/` and online docs at <https://docs.cosmian.com/key_management_system/>
+- Issues: use GitHub Issues to report bugs and request features
+- Contributing: see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security disclosures: see [`SECURITY.md`](SECURITY.md)
+- License: see [`LICENSE`](LICENSE)
