@@ -7,20 +7,9 @@ description of Bring Your Own Key (BYOK) in Azure Key Vault,
 The vault must be a `premium` Azure Key Vault, and the user performing the operations
 must have the role of `Crypto Officer`.
 
-<!-- TOC -->
-- [Create two test keys in the Cosmian KMS](#create-two-test-keys-in-the-cosmian-kms)
-    - [Create an RSA Key](#create-an-rsa-key)
-    - [Create an Elliptic Curve Key](#create-an-elliptic-curve-key)
-- [Create an Azure Key Encryption Key (KEK)](#create-an-azure-key-encryption-key-kek)
-- [Export the Key Encryption (Public) Key](#export-the-key-encryption-public-key)
-- [Import the key encryption key in Cosmian KMS](#import-the-key-encryption-key-in-cosmian-kms)
-- [Export the wrapped keys from the Cosmian KMS](#export-the-wrapped-keys-from-the-cosmian-kms)
-    - [Export the RSA key](#export-the-rsa-key)
-    - [Export the EC key](#export-the-ec-key)
-- [Upload the byok transfer blob in Azure Key Vault](#upload-the-byok-transfer-blob-in-azure-key-vault)
-    - [For an RSA Private Key](#for-an-rsa-private-key)
-    - [For an EC Private Key](#for-an-ec-private-key)
-<!-- TOC -->
+## Table of Contents
+
+[TOC]
 
 ## Create two test keys in the Cosmian KMS
 
