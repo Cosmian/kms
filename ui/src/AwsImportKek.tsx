@@ -122,6 +122,18 @@ const ImportAwsKekForm: React.FC = () => {
                     downloading the wrapping public key and import token
                 </ExternalLink>.
                 </p>
+                <div className="bg-blue-50 border-l-4 border-blue-500 rounded-md p-4 mt-4">
+                    <div className="text-blue-800 text-sm space-y-2">
+                        <p>
+                            <strong>For automated BYOK Scripts:</strong> We provide ready-to-use Bash scripts to automate the end-to-end
+                            BYOK flow.{" "}
+                            <ExternalLink href="https://docs.cosmian.com/key_management_system/aws/byok/#automated-byok-scripts">
+                                Learn more in our documentation
+                            </ExternalLink>
+                            .
+                        </p>
+                    </div>
+                </div>
             </div>
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>

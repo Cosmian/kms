@@ -214,7 +214,7 @@ aws kms import-key-material \
 
 Receiving this response means that the key material has been successfully imported into AWS KMS.
 
-## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI :
+## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 
@@ -237,3 +237,31 @@ Finally, export the wrapped key material from Cosmian KMS to import it into AWS 
 We named the file to export `EncryptedKeyMaterial.bin`. You can import the wrapped key material using the AWS CLI or the AWS Management Console.
 
 An in depth explanation of the import process can be found in the [AWS documentation to Import key material (console)](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-import-key-material.html#importing-keys-import-key-material-console).
+
+## Automated BYOK Scripts
+
+To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash scripts that demonstrate the end-to-end process of creating an AWS KMS key, generating the corresponding key material using the Cosmian CLI, and performing the import/export procedures.
+
+The following scripts are available for download:
+
+- **RSA BYOK Script**: Automates the import of RSA private key material. Supports RSA key sizes: `2048`, `3072`, and `4096`.
+  [📥 Download `run_rsa_byok.sh`](byok_scripts/run_rsa_byok.sh)
+
+- **ECC BYOK Script**: Automates the import of Elliptic Curve private key material. Supports NIST curves: `p256`, `p384`, and `p521`.
+  [📥 Download `run_ecc_byok.sh`](byok_scripts/run_ecc_byok.sh)
+
+- **AES BYOK Script**: Automates the import of 256-bit AES symmetric key material.
+  [📥 Download `run_aes_byok.sh`](byok_scripts/run_aes_byok.sh)
+
+### Usage
+
+Each script requires the `cosmian` CLI to be available either in your PATH, the current directory, or specified via the `COSMIAN_KMS_CLI` environment variable. Also, ensure the `aws` CLI is available in your PATH, authenticated, and configured.
+
+Example usage:
+```bash
+# Make the script executable
+chmod +x run_rsa_byok.sh
+
+# Run the script with the desired key size and an optional description
+./run_rsa_byok.sh 2048 "My RSA External Key"
+```
