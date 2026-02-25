@@ -111,7 +111,7 @@ const SecretDataCreateForm: React.FC = () => {
                             help="Defaults to a randomly generated Seed. To use a Password type, you must provide both this and a valid secret value"
                             rules={[{ required: true, message: "Please select a secret type" }]}
                         >
-                            <Select disabled={!secretValue}>
+                            <Select disabled={!secretValue} data-testid="secret-type-select">
                                 <Select.Option value="Seed">Seed</Select.Option>
                                 <Select.Option value="Password">Password</Select.Option>
                             </Select>
@@ -139,13 +139,13 @@ const SecretDataCreateForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Create Secret Data
                         </Button>
                     </Form.Item>
                 </Space>
                 {res && (
-                    <div ref={responseRef}>
+                    <div ref={responseRef} data-testid="response-output">
                         <Card title="Secret data creation response">{res}</Card>
                     </div>
                 )}

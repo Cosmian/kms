@@ -11,7 +11,6 @@ import AttributeSetForm from "./AttributeSet";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ExportAzureBYOKForm from "./AzureExportByok";
 import ImportAzureKekForm from "./AzureImportKek";
-import { useBranding } from "./useBranding";
 import CertificateCertifyForm from "./CertificateCertify";
 import CertificateDecryptForm from "./CertificateDecrypt";
 import CertificateEncryptForm from "./CertificateEncrypt";
@@ -47,6 +46,7 @@ import SecretDataCreateForm from "./SecretDataCreate";
 import SymKeyCreateForm from "./SymKeysCreate";
 import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
+import { useBranding } from "./useBranding";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
 import init from "./wasm/pkg";
 
@@ -75,7 +75,7 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
 
     useEffect(() => {
         // Automatically use dev URL in development mode
-        const location = import.meta.env.DEV ? "http://localhost:9998" : window.location.origin;
+        const location = (import.meta.env.VITE_KMS_URL as string | undefined) ?? (import.meta.env.DEV ? "http://localhost:9998" : window.location.origin);
         setServerUrl(location);
 
         const fetchUser = async () => {

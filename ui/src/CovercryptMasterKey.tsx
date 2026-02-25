@@ -119,6 +119,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 <Select
                                     value={specificationType}
                                     onChange={(value) => setSpecificationType(value)}
+                                    data-testid="spec-type-select"
                                     options={[
                                         { label: "Upload JSON Specification File", value: "json-file" },
                                         { label: "Enter JSON Specification", value: "json-text" },
@@ -168,6 +169,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                     ]}
                                 >
                                     <Input.TextArea
+                                        data-testid="spec-json-textarea"
                                         placeholder="Paste your JSON Specification here"
                                         rows={10}
                                         className="font-mono text-sm"
@@ -198,14 +200,14 @@ const CovercryptMasterKeyForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Create Master Key pair
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Covercrypt Master keys creation response">{res}</Card>
                 </div>
             )}

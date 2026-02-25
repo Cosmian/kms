@@ -228,7 +228,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Export {isDataLike ? "Object" : "Key"}
                         </Button>
                     </Form.Item>
@@ -236,7 +236,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             </Form>
 
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title={isDataLike ? "Object Export Response" : "Key Export Response"}>{res}</Card>
                 </div>
             )}

@@ -127,13 +127,13 @@ const OpaqueObjectForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Create Opaque Object
                         </Button>
                     </Form.Item>
                 </Space>
                 {res && (
-                    <div ref={responseRef}>
+                    <div ref={responseRef} data-testid="response-output">
                         <Card title="Opaque object creation response">{res}</Card>
                     </div>
                 )}

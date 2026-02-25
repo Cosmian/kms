@@ -45,3 +45,51 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+  test-ui:
+    name: UI E2E tests (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          targets: wasm32-unknown-unknown
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows-static
+          vcpkg integrate install
+
+      - name: Install wasm-pack
+        shell: pwsh
+        run: cargo install wasm-pack --locked
+
+      - name: Run UI E2E tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.github\scripts\test_ui.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-stdout.log
+            ${{ runner.temp }}\kms-stderr.log
+            ui\test-results\
+            ui\playwright-report\
