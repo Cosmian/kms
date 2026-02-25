@@ -6,6 +6,7 @@ import { FormUpload } from "./FormUpload";
 import { azureKekKeyUsage, azureKekTags } from "./azureKek";
 import { sendKmipRequest } from "./utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
+import ExternalLink from "./components/ExternalLink";
 
 interface ImportAzureKekFormData {
     kekFile: Uint8Array;
@@ -49,7 +50,7 @@ const ImportAzureKekForm: React.FC = () => {
                 true, // replaceExisting
                 tags,
                 keyUsage,
-                undefined // wrappingKeyId
+                undefined, // wrappingKeyId
             );
 
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -110,7 +111,7 @@ const ImportAzureKekForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined/>}>Select KEK File</Button>
+                                <Button icon={<UploadOutlined />}>Select KEK File</Button>
                             </FormUpload>
                         </Form.Item>
                     </Card>

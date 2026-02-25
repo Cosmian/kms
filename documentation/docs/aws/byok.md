@@ -10,7 +10,7 @@ The **key material** refers to the actual cryptographic key bytes that form the 
 
 ## Overview
 
-Since AWS KMS is a managed service where private key material never leaves AWS HSMs. The key import process requires:
+Since AWS KMS is a managed service where private key material never leaves AWS HSMs, the key import process requires:
 
 1. Creating a KMS key with `EXTERNAL` origin (no key material)
 2. Download the wrapping public key and import token from AWS
@@ -24,9 +24,9 @@ Supported wrapping algorithms:
 | **RSAES_OAEP_SHA_256**<br>**RSAES_OAEP_SHA_1** | The RSA encryption algorithm with Optimal Asymmetric Encryption Padding (OAEP) with SHA-256 or SHA-1 hash function. | • 256-bit AES Symmetric keys<br>• HMAC keys<br>• Asymmetric ECC private keys* |
 | **RSA_AES_KEY_WRAP_SHA_256**<br>**RSA_AES_KEY_WRAP_SHA_1** | Hybrid wrapping (RSA + AES Key Wrap) with SHA-256 or SHA-1 hash function. | • Asymmetric RSA private keys<br>• Asymmetric ECC private keys |
 
-**Wrapping Key Specs :**
+**Wrapping Key Specs:**
 
-- RSA_2048 (***Note**: cannot be used to wrap _ECC_NIST_P521_ keys with _RSAES_OAEP_SHA_*_ )
+- RSA_2048 (**Note**: cannot be used to wrap _ECC_NIST_P521_ keys with _RSAES_OAEP_SHA_*_)
 - RSA_3072
 - RSA_4096
 
@@ -36,9 +36,9 @@ Supported wrapping algorithms:
 ## Prerequisites
 
 - An active AWS account
-- Either : AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms).
+- Either: AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms).
 - A running [Cosmian KMS](https://docs.cosmian.com/key_management_system/quick_start/) instance.
-- Either : [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../ui.md) of your deployed KMS instance.
+- Either: [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
 ## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI :
@@ -173,11 +173,13 @@ The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully
 ### 5. Export the wrapped key material from Cosmian KMS
 
 ```bash
+# Provide token file simply to display the correct AWS CLI command for import
+# If the output file is not specified, the CLI returns base64 encoded encrypted key material
 ./cosmian kms aws byok export \
     symmetric_key_test1 \
     kek_test1 \
-    token.bin \ # optional, does not need the actual token, only uses the path to display the aws command
-    EncryptedKeyMaterial.bin # optional, but if not specified, the cli will return the base64 encoded encrypted key material
+    token.bin \
+    EncryptedKeyMaterial.bin
 ```
 
 **Response:**
@@ -194,7 +196,7 @@ aws kms import-key-material \
 
 ### 6. Import the wrapped key material into AWS KMS
 
-If you have filled all the for the fields on the previous step, you can directly use the command that the cosmian cli automatically generated for you :
+If you have filled all the fields on the previous step, you can directly use the command that the Cosmian CLI automatically generated for you:
 
 ```bash
 aws kms import-key-material \
