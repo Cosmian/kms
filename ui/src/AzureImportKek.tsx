@@ -22,12 +22,12 @@ const ImportAzureKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAzureKekFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const {idToken, serverUrl} = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
+            responseRef.current.scrollIntoView({behavior: "smooth"});
         }
     }, [res]);
 
@@ -50,7 +50,7 @@ const ImportAzureKekForm: React.FC = () => {
                 true, // replaceExisting
                 tags,
                 keyUsage,
-                undefined, // wrappingKeyId
+                undefined // wrappingKeyId
             );
 
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -81,14 +81,18 @@ const ImportAzureKekForm: React.FC = () => {
                 </p>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical">
-                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
+            <Form
+                form={form}
+                onFinish={onFinish}
+                layout="vertical"
+            >
+                <Space direction="vertical" size="middle" style={{display: "flex"}}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">KEK File (required)</h3>
                         <Form.Item
                             name="kekFile"
                             label="RSA Key Encryption Key (KEK) File"
-                            rules={[{ required: true, message: "Please upload the KEK file" }]}
+                            rules={[{required: true, message: "Please upload the KEK file"}]}
                             help="The KEK file exported from Azure Key Vault in PKCS#8 PEM format"
                         >
                             <FormUpload
@@ -100,10 +104,10 @@ const ImportAzureKekForm: React.FC = () => {
                                             // For PEM files, we need to convert to bytes
                                             const encoder = new TextEncoder();
                                             const bytes = encoder.encode(content);
-                                            form.setFieldsValue({ kekFile: bytes });
+                                            form.setFieldsValue({kekFile: bytes});
                                         } else if (content instanceof ArrayBuffer) {
                                             const bytes = new Uint8Array(content);
-                                            form.setFieldsValue({ kekFile: bytes });
+                                            form.setFieldsValue({kekFile: bytes});
                                         }
                                     };
                                     reader.readAsText(file);
@@ -111,7 +115,7 @@ const ImportAzureKekForm: React.FC = () => {
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined />}>Select KEK File</Button>
+                                <Button icon={<UploadOutlined/>}>Select KEK File</Button>
                             </FormUpload>
                         </Form.Item>
                     </Card>
@@ -121,16 +125,16 @@ const ImportAzureKekForm: React.FC = () => {
                         <Form.Item
                             name="kid"
                             label="Azure Key ID (kid)"
-                            rules={[{ required: true, message: "Please enter the Azure Key ID" }]}
+                            rules={[{required: true, message: "Please enter the Azure Key ID"}]}
                             help={
                                 <span>
                                     The Azure Key ID should be in the format:
-                                    <br />
+                                    <br/>
                                     https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8
                                 </span>
                             }
                         >
-                            <Input placeholder="https://your-vault.vault.azure.net/keys/KEK-BYOK/..." />
+                            <Input placeholder="https://your-vault.vault.azure.net/keys/KEK-BYOK/..."/>
                         </Form.Item>
                     </Card>
 
@@ -141,12 +145,13 @@ const ImportAzureKekForm: React.FC = () => {
                             label="Key ID in KMS"
                             help="The unique ID for this key in the KMS. A random UUID will be generated if not specified."
                         >
-                            <Input placeholder="Enter custom key ID (optional)" />
+                            <Input placeholder="Enter custom key ID (optional)"/>
                         </Form.Item>
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading}
+                                className="w-full text-white font-medium">
                             Import Azure KEK
                         </Button>
                     </Form.Item>
