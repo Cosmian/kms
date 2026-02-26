@@ -7,7 +7,7 @@ import {
     export_ttlv_request,
     get_attributes_ttlv_request_with_options,
     parse_export_ttlv_response,
-    parse_get_attributes_ttlv_response,
+    parse_get_attributes_ttlv_response
 } from "./wasm/pkg";
 
 interface ExportAzureBYOKFormData {
@@ -20,12 +20,12 @@ const ExportAzureBYOKForm: React.FC = () => {
     const [form] = Form.useForm<ExportAzureBYOKFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const {idToken, serverUrl} = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
+            responseRef.current.scrollIntoView({behavior: "smooth"});
         }
     }, [res]);
 
@@ -60,13 +60,17 @@ const ExportAzureBYOKForm: React.FC = () => {
             const tags = getTags(attributes);
 
             if (!tags.includes("azure")) {
-                setRes("The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command.");
+                setRes(
+                    "The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command."
+                );
                 return;
             }
 
             const kidTag = tags.find((t: string) => t.startsWith("kid:"));
             if (!kidTag) {
-                setRes("The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command.");
+                setRes(
+                    "The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command."
+                );
                 return;
             }
 
@@ -81,7 +85,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 true, // unwrap - export the key in wrapped form
                 "raw", // key_format - raw bytes
                 values.kekId, // wrap_key_id - the KEK to wrap with
-                "rsa-aes-key-wrap-sha1", // wrapping_algorithm
+                "rsa-aes-key-wrap-sha1" // wrapping_algorithm
             );
 
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
@@ -132,7 +136,8 @@ const ExportAzureBYOKForm: React.FC = () => {
             <h1 className="text-2xl font-bold mb-6">Export Azure BYOK File</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Wrap a KMS key with an Azure Key Encryption Key (KEK) and generate a .byok file for Azure Key Vault import.</p>
+                <p>Wrap a KMS key with an Azure Key Encryption Key (KEK) and generate a .byok file for Azure Key Vault
+                    import.</p>
                 <p>The KEK must be previously imported using the Import KEK command.</p>
                 <p className="text-sm text-gray-600">
                     See:{" "}
@@ -148,25 +153,25 @@ const ExportAzureBYOKForm: React.FC = () => {
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
-                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
+                <Space direction="vertical" size="middle" style={{display: "flex"}}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identifiers (required)</h3>
                         <Form.Item
                             name="wrappedKeyId"
                             label="Wrapped Key ID"
-                            rules={[{ required: true, message: "Please enter the wrapped key ID" }]}
+                            rules={[{required: true, message: "Please enter the wrapped key ID"}]}
                             help="The unique ID of the KMS private key that will be wrapped and exported to Azure"
                         >
-                            <Input placeholder="Enter the KMS key ID to export" />
+                            <Input placeholder="Enter the KMS key ID to export"/>
                         </Form.Item>
 
                         <Form.Item
                             name="kekId"
                             label="Azure KEK ID"
-                            rules={[{ required: true, message: "Please enter the KEK ID" }]}
+                            rules={[{required: true, message: "Please enter the KEK ID"}]}
                             help="The ID of the Azure KEK in this KMS (previously imported using Import KEK)"
                         >
-                            <Input placeholder="Enter the Azure KEK ID" />
+                            <Input placeholder="Enter the Azure KEK ID"/>
                         </Form.Item>
                     </Card>
 
@@ -177,7 +182,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                             label="BYOK Filename"
                             help="The filename for the exported .byok file. If not specified, it will be named <wrapped_key_id>.byok"
                         >
-                            <Input placeholder="custom-filename.byok (optional)" />
+                            <Input placeholder="custom-filename.byok (optional)"/>
                         </Form.Item>
                     </Card>
 
@@ -198,5 +203,6 @@ const ExportAzureBYOKForm: React.FC = () => {
         </div>
     );
 };
+
 
 export default ExportAzureBYOKForm;
