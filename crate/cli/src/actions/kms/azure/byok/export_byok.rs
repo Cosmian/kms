@@ -71,7 +71,7 @@ impl ExportByokAction {
         // Export the key wrapped with the KEK
         // export the object
         let export_params = ExportObjectParams {
-            unwrap: true,
+            unwrap: false, // `wrapping_key_id` is ignored if `unwrap` is true
             wrapping_key_id: Some(&self.kek_id),
             allow_revoked: false,
             key_format_type: None,
