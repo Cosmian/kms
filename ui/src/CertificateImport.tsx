@@ -56,7 +56,7 @@ const CertificateImportForm: React.FC = () => {
                     values.pkcs12Password,
                     values.replaceExisting,
                     values.tags,
-                    values.keyUsage
+                    values.keyUsage,
                 );
                 const result_str = await sendKmipRequest(request, idToken, serverUrl);
                 if (result_str) {

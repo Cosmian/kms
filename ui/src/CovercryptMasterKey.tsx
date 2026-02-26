@@ -48,13 +48,13 @@ const CovercryptMasterKeyForm: React.FC = () => {
                 values.specification,
                 values.tags,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_keypair_ttlv_response(result_str);
                 setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
             }
         } catch (e) {

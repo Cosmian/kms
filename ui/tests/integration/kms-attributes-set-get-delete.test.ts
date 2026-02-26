@@ -25,9 +25,7 @@ async function waitForKmsServer(): Promise<void> {
 
     throw new Error(
         `KMS server not reachable at ${KMS_URL} within 60s. ` +
-            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(
-                lastError
-            )}`
+            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(lastError)}`,
     );
 }
 
@@ -95,10 +93,10 @@ describe.sequential("KMS attributes flow (set → get → delete)", () => {
             expect(afterVal == null || afterVal === "").toBe(true);
 
             await wasmClient.parse_revoke_ttlv_response(
-                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest revoke"), null, KMS_URL)
+                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest revoke"), null, KMS_URL),
             );
             await wasmClient.parse_destroy_ttlv_response(
-                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL)
+                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL),
             );
         } catch (e) {
             await cleanup();

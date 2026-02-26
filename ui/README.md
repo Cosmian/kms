@@ -41,7 +41,7 @@ To run the UI in development mode:
 ### NPM version
 
 | Component | Required Version |
-|-----------|------------------|
+| --------- | ---------------- |
 | Node.js   | v23.6.0          |
 | npm       | v11.2.0          |
 

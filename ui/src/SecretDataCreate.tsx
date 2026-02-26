@@ -52,7 +52,7 @@ const SecretDataCreateForm: React.FC = () => {
                 values.secretId,
                 values.tags,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {

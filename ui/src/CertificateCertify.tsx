@@ -83,7 +83,7 @@ const CertificateCertifyForm: React.FC = () => {
                 values.issuerCertificateId,
                 values.numberOfDays,
                 values.certificateExtensions,
-                values.tags
+                values.tags,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {

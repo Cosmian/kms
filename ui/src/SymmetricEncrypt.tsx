@@ -45,7 +45,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 values.inputFile,
                 values.nonce,
                 values.authenticationData,
-                values.dataEncryptionAlgorithm
+                values.dataEncryptionAlgorithm,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {

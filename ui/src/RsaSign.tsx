@@ -74,12 +74,7 @@ const RsaSignForm: React.FC = () => {
                 <p>The key can be identified using either its ID or associated tags.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-                initialValues={{ digested: false }}
-            >
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ digested: false }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Input File</h3>

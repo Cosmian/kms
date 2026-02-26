@@ -39,13 +39,13 @@ const RsaKeyCreateForm: React.FC = () => {
                 values.tags,
                 values.sizeInBits,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str);
                 setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
             }
         } catch (e) {

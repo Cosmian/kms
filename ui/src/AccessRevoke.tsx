@@ -6,7 +6,9 @@ import { getNoTTLVRequest, postNoTTLVRequest } from "./utils";
 interface AccessRevokeFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<"create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy">;
+    operation_types: Array<
+        "create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy"
+    >;
     revoke_create_access_right: boolean;
 }
 

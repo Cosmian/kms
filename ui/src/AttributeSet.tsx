@@ -57,7 +57,7 @@ const AttributeSetForm: React.FC = () => {
 
     useEffect(() => {
         try {
-            const opts = (get_crypto_algorithms() as unknown) as AlgoOption[];
+            const opts = get_crypto_algorithms() as unknown as AlgoOption[];
             if (Array.isArray(opts)) setCryptoAlgorithms(opts);
         } catch {
             // ignore; WASM not ready or not built yet

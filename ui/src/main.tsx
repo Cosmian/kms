@@ -14,7 +14,7 @@ async function bootstrap() {
             <BrandingProvider branding={branding}>
                 <App />
             </BrandingProvider>
-        </StrictMode>
+        </StrictMode>,
     );
 }
 

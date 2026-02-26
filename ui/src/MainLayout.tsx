@@ -26,9 +26,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const isServerHealthy = normalizedServerHealth === "UP";
 
     const serverHealthLabel =
-        serverHealthLatencyMs === null
-            ? `Health: ${serverHealth}`
-            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+        serverHealthLatencyMs === null ? `Health: ${serverHealth}` : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {
@@ -36,21 +34,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             try {
                 const version = await getNoTTLVRequest("/version", idToken, serverUrl);
                 setServerVersion(version);
-                    const health = await getNoTTLVRequestWithTimeout(
-                        "/health",
-                        idToken,
-                        serverUrl,
-                        2_000
-                    );
-                    setServerHealth(health?.status ?? "Unavailable");
-                    setServerHealthLatencyMs(
-                        typeof health?.latency_ms === "number" ? health.latency_ms : null
-                    );
+                const health = await getNoTTLVRequestWithTimeout("/health", idToken, serverUrl, 2_000);
+                setServerHealth(health?.status ?? "Unavailable");
+                setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
             } catch (error) {
                 console.error("Error fetching server version:", error);
                 setServerVersion("Unavailable");
-                    setServerHealth("Unavailable");
-                    setServerHealthLatencyMs(null);
+                setServerHealth("Unavailable");
+                setServerHealthLatencyMs(null);
             } finally {
                 setLoading(false);
             }
@@ -59,7 +50,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         }
     }, [authMethod, idToken, serverUrl]);
 
-    const downloadCliUrl = "/download-cli"
+    const downloadCliUrl = "/download-cli";
 
     const determineDownloadTarget = useCallback(async () => {
         const kmsUrl = serverUrl + downloadCliUrl;
@@ -72,9 +63,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         });
 
         if (response.status == 200) {
-            setDownloadTarget(serverUrl + downloadCliUrl)
+            setDownloadTarget(serverUrl + downloadCliUrl);
         } else {
-            setDownloadTarget('https://package.cosmian.com/cli')
+            setDownloadTarget("https://package.cosmian.com/cli");
         }
     }, [downloadCliUrl, idToken, serverUrl]);
 
@@ -92,10 +83,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} />
-                    <div className="flex items-center h-full" style={{ gap: '16px' }}>
-                        {downloadTarget && <Link to={downloadTarget} target="_blank">
-                            <Button type="primary" shape="round" icon={<DownloadOutlined />}>Download CLI</Button>
-                        </Link>}
+                    <div className="flex items-center h-full" style={{ gap: "16px" }}>
+                        {downloadTarget && (
+                            <Link to={downloadTarget} target="_blank">
+                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
+                                    Download CLI
+                                </Button>
+                            </Link>
+                        )}
                         <Switch
                             className="w-20"
                             checked={isDarkMode}

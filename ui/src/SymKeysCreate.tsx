@@ -54,7 +54,7 @@ const SymKeyCreateForm: React.FC = () => {
                 values.algorithm,
                 values.sensitive,
                 values.wrappingKeyId,
-                values.bytesB64
+                values.bytesB64,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
