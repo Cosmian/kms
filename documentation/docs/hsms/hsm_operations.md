@@ -30,6 +30,13 @@ hsm::<slot_number>::<key_identifier>
 For instance, the key `hsm::1::mykey` is stored in the HSM slot 1 with the identifier `mykey`. Technically, the identifier
 is stored in the `LABEL` field of the key object in the HSM.
 
+!!! warning "Labels must be unique within a slot"
+    The PKCS#11 standard does **not** enforce label uniqueness: multiple key objects can share the same `LABEL`
+    in the same slot. Cosmian KMS however uses the label as the sole key identifier within a slot, so it requires
+    labels to be **unique per slot per key type**. If two objects of the same type share a label in the same slot,
+    Cosmian KMS will return an error when that label is referenced. Always verify that no existing object already
+    uses a label before creating a new key with `pkcs11-tool --list-objects`.
+
 Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
 ## Creating a KMS key wrapped by an HSM key
@@ -192,6 +199,86 @@ Keys should be flagged as `sensitive` when created in the HSM, so that the priva
 exported (see below `Get` and `Export`).
 
 Note: HSM keys do not support object tagging in this release.
+
+#### Using pkcs11-tool directly
+
+Keys can also be provisioned directly in the HSM with `pkcs11-tool` (part of OpenSC), bypassing the Cosmian KMS
+entirely. This is useful for pre-provisioning a master KEK before the KMS server starts, or for HSM models where
+the Cosmian PKCS#11 integration does not yet support key generation.
+
+The `LABEL` set with `--label` becomes the `<key_identifier>` part of the Cosmian KMS unique identifier
+`hsm::<slot_number>::<label>`.
+
+##### Step 1 — List available slots
+
+```shell
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so --list-slots
+```
+
+##### Step 2 — Create an AES key
+
+`--key-type AES:<bytes>` — size in **bytes** (16 = 128-bit, 24 = 192-bit, 32 = 256-bit).
+
+```shell
+# AES-128 key on slot 1, label "master_kek"
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
+  --slot 1 \
+  --key-type AES:16 \
+  --keygen \
+  --label master_kek
+
+# AES-256 key on slot 1, label "data_kek"
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
+  --slot 1 \
+  --key-type AES:32 \
+  --keygen \
+  --label data_kek
+```
+
+If the slot requires a PIN, add `--login --pin <PIN>` (or `--login` alone to be prompted interactively):
+
+```shell
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
+  --slot 1 \
+  --login --pin 1234 \
+  --key-type AES:32 \
+  --keygen \
+  --label data_kek
+```
+
+##### Step 3 — Create an RSA key pair
+
+```shell
+# RSA-4096 key pair on slot 4, label "my_rsa_key"
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
+  --slot 4 \
+  --login --pin 1234 \
+  --key-type RSA:4096 \
+  --keypairgen \
+  --label my_rsa_key
+```
+
+The private key label becomes `hsm::4::my_rsa_key` in Cosmian KMS. For RSA key pairs, Cosmian KMS
+appends `_pk` to the label to build the public key identifier: `hsm::4::my_rsa_key_pk`.
+
+##### Step 4 — Verify the objects are visible
+
+Always check for existing objects with the same label before creating a new key — Cosmian KMS requires
+labels to be unique within a slot and key type:
+
+```shell
+pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
+  --slot 1 \
+  --list-objects
+```
+
+The AES key created above will then be addressable in Cosmian KMS as `hsm::1::master_kek`
+and can immediately be used as a KEK:
+
+```toml
+# kms.toml
+key_encryption_key = "hsm::1::master_kek"
+```
 
 ### Destroy
 

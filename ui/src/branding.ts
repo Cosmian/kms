@@ -13,6 +13,9 @@ export type Branding = {
     loginTitle: string;
     loginSubtitle?: string;
     backgroundImageUrl: string;
+    /** CSS color for the translucent card overlaid on the login background.
+     *  Accepts any CSS color value, e.g. "rgba(126,34,206,0.3)" or "#7e22ce4d". */
+    loginCardColor?: string;
 
     menuTheme?: MenuTheme;
 
@@ -33,6 +36,7 @@ const DEFAULT_BRANDING: Branding = {
     loginTitle: "Key Management System",
     loginSubtitle: "",
     backgroundImageUrl: "/ui/themes/example/login_background.png",
+    loginCardColor: "rgba(126,34,206,0.3)",
 
     menuTheme: "light",
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M 80 0 L 0 0 0 80" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <!-- background gradient -->
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <!-- subtle grid overlay -->
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+  <!-- accent circles -->
+  <circle cx="200"  cy="900"  r="320" fill="rgba(22,119,255,0.06)"/>
+  <circle cx="1750" cy="180"  r="260" fill="rgba(22,119,255,0.05)"/>
+  <circle cx="960"  cy="540"  r="480" fill="rgba(255,255,255,0.015)"/>
+</svg>

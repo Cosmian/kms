@@ -1,6 +1,5 @@
 use std::ffi::CStr;
 
-#[cfg(feature = "non-fips")]
 use cosmian_logger::info;
 
 /// Safely retrieve OpenSSL version information without risking a segmentation
@@ -129,6 +128,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     {
         static PROVIDER: OnceLock<Provider> = OnceLock::new();
         if PROVIDER.get().is_none() {
+            info!("Load FIPS provider");
             let provider = Provider::load(None, "fips")?;
             drop(PROVIDER.set(provider));
         }

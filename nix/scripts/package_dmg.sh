@@ -220,7 +220,39 @@ DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg
 echo "Creating DMG $DMG_NAME from $APP_BUNDLE..."
 # Always recreate DMG to reflect updated app bundle resources (FIPS assets)
 rm -f "$RESULT_DIR/$DMG_NAME" 2>/dev/null || true
-hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"
+
+# hdiutil can return "Resource busy" when a stale backing store from a previous
+# (failed) run is still held by the kernel, or when two CI jobs race on the same
+# volume name.  Retry up to 5 times, detaching any stale mount with the same
+# volume name between attempts.
+HDIUTIL_RETRIES=5
+HDIUTIL_DELAY=5   # seconds between retries
+for attempt in $(seq 1 $HDIUTIL_RETRIES); do
+  # Detach any already-mounted volume with the same name to release the lock.
+  stale_dev=$(hdiutil info 2>/dev/null \
+    | awk -v vol="Cosmian KMS Server" '
+        /image-path/ { path=$0 }
+        /\/Volumes\// && $0 ~ vol { print prev }
+        { prev=$1 }
+      ' \
+    | head -n1 || true)
+  if [ -n "$stale_dev" ]; then
+    echo "Detaching stale volume $stale_dev before attempt $attempt…"
+    hdiutil detach "$stale_dev" -force 2>/dev/null || true
+    sleep 2
+  fi
+
+  if hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"; then
+    break
+  fi
+
+  if [ "$attempt" -eq "$HDIUTIL_RETRIES" ]; then
+    echo "Error: hdiutil create failed after $HDIUTIL_RETRIES attempts" >&2
+    exit 1
+  fi
+  echo "hdiutil create failed (attempt $attempt/$HDIUTIL_RETRIES), retrying in ${HDIUTIL_DELAY}s…" >&2
+  sleep "$HDIUTIL_DELAY"
+done
 
 echo "Built dmg (${VARIANT}): $RESULT_DIR/$DMG_NAME"
 

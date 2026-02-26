@@ -93,6 +93,10 @@ async fn run() -> KResult<()> {
             "OpenSSL is not available – cannot start the KMS server".to_owned(),
         ));
     }
+    info!(
+        "Starting Cosmian KMS server version {}",
+        env!("CARGO_PKG_VERSION")
+    );
     info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
 
     // For an explanation of OpenSSL providers,

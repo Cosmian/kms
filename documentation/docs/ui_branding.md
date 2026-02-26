@@ -40,6 +40,33 @@ Edit `/usr/local/cosmian/ui/dist/branding.json` and point the URLs to the `examp
 
 Restart the service (or clear browser cache) to see changes.
 
+## Start from the blank theme
+
+The `blank` theme is a minimal starter template with placeholder assets — copy
+it as your starting point for a new white-label deployment:
+
+```bash
+# Copy the blank theme to the installed UI dist directory
+cp -r /usr/local/cosmian/ui/dist/themes/blank /usr/local/cosmian/ui/dist/themes/acme
+
+# Customise the copy
+nano /usr/local/cosmian/ui/dist/themes/acme/branding.json
+# Replace logo-light.svg, logo-dark.svg, favicon.svg, login-bg.svg with your assets
+
+# Activate it by pointing branding.json to the new theme
+cp /usr/local/cosmian/ui/dist/themes/acme/branding.json /usr/local/cosmian/ui/dist/branding.json
+```
+
+The blank theme ships the following placeholder files:
+
+| File            | Purpose                                      |
+|-----------------|----------------------------------------------|
+| `branding.json` | Full example with every supported field      |
+| `logo-light.svg`| Logo for light-mode header (dark text)      |
+| `logo-dark.svg` | Logo for dark-mode header (white text)      |
+| `favicon.svg`   | Browser tab icon                            |
+| `login-bg.svg`  | Login page background (dark blue gradient)  |
+
 ## `branding.json` schema
 
 Example:
@@ -54,6 +81,7 @@ Example:
   "loginTitle": "Example",
   "loginSubtitle": "Welcome",
   "backgroundImageUrl": "/ui/themes/example/example-login-bg.jpg",
+  "loginCardColor": "rgba(126,34,206,0.3)",
   "menuTheme": "dark",
   "tokens": {
     "light": { "colorPrimary": "#0057ff", "colorText": "#111827" },
@@ -70,6 +98,7 @@ Example:
 - `logoLightUrl` / `logoDarkUrl`: Header logo depending on light/dark mode.
 - `loginTitle` / `loginSubtitle`: Login page texts.
 - `backgroundImageUrl`: Login background image.
+- `loginCardColor`: CSS background color of the card overlaid on the login background. Accepts any CSS color value (e.g. `"rgba(0,87,255,0.3)"`, `"#0057ff4d"`). Defaults to `"rgba(126,34,206,0.3)"` (semi-transparent purple).
 - `menuTheme`: `"light"` or `"dark"`.
 - `tokens.light` / `tokens.dark`: Ant Design theme token overrides.
 

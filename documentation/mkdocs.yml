@@ -114,6 +114,7 @@ nav:
       - Logging and telemetry: logging.md
       - User interface: ui.md
       - UI branding: ui_branding.md
+      - Custom OpenSSL build: openssl_override.md
   - Certifications and compliance:
       - FIPS 140-3: fips.md
       - Cryptographic algorithms:
