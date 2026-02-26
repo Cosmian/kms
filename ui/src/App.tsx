@@ -214,15 +214,28 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
 
 function App() {
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isWasmReady, setIsWasmReady] = useState(false);
     const branding = useBranding();
 
     useEffect(() => {
         async function loadWasm() {
-            await init();
+            try {
+                await init();
+            } catch (e) {
+                // Avoid unhandled promise rejections; UI may still render but
+                // any WASM-backed actions will fail and surface their own errors.
+                console.error("WASM init failed:", e);
+            } finally {
+                setIsWasmReady(true);
+            }
         }
 
         loadWasm();
     }, []);
+
+    if (!isWasmReady) {
+        return null;
+    }
 
     const lightTheme = {
         token: {

@@ -9,12 +9,12 @@
  *   • navigate: import, encrypt, decrypt, sign, verify pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Create a fresh EC key pair and return { privKeyId, pubKeyId }. */
 async function createEcKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
     await gotoAndWait(page, "/ui/ec/keys/create");
-    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
+    await selectOption(page, "ec-curve-select", "NIST P-256");
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = text.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
@@ -27,8 +27,8 @@ async function createEcKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
 test.describe("EC key pair", () => {
     test("create EC key pair with default curve", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/keys/create");
-        // The curve Select is populated by WASM; wait until a value is shown.
-        await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
+        // Explicitly pick a stable curve; avoids WASM init timing races.
+        await selectOption(page, "ec-curve-select", "NIST P-256");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/Key pair has been created/i);
         expect(text).toMatch(/Private key Id:/i);

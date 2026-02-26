@@ -69,6 +69,10 @@ echo "==> Installing UI dependencies …"
 run_ui pnpm install --frozen-lockfile
 
 echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) …"
+(cd "${UI_DIR}" && {
+    chmod -R u+w dist >/dev/null 2>&1 || true
+    rm -rf dist >/dev/null 2>&1 || true
+})
 (cd "${UI_DIR}" && VITE_KMS_URL="http://127.0.0.1:9998" pnpm run build)
 
 # ── 3. Install Playwright's Chromium browser ─────────────────────────────────
@@ -91,21 +95,38 @@ PREVIEW_PID=""
 
 cleanup() {
     echo "==> Cleaning up …"
-    [ -n "${KMS_PID}" ] && kill "${KMS_PID}" 2>/dev/null || true
-    [ -n "${PREVIEW_PID}" ] && kill "${PREVIEW_PID}" 2>/dev/null || true
+    if [ -n "${KMS_PID}" ]; then
+        kill "${KMS_PID}" 2>/dev/null || true
+    fi
+    if [ -n "${PREVIEW_PID}" ]; then
+        kill "${PREVIEW_PID}" 2>/dev/null || true
+    fi
     rm -rf "${SQLITE_DIR}"
 }
 trap cleanup EXIT INT TERM
 
 echo "==> Starting KMS server (non-fips, sqlite) …"
+KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
+cat >"${KMS_CONF_FILE}" <<EOF
+default_username = "admin"
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${SQLITE_DIR}"
+clear_database = true
+
+[http]
+hostname = "127.0.0.1"
+port = 9998
+EOF
+
+# Force an explicit config to avoid picking up a host-installed default config
+# at /etc/cosmian/kms.toml (which would ignore CLI args and may crash on log perms).
 # shellcheck disable=SC2086
 cargo run ${RELEASE_FLAG} -p cosmian_kms_server --bin cosmian_kms \
     --features non-fips \
     -- \
-    --database-type sqlite \
-    --sqlite-path "${SQLITE_DIR}" \
-    --hostname 127.0.0.1 \
-    --port 9998 &
+    --config "${KMS_CONF_FILE}" &
 KMS_PID=$!
 
 echo "==> Waiting for KMS to be ready …"
@@ -126,7 +147,8 @@ done
 
 # ── 5. Start Vite preview server ─────────────────────────────────────────────
 echo "==> Starting Vite preview server (port 5173) …"
-(cd "${UI_DIR}" && pnpm preview --port 5173 --host 127.0.0.1 --strictPort) &
+VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
+(cd "${UI_DIR}" && pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
 echo "==> Waiting for Vite preview to be ready …"

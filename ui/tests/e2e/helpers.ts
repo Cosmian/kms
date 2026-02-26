@@ -62,18 +62,27 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         await trigger.click({ force: true });
     }
 
-    // Ant Design may keep hidden duplicate option nodes mounted (previous
-    // dropdowns, virtual lists, etc). Find and click the first *visible*
-    // matching option rather than relying on a specific dropdown container.
-    const classCandidates = page.locator(`.ant-select-item-option:visible`, { hasText: optionText });
-    const roleCandidates = page.getByRole("option", { name: optionText, exact: true });
+    // Prefer scoping to the *currently open* dropdown. Ant Design renders
+    // options in a portal and may keep multiple dropdown trees around.
+    const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    const classCandidates = dropdown.locator(`.ant-select-item-option`, { hasText: optionText });
+    const roleCandidates = dropdown.getByRole("option", { name: optionText, exact: true });
     const deadline = Date.now() + 10_000;
     let clicked = false;
 
     while (Date.now() < deadline && !clicked) {
         // Prefer AntD's visible option container (most reliable click target).
         if ((await classCandidates.count()) > 0) {
-            await classCandidates.first().click({ force: true });
+            const option = classCandidates.first();
+            try {
+                await option.scrollIntoViewIfNeeded();
+                await option.click({ force: true });
+            } catch {
+                // In some headless/CI layouts the portal dropdown can end up
+                // outside the viewport. Dispatching the DOM click avoids the
+                // viewport restriction while still triggering AntD handlers.
+                await option.dispatchEvent("click");
+            }
             clicked = true;
             break;
         }
@@ -83,7 +92,12 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         for (let i = 0; i < count; i++) {
             const candidate = roleCandidates.nth(i);
             if (await candidate.isVisible()) {
-                await candidate.click({ force: true });
+                try {
+                    await candidate.scrollIntoViewIfNeeded();
+                    await candidate.click({ force: true });
+                } catch {
+                    await candidate.dispatchEvent("click");
+                }
                 clicked = true;
                 break;
             }

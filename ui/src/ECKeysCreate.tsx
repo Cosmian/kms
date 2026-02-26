@@ -107,7 +107,7 @@ const ECKeyCreateForm: React.FC = () => {
                             help="Select the elliptic curve to use"
                             rules={[{ required: true, message: "Please select a curve" }]}
                         >
-                            <Select options={curveOptions} />
+                            <Select options={curveOptions} data-testid="ec-curve-select" />
                         </Form.Item>
 
                         <Form.Item
