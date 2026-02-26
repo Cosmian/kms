@@ -2,29 +2,43 @@
  * Covercrypt flow E2E tests.
  *
  * Covers:
- *   • Create a Covercrypt master key pair by supplying the specification as
- *     inline JSON text (avoids file-upload complexity in headless CI).
- *   • Create a Covercrypt user decryption key from the master private key ID.
+ *   • create master key pair (inline JSON spec)
+ *   • create user decryption key
+ *   • export master private key (json-ttlv download)
+ *   • revoke and destroy user key
+ *   • navigate: import, encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, selectOption, submitAndWaitForResponse } from "./helpers";
+import { gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
-/** Minimal two-axis specification JSON used by both tests. */
+/** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({
     "Security Level::<": ["Protected", "Confidential", "Top Secret::+"],
     // Keep values aligned with test_data/access_structure_specifications.json
     Department: ["RnD", "HR", "MKG", "FIN"],
 });
 
+/** Create a Covercrypt master key pair and return { masterPrivKeyId, masterPubKeyId }. */
+async function createMasterKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
+    await gotoAndWait(page, "/ui/cc/keys/create-master-key-pair");
+    await selectOption(page, "spec-type-select", "Enter JSON Specification");
+    const specTextarea = page.locator('[data-testid="spec-json-textarea"]');
+    await specTextarea.waitFor({ state: "visible" });
+    await specTextarea.fill(SPEC_JSON);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/Key pair has been created/i);
+    const masterPrivKeyId = text.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
+    const masterPubKeyId = text.match(/Public key Id:\s*([0-9a-f-]{36})/i)?.[1];
+    expect(masterPrivKeyId).toBeDefined();
+    expect(masterPubKeyId).toBeDefined();
+    return { masterPrivKeyId: masterPrivKeyId!, masterPubKeyId: masterPubKeyId! };
+}
+
 test.describe("Covercrypt", () => {
     test("create master key pair via inline JSON specification", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/keys/create-master-key-pair");
 
-        // Switch the spec-type select from "Upload JSON Specification File" to
-        // "Enter JSON Specification" so we can type the spec without a file upload.
         await selectOption(page, "spec-type-select", "Enter JSON Specification");
-
-        // Fill in the specification text area.
         const specTextarea = page.locator('[data-testid="spec-json-textarea"]');
         await specTextarea.waitFor({ state: "visible" });
         await specTextarea.fill(SPEC_JSON);
@@ -36,30 +50,63 @@ test.describe("Covercrypt", () => {
     });
 
     test("create master key pair then a user decryption key", async ({ page }) => {
-        // ── Step 1: Create master key pair ────────────────────────────────────
-        await gotoAndWait(page, "/ui/cc/keys/create-master-key-pair");
+        const { masterPrivKeyId } = await createMasterKeyPair(page);
 
-        await selectOption(page, "spec-type-select", "Enter JSON Specification");
-        const specTextarea = page.locator('[data-testid="spec-json-textarea"]');
-        await specTextarea.waitFor({ state: "visible" });
-        await specTextarea.fill(SPEC_JSON);
-
-        const masterText = await submitAndWaitForResponse(page);
-        expect(masterText).toMatch(/Key pair has been created/i);
-
-        const masterPrivKeyId = masterText.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
-        expect(masterPrivKeyId).not.toBeUndefined();
-
-        // ── Step 2: Create user decryption key ────────────────────────────────
+        // ── Create user decryption key ────────────────────────────────────────
         await gotoAndWait(page, "/ui/cc/keys/create-user-key");
-
-        // masterPrivateKeyId field (required, identified by Ant Design form id).
-        await page.fill("#masterPrivateKeyId", masterPrivKeyId!);
-
-        // Access-policy text area.
+        await page.fill("#masterPrivateKeyId", masterPrivKeyId);
         await page.fill("#accessPolicy", "Department::HR && Security Level::Confidential");
 
         const userText = await submitAndWaitForResponse(page);
         expect(userText).toMatch(/has been created/i);
+    });
+
+    test("export Covercrypt master private key", async ({ page }) => {
+        const { masterPrivKeyId } = await createMasterKeyPair(page);
+
+        await gotoAndWait(page, "/ui/cc/keys/export");
+        await page.fill('input[placeholder="Enter key ID"]', masterPrivKeyId);
+        const { text } = await submitAndWaitForDownload(page);
+        expect(text).toMatch(/File has been exported/i);
+    });
+
+    test("revoke and destroy Covercrypt user key", async ({ page }) => {
+        const { masterPrivKeyId } = await createMasterKeyPair(page);
+
+        // Create user key first ────────────────────────────────────────────────
+        await gotoAndWait(page, "/ui/cc/keys/create-user-key");
+        await page.fill("#masterPrivateKeyId", masterPrivKeyId);
+        await page.fill("#accessPolicy", "Department::HR && Security Level::Confidential");
+        const userText = await submitAndWaitForResponse(page);
+        const userKeyId = userText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
+        expect(userKeyId).toBeDefined();
+
+        // Revoke ──────────────────────────────────────────────────────────────
+        await gotoAndWait(page, "/ui/cc/keys/revoke");
+        await page.fill('input[placeholder="Enter key ID"]', userKeyId!);
+        await page.fill('textarea[placeholder="Enter the reason for key revocation"]', "E2E test");
+        const revokeText = await submitAndWaitForResponse(page);
+        expect(revokeText).toMatch(/revoked/i);
+
+        // Destroy ─────────────────────────────────────────────────────────────
+        await gotoAndWait(page, "/ui/cc/keys/destroy");
+        await page.fill('input[placeholder="Enter key ID"]', userKeyId!);
+        const destroyText = await submitAndWaitForResponse(page);
+        expect(destroyText).toMatch(/destroyed/i);
+    });
+
+    test("navigate to cc import page", async ({ page }) => {
+        await gotoAndWait(page, "/ui/cc/keys/import");
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+    });
+
+    test("navigate to cc encrypt page", async ({ page }) => {
+        await gotoAndWait(page, "/ui/cc/encrypt");
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+    });
+
+    test("navigate to cc decrypt page", async ({ page }) => {
+        await gotoAndWait(page, "/ui/cc/decrypt");
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
     });
 });
