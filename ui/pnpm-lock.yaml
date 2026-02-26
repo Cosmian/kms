@@ -5,10 +5,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  rollup: '>=4.59.0'
-  ajv: ^6.14.0
-
 importers:
 
   .:
