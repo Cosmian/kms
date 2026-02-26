@@ -1,9 +1,17 @@
 import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
+import type { TableColumnsType } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "./utils";
 import * as wasm from "./wasm/pkg";
+
+export interface LocateObjectRow {
+    object_id: string;
+    state?: string;
+    attributes?: { ObjectType?: string };
+    meta?: { key_format_type?: string; [key: string]: unknown };
+}
 
 interface LocateFormData {
     tags?: string[];
@@ -28,10 +36,8 @@ const LocateForm: React.FC = () => {
     const [keyFormatTypes, setKeyFormatTypes] = useState<AlgoOption[]>([]);
     const [objectTypes, setObjectTypes] = useState<AlgoOption[]>([]);
     const [objectStates, setObjectStates] = useState<AlgoOption[]>([]);
-    type LocatedRow = { object_id: string; state?: string; attributes?: { ObjectType?: string }; meta?: Record<string, unknown> };
+    type LocatedRow = LocateObjectRow;
     const [objects, setObjects] = useState<LocatedRow[] | undefined>(undefined);
-    const [currentPage, setCurrentPage] = useState<number>(1);
-    const [pageSize, setPageSize] = useState<number>(10);
     const normalizeState = (s?: string) => (s || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
     const stateEnumToName = (v: unknown): string | undefined => {
         if (v == null) return undefined;
@@ -218,7 +224,6 @@ const LocateForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
-        setCurrentPage(1);
         try {
             if (authMethod === "JWT" && !idToken) {
                 setRes("Authentication required: please log in to search.");
@@ -679,7 +684,7 @@ const LocateForm: React.FC = () => {
                                   state:
                                       (typeof meta["state"] === "string" ? (meta["state"] as string) : stateEnumToName(meta["state"])) ||
                                       row.state,
-                                  meta: { ...(row.meta || {}), key_format_type: meta["key_format_type"] },
+                                  meta: { ...(row.meta || {}), key_format_type: meta["key_format_type"] as string | undefined },
                               }
                             : row,
                     );
@@ -780,92 +785,81 @@ const LocateForm: React.FC = () => {
                         <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                             <div className="font-bold">{res}</div>
 
-                            {(() => {
-                                const data = objects || [];
-                                const start = (currentPage - 1) * pageSize;
-                                const end = start + pageSize;
-                                const pageData = data.slice(start, end);
-                                return (
-                                    <Table
-                                        dataSource={pageData}
-                                        rowKey="object_id"
-                                        pagination={{
-                                            current: currentPage,
-                                            pageSize,
-                                            total: data.length,
-                                            showSizeChanger: true,
-                                            pageSizeOptions: [10, 20, 50, 100],
-                                            onChange: (page: number, size?: number) => {
-                                                setCurrentPage(page);
-                                                if (size && size !== pageSize) {
-                                                    setPageSize(size);
-                                                    setCurrentPage(1);
-                                                }
-                                            },
-                                        }}
-                                        className="border rounded"
-                                        columns={[
-                                            {
-                                                title: "Object UID",
-                                                dataIndex: "object_id",
-                                                key: "object_id",
-                                            },
-                                            {
-                                                title: "Type",
-                                                key: "attributes.ObjectType",
-                                                render: (record: { attributes?: { ObjectType?: string } }) =>
-                                                    record.attributes?.ObjectType || "N/A",
-                                            },
-                                            {
-                                                title: "Key Format Type",
-                                                key: "key_format_type",
-                                                render: (record: { meta?: Record<string, unknown> }) =>
-                                                    (record.meta?.["key_format_type"] as string | undefined) || "N/A",
-                                            },
-                                            {
-                                                title: "State",
-                                                dataIndex: "state",
-                                                key: "state",
-                                                render: (state?: string) => (
-                                                    <Space size={4}>
-                                                        <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
-                                                    </Space>
-                                                ),
-                                            },
-                                            {
-                                                title: "Actions",
-                                                key: "actions",
-                                                render: (row: { object_id: string }) => (
-                                                    <Space size="small">
-                                                        <Button
-                                                            size="small"
-                                                            onClick={() => handleRevoke(row.object_id)}
-                                                            loading={actionLoadingId === row.object_id}
-                                                        >
-                                                            Revoke
-                                                        </Button>
-                                                        <Button
-                                                            danger
-                                                            size="small"
-                                                            onClick={() => handleDestroy(row.object_id)}
-                                                            loading={actionLoadingId === row.object_id}
-                                                        >
-                                                            Destroy
-                                                        </Button>
-                                                        <Button
-                                                            size="small"
-                                                            onClick={() => handleShowDetails(row.object_id)}
-                                                            loading={actionLoadingId === row.object_id}
-                                                        >
-                                                            Details
-                                                        </Button>
-                                                    </Space>
-                                                ),
-                                            },
-                                        ]}
-                                    />
-                                );
-                            })()}
+                            <Table<LocateObjectRow>
+                                dataSource={objects || []}
+                                rowKey="object_id"
+                                pagination={{
+                                    pageSize: 10,
+                                    showSizeChanger: true,
+                                    pageSizeOptions: [10, 20, 50, 100],
+                                }}
+                                className="border rounded"
+                                columns={
+                                    [
+                                        {
+                                            title: "Object UID",
+                                            dataIndex: "object_id",
+                                            key: "object_id",
+                                        },
+                                        {
+                                            title: "Type",
+                                            key: "attributes.ObjectType",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.attributes?.ObjectType ?? "").localeCompare(b.attributes?.ObjectType ?? ""),
+                                            render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
+                                        },
+                                        {
+                                            title: "Key Format Type",
+                                            key: "key_format_type",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
+                                            render: (record: LocateObjectRow) => record.meta?.key_format_type || "N/A",
+                                        },
+                                        {
+                                            title: "State",
+                                            dataIndex: "state",
+                                            key: "state",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.state ?? "").localeCompare(b.state ?? ""),
+                                            render: (state?: string) => (
+                                                <Space size={4}>
+                                                    <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
+                                                </Space>
+                                            ),
+                                        },
+                                        {
+                                            title: "Actions",
+                                            key: "actions",
+                                            render: (row: LocateObjectRow) => (
+                                                <Space size="small">
+                                                    <Button
+                                                        size="small"
+                                                        onClick={() => handleRevoke(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Revoke
+                                                    </Button>
+                                                    <Button
+                                                        danger
+                                                        size="small"
+                                                        onClick={() => handleDestroy(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Destroy
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        onClick={() => handleShowDetails(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Details
+                                                    </Button>
+                                                </Space>
+                                            ),
+                                        },
+                                    ] as TableColumnsType<LocateObjectRow>
+                                }
+                            />
                         </Space>
                     </Card>
                 </div>

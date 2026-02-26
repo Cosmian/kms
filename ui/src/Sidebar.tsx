@@ -30,15 +30,15 @@ const Sidebar: React.FC = () => {
                 const newItem = { ...item };
 
                 // Check if item is a Create item
-                const isCreateItem = item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
+                // const isCreateItem = item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
 
-                // Check if item is an Import item
-                const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
+                // // Check if item is an Import item
+                // const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
 
-                // Handle disabled state based on access rights
-                if (isCreateItem || isImportItem) {
-                    newItem.disabled = !hasCreateAccess;
-                }
+                // // Handle disabled state based on access rights
+                // if (isCreateItem || isImportItem) {
+                //     newItem.disabled = !hasCreateAccess;
+                // }
 
                 // Process children recursively if they exist
                 if (newItem.children) {
