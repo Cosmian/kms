@@ -8,9 +8,9 @@ built as a static web application and served by the KMS server.
 ## Prerequisites
 
 | Component | Required Version |
-|-----------|-----------------|
-| Node.js   | 22.x            |
-| pnpm      | 9.x             |
+| --------- | ---------------- |
+| Node.js   | 22.x             |
+| pnpm      | 9.x              |
 
 > These versions are pinned by the Nix derivation (`nodejs_22` + `pnpm_9`).
 
@@ -121,33 +121,33 @@ bash .github/scripts/nix.sh --variant non-fips test ui
 
 1. Build the WASM package and the UI:
 
-   ```bash
-   cd crate/wasm
-   wasm-pack build --target web --release --features non-fips
-   cd ../../ui
-   VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build
-   ```
+    ```bash
+    cd crate/wasm
+    wasm-pack build --target web --release --features non-fips
+    cd ../../ui
+    VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build
+    ```
 
 2. Start the KMS server (separate terminal):
 
-   ```bash
-   cargo run --features non-fips --bin cosmian_kms -- \
-       --database-type sqlite --sqlite-path /tmp/kms-e2e
-   ```
+    ```bash
+    cargo run --features non-fips --bin cosmian_kms -- \
+        --database-type sqlite --sqlite-path /tmp/kms-e2e
+    ```
 
 3. Start the Vite preview server (separate terminal):
 
-   ```bash
-   cd ui
-   node_modules/.bin/vite preview --port 5173 --host 127.0.0.1
-   ```
+    ```bash
+    cd ui
+    node_modules/.bin/vite preview --port 5173 --host 127.0.0.1
+    ```
 
 4. Run Playwright:
 
-   ```bash
-   cd ui
-   pnpm run test:e2e
-   ```
+    ```bash
+    cd ui
+    pnpm run test:e2e
+    ```
 
 Playwright captures screenshots and traces on failure inside `ui/test-results/`.
 

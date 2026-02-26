@@ -99,8 +99,8 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                     values.keyFormat === "json-ttlv"
                         ? "application/json"
                         : values.keyFormat === "base64"
-                        ? "text/plain"
-                        : "application/octet-stream";
+                          ? "text/plain"
+                          : "application/octet-stream";
                 downloadFile(data, filename, mimeType);
                 setRes("File has been exported");
             }
@@ -152,7 +152,8 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
             <div className="mb-8 space-y-2">
                 <p>
-                    Export {displayName} from the KMS. The {isDataLike ? "object" : "object"} can be identified using either its ID or associated tags.
+                    Export {displayName} from the KMS. The {isDataLike ? "object" : "object"} can be identified using either its ID or
+                    associated tags.
                 </p>
                 {!isDataLike && (
                     <>
@@ -223,7 +224,13 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Export {isDataLike ? "Object" : "Key"}
                         </Button>
                     </Form.Item>

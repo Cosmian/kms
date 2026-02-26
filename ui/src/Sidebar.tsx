@@ -100,7 +100,9 @@ const Sidebar: React.FC = () => {
                 .findIndex((key: string) => levelKeys[key] === levelKeys[currentOpenKey]);
 
             setStateOpenKeys(
-                openKeys.filter((_, index: number) => index !== repeatIndex).filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
+                openKeys
+                    .filter((_, index: number) => index !== repeatIndex)
+                    .filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey]),
             );
         } else {
             // close

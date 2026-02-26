@@ -83,7 +83,7 @@ const CertificateCertifyForm: React.FC = () => {
                 values.issuerCertificateId,
                 values.numberOfDays,
                 values.certificateExtensions,
-                values.tags
+                values.tags,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
@@ -302,7 +302,13 @@ const CertificateCertifyForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Issue/Renew Certificate
                         </Button>
                     </Form.Item>

@@ -45,7 +45,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 values.inputFile,
                 values.nonce,
                 values.authenticationData,
-                values.dataEncryptionAlgorithm
+                values.dataEncryptionAlgorithm,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
@@ -166,7 +166,13 @@ const SymmetricEncryptForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Encrypt File (Server-side)
                         </Button>
                     </Form.Item>

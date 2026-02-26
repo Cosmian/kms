@@ -6,7 +6,9 @@ import { getNoTTLVRequest, postNoTTLVRequest } from "./utils";
 interface AccessRevokeFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<"create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy">;
+    operation_types: Array<
+        "create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy"
+    >;
     revoke_create_access_right: boolean;
 }
 
@@ -137,7 +139,14 @@ const AccessRevokeForm: React.FC = () => {
                         )}
                     </Card>
                     <Form.Item>
-                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            danger
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Revoke Access
                         </Button>
                     </Form.Item>

@@ -3,10 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { FormUploadDragger } from "./FormUpload";
 import { sendKmipRequest } from "./utils";
-import {
-    parse_signature_verify_ttlv_response,
-    signature_verify_ttlv_request,
-} from "./wasm/pkg/cosmian_kms_client_wasm";
+import { parse_signature_verify_ttlv_response, signature_verify_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
 
 interface RsaVerifyFormData {
     dataFile: Uint8Array;
@@ -48,14 +45,14 @@ const RsaVerifyForm: React.FC = () => {
             if (sigBuf && sigBuf.byteLength > 0) {
                 try {
                     const text = new TextDecoder().decode(sigBuf).trim();
-                    const base64Candidates = Array.from(text.matchAll(/[A-Za-z0-9+/=]{16,}/g)).map(m => m[0]);
+                    const base64Candidates = Array.from(text.matchAll(/[A-Za-z0-9+/=]{16,}/g)).map((m) => m[0]);
                     let candidate = text;
                     if (base64Candidates.length > 0) {
                         candidate = base64Candidates.sort((a, b) => b.length - a.length)[0];
                     }
                     let decoded: Uint8Array | undefined;
                     try {
-                        decoded = Uint8Array.from(atob(candidate), c => c.charCodeAt(0));
+                        decoded = Uint8Array.from(atob(candidate), (c) => c.charCodeAt(0));
                     } catch {
                         decoded = undefined;
                     }
@@ -81,13 +78,7 @@ const RsaVerifyForm: React.FC = () => {
                 setRes("Error: signature file is empty or unreadable. Please re-upload the signature.");
                 throw Error("Empty signature file");
             }
-            const request = await signature_verify_ttlv_request(
-                id,
-                dataBuf!,
-                sigBuf,
-                undefined,
-                values.digested,
-            );
+            const request = await signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, values.digested);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_signature_verify_ttlv_response(result_str);
@@ -113,19 +104,14 @@ const RsaVerifyForm: React.FC = () => {
                 <p>The key can be identified using either its ID or associated tags.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-                initialValues={{ digested: false }}
-            >
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ digested: false }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Data File</h3>
                         <Form.Item name="dataFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="dataFile" rules={[{ required: true, message: "Please select the data file" }] }>
+                        <Form.Item name="dataFile" rules={[{ required: true, message: "Please select the data file" }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("dataFileName", file.name);
@@ -152,7 +138,7 @@ const RsaVerifyForm: React.FC = () => {
                         <Form.Item name="signatureFileName" style={{ display: "none" }}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="signatureFile" rules={[{ required: true, message: "Please select the signature file" }] }>
+                        <Form.Item name="signatureFile" rules={[{ required: true, message: "Please select the signature file" }]}>
                             <FormUploadDragger
                                 beforeUpload={(file) => {
                                     form.setFieldValue("signatureFileName", file.name);
@@ -189,7 +175,13 @@ const RsaVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Verify Signature
                         </Button>
                     </Form.Item>

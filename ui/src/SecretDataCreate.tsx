@@ -52,7 +52,7 @@ const SecretDataCreateForm: React.FC = () => {
                 values.secretId,
                 values.tags,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
@@ -139,7 +139,13 @@ const SecretDataCreateForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Create Secret Data
                         </Button>
                     </Form.Item>

@@ -6,7 +6,9 @@ import { getNoTTLVRequest, postNoTTLVRequest } from "./utils";
 interface AccessGrantFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<"create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy">;
+    operation_types: Array<
+        "create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy"
+    >;
     grant_create_access_right: boolean;
 }
 
@@ -140,7 +142,13 @@ const AccessGrantForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Grant Access
                         </Button>
                     </Form.Item>
