@@ -50,10 +50,7 @@ test.describe("Secret data", () => {
         await page.setInputFiles('input[type="file"]', downloadPath!);
         await page.locator("#keyFormat").scrollIntoViewIfNeeded();
         await page.locator("#keyFormat").click({ force: true });
-        await page
-            .locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" })
-            .first()
-            .click({ force: true });
+        await page.locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" }).first().click({ force: true });
         const importText = await submitAndWaitForResponse(page);
         expect(importText).toMatch(/imported/i);
     });

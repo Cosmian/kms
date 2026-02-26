@@ -25,21 +25,16 @@ async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<st
  * Pick an option from an AntD Select that has no data-testid.
  * Identifies the select by its AntD Form id (derived from the Form.Item name).
  */
-async function selectAntDById(
-    page: Parameters<typeof gotoAndWait>[0],
-    formItemId: string,
-    optionText: string,
-): Promise<void> {
+async function selectAntDById(page: Parameters<typeof gotoAndWait>[0], formItemId: string, optionText: string): Promise<void> {
     await page.locator(`#${formItemId}`).click({ force: true });
     // Wait for dropdown to open
     await page.locator(".ant-select-dropdown:visible").waitFor({ timeout: 10_000 });
     // Scroll the dropdown list to bottom so virtual-list renders all items
     const dropdown = page.locator(".ant-select-dropdown:visible .rc-virtual-list-holder").first();
-    await dropdown.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    await page
-        .locator(".ant-select-item-option:visible", { hasText: optionText })
-        .first()
-        .click({ force: true });
+    await dropdown.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+    });
+    await page.locator(".ant-select-item-option:visible", { hasText: optionText }).first().click({ force: true });
 }
 
 test.describe("Object attributes", () => {

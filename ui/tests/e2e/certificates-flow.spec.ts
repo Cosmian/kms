@@ -18,14 +18,14 @@ import { expect, test } from "@playwright/test";
 import { gotoAndWait } from "./helpers";
 
 const CERT_PAGES = [
-    { name: "certify",   path: "/ui/certificates/certs/certify" },
-    { name: "export",    path: "/ui/certificates/certs/export" },
-    { name: "import",    path: "/ui/certificates/certs/import" },
-    { name: "revoke",    path: "/ui/certificates/certs/revoke" },
-    { name: "destroy",   path: "/ui/certificates/certs/destroy" },
-    { name: "validate",  path: "/ui/certificates/certs/validate" },
-    { name: "encrypt",   path: "/ui/certificates/encrypt" },
-    { name: "decrypt",   path: "/ui/certificates/decrypt" },
+    { name: "certify", path: "/ui/certificates/certs/certify" },
+    { name: "export", path: "/ui/certificates/certs/export" },
+    { name: "import", path: "/ui/certificates/certs/import" },
+    { name: "revoke", path: "/ui/certificates/certs/revoke" },
+    { name: "destroy", path: "/ui/certificates/certs/destroy" },
+    { name: "validate", path: "/ui/certificates/certs/validate" },
+    { name: "encrypt", path: "/ui/certificates/encrypt" },
+    { name: "decrypt", path: "/ui/certificates/decrypt" },
 ];
 
 test.describe("Certificates", () => {

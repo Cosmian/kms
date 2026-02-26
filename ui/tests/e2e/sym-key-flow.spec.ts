@@ -55,10 +55,7 @@ test.describe("Symmetric key", () => {
         await gotoAndWait(page, "/ui/sym/keys/import");
         await page.setInputFiles('input[type="file"]', downloadPath!);
         await page.locator("#keyFormat").click({ force: true });
-        await page
-            .locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" })
-            .first()
-            .click({ force: true });
+        await page.locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" }).first().click({ force: true });
         const importText = await submitAndWaitForResponse(page);
         expect(importText).toMatch(/imported/i);
     });
