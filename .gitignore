@@ -26,7 +26,8 @@ resources/tarballs/openssl-3.1.2.tar.gz
 .utimaco
 .softhsm2
 *.xz*
-result*
+result
+result-*
 crate/server/Cargo.toml.bak
 crate/server/ui*
 ui_non_fips/

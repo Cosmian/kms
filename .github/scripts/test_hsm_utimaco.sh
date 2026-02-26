@@ -74,7 +74,6 @@ env -u LD_PRELOAD \
   cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  ${RELEASE_FLAG:+$RELEASE_FLAG} \
   tests::hsm::test_hsm_all \
   -- --ignored
 
@@ -90,7 +89,6 @@ env -u LD_PRELOAD \
   CS_PKCS11_R3_CFG="$CS_PKCS11_R3_CFG" \
   cargo test \
   -p utimaco_pkcs11_loader \
-  ${RELEASE_FLAG:+$RELEASE_FLAG} \
   --features utimaco \
   tests::test_hsm_utimaco_all \
   -- --ignored
@@ -109,7 +107,6 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
     TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
     cargo test -p cosmian_kms_cli \
-    ${RELEASE_FLAG:+$RELEASE_FLAG} \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- --nocapture kmip_2_1_xml_pkcs11_m_1_21 --ignored
 
@@ -125,7 +122,6 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
     TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
     cargo test -p cosmian_kms_cli \
-    ${RELEASE_FLAG:+$RELEASE_FLAG} \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- --nocapture hsm_google_cse --ignored
 else

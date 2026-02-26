@@ -3,10 +3,10 @@
 # Usage:
 #   package_common.sh --format deb|rpm [--variant fips|non-fips]
 # Notes:
-# - Builds the prebuilt server via Nix (offline), enforces deterministic hash natively in derivation,
+# - Builds the prebuilt server and CLI via Nix (offline), enforces deterministic hash natively in derivation,
 #   substitutes OpenSSL source paths into Cargo.toml, then invokes cargo-deb or cargo-generate-rpm.
 # - Destination paths are hardcoded to /usr/local/cosmian/lib in Cargo.toml
-# - Reuses existing result-server-<variant> symlink if present to avoid rebuilds.
+# - Reuses existing result-server-<variant> and result-cli-<variant> symlinks if present to avoid rebuilds.
 
 set -euo pipefail
 
@@ -73,40 +73,37 @@ esac
 
 # Ensure expected-hash files exist for this platform/variant/link before building
 ensure_expected_hashes() {
-  local sys arch os impl
-  # Derive current system triple (best-effort)
-  if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else
-    case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) sys="x86_64-linux" ;;
-    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
-    Darwin-x86_64) sys="x86_64-darwin" ;;
-    Darwin-arm64) sys="aarch64-darwin" ;;
-    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
-    esac
-  fi
-  arch="${sys%%-*}"
-  os="${sys#*-}"
-  impl=$([ "$LINK" = "dynamic" ] && echo dynamic-openssl || echo static-openssl)
-
   local hashes_dir="$REPO_ROOT/nix/expected-hashes"
   mkdir -p "$hashes_dir"
 
-  local missing=0
-  # Server vendor cargo hash file
-  local server_vendor_file="$hashes_dir/server.vendor.${VARIANT}.${impl}.${arch}.${os}.sha256"
+  local link_suffix os missing=0
+  link_suffix=$([ "$LINK" = "dynamic" ] && echo dynamic || echo static)
+  case "$(uname -s)" in
+  Linux) os="linux" ;;
+  Darwin) os="darwin" ;;
+  *) os="$(uname -s | tr '[:upper:]' '[:lower:]')" ;;
+  esac
+
+  # Server vendor cargo hash (per linkage; same on Linux and macOS)
+  local server_vendor_file="$hashes_dir/server.vendor.${link_suffix}.sha256"
   [ -s "$server_vendor_file" ] || missing=1
-  # UI vendor cargo hash file
-  local ui_vendor_file="$hashes_dir/ui.vendor.${VARIANT}.${arch}.${os}.sha256"
+  # CLI vendor cargo hash: Linux fips==non-fips → shared file; macOS fips≠non-fips → variant-specific
+  local cli_vendor_file
+  if [ "$os" = "linux" ]; then
+    cli_vendor_file="$hashes_dir/cli.vendor.linux.sha256"
+  else
+    cli_vendor_file="$hashes_dir/cli.vendor.${VARIANT}.${os}.sha256"
+  fi
+  [ -s "$cli_vendor_file" ] || missing=1
+  # UI vendor cargo hash file (nix/ui.nix reads ui.vendor.<variant>.sha256; also used for WASM)
+  local ui_vendor_file="$hashes_dir/ui.vendor.${VARIANT}.sha256"
   [ -s "$ui_vendor_file" ] || missing=1
-  # UI npm deps hash file
-  local ui_npm_file="$hashes_dir/ui.npm.${VARIANT}.${arch}.${os}.sha256"
+  # UI npm deps hash file (nix/ui.nix reads ui.npm.sha256)
+  local ui_npm_file="$hashes_dir/ui.npm.sha256"
   [ -s "$ui_npm_file" ] || missing=1
-  # UI WASM vendor cargo hash file (kept in sync with UI vendor)
-  local ui_wasm_vendor_file="$hashes_dir/ui.wasm.vendor.${VARIANT}.${arch}.${os}.sha256"
-  [ -s "$ui_wasm_vendor_file" ] || missing=1
 
   if [ $missing -eq 1 ]; then
-    echo "WARNING: One or more expected hash files are missing for variant $VARIANT, link $LINK, system $sys." >&2
+    echo "WARNING: One or more expected hash files are missing for variant $VARIANT, link $LINK." >&2
   fi
 }
 
@@ -158,7 +155,11 @@ prewarm_store() {
   local server_link="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
   if [ -L "$server_link" ] && [ -x "$(readlink -f "$server_link")/bin/cosmian_kms" ]; then need_server=0; fi
 
-  if [ $need_openssl -eq 0 ] && [ $need_server -eq 0 ]; then
+  local need_cli=1
+  local cli_link="$REPO_ROOT/result-cli-${VARIANT}-${LINK}"
+  if [ -L "$cli_link" ] && [ -x "$(readlink -f "$cli_link")/bin/ckms" ]; then need_cli=0; fi
+
+  if [ $need_openssl -eq 0 ] && [ $need_server -eq 0 ] && [ $need_cli -eq 0 ]; then
     echo "Prewarm skipped (artifacts already present)"
     return
   fi
@@ -173,6 +174,14 @@ prewarm_store() {
     server_attr="kms-server-${VARIANT}-static-openssl"
   fi
   [ $need_server -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" -A "$server_attr" --no-out-link >/dev/null || echo "Server derivation already present"
+
+  local cli_attr
+  if [ "$LINK" = "dynamic" ]; then
+    cli_attr="kms-cli-${VARIANT}-dynamic-openssl"
+  else
+    cli_attr="kms-cli-${VARIANT}-static-openssl"
+  fi
+  [ $need_cli -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" -A "$cli_attr" --no-out-link >/dev/null || echo "CLI derivation already present"
 }
 
 # 0.2) Pre-warm Cargo registry/cache so cargo-deb/cargo generate-rpm can operate offline
@@ -202,7 +211,7 @@ build_or_reuse_server() {
 
   OUT_LINK="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
 
-  # Always run nix-build to validate changes to expected hashes (e.g., server.vendor.*)
+  # Always run nix-build to validate changes to expected hashes (e.g., server.vendor.*.sha256, cli.vendor.*.sha256)
   nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" "$REPO_ROOT/default.nix" -A "$attr" -o "$OUT_LINK"
   REAL_SERVER=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
 
@@ -256,6 +265,37 @@ sync_server_expected_hash_file() {
 
   echo "ERROR: Cannot produce expected-hash file (missing $src and $BIN_OUT)" >&2
   return 1
+}
+
+build_or_reuse_cli() {
+  local attr
+  if [ "$LINK" = "dynamic" ]; then
+    attr="kms-cli-${VARIANT}-dynamic-openssl"
+  else
+    attr="kms-cli-${VARIANT}-static-openssl"
+  fi
+
+  CLI_OUT_LINK="$REPO_ROOT/result-cli-${VARIANT}-${LINK}"
+  if [ -L "$CLI_OUT_LINK" ] && [ -x "$(readlink -f "$CLI_OUT_LINK")/bin/ckms" ]; then
+    REAL_CLI=$(readlink -f "$CLI_OUT_LINK" || echo "$CLI_OUT_LINK")
+  else
+    nix-build -I "nixpkgs=${PIN_URL}" "${NIX_ENFORCE_ARGS[@]}" --option substituters "" "$REPO_ROOT/default.nix" -A "$attr" -o "$CLI_OUT_LINK"
+    REAL_CLI=$(readlink -f "$CLI_OUT_LINK" || echo "$CLI_OUT_LINK")
+  fi
+
+  CLI_BIN_OUT="$REAL_CLI/bin/ckms"
+  [ -x "$CLI_BIN_OUT" ] || {
+    echo "ERROR: CLI binary not found: $CLI_BIN_OUT" >&2
+    exit 1
+  }
+
+  CLI_PKCS11_SO_OUT="$REAL_CLI/lib/libcosmian_pkcs11.so"
+  if [ -f "$CLI_PKCS11_SO_OUT" ]; then
+    echo "Reusing/built CLI OK: ckms binary and libcosmian_pkcs11.so present"
+  else
+    echo "Reusing/built CLI OK: ckms binary present (libcosmian_pkcs11.so not found, may be expected)"
+    CLI_PKCS11_SO_OUT=""
+  fi
 }
 
 # Build (or reuse) the Web UI once per variant, independent from server builds.
@@ -807,6 +847,18 @@ prepare_workspace() {
   cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
   cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
+  mkdir -p "crate/clients/ckms/target/$HOST_TRIPLE/release" "crate/clients/ckms/target/release" "target/$HOST_TRIPLE/release" "target/release"
+  cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/$HOST_TRIPLE/release/ckms"
+  cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/release/ckms"
+  cp -f -v "$CLI_BIN_OUT" "target/$HOST_TRIPLE/release/ckms"
+  cp -f -v "$CLI_BIN_OUT" "target/release/ckms"
+
+  if [ -n "${CLI_PKCS11_SO_OUT:-}" ] && [ -f "$CLI_PKCS11_SO_OUT" ]; then
+    cp -f -v "$CLI_PKCS11_SO_OUT" "target/release/libcosmian_pkcs11.so"
+    cp -f -v "$CLI_PKCS11_SO_OUT" "target/$HOST_TRIPLE/release/libcosmian_pkcs11.so"
+    echo "Placed libcosmian_pkcs11.so in workspace target directories"
+  fi
+
   # For dynamic builds, patch the RPATH/RUNPATH to include a portable path
   # Use $ORIGIN so the binary can locate libs both when installed
   # at /usr/local/cosmian/lib and when extracted in smoke tests.
@@ -904,6 +956,10 @@ build_deb() {
   else
     cargo deb --no-build
   fi
+  popd >/dev/null
+
+  pushd crate/clients/ckms >/dev/null
+  cargo deb --no-build
   popd >/dev/null
 }
 
@@ -1034,6 +1090,40 @@ collect_deb() {
     fi
   done
 
+  local cli_found=0
+  for p in \
+    "$REPO_ROOT/crate/clients/ckms/target/debian" \
+    "$REPO_ROOT/crate/clients/ckms/target/$HOST_TRIPLE/debian" \
+    "$REPO_ROOT/target/debian" \
+    "$REPO_ROOT/target/$HOST_TRIPLE/debian"; do
+    if [ -d "$p" ]; then
+      find "$p" -maxdepth 1 -type f -name 'ckms*.deb' -print -exec cp -f -v {} "$result_dir/" \;
+      cli_found=1
+    fi
+  done
+  if [ "$cli_found" -eq 0 ]; then
+    echo "Error: No CLI .deb produced by cargo-deb" >&2
+    exit 1
+  fi
+
+  for f in "$result_dir"/ckms*.deb; do
+    [ -e "$f" ] || continue
+    local b
+    b=$(basename "$f")
+    if ! echo "$b" | grep -Eq "_(all|${DEB_ARCH})\\.deb$"; then
+      mv -v "$result_dir/$b" "$result_dir/${b%.deb}_${DEB_ARCH}.deb"
+      b="${b%.deb}_${DEB_ARCH}.deb"
+    fi
+
+    local link_n
+    if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
+    local new_name
+    new_name="cosmian-kms-cli-${VARIANT}-${link_n}_${VERSION_STR}_${DEB_ARCH}.deb"
+    if [ "$b" != "$new_name" ]; then
+      mv -v "$result_dir/$b" "$result_dir/$new_name"
+    fi
+  done
+
   # Sign all .deb packages
   # Only attempt signing when running inside GitHub Actions where signing
   # credentials are expected to be provided. Avoid failing on developer
@@ -1105,6 +1195,8 @@ build_rpm() {
   else
     cargo generate-rpm --target "$HOST_TRIPLE" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   fi
+
+  cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms
 }
 
 collect_rpm() {
@@ -1152,6 +1244,40 @@ collect_rpm() {
     fi
   done
 
+  local cli_found=0
+  for p in \
+    "$REPO_ROOT/crate/clients/ckms/target/$HOST_TRIPLE/generate-rpm" \
+    "$REPO_ROOT/crate/clients/ckms/target/generate-rpm" \
+    "$REPO_ROOT/target/$HOST_TRIPLE/generate-rpm" \
+    "$REPO_ROOT/target/generate-rpm"; do
+    if [ -d "$p" ]; then
+      find "$p" -maxdepth 1 -type f -name 'ckms*.rpm' -print -exec cp -f -v {} "$result_dir/" \;
+      cli_found=1
+    fi
+  done
+  if [ "$cli_found" -eq 0 ]; then
+    echo "Error: No CLI .rpm produced by cargo-generate-rpm" >&2
+    exit 1
+  fi
+
+  for f in "$result_dir"/ckms*.rpm; do
+    [ -e "$f" ] || continue
+    local b
+    b=$(basename "$f")
+    if ! echo "$b" | grep -Eq "\\.(noarch|${RPM_ARCH})\\.rpm$"; then
+      mv -v "$result_dir/$b" "$result_dir/${b%.rpm}.${RPM_ARCH}.rpm"
+      b="${b%.rpm}.${RPM_ARCH}.rpm"
+    fi
+
+    local link_n
+    if [ "$LINK" = "static" ]; then link_n="static-openssl"; else link_n="dynamic-openssl"; fi
+    local new_name
+    new_name="cosmian-kms-cli-${VARIANT}-${link_n}_${VERSION_STR}_${RPM_ARCH}.rpm"
+    if [ "$b" != "$new_name" ]; then
+      mv -v "$result_dir/$b" "$result_dir/$new_name"
+    fi
+  done
+
   # Sign all .rpm packages
   # Only attempt signing when running inside GitHub Actions where signing
   # credentials are expected to be provided. Avoid failing on developer
@@ -1178,6 +1304,7 @@ prewarm_store
 ensure_expected_hashes
 build_or_reuse_ui
 build_or_reuse_server
+build_or_reuse_cli
 sync_server_expected_hash_file
 enforce_binary_hash
 resolve_openssl_path

@@ -1,20 +1,6 @@
 # Utimaco HSM
 
-<!-- TOC -->
-* [Utimaco HSM](#utimaco-hsm)
-    * [Installing the simulator](#installing-the-simulator)
-        * [ARM](#arm)
-        * [AMD64](#amd64)
-    * [Download and run the simulator](#download-and-run-the-simulator)
-    * [Configure the PKCS#11 connection on the KMS server](#configure-the-pkcs11-connection-on-the-kms-server)
-        * [PKCS#11 library](#pkcs11-library)
-        * [Configuration file](#configuration-file)
-        * [Test the PKCS#11 configuration](#test-the-pkcs11-configuration)
-    * [When a bridged network is not possible](#when-a-bridged-network-is-not-possible)
-    * [Initializing a slot and creating the users on the simulator](#initializing-a-slot-and-creating-the-users-on-the-simulator)
-        * [Using the p11tool2](#using-the-p11tool2)
-        * [Using the CAT tool](#using-the-cat-tool)
-<!-- TOC -->
+[TOC]
 
 ## Installing the simulator
 

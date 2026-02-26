@@ -6,9 +6,7 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     config::COSMIAN_CLI_CONF_ENV,
     error::CosmianError,
-    tests::{
-        kms::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs},
-    },
+    tests::kms::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs},
 };
 
 #[derive(Deserialize)]
@@ -53,10 +51,7 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
         .collect();
     let mut cmd = Command::new("cosmian");
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND)
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
@@ -80,10 +75,7 @@ fn get_keypairs(
         .collect();
     let mut cmd = Command::new("cosmian");
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND)
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
@@ -107,10 +99,7 @@ fn disable_keypairs(
         .collect();
     let mut cmd = Command::new("cosmian");
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND)
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(());
@@ -132,10 +121,7 @@ fn enable_keypairs(
         .collect();
     let mut cmd = Command::new("cosmian");
     cmd.env(COSMIAN_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(KMS_SUBCOMMAND)
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(());

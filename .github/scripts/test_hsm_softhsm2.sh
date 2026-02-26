@@ -61,7 +61,6 @@ env \
   cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
 echo "SoftHSM2 KMS server tests completed successfully."
@@ -75,7 +74,6 @@ env \
   HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
   cargo test \
   -p softhsm2_pkcs11_loader \
-  ${RELEASE_FLAG:+$RELEASE_FLAG} \
   --features softhsm2 \
   -- tests::test_hsm_softhsm2_all --ignored
 

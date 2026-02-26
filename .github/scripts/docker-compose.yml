@@ -11,6 +11,13 @@ services:
       - target: 9998
         published: 9998
         protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
   tls-authentication:
     image: ${DOCKER_IMAGE_NAME}
@@ -26,6 +33,12 @@ services:
       - target: 5696
         published: 5696
         protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 9999]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
   tls13-authentication:
     image: ${DOCKER_IMAGE_NAME}
@@ -41,6 +54,12 @@ services:
       - target: 5697
         published: 5697
         protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 10000]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
   # === Config-file based smoke test ===
   kms-with-conf:
@@ -53,6 +72,13 @@ services:
       - target: 9998
         published: 11098
         protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
   # === Minimal example smoke test ===
   kms-example:
@@ -66,6 +92,13 @@ services:
         published: 12098
         protocol: tcp
     restart: no
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
 
   # === Load balancer stack ===
   postgres:
@@ -144,10 +177,39 @@ services:
       - kms3
     ports:
       - target: 8080
-        published: 8080
+        published: 18080
         protocol: tcp
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+  # === Oracle TDE HSM stack ===
+  # Start with: docker compose --profile oracle up -d --wait
+  oracle:
+    container_name: oracle
+    image: container-registry.oracle.com/database/free:23.9.0.0-lite
+    profiles: [oracle]
+    ports:
+      - 1521:1521
+    environment:
+      ORACLE_PWD: 1234
+      ENABLE_ARCHIVELOG: true
+      ENABLE_FORCE_LOGGING: true
+      COSMIAN_PKCS11_LOGGING_LEVEL: trace
+
+  kms-oracle:
+    container_name: kms-oracle
+    image: ${DOCKER_IMAGE_NAME}
+    profiles: [oracle]
+    ports:
+      - 19998:9998
+    networks:
+      default:
+        aliases:
+          - kms
+    environment:
+      RUST_LOG: cosmian_kms_server=trace
+    volumes:
+      - ./oracle/cosmian-kms:/cosmian-kms
 
 volumes:
   postgres-data:

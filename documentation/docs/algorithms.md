@@ -5,7 +5,7 @@ This page lists the supported algorithms, their details and their reference in v
 FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [Cosmian CLI](../cosmian_cli/index.md)
+unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [KMS CLI](ckms/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
@@ -208,8 +208,8 @@ The hybridized combinations pair one classical and one post-quantum KEM:
 The hybrid approach ensures that security is maintained even if one of the two underlying KEMs
 is broken: the combined shared secret remains secure as long as at least one component KEM is secure.
 
-Key generation, encapsulation and decapsulation are exposed via the Cosmian CLI under
-`cosmian kms kem` (non-FIPS builds only).
+Key generation, encapsulation and decapsulation are exposed via the KMS CLI under
+`ckms kem` (non-FIPS builds only).
 
 ## Signature schemes
 

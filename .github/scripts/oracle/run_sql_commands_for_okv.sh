@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -e
+
+#
+# Setup Oracle TDE for HSM
+#
+run_sql() {
+  SQL="$1"
+  SQL2="$2"
+  SQL3="$3"
+  echo "Running SQL: $SQL"
+  cat <<EOF >config.sql
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+WHENEVER OSERROR EXIT FAILURE;
+$SQL
+$SQL2
+$SQL3
+exit
+EOF
+  cat config.sql
+  docker cp config.sql oracle:/tmp/config.sql
+  docker exec -u oracle -i oracle bash -c "sqlplus / as sysdba @/tmp/config.sql"
+  rm config.sql
+  sleep 3
+}
+
+display_wallet() {
+  # run_sql "show parameter WALLET_ROOT;" "show parameter TDE_CONFIGURATION;"
+  run_sql "COLUMN WRL_PARAMETER FORMAT A50;" "SET LINES 200;" "SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V\$ENCRYPTION_WALLET;"
+  run_sql "column name format a40;" "SET LINES 400;" "SELECT KEY_ID,KEYSTORE_TYPE,CREATOR_DBNAME,ACTIVATION_TIME,KEY_USE,ORIGIN FROM V\$ENCRYPTION_KEYS;"
+}
+
+run_sql "ALTER SYSTEM SET WALLET_ROOT='/etc/ORACLE/KEYSTORES/FREE' SCOPE = SPFILE;" "SHUTDOWN IMMEDIATE;" "STARTUP;"
+run_sql "ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=OKV' SCOPE=SPFILE SID='*';" "SHUTDOWN IMMEDIATE;" "STARTUP;"
+run_sql "ADMINISTER KEY MANAGEMENT CREATE KEYSTORE IDENTIFIED BY \"9VG8zmrqbgugUhlX\";"
+run_sql "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY \"9VG8zmrqbgugUhlX\";"
+run_sql "ADMINISTER KEY MANAGEMENT CREATE AUTO_LOGIN KEYSTORE FROM KEYSTORE IDENTIFIED BY \"9VG8zmrqbgugUhlX\";"
+run_sql "ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY \"9VG8zmrqbgugUhlX\" WITH BACKUP;"
+
+display_wallet

@@ -2,7 +2,7 @@ use std::{ops::Add, sync::Arc};
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_1_4::kmip_attributes::{Attribute, CryptographicAlgorithm, ObjectType},
-    kmip_2_1::kmip_types::UniqueIdentifier::TextString,
+    kmip_2_1::{extra::tagging::SYSTEM_TAG_PUBLIC_KEY, kmip_types::UniqueIdentifier::TextString},
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use uuid::Uuid;
@@ -57,7 +57,7 @@ pub(super) async fn test_object_search() -> KResult<()> {
     found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 3);
     assert!(found.contains(&TextString(rsa_uid.clone())));
-    assert!(found.contains(&TextString(rsa_uid.clone().add("_pk"))));
+    assert!(found.contains(&TextString(rsa_uid.clone().add(SYSTEM_TAG_PUBLIC_KEY))));
 
     found = locate_keys(
         &owner,
@@ -156,7 +156,7 @@ pub(super) async fn test_object_search() -> KResult<()> {
     found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 2);
 
-    delete_key(&rsa_uid.clone().add("_pk"), &owner, &kms).await?;
+    delete_key(&rsa_uid.clone().add(SYSTEM_TAG_PUBLIC_KEY), &owner, &kms).await?;
     found = locate_keys(&owner, &kms, None).await?;
     assert_eq!(found.len(), 1);
 

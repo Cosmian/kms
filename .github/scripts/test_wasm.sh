@@ -153,26 +153,14 @@ fi
 ensure_wasm_target
 
 if command -v node >/dev/null 2>&1; then
-  if [ -n "${RELEASE_FLAG:-}" ]; then
-    run_wasm_pack test --node "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
-  else
-    run_wasm_pack test --node "${FEATURES_FLAG[@]}"
-  fi
+  run_wasm_pack test --node "${FEATURES_FLAG[@]}"
 else
   echo "Node.js not found; falling back to Chrome headless" >&2
-  if [ -n "${RELEASE_FLAG:-}" ]; then
-    RUSTFLAGS="--cfg wasm_test_browser" run_wasm_pack test --headless --chrome "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
-  else
-    RUSTFLAGS="--cfg wasm_test_browser" run_wasm_pack test --headless --chrome "${FEATURES_FLAG[@]}"
-  fi
+  RUSTFLAGS="--cfg wasm_test_browser" run_wasm_pack test --headless --chrome "${FEATURES_FLAG[@]}"
 fi
 
 # Build the web-target WASM package and run React unit tests using the real artifacts.
-if [ -n "${RELEASE_FLAG:-}" ]; then
-  run_wasm_pack build --target web "$RELEASE_FLAG" "${FEATURES_FLAG[@]}"
-else
-  run_wasm_pack build --target web "${FEATURES_FLAG[@]}"
-fi
+run_wasm_pack build --target web "${FEATURES_FLAG[@]}"
 
 WASM_DIR="ui/src/wasm"
 rm -rf "$WASM_DIR"

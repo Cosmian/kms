@@ -66,19 +66,21 @@ To implement a plugin:
 
 ## Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                  Cosmian KMS Server                         │
-├─────────────────────────────────────────────────────────────┤
-│                 cosmian_kms_interfaces                      │
-├─────────────────────────────────────────────────────────────┤
-│  HSM Interface  │  Storage Interface  │  Encryption Oracle  │
-├─────────────────┼─────────────────────┼─────────────────────┤
-│   PKCS#11 HSMs  │   Database Backends │   Crypto Providers  │
-│   - Utimaco     │   - SQLite          │   - Custom Algos    │
-│   - SoftHSM     │   - PostgreSQL      │   - External APIs   │
-│   - Proteccio   │   - MySQL           │                     │
-└─────────────────┴─────────────────────┴─────────────────────┘
+```mermaid
+flowchart TB
+    A["Cosmian KMS Server"]
+    B["cosmian_kms_interfaces"]
+    C["HSM Interface"]
+    D["Storage Interface"]
+    E["Encryption Oracle"]
+    F["PKCS#11 HSMs<br/>· Utimaco<br/>· SoftHSM<br/>· Proteccio"]
+    G["Database Backends<br/>· SQLite<br/>· PostgreSQL<br/>· MySQL"]
+    H["Crypto Providers<br/>· Custom Algos<br/>· External APIs"]
+    A --> B
+    B --> C & D & E
+    C --> F
+    D --> G
+    E --> H
 ```
 
 ## Error Handling

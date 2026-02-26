@@ -3,6 +3,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_data_structures::{KeyBlock, KeyValue},
             kmip_objects::{Object, ObjectType},
             kmip_types::LinkType,
@@ -108,7 +109,7 @@ async fn unwrap_using_kms(
             let private_key_uid = attributes.get_link(LinkType::PrivateKeyLink);
             let sk_id = if let Some(private_key_uid) = private_key_uid {
                 private_key_uid.to_string()
-            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix("_pk") {
+            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY) {
                 stripped.to_owned()
             } else {
                 kms_bail!(
@@ -179,7 +180,7 @@ async fn unwrap_using_encryption_oracle(
 ) -> KResult<String> {
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
-        .strip_suffix("_pk")
+        .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
 
     // Permission checks on HSM keys are not performed during unwrapping.

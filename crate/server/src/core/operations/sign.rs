@@ -34,6 +34,13 @@ use crate::{
 pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
     debug!("{request}");
 
+    // KMIP 2.1 §6.30: data and digested_data are mutually exclusive
+    if request.data.is_some() && request.digested_data.is_some() {
+        kms_bail!(KmsError::InvalidRequest(
+            "Sign request must not set both 'data' and 'digested_data' simultaneously".to_owned()
+        ));
+    }
+
     // Get the uids from the unique identifier
     let unique_identifier = request
         .unique_identifier

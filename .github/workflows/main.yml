@@ -14,11 +14,8 @@ on:
     - cron: 0 0 * * *   # Daily at midnight
 
 jobs:
-  # Run tests in release mode for tags and scheduled runs
   main:
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
       toolchain: 1.90.0
-      # Use release for tags and scheduled runs
-      debug_or_release: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule') && 'release' || 'debug' }}

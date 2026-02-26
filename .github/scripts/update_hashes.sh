@@ -209,20 +209,29 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         # UI wasm vendor - non-fips
         elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
-        # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
-        # infer linkage from the GitHub Actions job name. Linux and Darwin share the same hash files.
-        elif [[ "$last_drv_name" =~ (kms-server|server).*vendor|(^|-)vendor($|-) ]]; then
-          if [[ "$JOB_NAME" == *"dynamic"* ]]; then
-            target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
-          elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
-            target_file="$EXPECTED_DIR/server.vendor.static.sha256"
+        # Cargo vendor derivations for CLI and server.
+        # CLI vendor hash varies by linkage mode (static/dynamic) AND OS (linux/darwin).
+        # Server vendor hash varies by linkage mode (static/dynamic) but is platform-stable.
+        elif [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms|kms-server|server).*vendor|cli.*vendor|(^|-)vendor($|-) ]]; then
+          # Distinguish CLI vs server vendor derivation by name
+          if [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
+            # CLI vendor: Linux uses a shared file; macOS is linkage-specific
+            cli_link="static"
+            [[ "$JOB_NAME" == *"dynamic"* ]] && cli_link="dynamic"
+            cli_os="linux"
+            { [[ "$JOB_NAME" == *"darwin"* ]] || [[ "$JOB_NAME" == *"macos"* ]]; } && cli_os="darwin"
+            if [[ "$cli_os" == "linux" ]]; then
+              target_file="$EXPECTED_DIR/cli.vendor.linux.sha256"
+            else
+              target_file="$EXPECTED_DIR/cli.vendor.${cli_link}.${cli_os}.sha256"
+            fi
           else
-            # Docker packaging builds are always static-linked.
-            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.sha256"]="$got_hash"
-            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.sha256"]="$got_hash"
-            echo "  Found hash for $EXPECTED_DIR/server.vendor.static.sha256: $got_hash"
-            echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.sha256: $got_hash"
-            target_file=""
+            # Server vendor: keyed by linkage mode (same on Linux and macOS)
+            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
+            else
+              target_file="$EXPECTED_DIR/server.vendor.static.sha256"
+            fi
           fi
         fi
 

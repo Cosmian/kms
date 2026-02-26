@@ -436,7 +436,7 @@ impl Display for ResponseMessageBatchItem {
             self.asynchronous_correlation_value,
             self.response_payload
                 .as_ref()
-                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string),
+                .map_or_else(|| "None".to_owned(), ToString::to_string),
             self.message_extension
         )
     }

@@ -186,6 +186,10 @@ let
     pname = "cosmian-kms-ui-deps-${finalVariant}";
     inherit version;
 
+    # Use Node.js 22 to satisfy engine requirements of vite@7 and eslint-visitor-keys@5
+    # (both require node >=20.19 / >=22.12, while the nixpkgs default nodejs_20 is 20.18)
+    nodejs = pkgs.nodejs_22;
+
     src = lib.cleanSourceWith {
       src = ../ui;
       filter =

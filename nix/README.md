@@ -4,56 +4,22 @@ This directory contains the reproducible Nix derivations and helper scripts used
 
 ## Quick Visual Overview
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Nix Build System Architecture                        │
-└─────────────────────────────────────────────────────────────────────────┘
-
-                    Source Code + Cargo.lock
-                             │
-                             ▼
-                  ┌──────────────────────┐
-                  │  kms-server.nix      │
-                  │  (Main derivation)   │
-                  └──────────┬───────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-              ▼              ▼              ▼
-      ┌──────────┐    ┌──────────┐   ┌──────────┐
-      │ Cargo    │    │ OpenSSL  │   │  Rust    │
-      │  Hash    │    │  3.6.0   │   │  1.90.0  │
-      │ Verify   │    │  Build   │   │Toolchain │
-      └────┬─────┘    └────┬─────┘   └────┬─────┘
-           │               │              │
-           └───────────────┴──────────────┘
-                           │
-                           ▼
-                  ┌──────────────────────┐
-                  │  Compilation         │
-                  │  (Static linking)    │
-                  └──────────┬───────────┘
-                             │
-                             ▼
-                  ┌──────────────────────┐
-                  │  Binary Validation   │
-                  │  (installCheckPhase) │
-                  │  • Hash check        │
-                  │  • OpenSSL version   │
-                  │  • GLIBC symbols     │
-                  │  • Static linkage    │
-                  └──────────┬───────────┘
-                             │
-                    ┌────────┴────────┐
-                    │                 │
-                    ▼                 ▼
-            ┌──────────────┐   ┌──────────────┐
-            │  FIPS        │   │  non-FIPS    │
-            │  Variant     │   │  Variant     │
-            │              │   │              │
-            │ Bit-for-bit  │   │ Bit-for-bit  │
-            │reproducible  │   │reproducible  │
-            └──────────────┘   └──────────────┘
+```mermaid
+flowchart TB
+    src["Source Code + Cargo.lock"]
+    kms_nix["kms-server.nix<br/>(Main derivation)"]
+    src --> kms_nix
+    cargo["Cargo Hash Verify"]
+    openssl["OpenSSL 3.6.0 Build"]
+    rust["Rust 1.90.0 Toolchain"]
+    kms_nix --> cargo & openssl & rust
+    compile["Compilation (Static linking)"]
+    cargo & openssl & rust --> compile
+    validate["Binary Validation (installCheckPhase)<br/>• Hash check · OpenSSL version<br/>• GLIBC symbols · Static linkage"]
+    compile --> validate
+    fips["FIPS Variant<br/>Bit-for-bit reproducible"]
+    nonfips["non-FIPS Variant<br/>Bit-for-bit reproducible"]
+    validate --> fips & nonfips
 ```
 
 **📊 For detailed visual flows, see sections below:**
@@ -64,71 +30,7 @@ This directory contains the reproducible Nix derivations and helper scripts used
 
 ---
 
-## Table of Contents
-
-- [Nix builds: reproducibility, offline guarantees \& idempotent packaging](#nix-builds-reproducibility-offline-guarantees--idempotent-packaging)
-  - [Quick Visual Overview](#quick-visual-overview)
-  - [Table of Contents](#table-of-contents)
-  - [Why Nix?](#why-nix)
-    - [The Challenge](#the-challenge)
-    - [Why We Chose Nix Over Alternatives](#why-we-chose-nix-over-alternatives)
-    - [History \& Origins](#history--origins)
-    - [Core Philosophy](#core-philosophy)
-    - [Major Projects Using Nix](#major-projects-using-nix)
-      - [Technology Companies](#technology-companies)
-      - [Open Source Projects](#open-source-projects)
-      - [Research \& Academia](#research--academia)
-      - [Government \& High-Assurance](#government--high-assurance)
-    - [Why Nix Matters for Cosmian KMS](#why-nix-matters-for-cosmian-kms)
-      - [Reproducible Builds](#reproducible-builds)
-      - [Dependency Transparency](#dependency-transparency)
-      - [Offline Air-Gapped Builds](#offline-air-gapped-builds)
-  - [Build reproducibility foundations](#build-reproducibility-foundations)
-    - [How reproducible builds work](#how-reproducible-builds-work)
-    - [Reproducibility Architecture Diagram](#reproducibility-architecture-diagram)
-    - [Build hash inventory](#build-hash-inventory)
-    - [Hash verification flow](#hash-verification-flow)
-      - [Hash Verification Details](#hash-verification-details)
-  - [Native hash verification (installCheckPhase)](#native-hash-verification-installcheckphase)
-  - [Proving determinism locally](#proving-determinism-locally)
-  - [Unified \& idempotent packaging](#unified--idempotent-packaging)
-  - [Offline packaging flow](#offline-packaging-flow)
-    - [Offline Build Visual Flow](#offline-build-visual-flow)
-    - [Step 1: Prewarm all dependencies (first-time setup)](#step-1-prewarm-all-dependencies-first-time-setup)
-    - [Step 2: Verify offline capability](#step-2-verify-offline-capability)
-    - [Step 3: Package signing (optional)](#step-3-package-signing-optional)
-    - [What gets cached offline?](#what-gets-cached-offline)
-    - [Offline verification](#offline-verification)
-  - [Package signing](#package-signing)
-    - [Setup signing key](#setup-signing-key)
-    - [Sign packages during build](#sign-packages-during-build)
-    - [Verify signatures](#verify-signatures)
-  - [Rust toolchain (no rustup)](#rust-toolchain-no-rustup)
-  - [Notes](#notes)
-  - [Troubleshooting](#troubleshooting)
-  - [Files overview](#files-overview)
-  - [Offline dependencies location](#offline-dependencies-location)
-  - [Nix Scripts Documentation](#nix-scripts-documentation)
-    - [Scripts Architecture](#scripts-architecture)
-    - [Scripts Overview](#scripts-overview)
-    - [Quick Reference](#quick-reference)
-    - [Script Execution Flow Diagram](#script-execution-flow-diagram)
-    - [Package Creation Pipeline](#package-creation-pipeline)
-    - [Hash Update Visual Flow](#hash-update-visual-flow)
-    - [SBOM Generation Flow](#sbom-generation-flow)
-  - [Learning Resources \& Official Documentation](#learning-resources--official-documentation)
-    - [Official Nix Documentation](#official-nix-documentation)
-      - [Core Documentation](#core-documentation)
-      - [Language \& Expression Reference](#language--expression-reference)
-    - [Learning Paths by Experience Level](#learning-paths-by-experience-level)
-      - [Beginners (New to Nix)](#beginners-new-to-nix)
-      - [Intermediate (Familiar with Nix basics)](#intermediate-familiar-with-nix-basics)
-      - [Advanced (Optimizing builds, contributing)](#advanced-optimizing-builds-contributing)
-    - [Cosmian KMS-Specific Topics](#cosmian-kms-specific-topics)
-    - [Community Resources](#community-resources)
-      - [Discussion Forums \& Help](#discussion-forums--help)
-      - [Ecosystem Tools \& Extensions](#ecosystem-tools--extensions)
-    - [Research Papers \& Academic Background](#research-papers--academic-background)
+[TOC]
 
 ---
 
@@ -358,176 +260,36 @@ All Linux builds (FIPS and non-FIPS) achieve bit-for-bit deterministic reproduci
 
 ### Reproducibility Architecture Diagram
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│            Deterministic Build Architecture                            │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph inputs["INPUT LAYER (All Cryptographically Pinned)"]
+        nixpkgs["Pinned nixpkgs 24.11<br/>Hash: sha256-abc123...<br/>Frozen package set<br/>Provides: gcc, binutils, coreutils (glibc 2.34)"]
+        rust_tc["Rust Toolchain 1.90.0<br/>Exact version from nixpkgs<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1<br/>SOURCE_DATE_EPOCH=1"]
+        cargo_hash["Cargo Dependencies (cargoHash)<br/>Hash: sha256-xyz789...<br/>Vendored mode (no network)<br/>Locks ALL transitive deps"]
+        openssl_src["OpenSSL 3.6.0 + 3.1.2 Source<br/>Both verified by SRI hash<br/>FIPS 140-3 certified source (3.1.2)"]
+        clean_src["Cleaned Source Tree<br/>Filters: result-*, sbom/, target/<br/>Only source code + Cargo.toml/lock"]
+        nixpkgs --> rust_tc --> cargo_hash --> openssl_src --> clean_src
+    end
+    subgraph build["BUILD LAYER (Hermetic Execution)"]
+        sandbox["Nix Build Sandbox<br/>Isolated /tmp · No /home access<br/>No network · Fixed PATH"]
+        det_comp["Deterministic Compilation<br/>-Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false<br/>-Clink-arg=-Wl,--build-id=none -Cstrip=symbols<br/>-Csymbol-mangling-version=v0<br/>SOURCE_DATE_EPOCH=1"]
+        static_link["Static Linking<br/>OpenSSL 3.6.0 statically linked<br/>GLIBC dynamically linked (≤ 2.34)<br/>No RPATH"]
+        sanitize["Binary Sanitization (Linux)<br/>Strip /nix/store ELF paths<br/>Fix interpreter to /lib64/ld-linux-x86-64.so.2<br/>(macOS: no sanitization)"]
+        sandbox --> det_comp --> static_link --> sanitize
+    end
+    subgraph output["OUTPUT LAYER (Hash Verification)"]
+        check_phase["installCheckPhase<br/>Expected: nix/expected-hashes/<variant>.<system>.sha256<br/>Actual: sha256($out/bin/cosmian_kms)<br/>Linux: MUST match (bit-for-bit)<br/>macOS: tracked for consistency"]
+        verified["Verified Binary Output<br/>/nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms<br/>Portable (GLIBC ≥ 2.34) · Static OpenSSL 3.6.0"]
+        check_phase --> verified
+    end
+    inputs --> build --> output
 
-INPUT LAYER (All Cryptographically Pinned)
-═══════════════════════════════════════════════════════════════════════════
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Pinned nixpkgs 24.11                                                    │
-│  • Hash: sha256-abc123... (tarball hash)                                 │
-│  • Frozen package set (no upstream drift)                                │
-│  • Provides: gcc, binutils, coreutils (Linux builds target glibc 2.34)   │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Rust Toolchain 1.90.0                                                   │
-│  • Exact version from nixpkgs (no rustup)                                │
-│  • Compiler flags: -Cdebuginfo=0 -Ccodegen-units=1                       │
-│  • SOURCE_DATE_EPOCH=1 (normalized timestamps)                           │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Cargo Dependencies (cargoHash)                                          │
-│  • Hash: sha256-xyz789... (locks ALL transitive deps)                    │
-│  • Vendored mode (no network, no registry variance)                      │
-│  • Platform-specific: Linux vs macOS may differ                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  OpenSSL 3.6.0 + 3.1.2 Source                                          │
-│  • OpenSSL 3.6.0: runtime library (statically linked)                   │
-│  • OpenSSL 3.1.2: FIPS provider (shipped separately)                    │
-│  • Both verified by SRI hash                                            │
-│  • FIPS 140-3 certified source code                                     │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Cleaned Source Tree                                                     │
-│  • cleanSourceWith filters: result-*, sbom/, target/                      │
-│  • Only source code + Cargo.toml/lock included                           │
-│  • No artifacts = no non-determinism from previous builds                │
-└──────────────────────────────────────────────────────────────────────────┘
-
-
-BUILD LAYER (Hermetic Execution)
-═══════════════════════════════════════════════════════════════════════════
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Nix Build Sandbox                                                       │
-│  • Isolated /tmp, no /home access                                        │
-│  • Only declared inputs accessible                                       │
-│  • No network (fetchurl pre-hashed only)                                 │
-│  • Fixed PATH (only Nix-provided tools)                                  │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Deterministic Compilation                                               │
-│                                                                          │
-│  Flags preventing non-determinism:                                       │
-│  ┌────────────────────────────────────────────────────────────────┐      │
-│  │ -Cdebuginfo=0              No debug symbols (no __FILE__)      │      │
-│  │ -Ccodegen-units=1          Single codegen (deterministic order)│      │
-│  │ -Cincremental=false        No incremental cache                │      │
-│  │ -Clink-arg=-Wl,--build-id=none  No build timestamp             │      │
-│  │ -Cstrip=symbols            Strip all symbols                   │      │
-│  │ -Csymbol-mangling-version=v0  Stable mangling                  │      │
-│  │ SOURCE_DATE_EPOCH=1        Normalized embedded times           │      │
-│  └────────────────────────────────────────────────────────────────┘      │
-│                                                                          │
-│  Applied to all Linux builds (FIPS and non-FIPS)                         │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Static Linking                                                          │
-│  • OpenSSL 3.6.0 statically linked (no .so dependency)                   │
-│  • GLIBC dynamically linked (version ≤ 2.34 for Rocky Linux 9 compatibility) │
-│  • No RPATH (would contain /nix/store paths)                             │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Binary Sanitization (Linux)                                             │
-│  • Strip /nix/store paths from ELF metadata                              │
-│  • Fix interpreter to /lib64/ld-linux-x86-64.so.2                        │
-│  • Remove volatile RPATH entries                                         │
-│  • macOS: No sanitization (builds not fully deterministic)               │
-└──────────────────────────────────────────────────────────────────────────┘
-
-
-OUTPUT LAYER (Hash Verification)
-═══════════════════════════════════════════════════════════════════════════
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  installCheckPhase (Native Hash Verification)                             │
-│                                                                          │
-│  Computed: sha256($out/bin/cosmian_kms)                                  │
-│  Expected: nix/expected-hashes/<variant>.<static-openssl|dynamic-openssl>.<arch>.<os>.sha256 │
-│                                                                          │
-│  Linux (FIPS and non-FIPS):                                              │
-│    ✅ Hashes MUST match (bit-for-bit deterministic)                      │
-│    ❌ Mismatch = BUILD FAILS (potential tampering/drift)                 │
-│                                                                          │
-│  macOS:                                                                  │
-│    ⚠️ Hashes tracked for consistency (not guaranteed reproducible)       │
-│                                                                          │
-│  Additional checks:                                                      │
-│    • OpenSSL 3.6.0 statically linked (strings check)                     │
-│    • ldd shows no libssl.so (static linkage)                             │
-│    • GLIBC symbols ≤ 2.34                                                │
-│    • FIPS mode operational (if FIPS variant)                             │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Verified Binary Output                                                   │
-│  /nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms                    │
-│                                                                          │
-│  Properties:                                                             │
-│  • Hash-verified (bit-for-bit reproducible on Linux)                      │
-│  • OpenSSL 3.6.0 statically linked                                       │
-│  • Portable across Linux distributions (GLIBC ≥ 2.34, Rocky Linux 9+)    │
-│  • No /nix/store runtime dependencies                                    │
-│  • Ready for packaging (DEB/RPM/DMG)                                     │
-└──────────────────────────────────────────────────────────────────────────┘
-
-
-REPRODUCIBILITY GUARANTEES
-═══════════════════════════════════════════════════════════════════════════
-
-┌────────────────────┬──────────────────────────────────────────────────┐
-│  Platform/Variant  │  Reproducibility Level                           │
-├────────────────────┼──────────────────────────────────────────────────┤
-│  Linux x86_64 FIPS │  ✅ Bit-for-bit deterministic                    │
-│                    │  Same inputs → IDENTICAL binary hash             │
-│                    │  Cryptographically verifiable                     │
-├────────────────────┼──────────────────────────────────────────────────┤
-│  Linux x86_64      │  ✅ Bit-for-bit deterministic                    │
-│  non-FIPS          │  Same inputs → IDENTICAL binary hash             │
-│                    │  Cryptographically verifiable                     │
-├────────────────────┼──────────────────────────────────────────────────┤
-│  Linux ARM64       │  ✅ Bit-for-bit deterministic                    │
-│  (any variant)     │  (cross-compilation from x86_64)                 │
-├────────────────────┼──────────────────────────────────────────────────┤
-│  macOS ARM64       │  ⚠️ Hash tracked (consistency monitoring)        │
-│  (any variant)     │  macOS toolchain introduces variance             │
-│                    │  Not bit-for-bit reproducible                    │
-└────────────────────┴──────────────────────────────────────────────────┘
-
-Why Linux builds are reproducible (FIPS and non-FIPS):
-  1. Deterministic compilation flags (no debug info, single codegen unit)
-  2. Symbol stripping and stable mangling (-Cstrip=symbols, -Csymbol-mangling-version=v0)
-  3. Normalized timestamps (SOURCE_DATE_EPOCH)
-  4. No build-id section in binary
-  5. Cleaned source tree (no artifacts)
-  6. All inputs cryptographically pinned (nixpkgs, rust-overlay, OpenSSL tarballs)
-  7. No host-path leakage in derivation inputs
-
-Why macOS builds may vary:
-  1. macOS toolchain introduces non-deterministic artifacts
-  2. Platform-specific optimizations
-
-Use case: FIPS for compliance/audits, non-FIPS for general deployment
+    subgraph guarantees["REPRODUCIBILITY GUARANTEES"]
+        linux_fips["✅ Linux x86_64 FIPS<br/>Bit-for-bit deterministic"]
+        linux_nf["✅ Linux x86_64 non-FIPS<br/>Bit-for-bit deterministic"]
+        linux_arm["✅ Linux ARM64<br/>Bit-for-bit deterministic"]
+        macos["⚠️ macOS ARM64<br/>Hash tracked, not guaranteed reproducible"]
+    end
 ```
 
 ### Build hash inventory
@@ -563,152 +325,42 @@ Platform-specific binary hashes:
 
 During the build process, Nix enforces all hashes at multiple stages:
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: Source Preparation                                      │
-├─────────────────────────────────────────────────────────────────┤
-│ • cleanSourceWith removes artifacts (result-*, sbom/, target/)  │
-│ • Clean source tree → reproducible input                        │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: Cargo Vendor Hash Check                                 │
-├─────────────────────────────────────────────────────────────────┤
-│ • Expected: cargoHash in kms-server.nix                          │
-│ • Actual: SHA-256 of vendored dependencies                       │
-│ • ❌ Mismatch → BUILD FAILS with "got: sha256-..."              │
-│ • ✅ Match → Continue to OpenSSL build                          │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: OpenSSL Source Hash Check                               │
-├─────────────────────────────────────────────────────────────────┤
-│ • Expected: pinned SRI/hash for OpenSSL 3.6.0 in kms-server.nix   │
-│           + pinned hash defaults for OpenSSL 3.1.2 in openssl.nix │
-│ • Actual: SHA-256 of openssl-*.tar.gz (local tarball or fetch)    │
-│ • ❌ Mismatch → BUILD FAILS                                     │
-│ • ✅ Match → Build OpenSSL (3.6.0 runtime + 3.1.2 FIPS provider) │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 4: Compilation (deterministic)                             │
-├─────────────────────────────────────────────────────────────────┤
-│ • Flags: -Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false    │
-│ • Additional: -Cstrip=symbols -Csymbol-mangling-version=v0      │
-│ • Static OpenSSL 3.6.0 linkage (no dynamic deps)                │
-│ • SOURCE_DATE_EPOCH for normalized timestamps                   │
-│ • Build cosmian_kms binary                                       │
-│ • Same flags applied to FIPS and non-FIPS                        │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 5: Binary Hash Verification (installCheckPhase)            │
-├─────────────────────────────────────────────────────────────────┤
-│ • Expected: nix/expected-hashes/<variant>.<system>.sha256        │
-│ • Actual: SHA-256 of $out/bin/cosmian_kms                        │
-│ • ❌ Mismatch → BUILD FAILS (shows both hashes)                 │
-│ • ✅ Match → Additional checks                                  │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 6: Runtime Validation                                       │
-├─────────────────────────────────────────────────────────────────┤
-│ • Assert: OpenSSL 3.6.0 statically linked (strings check)        │
-│ • Assert: Static linkage (no libssl.so)                          │
-│ • Assert: GLIBC symbols ≤ 2.34                                   │
-│ • Assert: FIPS mode if variant=fips                              │
-│ • ❌ Any assertion fails → BUILD FAILS                          │
-│ • ✅ All pass → BUILD SUCCESS                                   │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Output: Hash-Verified Binary                                    │
-├─────────────────────────────────────────────────────────────────┤
-│ result-server-<variant>/bin/cosmian_kms                          │
-│ • Deterministically reproducible (bit-for-bit) on Linux          │
-│ • Ready for packaging (DEB/RPM/DMG)                              │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    s1["Step 1: Source Preparation<br/>cleanSourceWith removes artifacts<br/>(result-*, sbom/, target/)"]
+    s2["Step 2: Cargo Vendor Hash Check<br/>Expected: cargoHash in kms-server.nix<br/>Actual: SHA-256 of vendored deps<br/>❌ Mismatch → BUILD FAILS<br/>✅ Match → Continue"]
+    s3["Step 3: OpenSSL Source Hash Check<br/>Expected: pinned SRI/hash for OpenSSL 3.6.0 + 3.1.2<br/>Actual: SHA-256 of openssl-*.tar.gz<br/>❌ Mismatch → BUILD FAILS"]
+    s4["Step 4: Compilation (deterministic)<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false<br/>-Cstrip=symbols -Csymbol-mangling-version=v0<br/>Static OpenSSL 3.6.0"]
+    s5["Step 5: Binary Hash Verification (installCheckPhase)<br/>Expected: nix/expected-hashes/<variant>.<system>.sha256<br/>Actual: SHA-256 of $out/bin/cosmian_kms<br/>❌ Mismatch → BUILD FAILS"]
+    s6["Step 6: Runtime Validation<br/>• OpenSSL 3.6.0 statically linked<br/>• Static linkage (no libssl.so)<br/>• GLIBC symbols ≤ 2.34<br/>• FIPS mode if variant=fips"]
+    out["Output: Hash-Verified Binary<br/>result-server-<variant>/bin/cosmian_kms<br/>Deterministically reproducible (Linux)"]
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> out
 ```
 
 #### Hash Verification Details
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      Multi-Layer Hash Defense                           │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Layer 1: Cargo Dependencies
-┌──────────────────────────────────────────────────────────────────────────┐
-│  cargoHash in kms-server.nix                                             │
-│  ├─ Locks ALL transitive dependencies                                    │
-│  ├─ Nix computes: sha256(Cargo.lock + all crate sources)                 │
-│  └─ Mismatch detection: Even 1 byte change in any crate = build fail     │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-Layer 2: System Dependencies
-┌──────────────────────────────────────────────────────────────────────────┐
-│  OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS provider) tarball hashes          │
-│  ├─ Cryptographic verification of openssl source tarballs                 │
-│  ├─ FIPS 140-3 certified source code (3.1.2 provider)                     │
-│  └─ Protection: Supply chain attack on OpenSSL = immediate detection     │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-Layer 3: Final Binary
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Binary hash in expected-hashes/<variant>.<platform>.sha256              │
-│  ├─ Linux (FIPS and non-FIPS): Bit-for-bit reproducible                 │
-│  │   → Same source + same Nix = IDENTICAL binary                         │
-│  ├─ macOS: Hash tracking for consistency                                 │
-│  │   → Detects unexpected changes, not guaranteed reproducible           │
-│  └─ Protection: Any tampering in build process = hash mismatch           │
-└──────────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-Layer 4: Runtime Assertions
-┌──────────────────────────────────────────────────────────────────────────┐
-│  installCheckPhase validation                                            │
-│  ├─ OpenSSL linkage checks (static vs dynamic)                            │
-│  ├─ Static Linux builds assert OpenSSL 3.6.0 is statically linked         │
-│  ├─ Static linkage verification (ldd shows no libssl.so)                 │
-│  ├─ GLIBC symbol version ≤ 2.34 (Rocky Linux 9+ Linux compatibility)     │
-│  ├─ FIPS mode operational check (if FIPS variant)                        │
-│  └─ Protection: Correct dependencies linked at runtime                   │
-└──────────────────────────────────────────────────────────────────────────┘
-
-Result: 4-layer defense against supply chain attacks and build drift
+```mermaid
+flowchart TB
+    l1["Layer 1: Cargo Dependencies<br/>cargoHash in kms-server.nix<br/>Locks ALL transitive deps<br/>Nix: sha256(Cargo.lock + all crate sources)<br/>1 byte change in any crate = build fail"]
+    l2["Layer 2: System Dependencies<br/>OpenSSL 3.6.0 (runtime) + 3.1.2 (FIPS) tarball hashes<br/>FIPS 140-3 certified source (3.1.2)<br/>Protection: supply chain attacks on OpenSSL"]
+    l3["Layer 3: Final Binary<br/>nix/expected-hashes/<variant>.<platform>.sha256<br/>Linux (FIPS + non-FIPS): Bit-for-bit reproducible<br/>macOS: Hash tracking (consistency monitoring)"]
+    l4["Layer 4: Runtime Assertions (installCheckPhase)<br/>OpenSSL linkage checks (static vs dynamic)<br/>GLIBC symbol version ≤ 2.34<br/>FIPS mode operational check (if FIPS variant)"]
+    result["✅ 4-layer defense against supply chain attacks and build drift"]
+    l1 --> l2 --> l3 --> l4 --> result
 ```
 
 **Update workflow** (automated with nix.sh update-hashes or standalone script):
 
-```text
-Code/Dependency Change
-         ↓
-┌────────┴────────┐
-│   Build fails   │
-│  (hash mismatch)│
-└────────┬────────┘
-         ↓
-Rebuild and check build output for hash:
-  nix-build -A <target> -o result
-         ↓
-┌────────┴────────────────────┐
-│ Copy hash from build output │
-│   to expected-hashes/       │
-│                             │
-│ • Vendor: cargoHash error   │
-│ • Binary: installCheckPhase │
-└─────────────────────────────┘
-         ↓
-Script performs:
-  1. Build with Nix
-  2. Compute SHA-256
-  3. Update hash files
-         ↓
-Verify: bash .github/scripts/nix.sh test sqlite
-         ↓
-Commit updated hashes
+```mermaid
+flowchart TB
+    change["Code/Dependency Change"]
+    fail["Build fails (hash mismatch)"]
+    rebuild["Rebuild: nix-build -A <target> -o result"]
+    copy["Copy hash from build output to expected-hashes/<br/>• Vendor: cargoHash error<br/>• Binary: installCheckPhase output"]
+    script["Script performs:<br/>1. Build with Nix<br/>2. Compute SHA-256<br/>3. Update hash files"]
+    verify["Verify: bash .github/scripts/nix.sh test sqlite"]
+    commit["Commit updated hashes"]
+    change --> fail --> rebuild --> copy --> script --> verify --> commit
 ```
 
 Tip: for a quick end-to-end check after updates, use `bash .github/scripts/nix.sh test sqlite` or build a package with `bash .github/scripts/nix.sh package`.
@@ -790,6 +442,8 @@ bash .github/scripts/nix.sh package deb    # Reuses binary; no compilation
 
 ### Offline Build Visual Flow
 
+<<<<<<< Updated upstream
+
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                 Expected Hash Update Workflow (CI-driven)               │
@@ -818,7 +472,9 @@ Trigger: CI packaging job fails with a fixed-output derivation hash mismatch
            │ nix/expected-hashes/     │
            │  • ui.npm.sha256         │
            │  • ui.vendor.*.sha256    │
-           │  • server.vendor.*.sha256│
+           │  • server.vendor.{static,dynamic}.sha256     │
+           │  • cli.vendor.linux.sha256                     │
+           │  • cli.vendor.{static,dynamic}.darwin.sha256   │
            └──────────────────────────┘
 
 Note: deterministic *binary* hash enforcement is optional in Nix derivations;
@@ -951,6 +607,34 @@ CACHE DEPENDENCY GRAPH
   ├─ result-rust-1_90 → /nix/store/<hash>-rust-minimal-1.90.0
   ├─ result-cargo-deb → /nix/store/<hash>-cargo-deb
   └─ result-cargo-rpm → /nix/store/<hash>-cargo-generate-rpm
+=======
+```mermaid
+flowchart TB
+    subgraph update["Expected Hash Update Workflow (CI-driven)"]
+        trigger["CI packaging job fails with fixed-output hash mismatch"]
+        update_cmd["bash .github/scripts/nix.sh update-hashes [RUN_ID]"]
+        update_sh["update_hashes.sh<br/>• requires gh<br/>• downloads job logs<br/>• parses specified/got hashes"]
+        update_files["Updates nix/expected-hashes/<br/>• ui.npm.sha256 • ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cli.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
+        trigger --> update_cmd --> update_sh --> update_files
+    end
+
+    subgraph offline["OFFLINE BUILD (No Network - Repeatable)"]
+        no_net["export NO_PREWARM=1, CARGO_NET_OFFLINE"]
+        pkg_cmd["bash nix.sh package deb/rpm/dmg"]
+        check_cache{"result-server-<variant> exists?"}
+        reuse["Reuse Binary (no rebuild)"]
+        nix_build["Build from Nix Store Cache"]
+        load_tools["Load Tools from /nix/store<br/>(cargo-deb, cargo-generate-rpm, DMG tools)"]
+        package["Package Binary (cached tools)"]
+        smoke["Smoke Test (extract + run --info)"]
+        gen_sha["Generate Checksum (.sha256)"]
+        done["✅ Offline Build Complete<br/>Output: package + .sha256 + .asc (if GPG)"]
+        no_net --> pkg_cmd --> check_cache
+        check_cache -- yes --> reuse --> load_tools
+        check_cache -- no --> nix_build --> load_tools
+        load_tools --> package --> smoke --> gen_sha --> done
+    end
+>>>>>>> Stashed changes
 ```
 
 ### Step 1: Prewarm all dependencies (first-time setup)
@@ -1144,46 +828,15 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 ### Scripts Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                  Nix Scripts Architecture                               │
-│              (Low-level implementation layer)                           │
-└─────────────────────────────────────────────────────────────────────────┘
-
-         Called by: .github/scripts/nix.sh
-                          │
-         ┌────────────────┼────────────────┐
-         │                │                │
-         ▼                ▼                ▼
-    ┌─────────┐    ┌──────────────┐  ┌──────────────┐
-    │ build.sh│    │  package_*.sh│  │  Utilities   │
-    └────┬────┘    └──────┬───────┘  └──────┬───────┘
-         │                │                 │
-         │                │                 │
-         ▼                ▼                 ▼
-  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-  │ Core server  │ │ • package_deb│ │ • get_version│
-  │ compilation  │ │ • package_rpm│ │ • update_    │
-  │              │ │ • package_dmg│ │   hashes     │
-  │ Static link  │ │              │ │ • generate_  │
-  │ OpenSSL 3.6.0│ │ Common logic:│ │   sbom       │
-  │              │ │ package_     │ │ • signing_key│
-  │ Validates:   │ │  common.sh   │ └──────────────┘
-  │ • Hash       │ └──────────────┘
-   │ • GLIBC ≤2.34│
-  │ • Version    │         │
-  └──────────────┘         │
-         │                 │
-         └─────────┬───────┘
-                   │
-                   ▼
-         ┌──────────────────┐
-         │  Nix Derivations │
-         │                  │
-         │ • kms-server.nix │
-         │ • openssl.nix    │
-         │ • package.nix    │
-         └──────────────────┘
+```mermaid
+flowchart TB
+    nix_sh[".github/scripts/nix.sh<br/>(Dispatcher)"]
+    build_sh["build.sh<br/>Core server compilation<br/>Static link OpenSSL 3.6.0<br/>Validates: hash, GLIBC ≤ 2.34, version"]
+    pkg_sh["package_*.sh<br/>• package_deb.sh<br/>• package_rpm.sh<br/>• package_dmg.sh<br/>Common: package_common.sh"]
+    utils_sh["Utilities<br/>• get_version.sh<br/>• update_hashes.sh<br/>• generate_sbom.sh<br/>• signing_key.sh"]
+    nix_sh --> build_sh & pkg_sh & utils_sh
+    derivations["Nix Derivations<br/>• kms-server.nix<br/>• openssl.nix<br/>• package.nix"]
+    build_sh & pkg_sh --> derivations
 ```
 
 ### Scripts Overview
@@ -1199,7 +852,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 | Task                     | Recommended Command                         | Direct Command (advanced)                                    |
 | ------------------------ | ----------------------------------------- | ------------------------------------------------------------ |
-| **Build server**         | `bash nix/scripts/build.sh --variant fips --profile release` | `nix-build -A kms-server-fips-static-openssl`                |
+| **Build server**         | `bash nix/scripts/build.sh --variant fips`                   | `nix-build -A kms-server-fips-static-openssl`                |
 | **Package DEB**          | `bash .github/scripts/nix.sh package deb` | `bash nix/scripts/package_deb.sh --variant fips`             |
 | **Package RPM**          | `bash .github/scripts/nix.sh package rpm` | `bash nix/scripts/package_rpm.sh --variant fips`             |
 | **Package DMG**          | `bash .github/scripts/nix.sh package dmg` | `bash nix/scripts/package_dmg.sh --variant fips`             |
@@ -1210,362 +863,89 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 This diagram shows how Nix scripts interact with the Nix derivation system:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Build Script Execution Flow                          │
-└─────────────────────────────────────────────────────────────────────────┘
-
-User invokes: bash nix/scripts/build.sh --variant fips --profile release
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  nix-shell --pure        │
-                    │  (hermetic environment)  │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  nix/scripts/build.sh    │
-                    │                          │
-                    │  Responsibilities:       │
-                    │  • Parse variant/profile │
-                    │  • Set feature flags     │
-                    │  • Run cargo build       │
-                    │  • Validate binary       │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  cargo build             │
-                    │    --profile <profile>   │
-                    │    --features <variant>  │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Platform-Specific       │
-                    │  Validation              │
-                    └──────┬──────────┬────────┘
-                           │          │
-                    Linux  │          │  macOS
-                           │          │
-                           ▼          ▼
-                  ┌─────────────┐  ┌──────────────┐
-                  │ Check:      │  │ Check:       │
-                  │ • ldd       │  │ • otool -L   │
-                  │ • readelf   │  │ • dylib deps │
-                  │ • GLIBC ≤   │  │              │
-                  │   2.34      │  └──────────────┘
-                  │ • No /nix/  │
-                  │   store refs│
-                  └─────────────┘
-                           │
-                           └──────────┬───────────┘
-                                      │
-                                      ▼
-                           ┌──────────────────────┐
-                           │  Output:             │
-                           │  target/<profile>/   │
-                           │    cosmian_kms       │
-                           └──────────────────────┘
+```mermaid
+flowchart TB
+    user["User: bash nix/scripts/build.sh --variant fips"]
+    shell["nix-shell --pure (hermetic environment)"]
+    build["nix/scripts/build.sh<br/>• Parse variant/link<br/>• Set feature flags<br/>• Run cargo build<br/>• Validate binary"]
+    cargo["cargo build --release --features <variant>"]
+    user --> shell --> build --> cargo
+    linux_val["Linux Validation<br/>• ldd<br/>• readelf<br/>• GLIBC ≤ 2.34<br/>• No /nix/store refs"]
+    macos_val["macOS Validation<br/>• otool -L<br/>• dylib deps"]
+    cargo --> linux_val & macos_val
+    output["Output: target/release/cosmian_kms"]
+    linux_val & macos_val --> output
 ```
 
 ### Package Creation Pipeline
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Unified Packaging Workflow (DEB/RPM/DMG)                   │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Entry: bash nix/scripts/package_<type>.sh --variant <fips|non-fips>
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Source:                 │
-                    │  package_common.sh       │
-                    │                          │
-                    │  Shared functions:       │
-                    │  • get_version()         │
-                    │  • validate_package()    │
-                    │  • generate_checksum()   │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Check for existing      │
-                    │  result-server-<variant> │
-                    └──────┬──────────┬────────┘
-                           │          │
-                     Found │          │ Not Found
-                           │          │
-                           ▼          ▼
-                  ┌─────────────┐  ┌──────────────┐
-                  │ Reuse       │  │ Run:         │
-                  │ existing    │  │ nix-build    │
-                  │ binary      │  │ -A kms-      │
-                  │             │  │  server-     │
-                  │ (skip build)│  │  <variant>   │
-                  └──────┬──────┘  └──────┬───────┘
-                         │                │
-                         └────────┬───────┘
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Provision Tools         │
-                    │  (from Nix store)        │
-                    └──────┬──────────┬────────┘
-                           │          │
-                    DEB/RPM│          │ DMG
-                           │          │
-                           ▼          ▼
-              ┌──────────────────┐  ┌──────────────────┐
-              │ • cargo-deb      │  │ • cargo-packager │
-              │ • cargo-generate-│  │ • macOS tools:   │
-              │   rpm            │  │   - hdiutil      │
-              │                  │  │   - osascript    │
-              │ From Nix:        │  │                  │
-              │ result-cargo-deb │  │ Non-pure shell   │
-              │ result-cargo-rpm │  │ (system access)  │
-              └──────────┬───────┘  └──────┬───────────┘
-                         │                 │
-                         └────────┬────────┘
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Create Package          │
-                    │                          │
-                    │  • Extract binary from   │
-                    │    result-server symlink │
-                    │  • Apply variant naming  │
-                    │    (e.g., -fips suffix)  │
-                    │  • Include systemd/      │
-                    │    launchd config        │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────────┐
-                    │  Smoke Test (Mandatory)  │
-                    │                          │
-                    │  1. Extract package to   │
-                    │     temp directory       │
-                    │  2. Run: cosmian_kms     │
-                    │     --info               │
-                    │  3. Verify:              │
-                    │     • Version matches    │
-                    │     • OpenSSL = 3.6.0    │
-                    │     • Binary runs        │
-                    └──────┬──────────┬────────┘
-                           │          │
-                     Pass  │          │  Fail
-                           │          │
-                           ▼          ▼
-              ┌──────────────────┐  ┌────────────┐
-              │ Generate .sha256 │  │ Exit 1     │
-              │ checksum         │  │ (abort)    │
-              └──────────┬───────┘  └────────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │ Optional: GPG Sign   │
-              │ (if GPG_SIGNING_KEY_ │
-              │  PASSPHRASE set)     │
-              └──────────┬───────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │ Output:              │
-              │ result-<type>-       │
-              │   <variant>/         │
-              │ • package file       │
-              │ • .sha256            │
-              │ • .asc (if signed)   │
-              └──────────────────────┘
+```mermaid
+flowchart TB
+    entry["bash nix/scripts/package_<type>.sh --variant <fips|non-fips>"]
+    common["Source: package_common.sh<br/>Shared: get_version(), validate_package(), generate_checksum()"]
+    entry --> common
+    check_bin{"result-server-<variant> exists?"}
+    common --> check_bin
+    reuse["Reuse existing binary (skip build)"]
+    nix_build["nix-build -A kms-server-<variant>"]
+    check_bin -- yes --> reuse
+    check_bin -- no --> nix_build
+    tools["Provision Tools (from Nix store)"]
+    reuse & nix_build --> tools
+    deb_rpm["DEB/RPM (Linux)<br/>cargo-deb · cargo-generate-rpm<br/>result-cargo-deb · result-cargo-rpm"]
+    dmg["DMG (macOS)<br/>cargo-packager · hdiutil · osascript<br/>Non-pure shell (system access)"]
+    tools --> deb_rpm & dmg
+    create["Create Package<br/>• Extract binary from result-server symlink<br/>• Apply variant naming (-fips suffix)<br/>• Include systemd/launchd config"]
+    deb_rpm & dmg --> create
+    smoke{"Smoke Test (Mandatory)<br/>1. Extract to temp dir<br/>2. Run cosmian_kms --info<br/>3. Verify version + OpenSSL 3.6.0"}
+    create --> smoke
+    pass["Generate .sha256 checksum"]
+    gpg["Optional: GPG Sign (.asc)"]
+    fail["Exit 1 (abort)"]
+    smoke -- pass --> pass --> gpg
+    smoke -- fail --> fail
+    output["Output: result-<type>-<variant>/<br/>• package file • .sha256 • .asc (if signed)"]
+    gpg --> output
 ```
 
 ### Hash Update Visual Flow
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│         Expected-Hash Update Workflow (GitHub Actions Logs)              │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Trigger: Nix build fails due to a fixed-output hash mismatch
-(e.g., Cargo vendor, UI npm/vendor)
-                   │
-                   ▼
-           ┌──────────────────────────┐
-           │ Run CI packaging workflow │
-           │ (or use an existing run) │
-           └──────────┬───────────────┘
-                │
-                ▼
-           ┌──────────────────────────┐
-           │ Parse failing job logs   │
-           │ with `gh`                │
-           └──────────┬───────────────┘
-                │
-                ▼
-           ┌──────────────────────────┐
-           │ Update files under       │
-           │ nix/expected-hashes/     │
-           │ (ui + server vendor)     │
-           └──────────┬───────────────┘
-                │
-                ▼
-           ┌──────────────────────────┐
-           │ Re-run build/package     │
-           │ and commit changes       │
-           └──────────────────────────┘
-│ Error shows:             │               │
-│ "got: sha256-xyz..."     │               ▼
-└──────────┬───────────────┘    ┌──────────────────────────┐
-           │                    │ Compute SHA-256 of:      │
-           ▼                    │ result-server-<variant>/ │
-┌──────────────────────────┐    │   bin/cosmian_kms        │
-│ Step 3:                  │    └──────────┬───────────────┘
-│ Update kms-server.nix    │               │
-│                          │               ▼
-│ cargoHash =              │    ┌──────────────────────────┐
-│   "sha256-xyz..."        │    │ Update platform-specific │
-│                          │    │ hash files:              │
-└──────────┬───────────────┘    │                          │
-           │                    │ nix/expected-hashes/     │
-           │                    │  <variant>.              │
-           │                    │   <platform>.sha256      │
-           │                    │                          │
-           │                    │ Platforms:               │
-           │                    │ • x86_64-linux           │
-           │                    │ • aarch64-linux          │
-           │                    │ • aarch64-darwin         │
-           │                    └──────────┬───────────────┘
-           │                               │
-           └───────────────┬───────────────┘
-                           │
-                           ▼
-                ┌──────────────────────────┐
-                │ Verification Step        │
-                │                          │
-                │ Rebuild with new hashes  │
-                │ to ensure they work      │
-                └──────────┬───────────────┘
-                           │
-                     Success│  Failure
-                           │
-                           ▼
-                ┌──────────────────────────┐
-                │ Show git diff summary    │
-                │                          │
-                │ Files changed:           │
-                │ • kms-server.nix         │
-                │   (if vendor hash)       │
-                │ • expected-hashes/*      │
-                │   (if binary hashes)     │
-                └──────────┬───────────────┘
-                           │
-                           ▼
-                ┌──────────────────────────┐
-                │ Ready to commit          │
-                │                          │
-                │ User reviews changes and │
-                │ commits with explanation │
-                └──────────────────────────┘
-
-
-When to update hashes:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   bash .github/scripts/nix.sh update-hashes [RUN_ID]
-                              → After a CI packaging job fails with a fixed-output hash mismatch
-
-   (Optional) deterministic binary-hash enforcement
-                              → Follow the installCheckPhase output and copy the emitted
-                                 cosmian-kms-server.*.sha256 file into nix/expected-hashes/
+```mermaid
+flowchart TB
+    trigger["Nix build fails: fixed-output hash mismatch<br/>(e.g., Cargo vendor, UI npm/vendor)"]
+    ci["Run CI packaging workflow (or use existing run)"]
+    parse_logs["Parse failing job logs with gh"]
+    update["Update files under nix/expected-hashes/<br/>(ui + server vendor)"]
+    trigger --> ci --> parse_logs --> update
+    step3["Update kms-server.nix<br/>cargoHash = \"sha256-xyz...\""]
+    compute["Compute SHA-256 of<br/>result-server-<variant>/bin/cosmian_kms"]
+    platform_files["Update platform-specific hash files:<br/>nix/expected-hashes/<variant>.<platform>.sha256<br/>Platforms: x86_64-linux · aarch64-linux · aarch64-darwin"]
+    update --> step3 & compute --> platform_files
+    verify["Verification: Rebuild with new hashes"]
+    diff["Show git diff summary<br/>• kms-server.nix (if vendor hash)<br/>• expected-hashes/* (if binary hashes)"]
+    ready["Ready to commit<br/>User reviews and commits with explanation"]
+    platform_files --> verify --> diff --> ready
 ```
 
 ### SBOM Generation Flow
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│         SBOM Generation (generate_sbom.sh) - Outside nix-shell          │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Invoked: bash .github/scripts/nix.sh sbom --variant <fips|non-fips>
-                                  │
-                                  │  (Delegates to nix/scripts/generate_sbom.sh)
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Check if binary exists  │
-                    │  result-server-<variant> │
-                    └──────┬──────────┬────────┘
-                           │          │
-                     Exists│          │ Missing
-                           │          │
-                           ▼          ▼
-                  ┌─────────────┐  ┌──────────────┐
-                  │ Use         │  │ Auto-build:  │
-                  │ existing    │  │ nix-build    │
-                  │             │  │ -A kms-      │
-                  │             │  │  server-     │
-                  │             │  │  <variant>   │
-                  └──────┬──────┘  └──────┬───────┘
-                         │                │
-                         └────────┬───────┘
-                                  │
-                                  ▼
-                    ┌──────────────────────────┐
-                    │  Run sbomnix tools       │
-                    │  (requires nix commands) │
-                    │                          │
-                    │  WHY NOT IN NIX-SHELL:   │
-                    │  sbomnix needs direct    │
-                    │  access to:              │
-                    │  • nix-store --query     │
-                    │  • nix-instantiate       │
-                    │  • nix show-derivation   │
-                    └──────────┬───────────────┘
-                               │
-                               ▼
-              ┌────────────────────────────────┐
-              │  sbomnix (CycloneDX + SPDX)    │
-              │                                │
-              │  Analyzes Nix derivation:      │
-              │  • All build inputs            │
-              │  • Runtime dependencies        │
-              │  • Transitive dependency graph │
-              └────────┬───────────────────────┘
-                       │
-                       ▼
-              ┌────────────────────────────────┐
-              │  vulnxscan                     │
-              │                                │
-              │  CVE database scan:            │
-              │  • Maps packages to CVEs       │
-              │  • Severity ratings            │
-              │  • Patch availability          │
-              └────────┬───────────────────────┘
-                       │
-                       ▼
-              ┌────────────────────────────────┐
-              │  nix-visualize (optional)      │
-              │                                │
-              │  Dependency graph PNG:         │
-              │  • Visual dependency tree      │
-              │  • Layer visualization         │
-              └────────┬───────────────────────┘
-                       │
-                       ▼
-              ┌────────────────────────────────┐
-              │  Output: ./sbom/ directory     │
-              │                                │
-              │  Files generated:              │
-              │  • bom.cdx.json (CycloneDX)    │
-              │  • bom.spdx.json (SPDX)        │
-              │  • sbom.csv (spreadsheet)      │
-              │  • vulns.csv (vulnerabilities) │
-              │  • graph.png (visual)          │
-              │  • meta.json (metadata)        │
-              │  • README.txt (usage guide)    │
-              └────────────────────────────────┘
+```mermaid
+flowchart TB
+    invoke["bash .github/scripts/nix.sh sbom --variant <fips|non-fips><br/>(Delegates to nix/scripts/generate_sbom.sh)"]
+    check{"result-server-<variant> exists?"}
+    invoke --> check
+    use_existing["Use existing binary"]
+    auto_build["Auto-build: nix-build -A kms-server-<variant>"]
+    check -- exists --> use_existing
+    check -- missing --> auto_build
+    sbomnix_tools["Run sbomnix tools<br/>(requires direct nix commands: nix-store, nix-instantiate)<br/>WHY NOT IN NIX-SHELL: needs nix store queries"]
+    use_existing & auto_build --> sbomnix_tools
+    sbomnix["sbomnix (CycloneDX + SPDX)<br/>Analyzes Nix derivation:<br/>• All build inputs<br/>• Runtime dependencies<br/>• Transitive dependency graph"]
+    vulnxscan["vulnxscan<br/>CVE database scan:<br/>• Maps packages to CVEs<br/>• Severity ratings · Patch availability"]
+    visualize["nix-visualize (optional)<br/>Dependency graph PNG"]
+    sbomnix_tools --> sbomnix --> vulnxscan --> visualize
+    output["Output: ./sbom/ directory<br/>• bom.cdx.json (CycloneDX)<br/>• bom.spdx.json (SPDX)<br/>• sbom.csv (spreadsheet)<br/>• vulns.csv (vulnerabilities)<br/>• graph.png (visual)<br/>• meta.json • README.txt"]
+    visualize --> output
 ```
 
 Use cases:

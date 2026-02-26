@@ -71,10 +71,10 @@ azure_ekm_path_prefix = "${EKM_PREFIX}"
 EOF
 
 # shellcheck disable=SC2068
-cargo build ${RELEASE_FLAG} ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
+cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
 # shellcheck disable=SC2068
-cargo run ${RELEASE_FLAG} ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
+cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
     --config "${KMS_CONF_PATH}" \
     &
 KMS_PID=$!

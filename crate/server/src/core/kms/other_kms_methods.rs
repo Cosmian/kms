@@ -10,6 +10,7 @@ use cosmian_kms_server_database::{
         cosmian_kmip::{
             kmip_0::kmip_types::SecretDataType,
             kmip_2_1::{
+                extra::tagging::SYSTEM_TAG_SECRET_DATA,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, SecretData},
                 kmip_operations::Create,
@@ -220,6 +221,7 @@ impl KMS {
                 use cosmian_kms_server_database::reexport::cosmian_kmip::{
                     SafeBigInt,
                     kmip_2_1::{
+                        extra::tagging::SYSTEM_TAG_COVER_CRYPT_USER_KEY,
                         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                         kmip_objects::Object,
                         kmip_types::{
@@ -272,7 +274,7 @@ impl KMS {
                 attributes.cryptographic_length = Some(requested_bits);
                 attributes.key_format_type = Some(KeyFormatType::TransparentDSAPrivateKey);
                 let mut tags = attributes.get_tags();
-                tags.insert("_uk".to_owned());
+                tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
                 tags.insert("_dsa".to_owned());
                 attributes.set_tags(tags.clone())?;
                 if attributes.unique_identifier.is_none() {
@@ -442,7 +444,7 @@ impl KMS {
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
         let mut tags = attributes.get_tags();
-        tags.insert("_sd".to_owned());
+        tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         rand_bytes(&mut secret_data)?;
         let object = Object::SecretData(SecretData {

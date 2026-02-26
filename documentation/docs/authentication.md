@@ -161,13 +161,13 @@ API Token authentication uses a symmetric key stored in the KMS as the authentic
 1. Generate a symmetric key and note its ID:
 
     ```sh
-    cosmian kms sym keys create
+    ckms sym keys create
     ```
 
 2. Export the key in base64 format:
 
     ```sh
-    cosmian kms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
+    ckms sym keys export -k <SYMMETRIC_KEY_ID> -f base64 api_token.base64
     ```
 
 3. Start the server with the API token ID:

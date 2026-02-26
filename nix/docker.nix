@@ -10,6 +10,11 @@
   # When provided (recommended for FIPS), Docker will copy configs/modules from here
   # instead of from the server output, ensuring strict reuse of the original derivation configs.
   opensslDrv ? null,
+  # Optional: pass the CLI derivation that provides ckms (bin/) and libcosmian_pkcs11.so (lib/).
+  # When provided, both are bundled into the image: ckms at /usr/local/bin/ so it can be
+  # invoked from within the container, and libcosmian_pkcs11.so at /usr/lib/ so that
+  # Oracle TDE HSM tests can extract it via `docker create` + `docker cp`.
+  pkcs11LibDrv ? null,
 }:
 
 # Note: The kmsServer derivation must be built with a UI parameter
@@ -31,8 +36,31 @@ let
   # Optional OpenSSL derivation absolute path (empty string when not provided)
   opensslDrvPath = if opensslDrv == null then "" else toString opensslDrv;
 
+  # When pkcs11LibDrv is provided, create thin wrapper packages so that ckms and
+  # libcosmian_pkcs11.so land in the image via the contents mechanism (proper
+  # Nix layers). This is more reliable than fakeRootCommands which can fail
+  # with Permission Denied when proot tries to create existing directories.
+  pkcs11Contents =
+    if pkcs11LibDrv != null then
+      [
+        (pkgs.runCommand "pkcs11-lib" { } ''
+          mkdir -p $out/usr/lib
+          cp -L ${pkcs11LibDrv}/lib/libcosmian_pkcs11.so $out/usr/lib/libcosmian_pkcs11.so
+        '')
+        (pkgs.runCommand "ckms-bin" { } ''
+          mkdir -p $out/usr/local/bin
+          cp -L ${pkcs11LibDrv}/bin/ckms $out/usr/local/bin/ckms
+        '')
+      ]
+    else
+      [ ];
+
   # Create a minimal runtime environment
   # Include necessary libraries for the KMS server
+  # pkcs11Contents items (if any) are added here so that buildEnv merges usr/
+  # as a real directory rather than a symlink. Without this, lndir creates
+  # old_out/usr as a symlink → read-only nix store path, causing fakeRootCommands
+  # mkdir failures and preventing pkcs11-lib/ckms from landing in the image layer.
   runtimeEnv = pkgs.buildEnv {
     name = "kms-runtime-env";
     paths = [
@@ -40,7 +68,8 @@ let
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
-    ];
+    ]
+    ++ pkcs11Contents;
   };
 
   # Create a minimal /etc structure that will be added to the image
@@ -265,6 +294,9 @@ pkgs.dockerTools.buildLayeredImage {
 
     echo "=== fakeRootCommands: Bundling CA certificates locally ==="
     cp -L ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-bundle.crt || echo "Failed to copy CA bundle"
+
+    # ckms and libcosmian_pkcs11.so are now added via pkcs11Contents in the
+    # contents list, so no fakeRootCommands step is needed for them.
 
     # Pre-create /etc/cosmian so Docker bind-mounts of config files (e.g.
     # /etc/cosmian/kms.toml) land as regular files rather than directories.

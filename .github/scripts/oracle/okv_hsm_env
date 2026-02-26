@@ -1,0 +1,11 @@
+# Oracle Key Vault HSM vendor environment file
+# Use this file to set any necessary environment variables needed when using
+# a vendor's PKCS#11 library. Parameter names must not contain '='.
+# Parameter values must be enclosed in double quotes. Names and values must
+# be shorter than 4096 characters.
+
+# Below is an example. Remove the '#' character to uncomment the line.
+#EXAMPLE_ENV_VAR_NAME="EXAMPLE_ENV_VAR_VALUE"
+COSMIAN_PKCS11_LOGGING_LEVEL="trace"
+COSMIAN_CLI_CONF="/usr/local/okv/hsm/generic/cosmian.toml"
+COSMIAN_PKCS11_LOGGING_FOLDER="/var/okv/log/hsm"

@@ -48,13 +48,13 @@ Open your web browser and navigate to `http://localhost:9998/ui` to access the G
 
 ## Using the CLI
 
-Get the [Cosmian CLI](../cosmian_cli/index.md) from [Cosmian packages](https://package.cosmian.com/cli/).
+Get the [KMS CLI](ckms/index.md) from [Cosmian packages](https://package.cosmian.com/kms/).
 You can then easily manage the server:
 
 1. Create a 256-bit symmetric key
 
       ```sh
-      cosmian kms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
+      ckms sym keys create --number-of-bits 256 --algorithm aes --tag my-file-key
 
       The symmetric key was successfully generated.
             Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
@@ -63,7 +63,7 @@ You can then easily manage the server:
 2. Encrypt the `image.png` file with AES GCM using the key
 
       ```sh
-      cosmian kms sym encrypt --tag my-file-key --output-file image.enc image.png
+      ckms sym encrypt --tag my-file-key --output-file image.enc image.png
 
       The encrypted file is available at "image.enc"
       ```
@@ -71,7 +71,7 @@ You can then easily manage the server:
 3. Decrypt the `image.enc` file using the key
 
       ```sh
-      cosmian kms sym decrypt --tag my-file-key --output-file image2.png image.enc
+      ckms sym decrypt --tag my-file-key --output-file image2.png image.enc
 
       The decrypted file is available at "image2.png"
       ```

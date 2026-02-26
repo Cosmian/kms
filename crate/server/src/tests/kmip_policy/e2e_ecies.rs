@@ -1,4 +1,5 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_operations::{CreateKeyPairResponse, DecryptResponse, EncryptResponse},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, RecommendedCurve},
     requests::{create_ec_key_pair_request, decrypt_request, encrypt_request},
@@ -41,10 +42,10 @@ async fn e2e_ecies_roundtrip_with_policy(
         .as_str()
         .expect("public key uid should be a string")
         .to_owned();
-    let pk_uid_for_encrypt = if pk_uid.ends_with("_pk") {
+    let pk_uid_for_encrypt = if pk_uid.ends_with(SYSTEM_TAG_PUBLIC_KEY) {
         pk_uid
     } else {
-        format!("{pk_uid}_pk")
+        format!("{pk_uid}{SYSTEM_TAG_PUBLIC_KEY}")
     };
     let sk_uid = create_resp
         .private_key_unique_identifier
@@ -183,10 +184,10 @@ async fn e2e_ecies_is_allowed_when_curves_allowlist_is_unset() {
         .as_str()
         .expect("public key uid should be a string")
         .to_owned();
-    let pk_uid_for_encrypt = if pk_uid.ends_with("_pk") {
+    let pk_uid_for_encrypt = if pk_uid.ends_with(SYSTEM_TAG_PUBLIC_KEY) {
         pk_uid
     } else {
-        format!("{pk_uid}_pk")
+        format!("{pk_uid}{SYSTEM_TAG_PUBLIC_KEY}")
     };
 
     let plaintext = b"ecies-curve-unset".to_vec();

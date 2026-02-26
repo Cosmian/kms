@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_CERTIFICATE,
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
             kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
@@ -694,7 +695,7 @@ fn build_and_sign_certificate(
     // add subject tags if any
     tags.extend(subject.tags().iter().cloned());
     // add the certificate "system" tag
-    tags.insert("_cert".to_owned());
+    tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
 
     // link the certificate to the issuer certificate
     attributes.set_link(

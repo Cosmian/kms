@@ -10,7 +10,7 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
 
 ## Delegable KMIP operations
 
-Owners can delegate the following KMIP operations to other users via the `grant` and `revoke` endpoints (or the CLI commands `cosmian kms access-rights grant` / `cosmian kms access-rights revoke`):
+Owners can delegate the following KMIP operations to other users via the `grant` and `revoke` endpoints (or the CLI commands `ckms access-rights grant` / `ckms access-rights revoke`):
 
 | Operation          | Description                                                     |
 | ------------------ | --------------------------------------------------------------- |
@@ -37,10 +37,10 @@ Multiple operations can be granted or revoked in a single call. For example, usi
 
 ```bash
 # Grant encrypt and decrypt to user "alice"
-cosmian kms access-rights grant alice -i <object-uid> encrypt decrypt
+ckms access-rights grant alice -i <object-uid> encrypt decrypt
 
 # Revoke the get privilege from user "bob"
-cosmian kms access-rights revoke bob -i <object-uid> get
+ckms access-rights revoke bob -i <object-uid> get
 ```
 
 ## The `Get` super-privilege
@@ -64,7 +64,7 @@ In other words, granting `Get` to a user on an object is equivalent to granting 
 This design allows owners to share full read/use access to an object with a single permission, without individually
 enumerating every operation.
 
-!!! warning "Security implication"
+!!! warning Security implication
     Because `Get` implies all other operation-level permissions, it should be granted with care.
     If you only need a user to encrypt data with a key, grant `encrypt` — not `get`.
 
@@ -129,7 +129,7 @@ It is important to distinguish authentication from authorization:
     The `kms.toml` configuration file controls **server-level** settings only (authentication methods, database backend,
     TLS, privileged users, etc.). It does **not** contain any user-to-key permission mapping.
     Per-object access rights are managed dynamically at runtime through the REST API (`/access/grant`, `/access/revoke`)
-    or the CLI (`cosmian kms access-rights grant` / `cosmian kms access-rights revoke`).
+    or the CLI (`ckms access-rights grant` / `ckms access-rights revoke`).
     The only authorization-related setting in `kms.toml` is `privileged_users`, which restricts who can create or import
     new objects (see [Privileged users](#privileged-users) above).
 
@@ -140,7 +140,7 @@ operations each user needs (e.g. `encrypt` and `decrypt`).
 
 ```bash
 # The admin creates a 256-bit AES key and tags it for easy lookup
-cosmian kms sym keys create --algorithm aes --number-of-bits 256 --tag user-alice-key
+ckms sym keys create --algorithm aes --number-of-bits 256 --tag user-alice-key
 ```
 
 The command returns the key's unique identifier, for example `a]b2c3d4-...`.
@@ -149,7 +149,7 @@ The command returns the key's unique identifier, for example `a]b2c3d4-...`.
 
 ```bash
 # Grant only encrypt and decrypt to alice (identified by her authenticated username)
-cosmian kms access-rights grant alice@example.com -i a]b2c3d4-... encrypt decrypt
+ckms access-rights grant alice@example.com -i a]b2c3d4-... encrypt decrypt
 ```
 
 Alice can now encrypt and decrypt using this key, but she **cannot** export it, destroy it, or perform any other
@@ -164,7 +164,7 @@ proceeding.
 ### Step 4 — Revoke access (if needed)
 
 ```bash
-cosmian kms access-rights revoke alice@example.com -i a]b2c3d4-... encrypt decrypt
+ckms access-rights revoke alice@example.com -i a]b2c3d4-... encrypt decrypt
 ```
 
 !!! note

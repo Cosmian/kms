@@ -9,6 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         HashingAlgorithm, PaddingMethod,
     },
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{
@@ -272,10 +273,10 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
         .as_str()
         .expect("public key uid should be a string")
         .to_owned();
-    let pk_uid_for_encrypt = if pk_uid.ends_with("_pk") {
+    let pk_uid_for_encrypt = if pk_uid.ends_with(SYSTEM_TAG_PUBLIC_KEY) {
         pk_uid
     } else {
-        format!("{pk_uid}_pk")
+        format!("{pk_uid}{SYSTEM_TAG_PUBLIC_KEY}")
     };
     let sk_uid = create_resp
         .private_key_unique_identifier

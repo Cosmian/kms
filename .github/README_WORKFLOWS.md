@@ -4,25 +4,14 @@ This document provides a visual representation of all GitHub Actions workflows i
 
 ## Workflow Overview
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ENTRY POINT WORKFLOWS                       │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌────────────┐  ┌────────────┐  ┌─────────────────────┐            │
-│  │  main.yml  │  │   pr.yml   │  │ github_cache_       │            │
-│  │ (Push CI)  │  │  (PR CI)   │  │  cleanup.yml        │            │
-│  └────────────┘  └────────────┘  └─────────────────────┘            │
-│       │               │                     │                       │
-│       │               │                     │                       │
-│  Triggers:       Triggers:            Triggers:                     │
-│  • Push          • Tags (push)        • Manual                      │
-│  • Schedule      • Pull Requests      (workflow_dispatch)            │
-│  • Manual        • Schedule                                         │
-│                  • Manual                                           │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```text
+```mermaid
+flowchart LR
+    subgraph entry["Entry Point Workflows"]
+        main["main.yml<br/>(Push CI)<br/><br/>Triggers:<br/>· Push<br/>· Schedule<br/>· Manual"]
+        pr["pr.yml<br/>(PR CI)<br/><br/>Triggers:<br/>· Tags<br/>· Pull Requests<br/>· Schedule<br/>· Manual"]
+        cleanup["github_cache_cleanup.yml<br/><br/>Triggers:<br/>· Manual (workflow_dispatch)"]
+    end
+```
 
 ---
 
@@ -32,15 +21,13 @@ Runs on direct pushes to branches, scheduled daily, and manual dispatch.
 
 ### Execution Flow
 
-```text
-main.yml
-├── Determines build type (debug/release)
-│   └── release: scheduled runs only
-│   └── debug: push events & manual
-│
-└─► main_base.yml (reusable workflow)
-    └── See detailed flow below
-```text
+```mermaid
+flowchart TB
+    main["main.yml"]
+    buildtype["Determine build type<br/>debug: push & manual<br/>release: scheduled only"]
+    base["main_base.yml (reusable)"]
+    main --> buildtype --> base
+```
 
 ### Triggers
 
@@ -56,14 +43,13 @@ Runs on pull requests, tags, scheduled daily, and manual dispatch. Includes full
 
 ### Execution Flow
 
-```text
-pr.yml
-├── Determines build type (always debug for PRs)
-│
-└─► packaging.yml (always runs)
-    └── Includes main_base.yml + packaging
-    └── See detailed flow below
-```text
+```mermaid
+flowchart TB
+    pr["pr.yml"]
+    buildtype["Determine build type<br/>(always debug for PRs)"]
+    packaging["packaging.yml<br/>(includes main_base.yml + packaging)"]
+    pr --> buildtype --> packaging
+```
 
 ### Triggers
 
@@ -80,35 +66,18 @@ Core CI checks and testing orchestrator.
 
 ### Execution Flow
 
-```text
-main_base.yml
-│
-├─► cla-assistant (conditional)
-│   ├── Runs on: External PRs
-│   └── Verifies CLA signature
-│
-├─► cargo-clippy (external reusable)
-│   └── Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
-│
-├─► cargo-deny (external reusable)
-│   └── Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
-│
-├─► cargo-machete (external reusable)
-│   └── Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@develop
-│
-├─► cargo-publish
-│   ├── Dry-run on non-tags
-│   └── Actual publish on tags
-│
-├─► test_all.yml
-│   └── See Test All flow below
-│
-└─► public_documentation
-    ├── Staging deploy: develop branch
-    │   └── Triggers: Cosmian/public_documentation staging.yml
-    └── Production deploy: tags
-        └── Triggers: Cosmian/public_documentation prod.yml
-```text
+```mermaid
+flowchart TB
+    base["main_base.yml"]
+    cla["cla-assistant<br/>(External PRs only)<br/>Verifies CLA signature"]
+    clippy["cargo-clippy<br/>(external reusable)"]
+    deny["cargo-deny<br/>(external reusable)"]
+    machete["cargo-machete<br/>(external reusable)"]
+    publish["cargo-publish<br/>dry-run: non-tags<br/>publish: tags"]
+    tests["test_all.yml"]
+    docs["public_documentation<br/>staging: develop branch<br/>production: tags"]
+    base --> cla & clippy & deny & machete & publish & tests & docs
+```
 
 ---
 
@@ -118,79 +87,45 @@ Comprehensive testing across platforms and configurations.
 
 ### Execution Flow
 
-```text
-test_all.yml
-│
-├─► test-nix (Matrix)
-│   ├── Platform: ubuntu-latest
-│   ├── Test types:
-│   │   ├── sqlite
-│   │   ├── mysql
-│   │   ├── psql
-│   │   ├── google_cse
-│   │   ├── redis (non-fips only)
-│   │   └── pykmip
-│   ├── Features: [fips, non-fips]
-│   └── Steps:
-│       ├── 1. Install Nix
-│       ├── 2. Checkout code
-│       ├── 3. Start Docker containers (compose)
-│       └── 4. Run: nix.sh test <type>
-│
-├─► test (without Nix)
-│   ├── Platforms: ubuntu-24.04, ubuntu-24.04-arm, macos-15
-│   ├── Test types: sqlite only
-│   ├── Features: [fips, non-fips]
-│   └── Steps:
-│       ├── 1. Setup Rust toolchain
-│       ├── 2. Checkout code
-│       └── 3. Run: test_sqlite.sh
-│
-├─► hsm (Matrix)
-│   ├── HSM types:
-│   │   ├── utimaco
-│   │   ├── proteccio (fips only)
-│   │   └── softhsm2
-│   ├── Features: [fips, non-fips]
-│   │   └── Note: proteccio excludes non-fips
-│   └── Steps:
-│       ├── 1. Install Nix
-│       ├── 2. Checkout code
-│       └── 3. Run: nix.sh test hsm <type>
-│
-├─► windows-2022
-│   └── Calls: test_windows.yml
-│
-└─► cleanup
-    └── Calls: Cosmian/reusable_workflows cleanup_cache.yml@develop
-```text
+```mermaid
+flowchart TB
+    test_all["test_all.yml"]
+    subgraph nix_matrix["test-nix (Matrix) — ubuntu-latest"]
+        nix_types["Test types: sqlite · mysql · psql<br/>google_cse · redis (non-fips) · pykmip"]
+        nix_feat["Features: fips · non-fips"]
+        nix_steps["1. Install Nix<br/>2. Checkout code<br/>3. Start Docker<br/>4. nix.sh test <type>"]
+    end
+    subgraph nonix["test (without Nix)"]
+        nonix_plat["Platforms: ubuntu-24.04 · ubuntu-24.04-arm · macos-15"]
+        nonix_types["Test types: sqlite only · Features: fips · non-fips"]
+        nonix_steps["1. Setup Rust · 2. Checkout · 3. test_sqlite.sh"]
+    end
+    subgraph hsm_matrix["hsm (Matrix)"]
+        hsm_types["HSM types: utimaco · proteccio (fips) · softhsm2"]
+        hsm_feat["Features: fips · non-fips (proteccio: fips only)"]
+        hsm_steps["1. Install Nix · 2. Checkout · 3. nix.sh test hsm <type>"]
+    end
+    win["windows-2022<br/>Calls: test_windows.yml"]
+    clean["cleanup<br/>Calls: cleanup_cache.yml (reusable)"]
+    test_all --> nix_matrix & nonix & hsm_matrix & win & clean
+```
 
 ### Test Matrix Visualization
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                     TEST-NIX MATRIX                         │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│ Test Type    │ FIPS         │ Non-FIPS     │ Notes          │
-├──────────────┼──────────────┼──────────────┼────────────────┤
-│ sqlite       │ ✓            │ ✓            │                │
-│ mysql        │ ✓            │ ✓            │                │
-│ psql         │ ✓            │ ✓            │                │
-│ google_cse   │ ✓            │ ✓            │ Requires creds │
-│ redis        │ ✗            │ ✓            │ Non-FIPS only  │
-│ pykmip       │ ✓            │ ✓            │                │
-└──────────────┴──────────────┴──────────────┴────────────────┘
+| Test Type  | FIPS | Non-FIPS | Notes          |
+|------------|:----:|:--------:|----------------|
+| sqlite     | ✓    | ✓        |                |
+| mysql      | ✓    | ✓        |                |
+| psql       | ✓    | ✓        |                |
+| google_cse | ✓    | ✓        | Requires creds |
+| redis      | ✗    | ✓        | Non-FIPS only  |
+| pykmip     | ✓    | ✓        |                |
 
-┌─────────────────────────────────────────────────────────────┐
-│                     HSM MATRIX                              │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│ HSM Type     │ FIPS         │ Non-FIPS     │ Notes          │
-├──────────────┼──────────────┼──────────────┼────────────────┤
-│ utimaco      │ ✓            │ ✓            │                │
-│ proteccio    │ ✓            │ ✗            │ FIPS only      │
-│ softhsm2     │ ✓            │ ✓            │                │
-└──────────────┴──────────────┴──────────────┴────────────────┘
-```text
+| HSM Type  | FIPS | Non-FIPS | Notes     |
+|-----------|:----:|:--------:|-----------|
+| utimaco   | ✓    | ✓        |           |
+| proteccio | ✓    | ✗        | FIPS only |
+| softhsm2  | ✓    | ✓        |           |
 
 ---
 
@@ -200,19 +135,13 @@ Windows-specific testing.
 
 ### Execution Flow
 
-```text
-test_windows.yml
-│
-└─► cargo-test
-    ├── Platform: windows-2022
-    └── Steps:
-        ├── 1. Checkout code
-        ├── 2. Setup Rust toolchain
-        ├── 3. Build static OpenSSL (vcpkg)
-        │   └── vcpkg install --triplet x64-windows-static
-        └── 4. Run tests
-            └── PowerShell: cargo_test.ps1
-```text
+```mermaid
+flowchart TB
+    tw["test_windows.yml"]
+    ct["cargo-test<br/>Platform: windows-2022"]
+    steps["1. Checkout code<br/>2. Setup Rust toolchain<br/>3. Build static OpenSSL (vcpkg)<br/>4. Run tests (PowerShell: cargo_test.ps1)"]
+    tw --> ct --> steps
+```
 
 ---
 
@@ -222,59 +151,32 @@ Builds and packages KMS for multiple platforms using Nix.
 
 ### Execution Flow
 
-```text
-packaging.yml
-│
-├─► windows-package
-│   └── Calls: build_windows.yml
-│       └── See Windows Build flow below
-│
-├─► docker
-│   └── Calls: packaging-docker.yml
-│       └── See Docker Build flow below
-│
-├─► packages (Matrix)
-│   ├── Features: [fips, non-fips]
-│   ├── Link types: [static, dynamic]
-│   ├── Runners: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
-│   └── Steps:
-│       ├── 1. Install Nix
-│       ├── 2. Checkout code
-│       ├── 3. Setup GPG signing
-│       ├── 4. Run: nix.sh --profile release --variant <features> --link <link> package
-│       └── 5. Upload artifacts:
-│           ├── Hash artifacts (*.sha256)
-│           └── Package artifacts:
-│               ├── result-deb-<features>-<link>/ (.deb packages)
-│               ├── result-rpm-<features>-<link>/ (.rpm packages)
-│               └── result-dmg-<features>-<link>/ (.dmg packages - macOS only)
-│
-├─► tests
-│   └── Calls: packaging-tests.yml
-│       └── See Packaging Tests flow below
-│
-└─► push-artifacts
-    └── Calls: push-artifacts.yml
-        └── See Push Artifacts flow below
-```text
+```mermaid
+flowchart TB
+    pkg["packaging.yml"]
+    winpkg["windows-package<br/>Calls: build_windows.yml"]
+    docker["docker<br/>Calls: packaging-docker.yml"]
+    subgraph packages_matrix["packages (Matrix)"]
+        pkg_feat["Features: fips · non-fips"]
+        pkg_link["Link: static · dynamic"]
+        pkg_run["Runners: ubuntu-24.04 · ubuntu-24.04-arm · macos-15"]
+        pkg_steps["1. Install Nix · 2. Checkout · 3. GPG signing<br/>4. nix.sh package · 5. Upload artifacts"]
+    end
+    tests["tests<br/>Calls: packaging-tests.yml"]
+    push["push-artifacts<br/>Calls: push-artifacts.yml"]
+    pkg --> winpkg & docker & packages_matrix & tests & push
+```
 
 ### Packaging Matrix Visualization
 
-```text
-┌────────────────────────────────────────────────────────────────┐
-│                   PACKAGE BUILD MATRIX                         │
-├────────────────┬──────────────┬──────────────┬─────────────────┤
-│ Runner         │ FIPS         │ Non-FIPS     │ Output          │
-├────────────────┼──────────────┼──────────────┼─────────────────┤
-│ ubuntu-24.04   │ ✓ (S+D)      │ ✓ (S+D)      │ .deb, .rpm      │
-│ ubuntu-24.04   │              │              │                 │
-│  -arm          │ ✓ (S+D)      │ ✓ (S+D)      │ .deb, .rpm      │
-│ macos-15       │ ✗            │ ✓ (S+D)      │ .dmg            │
-│ windows-2022   │ ✓ (DLLs)     │ ✓            │ .exe            │
-└────────────────┴──────────────┴──────────────┴─────────────────┘
+| Runner          | FIPS         | Non-FIPS     | Output        |
+|-----------------|:------------:|:------------:|---------------|
+| ubuntu-24.04    | ✓ (S+D)      | ✓ (S+D)      | .deb, .rpm    |
+| ubuntu-24.04-arm | ✓ (S+D)     | ✓ (S+D)      | .deb, .rpm    |
+| macos-15        | ✗            | ✓ (S+D)      | .dmg          |
+| windows-2022    | ✓ (DLLs)     | ✓            | .exe          |
 
-Note: (S+D) = Static and Dynamic linking variants
-```text
+> Note: (S+D) = Static and Dynamic linking variants
 
 ---
 
@@ -284,26 +186,18 @@ Tests packaged binaries across multiple Linux distributions.
 
 ### Execution Flow
 
-```text
-packaging-tests.yml
-│
-└─► packages-test (Matrix)
-    ├── Containers:
-    │   ├── Ubuntu: 25.04, 24.04, 22.04, 20.04
-    │   ├── Debian: trixie, bookworm, bullseye, buster
-    │   └── Rocky Linux: 10, 9, 8
-    ├── Features: [fips, non-fips]
-    ├── Link types: [static, dynamic]
-    ├── Runners: [ubuntu-24.04, ubuntu-24.04-arm]
-    └── Steps:
-        ├── 1. Download package artifacts
-        ├── 2. Install package (dpkg/rpm)
-        ├── 3. Test binary:
-        │   ├── cosmian_kms --version
-        │   └── cosmian_kms --info
-        └── 4. Smoke test server:
-            └── curl http://127.0.0.1:9998/ui/
-```text
+```mermaid
+flowchart TB
+    pt["packaging-tests.yml"]
+    subgraph matrix["packages-test (Matrix)"]
+        containers["Containers:<br/>Ubuntu: 25.04, 24.04, 22.04, 20.04<br/>Debian: trixie, bookworm, bullseye, buster<br/>Rocky Linux: 10, 9, 8"]
+        feat["Features: fips · non-fips"]
+        link["Link: static · dynamic"]
+        run["Runners: ubuntu-24.04 · ubuntu-24.04-arm"]
+        steps["1. Download packages · 2. Install (dpkg/rpm)<br/>3. Test binary · 4. Smoke test server"]
+    end
+    pt --> matrix
+```
 
 ---
 
@@ -313,70 +207,34 @@ Multi-architecture Docker image creation using Nix.
 
 ### Execution Flow
 
-```text
-packaging-docker.yml
-│
-├─► nix-docker-image (Matrix)
-│   ├── Features: [fips, non-fips]
-│   ├── Runners: [ubuntu-24.04, ubuntu-24.04-arm]
-│   └── Steps:
-│       ├── 1. Derive architecture from runner
-│       │   ├── ubuntu-24.04-arm → arm64, linux/arm64, suffix: -arm64
-│       │   └── ubuntu-24.04 → amd64, linux/amd64, suffix: -amd64
-│       ├── 2. Install Nix
-│       ├── 3. Checkout code
-│       ├── 4. Login to GHCR
-│       ├── 5. Install Cosign
-│       ├── 6. Extract Docker metadata
-│       │   └── Tags: branch, PR, semver
-│       ├── 7. Append arch suffix to tags
-│       │   └── e.g., nix-amd64, nix-arm64, pr-596-amd64
-│       ├── 8. Build and load Docker image
-│       │   └── nix.sh --variant <features> docker --load --test
-│       ├── 9. Tag and push single-arch images
-│       │   └── Push each tag with arch suffix
-│       ├── 10. Sign images with Cosign (keyless)
-│       └── 11. Test Docker image
-│
-└─► nix-docker-manifest (Matrix)
-    ├── Depends on: nix-docker-image
-    ├── Features: [fips, non-fips]
-    └── Steps:
-        ├── 1. Login to GHCR
-        ├── 2. Install Cosign
-        ├── 3. Setup Buildx
-        ├── 4. Compute tags (branch, PR, semver)
-        ├── 5. Create and push multi-arch manifest
-        │   ├── Combine: tag-amd64 + tag-arm64
-        │   └── Tags: branch, PR, semver
-        ├── 6. Sign manifests with Cosign (keyless)
-        └── 7. Inspect manifests
-```text
+```mermaid
+flowchart TB
+    pd["packaging-docker.yml"]
+    subgraph image_matrix["nix-docker-image (Matrix)"]
+        img_feat["Features: fips · non-fips"]
+        img_run["Runners: ubuntu-24.04 · ubuntu-24.04-arm"]
+        img_steps["1. Detect arch · 2. Install Nix · 3. Checkout<br/>4. Login GHCR · 5. Install Cosign · 6. Extract metadata<br/>7. Append arch suffix · 8. Build & load image<br/>9. Push single-arch · 10. Sign (Cosign) · 11. Test"]
+    end
+    subgraph manifest_matrix["nix-docker-manifest (Matrix)"]
+        man_feat["Features: fips · non-fips"]
+        man_dep["Depends on: nix-docker-image"]
+        man_steps["1. Login GHCR · 2. Install Cosign · 3. Setup Buildx<br/>4. Compute tags · 5. Create multi-arch manifest<br/>6. Sign manifests · 7. Inspect manifests"]
+    end
+    pd --> image_matrix
+    image_matrix --> manifest_matrix
+```
 
 ### Docker Build Matrix
 
-```text
-┌────────────────────────────────────────────────────────────────┐
-│                 DOCKER IMAGE BUILD MATRIX                      │
-├─────────────────┬───────────┬────────────────┬─────────────────┤
-│ OS              │ Features  │ Architecture   │ Registry Image  │
-├─────────────────┼───────────┼────────────────┼─────────────────┤
-│ ubuntu-24.04    │ fips       │ amd64          │ kms-fips         │
-│ ubuntu-24.04    │ non-fips   │ amd64          │ kms             │
-│ ubuntu-24.04-   │           │                │                 │
-│  arm            │ fips       │ arm64          │ kms-fips         │
-│ ubuntu-24.04-   │           │                │                 │
-│  arm            │ non-fips   │ arm64          │ kms             │
-└─────────────────┴───────────┴────────────────┴─────────────────┘
+| OS               | Features | Architecture | Registry Image |
+|------------------|:--------:|:------------:|----------------|
+| ubuntu-24.04     | fips     | amd64        | kms-fips       |
+| ubuntu-24.04     | non-fips | amd64        | kms            |
+| ubuntu-24.04-arm | fips     | arm64        | kms-fips       |
+| ubuntu-24.04-arm | non-fips | arm64        | kms            |
 
-Tags generated:
-- type=ref,event=branch → <branch-name>-amd64, <branch-name>-arm64
-- type=ref,event=pr → pr-<number>-amd64, pr-<number>-arm64
-- type=semver → <version>-amd64, <version>-arm64
-
-Final manifest combines: <image>:tag-amd64 + <image>:tag-arm64
-                      → <image>:tag (multi-arch)
-```text
+**Tag patterns:** `<branch>-<arch>`, `pr-<N>-<arch>`, `<version>-<arch>`
+**Multi-arch manifest:** `<image>:tag-amd64` + `<image>:tag-arm64` → `<image>:tag`
 
 ---
 
@@ -386,50 +244,22 @@ Windows binary and installer creation.
 
 ### Execution Flow
 
-```text
-build_windows.yml
-│
-├─► cargo-build
-│   ├── Platform: windows-2022
-│   └── Steps:
-│       ├── 1. Checkout code
-│       ├── 2. Setup Rust toolchain
-│       ├── 3. Build static OpenSSL (vcpkg)
-│       ├── 4. Build project
-│       │   └── PowerShell: cargo_build.ps1
-│       └── 5. Upload artifacts:
-│           ├── *.exe
-│           └── *cosmian_pkcs11.dll
-│
-├─► fips-build
-│   ├── Platform: windows-2022
-│   └── Steps:
-│       ├── 1. Checkout code
-│       ├── 2. Build FIPS OpenSSL
-│       │   └── vcpkg install (using vcpkg_fips.json)
-│       └── 3. Upload FIPS artifacts:
-│           ├── fips.dll
-│           └── legacy.dll
-│
-├─► combine-artifacts
-│   ├── Depends: cargo-build, fips-build
-│   └── Steps:
-│       ├── 1. Download build artifacts
-│       ├── 2. Download FIPS artifacts
-│       └── 3. Upload combined package:
-│           ├── *.exe
-│           ├── *cosmian_pkcs11.dll
-│           ├── fips.dll
-│           └── legacy.dll
-│
-└─► test
-    ├── Depends: combine-artifacts
-    └── Steps:
-        ├── 1. Download combined artifacts
-        ├── 2. Copy legacy.dll to OpenSSL dir
-        └── 3. Test all executables:
-            └── cosmian*.exe -V
-```text
+```mermaid
+flowchart TB
+    bw["build_windows.yml"]
+    subgraph cargo_build["cargo-build — windows-2022"]
+        cb_steps["1. Checkout · 2. Setup Rust<br/>3. Build OpenSSL (vcpkg) · 4. Build (cargo_build.ps1)<br/>5. Upload: *.exe, *cosmian_pkcs11.dll"]
+    end
+    subgraph fips_build["fips-build — windows-2022"]
+        fb_steps["1. Checkout · 2. Build FIPS OpenSSL (vcpkg_fips.json)<br/>3. Upload: fips.dll, legacy.dll"]
+    end
+    subgraph combine["combine-artifacts"]
+        co_steps["1. Download build artifacts<br/>2. Download FIPS artifacts<br/>3. Upload combined package"]
+    end
+    test["test<br/>1. Download combined artifacts<br/>2. Copy legacy.dll to OpenSSL dir<br/>3. Test: cosmian*.exe -V"]
+    bw --> cargo_build & fips_build
+    cargo_build & fips_build --> combine --> test
+```
 
 ---
 
@@ -439,69 +269,31 @@ Upload packages to package.cosmian.com and GitHub Releases.
 
 ### Execution Flow
 
-```text
-push-artifacts.yml
-│
-└─► packages
-    ├── Runs on: self-hosted runner
-    ├── Container: cosmian/docker_doc_ci
-    └── Steps:
-        ├── 1. Download all artifacts:
-        │   ├── fips_static_ubuntu-24.04-release
-        │   ├── fips_dynamic_ubuntu-24.04-release
-        │   ├── non-fips_static_ubuntu-24.04-release
-        │   ├── non-fips_dynamic_ubuntu-24.04-release
-        │   ├── fips_static_ubuntu-24.04-arm-release
-        │   ├── fips_dynamic_ubuntu-24.04-arm-release
-        │   ├── non-fips_static_ubuntu-24.04-arm-release
-        │   ├── non-fips_dynamic_ubuntu-24.04-arm-release
-        │   ├── non-fips_static_macos-15-release
-        │   ├── non-fips_dynamic_macos-15-release
-        │   ├── windows-release
-        │   └── hash-*
-        │
-        ├── 2. Validate package count:
-        │   ├── >= 8 .deb files (4 variants × 2 arches)
-        │   ├── >= 8 .rpm files (4 variants × 2 arches)
-        │   ├── >= 2 .dmg files (2 variants)
-        │   └── >= 1 .exe file
-        │
-        ├── 3. Push to package.cosmian.com:
-        │   ├── Path on tags: /mnt/package/kms/<tag>
-        │   ├── Path on branches: /mnt/package/kms/last_build/<branch>
-        │   └── Files:
-        │       ├── *.deb, *.rpm (Linux x86_64 & ARM)
-        │       ├── *.dmg (macOS)
-        │       ├── *.exe (Windows)
-        │       ├── *.sha256 (hash artifacts from nix/expected-hashes/)
-        │       └── cosmian-kms-public.asc (GPG key)
-        │
-        └── 4. GitHub Release (tags only):
-            └── Attach all packages to release
-```text
+```mermaid
+flowchart TB
+    pa["push-artifacts.yml"]
+    subgraph packages["packages — self-hosted runner"]
+        dl1["1. Download all artifacts<br/>(fips/non-fips × static/dynamic × linux/arm/macos/windows)"]
+        validate["2. Validate package count<br/>≥8 .deb · ≥8 .rpm · ≥2 .dmg · ≥1 .exe"]
+        push["3. Push to package.cosmian.com<br/>tags: /kms/<tag>/<br/>branches: /kms/last_build/<branch>/"]
+        release["4. GitHub Release (tags only)<br/>Attach all packages"]
+        dl1 --> validate --> push --> release
+    end
+    pa --> packages
+```
 
 ### Artifact Flow
 
-```text
-┌────────────────────────────────────────────────────────────────┐
-│                    ARTIFACT DESTINATIONS                       │
-└────────────────────────────────────────────────────────────────┘
-
-On Tags (e.g., v1.2.3):
-├─► package.cosmian.com/kms/v1.2.3/
-│   ├── *.deb (Ubuntu/Debian packages)
-│   ├── *.rpm (Rocky Linux packages)
-│   ├── *.dmg (macOS installer)
-│   ├── *.exe (Windows installer)
-│   └── cosmian-kms-public.asc
-│
-└─► GitHub Release (v1.2.3)
-    └── Same files attached
-
-On Branches (e.g., develop):
-└─► package.cosmian.com/kms/last_build/develop/
-    └── Same package structure
-```text
+```mermaid
+flowchart TB
+    subgraph tags["On Tags (e.g., v1.2.3)"]
+        pkg_server["package.cosmian.com/kms/v1.2.3/<br/>*.deb · *.rpm · *.dmg · *.exe<br/>cosmian-kms-public.asc"]
+        gh_release["GitHub Release (v1.2.3)<br/>Same files attached"]
+    end
+    subgraph branches["On Branches (e.g., develop)"]
+        pkg_branch["package.cosmian.com/kms/last_build/develop/<br/>Same package structure"]
+    end
+```
 
 ---
 
@@ -511,21 +303,13 @@ Publishes Rust crates to crates.io.
 
 ### Execution Flow
 
-```text
-cargo-publish.yml
-│
-└─► publish
-    ├── Platform: ubuntu-latest
-    └── Steps:
-        ├── 1. Free disk space
-        │   └── Remove: Android, .NET, Haskell, Docker images
-        ├── 2. Checkout code
-        ├── 3. Dry-run (non-tags):
-        │   └── cargo publish --dry-run
-        └── 4. Actual publish (tags only):
-            ├── Install cargo-workspaces
-            └── cargo workspaces publish --from-git
-```text
+```mermaid
+flowchart TB
+    cp["cargo-publish.yml"]
+    pub["publish — ubuntu-latest"]
+    steps["1. Free disk space (Android/.NET/Haskell/Docker)<br/>2. Checkout code<br/>3. Dry-run (non-tags): cargo publish --dry-run<br/>4. Actual publish (tags): cargo workspaces publish --from-git"]
+    cp --> pub --> steps
+```
 
 ---
 
@@ -535,18 +319,13 @@ Contributor License Agreement verification.
 
 ### Execution Flow
 
-```text
-cla.yml
-│
-└─► cla-assistant
-    ├── Trigger: workflow_call (from main_base.yml)
-    ├── Conditions: External PRs
-    └── Steps:
-        └── 1. Run CLA Assistant GitHub Action
-            ├── Document: CLA.md
-            ├── Signatures: cla-signatures branch
-            └── Storage: signatures/version1/cla.json
-```text
+```mermaid
+flowchart TB
+    cla["cla.yml"]
+    assistant["cla-assistant<br/>Trigger: workflow_call (from main_base.yml)<br/>Conditions: External PRs only"]
+    action["CLA Assistant GitHub Action<br/>Document: CLA.md<br/>Signatures: cla-signatures branch<br/>Storage: signatures/version1/cla.json"]
+    cla --> assistant --> action
+```
 
 ---
 
@@ -556,45 +335,43 @@ Manual cache cleanup.
 
 ### Execution Flow
 
-```text
-github_cache_cleanup.yml
-│
-└─► cleanup
-    ├── Trigger: workflow_dispatch (manual)
-    └── Calls: Cosmian/reusable_workflows cleanup_cache.yml@develop
-```text
+```mermaid
+flowchart LR
+    cleanup["github_cache_cleanup.yml"]
+    job["cleanup — Trigger: workflow_dispatch (manual)"]
+    ext["Cosmian/reusable_workflows<br/>cleanup_cache.yml@develop"]
+    cleanup --> job --> ext
+```
 
 ---
 
 ## Workflow Dependencies Graph
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                      WORKFLOW CALL HIERARCHY                     │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    main_yml["main.yml<br/>(Push CI)"]
+    pr_yml["pr.yml<br/>(PR CI)"]
+    cache_yml["github_cache_cleanup.yml<br/>(Manual)"]
+    main_base["main_base.yml"]
+    packaging["packaging.yml"]
+    cla["cla.yml"]
+    pub["cargo-publish.yml"]
+    test_all["test_all.yml"]
+    test_win["test_windows.yml"]
+    cache_ext["cleanup_cache.yml (external)"]
+    pub_doc["public_documentation (external)"]
+    build_win["build_windows.yml"]
+    pkg_docker["packaging-docker.yml"]
+    pkg_tests["packaging-tests.yml"]
+    push_art["push-artifacts.yml"]
 
-main.yml (Push CI - Entry Point)
-└─► main_base.yml
-    ├─► cla.yml
-    ├─► cargo-publish.yml
-    ├─► test_all.yml
-    │   ├─► test_windows.yml
-    │   └─► cleanup_cache.yml (external)
-    └─► public_documentation (external triggers)
-
-pr.yml (PR CI - Entry Point)
-└─► packaging.yml
-    ├─► main_base.yml (inherited from above)
-    ├─► build_windows.yml
-    ├─► packaging-docker.yml
-    │   ├─► nix-docker-image (job)
-    │   └─► nix-docker-manifest (job)
-    ├─► packaging-tests.yml
-    └─► push-artifacts.yml
-
-github_cache_cleanup.yml (Manual)
-└─► cleanup_cache.yml (external)
-```text
+    main_yml --> main_base
+    pr_yml --> packaging
+    packaging --> main_base & build_win & pkg_docker & pkg_tests & push_art
+    main_base --> cla & pub & test_all & pub_doc
+    test_all --> test_win & cache_ext
+    cache_yml --> cache_ext
+```
 
 ---
 
@@ -662,9 +439,8 @@ All scripts are located in `.github/scripts/`. See the [scripts README](.github/
 - **`nix.sh`**: Main orchestrator for Nix-based builds, tests, and Docker
     - Commands: `build`, `test`, `package`, `docker`, `sbom`, `update-hashes`
     - Variants: `fips`, `non-fips`
-    - Profiles: `debug`, `release`
     - Link types: `static`, `dynamic`
-    - Example: `bash nix.sh --profile release --variant fips --link static package`
+    - Example: `bash nix.sh --variant fips --link static package`
 
 ### Core Test Scripts
 
@@ -758,39 +534,25 @@ Released artifacts are permanent:
 
 ## Release Process
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                      RELEASE WORKFLOW                            │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    tag["Push tag (e.g., v1.2.3)"]
+    pr_yml["Triggers pr.yml (on: push: tags: '**')"]
+    packaging["packaging.yml (includes main_base.yml)"]
+    checks["CI Checks: clippy · deny · machete"]
+    tests["Full test suite (all platforms)"]
+    publish["Cargo publish to crates.io"]
+    docs["Documentation deployment (prod)"]
+    build["Build packages (all platforms, static & dynamic)"]
+    pkgtests["Test packages (13 Linux distros)"]
+    docker["Build Docker images (multi-arch, FIPS & non-FIPS)<br/>Create manifests · Sign with Cosign"]
+    pushpkg["Push to package.cosmian.com"]
+    artifacts["Artifacts published to:<br/>GitHub Release<br/>package.cosmian.com/kms/<tag>/<br/>ghcr.io/cosmian/kms:<tag><br/>crates.io"]
 
-1. Push tag (e.g., v1.2.3)
-   │
-   ├─► Triggers pr.yml (because on: push: tags: '**')
-   │
-   ├─► packaging.yml runs (which includes main_base.yml):
-   │   ├── All CI checks (clippy, deny, machete)
-   │   ├── Full test suite (all platforms)
-   │   ├── Cargo publish to crates.io
-   │   ├── Documentation deployment (prod)
-   │   ├── Build packages (all platforms, static & dynamic)
-   │   ├── Test packages (all distros)
-   │   ├── Build Docker images (multi-arch, Nix-based)
-   │   ├── Create manifests & sign
-   │   └── Push to package.cosmian.com
-   │
-   └─► Artifacts published to:
-       ├── GitHub Release (with all assets)
-       ├── package.cosmian.com/kms/<tag>/
-       │   ├── 8+ .deb packages (static/dynamic × fips/non-fips × amd64/arm64)
-       │   ├── 8+ .rpm packages (static/dynamic × fips/non-fips × amd64/arm64)
-       │   ├── 2 .dmg packages (static/dynamic × non-fips)
-       │   ├── 1 .exe package (Windows installer)
-       │   ├── *.sha256 hash files
-       │   └── cosmian-kms-public.asc
-       ├── ghcr.io/cosmian/kms:<tag> (multi-arch, non-FIPS)
-       ├── ghcr.io/cosmian/kms-fips:<tag> (multi-arch, FIPS)
-       └── crates.io (all workspace crates)
-```text
+    tag --> pr_yml --> packaging
+    packaging --> checks & tests & publish & docs & build & pkgtests & docker & pushpkg
+    checks & tests & publish & docs & build & pkgtests & docker & pushpkg --> artifacts
+```
 
 ---
 

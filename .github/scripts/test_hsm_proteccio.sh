@@ -49,7 +49,6 @@ env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
 set +x
@@ -61,7 +60,6 @@ env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   RUST_LOG="cosmian_kms_server=trace" \
   cargo test \
   -p proteccio_pkcs11_loader \
-  "$RELEASE_FLAG" \
   --features proteccio \
   -- tests::test_hsm_proteccio_all --ignored --exact
 set -x

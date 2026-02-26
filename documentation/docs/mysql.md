@@ -6,18 +6,7 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 
 ---
 
-## Table of Contents
-
-1. [Version Requirements](#version-requirements)
-2. [Technical Specifications](#technical-specifications)
-3. [Architecture Overview](#architecture-overview)
-4. [Prerequisites](#prerequisites)
-5. [Installation and Configuration](#installation-and-configuration)
-6. [Capabilities and Features](#capabilities-and-features)
-7. [Testing and Validation](#testing-and-validation)
-8. [Advanced Resilience Testing](#advanced-resilience-testing)
-9. [Troubleshooting](#troubleshooting)
-10. [References](#references)
+[TOC]
 
 ---
 
@@ -50,39 +39,28 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 
 ### Network Architecture
 
-```text
-┌──────────────────────────────────────────────────────────┐
-│                  Isolated Lab Network                    │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌─────────────────────┐      ┌──────────────────────┐   │
-│  │   Cosmian KMS       │      │  MySQL Enterprise    │   │
-│  │  (v5.14+)           │      │  (v8.4.7)            │   │
-│  │                     │◄────►│                      │   │
-│  │ HTTP:  9998 (HTTPS) │      │ Port 3306 (MySQL)    │   │
-│  │ KMIP:  5696 (TLS)   │      │ KMIP via TLS         │   │
-│  │ DB:    SQLite       │      │ keyring_okv plugin   │   │
-│  └─────────────────────┘      └──────────────────────┘   │
-│         Protocol: KMIP 1.1 over TLS 1.3                  │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph network["Isolated Lab Network"]
+        kms["Cosmian KMS v5.14+<br/>HTTP: 9998 (HTTPS)<br/>KMIP: 5696 (TLS)<br/>DB: SQLite"]
+        mysql["MySQL Enterprise v8.4.7<br/>Port 3306 (MySQL)<br/>KMIP via TLS<br/>keyring_okv plugin"]
+        kms <-->|"KMIP 1.1 over TLS 1.3"| mysql
+    end
 ```
 
 ### Key Management Flow
 
-```text
-MySQL InnoDB
-     │
-     ├─ Generates encryption key (TEK)
-     │
-     └─► keyring_okv plugin (MySQL 8.0+)
-            │
-            ├─ Connects to Cosmian KMS via KMIP (TLS)
-            │
-            └─► Cosmian KMS (v5.14+, Port 5696)
-                   │
-                   ├─ Stores/retrieves master key
-                   │
-                   └─► SQLite Database (persistent)
+```mermaid
+flowchart TB
+    innodb["MySQL InnoDB"]
+    tek["Generates encryption key (TEK)"]
+    okv["keyring_okv plugin (MySQL 8.0+)"]
+    kms["Cosmian KMS v5.14+<br/>(Port 5696)"]
+    db["SQLite Database (persistent)"]
+    innodb --> tek
+    tek --> okv
+    okv -->|"Connects via KMIP (TLS)"| kms
+    kms -->|"Stores / retrieves master key"| db
 ```
 
 ---
@@ -486,6 +464,7 @@ CREATE TABLE secure_table (id INT PRIMARY KEY) TABLESPACE=ts_encrypted;
 -- OR encrypt an existing tablespace (MySQL 8.0.13+)
 -- This affects all tables within the tablespace
 ALTER TABLESPACE ts_existing ENCRYPTION='Y';
+```
 
 ### Key Management Verification
 

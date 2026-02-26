@@ -46,11 +46,11 @@ identified. It is possible to use multiple tags to identify a key; for instance 
 The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
 /formats.md) for details.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  cosmian kms sym keys create my_symmetric_key
-  cosmian kms sym keys export -t my_symmetric_key /tmp/sym_key.json
+  ckms sym keys create my_symmetric_key
+  ckms sym keys export -t my_symmetric_key /tmp/sym_key.json
 ```
 
 === "Request"
@@ -171,10 +171,10 @@ Exporting a wrapped Covercrypt user key `df871e79-0923-47cd-9078-bbec83287c85` (
 see how to create the Covercrypt user key) after wrapping it with symmetric key
 `027cced1-ff2b-4bd3-a200-db1041583bdc` using RFC 5649.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
- cosmian kms cc keys export -k df871e79-0923-47cd-9078-bbec83287c85 /tmp/sym_key.json  -w 027cced1-ff2b-4bd3-a200-db1041583bdc
+ ckms cc keys export -k df871e79-0923-47cd-9078-bbec83287c85 /tmp/sym_key.json  -w 027cced1-ff2b-4bd3-a200-db1041583bdc
 ```
 
 Please note the presence of the `KeyWrappingSpecification` structure in the request with the unique identifier of
@@ -411,10 +411,10 @@ more details.
 Exporting in PKCS#8 an EC private key `bf614d45-5a3e-49b9-95c0-5586d3c0d17b` which was imported as part of a PKCS#12
 container.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  cosmian kms ec keys export /tmp/pkey.pem -f pkcs8-pem -k bf614d45-5a3e-49b9-95c0-5586d3c0d17b
+  ckms ec keys export /tmp/pkey.pem -f pkcs8-pem -k bf614d45-5a3e-49b9-95c0-5586d3c0d17b
 ```
 
 Please note:
@@ -560,10 +560,10 @@ Please note:
 
 Exporting in X509 a certificate `d2f4e937-dda9-4a86-bbe8-c866646a612f` which was imported as part of a PKCS#12.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  cosmian kms certificates export /tmp/cert.x509 -f pem -c d2f4e937-dda9-4a86-bbe8-c866646a612f
+  ckms certificates export /tmp/cert.x509 -f pem -c d2f4e937-dda9-4a86-bbe8-c866646a612f
 ```
 
 The conversion from DER to PEM is done by the CLI.
@@ -649,10 +649,10 @@ The Private Key must have a link to:
 - for intermediate certificates to be included, the certificate must have a link to a certificate with a link of type
    `CertificateLink` to its issuer.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  cosmian kms certificates export /tmp/exported.p12 -c bf614d45-5a3e-49b9-95c0-5586d3c0d17b -f pkcs12 -p secret
+  ckms certificates export /tmp/exported.p12 -c bf614d45-5a3e-49b9-95c0-5586d3c0d17b -f pkcs12 -p secret
 ```
 
 Please note:

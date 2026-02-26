@@ -7,6 +7,7 @@ use cosmian_kmip::{
     SafeBigInt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -559,7 +560,7 @@ fn create_ec_key_pair(
         Some(UniqueIdentifier::TextString(private_key_uid.to_owned()));
     // Add the tags
     let mut sk_tags = tags.clone();
-    sk_tags.insert("_sk".to_owned());
+    sk_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
     *private_key.key_block_mut()?.attributes_mut()? = private_key_attributes;
@@ -583,7 +584,7 @@ fn create_ec_key_pair(
         Some(UniqueIdentifier::TextString(public_key_uid.to_owned()));
     // Add the tags
     let mut pk_tags = tags;
-    pk_tags.insert("_pk".to_owned());
+    pk_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
     *public_key.key_block_mut()?.attributes_mut()? = public_key_attributes;

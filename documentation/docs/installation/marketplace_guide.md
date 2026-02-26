@@ -10,7 +10,7 @@ Go the Cosmian marketplace webpage of the chosen [cloud provider](https://cosmia
 
 Select an OS and continue until the Cosmian VM KMS instance is spawned.
 
-!!! important "Cloud provider support"
+!!! important Cloud provider support
 
     Here's the list of instance types by cloud provider
 
@@ -68,7 +68,7 @@ port = 9998
 hostname = "0.0.0.0"
 ```
 
-!!! important "Protect your secrets"
+!!! important Protect your secrets
 
     The Cosmian KMS configuration can potentially contain secrets
     (such as this `redis_master_password` field), that is why

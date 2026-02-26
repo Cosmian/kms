@@ -7,6 +7,10 @@ use cosmian_kms_server_database::reexport::{
         self,
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
+            extra::tagging::{
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PRIVATE_KEY,
+                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+            },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
             kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
@@ -25,13 +29,14 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
 use crate::{
     core::{
         KMS,
+        operations::validate::verify_crls,
         retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -106,7 +111,7 @@ pub(crate) async fn import(
     let mut request = request;
     let now = time_normalize()?;
     let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-    let desired_state = if activation_allows_active {
+    let mut desired_state = if activation_allows_active {
         debug!(
             "Import: activation_date={:?} <= now, setting state to Active",
             request.attributes.activation_date
@@ -116,6 +121,37 @@ pub(crate) async fn import(
         debug!("Import: no activation_date or future date, setting state to PreActive");
         State::PreActive
     };
+
+    // For Active certificates, check CRL revocation status.
+    // If revoked, transition directly to Compromised instead of Active.
+    if desired_state == State::Active && request.object.object_type() == ObjectType::Certificate {
+        if let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+            certificate_value,
+            ..
+        }) = &request.object
+        {
+            if let Ok(cert) = X509::from_der(certificate_value) {
+                match verify_crls(vec![cert]).await {
+                    Err(KmsError::Certificate(_)) => {
+                        debug!(
+                            "Import: certificate is revoked per CRL check, \
+                             setting state to Compromised"
+                        );
+                        desired_state = State::Compromised;
+                    }
+                    Err(e) => {
+                        // Network or other transient errors: log and proceed with Active
+                        warn!(
+                            "Import: CRL check could not be completed ({e}), \
+                             proceeding with {desired_state:?} state"
+                        );
+                    }
+                    Ok(_) => {}
+                }
+            }
+        }
+    }
+
     request.attributes.state = Some(desired_state);
     if let Ok(object_attributes) = request.object.attributes_mut() {
         object_attributes.state = Some(desired_state);
@@ -190,7 +226,7 @@ pub(super) async fn process_symmetric_key(
 
     // Tag the object as a symmetric key
     let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_kk".to_owned());
+    tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
@@ -272,7 +308,7 @@ pub(super) fn process_certificate(
 
     // Tag the object as a certificate
     let mut tags = recover_tags(&request.attributes, &request.object);
-    tags.insert("_cert".to_owned());
+    tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
 
     // The specification says that this should be DER bytes
     let certificate_der_bytes = match request.object {
@@ -356,7 +392,7 @@ pub(super) async fn process_public_key(
 
     // Tag the object as a public key
     let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_pk".to_owned());
+    tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
     let uid = match request.unique_identifier.to_string() {
@@ -509,7 +545,7 @@ pub(super) async fn process_private_key(
 
     // Tag the object as a private key
     let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_sk".to_owned());
+    tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
     let uid = match request.unique_identifier.to_string() {
@@ -729,7 +765,7 @@ async fn process_pkcs12(
         uid => uid,
     };
     // Build the private key ID
-    let private_key_id = format!("{leaf_certificate_id}_sk");
+    let private_key_id = format!("{leaf_certificate_id}{SYSTEM_TAG_PRIVATE_KEY}");
 
     // First, build the tuples (id, Object) for the private key, the leaf certificate
     // and the chain certificates
@@ -751,7 +787,7 @@ async fn process_pkcs12(
         }
         // create the private key tags
         let mut private_key_tags = user_tags.clone();
-        private_key_tags.insert("_sk".to_owned());
+        private_key_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
         // set tags in the attributes
         attributes.set_tags(private_key_tags.clone())?;
         // Ensure InitialDate is set for PKCS#12-derived private key
@@ -787,7 +823,7 @@ async fn process_pkcs12(
     trace!("Leaf certificate extracted from PKCS12");
 
     // Build the public key ID
-    let public_key_id = format!("{leaf_certificate_id}_pk");
+    let public_key_id = format!("{leaf_certificate_id}{SYSTEM_TAG_PUBLIC_KEY}");
 
     // build the public key from the X509 certificate
     let public_key = {
@@ -813,7 +849,7 @@ async fn process_pkcs12(
 
         // create the public key tags
         let mut public_key_tags = user_tags.clone();
-        public_key_tags.insert("_pk".to_owned());
+        public_key_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
         // set tags in the attributes
         attributes.set_tags(public_key_tags.clone())?;
         // set the updated attributes on the key
@@ -927,7 +963,7 @@ async fn process_pkcs12(
     }
     // certificate tags
     let mut leaf_tags = user_tags.clone();
-    leaf_tags.insert("_cert".to_owned());
+    leaf_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
     leaf_attributes.set_tags(leaf_tags)?;
 
     // Add links to the leaf certificate
@@ -991,7 +1027,7 @@ async fn process_pkcs12(
         }
         // certificate tags
         let mut chain_tags = user_tags.clone();
-        chain_tags.insert("_cert".to_owned());
+        chain_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
         chain_attributes.set_tags(chain_tags)?;
 
         if let Some(parent_certificate_id) = parent_certificate_id {
@@ -1039,7 +1075,7 @@ pub(super) async fn process_secret_data(
 
     // Tag the object as a secret data
     let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_sd".to_owned());
+    tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
@@ -1115,7 +1151,7 @@ pub(super) fn process_opaque_object(
 
     // Tag the object as a opaque object
     let mut tags = recover_tags(&request.attributes, &request.object);
-    tags.insert("_oo".to_owned());
+    tags.insert(SYSTEM_TAG_OPAQUE_OBJECT.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;

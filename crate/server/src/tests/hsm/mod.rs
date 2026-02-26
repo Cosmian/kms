@@ -1,6 +1,7 @@
 use std::{ops::Add, sync::Arc};
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Export, Import},
@@ -170,7 +171,7 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     );
     assert!(
         create_response.public_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
+            == UniqueIdentifier::TextString(key_uid.to_owned().add(SYSTEM_TAG_PUBLIC_KEY))
     );
     Ok(())
 }

@@ -75,7 +75,7 @@ cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.16.2" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.16.2" }
 cosmian_logger = { workspace = true, features = ["full"] }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.16.2" }
-dotenvy =  {workspace = true }
+dotenvy = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
@@ -137,7 +137,7 @@ ignored = ["sha2"]
 features = ["non-fips"]
 maintainer = "Cosmian support team <tech@cosmian.com>"
 maintainer-scripts = "../../pkg/deb/"
-copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
+copyright = "2026, Cosmian Tech SAS <tech@cosmian.com>"
 license-file = ["../../LICENSE", "0"]
 changelog = "../../CHANGELOG.md"
 section = "security"

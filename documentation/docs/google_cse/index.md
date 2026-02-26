@@ -18,7 +18,7 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
     - The [Cosmian Key Management Server](../marketplace_guide.md) behind a `Nginx` server:
         - exposing a valid TLS certificate
         - and serving the [`.well-known`](./configuring-the-well-known-file-and-server.md) file used by the Identity Provider
-    - The [Cosmian CLI](../../cosmian_cli/index.md)
+    - The [KMS CLI](../kms_clients/index.md)
         - to generate the [Google CSE key](#creating-google_cse-key) in the Cosmian KMS with correct access rights
         - to generate the [Gmail users keys](configuring_gmail_cse.md#create-user-key-pair)
 
@@ -30,7 +30,7 @@ First you need an intermediate CA (Certificate Authority) that is trusted by Goo
 This CA will issue your users certificates:
 
 - either your CA is one of the Google recommended CA, follow this [page](https://support.google.com/a/answer/7448393) to make sure it is (note that Actalis can provide CA certificates for free).
-In that case, your users S/MIME certificates will be issued directly from your CA and you will need to import them one by one using [Cosmian CLI](configuring_gmail_cse.md#create-user-key-pair)
+In that case, your users S/MIME certificates will be issued directly from your CA and you will need to import them one by one using [KMS CLI](configuring_gmail_cse.md#create-user-key-pair)
 - either this is a custom CA:
     - that you already have (remember that this custom CA must have the expected Google X509 extensions).
   You will have to upload the full CA chain in admin.google.com->Apps/Google Workspace/Settings for Gmail/User Settings/S/MIME (and wait for provisioning to be fully done, few hours expected).
@@ -141,28 +141,28 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
-Using the [Cosmian CLI](../../cosmian_cli/index.md), ensure that it is properly configured and that [authentication is handled correctly](../cosmian_cli/authentication.md#oauth2oidc-configuration).
+Using the [KMS CLI](../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../kms_clients/authentication.md#oauth2oidc-configuration).
 
 !!! important
-    Concerning the Cosmian CLI, you will have to log in the first time you use it.
-    This is done by running `cosmian kms login`.
+    Concerning the KMS CLI, you will have to log in the first time you use it.
+    This is done by running `ckms login`.
 
 ```sh
 # create it
-cosmian kms sym keys create -t google_cse google_cse
+ckms sym keys create -t google_cse google_cse
 
 # or import an existing key
-cosmian kms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
+ckms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
 ```
 
 Next, you’ll need to assign access rights to each user who requires CSE functionality, whether they are part of your organization or a guest.
 You can also grant wildcard access ('*') to allow all users to use this key in CSE endpoints.
 
 ```sh
-cosmian kms access-rights grant USER_ID google_cse get encrypt decrypt
+ckms access-rights grant USER_ID google_cse get encrypt decrypt
 
 # or give access to everyone
-cosmian kms access-rights grant '*' google_cse get encrypt decrypt
+ckms access-rights grant '*' google_cse get encrypt decrypt
 ```
 
 ## Handling Guest identity providers

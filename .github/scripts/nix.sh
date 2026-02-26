@@ -50,10 +50,9 @@ usage() {
                        Options:
                          --target <openssl|server>  Choose SBOM target (default: openssl)
     update-hashes
-           Update expected hashes for current platform (release profile mandatory)
+           Update expected hashes for current platform (release build mandatory)
 
   Global options:
-    -p, --profile <debug|release>   Build/test profile (default: debug)
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
                     static: statically link OpenSSL 3.6.0
@@ -157,17 +156,12 @@ prewarm_nixpkgs_and_tools() {
 }
 
 parse_global_options() {
-  PROFILE="debug"
   VARIANT="fips"
   LINK="static"
 
   # Parse global options before the subcommand
   while [ $# -gt 0 ]; do
     case "$1" in
-    -p | --profile)
-      PROFILE="${2:-}"
-      shift 2 || true
-      ;;
     -v | --variant)
       VARIANT="${2:-}"
       VARIANT_EXPLICIT=1
@@ -200,7 +194,16 @@ parse_global_options() {
   # Validate command argument
   [ -z "${COMMAND:-}" ] && usage
 
-  export PROFILE VARIANT LINK
+  # Build profile is hardcoded per command: package always uses release, test always uses debug
+  if [ "$COMMAND" = "package" ]; then
+    RELEASE_FLAG="--release"
+    BUILD_PROFILE="release"
+  else
+    RELEASE_FLAG=""
+    BUILD_PROFILE="debug"
+  fi
+
+  export VARIANT LINK RELEASE_FLAG BUILD_PROFILE
   REMAINING_ARGS=("$@")
 }
 
@@ -531,6 +534,7 @@ test_command() {
         --keep WITH_PYTHON \
         --keep VARIANT \
         --keep LINK \
+        --keep RELEASE_FLAG \
         --keep BUILD_PROFILE"
 }
 
@@ -759,7 +763,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on .deb package..."
             echo "=========================================="
-            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
+            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -772,6 +776,23 @@ package_command() {
               fi
             else
               echo "Warning: .deb file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI .deb package..."
+            echo "=========================================="
+            CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
+            if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_deb.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .deb file not found in $REAL_OUT" >&2
             fi
           else
             echo "DEB packaging is only supported on Linux in this flow." >&2
@@ -792,7 +813,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on RPM package..."
             echo "=========================================="
-            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
+            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -805,6 +826,23 @@ package_command() {
               fi
             else
               echo "Warning: RPM file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI RPM package..."
+            echo "=========================================="
+            CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
+            if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_rpm.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .rpm file not found in $REAL_OUT" >&2
             fi
           else
             echo "RPM packaging is only supported on Linux in this flow." >&2
@@ -852,20 +890,22 @@ package_command() {
 
         case "$TYPE" in
         deb)
-          deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
-          if [ -n "${deb_file:-}" ] && [ -f "$deb_file" ]; then
+          # Write checksums for all .deb files (server + cli)
+          while IFS= read -r deb_file; do
+            if [ -z "$deb_file" ] || [ ! -f "$deb_file" ]; then continue; fi
             sum=$(compute_sha256 "$deb_file")
             echo "$sum  $(basename "$deb_file")" >"$deb_file.sha256"
             echo "Wrote checksum: $deb_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' 2>/dev/null || true)
           ;;
         rpm)
-          rpm_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
-          if [ -n "${rpm_file:-}" ] && [ -f "$rpm_file" ]; then
+          # Write checksums for all .rpm files (server + cli)
+          while IFS= read -r rpm_file; do
+            if [ -z "$rpm_file" ] || [ ! -f "$rpm_file" ]; then continue; fi
             sum=$(compute_sha256 "$rpm_file")
             echo "$sum  $(basename "$rpm_file")" >"$rpm_file.sha256"
             echo "Wrote checksum: $rpm_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' 2>/dev/null || true)
           ;;
         dmg)
           dmg_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
@@ -946,11 +986,7 @@ run_in_nix_shell() {
       fi
     fi
 
-    if [ "$COMMAND" = "sbom" ]; then
-      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
-    else
-      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
-    fi
+    CMD="export VARIANT='$VARIANT' LINK='$LINK' RELEASE_FLAG='$RELEASE_FLAG' BUILD_PROFILE='$BUILD_PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
 
     ARGSTR_VARIANT=""
     if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then

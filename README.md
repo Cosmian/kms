@@ -19,16 +19,16 @@ The **Cosmian KMS** presents some unique features, such as:
 - out-of-the-box support of [AWS External Key Store (XKS) v2](./documentation/docs/aws/xks.md) — Cosmian KMS acts as an XKS proxy; key material never enters AWS
 - out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
 - support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/) disk encryption support
+- [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - [MongoDB](./documentation/docs/mongodb.md)
 - [Mysql Enterprise](./documentation/docs/mysql.md)
-- Oracle DB [TDE support](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)
+- Oracle DB [TDE support](https://docs.cosmian.com/kms_clients/pkcs11/oracle/tde/)
 - [Percona Postgresql DB](./documentation/docs/percona.md)
 - VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
 - User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/cosmian_cli/)
+- a full-featured client [command line and graphical interface](https://docs.cosmian.com/kms_clients/)
 - a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
 - integrated with [OpenTelemetry](https://opentelemetry.io/)
 
@@ -52,12 +52,12 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 
 Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can be either:
 
-- installed with `cargo install cosmian_cli`
-- downloaded from [Cosmian packages](https://package.cosmian.com/cli/)
+- installed with `cargo install ckms`
+- downloaded from [Cosmian packages](https://package.cosmian.com/kms/)
 - built and launched from the [GitHub project](https://github.com/Cosmian/cli) by running
 
     ```sh
-    cargo build --bin cosmian
+    cargo build --bin ckms
     ```
 
 ### ▶️ Example
@@ -65,7 +65,7 @@ Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can b
 1. Create a 256-bit symmetric key
 
     ```sh
-    ➜ cosmian kms sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
+    ➜ ckms sym keys create --number-of-bits 256 --algorithm aes --tag my-key-file
     ...
     The symmetric key was successfully generated.
       Unique identifier: 87e9e2a8-4538-4701-aa8c-e3af94e44a9e
@@ -77,7 +77,7 @@ Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can b
 2. Encrypt the `image.png` file with AES GCM using the key
 
     ```sh
-    ➜ cosmian kms sym encrypt --tag my-key-file --output-file image.enc image.png
+    ➜ ckms sym encrypt --tag my-key-file --output-file image.enc image.png
     ...
     The encrypted file is available at "image.enc"
     ```
@@ -85,7 +85,7 @@ Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can b
 3. Decrypt the `image.enc` file using the key
 
     ```sh
-    ➜ cosmian kms sym decrypt --tag my-key-file --output-file image2.png image.enc
+    ➜ ckms sym decrypt --tag my-key-file --output-file image2.png image.enc
     ...
     The decrypted file is available at "image2.png"
     ```
@@ -121,57 +121,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
 
-## Table of Contents
-
-- [Cosmian KMS](#cosmian-kms)
-  - [🚀 Quick start](#-quick-start)
-    - [▶️ Example](#️-example)
-  - [⭐ Why Cosmian KMS](#-why-cosmian-kms)
-  - [🎯 Top Use Cases](#-top-use-cases)
-  - [🔒 Security \& Compliance](#-security--compliance)
-  - [Table of Contents](#table-of-contents)
-  - [🔗 Integrations](#-integrations)
-    - [☁️ Cloud Provider — External Key Management](#️-cloud-provider--external-key-management)
-      - [Amazon Web Services (AWS)](#amazon-web-services-aws)
-      - [Microsoft Azure](#microsoft-azure)
-      - [Google Cloud Platform (GCP)](#google-cloud-platform-gcp)
-      - [Oracle Cloud Infrastructure (OCI)](#oracle-cloud-infrastructure-oci)
-    - [🗄️ Database \& Storage Integrations](#️-database--storage-integrations)
-    - [🔐 HSM Integrations](#-hsm-integrations)
-  - [KMIP support by Cosmian KMS](#kmip-support-by-cosmian-kms)
-    - [KMIP Baseline Profile Compliance](#kmip-baseline-profile-compliance)
-    - [KMIP Coverage](#kmip-coverage)
-      - [Messages](#messages)
-      - [Operations by KMIP Version](#operations-by-kmip-version)
-      - [Methodology](#methodology)
-      - [Managed Objects](#managed-objects)
-      - [Base Objects](#base-objects)
-      - [Transparent Key Structures](#transparent-key-structures)
-      - [Attributes](#attributes)
-  - [🗄️ Repository content](#️-repository-content)
-    - [🧰 Binaries](#-binaries)
-    - [🧱 Core Crates](#-core-crates)
-      - [🖧 Server Infrastructure](#-server-infrastructure)
-      - [🧑‍💻 Client Libraries](#-client-libraries)
-      - [🔐 Cryptographic Components](#-cryptographic-components)
-      - [🔐 Hardware Security Module (HSM) Support](#-hardware-security-module-hsm-support)
-      - [🗄️ Database Interfaces](#️-database-interfaces)
-      - [🧪 Development and Testing](#-development-and-testing)
-    - [📁 Additional Directories](#-additional-directories)
-    - [🏗️ Building and running the KMS](#️-building-and-running-the-kms)
-      - [GLIBC Support](#glibc-support)
-      - [OpenSSL prerequisite](#openssl-prerequisite)
-      - [✨ Features](#-features)
-      - [🖥️ Linux or macOS](#️-linux-or-macos)
-      - [🪟 Windows](#-windows)
-      - [📦 Packaging (DEB/RPM/DMG) and hashes](#-packaging-debrpmdmg-and-hashes)
-    - [🧪 Running the unit and integration tests](#-running-the-unit-and-integration-tests)
-    - [⚙️ Development: running the server with cargo](#️-development-running-the-server-with-cargo)
-    - [🔧 Server parameters](#-server-parameters)
-  - [☁️ Use the KMS inside a Cosmian VM on SEV/TDX](#️-use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-  - [🏷️ Releases](#️-releases)
-  - [📈 Benchmarks](#-benchmarks)
-  - [🤝 Community \& Support](#-community--support)
+[TOC]
 
 ## 🔗 Integrations
 
@@ -522,7 +472,6 @@ Notes:
 - Most attributes are present across all KMIP versions with some additions in newer versions.
 
 <!-- KMIP_SUPPORT_END -->
-
 
 ## 🗄️ Repository content
 

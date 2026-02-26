@@ -29,12 +29,10 @@ fn bytes_from(node: &TTLV) -> Option<Vec<u8>> {
                 out.extend_from_slice(bs);
                 true
             }
-            TTLValue::Integer(v) if (0..=255).contains(v) => u8::try_from(*v)
-                .map(|b| {
-                    out.push(b);
-                    true
-                })
-                .unwrap_or(false),
+            TTLValue::Integer(v) if (0..=255).contains(v) => u8::try_from(*v).is_ok_and(|b| {
+                out.push(b);
+                true
+            }),
             TTLValue::Structure(inner) => inner.iter().all(|c| collect(c, out)),
             _ => false,
         }

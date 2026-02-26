@@ -3,24 +3,7 @@ of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [Mari
 [MySQL](https://www.mysql.com/), and [Percona XtraDB Cluster](https://www.percona.com/software/mysql-database/percona-xtradb-cluster),
 as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with-findex) configuration.
 
-<!-- TOC -->
-
-- [Selecting the database](#selecting-the-database)
-  - [Redis with Findex](#redis-with-findex)
-- [Configuring the database](#configuring-the-database)
-  - [SQLite](#sqlite)
-    - [PostgreSQL](#postgresql)
-    - [MySQL, MariaDB, or Percona XtraDB Cluster](#mysql-mariadb-or-percona-xtradb-cluster)
-    - [Redis with Findex](#redis-with-findex-1)
-- [Securing database connections with TLS / mTLS](#securing-database-connections-with-tls--mtls)
-  - [PostgreSQL TLS / mTLS](#postgresql-tls--mtls)
-  - [MySQL / MariaDB TLS / mTLS](#mysql--mariadb-tls--mtls)
-- [Clearing the database](#clearing-the-database)
-- [Database migration](#database-migration)
-  - [MySQL schema update (5.13.0)](#mysql-schema-update-5130)
-- [The Unwrapped Objects Cache](#the-unwrapped-objects-cache)
-
-<!-- TOC -->
+[TOC]
 
 ## Selecting the database
 
@@ -117,7 +100,7 @@ These sample instructions create a database called `kms` owned by a user `kms_us
 The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.
 All use the same configuration with `database-type=mysql`.
 
-!!! note "Clustering Support"
+!!! note Clustering Support
     As of version 5.13.0, the KMS schema includes PRIMARY KEY constraints on all tables,
     making it fully compatible with:
 
@@ -210,7 +193,7 @@ for PostgreSQL and MySQL-compatible databases. All TLS parameters are configured
     For production deployments, all TLS certificates (CA, server, and client certificates) must be
     issued by a trusted Certificate Authority (CA). Self-signed certificates should only be used
     for testing and development environments.
-    
+
     Using certificates from an untrusted or self-signed CA may expose your KMS deployment to
     man-in-the-middle (MITM) attacks and should never be done in production.
 

@@ -5,50 +5,19 @@ The primary entrypoint is `nix.sh`, which provides a unified interface to all wo
 
 ## Quick Visual Overview
 
-```text
-                    ┌──────────────────────────────────┐
-                    │   Developer / CI Entry Point     │
-                    │                                  │
-                    │  bash nix.sh <command> [opts]    │
-                    └────────────┬─────────────────────┘
-                                 │
-                    ┌────────────┴─────────────┐
-                    │    Commands Available    │
-                    └──┬───┬───┬───┬──────────────┘
-                       │   │   │   │
-           ┌───────────┘   │   │   └────────────┐
-           │               │   │                │
-           ▼               ▼   ▼                ▼
-      ┌────────┐      ┌──────────────┐    ┌──────────┐
-      │ docker │      │     test     │    │ package  │
-      │        │      │              │    │          │
-      │ Build  │      │ • all (def)  │    │ • deb    │
-      │ image  │      │ • sqlite     │    │ • rpm    │
-      │ tarball│      │ • mysql      │    │ • dmg    │
-      └────────┘      │ • percona    │    └──────────┘
-                      │ • mariadb    │
-                      │ • psql       │    ┌──────────┐
-                      │ • redis      │    │   sbom   │
-                      │ • google_cse │    │          │
-                      │ • pykmip     │    │ Generate │
-                      │ • otel_export│    │ SBOMs    │
-                      │ • wasm       │    └──────────┘
-                      │ • hsm[...]   │
-                      └──────────────┘
-
-                      ┌──────────────┐
-                      │update-hashes │
-                      │              │
-                      │ Update Nix   │
-                      │ expected     │
-                      │ hash inputs  │
-                      └──────────────┘
-
-                         Global options:
-                         • --profile <debug|release>
-                         • --variant <fips|non-fips>
-                         • --link <static|dynamic>
-                         • --enforce-deterministic-hash <true|false>
+```mermaid
+flowchart TB
+    entry["bash nix.sh <command> [opts]"]
+    subgraph commands["Commands Available"]
+        docker["docker<br/>Build image tarball"]
+        test["test<br/>• all (default)<br/>• sqlite · mysql · psql<br/>• percona · mariadb · redis<br/>• google_cse · pykmip<br/>• otel_export · wasm · hsm"]
+        package["package<br/>• deb<br/>• rpm<br/>• dmg"]
+        sbom["sbom<br/>Generate SBOMs"]
+        update["update-hashes<br/>Update Nix expected hash inputs"]
+    end
+    opts["Global options:<br/>--variant <fips|non-fips><br/>--link <static|dynamic><br/>--enforce-deterministic-hash <bool>"]
+    entry --> commands
+    entry --> opts
 ```
 
 **Common workflows:**
@@ -71,14 +40,7 @@ bash nix.sh docker --load
 
 ---
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [nix.sh — Unified Command Interface](#nixsh--unified-command-interface)
-3. [The Role of Nix](#the-role-of-nix)
-4. [Script Ecosystem](#script-ecosystem)
-5. [Maintenance Guidelines](#maintenance-guidelines)
-6. [Future Enhancements](#future-enhancements)
+[TOC]
 
 ---
 
@@ -131,7 +93,7 @@ Executes comprehensive test suites across databases, cryptographic backends, and
 
 ```bash
 # Global options must come before the command token (except `docker`, which parses `--variant` itself)
-bash .github/scripts/nix.sh [--profile <debug|release>] [--variant <fips|non-fips>] [--link <static|dynamic>] test [type] [backend]
+bash .github/scripts/nix.sh [--variant <fips|non-fips>] [--link <static|dynamic>] test [type] [backend]
 ```
 
 **Test Types:**
@@ -178,7 +140,7 @@ Google CSE (required for `google_cse` tests):
 **Examples:**
 
 ```bash
-# Run all tests (default variant: FIPS, profile: debug)
+# Run all tests (default variant: FIPS)
 bash .github/scripts/nix.sh test
 
 # Specific database tests
@@ -373,10 +335,9 @@ bash .github/scripts/nix.sh update-hashes [RUN_ID]
 - `ui.npm.sha256`
 - `ui.vendor.fips.sha256`
 - `ui.vendor.non-fips.sha256`
-- `server.vendor.static.linux.sha256`
-- `server.vendor.dynamic.linux.sha256`
-- `server.vendor.static.darwin.sha256`
-- `server.vendor.dynamic.darwin.sha256`
+- `server.vendor.static.sha256`, `server.vendor.dynamic.sha256`
+- `cli.vendor.linux.sha256`
+- `cli.vendor.static.darwin.sha256`, `cli.vendor.dynamic.darwin.sha256`
 
 **Examples:**
 
@@ -408,7 +369,6 @@ All commands support these flags (place them **before** the command token; `dock
 
 | Flag              | Values             | Default                               | Effect                    |
 | ----------------- | ------------------ | ------------------------------------- | ------------------------- |
-| `-p`, `--profile` | `debug`, `release` | `debug`                               | Cargo build profile (test flows) |
 | `-v`, `--variant` | `fips`, `non-fips` | `fips`                                | Cryptographic feature set |
 | `-l`, `--link`    | `static`, `dynamic`| `static`                              | OpenSSL linkage mode      |
 | `--enforce-deterministic-hash` | `true`, `false` | `false`                      | Enforce expected-hash checks in Nix derivations |
@@ -438,25 +398,15 @@ All commands support these flags (place them **before** the command token; `dock
 
 **Execution Flow:**
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Parse CLI arguments (profile, variant, link, command)    │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 ├──[docker]──────→ nix-build docker image tarball ──→ (optional) docker load/test
-                 │
-                 ├──[test]────────→ Select script, enter nix-shell ──→ Run script
-                 │                  (pure mode unless HSM/otel_export/wasm)
-                 │
-                 ├──[package]────→ Prewarm (unless NO_PREWARM) ──────→ For each type:
-                 │                                                       ├─ Build via Nix
-                 │                                                       ├─ Smoke test
-                 │                                                       └─ Generate .sha256
-                 │
-                 ├──[sbom]───────→ Delegate to generate_sbom.sh ────────→ Run sbomnix
-                 │                 (outside nix-shell)
-                 │
-                 └──[update-hashes]→ Delegate to update_hashes.sh ──────→ gh API + update nix/expected-hashes/
+```mermaid
+flowchart LR
+    parse["1. Parse CLI args<br/>(variant, link, command)"]
+    docker_cmd["docker<br/>nix-build tarball<br/>(optional load/test)"]
+    test_cmd["test<br/>Select script<br/>nix-shell (pure/non-pure)<br/>Run script"]
+    package_cmd["package<br/>Prewarm (unless NO_PREWARM)<br/>For each type:<br/>· Build via Nix<br/>· Smoke test<br/>· Generate .sha256"]
+    sbom_cmd["sbom<br/>Delegate to generate_sbom.sh<br/>(outside nix-shell)<br/>Run sbomnix"]
+    update_cmd["update-hashes<br/>Delegate to update_hashes.sh<br/>gh API + update nix/expected-hashes/"]
+    parse --> docker_cmd & test_cmd & package_cmd & sbom_cmd & update_cmd
 ```
 
 **Pure vs Non-Pure Shell:**
@@ -527,7 +477,7 @@ The following diagrams illustrate how commands flow through the script ecosystem
 5. **SBOM Generation Flow** - Supply chain documentation workflow
 6. **Update Hashes Workflow** - Hash maintenance automation
 7. **Nix Shell Environment Modes** - Pure vs non-pure execution contexts
-8. **Complete Test Execution Matrix** - Test availability by profile/variant/platform
+8. **Complete Test Execution Matrix** - Test availability by variant/platform
 9. **Script Dependencies Graph** - Script source relationships and function sharing
 
 ### Core Scripts
@@ -597,260 +547,97 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 This diagram shows how `nix.sh` dispatches to different execution paths:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     nix.sh (Unified Entrypoint)                         │
-│                                                                         │
-│  Parses: --profile <debug|release>  --variant <fips|non-fips>           │
-│          --link <static|dynamic>    --enforce-deterministic-hash <bool> │
-└────┬─────────────┬────────────┬────────────┬──────────────┬─────────────┘
-     │             │            │            │              │
-     ▼             ▼            ▼            ▼              ▼
-  ┌──────┐    ┌───────┐   ┌──────────┐  ┌──────┐    ┌──────────────┐
-  │DOCKER│    │ TEST  │   │ PACKAGE  │  │ SBOM │    │UPDATE-HASHES │
-  └──┬───┘    └───┬───┘   └─────┬────┘  └──┬───┘    └──────┬───────┘
-     │            │             │          │               │
-     │            │             │          │               │
-     │            │             │          │               │
- nix-build    nix-shell      Prewarm+   Outside        gh API +
- (tarball)   (pure/non-pure) Build+     nix-shell      update files
-                            smoke tests
+```mermaid
+flowchart TB
+    nix["nix.sh (Unified Entrypoint)<br/>Parses: --variant <fips|non-fips>  --link <static|dynamic><br/>        --enforce-deterministic-hash <bool>"]
+    d["DOCKER<br/>nix-build (tarball)"]
+    t["TEST<br/>nix-shell (pure/non-pure)"]
+    p["PACKAGE<br/>Prewarm + Build + smoke tests"]
+    s["SBOM<br/>Outside nix-shell"]
+    u["UPDATE-HASHES<br/>gh API + update files"]
+    nix --> d & t & p & s & u
 ```
 
 #### Docker Command Flow
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh docker --variant <fips|non-fips> [--force] [--load]      │
-│                     [--test]                                           │
-└────────────────────────────────┬────────────────────────────────────────┘
-                                 │
-                                 ▼
-                    ┌────────────────────────┐
-                    │ nix-build              │
-                    │  -A docker-image-<v>   │
-                    │  -o result-docker-...  │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌────────────────────────┐
-                    │ Output tarball         │
-                    │ result-docker-...      │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  cargo build                 │
-              │    --profile release         │
-              │    --features fips           │
-              └──────────┬───────────────────┘
-                         │
-                         ▼
-              ┌──────────────────────────────┐
-              │  Binary Validation           │
-              │                              │
-              │  Linux:                      │
-              │   • Strip /nix/store paths   │
-              │   • Check GLIBC ≤ 2.34       │
-              │   • Verify static OpenSSL    │
-              │                              │
-              │  macOS:                      │
-              │   • Check dylib linkage      │
-              └──────────┬───────────────────┘
-                         │
-                         ▼
-              ┌──────────────────────────────┐
-              │  Output:                     │
-              │  Binary in target/           │
-              └──────────────────────────────┘
-              └──────────────────────────────┘
+```mermaid
+flowchart TB
+    cmd["bash nix.sh docker --variant <fips|non-fips><br/>[--force] [--load] [--test]"]
+    build["nix-build<br/>-A docker-image-<variant><br/>-o result-docker-<variant>"]
+    tarball["Output tarball<br/>result-docker-<variant>"]
+    load{"--load flag?"}
+    docker_load["docker load < tarball"]
+    test_q{"--test flag?"}
+    test_run["test_docker_image.sh"]
+    cmd --> build --> tarball --> load
+    load -- yes --> docker_load --> test_q
+    load -- no --> test_q
+    test_q -- yes --> test_run
 ```
 
 #### Test Command Dispatch Tree
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh test [type] [backend]                                     │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-                    ┌────────────┴─────────────────────────────────────┐
-                    │          Test Type Router                        │
-                    └─┬──────┬──────┬───────┬──────┬──────┬──────┬─────┘
-                      │      │      │       │      │      │      │
-        ┌─────────────┘      │      │       │      │      │      └──────────────┐
-        │                    │      │       │      │      │                     │
-        ▼                    ▼      ▼       ▼      ▼      ▼                     ▼
-   ┌────────┐         ┌──────────────────────────────────────────────┐  ┌─────────┐      ┌──────────┐
-   │  all   │         │  Individual DB Tests                         │  │google   │      │   hsm    │
-   └───┬────┘         │ (sqlite|psql|mysql|percona|mariadb|redis)     │  │  _cse   │      └────┬─────┘
-       │              └──────────┬──────────────────┘  └────┬────┘            │
-       │                         │                          │                 │
-       │                         │                          │                 │
-       │                         │                          │                 │
-       ▼                         ▼                          ▼                 ▼
-┌──────────────┐      ┌──────────────────┐     ┌──────────────────┐  ┌──────────────┐
-│test_all.sh   │      │test_<db>.sh      │     │test_google_cse.sh│  │ Backend      │
-│              │      │                  │     │                  │  │ Selection    │
-│ Sequential:  │      │ • source common  │     │ • Validate OAuth │  │              │
-│ 1. sqlite    │      │ • init_build_env │     │ • cargo test     │  └──┬───┬───┬───┘
-│ 2. psql*     │      │ • check DB conn  │     │                  │     │   │   │
-│ 3. mysql*    │      │ • cargo test     │     └──────────────────┘     │   │   │
-│ 4. redis**   │      └──────────────────┘                              │   │   │
-│ 5. google*** │                                                        │   │   │
-│ 6. hsm****   │    * Release profile only                              │   │   │
-│              │   ** Non-FIPS variant only                             │   │   │
-└──────────────┘  *** If credentials present                            │   │   │
-                 **** Linux + Release only                              │   │   │
-                                                                        │   │   │
-                                                          ┌─────────────┘   │   └──────────────┐
-                                                          │                 │                  │
-                                                          ▼                 ▼                  ▼
-                                                   ┌──────────┐      ┌──────────┐      ┌──────────┐
-                                                   │softhsm2  │      │ utimaco  │      │proteccio │
-                                                   └──────────┘      └──────────┘      └──────────┘
-                                                          │                  │                  │
-                                                          └──────────┬───────┴──────────────────┘
-                                                                     │
-                                                                     ▼
-                                                          ┌──────────────────────┐
-                                                          │ test_hsm.sh          │
-                                                          │ (orchestrates all)   │
-                                                          └──────────────────────┘
-
-                                 Notes:
-                                 - Additional supported test types not drawn above: `wasm`, `otel_export` (Docker-required), and `pykmip` (non-FIPS; requires a running KMS).
+```mermaid
+flowchart TB
+    cmd["bash nix.sh test [type] [backend]"]
+    router["Test Type Router"]
+    cmd --> router
+    all_t["all<br/>test_all.sh<br/>Sequential: sqlite → psql → mysql<br/>→ redis** → google*** → hsm****"]
+    db["Individual DB Tests<br/>(sqlite|psql|mysql|percona|mariadb|redis)<br/>test_<db>.sh<br/>· source common · init_build_env<br/>· check DB conn · cargo test"]
+    gcse["google_cse<br/>test_google_cse.sh<br/>Validate OAuth + cargo test"]
+    hsm_r["hsm<br/>Backend Selection"]
+    other["wasm · otel_export · pykmip<br/>(Docker/Node/Python required)"]
+    router --> all_t & db & gcse & hsm_r & other
+    sh2["softhsm2<br/>test_hsm_softhsm2.sh"]
+    uti["utimaco<br/>test_hsm_utimaco.sh"]
+    pro["proteccio<br/>test_hsm_proteccio.sh"]
+    orch["test_hsm.sh (orchestrator)"]
+    hsm_r --> sh2 & uti & pro --> orch
 ```
 
 #### Package Command Workflow
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh package [deb|rpm|dmg] --variant <fips|non-fips>           │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-                                 ▼
-                    ┌────────────────────────┐
-                    │  Prewarm Phase         │
-                    │  (skip: NO_PREWARM=1)  │
-                    │                        │
-                    │  1. Fetch nixpkgs      │
-                    │  2. Pre-download tools │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-              ┌──────────────┴─────────────────┐
-              │     Platform Detection         │
-              └──┬────────────────┬─────────┬──┘
-                 │                │         │
-         Linux   │                │         │  macOS
-                 │                │         │
-                 ▼                ▼         ▼
-        ┌────────────┐   ┌────────────┐  ┌──────────────┐
-        │    DEB     │   │    RPM     │  │     DMG      │
-        └─────┬──────┘   └─────┬──────┘  └──────┬───────┘
-              │                │                 │
-              ▼                ▼                 ▼
-   ┌──────────────────┐ ┌─────────────┐  ┌──────────────────┐
-   │nix-build         │ │nix-build    │  │nix-shell         │
-   │-A kms-deb-<var>  │ │-A kms-rpm.. │  │+ cargo-packager  │
-   └──────┬───────────┘ └──────┬──────┘  └──────┬───────────┘
-          │                    │                │
-          │                    │                │
-          └────────────────────┴────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │  Smoke Test          │
-                    │  (Mandatory)         │
-                    │                      │
-                    │  1. Extract package  │
-                    │  2. Run --info       │
-                    │  3. Verify OpenSSL   │
-                    │     runtime (3.6.0;  │
-                    │     FIPS+dynamic: 3.1.2)
-                    │  4. Verify FIPS provider = 3.1.2 (FIPS only)
-                    └──────────┬───────────┘
-                               │
-                         Pass  │  Fail
-                    ┌──────────┴──────────┐
-                    │                     │
-                    ▼                     ▼
-          ┌──────────────────┐   ┌────────────┐
-          │ Generate .sha256 │   │ Exit 1     │
-          │ checksum file    │   └────────────┘
-          └──────────────────┘
-                    │
-                    ▼
-          ┌──────────────────┐
-          │ Output:          │
-          │ result-<type>-   │
-          │   <variant>-<link>/│
-          │ • package file   │
-          │ • .sha256        │
-          └──────────────────┘
+```mermaid
+flowchart TB
+    cmd["bash nix.sh package [deb|rpm|dmg] --variant <fips|non-fips>"]
+    prewarm["Prewarm Phase<br/>(skip: NO_PREWARM=1)<br/>1. Fetch nixpkgs<br/>2. Pre-download tools"]
+    platform["Platform Detection"]
+    cmd --> prewarm --> platform
+    deb["DEB (Linux)<br/>nix-build -A kms-deb-<variant>"]
+    rpm["RPM (Linux)<br/>nix-build -A kms-rpm-<variant>"]
+    dmg["DMG (macOS)<br/>nix-shell + cargo-packager"]
+    platform --> deb & rpm & dmg
+    smoke["Smoke Test (Mandatory)<br/>1. Extract package<br/>2. Run --info<br/>3. Verify OpenSSL runtime (3.6.0)<br/>4. Verify FIPS provider = 3.1.2 (FIPS only)"]
+    deb & rpm & dmg --> smoke
+    pass["Generate .sha256 checksum<br/>Output: result-<type>-<variant>-<link>/"]
+    fail["Exit 1"]
+    smoke -- pass --> pass
+    smoke -- fail --> fail
 ```
 
 #### SBOM Generation Flow
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh sbom --variant <fips|non-fips>                            │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-                                 │  (Runs OUTSIDE nix-shell)
-                                 │   sbomnix needs direct nix commands
-                                 │
-                                 ▼
-                    ┌────────────────────────┐
-                    │ nix/scripts/           │
-                    │ generate_sbom.sh       │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌────────────────────────┐
-                    │ Check if binary exists │
-                    │ (auto-build if needed) │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌────────────────────────┐
-                    │  Run sbomnix tools     │
-                    │                        │
-                    │  • sbomnix             │
-                    │  • vulnxscan           │
-                    │  • nix-visualize       │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  Generate Multiple Formats   │
-              └──┬───────┬───────┬──────┬────┘
-                 │       │       │      │
-        ┌────────┘       │       │      └─────────┐
-        │                │       │                │
-        ▼                ▼       ▼                ▼
-┌────────────┐  ┌─────────────┐ ┌────────┐  ┌──────────┐
-│bom.cdx.json│  │bom.spdx.json│ │sbom.csv│  │vulns.csv │
-│(CycloneDX) │  │   (SPDX)    │ │        │  │(CVE scan)│
-└────────────┘  └─────────────┘ └────────┘  └──────────┘
-        │                │            │           │
-        └────────────────┴────────────┴───────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │ Additional Artifacts │
-              │ • graph.png          │
-              │ • meta.json          │
-              │ • README.txt         │
-              └──────────────────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │  Output: ./sbom/     │
-              └──────────────────────┘
+```mermaid
+flowchart TB
+    cmd["bash nix.sh sbom --variant <fips|non-fips><br/>(Runs OUTSIDE nix-shell)"]
+    gen["nix/scripts/generate_sbom.sh"]
+    check["Check if binary exists<br/>(auto-build if needed)"]
+    sbomnix["Run sbomnix tools<br/>· sbomnix · vulnxscan · nix-visualize"]
+    cmd --> gen --> check --> sbomnix
+    cdx["bom.cdx.json<br/>(CycloneDX)"]
+    spdx["bom.spdx.json<br/>(SPDX)"]
+    csv["sbom.csv"]
+    vulns["vulns.csv<br/>(CVE scan)"]
+    sbomnix --> cdx & spdx & csv & vulns
+    extra["Additional: graph.png · meta.json · README.txt"]
+    cdx & spdx & csv & vulns --> extra
+    output["Output: ./sbom/"]
+    extra --> output
 ```
 
 #### Update Hashes Workflow
+
+<<<<<<< Updated upstream
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -883,349 +670,118 @@ This diagram shows how `nix.sh` dispatches to different execution paths:
                     │ Update nix/expected-hashes/ │
                     │  - ui.npm.sha256            │
                     │  - ui.vendor.*.sha256       │
-                    │  - server.vendor.*.sha256   │
+                    │  - server.vendor.{static,dynamic}.sha256   │
+                    │  - cli.vendor.linux.sha256  │
+                    │  - cli.vendor.{static,dynamic}.darwin.sha256 │
                     └─────────────────────────────┘
+=======
+```mermaid
+flowchart TB
+    cmd["bash nix.sh update-hashes [RUN_ID]"]
+    script["update_hashes.sh<br/>(requires gh CLI)"]
+    gh["gh api<br/>· find workflow run<br/>· list failed jobs<br/>· download logs"]
+    parse["Parse log lines:<br/>specified: sha256-...<br/>got: sha256-..."]
+    update["Update nix/expected-hashes/<br/>· ui.npm.sha256<br/>· ui.vendor.*.sha256<br/>· server.vendor.{static,dynamic}.sha256<br/>· cli.vendor.linux.sha256<br/>· cli.vendor.{fips,non-fips}.darwin.sha256"]
+    cmd --> script --> gh --> parse --> update
+>>>>>>> Stashed changes
 ```
 
 #### Nix Shell Environment Modes
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Nix Shell Execution Modes                        │
-└─────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────┐
-│  PURE MODE (--pure flag)                                                 │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
-│                                                                          │
-│  Use Cases:                                                              │
-│   • Database tests (sqlite, psql, mysql)                                 │
-│   • Most test scenarios                                                  │
-│                                                                          │
-│  Characteristics:                                                        │
-│   ✓ Hermetic environment (isolated from system)                         │
-│   ✓ Reproducible builds                                                 │
-│   ✓ No system PATH pollution                                            │
-│   ✓ Only Nix-provided dependencies                                      │
-│                                                                          │
-│  Environment:                                                            │
-│   ┌──────────────────────────────────────────────────────────────┐       │
-│   │  • Rust 1.90.0 (from Nix)                                    │       │
-│   │  • OpenSSL 3.6.0 + 3.1.2 (FIPS provider)                      │       │
-│   │  • Build tools (cargo, gcc, etc.)                            │       │
-│   │  • Test databases (if requested via WITH_* vars)             │       │
-│   │  • /nix/store/... paths ONLY                                 │       │
-│   └──────────────────────────────────────────────────────────────┘       │
-└──────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────┐
-│  NON-PURE MODE (no --pure flag)                                          │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
-│                                                                          │
-│  Use Cases:                                                              │
-│   • HSM tests (needs system PKCS#11 libraries)                           │
-│   • macOS DMG packaging (needs hdiutil, osascript)                       │
-│   • Tests requiring vendor-specific system libraries                     │
-│                                                                          │
-│  Characteristics:                                                        │
-│   ✓ Access to system tools and libraries                                │
-│   ✓ Can use /usr/bin, /usr/lib paths                                    │
-│   ✓ Inherits system environment variables                                │
-│   ~ Less reproducible (system-dependent)                                 │
-│                                                                          │
-│  Environment:                                                            │
-│   ┌──────────────────────────────────────────────────────────────┐       │
-│   │  • Nix-provided tools (Rust, OpenSSL, etc.)                  │       │
-│   │  • PLUS: System tools (/usr/bin/*)                           │       │
-│   │  • PLUS: System libraries (/usr/lib/*)                       │       │
-│   │  • PLUS: Vendor HSM libraries (PKCS#11 .so files)            │       │
-│   │  • Mixed /nix/store and system paths                         │       │
-│   └──────────────────────────────────────────────────────────────┘       │
-└──────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────┐
-│  NO NIX SHELL (direct execution)                                         │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
-│                                                                          │
-│  Use Cases:                                                              │
-│   • SBOM generation (sbomnix needs direct nix commands)                  │
-│   • Expected-hash updates (gh CLI + log parsing)                         │
-│                                                                          │
-│  Characteristics:                                                        │
-│   ✓ Direct system environment                                            │
-│   ✓ Access to nix-build, nix-store commands                              │
-│   ✓ Can manipulate Nix derivations                                       │
-│                                                                          │
-│  Rationale:                                                              │
-│   Running inside nix-shell would create nested Nix contexts             │
-│   which interferes with derivation analysis and store queries           │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph pure["PURE MODE (--pure flag)"]
+        p_use["Use cases: database tests<br/>(sqlite, psql, mysql)"]
+        p_char["✓ Hermetic/reproducible<br/>✓ No system PATH pollution<br/>✓ Only Nix-provided deps"]
+        p_env["Rust 1.90.0 (Nix)<br/>OpenSSL 3.6.0 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
+    end
+    subgraph nonpure["NON-PURE MODE"]
+        np_use["Use cases: HSM tests<br/>macOS DMG packaging<br/>Vendor-specific system libs"]
+        np_char["✓ Access to system tools/libs<br/>~ Less reproducible (system-dependent)"]
+        np_env["Nix tools + System tools (/usr/bin/*)<br/>+ System libs + Vendor HSM PKCS#11 .so"]
+    end
+    subgraph nonix["NO NIX SHELL (direct)"]
+        nn_use["Use cases: SBOM generation<br/>Expected-hash updates"]
+        nn_char["✓ Direct system environment<br/>✓ Access to nix-build, nix-store<br/>Avoids nested Nix contexts"]
+    end
 ```
 
 #### Complete Test Execution Matrix
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Test Execution Decision Matrix                       │
-└─────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────┬──────────┬────────────┬──────────────┬─────────────────┐
-│ Test Type    │ Profile  │  Variant   │  Platform    │  Dependencies   │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │                 │
-│ sqlite       │ Any      │  Any       │  Any         │  None (builtin) │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  PostgreSQL     │
-│ psql         │ Any      │  Any       │  Any         │  server running │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  MySQL server   │
-│ mysql        │ Any      │  Any       │  Any         │  running        │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  Percona server │
-│ percona      │ Any      │  Any       │  Any         │  running        │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  MariaDB server │
-│ mariadb      │ Any      │  Any       │  Any         │  running        │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │ non-FIPS   │              │  Redis server   │
-│ redis        │ Any      │  ONLY      │  Any         │  running        │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  4 OAuth env    │
-│ google_cse   │ Any      │  Any       │  Any         │  variables set  │
-│              │          │            │              │                 │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│              │          │            │              │  Python 3.11    │
-│ pykmip       │ Any      │ non-FIPS   │  Any         │  + running KMS  │
-│              │          │  ONLY      │              │  (Python in Nix)│
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│ otel_export  │ Any      │  Any       │  Any         │  Docker         │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│ wasm         │ Any      │  Any       │  Any         │  Node + wasm    │
-├──────────────┼──────────┼────────────┼──────────────┼─────────────────┤
-│ hsm          │          │            │              │  PKCS#11 libs   │
-│ (all types)  │ Any      │  Any       │ Linux ONLY   │  (vendor-       │
-│              │          │            │              │   specific)     │
-└──────────────┴──────────┴────────────┴──────────────┴─────────────────┘
-
-Legend:
-  non-FIPS ONLY = Feature not available in FIPS variant
-  Linux ONLY = HSM vendor libraries not available on macOS
-```
+| Test Type    | Profile | Variant    | Platform   | Dependencies            |
+|--------------|:-------:|:----------:|:----------:|-------------------------|
+| sqlite       | Any     | Any        | Any        | None (builtin)          |
+| psql         | Any     | Any        | Any        | PostgreSQL server        |
+| mysql        | Any     | Any        | Any        | MySQL server             |
+| percona      | Any     | Any        | Any        | Percona server           |
+| mariadb      | Any     | Any        | Any        | MariaDB server           |
+| redis        | Any     | **non-FIPS** | Any      | Redis server             |
+| google_cse   | Any     | Any        | Any        | 4 OAuth env vars         |
+| pykmip       | Any     | **non-FIPS** | Any      | Python 3.11 + running KMS |
+| otel_export  | Any     | Any        | Any        | Docker                  |
+| wasm         | Any     | Any        | Any        | Node.js + wasm-pack     |
+| hsm (all)    | Any     | Any        | **Linux**  | PKCS#11 vendor libs     |
 
 #### Script Dependencies Graph
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Script Source Dependencies                       │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    common["common.sh<br/>Provides: init_build_env()<br/>setup_test_logging()<br/>check_and_test_db() · require_cmd()"]
+    all_sh["test_all.sh"]
+    sqlite_sh["test_sqlite.sh"]
+    psql_sh["test_psql.sh"]
+    mysql_sh["test_mysql.sh"]
+    redis_sh["test_redis.sh"]
+    hsm_sh["test_hsm.sh"]
+    gcse_sh["test_google_cse.sh"]
+    common --> all_sh & sqlite_sh & psql_sh & mysql_sh & redis_sh & hsm_sh & gcse_sh
+    sh2_sh["test_hsm_softhsm2.sh"]
+    uti_sh["test_hsm_utimaco.sh"]
+    pro_sh["test_hsm_proteccio.sh"]
+    all_sh --> hsm_sh
+    hsm_sh --> sh2_sh & uti_sh & pro_sh
 
-                              common.sh
-                                  │
-                                  │ sourced by
-                                  │
-                ┌─────────────────┼─────────────────┐
-                │                 │                 │
-                ▼                 ▼                 ▼
-         ┌──────────────┐  ┌──────────────┐ ┌──────────────┐
-         │ test_all.sh  │  │test_sqlite.sh│ │test_psql.sh  │
-         └──────────────┘  └──────────────┘ └──────────────┘
-                │                 │                 │
-                │                 │                 │
-         ┌──────┴──────┐          │                 │
-         │             │          │                 │
-         ▼             ▼          ▼                 ▼
-  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-  │test_hsm  │  │test_goog │  │test_mysql│  │test_redis│
-  │   .sh    │  │le_cse.sh │  │   .sh    │  │   .sh    │
-  └────┬─────┘  └──────────┘  └──────────┘  └──────────┘
-       │
-       │ calls
-       │
-       ├────────────┬────────────┬
-       │            │            │
-       ▼            ▼            ▼
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│test_hsm_ │ │test_hsm_ │ │test_hsm_ │
-│softhsm2  │ │utimaco   │ │proteccio │
-│   .sh    │ │   .sh    │ │   .sh    │
-└──────────┘ └──────────┘ └──────────┘
-
-
-                         package_common.sh
-                                  │
-                                  │ sourced by
-                                  │
-                ┌─────────────────┼─────────────────┐
-                │                 │                 │
-                ▼                 ▼                 ▼
-         ┌──────────────┐  ┌──────────────┐ ┌──────────────┐
-         │package_deb.sh│  │package_rpm.sh│ │package_dmg.sh│
-         └──────────────┘  └──────────────┘ └──────────────┘
-
-
-Functions provided by common.sh:
-  • init_build_env()        - Parse variant/profile, set env vars
-  • setup_test_logging()    - Configure RUST_LOG and test output
-  • check_and_test_db()     - Validate DB connection + run cargo test
-  • require_cmd()           - Check command availability
-
-Functions provided by package_common.sh:
-  • get_version()           - Extract version from Cargo.toml
-  • validate_package()      - Run smoke test (--info check)
-  • generate_checksum()     - Create .sha256 file
+    pkg_common["package_common.sh<br/>Provides: get_version()<br/>validate_package() · generate_checksum()"]
+    deb_sh["package_deb.sh"]
+    rpm_sh["package_rpm.sh"]
+    dmg_sh["package_dmg.sh"]
+    pkg_common --> deb_sh & rpm_sh & dmg_sh
 ```
 
 #### End-to-End Release Pipeline
 
 This diagram shows the complete artifact generation pipeline for a production release:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Full Release Build Pipeline                          │
-│                    (Typical CI/CD workflow)                             │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Step 1: RUN COMPREHENSIVE TESTS
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  bash nix.sh --profile release --variant fips test all                   │
-│    ├─ SQLite tests      ✓                                                │
-│    ├─ WASM tests        ✓                                                │
-│    ├─ OTEL export       ✓  (if Docker is available)                      │
-│    ├─ PostgreSQL tests  ✓                                                │
-│    ├─ MySQL tests       ✓                                                │
-│    ├─ Redis-findex      ✗  (FIPS mode)                                   │
-│    ├─ Google CSE tests  ✓  (if credentials available)                    │
-│    └─ HSM tests         ✓  (Linux only)                                  │
-│                                                                          │
-│  bash nix.sh --profile release --variant non-fips test all               │
-│    ├─ (all above)       ✓                                                │
-│    └─ Redis-findex      ✓  (non-FIPS only)                               │
-│                                                                          │
-│  # Optional, separate test types:
-│  bash nix.sh --variant non-fips test pykmip                              │
-│  bash nix.sh test percona                                                │
-│  bash nix.sh test mariadb                                                │
-└──────────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-Step 2: BUILD PACKAGES (build + smoke test)
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  Linux: default `package` builds a matrix when variant/link are not explicit
-│    bash nix.sh package                                                   │
-│                                                                          │
-│  Explicit builds (examples):                                             │
-│    bash nix.sh --variant fips --link static package deb                  │
-│      └──→ result-deb-fips-static/.../*.deb (+ .sha256)                   │
-│                                                                          │
-│    bash nix.sh --variant non-fips --link dynamic package rpm             │
-│      └──→ result-rpm-non-fips-dynamic/.../*.rpm (+ .sha256)              │
-│                                                                          │
-│    macOS:                                                                │
-│      bash nix.sh --variant <variant> --link <static|dynamic> package dmg │
-│        └──→ result-dmg-<variant>-<link>/*.dmg (+ .sha256)                │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-Step 4: GENERATE SBOM DOCUMENTATION
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  bash nix.sh sbom                                                      │
-│    └──→ sbom/openssl/                                                   │
-│         ├─ bom.cdx.json   (CycloneDX)                                    │
-│         ├─ bom.spdx.json  (SPDX)                                         │
-│         ├─ sbom.csv       (Spreadsheet view)                             │
-│         ├─ vulns.csv      (Vulnerability scan)                           │
-│         ├─ graph.png      (Dependency graph)                             │
-│         ├─ meta.json      (Build metadata)                               │
-│         └─ README.txt     (Usage instructions)                           │
-│                                                                          │
-│  bash nix.sh sbom --target server                                       │
-│    └──→ sbom/server/fips/static/ (same structure)                        │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-Step 5: VERIFY REPRODUCIBILITY
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  # Fixed-output hash mismatches (Cargo/UI deps) are expected-hash driven │
-│  # If CI fails on a fixed-output derivation hash, update from CI logs:   │
-│    bash nix.sh update-hashes [RUN_ID]                                    │
-│                                                                          │
-│  # Optional: deterministic *binary* hash enforcement can be enabled in   │
-│  # Nix derivations and uses nix/expected-hashes/cosmian-kms-server.*.sha256
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        RELEASE ARTIFACTS                                 │
-│                                                                          │
-│  Distribution Packages (6 files per variant = 12 total):                 │
-│    • Debian package (.deb) + checksum                                    │
-│    • RPM package (.rpm) + checksum                                       │
-│    • macOS DMG (.dmg) + checksum                                         │
-│                                                                          │
-│  SBOM Files (2 directories):                                             │
-│    • sbom/openssl/                                                       │
-│    • sbom/server/<variant>/<link>/                                       │
-│                                                                          │
-│  Source Code:                                                            │
-│    • Git tag (e.g., v4.17.0)                                             │
-│    • GitHub release with changelog                                       │
-│                                                                          │
-│  Signatures (if GPG/signing enabled):                                    │
-│    • Package signatures (.asc files)                                     │
-│    • SBOM signatures                                                     │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-
-Total artifacts per release: ~30 files
-  • 12 package files (6 per variant × 2 variants)
-  • 14 SBOM files (7 per variant × 2 variants)
-  • 2 hash tracking files (vendor hash + binary hashes)
-  • Source archive + changelog
+```mermaid
+flowchart TB
+    step1["Step 1: RUN COMPREHENSIVE TESTS<br/>nix.sh --variant fips test all<br/>· sqlite ✓ · wasm ✓ · otel ✓ (Docker) · psql ✓ · mysql ✓<br/>· redis ✗ (FIPS) · google_cse ✓ · hsm ✓ (Linux)<br/>nix.sh --variant non-fips test all (includes redis ✓)"]
+    step2["Step 2: BUILD PACKAGES<br/>nix.sh package<br/>nix.sh --variant fips --link static package deb<br/>  → result-deb-fips-static/*.deb + .sha256<br/>nix.sh --variant non-fips --link dynamic package rpm<br/>  → result-rpm-non-fips-dynamic/*.rpm + .sha256"]
+    step4["Step 4: GENERATE SBOM DOCUMENTATION<br/>nix.sh sbom<br/>  → sbom/openssl/{bom.cdx.json, bom.spdx.json, sbom.csv, vulns.csv, graph.png}<br/>nix.sh sbom --target server<br/>  → sbom/server/fips/static/ (same structure)"]
+    step5["Step 5: VERIFY REPRODUCIBILITY<br/>nix.sh update-hashes [RUN_ID]<br/>(if fixed-output derivation hash mismatch)"]
+    artifacts["RELEASE ARTIFACTS<br/>· 12 package files (6 per variant × 2 variants)<br/>· 14 SBOM files (7 per variant × 2 variants)<br/>· 2 hash tracking files<br/>· Source archive + changelog<br/>· Total: ~30 files per release"]
+    step1 --> step2 --> step4 --> step5 --> artifacts
 ```
 
 #### Artifact Flow Summary
 
-```text
-Source Code                  Build Outputs              Distribution
-━━━━━━━━━━━                  ━━━━━━━━━━━━━              ━━━━━━━━━━━━
-
-┌──────────┐                ┌──────────┐               ┌──────────┐
-│ Cargo.   │───build───────→│cosmian_  │──package─────→│   .deb   │
-│  toml    │                │   kms    │               │   .rpm   │
-│          │                │  binary  │               │   .dmg   │
-│ Cargo.   │                └──────────┘               └──────────┘
-│  lock    │                      │                          │
-│          │                      │                          │
-│  src/    │                      │                     ┌────┴────┐
-│  crate/  │                      │                     │ Smoke   │
-└──────────┘                      │                     │  Test   │
-     │                            │                     └────┬────┘
-     │                            │                          │
-     │                            │                          ▼
-     │                            │                    ┌──────────┐
-     │                            │                    │ .sha256  │
-     │                            │                    │checksum  │
-     │                            │                    └──────────┘
-     │                            │
-     │                            └──sbom──────────────→┌──────────┐
-     │                                                  │CycloneDX │
-     │                                                  │  SPDX    │
-     │                                                  │  CSV     │
-     └──hash tracking─────────────────────────────────→ │  Vulns   │
-                                                        └──────────┘
+```mermaid
+flowchart LR
+    subgraph source["Source Code"]
+        cargo["Cargo.toml<br/>Cargo.lock<br/>src/ · crate/"]
+    end
+    subgraph build["Build Outputs"]
+        binary["cosmian_kms binary<br/>(target/)"]
+    end
+    subgraph dist["Distribution"]
+        pkgs["Packages<br/>.deb · .rpm · .dmg"]
+        smoke["Smoke Test"]
+        checksum[".sha256 checksum"]
+        sbom["SBOM<br/>CycloneDX · SPDX<br/>CSV · Vulns"]
+    end
+    cargo -->|build| binary
+    binary -->|package| pkgs --> smoke --> checksum
+    binary -->|sbom| sbom
+    cargo -->|hash tracking| sbom
 ```
 
 ---
@@ -1236,7 +792,7 @@ Source Code                  Build Outputs              Distribution
 
 1. **Create test script**: `.github/scripts/test_<name>.sh`
    - Source `common.sh` for shared helpers
-   - Call `init_build_env "$@"` to parse variant/profile
+   - Call `init_build_env "$@"` to parse variant/link
    - Use `require_cmd` to check dependencies
    - Run targeted `cargo test` commands
 
@@ -1326,8 +882,8 @@ bash .github/scripts/nix.sh test sqlite                # Quick test iteration
 bash .github/scripts/nix.sh package deb
 
 # Release preparation
-bash .github/scripts/nix.sh --profile release --variant fips test all
-bash .github/scripts/nix.sh --profile release --variant non-fips test all
+bash .github/scripts/nix.sh --variant fips test all
+bash .github/scripts/nix.sh --variant non-fips test all
 bash .github/scripts/nix.sh package                    # All packages
 bash .github/scripts/nix.sh sbom                       # OpenSSL 3.1.2 derivation SBOM
 bash .github/scripts/nix.sh sbom --target server       # Server SBOM (default fips/static)

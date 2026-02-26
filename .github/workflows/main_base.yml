@@ -7,9 +7,6 @@ on:
       toolchain:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
 
 jobs:
   cla-assistant:
@@ -31,6 +28,11 @@ jobs:
 
   cargo-machete:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@develop
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
+  forward-proxy:
+    uses: ./.github/workflows/forward_proxy.yml
     with:
       toolchain: ${{ inputs.toolchain }}
 
@@ -80,7 +82,6 @@ jobs:
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      debug_or_release: ${{ inputs.debug_or_release }}
 
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
