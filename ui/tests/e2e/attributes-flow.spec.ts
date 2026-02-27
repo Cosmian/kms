@@ -26,15 +26,21 @@ async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<st
  * Identifies the select by its AntD Form id (derived from the Form.Item name).
  */
 async function selectAntDById(page: Parameters<typeof gotoAndWait>[0], formItemId: string, optionText: string): Promise<void> {
-    await page.locator(`#${formItemId}`).click({ force: true });
+    const trigger = page.locator(`#${formItemId}`);
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click({ force: true });
     // Wait for dropdown to open
     await page.locator(".ant-select-dropdown:visible").waitFor({ timeout: 10_000 });
-    // Scroll the dropdown list to bottom so virtual-list renders all items
+    // Scroll the dropdown list so virtual-list renders all items
     const dropdown = page.locator(".ant-select-dropdown:visible .rc-virtual-list-holder").first();
-    await dropdown.evaluate((el) => {
-        el.scrollTop = el.scrollHeight;
-    });
-    await page.locator(".ant-select-item-option:visible", { hasText: optionText }).first().click({ force: true });
+    await dropdown.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    const option = page.locator(".ant-select-item-option", { hasText: optionText }).first();
+    try {
+        await option.scrollIntoViewIfNeeded();
+        await option.click({ force: true });
+    } catch {
+        await option.dispatchEvent("click");
+    }
 }
 
 test.describe("Object attributes", () => {

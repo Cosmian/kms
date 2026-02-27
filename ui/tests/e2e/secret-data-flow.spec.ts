@@ -8,7 +8,7 @@
  *   • revoke and destroy
  */
 import { expect, test } from "@playwright/test";
-import { extractUuid, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { extractUuid, gotoAndWait, selectOption, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Create a random secret-data object and return its UUID. */
 async function createSecretData(page: Parameters<typeof gotoAndWait>[0]): Promise<string> {
@@ -48,9 +48,7 @@ test.describe("Secret data", () => {
         // Import ──────────────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/secret-data/import");
         await page.setInputFiles('input[type="file"]', downloadPath!);
-        await page.locator("#keyFormat").scrollIntoViewIfNeeded();
-        await page.locator("#keyFormat").click({ force: true });
-        await page.locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" }).first().click({ force: true });
+        await selectOptionById(page, "#keyFormat", "JSON TTLV (default)");
         const importText = await submitAndWaitForResponse(page);
         expect(importText).toMatch(/imported/i);
     });

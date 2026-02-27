@@ -10,7 +10,7 @@
  *   • navigate: encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { extractUuid, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { extractUuid, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Create a fresh AES-256 key and return its UUID. */
 async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<string> {
@@ -54,8 +54,7 @@ test.describe("Symmetric key", () => {
         // Import ──────────────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/sym/keys/import");
         await page.setInputFiles('input[type="file"]', downloadPath!);
-        await page.locator("#keyFormat").click({ force: true });
-        await page.locator(".ant-select-item-option:visible", { hasText: "JSON TTLV (default)" }).first().click({ force: true });
+        await selectOptionById(page, "#keyFormat", "JSON TTLV (default)");
         const importText = await submitAndWaitForResponse(page);
         expect(importText).toMatch(/imported/i);
     });

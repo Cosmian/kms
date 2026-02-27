@@ -122,3 +122,41 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         { testId: selectTestId, expected: optionText }
     );
 }
+
+/**
+ * Open an Ant Design `<Select>` identified by a CSS selector (e.g. `#keyFormat`)
+ * and choose the option whose visible label matches `optionText`.
+ *
+ * Uses the same robust retry / dispatchEvent fallback as `selectOption`, so it
+ * works even when the dropdown portal renders outside the viewport in CI.
+ */
+export async function selectOptionById(page: Page, cssSelector: string, optionText: string): Promise<void> {
+    const trigger = page.locator(cssSelector);
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click({ force: true });
+
+    const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    const candidates = dropdown.locator(".ant-select-item-option", { hasText: optionText });
+    const deadline = Date.now() + 10_000;
+    let clicked = false;
+
+    while (Date.now() < deadline && !clicked) {
+        if ((await candidates.count()) > 0) {
+            const option = candidates.first();
+            try {
+                await option.scrollIntoViewIfNeeded();
+                await option.click({ force: true });
+            } catch {
+                // Dropdown portal may be outside the viewport on narrow CI runners.
+                await option.dispatchEvent("click");
+            }
+            clicked = true;
+            break;
+        }
+        await page.waitForTimeout(100);
+    }
+
+    if (!clicked) {
+        throw new Error(`selectOptionById: option not visible: ${optionText}`);
+    }
+}
