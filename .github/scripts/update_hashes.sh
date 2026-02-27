@@ -196,9 +196,13 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
       if [ -n "$got_hash" ] && [ -n "$last_drv_name" ]; then
         target_file=""
 
-        # UI pnpm deps (both fips and non-fips share the same pnpm deps)
+        # UI pnpm deps — platform-specific (fips and non-fips share the same pnpm deps per platform)
         if [[ "$last_drv_name" =~ ui-deps-(fips|non-fips).*-pnpm-deps ]]; then
-          target_file="$EXPECTED_DIR/ui.pnpm.sha256"
+          if [[ "$JOB_NAME" == *darwin* ]] || [[ "$JOB_NAME" == *macos* ]] || [[ "$JOB_NAME" == *mac* ]]; then
+            target_file="$EXPECTED_DIR/ui.pnpm.darwin.sha256"
+          else
+            target_file="$EXPECTED_DIR/ui.pnpm.linux.sha256"
+          fi
         # UI wasm vendor - fips
         elif [[ "$last_drv_name" =~ ui-wasm-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.fips.sha256"

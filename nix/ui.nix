@@ -214,7 +214,8 @@ let
       hash =
         let
           placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-          hashFile = ../nix/expected-hashes + "/ui.pnpm.sha256";
+          platformSuffix = if stdenv.hostPlatform.isDarwin then "darwin" else "linux";
+          hashFile = ../nix/expected-hashes + "/ui.pnpm." + platformSuffix + ".sha256";
         in
         if builtins.pathExists hashFile then
           let
