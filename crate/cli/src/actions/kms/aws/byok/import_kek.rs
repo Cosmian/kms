@@ -16,9 +16,10 @@ use cosmian_kms_client::{
 };
 
 /// Validate that the string is valid base64 and its decoded length is between 1 and 4096 bytes.
-fn validate_kek_base64(s: &str) -> Result<String, String> {
+fn validate_and_normalize_kek_base64(s: &str) -> Result<String, String> {
+    let normalized = s.split_whitespace().collect();
     let decoded = BASE64_STANDARD
-        .decode(s)
+        .decode(&normalized)
         .map_err(|e| format!("Invalid base64 encoding: {e}"))?;
 
     if decoded.is_empty() {
@@ -31,19 +32,19 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
             decoded.len()
         ));
     }
-    Ok(s.to_owned())
+    Ok(normalized)
 }
 
 /// Import an AWS Key Encryption Key (KEK) into the KMS.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
-#[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_blob must be provided
+#[clap(group(ArgGroup::new("kek_input").required(true).args(["kek_base64", "kek_file"])))] // At least one of kek_file or kek_base64 must be provided
 pub struct ImportKekAction {
     /// The RSA Key Encryption public key (the KEK) as a base64-encoded string
     #[clap(
         short = 'b',
         long,
-        value_parser = clap::builder::ValueParser::new(validate_kek_base64),
+        value_parser = clap::builder::ValueParser::new(validate_and_normalize_kek_base64),
         group = "kek_input"
     )]
     pub(crate) kek_base64: Option<String>,

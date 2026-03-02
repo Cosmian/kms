@@ -12,17 +12,6 @@
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 
-use base64::Engine;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
-    create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
-};
-use cosmian_kms_client::{ExportObjectParams, export_object};
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
-use cosmian_logger::log_init;
-use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
-use test_kms_server::start_default_test_kms_server;
-use uuid::Uuid;
-
 use crate::actions::kms::{
     aws::byok::{
         export_key_material::ExportByokAction, import_kek::ImportKekAction,
@@ -38,6 +27,16 @@ use crate::tests::kms::shared::openssl_utils::{
     generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap, rsa_aes_key_wrap_sha256_unwrap,
     rsaes_oaep_sha1_unwrap, rsaes_oaep_sha256_unwrap,
 };
+use base64::Engine;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
+};
+use cosmian_kms_client::{ExportObjectParams, export_object};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
+use cosmian_logger::log_init;
+use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
+use test_kms_server::start_default_test_kms_server;
+use uuid::Uuid;
 
 // Test constants from AWS KMS GetParametersForImport response
 const TEST_KEY_ARN: &str =

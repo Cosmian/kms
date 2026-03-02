@@ -52,6 +52,14 @@ Notes:
 - FIPS mode is the default; use `--features non-fips` for non-approved algorithms
 - Start database backends with `docker compose up -d` before running DB tests
 
+## Debugging the repository
+
+Usually, when debugging, you want to run the server with maximum logging;
+
+```bash
+RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" cargo run --debug --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data # or whatever kms run command you should run
+```
+
 ## Running the server
 
 After building, you can run the server manually:
@@ -92,7 +100,7 @@ ui/                     # Web UI source
 - Use `cargo build` for optimized builds
 - Run `cargo test` frequently to ensure changes don't break functionality
 
-## Docker
+### Docker
 
 ```bash
 docker pull ghcr.io/cosmian/kms:latest
@@ -101,16 +109,13 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 
 Images include the UI at `http://localhost:9998/ui`.
 
-# Debugging the repository
-
-Usually, when debugging, you want to run the server with maximum logging;
-
-```bash
-RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" cargo run --debug --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data # or whatever kms run command you should run
-```
-
 The previous command is a generic example, if you think that the problem, add it to the `RUST_LOG` environment variable.
 
 ### Common issues
 
 - When the KMS complains about some "usage mask" on the KMIP requests, the keys might not have the correct usage masks setup (for example to decrypt/encrypt, sign/verify, etc.)
+
+### Known Patterns — Do Not Flag
+
+- Do not flag SeedableRng as an unused import when there is `let mut rng = CsRng::from_entropy();` in the same file. SeedableRng must be in scope for CsRng::from_entropy() to compile — it is the trait that provides the from_entropy() method.
+- In crate/cli/src/actions/kms/aws/byok/export_key_material.rs, the intentional mixing of print! and eprintln!/eprint! is by design and must not be changed.

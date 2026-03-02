@@ -220,9 +220,9 @@ Receiving this response means that the key material has been successfully import
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 
-First, Sign in to the AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms) and complete the neccessary steps to [create a KMS key with external key material](). Be mindful to provide the correct [key spec](https://docs.aws.amazon.com/kms/latest/developerguide/symm-asymm-choose-key-spec.html) - otherwise the console will expect a symmetric key by default. For this example, we will use `RSA_2048`.
+First, Sign in to the AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms) and complete the necessary steps to [create a KMS key with external key material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-create-cmk.html). Be mindful to provide the correct [key spec](https://docs.aws.amazon.com/kms/latest/developerguide/symm-asymm-choose-key-spec.html) - otherwise the console will expect a symmetric key by default. For this example, we will use `RSA_2048`.
 
-The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an RSA_AES_KEY_WRAP_SHA_* wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Chosing `RSAES_OAEP_SHA_256` will work for this example.
+The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an RSA_AES_KEY_WRAP_SHA_* wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Choosing `RSAES_OAEP_SHA_256` will work for this example.
 
 Once this is done, create your key on the cosmian KMS like follow, we call it `rsa_key_material` :
 
