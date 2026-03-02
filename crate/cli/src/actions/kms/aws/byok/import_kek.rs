@@ -16,9 +16,12 @@ use cosmian_kms_client::{
 };
 
 /// Validate that the string is valid base64 and its decoded length is between 1 and 4096 bytes.
+/// Whitespace is stripped before decoding to accept common base64 presentations (e.g. wrapped
+/// console output or PEM-style line breaks).
 fn validate_kek_base64(s: &str) -> Result<String, String> {
+    let normalized: String = s.split_ascii_whitespace().collect();
     let decoded = BASE64_STANDARD
-        .decode(s)
+        .decode(&normalized)
         .map_err(|e| format!("Invalid base64 encoding: {e}"))?;
 
     if decoded.is_empty() {
@@ -31,7 +34,7 @@ fn validate_kek_base64(s: &str) -> Result<String, String> {
             decoded.len()
         ));
     }
-    Ok(s.to_owned())
+    Ok(normalized)
 }
 
 /// Import an AWS Key Encryption Key (KEK) into the KMS.
