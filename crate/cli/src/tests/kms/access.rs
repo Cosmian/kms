@@ -18,8 +18,7 @@ use crate::{
             GrantAccess, ListAccessRightsObtained, ListAccessesGranted, ListOwnedObjects,
             RevokeAccess,
         },
-        rsa::keys::create_key_pair::CreateKeyPairAction,
-        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
         },
@@ -33,32 +32,32 @@ async fn gen_key(kms_client: &KmsClient) -> KmsCliResult<UniqueIdentifier> {
     CreateKeyAction::default().run(kms_client.clone()).await
 }
 
-/// Generates a key pair
-async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
-    CreateKeyPairAction::default().run(kms_client.clone()).await
-}
+// /// Generates a key pair
+// async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
+//     CreateKeyPairAction::default().run(kms_client.clone()).await
+// }
 
-/// Export and import a symmetric key using a unique temp file to avoid concurrent test collisions
-async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
-    let tmp_dir = TempDir::new()?;
-    let export_path = tmp_dir.path().join("output.export");
+// /// Export and import a symmetric key using a unique temp file to avoid concurrent test collisions
+// async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
+//     let tmp_dir = TempDir::new()?;
+//     let export_path = tmp_dir.path().join("output.export");
 
-    ExportSecretDataOrKeyAction {
-        key_id: Some(key_id.to_owned()),
-        key_file: export_path.clone(),
-        ..Default::default()
-    }
-    .run(kms_client.clone())
-    .await?;
+//     ExportSecretDataOrKeyAction {
+//         key_id: Some(key_id.to_owned()),
+//         key_file: export_path.clone(),
+//         ..Default::default()
+//     }
+//     .run(kms_client.clone())
+//     .await?;
 
-    Ok(ImportSecretDataOrKeyAction {
-        key_file: export_path,
-        ..Default::default()
-    }
-    .run(kms_client.clone())
-    .await?
-    .to_string())
-}
+//     Ok(ImportSecretDataOrKeyAction {
+//         key_file: export_path,
+//         ..Default::default()
+//     }
+//     .run(kms_client.clone())
+//     .await?
+//     .to_string())
+// }
 
 #[tokio::test]
 #[serial]

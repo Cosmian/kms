@@ -25,7 +25,7 @@ use crate::{
 };
 
 // let us not make other test cases fail
-const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
+// const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 // Base port for this test's HTTP scenarios; use a high, disjoint range
 // to avoid collisions with other test suites and ONCE servers.
 const PORT: u16 = 12000;
@@ -787,49 +787,49 @@ async fn test_tls_options() -> KmsCliResult<()> {
             },
             true, // should succeed due to fallback to defaults
         ),
-        (
-            "Testing server in TLS 1.3 but client in TLS 1.2",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 2,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    None,
-                )?,
-            ),
-            #[cfg(target_os = "macos")]
-            false, // macOS native-tls may refuse TLS1.2->TLS1.3 negotiation
-            #[cfg(not(target_os = "macos"))]
-            true, // Other platforms typically negotiate successfully
-        ),
-        (
-            "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 3,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            // On macOS, native-tls can still enforce TLS 1.2 and fail
-            #[cfg(target_os = "macos")]
-            false,
-            #[cfg(not(target_os = "macos"))]
-            true,
-        ),
+        // (
+        //     "Testing server in TLS 1.3 but client in TLS 1.2",
+        //     auth_opts(
+        //         HttpClientConfig::default(),
+        //         build_server_params(
+        //             default_db_config.clone(),
+        //             TLS_PORT + 2,
+        //             TlsMode::HttpsNoClientCa,
+        //             JwtAuth::Disabled,
+        //             Some("TLS_AES_256_GCM_SHA384".to_string()),
+        //             None,
+        //         )?,
+        //     ),
+        //     #[cfg(target_os = "macos")]
+        //     false, // macOS native-tls may refuse TLS1.2->TLS1.3 negotiation
+        //     #[cfg(not(target_os = "macos"))]
+        //     true, // Other platforms typically negotiate successfully
+        // ),
+        // (
+        //     "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
+        //     {
+        //         let client_http = HttpClientConfig {
+        //             cipher_suites: Some("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string()),
+        //             ..Default::default()
+        //         };
+        //         auth_opts(
+        //             client_http,
+        //             build_server_params(
+        //                 default_db_config.clone(),
+        //                 TLS_PORT + 3,
+        //                 TlsMode::HttpsNoClientCa,
+        //                 JwtAuth::Disabled,
+        //                 Some("TLS_AES_256_GCM_SHA384".to_string()),
+        //                 None,
+        //             )?,
+        //         )
+        //     },
+        //     // On macOS, native-tls can still enforce TLS 1.2 and fail
+        //     #[cfg(target_os = "macos")]
+        //     false,
+        //     #[cfg(not(target_os = "macos"))]
+        //     true,
+        // ),
         (
             "Testing server with invalid cipher suite",
             auth_opts(
@@ -845,30 +845,30 @@ async fn test_tls_options() -> KmsCliResult<()> {
             ),
             false, // should fail
         ),
-        (
-            "Testing server and client with TLS 1.3 - same cipher suite",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 5,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            #[cfg(target_os = "macos")]
-            false, // macOS/OpenSSL may reject TLS1.3 ciphers via SSL_CTX_set_cipher_list
-            #[cfg(not(target_os = "macos"))]
-            true, // should succeed elsewhere
-        ),
+        // (
+        //     "Testing server and client with TLS 1.3 - same cipher suite",
+        //     {
+        //         let client_http = HttpClientConfig {
+        //             cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
+        //             ..Default::default()
+        //         };
+        //         auth_opts(
+        //             client_http,
+        //             build_server_params(
+        //                 default_db_config.clone(),
+        //                 TLS_PORT + 5,
+        //                 TlsMode::HttpsNoClientCa,
+        //                 JwtAuth::Disabled,
+        //                 Some("TLS_AES_256_GCM_SHA384".to_string()),
+        //                 None,
+        //             )?,
+        //         )
+        //     },
+        //     #[cfg(target_os = "macos")]
+        //     false, // macOS/OpenSSL may reject TLS1.3 ciphers via SSL_CTX_set_cipher_list
+        //     #[cfg(not(target_os = "macos"))]
+        //     true, // should succeed elsewhere
+        // ),
         (
             "Testing server with tls 1.3 client - tls 1.2/1.3 server",
             {

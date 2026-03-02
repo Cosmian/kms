@@ -42,8 +42,6 @@ use uuid::Uuid;
 const TEST_KEY_ARN: &str =
     "arn:aws:kms:eu-west-3:447182645454:key/e8518bca-e1d0-4519-a915-d80da8e8f38a";
 
-const TEST_PUBLIC_KEY_BASE64: &str = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEApujv1m1gfctmaIaWD4ns9b5MWrr2JwYJYo82Ri3AoQZkOq0BQKkBazO61Scn/+buRE57x5tYTfUTZdnwUe4OuGgTRmH/2SPbcILbpulLP31YnqEP5IxLnn7Z9NR6VODn0QiUyv/uaHE/uBD7mt1+KHKEOBn+rL53/ht3yrboGgqxKj84FITNPaiOZ7yTccB0yCqvlKWYpcrIPeTBdGlpXni10GyBxRqGfkmKuX9/rxwDlBbzdAXn9nHOmhhZlzBUHDzidXZvYrfWEqxfnYAuTbb0Dwj/7eTiFUKseV7NXU/KpAyIG3OghDjNF7PnKT7Zlf7CvSYE+9DOqadBzjQjbOu10lLdoo2nWfCtkvE5XrZkqJHHk+9DUBnkQX3I6MdCWlfTp8QWHiwbo8rFLC4ZSLCB/QqhTh8XnHwdVkmrDKhpYQH6m1pJcsG4sIICDwIkdMSkw/CHOk+bl76TIsVqCu/7QyvFLtsvIDG3Ia0qwshYpUuIoKxXfgwUuZiwSN2RAgMBAAE=";
-
 // Generate the key material locally, then import it to the kms using ImportSecretDataOrKeyAction
 // The key material of this test will be a symmetric encryption key (32 bytes)
 // Import kek as base64 string
