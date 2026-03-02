@@ -88,7 +88,10 @@ services:
       - ./test_data/certificates/client_server/db/mysql-server.key:/etc/mysql/certs/server-key.pem:ro
       - ./test_data/certificates/client_server/ca/ca.crt:/etc/mysql/certs/ca.pem:ro
     command: >
-      --require-secure-transport=ON --ssl-cert=/etc/mysql/certs/server-cert.pem --ssl-key=/etc/mysql/certs/server-key.pem --ssl-ca=/etc/mysql/certs/ca.pem
+      --require-secure-transport=ON
+      --ssl-cert=/etc/mysql/certs/server-cert.pem
+      --ssl-key=/etc/mysql/certs/server-key.pem
+      --ssl-ca=/etc/mysql/certs/ca.pem
   redis:
     image: redis:7.2
     ports:
@@ -100,3 +103,21 @@ services:
       - 16686:16686
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+
+  # Minimal OTEL stack for integration tests:
+  # KMS -> otel-collector -> scrape collector Prometheus endpoint
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.144.0
+    command: [--config=/etc/otel-collector-config.yaml]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      # Kept for local setups that also export somewhere else; not used by test assertions.
+      - OTLP_ENDPOINT=jaeger:4317
+      - ENVIRONMENT=test
+      - KMS_VERSION=dev
+    ports:
+      - 4317:4317 # OTLP gRPC receiver (host)
+      - 4318:4318 # OTLP HTTP receiver (host)
+      - 8889:8889 # Prometheus metrics endpoint (host)
