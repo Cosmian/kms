@@ -1,0 +1,97 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
+        action: upsert
+      - key: deployment.environment.name
+        value: ${env:ENVIRONMENT}
+        action: upsert
+      - key: service.name
+        value: cosmian_kms
+        action: upsert
+      - key: service.version
+        value: ${env:KMS_VERSION}
+        action: upsert
+      - key: kms.mode
+        value: ${env:KMS_MODE}
+        action: upsert
+      - key: kms.cluster
+        value: ${env:KMS_CLUSTER}
+        action: upsert
+  transform:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["kms_node"], resource.attributes["host.name"])
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s]
+    dimensions:
+      - name: span_name
+    dimensions_cache_size: 10000
+    exemplars:
+      enabled: true
+    metrics_flush_interval: 15s
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+
+exporters:
+  prometheusremotewrite:
+    endpoint: http://victoria-metrics:8428/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+    target_info:
+      enabled: true
+  prometheus:
+    endpoint: otel-collector:8888
+    namespace: otel
+    const_labels:
+      environment: ${env:ENVIRONMENT}
+    resource_to_telemetry_conversion:
+      enabled: true
+    send_timestamps: true
+    metric_expiration: 1m
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [spanmetrics, debug]
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, batch, resource, transform]
+      exporters: [prometheusremotewrite, prometheus, debug]

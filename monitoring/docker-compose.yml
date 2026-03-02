@@ -1,0 +1,115 @@
+services:
+  kms:
+    image: ghcr.io/cosmian/kms:${KMS_VERSION}
+    container_name: cosmian-kms
+    hostname: cosmian-kms
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=cosmian-kms # This sets the "host.name" attribute for all telemetry emitted by the KMS, which is useful for filtering in Grafana Explore and dashboards
+    profiles:
+      - kms-local
+    volumes:
+      - kms-data:/root/cosmian-kms/sqlite-data
+      - ./certs/kms.p12:/root/cosmian-kms/kms.p12:ro
+    command:
+      - --database-type
+      - sqlite
+      - --sqlite-path
+      - /root/cosmian-kms/sqlite-data
+      - --tls-p12-file
+      - /root/cosmian-kms/kms.p12
+      - --tls-p12-password
+      - ${KMS_P12_PASSWORD}
+      - --hostname
+      - 0.0.0.0
+      - --port
+      - '9998'
+      - --otlp
+      - http://otel-collector:4317
+      - --enable-metering
+    ports:
+      - "9998:9998"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "https://localhost:9998/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - kms-observability
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "13133:13133"
+    environment:
+      - KMS_VERSION=${KMS_VERSION}
+      - ENVIRONMENT=${ENVIRONMENT}
+      - KMS_MODE=${KMS_MODE}
+      - KMS_CLUSTER=${KMS_CLUSTER:-unknown-cluster}
+      - KMS_NODE=${KMS_NODE:-single-node}
+    networks:
+      - kms-observability
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoria-metrics
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--retentionPeriod=${METRICS_RETENTION_MONTHS}"
+      - "--httpListenAddr=:8428"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--search.cacheTimestampOffset=10m"
+    volumes:
+      - victoria-data:/victoria-metrics-data
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    healthcheck:
+      disable: true
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - kms-observability
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      victoria-metrics:
+        condition: service_started
+    networks:
+      - kms-observability
+
+networks:
+  kms-observability:
+    driver: bridge
+    name: kms-observability
+
+volumes:
+  grafana-data:
+  victoria-data:
+  tempo-data:
+  kms-data:
