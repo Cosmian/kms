@@ -139,7 +139,14 @@ const AccessRevokeForm: React.FC = () => {
                         )}
                     </Card>
                     <Form.Item>
-                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            danger
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Revoke Access
                         </Button>
                     </Form.Item>

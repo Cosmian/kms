@@ -33,7 +33,9 @@ async function selectAntDById(page: Parameters<typeof gotoAndWait>[0], formItemI
     await page.locator(".ant-select-dropdown:visible").waitFor({ timeout: 10_000 });
     // Scroll the dropdown list so virtual-list renders all items
     const dropdown = page.locator(".ant-select-dropdown:visible .rc-virtual-list-holder").first();
-    await dropdown.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await dropdown.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+    });
     const option = page.locator(".ant-select-item-option", { hasText: optionText }).first();
     try {
         await option.scrollIntoViewIfNeeded();

@@ -279,7 +279,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Import {isDataLike ? "Data" : "Key"}
                         </Button>
                     </Form.Item>

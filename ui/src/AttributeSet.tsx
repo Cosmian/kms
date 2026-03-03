@@ -242,7 +242,13 @@ const AttributeSetForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Set Attribute
                         </Button>
                     </Form.Item>
@@ -250,7 +256,9 @@ const AttributeSetForm: React.FC = () => {
             </Form>
             {res && (
                 <Card>
-                    <div ref={responseRef} data-testid="response-output">{res}</div>
+                    <div ref={responseRef} data-testid="response-output">
+                        {res}
+                    </div>
                 </Card>
             )}
         </div>

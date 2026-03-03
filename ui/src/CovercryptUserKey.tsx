@@ -131,7 +131,13 @@ const CovercryptUserKeyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Create User Key
                         </Button>
                     </Form.Item>
