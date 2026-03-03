@@ -32,6 +32,7 @@ const LocateForm: React.FC = () => {
     const [objects, setObjects] = useState<LocatedRow[] | undefined>(undefined);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [pageSize, setPageSize] = useState<number>(10);
+    const [tableKey, setTableKey] = useState<number>(0);
     const normalizeState = (s?: string) => (s || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
     const stateEnumToName = (v: unknown): string | undefined => {
         if (v == null) return undefined;
@@ -211,6 +212,7 @@ const LocateForm: React.FC = () => {
         setRes(undefined);
         setObjects(undefined);
         setCurrentPage(1);
+        setTableKey((k) => k + 1);
         try {
             if (authMethod === "JWT" && !idToken) {
                 setRes("Authentication required: please log in to search.");
@@ -744,26 +746,29 @@ const LocateForm: React.FC = () => {
 
                             {(() => {
                                 const data = objects || [];
-                                const start = (currentPage - 1) * pageSize;
-                                const end = start + pageSize;
-                                const pageData = data.slice(start, end);
+                                const typeFilterOptions = Array.from(
+                                    new Set(data.map((r) => r.attributes?.ObjectType || "N/A"))
+                                ).map((v) => ({ text: v, value: v }));
+                                const kftFilterOptions = Array.from(
+                                    new Set(data.map((r) => (r.meta?.["key_format_type"] as string | undefined) || "N/A"))
+                                ).map((v) => ({ text: v, value: v }));
+                                const stateFilterOptions = Array.from(
+                                    new Set(data.map((r) => r.state || "Unknown"))
+                                ).map((v) => ({ text: v, value: v }));
                                 return (
                                     <Table
-                                        dataSource={pageData}
+                                        key={tableKey}
+                                        dataSource={data}
                                         rowKey="object_id"
+                                        onChange={(pagination) => {
+                                            if (pagination.current) setCurrentPage(pagination.current);
+                                            if (pagination.pageSize) setPageSize(pagination.pageSize);
+                                        }}
                                         pagination={{
                                             current: currentPage,
                                             pageSize,
-                                            total: data.length,
                                             showSizeChanger: true,
                                             pageSizeOptions: [10, 20, 50, 100],
-                                            onChange: (page: number, size?: number) => {
-                                                setCurrentPage(page);
-                                                if (size && size !== pageSize) {
-                                                    setPageSize(size);
-                                                    setCurrentPage(1);
-                                                }
-                                            },
                                         }}
                                         className="border rounded"
                                         columns={[
@@ -777,12 +782,20 @@ const LocateForm: React.FC = () => {
                                                 key: "attributes.ObjectType",
                                                 render: (record: { attributes?: { ObjectType?: string } }) =>
                                                     record.attributes?.ObjectType || "N/A",
+                                                filters: typeFilterOptions,
+                                                filterMultiple: true,
+                                                onFilter: (value, record: LocatedRow) =>
+                                                    (record.attributes?.ObjectType || "N/A") === String(value),
                                             },
                                             {
                                                 title: "Key Format Type",
                                                 key: "key_format_type",
                                                 render: (record: { meta?: Record<string, unknown> }) =>
                                                     (record.meta?.["key_format_type"] as string | undefined) || "N/A",
+                                                filters: kftFilterOptions,
+                                                filterMultiple: true,
+                                                onFilter: (value, record: LocatedRow) =>
+                                                    ((record.meta?.["key_format_type"] as string | undefined) || "N/A") === String(value),
                                             },
                                             {
                                                 title: "State",
@@ -793,6 +806,10 @@ const LocateForm: React.FC = () => {
                                                         <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
                                                     </Space>
                                                 ),
+                                                filters: stateFilterOptions,
+                                                filterMultiple: true,
+                                                onFilter: (value, record: LocatedRow) =>
+                                                    (record.state || "Unknown") === String(value),
                                             },
                                             {
                                                 title: "Actions",
