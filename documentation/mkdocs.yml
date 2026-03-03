@@ -135,9 +135,9 @@ nav:
       - Bulk mode with Messages: kmip/messages.md
       - Operations: kmip/operations.md
       - Attributes:
-          Get: kmip/_get_attributes.md
-          Set: kmip/_set_attributes.md
-          Delete: kmip/_delete_attributes.md
+          - Get: kmip/_get_attributes.md
+          - Set: kmip/_set_attributes.md
+          - Delete: kmip/_delete_attributes.md
       - Certify: kmip/_certify.md
       - Create: kmip/_create.md
       - Create Key Pair: kmip/_create_key_pair.md
