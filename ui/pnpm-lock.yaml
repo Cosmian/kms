@@ -5,6 +5,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  esbuild@<=0.24.2: '>=0.25.0'
+
 importers:
 
   .:
@@ -1118,10 +1121,6 @@ packages:
 
   esbuild-plugin-alias@0.1.2:
     resolution: {integrity: sha512-WsX0OJy8IGOsGZV+4oHEU5B6XQUpxOsZN1iSoYf9COTDbY7WXcOwd1oCLYNWUIWCExyGXSghIGq2k7sXBldxwQ==}
-
-  esbuild@0.11.23:
-    resolution: {integrity: sha512-iaiZZ9vUF5wJV8ob1tl+5aJTrwDczlvGP0JoMmnpC2B0ppiMCu8n8gmy5ZTGl5bcG081XBVn+U+jP+mPFm5T5Q==}
-    hasBin: true
 
   esbuild@0.27.3:
     resolution: {integrity: sha512-8VwMnyGCONIs6cWue2IdpHxHnAjzxnw2Zr7MkVxB2vjmQ2ivqGFb4LEG3SMnv0Gb2F/G/2yA8zUaiL1gywDCCg==}
@@ -3048,8 +3047,6 @@ snapshots:
 
   esbuild-plugin-alias@0.1.2: {}
 
-  esbuild@0.11.23: {}
-
   esbuild@0.27.3:
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.27.3
@@ -3991,7 +3988,7 @@ snapshots:
       chalk: 4.1.2
       clean-css: 5.3.3
       debug: 4.4.3
-      esbuild: 0.11.23
+      esbuild: 0.27.3
       esbuild-plugin-alias: 0.1.2
       tinycolor2: 1.6.0
       vite: 7.3.1(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)
