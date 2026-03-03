@@ -861,9 +861,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/ec{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
+                "/opaque-object{_:.*}",
                 "/certificates{_:.*}",
                 "/attributes{_:.*}",
                 "/access-rights{_:.*}",
+                "/azure{_:.*}",
                 "/google-cse",
             ];
             let mut auth_routes = web::scope("/ui")

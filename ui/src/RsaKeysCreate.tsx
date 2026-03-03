@@ -115,14 +115,14 @@ const RsaKeyCreateForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Create RSA Keypair
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="RSA keys creation response">{res}</Card>
                 </div>
             )}

@@ -157,21 +157,23 @@ const AttributeGetForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Get Attributes
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
 
-            {res && typeof res !== "string" && res.size ? (
-                <div ref={responseRef}>
-                    <HashMapDisplay data={res} />
+            {res && (
+                <div ref={responseRef} data-testid="response-output">
+                    {typeof res !== "string" && res.size ? (
+                        <HashMapDisplay data={res} />
+                    ) : (
+                        <Card>
+                            <div>{res instanceof Map ? JSON.stringify(Object.fromEntries(res)) : res}</div>
+                        </Card>
+                    )}
                 </div>
-            ) : (
-                <Card>
-                    <div ref={responseRef}>{res instanceof Map ? JSON.stringify(Object.fromEntries(res)) : res}</div>
-                </Card>
             )}
         </div>
     );

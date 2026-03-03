@@ -35,3 +35,4 @@ http_cache.sqlite
 sbom.*
 resources/cli.zip
 .claude
+ui/test-results

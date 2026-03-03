@@ -32,6 +32,7 @@ jobs:
           - wasm
           - aws_xks
           - azure_ekm
+          - ui
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -45,6 +46,9 @@ jobs:
             features: fips
           # azure_ekm is only run with non-fips
           - type: azure_ekm
+            features: fips
+          # ui E2E tests use non-fips WASM build
+          - type: ui
             features: fips
 
     steps:

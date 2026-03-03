@@ -451,6 +451,9 @@ test_command() {
   pykmip)
     SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
     ;;
+  ui)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
+    ;;
   hsm)
     # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
     HSM_BACKEND="${1:-all}"
@@ -479,7 +482,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -489,7 +492,7 @@ test_command() {
     export WITH_HSM=1
   fi
   # For WASM/UI tests, ensure shell.nix includes Node.js + wasm-pack (+ pnpm).
-  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
@@ -497,7 +500,7 @@ test_command() {
     export WITH_PYTHON=1
   fi
   # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_CURL=1
   fi
 

@@ -137,14 +137,14 @@ const AccessRevokeForm: React.FC = () => {
                         )}
                     </Card>
                     <Form.Item>
-                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Revoke Access
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Revoke access response">{res}</Card>
                 </div>
             )}

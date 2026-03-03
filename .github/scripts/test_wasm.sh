@@ -3,6 +3,8 @@ set -euo pipefail
 
 # Run wasm tests for cosmian_kms_client_wasm
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.github/scripts/common.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/common.sh"
 
 REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
@@ -86,25 +88,8 @@ ensure_pnpm() {
     return 0
   fi
 
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "Error: npm not found; cannot install pnpm" >&2
-    return 1
-  fi
-
-  # Avoid installing into read-only prefixes (e.g. /nix/store). Prefer a
-  # user-writable prefix and update PATH.
-  if npm install -g pnpm@9 >/dev/null 2>&1; then
-    pnpm_major="$(pnpm_major_version)"
-    [ "$pnpm_major" -ge 9 ] && return 0
-  fi
-
-  local prefix_dir
-  prefix_dir="${PNPM_PREFIX_DIR:-$HOME/.local}"
-  npm install -g pnpm@9 --prefix "$prefix_dir" >/dev/null
-  export PATH="$prefix_dir/bin:$PATH"
-
-  pnpm_major="$(pnpm_major_version)"
-  [ "$pnpm_major" -ge 9 ]
+  echo "Error: pnpm >= 9 not found. Install pnpm or enable corepack (Node.js)" >&2
+  return 1
 }
 
 run_ui() {
@@ -208,42 +193,18 @@ if (!pkg.main) {
 NODE
 fi
 
-if [ -n "${IN_NIX_SHELL:-}" ] && [ -f ui/package-lock.json ]; then
-  # Use `npm install` instead of `npm ci` so that platform-specific optional
-  # dependencies (e.g. @rollup/rollup-linux-x64-gnu) are resolved even when the
-  # lockfile was generated on a different OS (npm/cli#4828).
-  run_ui npm install
-  run_ui npm run lint
-  run_ui npm run test:unit
-  run_ui npm audit --audit-level=high
-
-elif [ -f ui/pnpm-lock.yaml ]; then
-  if ensure_pnpm; then
-    run_ui pnpm install --frozen-lockfile
-    run_ui pnpm run lint
-    run_ui pnpm run test:unit
-    run_ui pnpm audit --audit-level high
-  elif [ -f ui/package-lock.json ]; then
-    run_ui npm install
-    run_ui npm run lint
-    run_ui npm run test:unit
-    run_ui npm audit --audit-level=high
-  else
-    run_ui npm install
-    run_ui npm run lint
-    run_ui npm run test:unit
-    run_ui npm audit --audit-level=high
+if [ -f ui/pnpm-lock.yaml ]; then
+  if ! ensure_pnpm; then
+    echo "Error: pnpm is required but could not be installed/activated" >&2
+    exit 1
   fi
-elif [ -f ui/package-lock.json ]; then
-  run_ui npm install
-  run_ui npm run lint
-  run_ui npm run test:unit
-  run_ui npm audit --audit-level=high
+  run_ui pnpm install --frozen-lockfile
+  run_ui pnpm run lint
+  run_ui pnpm run test:unit
+  run_ui pnpm audit --audit-level high
 else
-  run_ui npm install
-  run_ui npm run lint
-  run_ui npm run test:unit
-  run_ui npm audit --audit-level=high
+  echo "Error: ui/pnpm-lock.yaml not found; pnpm is required" >&2
+  exit 1
 fi
 
 # Run UI integration tests against a locally started KMS server.
@@ -259,11 +220,28 @@ if command -v cargo >/dev/null 2>&1; then
   KMS_LOG_FILE="${KMS_LOG_FILE:-/tmp/kms-ui-integration.log}"
   : >"$KMS_LOG_FILE"
 
+  # Force an explicit config to avoid picking up a host-installed default config
+  # at /etc/cosmian/kms.toml (which would ignore CLI args and may crash on log perms).
+  KMS_CONF_FILE="$KMS_SQLITE_DIR/kms.toml"
+  cat >"$KMS_CONF_FILE" <<EOF
+default_username = "admin"
+
+[http]
+hostname = "127.0.0.1"
+port = 9998
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${KMS_SQLITE_DIR}"
+clear_database = true
+
+[logging]
+rust_log = "info,cosmian_kms=info"
+ansi_colors = false
+EOF
+
   cargo run -p cosmian_kms_server --bin cosmian_kms "${FEATURES_FLAG[@]}" -- \
-    --database-type sqlite \
-    --sqlite-path "$KMS_SQLITE_DIR" \
-    --hostname 127.0.0.1 \
-    --port 9998 \
+    --config "$KMS_CONF_FILE" \
     >"$KMS_LOG_FILE" 2>&1 &
 
   kms_pid="$!"
@@ -303,19 +281,15 @@ if command -v cargo >/dev/null 2>&1; then
     sleep 2
   fi
 
-  if [ -n "${IN_NIX_SHELL:-}" ] && [ -f ui/package-lock.json ]; then
-    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
-  elif [ -f ui/pnpm-lock.yaml ]; then
-    if ensure_pnpm; then
-      KMS_URL="http://127.0.0.1:9998" run_ui pnpm run test:integration
-    else
-      KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
-    fi
-  elif [ -f ui/package-lock.json ]; then
-    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
-  else
-    KMS_URL="http://127.0.0.1:9998" run_ui npm run test:integration
+  if [ ! -f ui/pnpm-lock.yaml ]; then
+    echo "Error: ui/pnpm-lock.yaml not found; pnpm is required" >&2
+    exit 1
   fi
+  if ! ensure_pnpm; then
+    echo "Error: pnpm is required but could not be installed/activated" >&2
+    exit 1
+  fi
+  KMS_URL="http://127.0.0.1:9998" run_ui pnpm run test:integration
 else
   echo "Error: cargo not available; cannot run UI integration tests" >&2
   exit 1

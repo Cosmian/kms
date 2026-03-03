@@ -81,20 +81,20 @@ const AccessListForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             List Access Rights
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="List access response">{res}</Card>
                 </div>
             )}
 
             {accessRights.length > 0 && (
-                <div className="mt-8" ref={responseRef}>
+                <div className="mt-8" ref={responseRef} data-testid="response-output">
                     <Card title="Access Rights">
                         <Table dataSource={accessRights} columns={columns} rowKey="user_id" pagination={false} />
                     </Card>

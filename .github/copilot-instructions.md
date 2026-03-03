@@ -9,13 +9,13 @@ Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Manageme
 git submodule update --init --recursive
 
 # Build the project (FIPS mode is default)
-cargo build --release
+cargo build
 
 # Run tests (FIPS mode is default)
 cargo test
 
 # For non-FIPS mode (includes additional algorithms)
-cargo build --release --features non-fips
+cargo build --features non-fips
 cargo test --features non-fips
 ```
 
@@ -57,7 +57,7 @@ Notes:
 After building, you can run the server manually:
 
 ```bash
-cargo run --release --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
+cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
 ```
 
 Or run the compiled binary directly:
@@ -89,7 +89,7 @@ ui/                     # Web UI source
 ## Tips
 
 - Format/lints: run `cargo fmt --check` and `cargo clippy` to check code style
-- Use `cargo build --release` for optimized builds
+- Use `cargo build` for optimized builds
 - Run `cargo test` frequently to ensure changes don't break functionality
 
 ## Docker
