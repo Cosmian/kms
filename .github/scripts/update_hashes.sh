@@ -136,18 +136,20 @@ stream_job_logs() {
 
   # Prefer `gh run view` (nice formatting and smaller for failed steps),
   # but it may refuse logs while the overall run is still in progress.
-  # Also fall through if the output is empty (gh exits 0 but writes nothing
-  # when the job has no failed steps in its view).
-  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-    cat "$tmp"
-    rm -f "$tmp"
-    return 0
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      cat "$tmp"
+      rm -f "$tmp"
+      return 0
+    fi
   fi
 
-  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-    cat "$tmp"
-    rm -f "$tmp"
-    return 0
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      cat "$tmp"
+      rm -f "$tmp"
+      return 0
+    fi
   fi
 
   # Fallback: fetch raw job logs directly (works even if run is still running).
@@ -194,6 +196,15 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
       drv_name="${drv_path##*/}"
       last_drv_name="${drv_name%.drv}"
       continue
+    fi
+
+    # Detect ENOTCACHED error which means the npm deps hash needs to be invalidated
+    if [[ "$line" == *"npm error code ENOTCACHED"* ]]; then
+      echo "ERROR: Detected npm ENOTCACHED error in the job logs!" >&2
+      echo "This usually happens when 'package-lock.json' is updated but the Nix npm dependency hash is not invalidated." >&2
+      echo "To fix this, replace the hash in 'nix/expected-hashes/ui.npm.sha256' with 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='." >&2
+      echo "Then commit, push, and let CI run again. It will fail with a real hash mismatch, which this script can then process." >&2
+      exit 1
     fi
 
     # Capture the "got" hash
