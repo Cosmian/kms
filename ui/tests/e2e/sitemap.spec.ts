@@ -19,11 +19,11 @@ import { ALL_ROUTES } from "./routes";
 
 for (const { section, routes } of ALL_ROUTES) {
     test.describe(section, () => {
-        for (const { name, path } of routes) {
+        for (const { name, path, locator } of routes) {
             test(`navigate to ${name}`, async ({ page }) => {
                 await gotoAndWait(page, path);
                 await expect(
-                    page.locator('[data-testid="submit-btn"]'),
+                    page.locator(locator ?? '[data-testid="submit-btn"]'),
                 ).toBeVisible({ timeout: UI_READY_TIMEOUT });
             });
         }

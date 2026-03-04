@@ -11,6 +11,13 @@ export interface Route {
     name: string;
     /** URL path relative to the Playwright baseURL (starts with /ui). */
     path: string;
+    /**
+     * CSS selector used by `sitemap.spec.ts` to verify the page rendered.
+     * Defaults to `[data-testid="submit-btn"]` if omitted (form pages).
+     * List / info pages that render a heading but no submit button should
+     * set this to `'h1'`.
+     */
+    locator?: string;
 }
 
 // ── Symmetric Key routes ─────────────────────────────────────────────────────
@@ -95,8 +102,9 @@ export const ACCESS_RIGHTS_ROUTES: Route[] = [
     { name: "grant", path: "/ui/access-rights/grant" },
     { name: "revoke", path: "/ui/access-rights/revoke" },
     { name: "list", path: "/ui/access-rights/list" },
-    { name: "owned", path: "/ui/access-rights/owned" },
-    { name: "obtained", path: "/ui/access-rights/obtained" },
+    // "owned" and "obtained" are read-only list pages with no submit button.
+    { name: "owned", path: "/ui/access-rights/owned", locator: "h1" },
+    { name: "obtained", path: "/ui/access-rights/obtained", locator: "h1" },
 ];
 
 // ── Azure BYOK routes ────────────────────────────────────────────────────────
@@ -106,8 +114,9 @@ export const AZURE_ROUTES: Route[] = [
 ];
 
 // ── Standalone page routes ───────────────────────────────────────────────────
+// Google CSE is an info page that shows a heading but has no submit button.
 export const GOOGLE_CSE_ROUTES: Route[] = [
-    { name: "Google CSE", path: "/ui/google-cse" },
+    { name: "Google CSE", path: "/ui/google-cse", locator: "h1" },
 ];
 
 export const LOCATE_ROUTES: Route[] = [
