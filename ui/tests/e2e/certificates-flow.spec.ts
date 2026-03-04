@@ -15,7 +15,7 @@
  * external CSR / certificate files and are therefore kept as navigation tests.
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait } from "./helpers";
+import { UI_READY_TIMEOUT, gotoAndWait } from "./helpers";
 
 const CERT_PAGES = [
     { name: "certify", path: "/ui/certificates/certs/certify" },
@@ -32,7 +32,7 @@ test.describe("Certificates", () => {
     for (const { name, path } of CERT_PAGES) {
         test(`navigate to certificate ${name} page`, async ({ page }) => {
             await gotoAndWait(page, path);
-            await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+            await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
         });
     }
 });

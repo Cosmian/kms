@@ -8,22 +8,22 @@
  *   • delete that attribute from the key
  */
 import { expect, test } from "@playwright/test";
-import { createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Object attributes", () => {
     test("navigate to attributes get page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/get");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to attributes set page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/set");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to attributes delete page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/delete");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("get attributes of a symmetric key", async ({ page }) => {

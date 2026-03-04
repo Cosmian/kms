@@ -10,13 +10,13 @@
  *   • navigate: encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { createSymKey, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Symmetric key", () => {
     test("create AES-256 key with default settings", async ({ page }) => {
         await gotoAndWait(page, "/ui/sym/keys/create");
         // The algorithm Select is populated by WASM; wait until it shows a value.
-        await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
+        await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/has been created/i);
     });
@@ -67,11 +67,11 @@ test.describe("Symmetric key", () => {
 
     test("navigate to sym encrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/sym/encrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to sym decrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/sym/decrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 });

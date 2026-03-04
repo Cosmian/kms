@@ -9,17 +9,17 @@
  *   • navigate to obtained access page (auto-loads on mount)
  */
 import { expect, test } from "@playwright/test";
-import { createSymKey, gotoAndWait, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Access rights", () => {
     test("navigate to grant access page", async ({ page }) => {
         await gotoAndWait(page, "/ui/access-rights/grant");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to revoke access page", async ({ page }) => {
         await gotoAndWait(page, "/ui/access-rights/revoke");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("list access rights on a symmetric key", async ({ page }) => {
@@ -53,11 +53,11 @@ test.describe("Access rights", () => {
     test("navigate to owned objects page", async ({ page }) => {
         await gotoAndWait(page, "/ui/access-rights/owned");
         // Page auto-loads on mount; verify specific heading text
-        await expect(page.getByRole("heading", { name: /Objects owned/i })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole("heading", { name: /Objects owned/i })).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to obtained access page", async ({ page }) => {
         await gotoAndWait(page, "/ui/access-rights/obtained");
-        await expect(page.getByRole("heading", { name: /Access rights obtained/i })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole("heading", { name: /Access rights obtained/i })).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 });

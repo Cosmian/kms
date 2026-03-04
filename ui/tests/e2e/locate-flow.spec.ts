@@ -6,17 +6,17 @@
  *   • submit an empty search (no filters) and verify a response appears
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Locate objects", () => {
     test("navigate to locate page", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("submit locate with no filters returns a response", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
 
         // Submit with no filters – the server will return all accessible objects
         // or an empty result; either way the response panel should appear.

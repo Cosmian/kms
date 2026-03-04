@@ -9,7 +9,7 @@
  *   • navigate: import, encrypt, decrypt, sign, verify pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, extractUuidAfterLabel, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Create a fresh EC key pair and return { privKeyId, pubKeyId }. */
 async function createEcKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
@@ -17,10 +17,10 @@ async function createEcKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
     await selectOption(page, "ec-curve-select", "NIST P-256");
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
-    const privKeyId = text.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    const pubKeyId = text.match(/Public key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    expect(privKeyId).toBeDefined();
-    expect(pubKeyId).toBeDefined();
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
     return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
 }
 
@@ -63,26 +63,26 @@ test.describe("EC key pair", () => {
 
     test("navigate to ec import page", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/keys/import");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to ec encrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/encrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to ec decrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/decrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to ec sign page", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/sign");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to ec verify page", async ({ page }) => {
         await gotoAndWait(page, "/ui/ec/verify");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 });
