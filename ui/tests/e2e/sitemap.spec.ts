@@ -23,7 +23,7 @@ for (const { section, routes } of ALL_ROUTES) {
             test(`navigate to ${name}`, async ({ page }) => {
                 await gotoAndWait(page, path);
                 await expect(
-                    page.locator(locator ?? '[data-testid="submit-btn"]'),
+                    page.locator(locator ?? '[data-testid="submit-btn"]').first(),
                 ).toBeVisible({ timeout: UI_READY_TIMEOUT });
             });
         }
