@@ -1,10 +1,11 @@
-use cosmian_kms_client::KmsClient;
-use serial_test::serial;
+#![allow(dead_code)] // a lot of Windows CI issues 
 
 use crate::tests::kms::xml::runner::{
     run_single_xml_vector_on_client as run_single_xml_vector_on_client_generic,
     run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic,
 };
+use cosmian_kms_client::KmsClient;
+use serial_test::serial;
 
 /// Run a single XML vector using the shared default test server (single sqlite path).
 /// `test_name` is used to namespace UID placeholder keys to avoid cross-test collisions.

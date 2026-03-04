@@ -1,19 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-
-use base64::Engine;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
-    export_utils::{ExportKeyFormat, WrappingAlgorithm},
-    import_utils::{ImportKeyFormat, KeyUsage},
-};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use cosmian_logger::warn;
-use cosmian_logger::{debug, info, log_init};
-use openssl::pkey::PKey;
-use tempfile::TempDir;
-use test_kms_server::{TestsContext, start_default_test_kms_server};
+#![allow(dead_code)] // a lot of Windows CI issues 
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::error::result::KmsCliResultHelper;
@@ -25,6 +10,21 @@ use crate::{
     cli_bail,
     error::result::KmsCliResult,
 };
+use base64::Engine;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    export_utils::{ExportKeyFormat, WrappingAlgorithm},
+    import_utils::{ImportKeyFormat, KeyUsage},
+};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use cosmian_logger::warn;
+use cosmian_logger::{debug, info, log_init};
+use openssl::pkey::PKey;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+use tempfile::TempDir;
+use test_kms_server::{TestsContext, start_default_test_kms_server};
 
 #[tokio::test]
 pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
