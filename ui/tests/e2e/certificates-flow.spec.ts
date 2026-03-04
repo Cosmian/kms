@@ -16,20 +16,10 @@
  */
 import { expect, test } from "@playwright/test";
 import { UI_READY_TIMEOUT, gotoAndWait } from "./helpers";
-
-const CERT_PAGES = [
-    { name: "certify", path: "/ui/certificates/certs/certify" },
-    { name: "export", path: "/ui/certificates/certs/export" },
-    { name: "import", path: "/ui/certificates/certs/import" },
-    { name: "revoke", path: "/ui/certificates/certs/revoke" },
-    { name: "destroy", path: "/ui/certificates/certs/destroy" },
-    { name: "validate", path: "/ui/certificates/certs/validate" },
-    { name: "encrypt", path: "/ui/certificates/encrypt" },
-    { name: "decrypt", path: "/ui/certificates/decrypt" },
-];
+import { CERT_ROUTES } from "./routes";
 
 test.describe("Certificates", () => {
-    for (const { name, path } of CERT_PAGES) {
+    for (const { name, path } of CERT_ROUTES) {
         test(`navigate to certificate ${name} page`, async ({ page }) => {
             await gotoAndWait(page, path);
             await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
