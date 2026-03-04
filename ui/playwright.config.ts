@@ -18,7 +18,8 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  *   1. Building the WASM package with the non-fips feature.
  *   2. Building the UI with VITE_KMS_URL=http://127.0.0.1:9998.
  *   3. Starting the KMS server and the Vite preview server.
- *   4. Running `pnpm run test:e2e` (CI=true → webServer is skipped).
+ *   4. Running `pnpm run test:e2e` with `CI=true` – Playwright sees `CI` is
+ *      set and skips the `webServer` block below (servers already started).
  *
  * For local development, set VITE_KMS_URL and build the UI first:
  *   VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build

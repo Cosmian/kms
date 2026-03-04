@@ -9,18 +9,7 @@
  *   • navigate to obtained access page (auto-loads on mount)
  */
 import { expect, test } from "@playwright/test";
-import { extractUuid, gotoAndWait, submitAndWaitForResponse } from "./helpers";
-
-/** Create a fresh AES-256 key and return its UUID. */
-async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<string> {
-    await gotoAndWait(page, "/ui/sym/keys/create");
-    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
-    const text = await submitAndWaitForResponse(page);
-    expect(text).toMatch(/has been created/i);
-    const id = extractUuid(text);
-    expect(id).not.toBeNull();
-    return id!;
-}
+import { createSymKey, gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Access rights", () => {
     test("navigate to grant access page", async ({ page }) => {

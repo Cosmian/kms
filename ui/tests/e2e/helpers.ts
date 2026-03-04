@@ -1,4 +1,4 @@
-import { Download, Page } from "@playwright/test";
+import { Download, expect, Page } from "@playwright/test";
 
 /** Extract the first UUID (v4 / v1) from an arbitrary text string. */
 export function extractUuid(text: string): string | null {
@@ -159,4 +159,24 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     if (!clicked) {
         throw new Error(`selectOptionById: option not visible: ${optionText}`);
     }
+}
+
+/** Timeout (ms) used when waiting for the UI to finish loading WASM/React data. */
+export const UI_READY_TIMEOUT = 15_000;
+
+/**
+ * Create a fresh AES-256 symmetric key and return its UUID.
+ *
+ * Shared by sym-key, attributes, access-rights and any other test files that
+ * need a key as a fixture, avoiding copy-pasted `createSymKey` functions.
+ */
+export async function createSymKey(page: Page): Promise<string> {
+    await gotoAndWait(page, "/ui/sym/keys/create");
+    // The algorithm Select is populated by WASM; wait until it shows a value.
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/has been created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
 }

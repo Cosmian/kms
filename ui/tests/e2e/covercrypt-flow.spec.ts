@@ -9,7 +9,7 @@
  *   • navigate: import, encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { extractUuid, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({
@@ -78,8 +78,8 @@ test.describe("Covercrypt", () => {
         await page.fill("#masterPrivateKeyId", masterPrivKeyId);
         await page.fill("#accessPolicy", "Department::HR && Security Level::Confidential");
         const userText = await submitAndWaitForResponse(page);
-        const userKeyId = userText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
-        expect(userKeyId).toBeDefined();
+        const userKeyId = extractUuid(userText);
+        expect(userKeyId).not.toBeNull();
 
         // Revoke ──────────────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/cc/keys/revoke");

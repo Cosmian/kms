@@ -10,18 +10,7 @@
  *   • navigate: encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { extractUuid, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
-
-/** Create a fresh AES-256 key and return its UUID. */
-async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<string> {
-    await gotoAndWait(page, "/ui/sym/keys/create");
-    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
-    const text = await submitAndWaitForResponse(page);
-    expect(text).toMatch(/has been created/i);
-    const id = extractUuid(text);
-    expect(id).not.toBeNull();
-    return id!;
-}
+import { createSymKey, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Symmetric key", () => {
     test("create AES-256 key with default settings", async ({ page }) => {
