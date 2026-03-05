@@ -116,6 +116,9 @@ const LocateForm: React.FC = () => {
         }
     }, [serverUrl]);
 
+    // normalization helpers
+    const normalizeKeyFormatType = (s: string) => s.toLowerCase().replace(/\s+|[-_]/g, "");
+
     // Utility: parse WASM/Get response into a plain record
     const extractMeta = (parsed: unknown): Record<string, unknown> => {
         if (parsed instanceof Map) return Object.fromEntries(parsed as Map<string, unknown>);
@@ -235,7 +238,6 @@ const LocateForm: React.FC = () => {
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
             const objectType = norm(values.objectType);
             const stateVal = norm(values.state);
-            const kftNorm = (s: string) => s.toLowerCase().replace(/\s+|[-_]/g, "");
 
             // no-op helpers pruned: Locate handles tags & other criteria server-side
 
@@ -356,10 +358,10 @@ const LocateForm: React.FC = () => {
                     );
                     // Enforce KFT filter client-side if provided
                     if (keyFormatType) {
-                        const target = kftNorm(keyFormatType);
+                        const target = normalizeKeyFormatType(keyFormatType);
                         enriched = enriched.filter((row) => {
                             const v = row.meta?.["key_format_type"] as string | undefined;
-                            return v ? kftNorm(v) === target : false;
+                            return v ? normalizeKeyFormatType(v) === target : false;
                         });
                     }
                     setObjects(enriched);
@@ -416,10 +418,10 @@ const LocateForm: React.FC = () => {
                         }
                         // Enforce KFT filter if provided
                         if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
+                            const targetKft = normalizeKeyFormatType(keyFormatType);
                             merged = merged.filter((r) => {
                                 const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
+                                return v ? normalizeKeyFormatType(v) === targetKft : false;
                             });
                         }
                         // Do not re-filter by tags/criteria; Locate already applied them
@@ -434,10 +436,10 @@ const LocateForm: React.FC = () => {
                             filtered = filtered.filter((r) => normalizeState(r.state) === target);
                         }
                         if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
+                            const targetKft = normalizeKeyFormatType(keyFormatType);
                             filtered = filtered.filter((r) => {
                                 const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
+                                return v ? normalizeKeyFormatType(v) === targetKft : false;
                             });
                         }
                         // Do not re-filter by tags/criteria; Locate already applied them
@@ -488,7 +490,7 @@ const LocateForm: React.FC = () => {
                         if (fallbackStr) {
                             const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
                             const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
-                            const target = kftNorm(keyFormatType);
+                            const target = normalizeKeyFormatType(keyFormatType);
                             const enriched = await Promise.all(
                                 ids.map(async (uid: string) => {
                                     try {
@@ -520,7 +522,7 @@ const LocateForm: React.FC = () => {
                             );
                             let filtered = enriched.filter((row) => {
                                 const v = row.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === target : false;
+                                return v ? normalizeKeyFormatType(v) === target : false;
                             });
                             // Merge state from owned endpoint to avoid 'Unknown'
                             try {
@@ -710,7 +712,7 @@ const LocateForm: React.FC = () => {
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
                                 <Form.Item name="tags" label="Tags" help="User tags or system tags to locate the object">
-                                    <Select mode="tags" placeholder="Enter tags" open={false} />
+                                    <Select mode="tags" placeholder="Enter tags" open={false} suffixIcon={null} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
@@ -812,6 +814,15 @@ const LocateForm: React.FC = () => {
                                             key: "attributes.ObjectType",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.attributes?.ObjectType ?? "").localeCompare(b.attributes?.ObjectType ?? ""),
+                                            filters: [
+                                                ...objectTypes.map((t) => ({ text: t.label, value: t.value })),
+                                                { text: "N/A", value: "N/A" },
+                                            ],
+                                            // OpaqueObject among probably others are not keys and have no KeyFormatType so N/A is a catch-all handled separately
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                if (value === "N/A") return !record.attributes?.ObjectType;
+                                                return record.attributes?.ObjectType === value;
+                                            },
                                             render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
                                         },
                                         {
@@ -819,6 +830,15 @@ const LocateForm: React.FC = () => {
                                             key: "key_format_type",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
+                                            filters: [
+                                                ...keyFormatTypes.map((k) => ({ text: k.label, value: k.value })),
+                                                { text: "N/A", value: "N/A" },
+                                            ],
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                const v = record.meta?.key_format_type as string | undefined;
+                                                if (value === "N/A") return !v;
+                                                return v ? normalizeKeyFormatType(v) === normalizeKeyFormatType(String(value)) : false;
+                                            },
                                             render: (record: LocateObjectRow) => record.meta?.key_format_type || "N/A",
                                         },
                                         {
@@ -827,6 +847,14 @@ const LocateForm: React.FC = () => {
                                             key: "state",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.state ?? "").localeCompare(b.state ?? ""),
+                                            filters: [
+                                                ...objectStates.map((s) => ({ text: s.label, value: s.value })),
+                                                { text: "Unknown", value: "Unknown" },
+                                            ],
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                if (value === "Unknown") return !record.state;
+                                                return normalizeState(record.state) === normalizeState(String(value));
+                                            },
                                             render: (state?: string) => (
                                                 <Space size={4}>
                                                     <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
