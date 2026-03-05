@@ -9,7 +9,7 @@
  *   • navigate: import, encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, extractUuid, extractUuidAfterLabel, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({
@@ -27,10 +27,10 @@ async function createMasterKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
     await specTextarea.fill(SPEC_JSON);
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
-    const masterPrivKeyId = text.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    const masterPubKeyId = text.match(/Public key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    expect(masterPrivKeyId).toBeDefined();
-    expect(masterPubKeyId).toBeDefined();
+    const masterPrivKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const masterPubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(masterPrivKeyId).not.toBeNull();
+    expect(masterPubKeyId).not.toBeNull();
     return { masterPrivKeyId: masterPrivKeyId!, masterPubKeyId: masterPubKeyId! };
 }
 
@@ -78,8 +78,8 @@ test.describe("Covercrypt", () => {
         await page.fill("#masterPrivateKeyId", masterPrivKeyId);
         await page.fill("#accessPolicy", "Department::HR && Security Level::Confidential");
         const userText = await submitAndWaitForResponse(page);
-        const userKeyId = userText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
-        expect(userKeyId).toBeDefined();
+        const userKeyId = extractUuid(userText);
+        expect(userKeyId).not.toBeNull();
 
         // Revoke ──────────────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/cc/keys/revoke");
@@ -97,16 +97,16 @@ test.describe("Covercrypt", () => {
 
     test("navigate to cc import page", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/keys/import");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to cc encrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/encrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to cc decrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/decrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 });

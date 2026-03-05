@@ -6,16 +6,16 @@
  *   • Export Azure BYOK (/azure/export-byok)
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait } from "./helpers";
+import { UI_READY_TIMEOUT, gotoAndWait } from "./helpers";
+import { AZURE_ROUTES } from "./routes";
 
 test.describe("Azure BYOK", () => {
-    test("navigate to Azure import KEK page", async ({ page }) => {
-        await gotoAndWait(page, "/ui/azure/import-kek");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 30_000 });
-    });
-
-    test("navigate to Azure export BYOK page", async ({ page }) => {
-        await gotoAndWait(page, "/ui/azure/export-byok");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 30_000 });
-    });
+    for (const { name, path } of AZURE_ROUTES) {
+        test(`navigate to Azure ${name} page`, async ({ page }) => {
+            await gotoAndWait(page, path);
+            await expect(
+                page.locator('[data-testid="submit-btn"]'),
+            ).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        });
+    }
 });
