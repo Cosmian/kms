@@ -1,56 +1,58 @@
 # React App for Cosmian KMS UI
 
-This is a React-based frontend for the **Cosmian KMS**. It is designed to be built as a static web application and served by the KMS server.
+This is a React-based frontend for the **Cosmian KMS**. It is designed to be
+built as a static web application and served by the KMS server.
+
+---
+
+## Prerequisites
+
+| Component | Required Version |
+|-----------|-----------------|
+| Node.js   | 22.x            |
+| pnpm      | 9.x             |
+
+> These versions are pinned by the Nix derivation (`nodejs_22` + `pnpm_9`).
+
+Install pnpm via corepack (bundled with Node.js):
+
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+```
 
 ---
 
 ## WASM Integration
 
-This application uses WebAssembly (WASM) to handle secure request generation and parsing.
+This application uses WebAssembly (WASM) to handle secure request generation and
+parsing.
 
 ### Install wasm-pack
 
-Install the 0.13.1 version of `wasm-pack` globally to ensure compatibility with the WASM crate:
+Install the `0.13.1` version of `wasm-pack` to ensure compatibility with the
+WASM crate:
 
 ```bash
 cargo install --version 0.13.1 wasm-pack --force
 ```
 
-### Build the WASM Package
+### Build the WASM Package manually
 
-To build the WASM package from the corresponding Rust crate:
+The WASM package is built automatically as part of `pnpm run build` (see below).
+To build it manually:
 
 ```bash
 cd crate/wasm
 wasm-pack build --target web --release --features non-fips
 ```
 
-### Copy the WASM Package
+`ui/scripts/sync-wasm.mjs` then copies the generated `pkg` into
+`ui/src/wasm/pkg` automatically.
 
-Then copy the generated `pkg` directory into the React app's source tree (optional if you use `pnpm build`, see below):
-
-```bash
-mkdir ../../ui/src/wasm/
-cp -R pkg ../../ui/src/wasm/
-```
+---
 
 ## Running the UI Locally
-
-To run the UI in development mode:
-
-### NPM version
-
-| Component | Required Version |
-|-----------|------------------|
-| Node.js   | v23.6.0          |
-| npm       | v11.2.0          |
-
-Make sure pnpm is installed. If not, install it:
-
-```bash
-cd ui
-npm install -g pnpm
-```
 
 Install dependencies:
 
@@ -59,27 +61,101 @@ cd ui
 pnpm install
 ```
 
-Start the development server:
+Start the development server (builds WASM first):
 
 ```bash
 pnpm run dev
 ```
 
+---
+
 ## Build the Production App
 
-To build the production-ready UI:
-
 ```bash
+cd ui
 pnpm run build
 ```
 
-This command now automatically:
+This command automatically:
 
-- Builds the WASM package from `crate/wasm` (via `wasm-pack`)
-- Copies the generated `pkg` into `ui/src/wasm/pkg`
+1. Builds the WASM package from `crate/wasm` via `wasm-pack`
+2. Copies the generated `pkg` into `ui/src/wasm/pkg`
+3. Runs the Vite production build
 
-So the manual "Build the WASM Package" / "Copy the WASM Package" steps are only needed if you want to build WASM separately.
+The output is placed in `ui/dist/`. Copy its contents to the KMS server's static
+resources directory to serve the UI.
 
-This will generate a `dist` directory containing all static assets.
+---
 
-You can then copy the contents of the dist folder to the static resources directory of the Cosmian KMS server so it can serve the UI.
+## Running Tests
+
+### Unit and integration tests (Vitest)
+
+```bash
+cd ui
+pnpm run test:unit
+```
+
+### WASM binding tests
+
+The recommended way uses Nix for a fully reproducible environment:
+
+```bash
+# From the repo root:
+bash .github/scripts/nix.sh --variant non-fips test wasm
+```
+
+### E2E tests (Playwright)
+
+The E2E suite exercises real browser flows against a locally running KMS server
+(port 9998) and a Vite preview server (port 5173).
+
+#### Recommended — reproducible Nix environment
+
+```bash
+# From the repo root:
+bash .github/scripts/nix.sh --variant non-fips test ui
+```
+
+#### Manual setup
+
+1. Build the WASM package and the UI:
+
+   ```bash
+   cd crate/wasm
+   wasm-pack build --target web --release --features non-fips
+   cd ../../ui
+   VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build
+   ```
+
+2. Start the KMS server (separate terminal):
+
+   ```bash
+   cargo run --features non-fips --bin cosmian_kms -- \
+       --database-type sqlite --sqlite-path /tmp/kms-e2e
+   ```
+
+3. Start the Vite preview server (separate terminal):
+
+   ```bash
+   cd ui
+   node_modules/.bin/vite preview --port 5173 --host 127.0.0.1
+   ```
+
+4. Run Playwright:
+
+   ```bash
+   cd ui
+   pnpm run test:e2e
+   ```
+
+Playwright captures screenshots and traces on failure inside `ui/test-results/`.
+
+---
+
+## Linting
+
+```bash
+cd ui
+pnpm run lint
+```

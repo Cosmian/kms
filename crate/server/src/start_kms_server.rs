@@ -853,6 +853,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 None
             };
 
+            // These paths mirror the React application's client-side routes
+            // (declared with react-router-dom).  Actix-Web must forward every
+            // deep-link request to the SPA's `index.html` so the browser can
+            // perform client-side navigation; without these registrations the
+            // server would return 404 when a page is loaded directly (e.g. on
+            // a browser refresh or when following a bookmark).
             let spa_routes = [
                 "/login",
                 "/locate",

@@ -1,9 +1,35 @@
-import { Download, Page } from "@playwright/test";
+import { Download, expect, Page } from "@playwright/test";
+
+/** Timeout (ms) used when waiting for the UI to finish loading WASM/React data. */
+export const UI_READY_TIMEOUT = 15_000;
 
 /** Extract the first UUID (v4 / v1) from an arbitrary text string. */
 export function extractUuid(text: string): string | null {
     const m = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
     return m ? m[0] : null;
+}
+
+/**
+ * Extract the UUID that follows a labelled field in a server response string.
+ *
+ * Example: `extractUuidAfterLabel(text, "Private key Id")` returns the UUID
+ * that appears after `"Private key Id:"` in the response.
+ */
+export function extractUuidAfterLabel(text: string, label: string): string | null {
+    const pattern = new RegExp(
+        label + ":\\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        "i"
+    );
+    const m = text.match(pattern);
+    return m ? m[1] : null;
+}
+
+/**
+ * Extract *all* UUIDs (v4 / v1) from an arbitrary text string.
+ * Returns an empty array when no UUID is found.
+ */
+export function extractAllUuids(text: string): string[] {
+    return text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
 }
 
 /**
@@ -37,7 +63,7 @@ export async function submitAndWaitForResponse(page: Page): Promise<string> {
 export async function submitAndWaitForDownload(page: Page): Promise<{ text: string; download: Download }> {
     const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), page.click('[data-testid="submit-btn"]')]);
     const responseEl = page.locator('[data-testid="response-output"]');
-    await responseEl.waitFor({ state: "visible", timeout: 15_000 });
+    await responseEl.waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
     const text = (await responseEl.textContent()) ?? "";
     return { text, download };
 }
@@ -136,6 +162,14 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     await trigger.click({ force: true });
 
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    // Wait for the dropdown to open before trying to scroll the virtual list.
+    await dropdown.first().waitFor({ state: "visible", timeout: 10_000 });
+    // Scroll the rc-virtual-list holder to the bottom so AntD renders all items
+    // (important for long option lists that use virtual scrolling).
+    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
+    if (await listHolder.count() > 0) {
+        await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    }
     const candidates = dropdown.locator(".ant-select-item-option", { hasText: optionText });
     const deadline = Date.now() + 10_000;
     let clicked = false;
@@ -159,4 +193,21 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     if (!clicked) {
         throw new Error(`selectOptionById: option not visible: ${optionText}`);
     }
+}
+
+/**
+ * Create a fresh AES-256 symmetric key and return its UUID.
+ *
+ * Shared by sym-key, attributes, access-rights and any other test files that
+ * need a key as a fixture, avoiding copy-pasted `createSymKey` functions.
+ */
+export async function createSymKey(page: Page): Promise<string> {
+    await gotoAndWait(page, "/ui/sym/keys/create");
+    // The algorithm Select is populated by WASM; wait until it shows a value.
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/has been created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
 }

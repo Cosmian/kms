@@ -32,12 +32,6 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WASM_CRATE="${REPO_ROOT}/crate/wasm"
 UI_DIR="${REPO_ROOT}/ui"
 
-# ── Build-profile helpers (mirrors test_wasm.sh) ─────────────────────────────
-RELEASE_FLAG=""
-if [ "${BUILD_PROFILE:-}" = "release" ]; then
-    RELEASE_FLAG="--release"
-fi
-
 run_wasm_pack() {
     (cd "${WASM_CRATE}" && wasm-pack "$@")
 }
@@ -123,7 +117,7 @@ EOF
 # Force an explicit config to avoid picking up a host-installed default config
 # at /etc/cosmian/kms.toml (which would ignore CLI args and may crash on log perms).
 # shellcheck disable=SC2086
-cargo run ${RELEASE_FLAG} -p cosmian_kms_server --bin cosmian_kms \
+cargo run -p cosmian_kms_server --bin cosmian_kms \
     --features non-fips \
     -- \
     --config "${KMS_CONF_FILE}" &

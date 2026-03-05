@@ -8,55 +8,22 @@
  *   • delete that attribute from the key
  */
 import { expect, test } from "@playwright/test";
-import { extractUuid, gotoAndWait, submitAndWaitForResponse } from "./helpers";
-
-/** Create a fresh AES-256 key and return its UUID. */
-async function createSymKey(page: Parameters<typeof gotoAndWait>[0]): Promise<string> {
-    await gotoAndWait(page, "/ui/sym/keys/create");
-    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: 15_000 });
-    const text = await submitAndWaitForResponse(page);
-    expect(text).toMatch(/has been created/i);
-    const id = extractUuid(text);
-    expect(id).not.toBeNull();
-    return id!;
-}
-
-/**
- * Pick an option from an AntD Select that has no data-testid.
- * Identifies the select by its AntD Form id (derived from the Form.Item name).
- */
-async function selectAntDById(page: Parameters<typeof gotoAndWait>[0], formItemId: string, optionText: string): Promise<void> {
-    const trigger = page.locator(`#${formItemId}`);
-    await trigger.scrollIntoViewIfNeeded();
-    await trigger.click({ force: true });
-    // Wait for dropdown to open
-    await page.locator(".ant-select-dropdown:visible").waitFor({ timeout: 10_000 });
-    // Scroll the dropdown list so virtual-list renders all items
-    const dropdown = page.locator(".ant-select-dropdown:visible .rc-virtual-list-holder").first();
-    await dropdown.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    const option = page.locator(".ant-select-item-option", { hasText: optionText }).first();
-    try {
-        await option.scrollIntoViewIfNeeded();
-        await option.click({ force: true });
-    } catch {
-        await option.dispatchEvent("click");
-    }
-}
+import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Object attributes", () => {
     test("navigate to attributes get page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/get");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to attributes set page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/set");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to attributes delete page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/delete");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("get attributes of a symmetric key", async ({ page }) => {
@@ -76,7 +43,7 @@ test.describe("Object attributes", () => {
         // Set attribute ────────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/attributes/set");
         await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectAntDById(page, "attribute_name", "Child ID link");
+        await selectOptionById(page, "#attribute_name", "Child ID link");
         await page.fill('input[placeholder="Enter ID value"]', placeholder);
         const setText = await submitAndWaitForResponse(page);
         expect(setText).toMatch(/Attribute has been set for/i);
@@ -84,7 +51,7 @@ test.describe("Object attributes", () => {
         // Delete attribute ─────────────────────────────────────────────────────
         await gotoAndWait(page, "/ui/attributes/delete");
         await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectAntDById(page, "attribute_name", "Child ID link");
+        await selectOptionById(page, "#attribute_name", "Child ID link");
         const deleteText = await submitAndWaitForResponse(page);
         expect(deleteText).toMatch(/has been deleted for/i);
     });

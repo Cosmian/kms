@@ -9,17 +9,17 @@
  *   • navigate: import, encrypt, decrypt, sign, verify pages
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, extractAllUuids, extractUuidAfterLabel, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
 
 /** Create a fresh RSA key pair and return { privKeyId, pubKeyId }. */
 async function createRsaKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
     await gotoAndWait(page, "/ui/rsa/keys/create");
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
-    const privKeyId = text.match(/Private key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    const pubKeyId = text.match(/Public key Id:\s*([0-9a-f-]{36})/i)?.[1];
-    expect(privKeyId).toBeDefined();
-    expect(pubKeyId).toBeDefined();
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
     return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
 }
 
@@ -33,8 +33,8 @@ test.describe("RSA key pair", () => {
         expect(text).toMatch(/Public key Id:/i);
 
         // Both IDs should look like UUIDs.
-        const ids = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi);
-        expect(ids?.length).toBeGreaterThanOrEqual(2);
+        const ids = extractAllUuids(text);
+        expect(ids.length).toBeGreaterThanOrEqual(2);
     });
 
     test("create RSA key pair then export public key as json-ttlv", async ({ page }) => {
@@ -65,26 +65,26 @@ test.describe("RSA key pair", () => {
 
     test("navigate to rsa import page", async ({ page }) => {
         await gotoAndWait(page, "/ui/rsa/keys/import");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to rsa encrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/rsa/encrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to rsa decrypt page", async ({ page }) => {
         await gotoAndWait(page, "/ui/rsa/decrypt");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to rsa sign page", async ({ page }) => {
         await gotoAndWait(page, "/ui/rsa/sign");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
     test("navigate to rsa verify page", async ({ page }) => {
         await gotoAndWait(page, "/ui/rsa/verify");
-        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 });
