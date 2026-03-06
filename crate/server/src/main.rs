@@ -46,6 +46,15 @@ async fn run() -> KResult<()> {
 
     let clap_config = ClapConfig::load_configuration()?;
 
+    if clap_config.print_default_config {
+        let commented = ClapConfig::default_config_with_comments()?;
+        #[allow(clippy::print_stdout)]
+        {
+            println!("{commented}");
+        }
+        return Ok(());
+    }
+
     let info_only = clap_config.info;
 
     // Initialize the tracing system
@@ -260,6 +269,7 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            print_default_config: false,
         };
 
         let toml_string = r#"

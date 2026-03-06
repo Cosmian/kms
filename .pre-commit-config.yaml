@@ -244,6 +244,16 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: renew-server-configuration-doc
+        name: renew server configuration file doc
+        description: |
+          Regenerate documentation/docs/server_configuration_file.md from ClapConfig
+          (--print-default-config) and append any new ClapConfig sections to pkg/kms.toml.
+        entry: bash .github/scripts/renew_server_configuration_doc.sh
+        language: system
+        files: ^(crate/server/src/config/.*\.rs$|pkg/kms\.toml$)
+        pass_filenames: false
+
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
