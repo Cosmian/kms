@@ -95,7 +95,7 @@ pub enum CliCommands {
     /// documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
-    /// Configure the KMS CLI (creates/updates cosmian.toml)
+    /// Configure the KMS CLI (creates/updates ckms.toml)
     Configure,
 }
 
@@ -113,7 +113,7 @@ pub enum CliCommands {
 /// - The command-line arguments cannot be parsed.
 /// - The configuration file cannot be located or loaded.
 /// - Any of the subcommands fail during their execution.
-pub async fn cosmian_main() -> CosmianResult<()> {
+pub async fn ckms_main() -> CosmianResult<()> {
     log_init(None);
     info!("Starting KMS CLI");
     let cli = Cli::parse();

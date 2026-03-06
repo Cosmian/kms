@@ -13,7 +13,7 @@ pub mod config;
 pub mod error;
 pub mod proxy_config;
 
-pub use commands::{Cli, CliCommands, cosmian_main};
+pub use commands::{Cli, CliCommands, ckms_main};
 
 pub mod reexport {
     pub use cosmian_kms_cli;

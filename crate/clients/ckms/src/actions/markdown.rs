@@ -42,7 +42,7 @@ fn write_command(
         writeln!(out)?;
     }
     let full_command = if parent.is_empty() {
-        "cosmian".to_owned()
+        "ckms".to_owned()
     } else {
         format!("{} {}", parent, cmd.get_name())
     };

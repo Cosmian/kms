@@ -33,7 +33,7 @@ This guide walks through the manual setup process for enabling Client-Side Field
 
 ## Step-by-Step Guide
 
-⚠️ This tutorial was done in a DB test environment with an external cosmian kms.
+⚠️ This tutorial was done in a DB test environment with an external Cosmian KMS.
 
 ### 1. Define environment variable
 

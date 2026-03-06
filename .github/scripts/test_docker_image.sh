@@ -47,18 +47,16 @@ KMS_URL_HTTPS="https://127.0.0.1:${HOST_TLS_PORT}"
 mkdir -p ~/.cosmian
 
 echo '
-[kms_config]
 print_json = false
 
-[kms_config.http_config]
+[http_config]
 server_url = "'$KMS_URL_HTTP'"
 ' | tee "$CONFIG"
 
 echo '
-[kms_config]
 print_json = false
 
-[kms_config.http_config]
+[http_config]
 server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"

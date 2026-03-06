@@ -29,6 +29,21 @@ Cosmian KMS now implements the **Azure EKM proxy API v0.1-preview**
 - Flexible versioning structure for future API versions
 - New `documentation/docs/azure/ekm/ekm.md` guide
 
+#### CLI (`ckms`) moved into this repository
+
+The `cosmian` CLI (previously maintained in a separate `cli` repository) is now co-located
+in this repository under `crate/clients/ckms/`:
+
+- The `ckms` binary and its full test suite are now built and tested from this repo
+- CLI documentation moved into `cli_documentation/` with its own MkDocs configuration
+- Findex server references removed from the CLI documentation and configuration examples
+- Nix packaging extended: `nix/cli.nix` and `nix/common.nix` added for building and
+  distributing the CLI as a standalone DEB, RPM, and DMG package
+- Hardcoded system tag strings (e.g. `"_sk"`, `"_pk"`) replaced with `SYSTEM_TAG_*`
+  constants from `cosmian_kmip::kmip_2_1::extra::tagging`
+- WASM and UI test scripts hardened against pnpm major-version mismatches between the
+  system pnpm and the nix-shell pnpm
+
 #### UI Branding
 
 - New `loginCardColor` field in `branding.json` to control the login card background color
@@ -344,7 +359,7 @@ jwt_auth_provider = [
 ### ⚙️ Build
 
 - Reproducible Package Management with Nix ([#596](https://github.com/Cosmian/kms/pull/596))
-- *(deps)* Bump docker/metadata-action from 4 to 5 ([#613](https://github.com/Cosmian/kms/vpull/613))
+- *(deps)* Bump docker/metadata-action from 4 to 5 ([#613](https://github.com/Cosmian/kms/pull/613))
 - *(deps)* Bump actions/checkout from 4 to 6 ([#614](https://github.com/Cosmian/kms/pull/614))
 - *(deps)* Bump crazy-max/ghaction-import-gpg from 5 to 6 ([#615](https://github.com/Cosmian/kms/pull/615))
 - *(deps)* Bump actions/upload-artifact from 4 to 5 ([#616](https://github.com/Cosmian/kms/pull/616))

@@ -73,8 +73,8 @@ mv /home/oracle/libcosmian_pkcs11.so /opt/oracle/extapi/64/hsm/Cosmian/
 chown oracle:oinstall /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
 
 mkdir -p /home/oracle/.cosmian/
-mv /home/oracle/cosmian.toml /home/oracle/.cosmian/
-chown oracle:oinstall /home/oracle/.cosmian/cosmian.toml
+mv /home/oracle/ckms.toml /home/oracle/.cosmian/
+chown oracle:oinstall /home/oracle/.cosmian/ckms.toml
 
 mkdir -p /etc/ORACLE/KEYSTORES/FREE
 chown -R oracle:oinstall /etc/ORACLE/KEYSTORES/FREE
@@ -92,7 +92,7 @@ chmod +x setup_cosmian_pkcs11.sh
 # Copy files and run setup script
 #
 docker cp libcosmian_pkcs11.so oracle:/home/oracle/
-docker cp .github/scripts/oracle/cosmian.toml oracle:/home/oracle/
+docker cp .github/scripts/oracle/ckms.toml oracle:/home/oracle/
 docker cp setup_cosmian_pkcs11.sh oracle:/home/oracle/
 docker exec -u root -i oracle bash -c "/home/oracle/setup_cosmian_pkcs11.sh"
 rm -f setup_cosmian_pkcs11.sh libcosmian_pkcs11.so

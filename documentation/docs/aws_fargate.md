@@ -116,7 +116,7 @@ Health Check
 
 [install KMS CLI](https://docs.cosmian.com/kms_clients/installation/)
 
-Run: cosmian configure
+Run: ckms configure
 
 ```bash
 KMS URL example:
@@ -219,7 +219,7 @@ Wait until service status is Active.
 Run:
 
 ```bash
-cosmian configure
+ckms configure
 ```
 
 ```bash

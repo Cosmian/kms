@@ -60,14 +60,14 @@ For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](
 
 - Extract debian10-release.zip (debian 10 Buster is used for Glibc compatibility)
 - Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
-- Copy the configuration of the PKCS#11 provider library to `/usr/local/okv/hsm/generic/cosmian.toml`
+- Copy the configuration of the PKCS#11 provider library to `/usr/local/okv/hsm/generic/ckms.toml`
 - Override the OKV generic HSM configuration files:
 
     - `/usr/local/okv/hsm/generic/okv_hsm_env`
 
     ```bash
     COSMIAN_PKCS11_LOGGING_LEVEL="trace"
-    CKMS_CONF="/usr/local/okv/hsm/generic/cosmian.toml"
+    CKMS_CONF="/usr/local/okv/hsm/generic/ckms.toml"
     COSMIAN_PKCS11_LOGGING_FOLDER="/var/okv/log/hsm"
     ```
 
@@ -140,10 +140,10 @@ graph TD
 
 2. **Configure Cosmian PKCS#11 Library**
 
-   Create the configuration file `/home/oracle/.cosmian/cosmian.toml`:
+   Create the configuration file `/home/oracle/.cosmian/ckms.toml`:
 
    ```toml
-   [kms_config.http_config]
+   [http_config]
    server_url = "http://kms:9998"
    ```
 
@@ -151,7 +151,7 @@ graph TD
 
    ```bash
    mkdir -p /home/oracle/.cosmian/
-   chown oracle:oinstall /home/oracle/.cosmian/cosmian.toml
+   chown oracle:oinstall /home/oracle/.cosmian/ckms.toml
    ```
 
 3. **Prepare Oracle Directory Structure**

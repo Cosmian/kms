@@ -3,21 +3,21 @@
 
 By default, the client expects to find:
 
-- a TOML configuration file in `/etc/cosmian/cosmian.toml`.
+- a TOML configuration file in `/etc/cosmian/ckms.toml`.
 - or an environment variable `CKMS_CONF` that contains the path to the configuration file.
 - otherwise, the server will parse the arguments passed in command line.
 
 ## Example without authentication
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://0.0.0.0:9998"
 ```
 
 ## Example with PKCS12 authentication
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://0.0.0.0:9990"
 ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/kms.client.acme.com.p12"
 ssl_client_pkcs12_password = "password"
@@ -28,11 +28,11 @@ ssl_client_pkcs12_password = "password"
 KMS can be configured with OpenID Connect (OIDC) authentication. In that case, KMS CLI must use the `oauth2_conf` field to authenticate to the server.
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://0.0.0.0:9998"
 access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
 
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
 client_secret = "XXX"
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -47,11 +47,11 @@ Google Workspace can delegate encryption/decryption of Gmail (and other services
 When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide the necessary information about the configured service account to interact with Gmail API, and handle identities and keypairs easily from the KMS.
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://0.0.0.0:9998"
 access_token = "eyJhbGciOiJSUz...jsFgROjPY84GRMmvpYZfyaJbDDql3A"
 
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
 client_secret = "XXX"
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"

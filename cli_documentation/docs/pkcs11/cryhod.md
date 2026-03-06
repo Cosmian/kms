@@ -57,7 +57,7 @@ Click `next`
 ## Adjusting the KMS location and authentication
 
 The configuration file is located in the User home `.cosmian` sub-directory,
-in the `cosmian.toml` file.
+in the `ckms.toml` file.
 
 See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates) to learn
 how to configure the
@@ -68,7 +68,7 @@ Here is an example configuration file for the PKCS#11 provider library accessing
 PKCS#12 file for authentication.
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "https://kms.acme.com:9999"
 ssl_client_pkcs12_path = "./certificates/machine123.acme.p12"
 ssl_client_pkcs12_password = "machine123_pkcs12_password"

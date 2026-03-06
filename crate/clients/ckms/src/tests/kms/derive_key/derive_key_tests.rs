@@ -35,7 +35,7 @@ use crate::{
 
 const SUB_COMMAND: &str = "derive-key";
 
-/// Run `cosmian kms derive-key` via the CLI and return the derived key unique identifier
+/// Run `ckms derive-key` via the CLI and return the derived key unique identifier
 pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> CosmianResult<String> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(CKMS_CONF_ENV, cli_conf_path);

@@ -272,10 +272,9 @@ jobs:
           mkdir -p "$HOME/.cosmian"
           COSMIAN_CONFIG="$HOME/.cosmian/ci-kms.toml"
           cat >"$COSMIAN_CONFIG" <<'TOML'
-          [kms_config]
           print_json = false
 
-          [kms_config.http_config]
+          [http_config]
           server_url = "http://127.0.0.1:9998"
           TOML
 

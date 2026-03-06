@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 use crate::error::CosmianError;
 
 pub const CKMS_CONF_ENV: &str = "CKMS_CONF";
-pub(crate) const CKMS_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/cosmian.toml";
-pub(crate) const CKMS_CONF_PATH: &str = ".cosmian/cosmian.toml";
+pub(crate) const CKMS_CONF_DEFAULT_SYSTEM_PATH: &str = "/etc/cosmian/ckms.toml";
+pub(crate) const CKMS_CONF_PATH: &str = ".cosmian/ckms.toml";
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, Default)]
 pub struct ClientConfig {
+    #[serde(flatten)]
     pub kms_config: KmsClientConfig,
 }
 
@@ -82,7 +83,7 @@ mod tests {
         log_init(None);
         // valid conf
         unsafe {
-            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/cosmian.toml");
+            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/ckms.toml");
         }
         assert!(ClientConfig::load(None).is_ok());
 
@@ -90,7 +91,7 @@ mod tests {
         unsafe {
             env::set_var(
                 CKMS_CONF_ENV,
-                "../../../test_data/configs/cosmian_partial.toml",
+                "../../../test_data/configs/ckms_partial.toml",
             );
         }
         assert!(ClientConfig::load(None).is_ok());
@@ -110,7 +111,7 @@ mod tests {
 
         // invalid conf
         unsafe {
-            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/cosmian.bad.toml");
+            env::set_var(CKMS_CONF_ENV, "../../../test_data/configs/ckms.bad.toml");
         }
         let e = ClientConfig::load(None).err().unwrap().to_string();
         assert!(e.contains("missing field `server_url`"));
@@ -119,10 +120,9 @@ mod tests {
         unsafe {
             env::remove_var(CKMS_CONF_ENV);
         }
-        let conf_path = ClientConfig::location(Some(PathBuf::from(
-            "../../../test_data/configs/cosmian.toml",
-        )))
-        .unwrap();
+        let conf_path =
+            ClientConfig::location(Some(PathBuf::from("../../../test_data/configs/ckms.toml")))
+                .unwrap();
 
         assert!(ClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
     }

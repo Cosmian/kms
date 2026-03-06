@@ -18,17 +18,16 @@ mkdir -p ~/.cosmian
 touch $TLS_CONFIG
 
 echo '
-[kms_config]
 print_json = false
 
-[kms_config.http_config]
+[http_config]
 server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
 ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
 ssl_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
 
-# COSMIAN="cosmian -c $TLS_CONFIG"
+# COSMIAN="ckms -c $TLS_CONFIG"
 COSMIAN="cargo run -p ckms -- -c $TLS_CONFIG"
 
 

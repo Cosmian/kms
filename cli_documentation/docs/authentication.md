@@ -6,13 +6,13 @@ This guide explains how to configure authentication for the KMS CLI when connect
 
 The CLI reads its configuration from a TOML file:
 
-- **Default location**: `~/.cosmian/cosmian.toml`
+- **Default location**: `~/.cosmian/ckms.toml`
 - **Alternative location**: Set the `CKMS_CONF` environment variable
 
 A basic configuration file is created automatically on first use:
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://0.0.0.0:9998"
 ```
 
@@ -31,10 +31,10 @@ The CLI supports multiple authentication methods for the KMS:
 ## Authenticating Using TLS Client Certificates
 
 To authenticate to the KMS using mutual TLS (mTLS), configure the `ssl_client_pkcs12_path` and
-`ssl_client_pkcs12_password` options in the `kms_config.http_config` section:
+`ssl_client_pkcs12_password` options in the `http_config` section:
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "https://kms.acme.com:9999"
 ssl_client_pkcs12_path = "./certificates/machine.p12"
 ssl_client_pkcs12_password = "pkcs12_password"
@@ -61,7 +61,7 @@ For KMS, you can also configure Gmail API access for S/MIME operations - see the
 ### KMS with No Authentication
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://127.0.0.1:9998"
 ```
 
@@ -78,7 +78,7 @@ To authenticate using OAuth2/OIDC:
 The `oauth2_conf` section requires:
 
 ```toml
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "your-client-id"          # Required
 authorize_url = "https://idp.example.com/authorize"  # Required
 token_url = "https://idp.example.com/token"          # Required
@@ -94,7 +94,7 @@ PKCE (Proof Key for Code Exchange) enhances security by eliminating the need for
 2. Ensure your identity provider supports PKCE
 
 ```toml
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "your-client-id"
 authorize_url = "https://idp.example.com/authorize"
 token_url = "https://idp.example.com/token"
@@ -114,7 +114,7 @@ PKCE is recommended for:
 #### Microsoft Entra ID (Azure AD) with PKCE
 
 ```toml
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "f052524e-7518-40e7-2579-219c0b48b125"
 authorize_url = "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174c4e562c96/oauth2/authorize"
 token_url = "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/oauth2/token"
@@ -127,7 +127,7 @@ scopes = ["email", "openid"]
 #### Auth0 with PKCE
 
 ```toml
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "OUfH4FuzDAW99Ck3R4Rb7ROziOZEalIH"
 authorize_url = "https://acme.eu.auth0.com/authorize"
 token_url = "https://acme.eu.auth0.com/oauth/token"
@@ -140,7 +140,7 @@ scopes = ["email", "openid"]
 #### Google with Traditional OAuth2
 
 ```toml
-[kms_config.http_config.oauth2_conf]
+[http_config.oauth2_conf]
 client_id = "99999999-abababababababababab.apps.googleusercontent.com"
 client_secret = "your-client-secret"  # Optional with PKCE
 authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"

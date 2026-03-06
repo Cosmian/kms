@@ -3,7 +3,7 @@
 When using S/MIME, the `gmail_api_conf` field should be set in the configuration file to provide
 the necessary information about the configured service account to interact with Gmail API, and
 handle
-identities and keypairs easily from the cosmian kms.
+identities and keypairs easily from the ckms.
 
 This configuration is mandatory for `ckms google` subcommands.
 
@@ -27,7 +27,7 @@ and configuring the service account (following Google documentation).
 Example:
 
 ```toml
-[kms_config.http_config]
+[http_config]
 server_url = "http://127.0.0.1:9998"
 
 [kms_config.gmail_api_conf]

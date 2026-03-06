@@ -28,7 +28,7 @@ curl  https://cloud-certs.storage.googleapis.com/google-cloud-csek-ingress.pem >
 Name it `google_csek` on import.
 
 ```shell
-cosmian -- kms certificates import --format pem test_data/cse/google-cloud-csek-ingress.pem google_csek
+ckms certificates import --format pem test_data/cse/google-cloud-csek-ingress.pem google_csek
 
 The certificate in the PEM file was successfully imported!
           Unique identifier: google_csek

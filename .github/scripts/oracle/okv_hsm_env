@@ -7,5 +7,5 @@
 # Below is an example. Remove the '#' character to uncomment the line.
 #EXAMPLE_ENV_VAR_NAME="EXAMPLE_ENV_VAR_VALUE"
 COSMIAN_PKCS11_LOGGING_LEVEL="trace"
-COSMIAN_CLI_CONF="/usr/local/okv/hsm/generic/cosmian.toml"
+CKMS_CONF="/usr/local/okv/hsm/generic/ckms.toml"
 COSMIAN_PKCS11_LOGGING_FOLDER="/var/okv/log/hsm"

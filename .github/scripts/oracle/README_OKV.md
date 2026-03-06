@@ -89,7 +89,7 @@ Edit /usr/local/okv/hsm/generic/okv_hsm_env
 # Below is an example. Remove the '#' character to uncomment the line.
 #EXAMPLE_ENV_VAR_NAME="EXAMPLE_ENV_VAR_VALUE"
 COSMIAN_PKCS11_LOGGING_LEVEL="trace"
-COSMIAN_CLI_CONF="/home/oracle/.cosmian/config.toml"
+CKMS_CONF="/home/oracle/.cosmian/config.toml"
 ```
 
 Read the logs on /var/okv/log/hsm/...
@@ -104,11 +104,8 @@ chmod 664 /var/log/cosmian-pkcs11.log
 Configure the KMS CLI configuration for oracle user (/home/oracle/.cosmian/config.toml):
 
 ```sh
-[kms_config.http_config]
+[http_config]
 server_url = "http://192.168.1.17:9998"
-
-[findex_config.http_config]
-server_url = "http://0.0.0.0:6668"
 ```
 
 Initialize the HSM in Oracle Key Vault:
@@ -122,7 +119,7 @@ You should have:
 2025-03-26 14:55:02.122: Beginning trace for hsmclient pre_restore
 2025-03-26 14:55:02.122: Loading /usr/local/okv/hsm/generic/okv_hsm_env
 2025-03-26 14:55:02.122: Setting COSMIAN_PKCS11_LOGGING_LEVEL to trace
-2025-03-26 14:55:02.122: Setting COSMIAN_CLI_CONF to /home/oracle/.cosmian/cosmian.toml
+2025-03-26 14:55:02.122: Setting CKMS_CONF to /home/oracle/.cosmian/ckms.toml
 2025-03-26 14:55:02.123: WARNING: skipping line 11 with invalid formatting
 2025-03-26 14:55:02.123: Setting path
 2025-03-26 14:55:02.123: No token label provided

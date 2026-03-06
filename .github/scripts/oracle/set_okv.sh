@@ -44,9 +44,9 @@ rm -f libcosmian_pkcs11.so
 #
 # Copy CLI config
 #
-scp -O .github/scripts/oracle/cosmian_okv.toml okv:cosmian.toml
-ssh okv "sudo mv ~/cosmian.toml /usr/local/okv/hsm/generic"
-ssh okv "sudo chown oracle:oinstall /usr/local/okv/hsm/generic/cosmian.toml"
+scp -O .github/scripts/oracle/cosmian_okv.toml okv:ckms.toml
+ssh okv "sudo mv ~/ckms.toml /usr/local/okv/hsm/generic"
+ssh okv "sudo chown oracle:oinstall /usr/local/okv/hsm/generic/ckms.toml"
 
 #
 # Copy OKV generic HSM environment variables file

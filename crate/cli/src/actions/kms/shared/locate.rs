@@ -32,7 +32,7 @@ pub struct LocateObjectsAction {
     /// Possible values include "Covercrypt", "ECDH", "`ChaCha20Poly1305`", "AES", "Ed25519"
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms locate --algorithm WRONG`
+    /// e.g. `ckms locate --algorithm WRONG`
     #[clap(
         long = "algorithm",
         short = 'a',
@@ -53,7 +53,7 @@ pub struct LocateObjectsAction {
     /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms locate --key-format-type WRONG`
+    /// e.g. `ckms locate --key-format-type WRONG`
     #[clap(long = "key-format-type", short = 'f',
         value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     pub(crate) key_format_type: Option<KeyFormatType>,

@@ -30,11 +30,8 @@ Links:
 Configure the KMS CLI configuration for oracle user (/home/oracle/.cosmian/config.toml):
 
 ```sh
-[kms_config.http_config]
+[http_config]
 server_url = "http://kms:9998"
-
-[findex_config.http_config]
-server_url = "http://kms:6668"
 ```
 
 ## Install Oracle Database 23.1 using docker container

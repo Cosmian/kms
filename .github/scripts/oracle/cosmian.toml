@@ -1,5 +1,0 @@
-[kms_config.http_config]
-server_url = "http://kms:9998"
-
-[findex_config.http_config]
-server_url = "http://host.docker.internal:6668"

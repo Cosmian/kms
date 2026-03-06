@@ -236,7 +236,7 @@ pub(crate) async fn test_issue_549_exact_scenario() -> KmsCliResult<()> {
     .await?;
 
     // Mimic the exact command from the issue:
-    // ./cosmian kms secret-data export --key-id <id> -f raw --wrap-key-id <wrap-id> --wrapping-algorithm aes-gcm keyfile.bin
+    // ./ckms secret-data export --key-id <id> -f raw --wrap-key-id <wrap-id> --wrapping-algorithm aes-gcm keyfile.bin
     let keyfile_path = tmp_path.join("keyfile.bin");
 
     let result = ExportSecretDataOrKeyAction {
