@@ -70,47 +70,6 @@ which openssl
 
 ---
 
-## Quick Start
-
-### Local Mode (KMS included in the stack)
-
-```bash
-# 1. Copy or create .env (variables pre-configured by default)
-cp .env.example .env 2>/dev/null || true
-
-# 2. Generate the demo TLS certificate
-bash generate-demo-cert.sh
-# → creates .certs/kms.p12 (RSA 4096, self-signed, valid 10 years)
-
-# 3. Start the stack
-docker compose up -d
-
-# 4. Check status
-docker compose ps
-docker compose logs -f otel-collector  # Follow startup logs
-
-# 5. Access Grafana
-open http://localhost:3000
-# login: admin
-# password: (value of GRAFANA_ADMIN_PASSWORD in .env)
-```
-
-### External Mode (existing KMS)
-
-```bash
-# 1. Edit .env
-# COMPOSE_PROFILES= (leave empty)
-# KMS_MODE=external
-
-# 2. Start the stack
-docker compose up -d
-
-# 3. Access Grafana
-open http://localhost:3000
-```
-
----
-
 ## Configuration `.env`
 
 All variables must be defined in the `.env` file. Here is the complete reference:
@@ -171,6 +130,47 @@ KMS_MODE=local
 ```env
 COMPOSE_PROFILES=
 KMS_MODE=external
+```
+
+---
+
+## Quick Start
+
+### Local Mode (KMS included in the stack)
+
+```bash
+# 1. Copy or create .env (variables pre-configured by default)
+cp .env.example .env 2>/dev/null || true
+
+# 2. Generate the demo TLS certificate
+bash generate-demo-cert.sh
+# → creates .certs/kms.p12 (RSA 4096, self-signed, valid 10 years)
+
+# 3. Start the stack
+docker compose up -d
+
+# 4. Check status
+docker compose ps
+docker compose logs -f otel-collector  # Follow startup logs
+
+# 5. Access Grafana
+open http://localhost:3000
+# login: admin
+# password: (value of GRAFANA_ADMIN_PASSWORD in .env)
+```
+
+### External Mode (existing KMS)
+
+```bash
+# 1. Edit .env
+# COMPOSE_PROFILES= (leave empty)
+# KMS_MODE=external
+
+# 2. Start the stack
+docker compose up -d
+
+# 3. Access Grafana
+open http://localhost:3000
 ```
 
 ---
