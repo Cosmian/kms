@@ -1,5 +1,5 @@
 import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { Button, Layout, Spin, Switch, Tag } from "antd";
+import { Button, Layout, Spin, Switch, Tag, Alert } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
@@ -12,9 +12,10 @@ type MainLayoutProps = {
     isDarkMode: boolean;
     setIsDarkMode: (value: boolean) => void;
     authMethod: AuthMethod;
+    wasmError: boolean;
 };
 
-const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError }) => {
     const [serverVersion, setServerVersion] = useState("");
     const [serverHealth, setServerHealth] = useState<string>("");
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
@@ -119,6 +120,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 <Sidebar />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
+                        {wasmError && (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message="WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by a security policy."
+                                description={
+                                    <>
+                                        Please enable WASM in your browser and refresh this page to be able to use the KMS UI. In Firefox,
+                                        you can enable it by setting <code>javascript.options.wasm</code> = true in{" "}
+                                        <code>about:config</code>.
+                                    </>
+                                }
+                            />
+                        )}
                         {loading ? <Spin size="large" /> : <Outlet />}
                     </Layout.Content>
                     <Footer
