@@ -223,11 +223,11 @@ impl ClapConfig {
             })
             .collect();
 
-        // Use pkg/kms.toml as the structural template.
-        // It documents ALL known fields — including optional ones shown as "## key = value".
-        // Optional fields are rendered as "# key = value" (commented-out) in the output.
+        // Use kms_template.toml as the structural template (lives at the crate root so
+        // it is included in the published tarball).
+        // It documents ALL known fields — including optional ones shown as "# key = value".
         // For each field, the clap help string replaces the manual comment when available.
-        let template = include_str!("../../../../../pkg/kms.toml");
+        let template = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/kms_template.toml"));
 
         // Collect the section headers present in the template so Phase 2 can detect gaps.
         let template_sections: std::collections::HashSet<&str> =
@@ -282,7 +282,11 @@ impl ClapConfig {
                 // Emit comments: prefer clap help when available, else use manual comments.
                 if let Some(help) = help_map.get(key) {
                     for help_line in help.lines() {
-                        let _ = writeln!(output, "# {help_line}");
+                        if help_line.is_empty() {
+                            let _ = writeln!(output, "#");
+                        } else {
+                            let _ = writeln!(output, "# {help_line}");
+                        }
                     }
                 } else {
                     for comment in &pending_comments {
@@ -336,7 +340,11 @@ impl ClapConfig {
                     if let Some(key) = line.split('=').next().map(str::trim) {
                         if let Some(help) = help_map.get(key) {
                             for help_line in help.lines() {
-                                let _ = writeln!(output, "# {help_line}");
+                                if help_line.is_empty() {
+                                    let _ = writeln!(output, "#");
+                                } else {
+                                    let _ = writeln!(output, "# {help_line}");
+                                }
                             }
                         }
                     }

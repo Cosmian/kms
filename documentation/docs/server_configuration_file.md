@@ -24,7 +24,14 @@ export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
 The file should be a TOML file with the following structure:
 
 ```toml
-# See Documentation at https://docs.cosmian.com/key_management_system/server_configuration_file/
+# reference TOML configuration shown in the documentation.
+#
+# WHY IT LIVES INSIDE THE CRATE:
+# `cargo publish` only packages files under the crate root (`crate/server/`). The canonical
+# deployment template at `pkg/kms.toml` is outside that boundary and would be absent from
+# the published tarball, breaking `include_str!` at compile time for downstream users.
+# This file is therefore a copy kept in sync with `pkg/kms.toml` by the pre-commit hook
+# `.github/scripts/renew_server_configuration_doc.sh`. Do not edit it manually.
 
 # The default username to use when no authentication method is provided
 default_username = "admin"
