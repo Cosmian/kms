@@ -119,7 +119,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
     - Vulnerabilities: [`sbom/vulns.csv`](sbom/server/fips/static/vulns.csv)
     - Overview: [`sbom/README.md`](sbom/README.md)
 -
-  Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](OTLP_METRICS.md).
+  Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](monitoring/OTLP_METRICS.md).
 
 [TOC]
 
