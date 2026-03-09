@@ -112,6 +112,7 @@ nav:
       - Authorizing users with access rights: authorization.md
       - Enabling TLS: tls.md
       - Logging and telemetry: logging.md
+      - Monitoring: monitoring-setup.md
       - User interface: ui.md
       - UI branding: ui_branding.md
       - Custom OpenSSL build: openssl_override.md
