@@ -492,3 +492,4 @@ rust_log = "error"
 - [Database configuration](database.md) - Database backend options
 - [TLS configuration](tls.md) - TLS and certificate setup
 - [Logging](logging.md) - Logging and monitoring options
+- [Monitoring](monitoring-setup.md) - Monitoring and dashboarding
