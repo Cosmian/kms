@@ -20,7 +20,7 @@ use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer,
     cookie::{Key, time::Duration},
     dev::ServerHandle,
-    middleware::Condition,
+    middleware::{Condition, DefaultHeaders},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
 use cosmian_kms_server_database::reexport::{
@@ -735,6 +735,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(
+                DefaultHeaders::new()
+                    // Prevent the UI from being embedded in a foreign frame (clickjacking)
+                    .add(("X-Frame-Options", "DENY"))
+                    .add(("Content-Security-Policy", "frame-ancestors 'none'")),
+            )
             .wrap(IdentityMiddleware::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
