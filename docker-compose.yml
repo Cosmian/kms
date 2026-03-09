@@ -111,7 +111,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.144.0
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./monitoring/otelco-config.yaml:/etc/otel-collector-config.yaml:ro
     environment:
       # Kept for local setups that also export somewhere else; not used by test assertions.
       - OTLP_ENDPOINT=jaeger:4317
