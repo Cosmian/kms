@@ -11,6 +11,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -171,7 +172,7 @@ fn create_dk_object(
     attributes.sensitive = attributes.sensitive.or(Some(true));
 
     let mut tags = attributes.get_tags();
-    tags.insert("_sk".to_owned());
+    tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
     attributes.set_tags(tags)?;
 
     let cryptographic_length = Some(i32::try_from(dk_bytes.len())? * 8);
@@ -204,9 +205,9 @@ fn create_ek_object(
         linked_object_identifier: LinkedObjectIdentifier::TextString(dk_uid),
     }]);
 
-    // Add the "_pk" system tag to the attributes
+    // Add the SYSTEM_TAG_PUBLIC_KEY system tag to the attributes
     let mut tags = attributes.get_tags();
-    tags.insert("_pk".to_owned());
+    tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
     attributes.set_tags(tags)?;
 
     let cryptographic_length = Some(i32::try_from(ek_bytes.len())? * 8);

@@ -3,7 +3,10 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
+        extra::{
+            VENDOR_ID_COSMIAN,
+            tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
+        },
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -87,9 +90,9 @@ pub fn create_msk_object(
     }]);
     attributes.sensitive = sensitive.then_some(true);
 
-    // Add the "_sk" system tag to the attributes
+    // Add the SYSTEM_TAG_PRIVATE_KEY system tag to the attributes
     let mut tags = attributes.get_tags();
-    tags.insert("_sk".to_owned());
+    tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
     attributes.set_tags(tags)?;
 
     let cryptographic_length = Some(i32::try_from(msk_bytes.len())? * 8);
@@ -128,9 +131,9 @@ fn create_mpk_object(
         linked_object_identifier: LinkedObjectIdentifier::TextString(msk_uid),
     }]);
 
-    // Add the "_pk" system tag to the attributes
+    // Add the SYSTEM_TAG_PUBLIC_KEY system tag to the attributes
     let mut tags = attributes.get_tags();
-    tags.insert("_pk".to_owned());
+    tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
     attributes.set_tags(tags)?;
 
     let cryptographic_length = Some(i32::try_from(key.len())? * 8);

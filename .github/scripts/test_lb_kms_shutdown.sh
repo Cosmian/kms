@@ -3,7 +3,7 @@ set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-.github/scripts/docker-compose.yml}"
 RECREATE_NGINX="${RECREATE_NGINX:-1}"
-LB_PORT="${LB_PORT:-8080}"
+LB_PORT="${LB_PORT:-18080}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"

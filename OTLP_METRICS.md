@@ -4,18 +4,17 @@ Cosmian KMS exports metrics via OpenTelemetry Protocol (OTLP) over gRPC. This al
 
 ## Architecture
 
-```text
-┌─────────────┐                    ┌──────────────────┐
-│  KMS Server │ ──OTLP/gRPC──────> │ OTLP Collector   │
-│             │  (port 4317)       │                  │
-└─────────────┘                    └──────────────────┘
-                                           │
-                        ┌──────────────────┼──────────────────┐
-                        ▼                  ▼                  ▼
-                  ┌─────────┐        ┌─────────┐      ┌──────────┐
-                  │ Jaeger  │        │ Cloud   │      │ Custom   │
-                  │         │        │ Provider│      │ Backend  │
-                  └─────────┘        └─────────┘      └──────────┘
+```mermaid
+flowchart LR
+    kms["KMS Server"]
+    collector["OTLP Collector"]
+    jaeger["Jaeger"]
+    cloud["Cloud Provider"]
+    custom["Custom Backend"]
+    kms -->|"OTLP/gRPC (port 4317)"| collector
+    collector --> jaeger
+    collector --> cloud
+    collector --> custom
 ```
 
 ## Configuration

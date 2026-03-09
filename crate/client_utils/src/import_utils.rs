@@ -85,7 +85,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, UtilsError> {
             Ok(object)
         }
         ObjectType::Certificate => Err(UtilsError::Default(
-            "For certificates, use the `cosmian kms certificate` sub-command".to_owned(),
+            "For certificates, use the `ckms certificate` sub-command".to_owned(),
         )),
         _ => Err(UtilsError::Default(format!(
             "The PEM file contains an object of type {:?} which is not supported",

@@ -7,20 +7,7 @@ description of Bring Your Own Key (BYOK) in Azure Key Vault,
 The vault must be a `premium` Azure Key Vault, and the user performing the operations
 must have the role of `Crypto Officer`.
 
-<!-- TOC -->
-- [Create two test keys in the Cosmian KMS](#create-two-test-keys-in-the-cosmian-kms)
-    - [Create an RSA Key](#create-an-rsa-key)
-    - [Create an Elliptic Curve Key](#create-an-elliptic-curve-key)
-- [Create an Azure Key Encryption Key (KEK)](#create-an-azure-key-encryption-key-kek)
-- [Export the Key Encryption (Public) Key](#export-the-key-encryption-public-key)
-- [Import the key encryption key in Cosmian KMS](#import-the-key-encryption-key-in-cosmian-kms)
-- [Export the wrapped keys from the Cosmian KMS](#export-the-wrapped-keys-from-the-cosmian-kms)
-    - [Export the RSA key](#export-the-rsa-key)
-    - [Export the EC key](#export-the-ec-key)
-- [Upload the byok transfer blob in Azure Key Vault](#upload-the-byok-transfer-blob-in-azure-key-vault)
-    - [For an RSA Private Key](#for-an-rsa-private-key)
-    - [For an EC Private Key](#for-an-ec-private-key)
-<!-- TOC -->
+[TOC]
 
 ## Create two test keys in the Cosmian KMS
 
@@ -32,7 +19,7 @@ and imported into Azure Key Vault.
 The key will be a 4096-bit key.
 
 ````shell
-cosmian kms rsa keys create --size_in_bits 4096 TestRSAKey
+ckms rsa keys create --size_in_bits 4096 TestRSAKey
 
    Public key unique identifier: TestRSAKey_pk
    Private key unique identifier: TestRSAKey
@@ -43,7 +30,7 @@ cosmian kms rsa keys create --size_in_bits 4096 TestRSAKey
 The key will be created on the `NIST P-256` curve.
 
 ```shell
-cosmian kms ec keys create --curve nist-p256 TestECKey
+ckms ec keys create --curve nist-p256 TestECKey
 
    Public key unique identifier: TestECKey_pk
    Private key unique identifier: TestECKey
@@ -96,11 +83,11 @@ az keyvault key download --name KEK-BYOK --vault-name MyPremiumKeyVault --file K
 
 ## Import the key encryption key in Cosmian KMS
 
-The Cosmian CLI provides an `azure byok` command to facilitate both the import of the key encryption key in Cosmian KMS,
+The KMS CLI provides an `azure byok` command to facilitate both the import of the key encryption key in Cosmian KMS,
 and the export of the wrapped keys in the `.byok` format for easy import in Azure Key Vault.
 
 ```shell
-cosmian kms azure byok import KEK-BYOK.public.pem \
+ckms azure byok import KEK-BYOK.public.pem \
 https://hsmbackedkeyvault.vault.azure.net/keys/BYOK_KEK/5e617a4d39c74f47b0b7d345f6a49d1b \
 BYOK_KEK
 
@@ -117,13 +104,13 @@ These identify the key as an Azure Key Encryption Key (KEK) in the Cosmian KMS.
 
 ## Export the wrapped keys from the Cosmian KMS
 
-The Cosmian CLI `azure byok export` command will generate a `.byok` file
+The KMS CLI `azure byok export` command will generate a `.byok` file
 containing the wrapped private key, which can be directly imported into Azure Key Vault.
 
 ### Export the RSA key
 
 ```shell
-cosmian kms azure byok export TestRSAKey BYOK_KEK
+ckms azure byok export TestRSAKey BYOK_KEK
 
 The byok file was written to "TestRSAKey.byok" for key TestRSAKey
 ```
@@ -131,7 +118,7 @@ The byok file was written to "TestRSAKey.byok" for key TestRSAKey
 ### Export the EC key
 
 ```shell
-cosmian kms azure byok export TestECKey BYOK_KEK
+ckms azure byok export TestECKey BYOK_KEK
 
 The byok file was written to "TestECKey.byok" for key TestECKey
 ```

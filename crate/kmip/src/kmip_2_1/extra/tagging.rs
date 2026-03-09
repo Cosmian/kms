@@ -12,6 +12,21 @@ pub const VENDOR_ATTR_TAG: &str = "tag";
 /// Constant to use to express there are no tags
 pub const EMPTY_TAGS: [&str; 0] = [];
 
+/// System tag automatically added by the KMS server to symmetric keys on Create/Import
+pub const SYSTEM_TAG_SYMMETRIC_KEY: &str = "_kk";
+/// System tag automatically added by the KMS server to private keys on Create/Import
+pub const SYSTEM_TAG_PRIVATE_KEY: &str = "_sk";
+/// System tag automatically added by the KMS server to public keys on Create/Import
+pub const SYSTEM_TAG_PUBLIC_KEY: &str = "_pk";
+/// System tag automatically added by the KMS server to X.509 certificates on Import/Certify
+pub const SYSTEM_TAG_CERTIFICATE: &str = "_cert";
+/// System tag automatically added by the KMS server to secret data objects on Create/Import
+pub const SYSTEM_TAG_SECRET_DATA: &str = "_sd";
+/// System tag automatically added by the KMS server to opaque objects on Import
+pub const SYSTEM_TAG_OPAQUE_OBJECT: &str = "_oo";
+/// System tag automatically added by the KMS server to `CoverCrypt` user decryption keys
+pub const SYSTEM_TAG_COVER_CRYPT_USER_KEY: &str = "_uk";
+
 impl Attributes {
     /// Get the tags from the attributes
     #[must_use]

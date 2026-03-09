@@ -86,9 +86,6 @@ fn test_password_derivation() {
 #[cfg(all(not(feature = "non-fips"), not(target_os = "windows")))]
 fn test_password_derivation_bad_size() {
     const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
-
     let salt = b"rediswithfindex_";
     let my_weak_password = b"123princ3ss".to_vec();
     let secure_mk_res = derive_key_from_password::<13>(salt, &my_weak_password);

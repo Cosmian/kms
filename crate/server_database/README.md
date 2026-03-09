@@ -13,46 +13,30 @@ This crate implements the database layer that handles persistent storage of cryp
 
 ### SQL Databases (SQLite, PostgreSQL, MySQL)
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         KMS Database Schema                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │ parameters                                                      │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ name  VARCHAR(128) PRIMARY KEY                                  │    │
-│  │ value VARCHAR(256)                                              │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │ objects                                                         │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ id         VARCHAR(128) PRIMARY KEY  -- Object UID              │    │
-│  │ object     VARCHAR/LONGTEXT          -- Serialized KMIP object  │    │
-│  │ attributes JSON                      -- KMIP attributes         │    │
-│  │ state      VARCHAR(32)               -- Object state            │    │
-│  │ owner      VARCHAR(255)              -- Owner user ID           │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │ read_access                                                     │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ id          VARCHAR(128)             -- Object UID (FK)         │    │
-│  │ userid      VARCHAR(255)             -- User ID                 │    │
-│  │ permissions JSON                     -- Array of operations     │    │
-│  │ UNIQUE (id, userid)                                             │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │ tags                                                            │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ id  VARCHAR(128)                     -- Object UID (FK)         │    │
-│  │ tag VARCHAR(255)                     -- Tag value               │    │
-│  │ UNIQUE (id, tag)                                                │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+erDiagram
+    parameters {
+        varchar name PK "VARCHAR(128)"
+        varchar value "VARCHAR(256)"
+    }
+    objects {
+        varchar id PK "VARCHAR(128) — Object UID"
+        varchar object "VARCHAR/LONGTEXT — Serialized KMIP object"
+        json attributes "KMIP attributes"
+        varchar state "VARCHAR(32) — Object state"
+        varchar owner "VARCHAR(255) — Owner user ID"
+    }
+    read_access {
+        varchar id FK "VARCHAR(128) — Object UID"
+        varchar userid "VARCHAR(255) — User ID"
+        json permissions "Array of operations"
+    }
+    tags {
+        varchar id FK "VARCHAR(128) — Object UID"
+        varchar tag "VARCHAR(255) — Tag value"
+    }
+    objects ||--o{ read_access : "has permissions"
+    objects ||--o{ tags : "has tags"
 ```
 
 ### Redis with Findex
@@ -64,18 +48,14 @@ The schema below use the following legend :
 - permission_triplet = Tuple(user_id, obj_uid, permission)
 - metadata = Object owner, tags, and other attributes
 
-```text
-KEY → VALUE
-─────────────────────────────────────────────────────────────────────────
-db_version                  → >= 5.12.0
-db_state                    → "ready" | "upgrading"
-
-do::<object_uid>            → ENC_KMS(object data)
-
-ENC_Findex v8(o:obj_uid)    → ENC_Findex v8(permission_triplet)
-ENC_Findex v8(u:userid)     → ENC_Findex v8(permission_triplet)
-ENC_Findex v8(object_uid)   → ENC_Findex v8(metadata)
-```
+| Key | Value |
+|-----|-------|
+| `db_version` | `>= 5.12.0` |
+| `db_state` | `"ready"` \| `"upgrading"` |
+| `do::<object_uid>` | `ENC_KMS(object data)` |
+| `ENC_Findex v8(o:obj_uid)` | `ENC_Findex v8(permission_triplet)` |
+| `ENC_Findex v8(u:userid)` | `ENC_Findex v8(permission_triplet)` |
+| `ENC_Findex v8(object_uid)` | `ENC_Findex v8(metadata)` |
 
 A more colorful and clear description of how the Redis backend operates with Findex can be red on the its original PR description : [github.com/Cosmian/kms/pull/542](https://github.com/Cosmian/kms/pull/542).
 

@@ -49,7 +49,7 @@ pub enum KmsActions {
     Login(LoginAction),
     /// Logout from the Identity Provider.
     ///
-    /// The access token will be removed from the cosmian configuration file.
+    /// The access token will be removed from the ckms configuration file.
     Logout,
     Hash(HashAction),
     Mac(MacCommands),

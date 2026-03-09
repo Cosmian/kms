@@ -457,6 +457,12 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
         // Retrieving the object from its location
         match uri_type {
             Some(UriType::Url(url)) => {
+                // Only process HTTP(S) URLs; skip other schemes (e.g. LDAP, FTP)
+                if !url.starts_with("http://") && !url.starts_with("https://") {
+                    debug!("Skipping non-HTTP CRL URI: {url}");
+                    continue;
+                }
+
                 let mut crls = CRL_CACHE_MAP.write().await;
                 if crls.contains_key(&url) {
                     debug!("CRL list already contains key: {url}");
@@ -539,7 +545,7 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
 /// * If the CRL signature is invalid.
 /// * If there is an issue fetching the CRL bytes from the URIs.
 /// ```
-async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
+pub(crate) async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
     let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
@@ -568,16 +574,18 @@ async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
             let crl_size = crl_dp.len();
             let mut uri_list = Vec::with_capacity(crl_size);
             for i in 0..crl_size {
-                let crl_uri = crl_dp
+                if let Some(fullname) = crl_dp
                     .get(i)
                     .and_then(DistPointRef::distpoint)
                     .and_then(DistPointNameRef::fullname)
-                    .and_then(|x| x.get(0))
-                    .and_then(GeneralNameRef::uri);
-                if let Some(crl_uri) = crl_uri {
-                    if !uri_list.contains(&crl_uri.to_owned()) {
-                        uri_list.push(crl_uri.to_owned());
-                        trace!("Found CRL URI: {crl_uri}");
+                {
+                    for j in 0..fullname.len() {
+                        if let Some(crl_uri) = fullname.get(j).and_then(GeneralNameRef::uri) {
+                            if !uri_list.contains(&crl_uri.to_owned()) {
+                                uri_list.push(crl_uri.to_owned());
+                                trace!("Found CRL URI: {crl_uri}");
+                            }
+                        }
                     }
                 }
             }

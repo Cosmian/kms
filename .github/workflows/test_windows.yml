@@ -10,9 +10,6 @@ on:
       archive-name:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
 
 jobs:
   cargo-test:
@@ -39,7 +36,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           . .\.github\scripts\cargo_test.ps1
-          TestProject -BuildType ${{ inputs.debug_or_release }}
+          TestProject
         env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}

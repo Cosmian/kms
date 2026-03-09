@@ -34,4 +34,6 @@ for d in "${TARGETS[@]}"; do
   rm -rf -- "${d}"
 done
 
+cargo clean
+
 echo "Cleanup completed."

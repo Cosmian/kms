@@ -5,6 +5,7 @@ use crate::{
     KmipError,
     kmip_0::kmip_types::{CryptographicUsageMask, SecretDataType},
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
@@ -20,7 +21,7 @@ pub fn create_symmetric_key_kmip_object(
     create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
     let mut tags = create_attributes.get_tags();
-    tags.insert("_kk".to_owned());
+    tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
     // The cryptographic algorithm must be specified
     let cryptographic_algorithm = create_attributes.cryptographic_algorithm.ok_or_else(|| {
         KmipError::NotSupported(
@@ -157,7 +158,7 @@ pub fn create_secret_data_kmip_object(
     create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
     let mut tags = create_attributes.get_tags();
-    tags.insert("_sd".to_owned());
+    tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
     // Generate a new UID if none is provided.
     let uid = match &create_attributes
         .unique_identifier

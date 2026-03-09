@@ -10,10 +10,10 @@ If you wish to change the database configuration, please refer to the [database 
 
 For high availability and scalability, refer to the [High Availability Guide](./high_availability_mode.md).
 
-!!!info "Cosmian CLI"
-    The Cosmian CLI lets you interact with the KMS from the command line.
-    Install it from [Cosmian CLI](https://package.cosmian.com/cli/)
-    and [configure it](../../cosmian_cli/index.md).
+!!!info "KMS CLI"
+    The KMS CLI lets you interact with the KMS from the command line.
+    Install it from [KMS CLI](https://package.cosmian.com/kms/)
+    and [configure it](../kms_clients/index.md).
 
 === "Docker"
 

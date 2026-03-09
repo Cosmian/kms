@@ -21,10 +21,10 @@ The tags are assembled in a JSON array and encoded in hex.
 
 The `CryptographicUsageMask` is optional.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
-cosmian kms sym keys create --tag MySymmetricKey
+ckms sym keys create --tag MySymmetricKey
 ```
 
 === "Request"
@@ -121,10 +121,10 @@ cosmian kms sym keys create --tag MySymmetricKey
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
 (see [Create Key Pair](./_create_key_pair.md) for the corresponding master key access structure).
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
-cosmian kms cc keys create-user-key -t "MyUserKey"\
+ckms cc keys create-user-key -t "MyUserKey"\
  b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 \
  "Security Level::Confidential && (Department::FIN || Department::HR)"
 ```

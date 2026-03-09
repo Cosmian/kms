@@ -7,9 +7,6 @@ on:
       toolchain:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
   workflow_dispatch:
 
 jobs:
@@ -101,7 +98,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
           set -ex
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -139,14 +136,13 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
 
   windows-2022:
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
-      debug_or_release: ${{ inputs.debug_or_release }}
 
   cleanup:
     needs:

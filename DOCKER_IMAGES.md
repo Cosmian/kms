@@ -4,15 +4,7 @@ This document provides a comprehensive guide to signing and verifying Docker ima
 
 ---
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Current Implementation: Keyless Signing](#current-implementation-keyless-signing)
-- [Architecture](#architecture)
-- [Signing Workflow](#signing-workflow)
-- [Verification Workflow](#verification-workflow)
-- [Cryptographic Details](#cryptographic-details)
-- [Usage Examples](#usage-examples)
+[TOC]
 
 ---
 

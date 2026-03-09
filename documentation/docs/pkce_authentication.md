@@ -42,7 +42,7 @@ The KMS client library now supports PKCE authentication with optional client sec
 1. CLI configuration
 
     ```toml
-    [kms_config.http_config.oauth2_conf]
+    [http_config.oauth2_conf]
     client_id = "f052524e-7518-40e7-2579-219c0b48b125"
     authorize_url = "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174c4e562c96/oauth2/authorize"
     token_url = "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/oauth2/token"
@@ -68,7 +68,7 @@ The KMS client library now supports PKCE authentication with optional client sec
 1. CLI configuration
 
     ```toml
-    [kms_config.http_config.oauth2_conf]
+    [http_config.oauth2_conf]
     client_id = "OUfH4FuzDAW99Ck3R4Rb7ROziOZEalIH"
     authorize_url = "https://acme.eu.auth0.com/authorize"
     token_url = "https://acme.eu.auth0.com/oauth/token"

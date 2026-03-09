@@ -23,13 +23,12 @@ for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
 done
 
 echo "Running Google CSE tests..."
-cargo test --workspace --lib "$RELEASE_FLAG" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- --nocapture test_google_cse --ignored --exact
+cargo test --workspace --lib ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} -- --nocapture test_google_cse --ignored --exact
 
 echo "Running Google CSE JWT authentication test..."
 cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  "$RELEASE_FLAG" \
   -- --nocapture test_wrap_auth --ignored --exact
 
 echo "Google CSE tests completed successfully."

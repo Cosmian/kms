@@ -78,7 +78,7 @@ pub struct MacAction {
     /// Hashing algorithm (case insensitive)
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms mac --algorithm WRONG`
+    /// e.g. `ckms mac --algorithm WRONG`
     #[clap(
         long = "algorithm",
         short = 'a',

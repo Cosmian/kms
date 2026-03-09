@@ -1,9 +1,10 @@
 use std::{
+    collections::HashMap,
     fmt::{self},
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -55,6 +56,7 @@ impl Default for ClapConfig {
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
+            print_default_config: false,
             hsm: HsmConfig::default(),
             key_encryption_key: None,
             default_unwrap_type: None,
@@ -99,6 +101,12 @@ pub struct ClapConfig {
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
     pub info: bool,
+
+    /// Serialize the default server configuration as TOML to stdout and exit.
+    /// This is used to keep the documentation in sync with the Rust struct.
+    #[clap(long, default_value = "false")]
+    #[serde(skip)]
+    pub print_default_config: bool,
 
     #[clap(flatten)]
     #[serde(flatten)]
@@ -189,6 +197,165 @@ pub struct ClapConfig {
 }
 
 impl ClapConfig {
+    /// Serialize the default configuration as TOML with comments extracted from
+    /// the clap help strings. Each field is preceded by its `///` doc comment as
+    /// TOML `# …` lines, making the output directly useful as a reference config file.
+    ///
+    /// # Errors
+    /// Returns an error if TOML serialization of the default config fails.
+    pub fn default_config_with_comments() -> KResult<String> {
+        use std::fmt::Write as _;
+
+        let cmd = Self::command();
+
+        // Build a map: toml_key (underscore form) → help text.
+        // Prefer long_help (full /// doc comment) over short help (first line only).
+        let help_map: HashMap<String, String> = cmd
+            .get_arguments()
+            .filter_map(|arg| {
+                let long = arg.get_long()?;
+                let help = arg
+                    .get_long_help()
+                    .or_else(|| arg.get_help())
+                    .map(ToString::to_string)?;
+                // Clap uses --long-flag-name; TOML serialization uses field_name.
+                Some((long.replace('-', "_"), help))
+            })
+            .collect();
+
+        // Use kms_template.toml as the structural template (lives at the crate root so
+        // it is included in the published tarball).
+        // It documents ALL known fields — including optional ones shown as "# key = value".
+        // For each field, the clap help string replaces the manual comment when available.
+        let template = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/kms_template.toml"));
+
+        // Collect the section headers present in the template so Phase 2 can detect gaps.
+        let template_sections: std::collections::HashSet<&str> =
+            template.lines().filter(|l| l.starts_with('[')).collect();
+
+        let mut output = String::new();
+        // Accumulate consecutive comment lines until a field or section header is reached.
+        let mut pending_comments: Vec<&str> = Vec::new();
+        // Skip the very first line (template file header: "## Cosmian KMS configuration file").
+        let mut first_line = true;
+
+        // ── Phase 1: process the template ──────────────────────────────────────────
+        for line in template.lines() {
+            if first_line {
+                first_line = false;
+                continue;
+            }
+
+            // Detect field lines:
+            //   "# key = …" where key is a valid identifier → optional field (commented-out)
+            //   "key = …"    → active field (not starting with '#', '[', or blank)
+            //
+            // Distinguishing "# key = val" (optional field) from "# plain comment" is done by
+            // checking that the token before '=' consists only of lowercase ASCII, digits and '_'.
+            let key_opt: Option<&str> = line.strip_prefix("# ").map_or_else(
+                || {
+                    if !line.starts_with('#') && !line.starts_with('[') && !line.trim().is_empty() {
+                        line.split('=')
+                            .next()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                    } else {
+                        None
+                    }
+                },
+                |rest| {
+                    let before_eq = rest.split('=').next().map_or("", str::trim);
+                    if !before_eq.is_empty()
+                        && rest.contains('=')
+                        && before_eq
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+                    {
+                        Some(before_eq)
+                    } else {
+                        None
+                    }
+                },
+            );
+
+            if let Some(key) = key_opt {
+                // Emit comments: prefer clap help when available, else use manual comments.
+                if let Some(help) = help_map.get(key) {
+                    for help_line in help.lines() {
+                        if help_line.is_empty() {
+                            let _ = writeln!(output, "#");
+                        } else {
+                            let _ = writeln!(output, "# {help_line}");
+                        }
+                    }
+                } else {
+                    for comment in &pending_comments {
+                        let _ = writeln!(output, "{comment}");
+                    }
+                }
+                pending_comments.clear();
+                // Emit the field line as-is: already "# key = val" or "key = val".
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('[') {
+                // Section header: flush accumulated comments before it.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('#') {
+                // Comment line: accumulate until the associated field is found.
+                pending_comments.push(line);
+            } else {
+                // Empty line or other content: flush pending comments then emit.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            }
+        }
+        // Flush any remaining accumulated comments.
+        for comment in &pending_comments {
+            let _ = writeln!(output, "{comment}");
+        }
+
+        // ── Phase 2: append sections missing from the template ─────────────────────
+        // `toml::to_string_pretty` covers every section in the struct (e.g. [aws_xks_config],
+        // [azure_ekm_config], [kmip], …) but omits Option<None> fields.
+        // We emit only sections not already covered by the template, using clap help comments.
+        let plain = toml::to_string_pretty(&Self::default())
+            .map_err(|e| KmsError::ServerError(e.to_string()))?;
+
+        let mut in_missing_section = false;
+        for line in plain.lines() {
+            if line.starts_with('[') {
+                in_missing_section = !template_sections.contains(line);
+                if in_missing_section {
+                    let _ = writeln!(output, "\n{line}");
+                }
+            } else if in_missing_section {
+                if !line.starts_with('#') && !line.trim().is_empty() {
+                    // Key = value: prepend clap help if available.
+                    if let Some(key) = line.split('=').next().map(str::trim) {
+                        if let Some(help) = help_map.get(key) {
+                            for help_line in help.lines() {
+                                if help_line.is_empty() {
+                                    let _ = writeln!(output, "#");
+                                } else {
+                                    let _ = writeln!(output, "# {help_line}");
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = writeln!(output, "{line}");
+            }
+        }
+
+        Ok(output)
+    }
+
     /// Load the configuration from the default configuration file
     ///
     /// # Errors
@@ -292,7 +459,7 @@ impl ClapConfig {
             return load_file(&default_path);
         }
 
-        println!(
+        eprintln!(
             "No configuration file found (-c/--config, COSMIAN_KMS_CONF, default path). Using \
              command line arguments and environment variables."
         );
@@ -304,6 +471,7 @@ impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
         let x = x.field("config_path", &self.config_path);
+        let x = x.field("print_default_config", &self.print_default_config);
         let x = x.field("db", &self.db);
         let x = if self.idp_auth.jwt_auth_provider.is_some() {
             x.field("idp_auth", &self.idp_auth)

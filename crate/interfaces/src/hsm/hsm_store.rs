@@ -9,6 +9,7 @@ use cosmian_kmip::{
     SafeBigInt,
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SYMMETRIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
@@ -156,7 +157,7 @@ impl ObjectsStore for HsmStore {
                 ));
             }
             let (slot_id, sk_id) = parse_uid(&uid)?;
-            let pk_id = sk_id.clone() + "_pk";
+            let pk_id = sk_id.clone() + SYSTEM_TAG_PUBLIC_KEY;
             self.hsm
                 .create_keypair(
                     slot_id,
@@ -469,7 +470,7 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_kk".to_owned());
+            tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
             attributes
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
@@ -518,7 +519,7 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_sk".to_owned());
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
@@ -587,7 +588,7 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_sk".to_owned());
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
                 .set_tags(tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;

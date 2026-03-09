@@ -63,7 +63,7 @@ trap cleanup EXIT
 
 echo "========================================="
 echo "Running AWS XKS tests"
-echo "Variant: ${VARIANT_NAME} | Mode: ${BUILD_PROFILE}"
+echo "Variant: ${VARIANT_NAME} | Mode: release"
 echo "========================================="
 
 if [ "${VARIANT}" != "non-fips" ]; then
@@ -73,9 +73,9 @@ fi
 
 # Build binaries once to avoid repeated compilation in the provisioning steps.
 # shellcheck disable=SC2086
-cargo build -p cosmian_kms_server $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
+cargo build -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
 
-KMS_BIN="${REPO_ROOT}/target/${BUILD_PROFILE}/cosmian_kms"
+KMS_BIN="${REPO_ROOT}/target/debug/cosmian_kms"
 
 rm -f "${LOG_PATH}"
 

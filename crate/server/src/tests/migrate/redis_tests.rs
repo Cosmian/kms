@@ -214,8 +214,8 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
 // - create two sym keys (SHAKE), call them `mt_should_not_exist` and `mt_exists`, tag them with "cat"
 // ```bash
 // # assuming on cli repository root, with the cli binary built
-// ./target/debug/cosmian kms sym keys create mt_should_not_exist -a shake -t cat
-// ./target/debug/cosmian kms sym keys create mt_exists -a shake -t cat
+// ./target/debug/ckms sym keys create mt_should_not_exist -a shake -t cat
+// ./target/debug/ckms sym keys create mt_exists -a shake -t cat
 // ```
 // - grant `Locate` permission on both keys to user `mt_owner`
 // - revoke mt_should_not_exist key with NA as revocation reason. **Use the UI for this operation to avoid CLI bugs**

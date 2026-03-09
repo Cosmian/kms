@@ -3,6 +3,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey},
@@ -95,7 +96,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
 
         // Tag the object as a private key
         let mut tags = create_attributes.get_tags();
-        tags.insert("_uk".to_owned());
+        tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
 
         // Set the unique identifier, if not provided, generate a new one
         let uid = match create_attributes

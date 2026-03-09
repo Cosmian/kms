@@ -10,6 +10,7 @@ use clap::crate_version;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_operations::Decrypt,
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
@@ -126,7 +127,7 @@ async fn internal_get_key(
     let mut dke_service_url = Url::parse(dke_service_url)
         .map_err(|_e| kms_error!("MS DKE: Invalid MS DKE Service URL: {}", dke_service_url))?;
     let unique_identifier = UniqueIdentifier::TextString(
-        serde_json::to_string(&vec![key_tag, "_pk"]).map_err(|e| kms_error!(e))?,
+        serde_json::to_string(&vec![key_tag, SYSTEM_TAG_PUBLIC_KEY]).map_err(|e| kms_error!(e))?,
     );
     let key_id = unique_identifier.as_str().ok_or_else(|| {
         kms_error!(
@@ -205,7 +206,8 @@ async fn internal_decrypt(
     let user = kms.get_user(&req_http);
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
-            serde_json::to_string(&vec![key_tag, "_sk"]).map_err(|e| kms_error!(e))?,
+            serde_json::to_string(&vec![key_tag, SYSTEM_TAG_PRIVATE_KEY])
+                .map_err(|e| kms_error!(e))?,
         )),
         data: Some(STANDARD.decode(encrypted_data.value.as_bytes())?),
         cryptographic_parameters: Some(CryptographicParameters {

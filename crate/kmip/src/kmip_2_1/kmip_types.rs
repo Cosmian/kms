@@ -1518,7 +1518,7 @@ impl Display for EncryptionKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )
     }
 }
@@ -1539,7 +1539,7 @@ impl Display for MacSignatureKeyInformation {
             self.unique_identifier,
             self.cryptographic_parameters
                 .as_ref()
-                .map_or_else(|| "None".to_owned(), std::string::ToString::to_string)
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )
     }
 }

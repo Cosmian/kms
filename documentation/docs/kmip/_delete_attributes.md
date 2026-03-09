@@ -11,15 +11,15 @@ This operation can be applied to all [supported objects](./objects.md). One or m
 First, for the demo purpose create a certificate:
 
 ```bash
-  cosmian kms certificates certify --generate-key-pair --subject-name C=yo --algorithm rsa2048 -c my_certificate
+  ckms certificates certify --generate-key-pair --subject-name C=yo --algorithm rsa2048 -c my_certificate
 ```
 
 Delete the links on a certificate object.
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  cosmian kms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
+  ckms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
 ```
 
 The request deletes the KMIP links of the public key and the private key of the underlying certificate.

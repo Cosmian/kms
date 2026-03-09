@@ -435,8 +435,7 @@ impl Object {
     #[must_use]
     pub fn is_wrapped(&self) -> bool {
         self.key_block()
-            .map(|kb| kb.key_wrapping_data.is_some())
-            .unwrap_or(false)
+            .is_ok_and(|kb| kb.key_wrapping_data.is_some())
     }
 }
 

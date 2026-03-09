@@ -146,27 +146,16 @@ export PINNED_NIXPKGS_URL="$PIN_URL"
 # Exports:
 #   VARIANT            fips | non-fips
 #   VARIANT_NAME       FIPS | non-FIPS (pretty)
-#   BUILD_PROFILE      debug | release
-#   RELEASE_FLAG       "" | --release
 #   FEATURES_FLAG      cargo feature array (non-fips -> --features non-fips)
 #   LINK               static | dynamic (OpenSSL linkage type)
 init_build_env() {
-  local profile="debug" variant="fips" link="static"
-  local profile_set=0 variant_set=0 link_set=0
+  local variant="fips" link="static"
+  local variant_set=0 link_set=0
 
   # Parse only our known flags; ignore/keep others for callers
   local i=1
   while [ $i -le $# ]; do
     case "${!i}" in
-    --profile)
-      if [ $profile_set -eq 1 ]; then
-        echo "Error: --profile specified multiple times" >&2
-        exit 1
-      fi
-      profile_set=1
-      i=$((i + 1))
-      profile="${!i:-}"
-      ;;
     --variant)
       if [ $variant_set -eq 1 ]; then
         echo "Error: --variant specified multiple times" >&2
@@ -190,11 +179,6 @@ init_build_env() {
   done
 
   # If flags were not provided, inherit from existing environment (when available)
-  if [ $profile_set -eq 0 ] && [ -n "${BUILD_PROFILE:-}" ]; then
-    case "${BUILD_PROFILE}" in
-    release | debug) profile="${BUILD_PROFILE}" ;;
-    esac
-  fi
   if [ $variant_set -eq 0 ] && [ -n "${VARIANT:-}" ]; then
     case "${VARIANT}" in
     fips | non-fips) variant="${VARIANT}" ;;
@@ -225,18 +209,6 @@ init_build_env() {
   esac
   LINK="$link"
 
-  # Default profile when not specified: debug
-  case "${profile:-debug}" in
-  release)
-    BUILD_PROFILE="release"
-    RELEASE_FLAG="--release"
-    ;;
-  debug | *)
-    BUILD_PROFILE="debug"
-    RELEASE_FLAG=""
-    ;;
-  esac
-
   # FEATURES_FLAG derived strictly from variant
   # FIPS is the default mode (no extra flags needed)
   # non-fips requires explicit feature flag
@@ -247,7 +219,7 @@ init_build_env() {
 
   ensure_macos_sdk_env
   ensure_macos_frameworks_ldflags
-  export VARIANT VARIANT_NAME BUILD_PROFILE RELEASE_FLAG LINK
+  export VARIANT VARIANT_NAME LINK
 }
 
 # Require a command to be available (gentle helper for running outside Nix)
@@ -361,11 +333,19 @@ _run_workspace_tests() {
     ;;
   esac
 
+  # Build the ckms CLI binary with the correct feature flags so that
+  # `Command::cargo_bin("ckms")` in lib tests finds a binary built with the
+  # right features (e.g. non-fips algorithms, CoverCrypt, x25519, ChaCha20).
+  # `cargo test --lib` does not recompile [[bin]] targets, so we do it here.
+  local -a cargo_build_args
+  cargo_build_args=(-p ckms)
+  if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+    cargo_build_args+=("${FEATURES_FLAG[@]}")
+  fi
+  cargo build "${cargo_build_args[@]}"
+
   local -a cargo_test_args
   cargo_test_args=(--workspace --lib)
-  if [ -n "${RELEASE_FLAG:-}" ]; then
-    cargo_test_args+=("$RELEASE_FLAG")
-  fi
   if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
     cargo_test_args+=("${FEATURES_FLAG[@]}")
   fi
@@ -389,9 +369,6 @@ _run_workspace_tests() {
   if [ "$KMS_TEST_DB" != "sqlite" ]; then
     local -a cargo_test_non_ignored_args
     cargo_test_non_ignored_args=(--workspace --lib)
-    if [ -n "${RELEASE_FLAG:-}" ]; then
-      cargo_test_non_ignored_args+=("$RELEASE_FLAG")
-    fi
     if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
       cargo_test_non_ignored_args+=("${FEATURES_FLAG[@]}")
     fi

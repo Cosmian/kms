@@ -12,6 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         KmipOperation,
+        extra::tagging::SYSTEM_TAG_PRIVATE_KEY,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, GetAttributes},
@@ -236,7 +237,11 @@ async fn get_key_metadata_inner(
         ),
         CryptographicAlgorithm::RSA => {
             let key_spec = format!("RSA_{key_size}");
-            if response.attributes.get_tags().contains("_sk") {
+            if response
+                .attributes
+                .get_tags()
+                .contains(SYSTEM_TAG_PRIVATE_KEY)
+            {
                 // a private key
                 (
                     key_spec,

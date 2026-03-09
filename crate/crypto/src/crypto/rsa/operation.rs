@@ -6,6 +6,7 @@ use cosmian_kmip::{
     SafeBigInt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -260,7 +261,7 @@ pub fn create_rsa_key_pair(
         Some(UniqueIdentifier::TextString(private_key_uid.to_owned()));
     // Add the tags
     let mut sk_tags = tags.clone();
-    sk_tags.insert("_sk".to_owned());
+    sk_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
     private_key_attributes.set_tags(sk_tags)?;
     // and set them on the object
     let Some(&mut KeyValue::Structure {
@@ -290,7 +291,7 @@ pub fn create_rsa_key_pair(
         Some(UniqueIdentifier::TextString(public_key_uid.to_owned()));
     // Add the tags
     let mut pk_tags = tags;
-    pk_tags.insert("_pk".to_owned());
+    pk_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
     public_key_attributes.set_tags(pk_tags)?;
     // and set them on the object
     let Some(&mut KeyValue::Structure {
@@ -323,9 +324,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_incorrect_mask() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()
@@ -381,9 +379,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_incorrect_mask_unrestricted() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()
@@ -433,9 +428,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_fips_mask() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()

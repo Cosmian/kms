@@ -54,12 +54,18 @@ jobs:
           set -ex
           if [ "${{ startsWith(matrix.container, 'rockylinux') }}" = "true" ]; then
             # RPM-based (Rocky Linux)
-            rpm -qpl ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm
+            # rpm -qpl accepts only one file at a time
+            for pkg in ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm; do
+              rpm -qpl "$pkg"
+            done
             rpm -i ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm --nodeps || true
           else
             # DEB-based (Ubuntu/Debian)
-            dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
-            # Use apt to handle dependencies when installing local .deb files
+            # dpkg --contents accepts only one file at a time
+            for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
+              dpkg --contents "$pkg"
+            done
+            # dpkg -i accepts multiple files
             dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
           fi
 
@@ -147,6 +153,10 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
       - name: Download package artifacts
         uses: actions/download-artifact@v8
         with:
@@ -160,8 +170,11 @@ jobs:
         run: |
           set -ex
           # DEB-based (Ubuntu/Debian)
-          dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
-          # Use apt to handle dependencies when installing local .deb files
+          # dpkg --contents accepts only one file at a time
+          for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
+            dpkg --contents "$pkg"
+          done
+          # dpkg -i accepts multiple files
           sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
 
       - name: systemd-analyze security cosmian_kms.service
@@ -248,37 +261,25 @@ jobs:
             exit $rc
           fi
 
-      - name: Create keys with cosmian CLI
+      - name: Create keys with ckms
         shell: bash
         run: |
           set -euo pipefail
 
-          # Ensure the desired CLI version is available.
-          CLI_VERSION="${CLI_VERSION:-1.8.1}"
-          if ! command -v cosmian >/dev/null 2>&1; then
-            if command -v cargo >/dev/null 2>&1; then
-              cargo install cosmian_cli --locked --version "$CLI_VERSION" --force
-            else
-              echo "ERROR: cosmian CLI not found and cargo is not available to install it." >&2
-              exit 1
-            fi
-          fi
+          cargo run -p ckms -- --version
 
-          cosmian --version
-
-          # Configure cosmian CLI to talk to the locally running KMS.
+          # Configure ckms to talk to the locally running KMS.
           mkdir -p "$HOME/.cosmian"
           COSMIAN_CONFIG="$HOME/.cosmian/ci-kms.toml"
           cat >"$COSMIAN_CONFIG" <<'TOML'
-          [kms_config]
           print_json = false
 
-          [kms_config.http_config]
+          [http_config]
           server_url = "http://127.0.0.1:9998"
           TOML
 
           # Create one key of each type.
-          cosmian -c "$COSMIAN_CONFIG" kms sym keys create --algorithm aes --number-of-bits 256 ci_sym_key
+          cargo run -p ckms -- -c "$COSMIAN_CONFIG" sym keys create --algorithm aes --number-of-bits 256 ci_sym_key
 
       - name: Override branding.json and verify served
         shell: bash

@@ -35,6 +35,21 @@
     },
     {
       "pattern": "mailto:"
+    },
+    {
+      "pattern": "localhost"
+    },
+    {
+      "pattern": "mypremiumkeyvault.vault.azure.net"
+    },
+    {
+      "pattern": "kms_clients/installation"
+    },
+    {
+      "pattern": "pkce_auth_example.md"
+    },
+    {
+      "pattern": "github.com/Cosmian/kms/pull"
     }
   ]
 }

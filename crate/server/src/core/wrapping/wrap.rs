@@ -5,6 +5,7 @@ use cosmian_kms_server_database::{
             kmip_0::kmip_types::{CryptographicUsageMask, State},
             kmip_2_1::{
                 KmipOperation,
+                extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyValue, KeyWrappingSpecification},
                 kmip_objects::{Object, ObjectType},
@@ -222,7 +223,7 @@ async fn wrap_using_kms(
             let attributes = wrapping_key.attributes();
             let pk_id = attributes.get_link(LinkType::PublicKeyLink);
             let pk_id = pk_id.map_or_else(
-                || wrapping_key_uid.to_owned() + "_pk",
+                || wrapping_key_uid.to_owned() + SYSTEM_TAG_PUBLIC_KEY,
                 |pk_id| pk_id.to_string(),
             );
             // fetch the private key

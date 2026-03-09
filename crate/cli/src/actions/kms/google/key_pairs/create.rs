@@ -7,6 +7,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     export_object,
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_PRIVATE_KEY,
         kmip_attributes::Attributes,
         kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
@@ -337,7 +338,8 @@ impl CreateKeyPairsAction {
                         })?;
 
                 // Only remove suffix _sk to get certificate unique identifier
-                let certificate_unique_identifier = private_unique_identifier.replace("_sk", "");
+                let certificate_unique_identifier =
+                    private_unique_identifier.replace(SYSTEM_TAG_PRIVATE_KEY, "");
                 println!("[{email}] - certificate ID: {certificate_unique_identifier}");
                 UniqueIdentifier::TextString(certificate_unique_identifier)
             }

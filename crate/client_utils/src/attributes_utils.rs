@@ -109,7 +109,10 @@ pub fn parse_selected_attributes(
         match tag {
             Tag::ActivationDate => {
                 if let Some(v) = attributes.activation_date.as_ref() {
-                    results.insert(tag.to_string(), serde_json::to_value(v).unwrap_or_default());
+                    results.insert(
+                        tag.to_string(),
+                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                    );
                 }
             }
             Tag::CertificateLength => {
@@ -352,7 +355,7 @@ pub fn parse_selected_attributes_flatten(
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
                         selected_attribute_name.to_owned().clone(),
-                        serde_json::to_value(v).unwrap_or_default(),
+                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
                     );
                 }
             }

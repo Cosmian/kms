@@ -5,24 +5,12 @@ This integration allows organizations to maintain complete physical control over
 
 The Cosmian KMS implementation follows and implements the Microsoft EKM Proxy API Specification for v0.1-preview.
 
-<!-- TOC -->
-- [High level architecture](#high-level-architecture)
-- [Api specification](#api-specification)
-  - [URL format](#url-format)
-  - [Endpoints](#endpoints)
-  - [Supported algorithms](#supported-algorithms)
-- [Getting started](#getting-started)
-  - [Azure Managed HSM Setup](#azure-managed-hsm-setup)
-  - [Cosmian KMS setup](#cosmian-kms-setup)
-    - [mTLS Configuration](#mtls-configuration)
-    - [Azure EKM Configuration](#azure-ekm-configuration)
-- [Testing the integration](#testing-the-integration)
-<!-- TOC -->
+[TOC]
 
 ## High level architecture
 
 ![High level architecture](high_level_arch.png)
-<!-- 
+<!--
 Mermaid chart of high level architecture diagram
 
 %%{init: {'themeVariables': { 'edgeLabelBackground': '#fff9c4' } }}%%
@@ -40,7 +28,7 @@ flowchart LR
   end
 
   B <->|"Proxy API<br>(mTLS)"| P
-  
+
   style AZ fill:#e3f2fd,stroke:#1976d2
   style DC fill:#ffe0cc,stroke:#e34319
   style P fill:#e34319,stroke:#b8330f,color:#fff
@@ -54,7 +42,6 @@ With this integration, your protected secrets remain under your complete control
 
 The following diagram illustrates a possible use case where Cosmian KMS acts as the EKM Proxy :
 
-
 ![Sequence diagram: Using an Azure Service with keys saved on customer's infrastructure](sequence.svg)
 
 <!--
@@ -64,18 +51,18 @@ sequenceDiagram
     participant Azure as Azure Service -<br/>(must support CMK)
     participant MHSM as Azure Managed HSM
     participant KMS as Cosmian KMS
-    
+
     Note over Azure: Has encrypted data<br/>protected by DEK
     Note over Azure: DEK needs to be<br/>wrapped/unwrapped
-    
+
     Azure->>MHSM: Encrypt/Decrypt data<br/>using External Key "mykey"
-    
+
     MHSM->>KMS: POST /mykey/wrapkey<br/>{"value": "DEK_plaintext"}
     Note over KMS: KEK NEVER leaves here!<br/>Wrapping happens locally
     KMS->>MHSM: {"value": "DEK_wrapped"}
-    
+
     MHSM->>Azure: Here's your wrapped DEK
-    
+
     Note over Azure: Stores wrapped DEK
 -->
 
@@ -87,19 +74,21 @@ All requests and responses for Azure EKM APIs are sent as JSON objects over HTTP
 
 The URI format for EKM Proxy API calls is:
 
-```
+```text
 https://{public-KMS-URI}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client-api-version}
 ```
 
 The parameters between brackets {} can be edited on the KMS configuration and must follow the following constraints :
 
 **Path Prefix:**
-- Maximum 64 characters  
+
+- Maximum 64 characters
 - Allowed characters: letters (a-z, A-Z), numbers (0-9), slashes (/), and dashes (-)
 
 **External Key ID:**
-- Referenced as `{key-name}` in the endpoints below  
-- Maximum 64 characters  
+
+- Referenced as `{key-name}` in the endpoints below
+- Maximum 64 characters
 - Allowed characters: letters (a-z, A-Z), numbers (0-9), and dashes (-)
 
 ### Endpoints
@@ -110,7 +99,6 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 | Get Key Metadata | POST   | /azureekm/[path-prefix]/{key-name}/metadata      | Retrieve key type, size, and supported operations |
 | Wrap Key         | POST   | /azureekm/[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
 | Unwrap Key       | POST   | /azureekm/[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
-
 
 ### Supported algorithms
 
@@ -143,6 +131,7 @@ Environment variables can also be used for all the configurations below.
 **The following guide will consider running Cosmian KMS on confidential VM in non-FIPS mode.**
 
 #### mTLS Configuration
+
 Configure mutual TLS authentication to accept connections from Azure Managed HSM by adding of editing to following lines in your configuration file:
 For detailed information about TLS client certificate authentication, see the [TLS Client Certificate configuration guide](../../configurations.md#tls-client-cert).
 
@@ -199,7 +188,6 @@ azure_ekm_disable_client_auth = false
 | `azure_ekm_ekm_vendor` | string | `"Cosmian"` | EKMS vendor name reported in `/info` endpoint.|
 | `azure_ekm_ekm_product` | string | `"Cosmian KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
 | `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
-
 
 ## Testing the integration
 

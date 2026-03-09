@@ -20,6 +20,7 @@ KMS_PORT=6789
 EKM_PREFIX="cosmian0"
 EKM_INFO_URL="https://localhost:${KMS_PORT}/azureekm/${EKM_PREFIX}/info?api-version=0.1-preview"
 
+# shellcheck disable=SC2329  # invoked indirectly via trap
 cleanup() {
     echo "Stopping KMS server..."
     [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" || true; wait "${KMS_PID}" || true; }
@@ -29,7 +30,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Building KMS server binary (${VARIANT_NAME})..."
-cargo build ${RELEASE_FLAG} ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
+cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
 echo "Starting KMS server on port ${KMS_PORT} with mTLS config..."
 
@@ -63,17 +64,17 @@ azure_ekm_ekm_product = "Cosmian KMS"
 azure_ekm_disable_client_auth = false
 EOF
 
-cargo run ${RELEASE_FLAG} ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
+cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
     --config "${KMS_CONF_PATH}" \
     &
 KMS_PID=$!
 
 echo "Waiting for KMS port ${KMS_PORT} to be open (up to 30s)..."
 if ! _wait_for_port localhost "${KMS_PORT}" 30; then
-    echo "ERROR: KMS server failed to start or bind to port ${KMS_PORT}"
+    echo "ERROR: KMS server (mTLS) failed to start or bind to port ${KMS_PORT}"
     exit 1
 fi
-echo "KMS server is ready!"
+echo "KMS server (mTLS) is ready!"
 
 # ---------------------------------------------------------------------------
 # Sad path: no client certificate -> server must reject with 401

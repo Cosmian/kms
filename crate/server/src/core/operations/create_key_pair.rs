@@ -18,6 +18,7 @@ use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
 }};
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_objects::ObjectType,
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
@@ -78,7 +79,7 @@ pub(crate) async fn create_key_pair(
             || Uuid::new_v4().to_string(),
             std::string::ToString::to_string,
         );
-    let pk_uid = sk_uid.clone() + "_pk";
+    let pk_uid = sk_uid.clone() + SYSTEM_TAG_PUBLIC_KEY;
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date
     let requested_sk_activation_date = request
