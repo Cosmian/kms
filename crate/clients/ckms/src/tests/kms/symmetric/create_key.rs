@@ -139,7 +139,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
         )?;
         //  ChaCha20 256 bit key from a base64 encoded key
         let mut rng = CsRng::from_entropy();
-        let mut key = vec![0u8; 32];
+        let mut key = vec![0_u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         create_symmetric_key(

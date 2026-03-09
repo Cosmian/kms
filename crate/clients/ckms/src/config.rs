@@ -67,6 +67,7 @@ impl ClientConfig {
 
 impl ConfigUtils for ClientConfig {}
 
+#[allow(clippy::assertions_on_result_states, clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use std::{env, fs, path::PathBuf};
