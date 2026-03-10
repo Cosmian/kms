@@ -119,7 +119,7 @@ pub(crate) async fn wrap_and_cache(
     // store the unwrapped object in the unwrapped cache
     kms.database
         .unwrapped_cache()
-        .insert(unique_identifier.to_string(), unwrapped_object)
+        .insert(unique_identifier.to_string(), object, unwrapped_object)
         .await?;
 
     Ok(())

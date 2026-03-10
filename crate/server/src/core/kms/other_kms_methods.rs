@@ -60,10 +60,10 @@ impl KMS {
         }
 
         // check if we have it in the cache
-        match self.database.unwrapped_cache().peek(uid).await? {
+        match self.database.unwrapped_cache().peek(uid, object).await? {
             Some(u) => {
                 debug!("Unwrapped cache hit");
-                return Ok(u.unwrapped_object().clone());
+                return Ok(u);
             }
             None => {
                 // try unwrapping
@@ -81,7 +81,7 @@ impl KMS {
         // update cache if there is one
         self.database
             .unwrapped_cache()
-            .insert(uid.to_owned(), unwrapped_object.clone())
+            .insert(uid.to_owned(), object, unwrapped_object.clone())
             .await?;
 
         Ok(unwrapped_object)

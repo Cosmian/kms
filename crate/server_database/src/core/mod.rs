@@ -19,7 +19,7 @@ mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
 mod unwrapped_cache;
 
-pub use crate::core::unwrapped_cache::{CachedUnwrappedObject, UnwrappedCache};
+pub use crate::core::unwrapped_cache::{CachedObject, UnwrappedCache};
 #[cfg(feature = "non-fips")]
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
