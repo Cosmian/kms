@@ -76,16 +76,28 @@ impl TryFrom<Oauth2LoginConfig> for LoginState {
     type Error = HttpClientError;
 
     fn try_from(login_config: Oauth2LoginConfig) -> Result<Self, Self::Error> {
-        let mut redirect_url = Url::parse("http://localhost:17899/authorization")?;
         // if the port is specified in the environment variable, use it
-        if let Ok(port_s) = std::env::var("OAUTH2_REDIRECT_URL_PORT") {
-            let port = port_s.parse::<u16>().map_err(|e| {
+        let port = if let Ok(port_s) = std::env::var("OAUTH2_REDIRECT_URL_PORT") {
+            port_s.parse::<u16>().map_err(|e| {
                 HttpClientError::Default(format!("Invalid OAUTH2_REDIRECT_URL_PORT: {e:?}"))
-            })?;
-            redirect_url.set_port(Some(port)).map_err(|e| {
-                HttpClientError::Default(format!("Invalid OAUTH2_REDIRECT_URL_PORT: {e:?}"))
-            })?;
-        }
+            })?
+        } else {
+            17_899_u16
+        };
+        Self::build(login_config, port)
+    }
+}
+
+impl LoginState {
+    /// Build a `LoginState` using the given explicit redirect port.
+    ///
+    /// This is the internal constructor shared by `TryFrom` and the
+    /// test-only `try_from_with_port` helper.
+    fn build(login_config: Oauth2LoginConfig, port: u16) -> HttpClientResult<Self> {
+        let mut redirect_url = Url::parse("http://localhost:17899/authorization")?;
+        redirect_url.set_port(Some(port)).map_err(|()| {
+            HttpClientError::Default(format!("Failed to set redirect URL port to {port}"))
+        })?;
 
         // Create an OAuth2 client by specifying the client ID, client secret,
         // authorization URL and token URL.
@@ -124,9 +136,20 @@ impl TryFrom<Oauth2LoginConfig> for LoginState {
             csrf_token,
         })
     }
-}
 
-impl LoginState {
+    /// Construct a `LoginState` bound to an explicit `port`, bypassing the
+    /// `OAUTH2_REDIRECT_URL_PORT` environment variable.
+    ///
+    /// Only available in test builds.  Lets each test bind its own port so
+    /// parallel tests never collide on the same socket.
+    #[cfg(test)]
+    pub(crate) fn try_from_with_port(
+        login_config: Oauth2LoginConfig,
+        port: u16,
+    ) -> HttpClientResult<Self> {
+        Self::build(login_config, port)
+    }
+
     /// This function finalizes the login process.
     /// It returns the access token.
     ///
@@ -150,8 +173,10 @@ impl LoginState {
     /// * The token exchange response cannot be parsed.
     pub async fn finalize(&self) -> HttpClientResult<String> {
         // recover the authorization code, state and other parameters from the redirect
-        // URL
-        let auth_parameters = Self::receive_authorization_parameters()?;
+        // URL.  Use the port that was actually embedded in the redirect URL at
+        // construction time (respects OAUTH2_REDIRECT_URL_PORT).
+        let port = self.redirect_url.port_or_known_default().unwrap_or(17_899);
+        let auth_parameters = Self::receive_authorization_parameters(port)?;
 
         // Once the user has been redirected to the redirect URL, you'll have access to
         // the authorization code. For security reasons, your code should verify
@@ -186,12 +211,15 @@ impl LoginState {
         })
     }
 
-    /// This function starts the server on `localhost:17899` and waits for the
+    /// This function starts the server on the given `port` and waits for the
     /// authorization code to be received from the browser window. Once the
     /// code is received, the server is closed and the authorization code is
     /// returned.
+    ///
+    /// The port must match the one embedded in the redirect URL that was sent
+    /// to the Identity Provider during the authorization request.
     #[allow(clippy::unwrap_used)]
-    fn receive_authorization_parameters() -> HttpClientResult<HashMap<String, String>> {
+    fn receive_authorization_parameters(port: u16) -> HttpClientResult<HashMap<String, String>> {
         let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
         // Spawn the server into a runtime
         let tokio_handle = tokio::runtime::Handle::current();
@@ -215,7 +243,7 @@ impl LoginState {
                         .app_data(Data::new(auth_params_tx.clone()))
                         .service(authorization_handler)
                 })
-                .bind(("127.0.0.1", 17899))?
+                .bind(("127.0.0.1", port))?
                 .run()
             })
         });

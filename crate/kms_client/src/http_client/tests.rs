@@ -342,6 +342,285 @@ mod tls_version_tests {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used)]
+mod login_tests {
+    use crate::http_client::login::{LoginState, Oauth2LoginConfig};
+
+    // Each async test that exercises `finalize()` uses its own unique port so
+    // they can run in parallel without competing for the same socket.  Ports
+    // in the range below are reserved exclusively for these tests and must not
+    // be reused elsewhere.
+    //
+    // Port    Test
+    // 17901   test_finalize_missing_state_returns_error
+    // 17902   test_finalize_missing_code_returns_error
+    // 17903   test_finalize_wrong_state_returns_error
+    // 17904   test_finalize_correct_state_fails_at_token_exchange
+
+    // A minimal OAuth2 config that refers to a reachable-but-wrong token URL
+    // (127.0.0.1:1) so that the token-exchange step always fails quickly
+    // without hanging.  Used for the tests that reach the token-exchange stage.
+    fn dummy_config() -> Oauth2LoginConfig {
+        Oauth2LoginConfig {
+            client_id: "test-client-id".to_owned(),
+            client_secret: "test-client-secret".to_owned(),
+            authorize_url: "http://localhost:1/auth".to_owned(),
+            token_url: "http://127.0.0.1:1/token".to_owned(),
+            scopes: vec!["openid".to_owned(), "email".to_owned()],
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Sync unit tests — no network, no ports
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_login_state_construction_succeeds() {
+        let state = LoginState::try_from(dummy_config());
+        assert!(
+            state.is_ok(),
+            "LoginState construction should succeed with valid config"
+        );
+    }
+
+    #[test]
+    fn test_auth_url_contains_client_id() {
+        let state = LoginState::try_from(dummy_config()).unwrap();
+        let url = state.auth_url.to_string();
+        assert!(
+            url.contains("test-client-id"),
+            "auth_url should contain the client_id, got: {url}"
+        );
+    }
+
+    #[test]
+    fn test_auth_url_contains_scopes() {
+        let state = LoginState::try_from(dummy_config()).unwrap();
+        let url = state.auth_url.to_string();
+        assert!(
+            url.contains("openid"),
+            "auth_url should contain scope 'openid', got: {url}"
+        );
+        assert!(
+            url.contains("email"),
+            "auth_url should contain scope 'email', got: {url}"
+        );
+    }
+
+    #[test]
+    fn test_auth_url_contains_pkce_challenge() {
+        let state = LoginState::try_from(dummy_config()).unwrap();
+        let url = state.auth_url.to_string();
+        assert!(
+            url.contains("code_challenge"),
+            "auth_url should contain a PKCE code_challenge, got: {url}"
+        );
+        assert!(
+            url.contains("S256"),
+            "auth_url should use S256 PKCE method, got: {url}"
+        );
+    }
+
+    #[test]
+    fn test_auth_url_has_state_param() {
+        // The CSRF state token must appear in the auth URL so the redirect can be
+        // verified in `finalize()`.
+        let state = LoginState::try_from(dummy_config()).unwrap();
+        let has_state = state
+            .auth_url
+            .query_pairs()
+            .any(|(k, _)| k.as_ref() == "state");
+        assert!(has_state, "auth_url must include a 'state' parameter");
+    }
+
+    #[test]
+    fn test_auth_url_response_type_is_code() {
+        let state = LoginState::try_from(dummy_config()).unwrap();
+        let has_code = state
+            .auth_url
+            .query_pairs()
+            .any(|(k, v)| k.as_ref() == "response_type" && v.as_ref() == "code");
+        assert!(
+            has_code,
+            "auth_url must have response_type=code for authorization-code flow"
+        );
+    }
+
+    #[test]
+    fn test_invalid_authorize_url_is_rejected() {
+        let config = Oauth2LoginConfig {
+            authorize_url: "not-a-url".to_owned(),
+            ..dummy_config()
+        };
+        assert!(
+            LoginState::try_from(config).is_err(),
+            "Invalid authorize_url should produce an error"
+        );
+    }
+
+    #[test]
+    fn test_invalid_token_url_is_rejected() {
+        let config = Oauth2LoginConfig {
+            token_url: "not-a-url".to_owned(),
+            ..dummy_config()
+        };
+        assert!(
+            LoginState::try_from(config).is_err(),
+            "Invalid token_url should produce an error"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Async tests — exercise `finalize()` by simulating the browser callback.
+    //
+    // Each test uses `LoginState::try_from_with_port` so it owns an exclusive
+    // port and can run in parallel with the other tests.
+    //
+    // The browser simulation uses `std::thread::spawn` (not `tokio::spawn`)
+    // because `finalize()` calls `std::sync::mpsc::Receiver::recv()`, a
+    // blocking call that cannot be driven from the same tokio thread.  A plain
+    // OS thread is free to issue a blocking HTTP request without interfering
+    // with the tokio scheduler.
+    // -----------------------------------------------------------------------
+
+    /// Extract the `state` query parameter from `auth_url` — that is the CSRF
+    /// token the actix handler expects.
+    fn extract_csrf_state(state: &LoginState) -> String {
+        state
+            .auth_url
+            .query_pairs()
+            .find(|(k, _)| k.as_ref() == "state")
+            .map(|(_, v)| v.into_owned())
+            .expect("state param not found in auth_url")
+    }
+
+    /// Issue a minimal HTTP GET to `url` (on a plain TCP connection) after
+    /// sleeping `delay_ms` milliseconds.  Runs on a dedicated OS thread so it
+    /// does not compete with the tokio scheduler that drives `finalize()`.
+    /// Uses raw TCP so we don't need the `blocking` reqwest feature.
+    fn spawn_browser_simulation(url: String, delay_ms: u64) {
+        std::thread::spawn(move || {
+            use std::io::Write;
+
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+
+            // Parse a URL like "http://127.0.0.1:PORT/path?query"
+            let stripped = url.trim_start_matches("http://");
+            let (host_port, path_query) = stripped
+                .find('/')
+                .map_or((stripped, "/"), |idx| (&stripped[..idx], &stripped[idx..]));
+
+            if let Ok(mut stream) = std::net::TcpStream::connect(host_port) {
+                let request = format!(
+                    "GET {path_query} HTTP/1.1\r\nHost: {host_port}\r\nConnection: close\r\n\r\n"
+                );
+                drop(stream.write_all(request.as_bytes()));
+            }
+        });
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finalize_missing_state_returns_error() {
+        const PORT: u16 = 17_901;
+        let login_state = LoginState::try_from_with_port(dummy_config(), PORT).unwrap();
+
+        // Send a callback without `state`.
+        spawn_browser_simulation(
+            format!("http://127.0.0.1:{PORT}/authorization?code=fake-code"),
+            50,
+        );
+
+        let result = login_state.finalize().await;
+        assert!(result.is_err(), "Expected error when state is missing");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("state"),
+            "Error should mention 'state', got: {msg}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finalize_missing_code_returns_error() {
+        const PORT: u16 = 17_902;
+        let login_state = LoginState::try_from_with_port(dummy_config(), PORT).unwrap();
+        let csrf = extract_csrf_state(&login_state);
+
+        // Simulate browser sending only the state (no code).
+        spawn_browser_simulation(
+            format!("http://127.0.0.1:{PORT}/authorization?state={csrf}"),
+            50,
+        );
+
+        let result = login_state.finalize().await;
+        assert!(result.is_err(), "Expected error when code is missing");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("code"),
+            "Error should mention 'code', got: {msg}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finalize_wrong_state_returns_error() {
+        const PORT: u16 = 17_903;
+        let login_state = LoginState::try_from_with_port(dummy_config(), PORT).unwrap();
+
+        // Simulate browser sending an incorrect state value.
+        spawn_browser_simulation(
+            format!("http://127.0.0.1:{PORT}/authorization?code=fake-code&state=wrong-state"),
+            50,
+        );
+
+        let result = login_state.finalize().await;
+        assert!(result.is_err(), "Expected error when state does not match");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("state"),
+            "Error should mention 'state', got: {msg}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finalize_correct_state_fails_at_token_exchange() {
+        // When a correct state + code are delivered, `finalize()` should proceed
+        // past the CSRF check and attempt the token exchange.  Our `token_url`
+        // points at `127.0.0.1:1` which is unreachable, so the function must
+        // return a network / IO error rather than a CSRF / missing-param error.
+        const PORT: u16 = 17_904;
+        let login_state = LoginState::try_from_with_port(dummy_config(), PORT).unwrap();
+        let csrf = extract_csrf_state(&login_state);
+
+        spawn_browser_simulation(
+            format!("http://127.0.0.1:{PORT}/authorization?code=fake-code&state={csrf}"),
+            50,
+        );
+
+        let result = login_state.finalize().await;
+        // Should fail at token exchange, not at CSRF or missing-param stage.
+        assert!(
+            result.is_err(),
+            "Expected a token-exchange error but got success"
+        );
+        let msg = result.unwrap_err().to_string();
+        // State and code were correct — the error must NOT be about missing/wrong
+        // state or code.
+        assert!(
+            !msg.contains("state not received"),
+            "Should not fail on missing state, got: {msg}"
+        );
+        assert!(
+            !msg.contains("code not received"),
+            "Should not fail on missing code, got: {msg}"
+        );
+        assert!(
+            !msg.contains("does not match"),
+            "Should not fail on wrong state, got: {msg}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod custom_headers_tests {
     use crate::http_client::{HttpClient, HttpClientConfig};
 

@@ -39,3 +39,4 @@ url = { workspace = true }
 
 [dev-dependencies]
 toml = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }

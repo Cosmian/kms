@@ -15,6 +15,7 @@ mod forward_proxy_tests;
 mod google_cmd;
 mod hash;
 mod hsm;
+mod login_tests;
 mod mac;
 mod rsa;
 mod secret_data;
