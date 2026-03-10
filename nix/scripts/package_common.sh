@@ -959,7 +959,11 @@ build_deb() {
   popd >/dev/null
 
   pushd crate/clients/ckms >/dev/null
-  cargo deb --no-build
+  if [ -n "$deb_variant" ]; then
+    cargo deb --no-build --variant "$deb_variant"
+  else
+    cargo deb --no-build
+  fi
   popd >/dev/null
 }
 
@@ -1196,7 +1200,11 @@ build_rpm() {
     cargo generate-rpm --target "$HOST_TRIPLE" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   fi
 
-  cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms
+  if [ -n "$rpm_variant" ]; then
+    cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms --variant "$rpm_variant"
+  else
+    cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms
+  fi
 }
 
 collect_rpm() {

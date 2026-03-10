@@ -81,8 +81,8 @@ priority = "optional"
 assets = [
   [
     "target/release/ckms",
-    "usr/sbin/",
-    "555",
+    "usr/local/bin/",
+    "755",
   ],
   [
     "target/release/libcosmian_pkcs11.so",
@@ -92,6 +92,51 @@ assets = [
 ]
 features = ["non-fips"]
 
+[package.metadata.deb.variants.fips]
+features = []
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+]
+
+[package.metadata.deb.variants.fips-dynamic]
+features = []
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+]
+
+[package.metadata.deb.variants.non-fips-dynamic]
+features = ["non-fips"]
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+]
+
 # END DEBIAN PACKAGING
 # ------------------------------------------------------------------------------
 
@@ -100,11 +145,42 @@ features = ["non-fips"]
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-  { source = "target/release/ckms", dest = "/usr/sbin/ckms", mode = "555" },
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
+features = ["non-fips"]
+
+[package.metadata.generate-rpm.variants.fips]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+]
+auto-req = "no"
+require-sh = true
+features = []
+
+[package.metadata.generate-rpm.variants.fips-dynamic]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+]
+auto-req = "no"
+require-sh = true
+features = []
+
+[package.metadata.generate-rpm.variants.non-fips-dynamic]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+]
+auto-req = "no"
+require-sh = true
+features = ["non-fips"]
 
 # END RPM PACKAGING
 # ------------------------------------------------------------------------------

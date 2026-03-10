@@ -52,12 +52,12 @@ info "Package extracted successfully"
 
 # Find the ckms binary
 CLI_BIN=""
-if [ -f "$TEMP_DIR/usr/sbin/ckms" ]; then
-  CLI_BIN="$TEMP_DIR/usr/sbin/ckms"
+if [ -f "$TEMP_DIR/usr/local/bin/ckms" ]; then
+  CLI_BIN="$TEMP_DIR/usr/local/bin/ckms"
 elif [ -f "$TEMP_DIR/usr/bin/ckms" ]; then
   CLI_BIN="$TEMP_DIR/usr/bin/ckms"
 else
-  error "ckms binary not found in expected locations (usr/sbin/ckms or usr/bin/ckms)"
+  error "ckms binary not found in expected locations (usr/local/bin/ckms or usr/bin/ckms)"
 fi
 
 info "Found ckms binary at: $CLI_BIN"
@@ -97,6 +97,6 @@ info "✓ CLI SMOKE TESTS PASSED!"
 info "============================================"
 info ""
 info "The CLI .deb package is ready for deployment:"
-info "  - Binary located at /usr/sbin/ckms"
+info "  - Binary located at /usr/local/bin/ckms"
 info "  - No Nix store dependencies"
 info "  - Binary executes successfully"

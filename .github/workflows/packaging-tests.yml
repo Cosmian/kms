@@ -186,6 +186,13 @@ jobs:
           # dpkg -i accepts multiple files
           sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
 
+      - name: Test ckms is callable without root
+        shell: bash
+        run: |
+          set -ex
+          # Verify ckms is accessible without elevated privileges
+          su -s /bin/sh nobody -c 'ckms --version'
+
       - name: systemd-analyze security cosmian_kms.service
         shell: bash
         run: |
