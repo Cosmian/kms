@@ -109,6 +109,7 @@ assets = [
 
 [package.metadata.deb.variants.fips-dynamic]
 features = []
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   [
     "target/release/ckms",
@@ -119,11 +120,37 @@ assets = [
     "target/release/libcosmian_pkcs11.so",
     "usr/local/lib/",
     "555",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/ckms/lib/libssl.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/ckms/lib/libcrypto.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
+    "usr/local/cosmian/ckms/lib/ossl-modules/fips.so",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/openssl.cnf",
+    "usr/local/cosmian/ckms/lib/ssl/openssl.cnf",
+    "644",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
+    "usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf",
+    "644",
   ],
 ]
 
 [package.metadata.deb.variants.non-fips-dynamic]
 features = ["non-fips"]
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   [
     "target/release/ckms",
@@ -134,6 +161,21 @@ assets = [
     "target/release/libcosmian_pkcs11.so",
     "usr/local/lib/",
     "555",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/ckms/lib/libssl.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/ckms/lib/libcrypto.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
+    "usr/local/cosmian/ckms/lib/ossl-modules/legacy.so",
+    "500",
   ],
 ]
 
@@ -164,9 +206,15 @@ features = []
 
 [package.metadata.generate-rpm.variants.fips-dynamic]
 license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+  { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/fips.so", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf", mode = "644" },
 ]
 auto-req = "no"
 require-sh = true
@@ -174,9 +222,13 @@ features = []
 
 [package.metadata.generate-rpm.variants.non-fips-dynamic]
 license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/legacy.so", mode = "500" },
 ]
 auto-req = "no"
 require-sh = true

@@ -629,6 +629,13 @@ resolve_openssl_path() {
   local generic_path_workspace="$REPO_ROOT/target/${generic_basename}"
   rm -f "$generic_path_workspace" 2>/dev/null || true
   ln -sf "${stage_basename}" "$generic_path_workspace"
+
+  # Create symlink in crate/clients/ckms/target for cargo-deb/cargo-generate-rpm of the CLI
+  # The CLI Cargo.toml references target/openssl-*/... paths, resolved relative to its crate directory
+  mkdir -p "$REPO_ROOT/crate/clients/ckms/target"
+  local generic_path_cli="$REPO_ROOT/crate/clients/ckms/target/${generic_basename}"
+  rm -f "$generic_path_cli" 2>/dev/null || true
+  ln -sf "$stage_dir" "$generic_path_cli"
 }
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
