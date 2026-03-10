@@ -58,17 +58,22 @@ jobs:
             for pkg in ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm; do
               rpm -qpl "$pkg"
             done
-            rpm -i ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm --nodeps || true
+            rpm -i ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm --nodeps
           else
             # DEB-based (Ubuntu/Debian)
             # dpkg --contents accepts only one file at a time
             for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
               dpkg --contents "$pkg"
             done
-            # dpkg -i accepts multiple files
-            dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
-            # Fix unresolved dependencies (e.g. libssl3 vs libssl3t64 on bookworm)
-            apt-get update -qq && apt-get install -f -y || true
+            if [ "${{ matrix.link }}" = "dynamic" ]; then
+              # Dynamic builds depend on system libssl3/libssl3t64 for ckms;
+              # dpkg -i will report dependency errors — fix them with apt.
+              dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+              apt-get update -qq && apt-get install -f -y
+            else
+              # Static builds should install cleanly with no missing deps
+              dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
+            fi
           fi
 
       - name: Enable info flag in config
@@ -86,10 +91,12 @@ jobs:
         shell: bash
         run: |
           set -ex
+          # Determine installed ckms binary path (Nix: /usr/sbin, cargo-deb: /usr/local/bin)
+          CKMS="/usr/local/bin/ckms"
           # Verify ckms is accessible without elevated privileges.
           # LD_LIBRARY_PATH ensures dynamic builds can find libssl.so.3
           # bundled in the CLI package under /usr/local/cosmian/ckms/lib/
-          su -s /bin/sh nobody -c 'LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib /usr/local/bin/ckms --version'
+          su -s /bin/sh nobody -c "LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib $CKMS --version"
 
       - name: Pre-check server binary
         shell: bash
@@ -185,15 +192,24 @@ jobs:
           for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
             dpkg --contents "$pkg"
           done
-          # dpkg -i accepts multiple files
-          sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+          if [ "${{ matrix.link }}" = "dynamic" ]; then
+            # Dynamic builds depend on system libssl3/libssl3t64 for ckms;
+            # dpkg -i will report dependency errors — fix them with apt.
+            sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+            sudo apt-get update -qq && sudo apt-get install -f -y
+          else
+            # Static builds should install cleanly with no missing deps
+            sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
+          fi
 
-      - name: Test ckms is callable without root
+      - name: Pre-check ckms
         shell: bash
         run: |
           set -ex
+          # Determine installed ckms binary path (Nix: /usr/sbin, cargo-deb: /usr/local/bin)
+          CKMS="/usr/local/bin/ckms"
           # Verify ckms is accessible without elevated privileges
-          sudo -u nobody /usr/local/bin/ckms --version
+          sudo -u nobody "$CKMS" --version
 
       - name: systemd-analyze security cosmian_kms.service
         shell: bash
