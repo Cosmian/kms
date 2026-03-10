@@ -1,5 +1,6 @@
-use cosmian_http_client::HttpClientConfig;
 use serde::{Deserialize, Serialize};
+
+use crate::http_client::HttpClientConfig;
 
 /// The configuration that is used by the google command
 /// to perform actions over Gmail API.
@@ -39,5 +40,93 @@ impl Default for KmsClientConfig {
             gmail_api_conf: None,
             print_json: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{KmsClient, KmsClientConfig};
+
+    /// A valid `"Name: Value"` string should be accepted without error.
+    #[test]
+    fn test_custom_headers_valid() {
+        let mut config = KmsClientConfig::default();
+        config.http_config.custom_headers = Some(vec!["X-My-Header: my-value".to_owned()]);
+        assert!(
+            KmsClient::new_with_config(config).is_ok(),
+            "valid header should be accepted"
+        );
+    }
+
+    /// Multiple valid headers should all be accepted.
+    #[test]
+    fn test_custom_headers_multiple_valid() {
+        let mut config = KmsClientConfig::default();
+        config.http_config.custom_headers = Some(vec![
+            "X-First: first".to_owned(),
+            "X-Second: second".to_owned(),
+        ]);
+        assert!(
+            KmsClient::new_with_config(config).is_ok(),
+            "multiple valid headers should be accepted"
+        );
+    }
+
+    /// A string without a colon separator must be rejected at construction time.
+    #[test]
+    fn test_custom_headers_missing_colon_is_error() {
+        let mut config = KmsClientConfig::default();
+        config.http_config.custom_headers = Some(vec!["InvalidHeaderNoColo".to_owned()]);
+        let result = KmsClient::new_with_config(config);
+        assert!(
+            result.is_err(),
+            "expected an error for header without colon"
+        );
+        if let Err(e) = result {
+            assert!(
+                e.to_string().contains("InvalidHeaderNoColo"),
+                "error message should reference the bad header: {e}"
+            );
+        }
+    }
+
+    /// A header with an invalid name (non-ASCII) must be rejected.
+    #[test]
+    fn test_custom_headers_invalid_name_is_error() {
+        let mut config = KmsClientConfig::default();
+        config.http_config.custom_headers = Some(vec!["X-Héader: value".to_owned()]);
+        assert!(
+            KmsClient::new_with_config(config).is_err(),
+            "non-ASCII header name should be rejected"
+        );
+    }
+
+    /// `None` (no custom headers configured) is accepted silently.
+    #[test]
+    fn test_custom_headers_none_is_ok() {
+        let config = KmsClientConfig::default();
+        assert!(
+            KmsClient::new_with_config(config).is_ok(),
+            "None custom_headers should be accepted"
+        );
+    }
+
+    /// Serialisation round-trip: `custom_headers` must survive TOML
+    /// serialise → deserialise.
+    #[test]
+    #[allow(clippy::panic_in_result_fn)]
+    fn test_custom_headers_toml_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        let mut original = KmsClientConfig::default();
+        original.http_config.custom_headers = Some(vec![
+            "X-Token: abc123".to_owned(),
+            "X-Env: production".to_owned(),
+        ]);
+        let toml_str = toml::to_string(&original)?;
+        let restored: KmsClientConfig = toml::from_str(&toml_str)?;
+        assert_eq!(
+            original.http_config.custom_headers,
+            restored.http_config.custom_headers
+        );
+        Ok(())
     }
 }

@@ -23,7 +23,40 @@ ssl_client_pkcs12_path = "../../test_data/certificates/client_server/owner/kms.c
 ssl_client_pkcs12_password = "password"
 ```
 
-## Example with OpenID authentication
+## Example with custom HTTP headers
+
+Some deployments place the KMS server behind a zero-trust proxy (e.g. Cloudflare
+Zero Trust) that requires an extra HTTP header on every request.  Use the
+`custom_headers` field — or the `--header` / `-H` CLI flag — to pass
+arbitrary headers in `"Name: Value"` format.
+
+### Via the configuration file
+
+```toml
+[http_config]
+server_url = "https://kms.example.com"
+
+# One or more headers in "Name: Value" format
+custom_headers = [
+    "cf-access-token: <your-cloudflare-access-token>",
+    "X-Custom-Header: my-value",
+]
+```
+
+### Via the command line
+
+The `--header` (short: `-H`) flag mirrors `curl`'s convention and can be
+repeated for multiple headers:
+
+```sh
+# Single header
+ckms --header "cf-access-token: <token>" server-version
+
+# Multiple headers
+ckms -H "cf-access-token: <token>" -H "X-Env: production" sym keys create
+```
+
+CLI flags merge with any `custom_headers` already present in `ckms.toml`.
 
 KMS can be configured with OpenID Connect (OIDC) authentication. In that case, KMS CLI must use the `oauth2_conf` field to authenticate to the server.
 

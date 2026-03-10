@@ -15,7 +15,7 @@ use url::Url;
 
 use crate::{
     actions::markdown::MarkdownAction, cli_error, config::ClientConfig,
-    error::result::CosmianResult, proxy_config::ProxyConfig,
+    error::result::CosmianResult, headers_config::HeadersConfig, proxy_config::ProxyConfig,
 };
 
 /// Updates proxy configuration for the KMS client
@@ -26,6 +26,18 @@ use crate::{
 ///
 /// # Errors
 /// Returns an error if the proxy URL cannot be parsed
+/// Merges custom HTTP headers from the CLI into the client configuration.
+fn update_headers_config(config: &mut ClientConfig, headers_config: &HeadersConfig) {
+    if !headers_config.custom_headers.is_empty() {
+        let existing = config
+            .kms_config
+            .http_config
+            .custom_headers
+            .get_or_insert_with(Vec::new);
+        existing.extend(headers_config.custom_headers.clone());
+    }
+}
+
 fn update_proxy_config(config: &mut ClientConfig, proxy_config: &ProxyConfig) -> CosmianResult<()> {
     let proxy_params: Option<ProxyParams> = if let Some(url) = &proxy_config.proxy_url {
         let exclusion_list = proxy_config
@@ -81,6 +93,9 @@ pub struct Cli {
     pub accept_invalid_certs: bool,
 
     #[clap(flatten)]
+    pub headers: HeadersConfig,
+
+    #[clap(flatten)]
     pub proxy: ProxyConfig,
 }
 
@@ -95,7 +110,7 @@ pub enum CliCommands {
     /// documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
-    /// Configure the KMS CLI (creates/updates ckms.toml)
+    /// Configure the KMS CLI (create ckms.toml)
     Configure,
 }
 
@@ -129,6 +144,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
     }
     config.kms_config.print_json = Some(cli.print_json);
 
+    update_headers_config(&mut config, &cli.headers);
     update_proxy_config(&mut config, &cli.proxy)?;
 
     trace!("Configuration: {config:#?}");

@@ -831,7 +831,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                 Some(TTLValue::BigInteger(kbi)) => {
                                     mag_opt = Some(kbi.clone());
                                 }
-                                Some(TTLValue::Structure(inner)) => {
+                                Some(TTLValue::Structure(inner))
                                     if !inner.is_empty()
                                         && inner.iter().all(|e| {
                                             e.tag == current_tag
@@ -839,7 +839,56 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                                     e.value,
                                                     TTLValue::Integer(_) | TTLValue::LongInteger(_)
                                                 )
-                                        })
+                                        }) =>
+                                {
+                                    let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
+                                    for e in inner {
+                                        match e.value {
+                                            TTLValue::Integer(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
+                                                }
+                                            }
+                                            TTLValue::LongInteger(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    if let Ok(kbi) =
+                                        kmip_big_int::KmipBigInt::from_u32_digits(1, &digits)
+                                    {
+                                        mag_opt = Some(kbi);
+                                    }
+                                }
+                                _ => {}
+                            }
+
+                            let mut j = i + 1;
+                            while j < items_mut.len()
+                                && items_mut.get(j).is_some_and(|e| e.tag == current_tag)
+                            {
+                                last_same_tag_index = j;
+                                match items_mut.get(j).map(|e| &e.value) {
+                                    Some(TTLValue::Integer(v)) if sign_opt.is_none() => {
+                                        sign_opt = Some(*v);
+                                    }
+                                    Some(TTLValue::BigInteger(kbi)) if mag_opt.is_none() => {
+                                        mag_opt = Some(kbi.clone());
+                                    }
+                                    Some(TTLValue::Structure(inner))
+                                        if mag_opt.is_none()
+                                            && !inner.is_empty()
+                                            && inner.iter().all(|e| {
+                                                e.tag == current_tag
+                                                    && matches!(
+                                                        e.value,
+                                                        TTLValue::Integer(_)
+                                                            | TTLValue::LongInteger(_)
+                                                    )
+                                            }) =>
                                     {
                                         let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
                                         for e in inner {
@@ -861,64 +910,6 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                             kmip_big_int::KmipBigInt::from_u32_digits(1, &digits)
                                         {
                                             mag_opt = Some(kbi);
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-
-                            let mut j = i + 1;
-                            while j < items_mut.len()
-                                && items_mut.get(j).is_some_and(|e| e.tag == current_tag)
-                            {
-                                last_same_tag_index = j;
-                                match items_mut.get(j).map(|e| &e.value) {
-                                    Some(TTLValue::Integer(v)) => {
-                                        if sign_opt.is_none() {
-                                            sign_opt = Some(*v);
-                                        }
-                                    }
-                                    Some(TTLValue::BigInteger(kbi)) => {
-                                        if mag_opt.is_none() {
-                                            mag_opt = Some(kbi.clone());
-                                        }
-                                    }
-                                    Some(TTLValue::Structure(inner)) => {
-                                        if mag_opt.is_none()
-                                            && !inner.is_empty()
-                                            && inner.iter().all(|e| {
-                                                e.tag == current_tag
-                                                    && matches!(
-                                                        e.value,
-                                                        TTLValue::Integer(_)
-                                                            | TTLValue::LongInteger(_)
-                                                    )
-                                            })
-                                        {
-                                            let mut digits: Vec<u32> =
-                                                Vec::with_capacity(inner.len());
-                                            for e in inner {
-                                                match e.value {
-                                                    TTLValue::Integer(v) => {
-                                                        if let Ok(u) = u32::try_from(v) {
-                                                            digits.push(u);
-                                                        }
-                                                    }
-                                                    TTLValue::LongInteger(v) => {
-                                                        if let Ok(u) = u32::try_from(v) {
-                                                            digits.push(u);
-                                                        }
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                            if let Ok(kbi) =
-                                                kmip_big_int::KmipBigInt::from_u32_digits(
-                                                    1, &digits,
-                                                )
-                                            {
-                                                mag_opt = Some(kbi);
-                                            }
                                         }
                                     }
                                     _ => {}

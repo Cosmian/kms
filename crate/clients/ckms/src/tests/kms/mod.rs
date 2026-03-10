@@ -8,6 +8,7 @@ mod certificates;
 mod configurable_kem;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;
+mod custom_headers_tests;
 mod derive_key;
 mod elliptic_curve;
 mod forward_proxy_tests;

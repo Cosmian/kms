@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🚀 Features
+
+- feat(cli): add `--header`/`-H` flag and `custom_headers` config option to forward arbitrary HTTP headers with every request, enabling use behind zero-trust proxies such as Cloudflare Access ([#138](https://github.com/Cosmian/cli/issues/138))
+
 ## [5.17.0] - 2026-02-24
 
 ### 🚀 Features

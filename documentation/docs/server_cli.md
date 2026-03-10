@@ -35,6 +35,9 @@ Options:
       --info
           Print the server configuration information and exit
 
+      --print-default-config
+          Serialize the default server configuration as TOML to stdout and exit. This is used to keep the documentation in sync with the Rust struct
+
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
