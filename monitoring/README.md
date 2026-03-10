@@ -97,10 +97,14 @@ KMS_VERSION=latest
 ENVIRONMENT=production
 
 # Grafana
-GRAFANA_ADMIN_PASSWORD=mySecurePassword123
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=mySecureGrafanaPassword123
 
 # VictoriaMetrics
 METRICS_RETENTION_MONTHS=12
+
+# KMS
+KMS_P12_PASSWORD=mySecureKMSPassword123
 ```
 
 ---
