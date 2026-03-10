@@ -1,11 +1,16 @@
 use std::{
     collections::HashMap,
+    hash::{BuildHasher, Hash, Hasher, RandomState},
     num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use cosmian_kmip::{
+    KmipError,
+    kmip_2_1::kmip_objects::Object,
+    ttlv::{KmipFlavor, to_ttlv},
+};
 use cosmian_logger::{debug, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
@@ -51,7 +56,8 @@ impl CachedUnwrappedObject {
 /// The value is the unwrapped object
 /// The value is a `Err(KmsError)` if the object cannot be unwrapped
 pub struct UnwrappedCache {
-    cache: Arc<RwLock<LruCache<String, DbResult<CachedUnwrappedObject>>>>,
+    key: RandomState,
+    cache: Arc<RwLock<LruCache<String, CachedUnwrappedObject>>>,
     access_timestamps: Arc<RwLock<HashMap<String, Instant>>>,
     access_sender: Option<Sender<String>>,
     gc_interval: Duration,
@@ -84,6 +90,7 @@ impl UnwrappedCache {
         let gc_interval = max_age + max_age / 2;
 
         let unwrapped_cache = Self {
+            key: RandomState::new(),
             cache,
             access_timestamps,
             access_sender: Some(tx),
@@ -167,30 +174,36 @@ impl UnwrappedCache {
         }
     }
 
+    /// Return the fingerprint of this object.
+    /// The value is the `SipHash` of the key block key bytes.
+    fn fingerprint(&self, object: &Object) -> DbResult<u64> {
+        to_ttlv(&object)
+            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+            .map_err(KmipError::from)
+            .map_err(DbError::from)
+            .map(|bytes| {
+                let mut hasher = self.key.build_hasher();
+                bytes.hash(&mut hasher);
+                hasher.finish()
+            })
+    }
+
     /// Validate the cache for a given object
     /// If the object fingerprint is different, the cache is invalidated
     /// and the value is removed.
-    pub async fn validate_cache(&self, uid: &str, object: &Object) {
-        if let Ok(fingerprint) = object.fingerprint() {
-            let mut cache = self.cache.write().await;
-            // invalidate the value in cache if the signature is different
-            match cache.peek(uid) {
-                Some(Ok(cached_object)) => {
-                    if cached_object.fingerprint() != fingerprint {
-                        trace!("Invalidating the cache for {}", uid);
-                        cache.pop(uid);
-                    }
-                }
-                Some(Err(_)) => {
-                    // Note: this forces invalidation every time
-                    // but trying to unwrap a key that fails to unwrap
-                    // should be an exceptional case
+    pub async fn validate_cache(&self, uid: &str, object: &Object) -> DbResult<()> {
+        let mut cache = self.cache.write().await;
+        // invalidate the value in cache if the signature is different
+        match cache.peek(uid) {
+            Some(cached_object) => {
+                if cached_object.fingerprint() != self.fingerprint(object)? {
                     trace!("Invalidating the cache for {}", uid);
                     cache.pop(uid);
                 }
-                None => {}
             }
+            None => {}
         }
+        Ok(())
     }
 
     /// Clear a value from the cache
@@ -200,35 +213,46 @@ impl UnwrappedCache {
     }
 
     /// Peek into the cache
-    pub async fn peek(&self, uid: &str) -> Option<DbResult<CachedUnwrappedObject>> {
+    pub async fn peek(&self, uid: &str) -> DbResult<Option<CachedUnwrappedObject>> {
         let cache_read = self.cache.read();
 
-        // Errors (almost) never derive Clone, so we have to do an explicit match to only clone the Ok variant and record the access to it
+        // Errors (almost) never derive Clone, so we have to do an explicit
+        // match to only clone the Ok variant and record the access to it
         match cache_read.await.peek(uid) {
-            Some(Ok(cached_obj)) => {
+            Some(cached_object) => {
                 self.record_access(uid).await;
-                Some(Ok(cached_obj.clone()))
+                if cached_object.fingerprint()
+                    == self.fingerprint(cached_object.unwrapped_object())?
+                {
+                    Ok(Some(cached_object.clone()))
+                } else {
+                    Ok(None)
+                }
             }
-            Some(Err(_)) => Some(Err(DbError::UnwrappedCache(format!(
-                "Error retrieving cached object for {uid}"
-            )))),
-            None => None,
+            None => Ok(None),
         }
     }
 
     /// Insert into the cache
-    pub async fn insert(&self, uid: String, unwrapped_object: DbResult<CachedUnwrappedObject>) {
-        self.cache.write().await.put(uid.clone(), unwrapped_object);
+    pub async fn insert(&self, uid: String, unwrapped_object: Object) -> DbResult<()> {
+        self.cache.write().await.put(
+            uid.clone(),
+            CachedUnwrappedObject {
+                fingerprint: self.fingerprint(&unwrapped_object)?,
+                unwrapped_object,
+            },
+        );
+
         self.access_timestamps
             .write()
             .await
             .insert(uid, Instant::now());
+
+        Ok(())
     }
 
     #[cfg(test)]
-    pub async fn get_cache(
-        &self,
-    ) -> RwLockReadGuard<'_, LruCache<String, DbResult<CachedUnwrappedObject>>> {
+    pub async fn get_cache(&self) -> RwLockReadGuard<'_, LruCache<String, CachedUnwrappedObject>> {
         self.cache.read().await
     }
 }
@@ -317,7 +341,14 @@ mod tests {
         assert_eq!(&uid, &uid_);
 
         // The key should not be in the cache
-        assert!(database.unwrapped_cache().peek(&uid).await.is_none());
+        assert!(
+            database
+                .unwrapped_cache()
+                .peek(&uid)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // fetch the key
         let owm = database.retrieve_object(&uid).await?;
@@ -346,26 +377,23 @@ mod tests {
 
         // Insert an item
         let uid = "test_item".to_owned();
-        let object = super::CachedUnwrappedObject::new(
-            123,
-            create_symmetric_key_kmip_object(
-                &[0; 32],
-                &Attributes {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    ..Attributes::default()
-                },
-            )?,
-        );
-        cache.insert(uid.clone(), Ok(object)).await;
+        let object = create_symmetric_key_kmip_object(
+            &[0; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Attributes::default()
+            },
+        )?;
+        cache.insert(uid.clone(), object).await?;
 
         // Verify it's in the cache
-        assert!(cache.peek(&uid).await.is_some());
+        assert!(cache.peek(&uid).await?.is_some());
 
         // Wait for the item to be garbage collected
         tokio::time::sleep(Duration::from_millis(350)).await;
 
         // The item should be gone
-        assert!(cache.peek(&uid).await.is_none());
+        assert!(cache.peek(&uid).await?.is_none());
 
         Ok(())
     }
@@ -381,20 +409,17 @@ mod tests {
 
             // Insert an item
             let uid = "test_item".to_owned();
-            let object = super::CachedUnwrappedObject::new(
-                123,
-                create_symmetric_key_kmip_object(
-                    &[0; 32],
-                    &Attributes {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                        ..Attributes::default()
-                    },
-                )?,
-            );
-            cache.insert(uid.clone(), Ok(object)).await;
+            let object = create_symmetric_key_kmip_object(
+                &[0; 32],
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Attributes::default()
+                },
+            )?;
+            cache.insert(uid.clone(), object).await?;
 
             // Verify it's in the cache
-            assert!(cache.peek(&uid).await.is_some());
+            assert!(cache.peek(&uid).await?.is_some());
         };
 
         // Cache has been dropped here, thread should be shutting down

@@ -1,21 +1,16 @@
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::{CryptographicUsageMask, State},
-            kmip_2_1::{
-                KmipOperation,
-                extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-                kmip_attributes::Attributes,
-                kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-                kmip_objects::{Object, ObjectType},
-                kmip_types::{
-                    EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier,
-                },
-            },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CryptographicUsageMask, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+            kmip_objects::{Object, ObjectType},
+            kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
         },
-        cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
     },
+    cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
 use cosmian_logger::{debug, trace, warn};
 
@@ -124,14 +119,9 @@ pub(crate) async fn wrap_and_cache(
     // store the unwrapped object in the unwrapped cache
     kms.database
         .unwrapped_cache()
-        .insert(
-            unique_identifier.to_string(),
-            Ok(CachedUnwrappedObject::new(
-                object.fingerprint()?,
-                unwrapped_object,
-            )),
-        )
-        .await;
+        .insert(unique_identifier.to_string(), unwrapped_object)
+        .await?;
+
     Ok(())
 }
 
