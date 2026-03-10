@@ -67,6 +67,8 @@ jobs:
             done
             # dpkg -i accepts multiple files
             dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+            # Fix unresolved dependencies (e.g. libssl3 vs libssl3t64 on bookworm)
+            apt-get update -qq && apt-get install -f -y || true
           fi
 
       - name: Enable info flag in config
@@ -191,7 +193,7 @@ jobs:
         run: |
           set -ex
           # Verify ckms is accessible without elevated privileges
-          su -s /bin/sh nobody -c '/usr/local/bin/ckms --version'
+          sudo -u nobody /usr/local/bin/ckms --version
 
       - name: systemd-analyze security cosmian_kms.service
         shell: bash
