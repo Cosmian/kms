@@ -1,5 +1,3 @@
-# reference TOML configuration shown in the documentation.
-#
 # WHY IT LIVES INSIDE THE CRATE:
 # `cargo publish` only packages files under the crate root (`crate/server/`). The canonical
 # deployment template at `pkg/kms.toml` is outside that boundary and would be absent from
@@ -279,3 +277,4 @@ azure_ekm_enable = false
 aws_xks_enable = false
 
 [kmip.allowlists]
+
