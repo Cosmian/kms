@@ -64,11 +64,12 @@ jobs:
       - name: Warm Nix store
         run: |
           sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
-            for attempt in 1 2 3 4 5; do
-              echo "[attempt $attempt] nix-prefetch-url --unpack $url"
-              if nix-prefetch-url --unpack "$url" 2>/dev/null; then break; fi
-              sleep $((attempt * 5))
-            done
+            dest="/tmp/$(basename "$url")"
+            echo "Downloading $url with curl …"
+            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack "file://$dest"
+            rm -f "$dest"
           done
 
       - name: Run docker containers
@@ -147,11 +148,12 @@ jobs:
       - name: Warm Nix store
         run: |
           sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
-            for attempt in 1 2 3 4 5; do
-              echo "[attempt $attempt] nix-prefetch-url --unpack $url"
-              if nix-prefetch-url --unpack "$url" 2>/dev/null; then break; fi
-              sleep $((attempt * 5))
-            done
+            dest="/tmp/$(basename "$url")"
+            echo "Downloading $url with curl …"
+            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack "file://$dest"
+            rm -f "$dest"
           done
 
       - name: Test
