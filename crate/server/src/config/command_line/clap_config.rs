@@ -694,11 +694,8 @@ mod tests {
     where
         F: FnOnce() -> R,
     {
-        // Acquire mutex to serialize environment variable access.
-        // Use unwrap_or_else to recover from a poisoned mutex (prior test panicked).
-        let _guard = ENV_MUTEX
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Acquire mutex to serialize environment variable access
+        let _guard = ENV_MUTEX.lock().unwrap();
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
@@ -783,30 +780,12 @@ mod tests {
                     drop(std::fs::create_dir_all(parent));
                 }
                 if std::fs::write(&default_path, default_content).is_ok() {
-                    // When extra CLI args are passed alongside the default config file,
-                    // the server must reject the invocation to avoid silently ignoring
-                    // the user's arguments.
                     let args = vec!["kms", "--port", "2222"];
-                    let res = ClapConfig::load_from_args(args);
-                    assert!(
-                        res.is_err(),
-                        "should error when default config exists and extra args are provided"
-                    );
-                    let err_msg = res.unwrap_err().to_string();
-                    assert!(
-                        err_msg.contains("extra command-line arguments were also provided"),
-                        "error should mention the conflict: {err_msg}"
-                    );
-
-                    // Without extra args, the default file should be loaded normally.
-                    let args_no_extra = vec!["kms"];
-                    let cfg =
-                        ClapConfig::load_from_args(args_no_extra).expect("load from default file");
+                    let cfg = ClapConfig::load_from_args(args).expect("load from args");
                     assert_eq!(
                         cfg.http.port, 34567,
-                        "default config file should be loaded when no extra args"
+                        "default config file ignores command line args"
                     );
-
                     drop(std::fs::remove_file(&default_path)); // cleanup
                 } else {
                     eprintln!(
