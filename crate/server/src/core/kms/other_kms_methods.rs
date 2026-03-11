@@ -4,23 +4,20 @@ use std::collections::HashSet;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject, DbError,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::SecretDataType,
-            kmip_2_1::{
-                extra::tagging::SYSTEM_TAG_SECRET_DATA,
-                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-                kmip_objects::{Object, SecretData},
-                kmip_operations::Create,
-                kmip_types::{CryptographicAlgorithm, KeyFormatType},
-                requests::create_symmetric_key_kmip_object,
-            },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType,
+        kmip_2_1::{
+            extra::tagging::SYSTEM_TAG_SECRET_DATA,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, SecretData},
+            kmip_operations::Create,
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+            requests::create_symmetric_key_kmip_object,
         },
-        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-        cosmian_kms_interfaces::EncryptionOracle,
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+    cosmian_kms_interfaces::EncryptionOracle,
 };
 use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
@@ -63,53 +60,26 @@ impl KMS {
         }
 
         // check if we have it in the cache
-        match self.database.unwrapped_cache().peek(uid).await {
-            Some(Ok(u)) => {
-                // Note: In theory, the cache should always be in sync...
-                if u.fingerprint() == object.fingerprint()? {
-                    debug!("Unwrapped cache hit");
-                    return Ok(u.unwrapped_object().clone());
-                }
-            }
-            Some(Err(e)) => {
-                return Err(KmsError::Database(DbError::UnwrappedCache(format!(
-                    "Error retrieving cached object for {uid}: {e}",
-                ))));
-            }
-            None => {
-                // try unwrapping
-            }
+        if let Some(u) = self.database.unwrapped_cache().peek(uid, object).await? {
+            debug!("Unwrapped cache hit");
+            return Ok(u);
         }
-
-        // local async future that unwraps the object
-        let unwrap_local = async {
-            let fingerprint = object.fingerprint()?;
-            let mut unwrapped_object = object.clone();
-            unwrap_object(&mut unwrapped_object, self, user).await?;
-            Ok::<_, KmsError>(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
-        };
 
         // cache miss, try to unwrap
         debug!("Unwrapped cache miss. Calling unwrap");
-        let unwrapped_object = unwrap_local.await;
-        // pre-calculating the result avoids a clone on the `CachedUnwrappedObject`
-        let result = unwrapped_object
-            .as_ref()
-            .map(|u| u.unwrapped_object().to_owned())
-            .map_err(|e| {
-                // an error reference is returned, but we need an owned one
-                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {e}")))
-            });
+        let unwrapped_object = {
+            let mut unwrapped_object = object.clone();
+            unwrap_object(&mut unwrapped_object, self, user).await?;
+            unwrapped_object
+        };
+
         // update cache if there is one
         self.database
             .unwrapped_cache()
-            .insert(
-                uid.to_owned(),
-                unwrapped_object.map_err(|e| DbError::UnwrappedCache(e.to_string())),
-            )
-            .await;
-        // return the result
-        result
+            .insert(uid.to_owned(), object, unwrapped_object.clone())
+            .await?;
+
+        Ok(unwrapped_object)
     }
 
     /// Create a new symmetric key and the corresponding system tags

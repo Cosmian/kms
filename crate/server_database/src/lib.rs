@@ -36,8 +36,7 @@
 
 mod core;
 pub use core::{
-    AdditionalObjectStoresParams, CachedUnwrappedObject, Database, MainDbKind, MainDbParams,
-    UnwrappedCache,
+    AdditionalObjectStoresParams, CachedObject, Database, MainDbKind, MainDbParams, UnwrappedCache,
 };
 mod error;
 pub use error::DbError;
