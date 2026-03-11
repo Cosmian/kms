@@ -63,7 +63,7 @@ jobs:
 
       - name: Warm Nix store
         run: |
-          grep -oP 'url\s*=\s*"\Khttps://[^"]+\.tar\.gz' default.nix | sort -u | while read -r url; do
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
             for attempt in 1 2 3 4 5; do
               echo "[attempt $attempt] nix-prefetch-url --unpack $url"
               if nix-prefetch-url --unpack "$url" 2>/dev/null; then break; fi
@@ -146,7 +146,7 @@ jobs:
 
       - name: Warm Nix store
         run: |
-          grep -oP 'url\s*=\s*"\Khttps://[^"]+\.tar\.gz' default.nix | sort -u | while read -r url; do
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
             for attempt in 1 2 3 4 5; do
               echo "[attempt $attempt] nix-prefetch-url --unpack $url"
               if nix-prefetch-url --unpack "$url" 2>/dev/null; then break; fi
