@@ -47,6 +47,11 @@ jobs:
 
       - name: Nix installation
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
 
       - uses: actions/checkout@v6
         with:
