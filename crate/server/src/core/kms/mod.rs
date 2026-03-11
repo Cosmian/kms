@@ -9,7 +9,7 @@ use std::{collections::HashMap, sync::Arc};
 use cosmian_kms_server_database::{
     Database,
     reexport::cosmian_kms_interfaces::{
-        EncryptionOracle, HSM, HsmEncryptionOracle, HsmStore, ObjectsStore,
+        CryptoOracle, HSM, HsmCryptoOracle, HsmStore, ObjectsStore,
     },
 };
 use cosmian_logger::trace;
@@ -74,10 +74,10 @@ pub struct KMS {
     /// - The permissions store that stores the permissions granted to users on the objects.
     pub(crate) database: Database,
 
-    /// Encryption Oracles are used to encrypt/decrypt data using keys with specific prefixes.
-    /// A typical use case is delegating encryption/decryption to an HSM.
-    /// This is a map of key prefixes to encryption oracles.
-    pub(crate) encryption_oracles: RwLock<HashMap<String, Box<dyn EncryptionOracle + Sync + Send>>>,
+    /// Crypto Oracles are used to encrypt/decrypt/sign data using keys with specific prefixes.
+    /// A typical use case is delegating cryptographic operations to an HSM.
+    /// This is a map of key prefixes to crypto oracles.
+    pub(crate) crypto_oracles: RwLock<HashMap<String, Box<dyn CryptoOracle + Sync + Send>>>,
 
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
@@ -129,19 +129,19 @@ impl KMS {
         .await?;
 
         // HSMs are also encryption oracles
-        let mut encryption_oracles: HashMap<String, Box<dyn EncryptionOracle + Sync + Send>> =
+        let mut crypto_oracles: HashMap<String, Box<dyn CryptoOracle + Sync + Send>> =
             HashMap::new();
         if let Some(hsm) = hsm.clone() {
-            encryption_oracles.insert(
+            crypto_oracles.insert(
                 "hsm".to_owned(),
-                Box::new(HsmEncryptionOracle::new(hsm.clone())),
+                Box::new(HsmCryptoOracle::new(hsm.clone())),
             );
         }
 
         Ok(Self {
             params: server_params.clone(),
             database,
-            encryption_oracles: RwLock::new(encryption_oracles),
+            crypto_oracles: RwLock::new(crypto_oracles),
             hsm: hsm.clone(),
             metrics: Self::create_otel_metrics(&server_params)?,
         })

@@ -46,6 +46,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+            is_user_authorized_for_operation,
         },
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
@@ -87,21 +88,14 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
     let mut found_but_no_permission = false;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user).await? {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false)
-                    .await?;
-                if !ops
-                    .iter()
-                    .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-                {
-                    debug!("{user} is not authorized to decrypt using: {uid}");
-                    continue;
-                }
+            if !is_user_authorized_for_operation(&kms.database, &uid, user, KmipOperation::Decrypt)
+                .await?
+            {
+                debug!("{user} is not authorized to decrypt using: {uid}");
+                continue;
             }
             debug!("{user} is authorized to decrypt using: {uid}");
-            return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
+            return decrypt_using_crypto_oracle(kms, &request, &uid, prefix).await;
         }
 
         // Default database
@@ -222,7 +216,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
 ///
 /// # Returns
 /// * the decrypt response
-async fn decrypt_using_encryption_oracle(
+async fn decrypt_using_crypto_oracle(
     kms: &KMS,
     request: &Decrypt,
     uid: &str,
@@ -249,7 +243,7 @@ async fn decrypt_using_encryption_oracle(
         data.len()
     );
     let cleartext = kms
-        .encryption_oracles
+        .crypto_oracles
         .read()
         .await
         .get(prefix)

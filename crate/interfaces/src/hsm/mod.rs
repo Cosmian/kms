@@ -1,9 +1,9 @@
-mod encryption_oracle_impl;
+mod crypto_oracle_impl;
 
 pub(crate) mod hsm_store;
 mod interface;
 
-pub use encryption_oracle_impl::HsmEncryptionOracle;
+pub use crypto_oracle_impl::HsmCryptoOracle;
 pub use hsm_store::HsmStore;
 pub use interface::{
     HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,

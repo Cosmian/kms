@@ -409,7 +409,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
         let _response = ctx.get_owner_client().create(create_request).await?;
     }
 
-    // No grant access is required on external keys (e.g., when using HSM encryption oracles)
+    // No grant access is required on external keys (e.g., when using HSM crypto oracles)
 
     ctx.stop_server().await?;
 

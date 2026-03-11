@@ -17,7 +17,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-    cosmian_kms_interfaces::EncryptionOracle,
+    cosmian_kms_interfaces::CryptoOracle,
 };
 use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
@@ -448,17 +448,17 @@ impl KMS {
         Ok((uid, object, tags))
     }
 
-    /// Register an encryption oracle for a given key prefix.
-    /// The encryption oracle will be used to encrypt/decrypt data using keys with the given prefix.
+    /// Register a crypto oracle for a given key prefix.
+    /// The crypto oracle will be used to encrypt/decrypt/sign data using keys with the given prefix.
     /// # Arguments
-    /// * `prefix` - The key prefix for which the encryption oracle will be used.
-    /// * `oracle` - The encryption oracle to register.
-    pub async fn register_encryption_oracles(
+    /// * `prefix` - The key prefix for which the crypto oracle will be used.
+    /// * `oracle` - The crypto oracle to register.
+    pub async fn register_crypto_oracle(
         &self,
         prefix: &str,
-        oracle: Box<dyn EncryptionOracle + Sync + Send>,
+        oracle: Box<dyn CryptoOracle + Sync + Send>,
     ) {
-        let mut oracles = self.encryption_oracles.write().await;
+        let mut oracles = self.crypto_oracles.write().await;
         oracles.insert(prefix.to_owned(), oracle);
     }
 }

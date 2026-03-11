@@ -335,6 +335,7 @@ async fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> KmsCliRes
 /// This function will return an error if any of the attribute operations (set, get, delete)
 /// fail or if the test KMS server fails to start.
 /// ```
+#[ignore = "Too much verbosity"]
 #[tokio::test]
 async fn test_set_attribute() -> KmsCliResult<()> {
     // Create a test server

@@ -57,6 +57,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+            is_user_authorized_for_operation, select_unique_key_for_operation,
         },
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
@@ -85,86 +86,80 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         .context("Encrypt")?;
     trace!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process is as follows: loop through the uids
-    // 1. If the UID has a prefix, try using that
-    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
-    //   a- the object is active
-    //   b- the object is a public Key, a Symmetric Key, or a Certificate
-    //
-    // Permissions checks are done AFTER the object is fetched in the default database
-    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This is also based on the high probability that there is still a single object
-    // in the candidate list.
+    // Determine which UID to select. The decision process is as follows:
+    // Phase 1: If any UID has a prefix (crypto oracle), use that key immediately.
+    // Phase 2: Call the shared selection function for the standard database path; it enforces
+    //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
 
-    let mut selected_owm = None;
-    let mut found_but_no_permission = false;
-    for uid in uids {
-        if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user).await? {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false)
-                    .await?;
-                if !ops
-                    .iter()
-                    .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
-                {
-                    continue;
-                }
-            }
-            debug!("user: {user} is authorized to encrypt using: {uid} from decryption oracle");
-            return encrypt_using_encryption_oracle(kms, &request, data, &uid, prefix).await;
-        }
-        let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
-            KmsError::ItemNotFound(format!("Encrypt: failed to retrieve key: {uid}"))
-        })?;
-        // Check effective state (PreActive with past activation_date counts as Active)
-        if get_effective_state(&owm)? != State::Active {
-            continue;
-        }
-        // check user permissions - owner can always encrypt
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(&uid, user, false)
-                .await?;
-            if !ops
-                .iter()
-                .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
+    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
+    let mut eligible_oracles: Vec<(&str, &str)> = Vec::new(); // (uid, prefix)
+    for uid in &uids {
+        if let Some(prefix) = has_prefix(uid) {
+            if !is_user_authorized_for_operation(&kms.database, uid, user, KmipOperation::Encrypt)
+                .await?
             {
-                found_but_no_permission = true;
                 continue;
             }
-        }
-        trace!("user: {user} is authorized to encrypt using: {uid}");
-        // TODO check why usage masks are not checked for certificates
-        if let Object::Certificate { .. } = owm.object() {
-            selected_owm = Some(owm);
-            break;
-        }
-        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
-            // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
-            // and the attributes of the object will be empty. Use the metadata attributes.
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            trace!("attributes: {attributes}");
-            if !attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)? {
-                continue;
-            }
-            selected_owm = Some(owm);
-            break;
+            eligible_oracles.push((uid, prefix));
         }
     }
-    let mut owm = selected_owm.ok_or_else(|| {
-        if found_but_no_permission {
-            KmsError::Unauthorized(format!(
-                "Encrypt: the user {user} does not have permission to encrypt using the key: {unique_identifier}"
-            ))
-        } else {
+    match eligible_oracles.as_slice() {
+        [] => {} // fall through to Phase 2
+        &[(uid, prefix)] => {
+            debug!("user: {user} is authorized to encrypt using: {uid} from crypto oracle");
+            return encrypt_using_crypto_oracle(kms, &request, data, uid, prefix).await;
+        }
+        multiple => {
+            let ids: Vec<&str> = multiple.iter().map(|(uid, _)| *uid).collect();
+            return Err(KmsError::InvalidRequest(format!(
+                "Encrypt: identifier {unique_identifier} resolves to {} valid oracle keys \
+                 {ids:?}; use a unique identifier",
+                multiple.len()
+            )));
+        }
+    }
+
+    // Phase 2 — Standard database path via shared selection function.
+    let mut owm = select_unique_key_for_operation(
+        "Encrypt",
+        &uids,
+        unique_identifier,
+        KmipOperation::Encrypt,
+        kms,
+        user,
+        |owm| {
+            if let Object::Certificate { .. } = owm.object() {
+                // Certificates have no key_block, so usage masks live only in metadata attributes.
+                // When no mask is set (common for imported certificates), allow by default.
+                let attrs = owm.attributes();
+                return match attrs.cryptographic_usage_mask {
+                    None => Ok(true),
+                    Some(_) => Ok(attrs.is_usage_authorized_for(CryptographicUsageMask::Encrypt)?),
+                };
+            }
+            if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
+                // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
+                // and the attributes of the object will be empty. Use the metadata attributes.
+                let attributes = owm
+                    .object()
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes());
+                trace!("attributes: {attributes}");
+                return Ok(attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)?);
+            }
+            Ok(false)
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        KmsError::ItemNotFound(_) => {
             KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))
         }
+        KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+            "Encrypt: the user {user} does not have permission to encrypt using the key: \
+             {unique_identifier}"
+        )),
+        other => other,
     })?;
 
     // Enforce time window constraints: Active key is unusable for Encrypt if current time is
@@ -297,36 +292,34 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     Ok(res)
 }
 
-/// Encrypt using an encryption oracle.
+/// Encrypt using a crypto oracle.
 ///
 /// # Arguments
 /// * `kms` - the KMS
 /// * `request` - the encrypted request
 /// * `data` - the data to encrypt
 /// * `uid` - the unique identifier of the key
-/// * `prefix` - the prefix of the encryption oracle
+/// * `prefix` - the prefix of the crypto oracle
 ///
 /// # Returns
 /// * the encrypted response
-async fn encrypt_using_encryption_oracle(
+async fn encrypt_using_crypto_oracle(
     kms: &KMS,
     request: &Encrypt,
     data: &Zeroizing<Vec<u8>>,
     uid: &str,
     prefix: &str,
 ) -> KResult<EncryptResponse> {
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
     let ca = request
         .cryptographic_parameters
         .as_ref()
         .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
         .transpose()?;
-    let encrypted_content = encryption_oracle
+    let encrypted_content = crypto_oracle
         .encrypt(
             uid,
             data,
