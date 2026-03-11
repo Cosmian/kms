@@ -196,6 +196,35 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
 }
 
 /**
+ * Select multiple options in an Ant Design multi-select (`mode="multiple"`).
+ *
+ * @param cssSelector  CSS selector targeting the `<Select>` wrapper (e.g. `"#keyUsage"`).
+ * @param optionLabels Array of visible label strings to select.
+ */
+export async function selectMultipleOptions(page: Page, cssSelector: string, optionLabels: string[]): Promise<void> {
+    for (const label of optionLabels) {
+        const trigger = page.locator(cssSelector);
+        const selector = trigger.locator(".ant-select-selector");
+        if ((await selector.count()) > 0) {
+            await selector.click({ force: true });
+        } else {
+            await trigger.click({ force: true });
+        }
+        const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+        await dropdown.first().waitFor({ state: "visible", timeout: 10_000 });
+        const option = dropdown.locator(".ant-select-item-option", { hasText: label }).first();
+        await option.waitFor({ state: "visible", timeout: 10_000 });
+        try {
+            await option.scrollIntoViewIfNeeded();
+            await option.click({ force: true });
+        } catch {
+            await option.dispatchEvent("click");
+        }
+        await page.waitForTimeout(200);
+    }
+}
+
+/**
  * Create a fresh AES-256 symmetric key and return its UUID.
  *
  * Shared by sym-key, attributes, access-rights and any other test files that
@@ -210,4 +239,18 @@ export async function createSymKey(page: Page): Promise<string> {
     const id = extractUuid(text);
     expect(id).not.toBeNull();
     return id!;
+}
+
+/**
+ * Create a fresh 4096-bit RSA key pair and return both key IDs.
+ */
+export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
+    await gotoAndWait(page, "/ui/rsa/keys/create");
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/Key pair has been created/i);
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
+    return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
 }

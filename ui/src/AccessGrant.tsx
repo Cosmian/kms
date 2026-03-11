@@ -98,6 +98,7 @@ const AccessGrantForm: React.FC = () => {
                                 mode="multiple"
                                 options={KMIP_OPERATIONS}
                                 placeholder="Select operations"
+                                data-testid="operation-types-select"
                                 onChange={() => {
                                     form.validateFields(["unique_identifier"]);
                                 }}
