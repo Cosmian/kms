@@ -80,11 +80,20 @@ jobs:
             exit 1
           fi
 
-      - name: Pre-check file
+      - name: Pre-check ckms
         shell: bash
         run: |
           set -ex
-          # Ensure OpenSSL uses packaged config and modules
+          # Verify ckms is accessible without elevated privileges.
+          # LD_LIBRARY_PATH ensures dynamic builds can find libssl.so.3
+          # bundled in the CLI package under /usr/local/cosmian/ckms/lib/
+          su -s /bin/sh nobody -c 'LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib /usr/local/bin/ckms --version'
+
+      - name: Pre-check server binary
+        shell: bash
+        run: |
+          set -ex
+          # Ensure OpenSSL uses the server package's config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
           export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path
@@ -194,11 +203,18 @@ jobs:
             exit 1
           fi
 
-      - name: Pre-check file
+      - name: Pre-check ckms
         shell: bash
         run: |
           set -ex
-          # Ensure OpenSSL uses packaged config and modules
+          # Verify ckms is accessible without elevated privileges
+          sudo -u nobody /usr/local/bin/ckms --version
+
+      - name: Pre-check server binary
+        shell: bash
+        run: |
+          set -ex
+          # Ensure OpenSSL uses the server package's config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
           export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, ServerParams},
+    config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
@@ -43,6 +43,11 @@ async fn main() {
 async fn run() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
+
+    // Early dispatch: if the first argument is "configure", run the interactive wizard
+    if std::env::args().nth(1).as_deref() == Some("configure") {
+        return run_configure_wizard();
+    }
 
     let clap_config = ClapConfig::load_configuration()?;
 
@@ -118,13 +123,15 @@ async fn run() -> KResult<()> {
     // Instantiate a config object using the env variables and the args of the binary
     info!("Command line / file config: {clap_config:#?}");
 
-    // Parse the Server Config from the command line arguments
-    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
-
+    // --info is a lightweight probe: log the configuration then exit without
+    // initialising the database, workspace directories etc.
     if info_only {
         info!("Server started with --info. Exiting");
         return Ok(());
     }
+
+    // Parse the Server Config from the command line arguments
+    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
 
     #[cfg(test)]
     info!("Feature Test enabled");

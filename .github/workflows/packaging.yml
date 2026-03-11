@@ -186,20 +186,6 @@ jobs:
             $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
             cosmian@package.cosmian.com:${remote_dir}/
 
-          # Upload CLI binary and PKCS#11 library (mirrors the server binary upload above)
-          RESULT_CLI_BIN_DIR="result-cli-${{ matrix.features }}-${{ matrix.link }}/bin"
-          RESULT_CLI_LIB_DIR="result-cli-${{ matrix.features }}-${{ matrix.link }}/lib"
-          if [ -d "${RESULT_CLI_BIN_DIR}" ] && [ -n "$(ls -A "${RESULT_CLI_BIN_DIR}" 2>/dev/null)" ]; then
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              "${RESULT_CLI_BIN_DIR}/"* \
-              cosmian@package.cosmian.com:${remote_dir}/
-          fi
-          if [ -d "${RESULT_CLI_LIB_DIR}" ] && [ -n "$(ls -A "${RESULT_CLI_LIB_DIR}" 2>/dev/null)" ]; then
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              "${RESULT_CLI_LIB_DIR}/"* \
-              cosmian@package.cosmian.com:${remote_dir}/
-          fi
-
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -208,8 +194,6 @@ jobs:
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
             result-server-${{ matrix.features }}-${{ matrix.link }}/bin/cosmian-kms-server*
-            result-cli-${{ matrix.features }}-${{ matrix.link }}/bin/ckms*
-            result-cli-${{ matrix.features }}-${{ matrix.link }}/lib/libcosmian_pkcs11*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   tests:
