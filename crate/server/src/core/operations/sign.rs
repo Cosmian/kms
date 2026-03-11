@@ -93,7 +93,7 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
         "Sign",
         &uids,
         unique_identifier,
-        &[KmipOperation::Sign],
+        KmipOperation::Sign,
         kms,
         user,
         |owm| {

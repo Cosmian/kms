@@ -124,7 +124,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         "Encrypt",
         &uids,
         unique_identifier,
-        &[KmipOperation::Encrypt, KmipOperation::Get],
+        KmipOperation::Encrypt,
         kms,
         user,
         |owm| {

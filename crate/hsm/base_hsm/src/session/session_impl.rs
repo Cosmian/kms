@@ -1326,6 +1326,7 @@ impl Session {
             &raw mut signature_len
         );
 
+        let expected_len = signature_len;
         let mut signature = vec![0_u8; usize::try_from(signature_len)?];
         hsm_call!(
             self.hsm,
@@ -1338,7 +1339,11 @@ impl Session {
             &raw mut signature_len
         );
 
-        signature.truncate(usize::try_from(signature_len)?);
+        if signature_len != expected_len {
+            return Err(HError::Default(format!(
+                "C_Sign: signature length mismatch: expected {expected_len}, got {signature_len}"
+            )));
+        }
         Ok(signature)
     }
 

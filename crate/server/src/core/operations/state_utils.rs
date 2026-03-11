@@ -92,7 +92,7 @@ pub(crate) async fn is_user_authorized_for_operation(
 ///
 /// 1. Skips prefix-based (oracle) UIDs — those are handled by the caller before this call.
 /// 2. Fetches each object from the database and checks it is `Active` via `get_effective_state`.
-/// 3. Verifies the user holds at least one of `required_permissions`.
+/// 3. Verifies the user is authorized via `is_user_authorized_for_operation`.
 /// 4. Applies `is_eligible` — a caller-supplied predicate that checks object type / usage mask.
 /// 5. Enforces uniqueness: the operation **fails** when more than one eligible key is found.
 ///    This prevents an attacker from silently substituting a key by tagging a second one.
@@ -105,7 +105,7 @@ pub(crate) async fn select_unique_key_for_operation<F>(
     op_name: &str,
     candidate_uids: &HashSet<String>,
     unique_identifier: &UniqueIdentifier,
-    required_permissions: &[KmipOperation],
+    operation: KmipOperation,
     kms: &KMS,
     user: &str,
     is_eligible: F,
@@ -132,16 +132,10 @@ where
             continue;
         }
 
-        // Permission check: owners always pass; others need an explicit grant.
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(uid, user, false)
-                .await?;
-            if !ops.iter().any(|p| required_permissions.contains(p)) {
-                found_but_no_permission = true;
-                continue;
-            }
+        // Permission check via the shared authorization function.
+        if !is_user_authorized_for_operation(&kms.database, uid, user, operation).await? {
+            found_but_no_permission = true;
+            continue;
         }
 
         // Object-type and usage-mask check supplied by the caller.
