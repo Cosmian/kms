@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::Operation,
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, RecommendedCurve, UniqueIdentifier,
@@ -104,6 +105,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
 
 async fn create_ec_dek(dek_uid: &str, kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let create_request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(dek_uid.to_owned())),
         EMPTY_TAGS,
         RecommendedCurve::P256,

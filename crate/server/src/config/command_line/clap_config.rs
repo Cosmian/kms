@@ -5,6 +5,7 @@ use std::{
 };
 
 use clap::{CommandFactory, Parser};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -51,6 +52,7 @@ impl Default for ClapConfig {
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
             ms_dke_service_url: None,
@@ -79,6 +81,10 @@ pub struct ClapConfig {
     /// and environment variables are ignored once the configuration file is loaded.
     #[clap(short = 'c', long = "config", value_name = "COSMIAN_KMS_CONF")]
     pub config_path: Option<PathBuf>,
+
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    #[clap(long, env = "KMS_VENDOR_IDENTIFICATION", default_value = VENDOR_ID_COSMIAN)]
+    pub vendor_identification: String,
 
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
@@ -499,6 +505,7 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("KMS public URL", &self.kms_public_url);
 
         let x = x.field("workspace", &self.workspace);
+        let x = x.field("vendor identification", &self.vendor_identification);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
         let x = if self.google_cse_config.google_cse_enable {

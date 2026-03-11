@@ -2,7 +2,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RNGAlgorithm, State},
     kmip_2_1::{
         KmipOperation,
-        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        extra::tagging::VENDOR_ATTR_TAG,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
@@ -129,7 +129,7 @@ pub(crate) async fn get_attributes(
                 // Filter out internal vendor tag here as well to avoid leaking into comparisons
                 if let Some(vendor_attributes) = attributes.vendor_attributes.as_mut() {
                     vendor_attributes.retain(|va| {
-                        !(va.vendor_identification == VENDOR_ID_COSMIAN
+                        !(va.vendor_identification == kms.vendor_id()
                             && va.attribute_name == VENDOR_ATTR_TAG)
                     });
                     if vendor_attributes.is_empty() {
@@ -141,7 +141,7 @@ pub(crate) async fn get_attributes(
                 let mut a = owm.attributes().to_owned();
                 if let Some(vendor_attributes) = a.vendor_attributes.as_mut() {
                     vendor_attributes.retain(|va| {
-                        !(va.vendor_identification == VENDOR_ID_COSMIAN
+                        !(va.vendor_identification == kms.vendor_id()
                             && va.attribute_name == VENDOR_ATTR_TAG)
                     });
                     if vendor_attributes.is_empty() {
@@ -227,10 +227,10 @@ pub(crate) async fn get_attributes(
                 } else {
                     debug!("Get Attributes: no vendor attributes present on object");
                 }
-                if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
+                if vendor_identification == kms.vendor_id() && attribute_name == VENDOR_ATTR_TAG {
                     if !tags_already_set {
                         let tags = kms.database.retrieve_tags(owm.id()).await?;
-                        res.set_tags(tags)?;
+                        res.set_tags(kms.vendor_id(), tags)?;
                         tags_already_set = true;
                     }
                 } else if let Some(value) =
@@ -517,11 +517,11 @@ pub(crate) async fn get_attributes(
                 }
                 Tag::VendorExtension => {
                     if let Some(vendor_attributes) = attributes.vendor_attributes.clone() {
-                        // Filter out server-internal cosmian tagging attribute; otherwise return what's present.
+                        // Filter out server-internal tagging attribute; otherwise return what's present.
                         let filtered: Vec<VendorAttribute> = vendor_attributes
                             .into_iter()
                             .filter(|va| {
-                                !(va.vendor_identification == VENDOR_ID_COSMIAN
+                                !(va.vendor_identification == kms.vendor_id()
                                     && va.attribute_name == VENDOR_ATTR_TAG)
                             })
                             .collect();
@@ -535,7 +535,7 @@ pub(crate) async fn get_attributes(
                 Tag::Tag => {
                     if !tags_already_set {
                         let tags = kms.database.retrieve_tags(owm.id()).await?;
-                        res.set_tags(tags)?;
+                        res.set_tags(kms.vendor_id(), tags)?;
                         tags_already_set = true;
                     }
                 }
@@ -550,7 +550,7 @@ pub(crate) async fn get_attributes(
         "Retrieved Attributes for {} {}, tags {:?}",
         owm.object().object_type(),
         owm.id(),
-        res.get_tags()
+        res.get_tags(kms.vendor_id())
     );
     trace!("Get Attributes: Response: {}", res);
     Ok(GetAttributesResponse {

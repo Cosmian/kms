@@ -4,6 +4,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     plugins: [react(), tailwindcss()],
+    server: {
+        deps: {
+            inline: ["react-router", "react-router-dom"],
+        },
+    },
     test: {
         environment: "node",
         include: ["./tests/integration/**/*.test.ts"],

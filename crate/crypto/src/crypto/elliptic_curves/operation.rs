@@ -238,6 +238,7 @@ pub fn to_ec_private_key(
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(feature = "non-fips")]
 pub fn create_x25519_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     cryptographic_algorithm: &CryptographicAlgorithm,
@@ -252,6 +253,7 @@ pub fn create_x25519_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -268,7 +270,9 @@ pub fn create_x25519_key_pair(
 /// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
 /// SEC 2: Recommended Elliptic Curve Domain Parameters: <https://www.secg.org/sec2-v2.pdf>
 #[cfg(feature = "non-fips")]
+#[expect(clippy::too_many_arguments)]
 pub fn create_secp_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     curve: RecommendedCurve,
@@ -298,6 +302,7 @@ pub fn create_secp_key_pair(
             .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -314,6 +319,7 @@ pub fn create_secp_key_pair(
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(feature = "non-fips")]
 pub fn create_x448_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     cryptographic_algorithm: &CryptographicAlgorithm,
@@ -328,6 +334,7 @@ pub fn create_x448_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -348,6 +355,7 @@ pub fn create_x448_key_pair(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 pub fn create_ed25519_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     common_attributes: Attributes,
@@ -379,6 +387,7 @@ pub fn create_ed25519_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -399,6 +408,7 @@ pub fn create_ed25519_key_pair(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 pub fn create_ed448_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     common_attributes: Attributes,
@@ -430,6 +440,7 @@ pub fn create_ed448_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -443,7 +454,9 @@ pub fn create_ed448_key_pair(
     )
 }
 
+#[expect(clippy::too_many_arguments)]
 pub fn create_approved_ecc_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     curve: RecommendedCurve,
@@ -500,6 +513,7 @@ pub fn create_approved_ecc_key_pair(
             .public_key()
             .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?;
     create_ec_key_pair(
+        vendor_id,
         &private_key_bytes,
         private_key_num_bits,
         &public_key_bytes,
@@ -518,6 +532,7 @@ pub use crate::crypto::elliptic_curves::sign::ecdsa_sign;
 
 #[expect(clippy::too_many_arguments)]
 fn create_ec_key_pair(
+    vendor_id: &str,
     private_key_bytes: &Zeroizing<Vec<u8>>,
     private_key_num_bits: u32,
     public_key_bytes: &[u8],
@@ -538,7 +553,7 @@ fn create_ec_key_pair(
         .and_then(|attr| attr.cryptographic_usage_mask);
 
     // recover tags and clean them up from the common attributes
-    let tags = common_attributes.remove_tags().unwrap_or_default();
+    let tags = common_attributes.remove_tags(vendor_id).unwrap_or_default();
     Attributes::check_user_tags(&tags)?;
 
     // Generate  KMIP private Key
@@ -561,7 +576,7 @@ fn create_ec_key_pair(
     // Add the tags
     let mut sk_tags = tags.clone();
     sk_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
-    private_key_attributes.set_tags(sk_tags)?;
+    private_key_attributes.set_tags(vendor_id, sk_tags)?;
     // and set them on the object
     *private_key.key_block_mut()?.attributes_mut()? = private_key_attributes;
     trace!("private key converted OK");
@@ -585,7 +600,7 @@ fn create_ec_key_pair(
     // Add the tags
     let mut pk_tags = tags;
     pk_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
-    public_key_attributes.set_tags(pk_tags)?;
+    public_key_attributes.set_tags(vendor_id, pk_tags)?;
     // and set them on the object
     *public_key.key_block_mut()?.attributes_mut()? = public_key_attributes;
     trace!("public key converted OK");
@@ -607,6 +622,7 @@ mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_types::{CryptographicAlgorithm, RecommendedCurve},
         },
@@ -646,6 +662,7 @@ mod tests {
         };
 
         let keypair1 = create_ed25519_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid1",
             "pk_uid1",
             Attributes::default(),
@@ -654,6 +671,7 @@ mod tests {
         )
         .unwrap();
         let keypair2 = create_ed25519_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid2",
             "pk_uid2",
             Attributes::default(),
@@ -698,6 +716,7 @@ mod tests {
             ..Attributes::default()
         };
         let wrap_key_pair = create_x25519_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid",
             "pk_uid",
             &algorithm,
@@ -762,6 +781,7 @@ mod tests {
         };
 
         let keypair1 = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid1",
             "pk_uid1",
             curve,
@@ -772,6 +792,7 @@ mod tests {
         )
         .unwrap();
         let keypair2 = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid2",
             "pk_uid2",
             curve,
@@ -837,6 +858,7 @@ mod tests {
             ..Attributes::default()
         };
         let wrap_key_pair = create_x448_key_pair(
+            VENDOR_ID_COSMIAN,
             "sk_uid",
             "pk_uid",
             &algorithm,
@@ -1169,6 +1191,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
@@ -1190,6 +1213,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey02",
             "privkey02",
             RecommendedCurve::P384,
@@ -1211,6 +1235,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey03",
             "privkey03",
             RecommendedCurve::P521,
@@ -1232,6 +1257,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey04",
             "privkey04",
             RecommendedCurve::P521,
@@ -1254,6 +1280,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_ed448_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey05",
             "privkey05",
             Attributes::default(),
@@ -1280,6 +1307,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
@@ -1318,6 +1346,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
@@ -1350,6 +1379,7 @@ mod tests {
         };
 
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
@@ -1380,6 +1410,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
@@ -1408,6 +1439,7 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
+            VENDOR_ID_COSMIAN,
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,

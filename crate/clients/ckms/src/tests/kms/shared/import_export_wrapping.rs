@@ -9,8 +9,8 @@ use cosmian_kms_cli::{
                 kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
             },
             kmip_2_1::{
-                kmip_attributes::Attributes, kmip_data_structures::KeyValue,
-                requests::create_symmetric_key_kmip_object,
+                extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+                kmip_data_structures::KeyValue, requests::create_symmetric_key_kmip_object,
             },
             read_object_from_json_ttlv_file,
             reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
@@ -58,6 +58,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
     let wrap_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &wrap_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -137,6 +138,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
     let wrap_key_pair = create_x25519_key_pair(
+        VENDOR_ID_COSMIAN,
         wrap_private_key_uid,
         wrap_public_key_uid,
         &CryptographicAlgorithm::EC,

@@ -39,6 +39,7 @@ pub enum Algorithm {
 
 #[expect(clippy::too_many_arguments)]
 pub fn build_certify_request(
+    vendor_id: &str,
     certificate_id: &Option<String>,
     certificate_signing_request_format: &Option<String>,
     certificate_signing_request: &Option<Vec<u8>>,
@@ -75,9 +76,12 @@ pub fn build_certify_request(
     }
 
     // set the number of requested days
-    attributes.set_requested_validity_days(i32::try_from(number_of_days).map_err(|_e| {
-        UtilsError::Default("number of days must be a positive integer".to_owned())
-    })?);
+    attributes.set_requested_validity_days(
+        vendor_id,
+        i32::try_from(number_of_days).map_err(|_e| {
+            UtilsError::Default("number of days must be a positive integer".to_owned())
+        })?,
+    );
 
     // A certificate id has been provided
     if let Some(certificate_id) = &certificate_id {
@@ -85,7 +89,7 @@ pub fn build_certify_request(
     }
 
     attributes.activation_date = Some(time_normalize()?);
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     let mut certificate_request_value = None;
     let mut certificate_request_type = None;
@@ -192,7 +196,7 @@ pub fn build_certify_request(
     }
 
     if let Some(extension_file) = certificate_extensions {
-        attributes.set_x509_extension_file(extension_file.clone());
+        attributes.set_x509_extension_file(vendor_id, extension_file.clone());
     }
 
     Ok(Certify {

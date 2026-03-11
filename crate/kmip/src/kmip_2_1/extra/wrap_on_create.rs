@@ -3,9 +3,7 @@
 //! The use case is to store a key on the default data store but wrapped by
 //! a key stored in an HSM.
 
-use crate::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_types::VendorAttributeValue,
-};
+use crate::kmip_2_1::{kmip_attributes::Attributes, kmip_types::VendorAttributeValue};
 
 /// The key to use to wrap the key on creation
 const WRAPPING_KEY_ID: &str = "wrapping_key_id";
@@ -20,9 +18,13 @@ impl Attributes {
     ///
     /// # Returns
     /// * The wrapping key id if it was set before
-    pub fn set_wrapping_key_id(&mut self, wrapping_key_id: &str) -> Option<String> {
+    pub fn set_wrapping_key_id(
+        &mut self,
+        vendor_id: &str,
+        wrapping_key_id: &str,
+    ) -> Option<String> {
         let val = self.set_vendor_attribute(
-            VENDOR_ID_COSMIAN,
+            vendor_id,
             WRAPPING_KEY_ID,
             VendorAttributeValue::TextString(wrapping_key_id.to_owned()),
         )?;
@@ -38,8 +40,8 @@ impl Attributes {
     /// # Returns
     /// *  The wrapping key id if it was set before
     /// * `None` if it was not set
-    pub fn remove_wrapping_key_id(&mut self) -> Option<String> {
-        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, WRAPPING_KEY_ID)?;
+    pub fn remove_wrapping_key_id(&mut self, vendor_id: &str) -> Option<String> {
+        let val = self.remove_vendor_attribute(vendor_id, WRAPPING_KEY_ID)?;
         if let VendorAttributeValue::TextString(val) = val {
             Some(val)
         } else {

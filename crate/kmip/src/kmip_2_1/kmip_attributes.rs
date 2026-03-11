@@ -13,7 +13,6 @@ use crate::{
         ErrorReason, KeyValueLocationType, RevocationReason, State, X509CertificateIdentifier,
     },
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
         kmip_objects::ObjectType,
         kmip_types::{
             CertificateAttributes, CryptographicAlgorithm, CryptographicDomainParameters,
@@ -638,8 +637,8 @@ impl Attributes {
 
     /// Remove the authenticated additional data from the attributes and return it - for AESGCM unwrapping
     #[must_use]
-    pub fn remove_aad(&mut self) -> Option<Vec<u8>> {
-        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_AAD)?;
+    pub fn remove_aad(&mut self, vendor_id: &str) -> Option<Vec<u8>> {
+        let val = self.remove_vendor_attribute(vendor_id, VENDOR_ATTR_AAD)?;
         if let VendorAttributeValue::ByteString(value) = val {
             Some(value)
         } else {
@@ -648,9 +647,9 @@ impl Attributes {
     }
 
     /// Add the authenticated additional data to the attributes - for AESGCM unwrapping
-    pub fn add_aad(&mut self, value: &[u8]) {
+    pub fn add_aad(&mut self, vendor_id: &str, value: &[u8]) {
         let va = VendorAttribute {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            vendor_identification: vendor_id.to_owned(),
             attribute_name: VENDOR_ATTR_AAD.to_owned(),
             attribute_value: VendorAttributeValue::ByteString(value.to_vec()),
         };

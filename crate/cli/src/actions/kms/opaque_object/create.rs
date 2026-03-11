@@ -88,7 +88,15 @@ impl CreateOpaqueObjectAction {
             opaque_data_value: bytes,
         });
 
-        let req = import_object_request(self.id.clone(), object, None, false, false, &self.tags)?;
+        let req = import_object_request(
+            kms_rest_client.config.vendor_id.as_str(),
+            self.id.clone(),
+            object,
+            None,
+            false,
+            false,
+            &self.tags,
+        )?;
         let uid = kms_rest_client
             .import(req)
             .await

@@ -115,7 +115,9 @@ impl ImportSecretDataOrKeyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let key_bytes = read_bytes_from_file(&self.key_file)?;
 
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
         let (object, import_attributes) = prepare_key_import_elements(
+            vendor_id,
             &self.key_usage,
             &self.key_format,
             key_bytes,
@@ -128,6 +130,7 @@ impl ImportSecretDataOrKeyAction {
 
         // import the key
         let import_object_request = import_object_request(
+            vendor_id,
             self.key_id.clone(),
             object,
             Some(import_attributes),

@@ -1,5 +1,4 @@
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
     kmip_attributes::Attributes,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
@@ -79,9 +78,12 @@ pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_poli
 pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
 /// Extract an `Covercrypt` Access policy from attributes
-pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, CryptoError> {
+pub fn access_policy_from_attributes(
+    vendor_id: &str,
+    attributes: &Attributes,
+) -> Result<String, CryptoError> {
     attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
+        .get_vendor_attribute_value(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
         .map_or_else(
             || {
                 Err(CryptoError::Kmip(

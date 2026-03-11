@@ -60,7 +60,7 @@ pub(crate) async fn wrap_and_cache(
     let Some(wrapping_key_id) = object
         .attributes_mut()
         .ok()
-        .and_then(Attributes::remove_wrapping_key_id)
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
         .or_else(|| kms.params.key_wrapping_key.clone())
     else {
         // no wrapping key provided

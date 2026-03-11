@@ -203,7 +203,10 @@ impl KMS {
         &self,
         owner: &str,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.database.find(None, None, owner, true).await?;
+        let list = self
+            .database
+            .find(None, None, owner, true, self.vendor_id())
+            .await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
         Ok(ids)
     }

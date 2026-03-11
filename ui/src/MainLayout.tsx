@@ -27,8 +27,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     const serverHealthLabel =
         serverHealthLatencyMs === null
-            ? `Health: ${serverHealth}`
-            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+            ? `Health DB: ${serverHealth}`
+            : `Health DB: ${serverHealth} (${serverHealthLatencyMs}ms)`;
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {

@@ -11,6 +11,7 @@ use cosmian_kms_cli::{
         KmsClient,
         kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
+            extra::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
             kmip_operations::Create,
@@ -119,7 +120,7 @@ pub(crate) async fn create_derivable_symmetric_key_with_client(
     // Set tags if provided
     if !tags.is_empty() {
         attributes
-            .set_tags(tags)
+            .set_tags(VENDOR_ID_COSMIAN, tags)
             .map_err(|e| CosmianError::Default(format!("Failed to set tags: {e}")))?;
     }
 

@@ -10,6 +10,12 @@ Options:
   -c, --config <COSMIAN_KMS_CONF>
           Explicit configuration file path provided via -c / --config. When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable and the default system path. All other command line arguments (except `--help` / `--version`) and environment variables are ignored once the configuration file is loaded
 
+      --vendor-identification <VENDOR_IDENTIFICATION>
+          The vendor identification string reported in KMIP `QueryServerInformation` responses
+          
+          [env: KMS_VENDOR_IDENTIFICATION=]
+          [default: cosmian]
+
       --default-username <DEFAULT_USERNAME>
           The default username to use when no authentication method is provided
           

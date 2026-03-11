@@ -153,6 +153,7 @@ mod tests {
         },
         routes::aws_xks::AwsXksConfig,
     };
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 
     #[cfg(feature = "non-fips")]
     #[test]
@@ -235,6 +236,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {

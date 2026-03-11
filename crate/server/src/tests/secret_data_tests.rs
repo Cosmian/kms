@@ -17,7 +17,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Destroy, Export, Get, Revoke},
@@ -43,6 +43,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
     // Create a basic secret data object using the existing request function
     let secret_id = format!("test-secret-{}", Uuid::new_v4());
     let create_request = secret_data_create_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(secret_id.clone())),
         vec!["basic-test".to_owned()],
         false,
@@ -128,6 +129,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
     // Create a SecretData object with wrapping enabled
     let secret_id = UniqueIdentifier::TextString(format!("test-secret-wrapped-{}", Uuid::new_v4()));
     let create_request = secret_data_create_request(
+        VENDOR_ID_COSMIAN,
         Some(secret_id.clone()),
         vec!["wrapping-test".to_owned()],
         false,
@@ -139,6 +141,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
 
     // create the wrapping key
     let create_wrapping_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -213,6 +216,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
 
     // create the wrapping key
     let create_wrapping_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,

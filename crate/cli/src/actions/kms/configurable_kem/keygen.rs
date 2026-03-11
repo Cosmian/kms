@@ -74,6 +74,7 @@ impl CreateKemKeyPairAction {
 
         let res = kms_rest_client
             .create_key_pair(build_create_configurable_kem_keypair_request(
+                kms_rest_client.config.vendor_id.as_str(),
                 access_structure.as_deref(),
                 &self.tags,
                 self.kem_algorithm,

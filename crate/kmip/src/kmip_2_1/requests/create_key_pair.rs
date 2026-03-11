@@ -25,6 +25,7 @@ use crate::{
 
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     private_key_id: Option<UniqueIdentifier>,
     tags: T,
     cryptographic_length: usize,
@@ -55,11 +56,11 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
-        common_attributes.set_wrapping_key_id(wrap_key_id);
+        common_attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     // Add the tags.
-    common_attributes.set_tags(tags)?;
+    common_attributes.set_tags(vendor_id, tags)?;
 
     // Differentiating private key and public key attributes to differentiate
     // public key and private key usage masks on key creation.
@@ -173,6 +174,7 @@ const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlg
 
 /// Build a `CreateKeyPairRequest` for an elliptic curve
 pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     private_key_id: Option<UniqueIdentifier>,
     tags: T,
     recommended_curve: RecommendedCurve,
@@ -197,11 +199,11 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
     if let Some(wrap_key_id) = wrapping_key_id {
-        common_attributes.set_wrapping_key_id(wrap_key_id);
+        common_attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     // Add the tags.
-    common_attributes.set_tags(tags)?;
+    common_attributes.set_tags(vendor_id, tags)?;
 
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),

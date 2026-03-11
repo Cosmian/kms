@@ -14,6 +14,7 @@ use crate::{
 
 /// Build an ` Import ` request for a generic Object
 pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     unique_identifier: Option<String>,
     object: Object,
     attributes: Option<Attributes>,
@@ -47,7 +48,7 @@ pub fn import_object_request<T: IntoIterator<Item = impl AsRef<str>>>(
 
     trace!("key_wrap_type: {key_wrap_type:?}, attributes: {attributes}");
 
-    attributes.set_tags(tags).unwrap_or_default();
+    attributes.set_tags(vendor_id, tags).unwrap_or_default();
 
     Ok(Import {
         unique_identifier,

@@ -9,7 +9,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     },
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::kmip_operations::Locate,
+    cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_operations::Locate},
     redis::{self, aio::ConnectionManager},
 };
 use cosmian_logger::{TracingConfig, trace, tracing_init};
@@ -94,7 +94,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
     // Now, we check that the data is correctly migrated by "locating" it.
     // All keys have the "cat" tag, so the owner should find 5 keys.
     let mut search_attrs = Attributes::default();
-    let _: () = search_attrs.set_tags(vec!["cat".to_owned()])?;
+    let _: () = search_attrs.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let locate = Locate {
         attributes: search_attrs.clone(),
         ..Locate::default()
@@ -152,7 +152,7 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
             ..Default::default()
         };
 
-        key_attrs.set_tags(expected_tags)?;
+        key_attrs.set_tags(VENDOR_ID_COSMIAN, expected_tags)?;
 
         let locate_specific = Locate {
             attributes: key_attrs,
@@ -269,7 +269,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
 
     // since all keys had the "cat" tag, so we should find 1 key
     let mut search_attrs = Attributes::default();
-    let _: () = search_attrs.set_tags(vec!["cat".to_owned()])?;
+    let _: () = search_attrs.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let locate_response = kms
         .locate(
             Locate {

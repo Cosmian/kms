@@ -151,7 +151,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
                 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-                if access_policy_from_attributes(attributes).is_err() {
+                if access_policy_from_attributes(kms.vendor_id(), attributes).is_err() {
                     continue;
                 }
             }

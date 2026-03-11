@@ -45,8 +45,13 @@ in this repository under `crate/clients/ckms/`:
   system pnpm and the nix-shell pnpm
 - add `--header`/`-H` flag and `custom_headers` config option to forward arbitrary HTTP headers with every request, enabling use behind zero-trust proxies such as Cloudflare Access ([#138](https://github.com/Cosmian/cli/issues/138))
 
-#### UI Branding
+#### White labeling
 
+- The vendor identification string used in KMIP `VendorAttribute` operations is now
+  configurable via `--vendor-identification` (env: `KMS_VENDOR_IDENTIFICATION`, default:
+  `"cosmian"`); reported back by `QueryServerInformation` responses
+- The WASM module exposes `set_vendor_id(id)` and `query_server_information_ttlv_request()`
+  so the UI can synchronise its vendor ID with the server at startup
 - New `loginCardColor` field in `branding.json` to control the login card background color
 - New blank starter theme at `ui/public/themes/blank/` with SVG placeholder assets
 

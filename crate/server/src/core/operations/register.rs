@@ -97,13 +97,13 @@ pub(crate) async fn register(
         ObjectType::SymmetricKey => {
             Box::pin(process_symmetric_key(kms, request.into(), owner)).await?
         }
-        ObjectType::Certificate => process_certificate(request.into())?,
+        ObjectType::Certificate => process_certificate(kms.vendor_id(), request.into())?,
         ObjectType::PublicKey => Box::pin(process_public_key(kms, request.into(), owner)).await?,
         ObjectType::PrivateKey => Box::pin(process_private_key(kms, request.into(), owner)).await?,
         ObjectType::SecretData => Box::pin(process_secret_data(kms, request.into(), owner)).await?,
         ObjectType::OpaqueObject => {
             // Reuse the import path logic (no unwrap/wrap for opaque objects)
-            let (uid, ops) = process_opaque_object(request.into())?;
+            let (uid, ops) = process_opaque_object(kms.vendor_id(), request.into())?;
             (uid, ops)
         }
         x => {

@@ -30,6 +30,8 @@ use uuid::Uuid;
 
 const EMPTY_TAGS: [&str; 0] = [];
 
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
+
 use crate::{
     config::ClapConfig,
     core::KMS,
@@ -128,6 +130,7 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
@@ -150,6 +153,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
 async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         EMPTY_TAGS,
         2048,

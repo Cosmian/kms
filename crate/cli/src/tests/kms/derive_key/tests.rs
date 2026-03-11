@@ -2,6 +2,7 @@ use cosmian_kms_client::{
     KmsClient,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::Create,
@@ -37,7 +38,7 @@ async fn create_base_key_for_derivation(
 
     // Set tags if provided
     if !tags.is_empty() {
-        attributes.set_tags(tags)?;
+        attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
     }
 
     let request = Create {

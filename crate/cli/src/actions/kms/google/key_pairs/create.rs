@@ -216,6 +216,7 @@ impl CreateKeyPairsAction {
         } else {
             let created_key_pair = kms_rest_client
                 .create_key_pair(create_rsa_key_pair_request(
+                    kms_rest_client.config.vendor_id.as_str(),
                     None,
                     Vec::<String>::new(),
                     RSA_4096,
@@ -286,8 +287,12 @@ impl CreateKeyPairsAction {
                     ..Attributes::default()
                 };
 
-                attributes.set_x509_extension_file(certificate_extensions_bytes);
+                attributes.set_x509_extension_file(
+                    kms_rest_client.config.vendor_id.as_str(),
+                    certificate_extensions_bytes,
+                );
                 attributes.set_requested_validity_days(
+                    kms_rest_client.config.vendor_id.as_str(),
                     i32::try_from(self.number_of_days).map_err(|_e| {
                         KmsCliError::Conversion(
                             "number of days must be a positive integer".to_owned(),

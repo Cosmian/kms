@@ -289,6 +289,7 @@ pub(super) fn query_from_attributes<P: PlaceholderTrait>(
     state: Option<State>,
     user: &str,
     user_must_be_owner: bool,
+    vendor_id: &str,
 ) -> LocateQuery {
     let mut qb = LocateQueryBuilder::<P>::new();
     let mut query =
@@ -298,7 +299,7 @@ pub(super) fn query_from_attributes<P: PlaceholderTrait>(
 
     if let Some(attributes) = attributes {
         // tags
-        let tags = attributes.get_tags();
+        let tags = attributes.get_tags(vendor_id);
         let tags_len = tags.len();
         if tags_len > 0 {
             let tag_placeholders = tags

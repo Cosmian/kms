@@ -87,6 +87,7 @@ impl KMS {
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
@@ -141,10 +142,14 @@ impl KMS {
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                         rand_bytes(&mut symmetric_key)?;
-                        let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
+                        let object = create_symmetric_key_kmip_object(
+                            vendor_id,
+                            &symmetric_key,
+                            attributes,
+                        )?;
                         let attributes = object.attributes()?;
                         debug!("Created symmetric key with attributes: {}", attributes);
-                        let tags = attributes.get_tags();
+                        let tags = attributes.get_tags(vendor_id);
                         let uid = attributes
                             .unique_identifier
                             .as_ref()
@@ -243,10 +248,10 @@ impl KMS {
                 attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::DSA);
                 attributes.cryptographic_length = Some(requested_bits);
                 attributes.key_format_type = Some(KeyFormatType::TransparentDSAPrivateKey);
-                let mut tags = attributes.get_tags();
+                let mut tags = attributes.get_tags(self.vendor_id());
                 tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(UniqueIdentifier::TextString(
                         uuid::Uuid::new_v4().to_string(),
@@ -265,7 +270,7 @@ impl KMS {
                 };
                 let object = Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -315,7 +320,7 @@ impl KMS {
                 // Update the attributes with state Active
                 object.attributes_mut()?.state = Some(State::Active);
                 let attributes = object.attributes()?;
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(self.vendor_id());
                 let uid = attributes
                     .unique_identifier
                     .as_ref()
@@ -370,9 +375,9 @@ impl KMS {
                 attributes.key_format_type = Some(
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey,
                 );
-                let mut tags = attributes.get_tags();
+                let mut tags = attributes.get_tags(self.vendor_id());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(
                         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
@@ -392,7 +397,7 @@ impl KMS {
                 };
                 let object = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -410,10 +415,11 @@ impl KMS {
     ///  - "_sd"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_secret_data_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
-        let mut tags = attributes.get_tags();
+        let mut tags = attributes.get_tags(vendor_id);
         tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         rand_bytes(&mut secret_data)?;

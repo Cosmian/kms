@@ -14,9 +14,12 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
+    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+        CsRng,
+        reexport::rand_core::{RngCore, SeedableRng},
+    },
 };
 use cosmian_logger::{log_init, warn};
 
@@ -42,6 +45,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
 
     // Test 1: Invalid Base64 URL encoding
     let req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -144,6 +148,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
         let invalid_key_sizes = [128, 192]; // bits
         for &size in &invalid_key_sizes {
             let req = symmetric_key_create_request(
+                VENDOR_ID_COSMIAN,
                 None,
                 size,
                 CryptographicAlgorithm::AES,
@@ -207,10 +212,12 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
         ..Default::default()
     };
 
-    let kek_object = create_symmetric_key_kmip_object(&rfc_kek_bytes, &kek_attributes)?;
+    let kek_object =
+        create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &rfc_kek_bytes, &kek_attributes)?;
 
     // Use the helper function to create import request
     let import_request = import_object_request(
+        VENDOR_ID_COSMIAN,
         Some("rfc3394-test-kek".to_owned()),
         kek_object,
         Some(kek_attributes),
@@ -294,10 +301,12 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
             ..Default::default()
         };
 
-        let kek_object = create_symmetric_key_kmip_object(&rfc_kek_bytes, &kek_attributes)?;
+        let kek_object =
+            create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &rfc_kek_bytes, &kek_attributes)?;
 
         // Use the helper function to create import request
         let import_request = import_object_request(
+            VENDOR_ID_COSMIAN,
             Some("test-kek".to_owned()),
             kek_object,
             Some(kek_attributes),
@@ -358,7 +367,14 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
 
     let create_keys = kms
         .create_key_pair(
-            create_rsa_key_pair_request(None, Vec::<String>::new(), 2048, false, None)?,
+            create_rsa_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                Vec::<String>::new(),
+                2048,
+                false,
+                None,
+            )?,
             owner,
             None,
         )

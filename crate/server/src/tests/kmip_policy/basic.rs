@@ -7,6 +7,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::{
     AlternativeNameType, CryptographicUsageMask,
 };
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     CreateKeyPairResponse, CreateResponse, EncryptResponse,
 };
@@ -349,6 +351,7 @@ async fn e2e_default_policy_allows_curve_p256() {
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let create_kp = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,
         ["e2e-curve-p256"],
         RecommendedCurve::P256,

@@ -141,6 +141,7 @@ impl AddQualifiedAttributeAction {
         let id = get_key_uid(self.secret_key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let rekey_query = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &id,
             &RekeyEditAction::AddAttribute(vec![(
                 QualifiedAttribute::try_from(self.attribute.as_str())?,
@@ -205,6 +206,7 @@ impl RenameAttributeAction {
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &id,
             &RekeyEditAction::RenameAttribute(vec![(
                 QualifiedAttribute::try_from(self.attribute.as_str())?,
@@ -262,6 +264,7 @@ impl DisableAttributeAction {
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &id,
             &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::try_from(
                 self.attribute.as_str(),
@@ -319,6 +322,7 @@ impl RemoveAttributeAction {
 
         // Create the kmip query
         let rekey_query = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &id,
             &RekeyEditAction::DeleteAttribute(vec![QualifiedAttribute::try_from(
                 self.attribute.as_str(),

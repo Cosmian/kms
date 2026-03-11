@@ -26,7 +26,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
         kmip_2_1::{
             KmipOperation,
-            extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
             kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
@@ -400,7 +400,14 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
     // Create RSA key pair for Google GMail
     let created_key_pair = kms
         .create_key_pair(
-            create_rsa_key_pair_request(None, Vec::<String>::new(), 4096, false, None)?,
+            create_rsa_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                Vec::<String>::new(),
+                4096,
+                false,
+                None,
+            )?,
             owner,
             None,
         )

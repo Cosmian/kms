@@ -43,7 +43,7 @@ CoverCrypt = 0x8880_0004,
 
 All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239382)
 
-Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian` - and a tuple `Attribute Name`, `Attribute Value`.
+Typically a vendor attribute is made of 3 values: a `Vendor Identification` - set to the server's configured vendor ID (default: `cosmian`, configurable via `--vendor-identification` / `KMS_VENDOR_IDENTIFICATION`) - and a tuple `Attribute Name`, `Attribute Value`.
 
 Covercrypt uses a few vendor attributes which names can be seen in the code [attributes.rs](https://github.com/Cosmian/kms/blob/main/crate/crypto/src/crypto/cover_crypt/attributes.rs) file.
 

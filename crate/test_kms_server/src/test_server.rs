@@ -10,7 +10,7 @@ use std::{
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
-    cosmian_kmip::{KmipResultHelper, time_normalize},
+    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN, time_normalize},
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -1116,6 +1116,7 @@ fn generate_owner_conf(
         http_config: http_conf,
         gmail_api_conf,
         print_json: None,
+        vendor_id: VENDOR_ID_COSMIAN.to_owned(),
     };
 
     Ok(conf)

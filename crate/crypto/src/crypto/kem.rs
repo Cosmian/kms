@@ -55,6 +55,7 @@ fn recommended_curve_to_pre_quantum_kem_tag(
 
 #[allow(clippy::too_many_arguments)]
 pub fn kem_keygen(
+    vendor_id: &str,
     dk_uid: String,
     dk_attributes: Option<Attributes>,
     ek_uid: String,
@@ -88,16 +89,18 @@ pub fn kem_keygen(
         ),
     };
 
-    let access_structure = access_structure_from_attributes(&common_attributes).ok();
+    let access_structure = access_structure_from_attributes(vendor_id, &common_attributes).ok();
     let (dk, ek) = ConfigurableKEM::keygen(tag, access_structure)?;
 
     Ok(KeyPair::new(
         create_dk_object(
+            vendor_id,
             dk.serialize()?,
             dk_attributes.unwrap_or_else(|| common_attributes.clone()),
             ek_uid,
         )?,
         create_ek_object(
+            vendor_id,
             ek.serialize()?,
             ek_attributes.unwrap_or(common_attributes),
             dk_uid,
@@ -153,6 +156,7 @@ pub fn kem_decaps(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoErr
 }
 
 fn create_dk_object(
+    vendor_id: &str,
     dk_bytes: Zeroizing<Vec<u8>>,
     mut attributes: Attributes,
     ek_uid: String,
@@ -171,9 +175,9 @@ fn create_dk_object(
     }]);
     attributes.sensitive = attributes.sensitive.or(Some(true));
 
-    let mut tags = attributes.get_tags();
+    let mut tags = attributes.get_tags(vendor_id);
     tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     let cryptographic_length = Some(i32::try_from(dk_bytes.len())? * 8);
     Ok(Object::PrivateKey(PrivateKey {
@@ -192,6 +196,7 @@ fn create_dk_object(
 }
 
 fn create_ek_object(
+    vendor_id: &str,
     ek_bytes: Zeroizing<Vec<u8>>,
     mut attributes: Attributes,
     dk_uid: String,
@@ -206,9 +211,9 @@ fn create_ek_object(
     }]);
 
     // Add the SYSTEM_TAG_PUBLIC_KEY system tag to the attributes
-    let mut tags = attributes.get_tags();
+    let mut tags = attributes.get_tags(vendor_id);
     tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     let cryptographic_length = Some(i32::try_from(ek_bytes.len())? * 8);
 

@@ -1,6 +1,7 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_operations::{CreateKeyPairResponse, Operation, SignResponse},
         kmip_types::{
             CryptographicParameters, DigitalSignatureAlgorithm, RecommendedCurve, UniqueIdentifier,
@@ -24,6 +25,7 @@ async fn e2e_signature_algorithm_allowlist_is_enforced_on_sign() {
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let create_kp = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,
         ["e2e-signature-alg-allow"],
         RecommendedCurve::P256,

@@ -290,8 +290,8 @@ mod tests {
     };
 
     use cosmian_kmip::kmip_2_1::{
-        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
-        requests::create_symmetric_key_kmip_object,
+        extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
     use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
         CsRng,
@@ -326,6 +326,7 @@ mod tests {
         rng.fill_bytes(&mut symmetric_key_bytes);
         // create a symmetric key
         let symmetric_key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
             &symmetric_key_bytes,
             &Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -385,6 +386,7 @@ mod tests {
         let uid = "test_item".to_owned();
 
         let unwrapped_object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
             &[0; 32],
             &Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -393,6 +395,7 @@ mod tests {
         )?;
 
         let wrapped_object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
             &[0; 32],
             &Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -431,6 +434,7 @@ mod tests {
             let uid = "test_item".to_owned();
 
             let wrapped_object = create_symmetric_key_kmip_object(
+                VENDOR_ID_COSMIAN,
                 &[0; 32],
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -439,6 +443,7 @@ mod tests {
             )?;
 
             let unwrapped_object = create_symmetric_key_kmip_object(
+                VENDOR_ID_COSMIAN,
                 &[0; 32],
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

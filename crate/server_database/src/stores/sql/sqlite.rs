@@ -422,12 +422,14 @@ impl ObjectsStore for SqlitePool {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let locate = query_from_attributes::<SqlitePlaceholder>(
             researched_attributes,
             state,
             user,
             user_must_be_owner,
+            vendor_id,
         );
         let sql_conversion = replace_dollars_with_qn(&locate.sql);
         let locate_params = locate.params;

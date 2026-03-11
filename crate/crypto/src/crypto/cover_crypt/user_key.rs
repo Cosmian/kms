@@ -76,6 +76,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_usk_object(
         &mut self,
+        vendor_id: &str,
         access_policy: &str,
         create_attributes: &Attributes,
         msk_id: &str,
@@ -95,7 +96,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         let user_decryption_key_len = user_decryption_key_bytes.len();
 
         // Tag the object as a private key
-        let mut tags = create_attributes.get_tags();
+        let mut tags = create_attributes.get_tags(vendor_id);
         tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
 
         // Set the unique identifier, if not provided, generate a new one
@@ -115,12 +116,12 @@ impl<'a> UserDecryptionKeysHandler<'a> {
         // Covercrypt keys are set to have unrestricted usage.
         attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
         // set the tags in the attributes
-        attributes.set_tags(tags.clone())?;
+        attributes.set_tags(vendor_id, tags.clone())?;
         // set the unique identifier
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
 
         // Add the access policy to the attributes
-        upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
+        upsert_access_policy_in_attributes(vendor_id, &mut attributes, access_policy)?;
 
         // Add the link to the master secret key
         attributes.link = Some(vec![Link {

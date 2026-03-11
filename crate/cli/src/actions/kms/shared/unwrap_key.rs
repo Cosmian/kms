@@ -88,6 +88,7 @@ impl UnwrapSecretDataOrKeyAction {
         // cache the object type
         let object_type = object.object_type();
 
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
         // if the key must be unwrapped, prepare the unwrapping key
         let unwrapping_key = if let Some(b64) = &self.unwrap_key_b64 {
             trace!("unwrap using a base64 encoded key: {b64}");
@@ -95,6 +96,7 @@ impl UnwrapSecretDataOrKeyAction {
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key_kmip_object(
+                vendor_id,
                 &key_bytes,
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

@@ -6,8 +6,8 @@ use cosmian_kmip::{
     KmipResultHelper,
     kmip_0::kmip_types::State,
     kmip_2_1::{
-        KmipOperation, kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
-        requests::create_symmetric_key_kmip_object,
+        KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     },
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
@@ -54,6 +54,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let object = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

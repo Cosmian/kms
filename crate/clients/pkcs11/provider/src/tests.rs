@@ -4,6 +4,7 @@ use ckms::{
     config::{CKMS_CONF_ENV, ClientConfig},
     reexport::cosmian_kms_cli::reexport::{
         cosmian_kmip::kmip_2_1::{
+            extra::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, PrivateKey},
@@ -84,6 +85,7 @@ async fn create_keys(
 ) -> Result<(), Pkcs11Error> {
     // Use 16-byte AES key material to satisfy AES-CBC requirements
     let vol1 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -92,6 +94,7 @@ async fn create_keys(
     )?;
     debug!("vol1: {}", vol1);
     let import_object_request = import_object_request(
+        VENDOR_ID_COSMIAN,
         Some("vol1".to_owned()),
         vol1,
         None,
@@ -105,6 +108,7 @@ async fn create_keys(
         .unique_identifier;
 
     let vol2 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -112,6 +116,7 @@ async fn create_keys(
         },
     )?;
     let import_object_request_2 = requests::import_object_request(
+        VENDOR_ID_COSMIAN,
         Some("vol2".to_owned()),
         vol2,
         None,
@@ -151,6 +156,7 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
     });
 
     let import_object_request = import_object_request(
+        VENDOR_ID_COSMIAN,
         Some("test.p12".to_owned()),
         p12_sk,
         None,

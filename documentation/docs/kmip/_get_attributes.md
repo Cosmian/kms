@@ -32,6 +32,9 @@ array with value
 ["MySymmetricKey", "_kk"]
 ```
 
+The `VendorIdentification` field in the response reflects the server's configured vendor ID
+(default: `cosmian`, configurable via `--vendor-identification` / `KMS_VENDOR_IDENTIFICATION`).
+
 === "Request"
 
     ```json

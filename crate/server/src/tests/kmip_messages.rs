@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Decrypt, Encrypt, MAC, Operation},
         kmip_types::{
@@ -42,6 +42,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let symmetric_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -122,6 +123,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     // Create a symmetric key first
 
     let symmetric_key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         None,
         256,
         CryptographicAlgorithm::AES,
@@ -205,8 +207,14 @@ async fn test_kmip_messages() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let ec_create_request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
+    let ec_create_request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::CURVE25519,
+        false,
+        None,
+    )?;
 
     // prepare and send the single message
     let batch_item = vec![
