@@ -30,7 +30,7 @@ Example:
 [http_config]
 server_url = "http://127.0.0.1:9998"
 
-[kms_config.gmail_api_conf]
+[gmail_api_conf]
 type = "service_account"
 project_id = "project_id"
 private_key_id = "abc123abc123abc123abc123abc123abc123"

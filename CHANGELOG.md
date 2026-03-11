@@ -2,12 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### 🚀 Features
-
-- feat(cli): add `--header`/`-H` flag and `custom_headers` config option to forward arbitrary HTTP headers with every request, enabling use behind zero-trust proxies such as Cloudflare Access ([#138](https://github.com/Cosmian/cli/issues/138))
-
 ## [5.17.0] - 2026-02-24
 
 ### 🚀 Features
@@ -49,6 +43,7 @@ in this repository under `crate/clients/ckms/`:
   constants from `cosmian_kmip::kmip_2_1::extra::tagging`
 - WASM and UI test scripts hardened against pnpm major-version mismatches between the
   system pnpm and the nix-shell pnpm
+- add `--header`/`-H` flag and `custom_headers` config option to forward arbitrary HTTP headers with every request, enabling use behind zero-trust proxies such as Cloudflare Access ([#138](https://github.com/Cosmian/cli/issues/138))
 
 #### UI Branding
 
