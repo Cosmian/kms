@@ -1,9 +1,22 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{kmip_0::kmip_types::State, time_normalize},
-    cosmian_kms_interfaces::ObjectWithMetadata,
+use std::collections::HashSet;
+
+use cosmian_kms_server_database::{
+    Database,
+    reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
+            time_normalize,
+        },
+        cosmian_kms_interfaces::ObjectWithMetadata,
+    },
 };
 
-use crate::result::KResult;
+use crate::{
+    core::{KMS, uid_utils::has_prefix},
+    error::KmsError,
+    result::KResult,
+};
 
 /// Determine the effective state of an object based on its stored state and `activation_date`.
 ///
@@ -49,6 +62,118 @@ pub(crate) fn get_effective_state(owm: &ObjectWithMetadata) -> KResult<State> {
 
     // No activation_date or it's in the future, remain PreActive
     Ok(State::PreActive)
+}
+
+/// Check whether a user is authorized to perform `operation` on the object identified by `uid`.
+///
+/// The user is authorized if they own the object, or have been granted the specific
+/// `operation` **or** `Get` (which implies read-level access to the key).
+pub(crate) async fn is_user_authorized_for_operation(
+    database: &Database,
+    uid: &str,
+    user: &str,
+    operation: KmipOperation,
+) -> KResult<bool> {
+    if database.is_object_owned_by(uid, user).await? {
+        return Ok(true);
+    }
+    let ops = database
+        .list_user_operations_on_object(uid, user, false)
+        .await?;
+    Ok(ops
+        .iter()
+        .any(|p| *p == operation || *p == KmipOperation::Get))
+}
+
+/// Select exactly one key from a set of candidate UIDs for a cryptographic operation.
+///
+/// `candidate_uids` is a `HashSet` as returned by `uid_utils::uids_from_unique_identifier`.
+/// The function:
+///
+/// 1. Skips prefix-based (oracle) UIDs — those are handled by the caller before this call.
+/// 2. Fetches each object from the database and checks it is `Active` via `get_effective_state`.
+/// 3. Verifies the user holds at least one of `required_permissions`.
+/// 4. Applies `is_eligible` — a caller-supplied predicate that checks object type / usage mask.
+/// 5. Enforces uniqueness: the operation **fails** when more than one eligible key is found.
+///    This prevents an attacker from silently substituting a key by tagging a second one.
+///
+/// # Errors
+/// * `KmsError::Unauthorized`   — candidates found but the user has no permission on any of them
+/// * `KmsError::ItemNotFound`   — no candidate qualifies after all filters
+/// * `KmsError::InvalidRequest` — more than one eligible key matched
+pub(crate) async fn select_unique_key_for_operation<F>(
+    op_name: &str,
+    candidate_uids: &HashSet<String>,
+    unique_identifier: &UniqueIdentifier,
+    required_permissions: &[KmipOperation],
+    kms: &KMS,
+    user: &str,
+    is_eligible: F,
+) -> KResult<ObjectWithMetadata>
+where
+    F: Fn(&ObjectWithMetadata) -> KResult<bool>,
+{
+    let uid_display = unique_identifier.to_string();
+    let mut eligible: Vec<ObjectWithMetadata> = Vec::new();
+    let mut found_but_no_permission = false;
+
+    for uid in candidate_uids {
+        // Oracle (prefix) UIDs are handled by the caller — skip them here.
+        if has_prefix(uid).is_some() {
+            continue;
+        }
+
+        let Some(owm) = kms.database.retrieve_object(uid).await? else {
+            continue;
+        };
+
+        // Must be Active (respects auto-activation via activation_date).
+        if get_effective_state(&owm)? != State::Active {
+            continue;
+        }
+
+        // Permission check: owners always pass; others need an explicit grant.
+        if owm.owner() != user {
+            let ops = kms
+                .database
+                .list_user_operations_on_object(uid, user, false)
+                .await?;
+            if !ops.iter().any(|p| required_permissions.contains(p)) {
+                found_but_no_permission = true;
+                continue;
+            }
+        }
+
+        // Object-type and usage-mask check supplied by the caller.
+        if !is_eligible(&owm)? {
+            continue;
+        }
+
+        eligible.push(owm);
+    }
+
+    match eligible.len() {
+        1 => eligible
+            .into_iter()
+            .next()
+            .ok_or_else(|| KmsError::ItemNotFound("unreachable: len == 1".to_owned())),
+        0 => Err(if found_but_no_permission {
+            KmsError::Unauthorized(format!(
+                "{op_name}: user {user} does not have permission to use key: {uid_display}"
+            ))
+        } else {
+            KmsError::ItemNotFound(format!(
+                "{op_name}: no valid key found for identifier: {uid_display}"
+            ))
+        }),
+        n => {
+            let ids: Vec<&str> = eligible.iter().map(ObjectWithMetadata::id).collect();
+            Err(KmsError::InvalidRequest(format!(
+                "{op_name}: identifier {uid_display} resolves to {n} valid keys {ids:?}; \
+                 use a unique identifier"
+            )))
+        }
+    }
 }
 
 #[cfg(test)]

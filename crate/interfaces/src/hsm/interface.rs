@@ -1,6 +1,6 @@
 //! HSM interface.
 //! This module defines the interface that an HSM must implement to be used as an object store and
-//! an encryption oracle.
+//! a crypto oracle.
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
@@ -9,8 +9,8 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    encryption_oracle::EncryptedContent,
+    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
+    crypto_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -305,6 +305,22 @@ pub trait HSM: Send + Sync {
         slot_id: usize,
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
+
+    /// Sign data using the given private key in the HSM.
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the private key to use for signing
+    /// * `algorithm` - the signing algorithm to use
+    /// * `data` - the data to sign
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - the signature bytes
+    async fn sign(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+    ) -> InterfaceResult<Vec<u8>>;
 
     /// Generate cryptographically secure random bytes using the HSM RNG.
     ///

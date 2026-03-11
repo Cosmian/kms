@@ -46,7 +46,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata,
     KeyType,
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
@@ -57,7 +57,8 @@ use pkcs11_sys::{
     CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN,
     CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA,
     CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
-    CKM_SHA256, CKM_SHA384, CKM_SHA512, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
+    CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
+    CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
     CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
 };
@@ -102,6 +103,28 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
             CryptoAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
             CryptoAlgorithm::RsaOaepSha256 => Self::RsaOaepSha256,
             CryptoAlgorithm::RsaOaepSha1 => Self::RsaOaepSha1,
+        }
+    }
+}
+
+/// Signing algorithm supported by the HSM
+#[derive(Debug, Clone, Copy)]
+pub enum HsmSigningAlgorithm {
+    RsaPkcsV15,
+    Sha1WithRsa,
+    Sha256WithRsa,
+    Sha384WithRsa,
+    Sha512WithRsa,
+}
+
+impl From<SigningAlgorithm> for HsmSigningAlgorithm {
+    fn from(algorithm: SigningAlgorithm) -> Self {
+        match algorithm {
+            SigningAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
+            SigningAlgorithm::Sha1WithRsa => Self::Sha1WithRsa,
+            SigningAlgorithm::Sha256WithRsa => Self::Sha256WithRsa,
+            SigningAlgorithm::Sha384WithRsa => Self::Sha384WithRsa,
+            SigningAlgorithm::Sha512WithRsa => Self::Sha512WithRsa,
         }
     }
 }
@@ -1251,6 +1274,72 @@ impl Session {
 
         decrypted_data.truncate(usize::try_from(decrypted_data_len)?);
         Ok(Zeroizing::new(decrypted_data))
+    }
+
+    /// Sign data using the specified key and algorithm
+    pub fn sign(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: HsmSigningAlgorithm,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let mechanism_type = match algorithm {
+            HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
+            HsmSigningAlgorithm::Sha1WithRsa => CKM_SHA1_RSA_PKCS,
+            HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
+            HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,
+            HsmSigningAlgorithm::Sha512WithRsa => CKM_SHA512_RSA_PKCS,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: std::ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        self.sign_with_mechanism(key_handle, &mut mechanism, data)
+    }
+
+    fn sign_with_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        let mut data = data.to_vec();
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize signing",
+            C_SignInit,
+            self.handle,
+            mechanism,
+            key_handle
+        );
+
+        let mut signature_len: CK_ULONG = 0;
+        hsm_call!(
+            self.hsm,
+            "Failed to get signature length",
+            C_Sign,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            ptr::null_mut(),
+            &raw mut signature_len
+        );
+
+        let mut signature = vec![0_u8; usize::try_from(signature_len)?];
+        hsm_call!(
+            self.hsm,
+            "Failed to sign data",
+            C_Sign,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            signature.as_mut_ptr(),
+            &raw mut signature_len
+        );
+
+        signature.truncate(usize::try_from(signature_len)?);
+        Ok(signature)
     }
 
     /// Export a key from the HSM

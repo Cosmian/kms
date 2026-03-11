@@ -34,7 +34,7 @@
 use async_trait::async_trait;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
-    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
 };
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
@@ -194,6 +194,20 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let handle = session.get_object_handle(key_id)?;
         let plaintext = session.decrypt(handle, algorithm.into(), data)?;
         Ok(plaintext)
+    }
+
+    async fn sign(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        algorithm: SigningAlgorithm,
+        data: &[u8],
+    ) -> InterfaceResult<Vec<u8>> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let signature = session.sign(handle, algorithm.into(), data)?;
+        Ok(signature)
     }
 
     async fn get_key_type(

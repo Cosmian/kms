@@ -20,8 +20,8 @@ use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
 use crate::{
-    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
-    Session, SlotManager, hsm_call,
+    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize,
+    RsaOaepDigest, Session, SlotManager, hsm_call,
 };
 
 /// Returns the library path for a given HSM, checking environment variable override first.
@@ -519,6 +519,91 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(plaintext_8k_multi_multi.as_slice(), data_8k);
 
     info!("Successfully multi round encrypted/decrypted with AES CBC");
+    Ok(())
+}
+
+pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    // For CKM_RSA_PKCS (raw PKCS#1 v1.5), the data must be a pre-formatted DigestInfo.
+    // Use a SHA-256 DigestInfo over "Hello, World!" for the test.
+    let digest_info: [u8; 35] = [
+        // DER-encoded DigestInfo prefix for SHA-256 (19 bytes)
+        0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x10,
+        // 16-byte truncated hash placeholder (actual content doesn't matter for the test)
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10,
+    ];
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let signature = session.sign(sk, HsmSigningAlgorithm::RsaPkcsV15, &digest_info)?;
+    // RSA-2048 signature is 256 bytes
+    assert_eq!(signature.len(), 2048 / 8);
+    info!("Successfully signed with RSA PKCS#1 v1.5 (raw)");
+    Ok(())
+}
+
+pub fn rsa_sha256_sign(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let data = b"Hello, World!";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let signature = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data)?;
+    // RSA-2048 signature is 256 bytes
+    assert_eq!(signature.len(), 2048 / 8);
+    // Signing the same data again must produce the same deterministic signature (PKCS#1 v1.5)
+    let signature_2 = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data)?;
+    assert_eq!(signature, signature_2);
+    // Signing different data must produce a different signature
+    let data_2 = b"Goodbye, World!";
+    let signature_3 = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data_2)?;
+    assert_eq!(signature_3.len(), 2048 / 8);
+    assert_ne!(signature, signature_3);
+    info!("Successfully signed with SHA-256 RSA PKCS#1 v1.5");
+    Ok(())
+}
+
+pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let data = b"test data for signing";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let algorithms = [
+        ("SHA1WithRsa", HsmSigningAlgorithm::Sha1WithRsa),
+        ("SHA256WithRsa", HsmSigningAlgorithm::Sha256WithRsa),
+        ("SHA384WithRsa", HsmSigningAlgorithm::Sha384WithRsa),
+        ("SHA512WithRsa", HsmSigningAlgorithm::Sha512WithRsa),
+    ];
+    for (name, algorithm) in &algorithms {
+        let signature = session.sign(sk, *algorithm, data)?;
+        assert_eq!(
+            signature.len(),
+            2048 / 8,
+            "Signature length mismatch for {name}"
+        );
+        info!("Successfully signed with {name}");
+    }
     Ok(())
 }
 

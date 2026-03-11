@@ -155,7 +155,7 @@ pub(crate) async fn wrap_object(
             "...wrapping the key block with key uid: {wrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        wrap_using_encryption_oracle(
+        wrap_using_crypto_oracle(
             object,
             key_wrapping_specification,
             kms,
@@ -303,8 +303,8 @@ async fn wrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracle
-async fn wrap_using_encryption_oracle(
+/// Wrap a key with a wrapping key using a crypto oracle
+async fn wrap_using_crypto_oracle(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
@@ -336,14 +336,12 @@ async fn wrap_using_encryption_oracle(
     // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
 
-    // encrypt the key using the encryption oracle
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    // encrypt the key using the crypto oracle
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let encrypted_content = encryption_oracle
+    let encrypted_content = crypto_oracle
         .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
 

@@ -1,12 +1,14 @@
-mod encryption_oracle;
+mod crypto_oracle;
 mod error;
 mod hsm;
 mod stores;
 
-pub use encryption_oracle::{CryptoAlgorithm, EncryptedContent, EncryptionOracle, KeyMetadata};
+pub use crypto_oracle::{
+    CryptoAlgorithm, CryptoOracle, EncryptedContent, KeyMetadata, SigningAlgorithm,
+};
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmEncryptionOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+    HSM, HsmCryptoOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
     HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};

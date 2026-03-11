@@ -62,8 +62,7 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
              oracle, user: {user}"
         );
         unwrapping_key_uid =
-            unwrap_using_encryption_oracle(object_key_block, kms, &unwrapping_key_uid, prefix)
-                .await?;
+            unwrap_using_crypto_oracle(object_key_block, kms, &unwrapping_key_uid, prefix).await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
@@ -169,10 +168,10 @@ async fn unwrap_using_kms(
     Ok(())
 }
 
-/// Unwrap a key with a wrapping key using an encryption oracle
+/// Unwrap a key with a wrapping key using a crypto oracle
 /// If the unwrapping key is a public key, it will be stripped of the "_pk" suffix
 /// and the stripped version will be replaced.
-async fn unwrap_using_encryption_oracle(
+async fn unwrap_using_crypto_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     unwrapping_key_uid: &str,
@@ -197,13 +196,11 @@ async fn unwrap_using_encryption_oracle(
     };
 
     // decrypt the wrapped key
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let plaintext = encryption_oracle
+    let plaintext = crypto_oracle
         .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
         .await?;
 

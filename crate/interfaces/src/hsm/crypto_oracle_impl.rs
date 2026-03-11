@@ -1,7 +1,7 @@
-//! This module contains the implementation of the `EncryptionOracle` trait for the `Hsm` plugin.
-//! The `HsmEncryptionOracle` struct is a wrapper around an `HSM` instance and is responsible for
-//! encrypting and decrypting data using the HSM.
-//! This blanket implementation "glues" the `Hsm` interface with the `EncryptionOracle` interface.
+//! This module contains the implementation of the `CryptoOracle` trait for the `Hsm` plugin.
+//! The `HsmCryptoOracle` struct is a wrapper around an `HSM` instance and is responsible for
+//! encrypting, decrypting, and signing data using the HSM.
+//! This blanket implementation "glues" the `Hsm` interface with the `CryptoOracle` interface.
 
 use std::sync::Arc;
 
@@ -10,22 +10,22 @@ use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, EncryptionOracle, HSM, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
-    encryption_oracle::EncryptedContent,
+    CryptoAlgorithm, CryptoOracle, HSM, InterfaceError, InterfaceResult, KeyMetadata, KeyType,
+    SigningAlgorithm, crypto_oracle::EncryptedContent,
 };
 
-pub struct HsmEncryptionOracle {
+pub struct HsmCryptoOracle {
     hsm: Arc<dyn HSM + Send + Sync>,
 }
 
-impl HsmEncryptionOracle {
+impl HsmCryptoOracle {
     pub fn new(hsm: Arc<dyn HSM + Send + Sync>) -> Self {
         Self { hsm }
     }
 }
 
 #[async_trait]
-impl EncryptionOracle for HsmEncryptionOracle {
+impl CryptoOracle for HsmCryptoOracle {
     async fn encrypt(
         &self,
         uid: &str,
@@ -132,6 +132,34 @@ impl EncryptionOracle for HsmEncryptionOracle {
     async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
         let (slot_id, key_id) = parse_uid(uid)?;
         self.hsm.get_key_metadata(slot_id, &key_id).await
+    }
+
+    async fn sign(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<Vec<u8>> {
+        let (slot_id, key_id) = parse_uid(uid)?;
+        let key_type = self.hsm.get_key_type(slot_id, &key_id).await?;
+        match key_type {
+            Some(KeyType::RsaPrivateKey) => {}
+            Some(other) => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} is a {other:?}, expected an RSA private key"
+                )));
+            }
+            None => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} not found on the HSM"
+                )));
+            }
+        }
+        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        debug!("sign: using algorithm {algorithm:?} for key {uid}");
+        self.hsm.sign(slot_id, &key_id, algorithm, data).await
     }
 }
 
