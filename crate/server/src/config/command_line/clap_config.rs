@@ -694,8 +694,13 @@ mod tests {
     where
         F: FnOnce() -> R,
     {
-        // Acquire mutex to serialize environment variable access
-        let _guard = ENV_MUTEX.lock().unwrap();
+        // Acquire mutex to serialize environment variable access.
+        // Use unwrap_or_else to recover from a poisoned mutex (caused by a
+        // previous test panicking while holding the lock) so that one test
+        // failure does not cascade into all subsequent tests.
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
@@ -765,34 +770,81 @@ mod tests {
         });
     }
 
+    /// RAII guard that removes a file when dropped, ensuring cleanup even on panic.
+    struct RemoveOnDrop(PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            drop(std::fs::remove_file(&self.0));
+        }
+    }
+
     #[test]
-    fn precedence_default_config_over_args() {
+    fn precedence_default_config_loads_without_args() {
         with_clean_env(|| {
             if default_path_exists() {
                 eprintln!(
-                    "Skipping precedence_default_config_over_args: default config already exists"
+                    "Skipping precedence_default_config_loads_without_args: default config \
+                     already exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // No extra args beyond the binary name → config file is loaded
+                let args = vec!["kms"];
+                let cfg = ClapConfig::load_from_args(args).expect("load from args");
+                assert_eq!(
+                    cfg.http.port, 34567,
+                    "default config file should be loaded when no extra args are given"
                 );
             } else {
-                // Create a temporary default config file for this test
-                let default_content = "[http]\nport=34567\n";
-                let default_path = PathBuf::from(super::get_default_config_path());
-                if let Some(parent) = default_path.parent() {
-                    drop(std::fs::create_dir_all(parent));
-                }
-                if std::fs::write(&default_path, default_content).is_ok() {
-                    let args = vec!["kms", "--port", "2222"];
-                    let cfg = ClapConfig::load_from_args(args).expect("load from args");
-                    assert_eq!(
-                        cfg.http.port, 34567,
-                        "default config file ignores command line args"
-                    );
-                    drop(std::fs::remove_file(&default_path)); // cleanup
-                } else {
-                    eprintln!(
-                        "Skipping precedence_default_config_over_args: cannot write to default \
-                         path"
-                    );
-                }
+                eprintln!(
+                    "Skipping precedence_default_config_loads_without_args: cannot write to \
+                     default path"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn default_config_with_extra_args_is_error() {
+        with_clean_env(|| {
+            if default_path_exists() {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: default config already \
+                     exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // Extra CLI args when a default config exists should be rejected
+                let args = vec!["kms", "--port", "2222"];
+                let res = ClapConfig::load_from_args(args);
+                assert!(
+                    res.is_err(),
+                    "should error when default config exists and extra args are given"
+                );
+                let err_msg = res.unwrap_err().to_string();
+                assert!(
+                    err_msg.contains("extra command-line arguments were also provided"),
+                    "error message should mention extra args conflict: {err_msg}"
+                );
+            } else {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: cannot write to default \
+                     path"
+                );
             }
         });
     }
