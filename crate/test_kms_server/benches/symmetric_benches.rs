@@ -323,7 +323,7 @@ pub(crate) fn bench_decrypt(
 
     let mut group = c.benchmark_group("Symmetric encryption");
     group.bench_function(
-        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)",),
+        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)"),
         |b| {
             b.to_async(&runtime).iter(|| async {
                 let _ = decrypt(

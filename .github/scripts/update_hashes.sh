@@ -136,13 +136,15 @@ stream_job_logs() {
 
   # Prefer `gh run view` (nice formatting and smaller for failed steps),
   # but it may refuse logs while the overall run is still in progress.
-  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+  # Also fall through if the output is empty (gh exits 0 but writes nothing
+  # when the job has no failed steps in its view).
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     cat "$tmp"
     rm -f "$tmp"
     return 0
   fi
 
-  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     cat "$tmp"
     rm -f "$tmp"
     return 0
@@ -173,6 +175,11 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
 
   while IFS= read -r raw_line; do
     line="$raw_line"
+
+    # Strip GHA raw-log timestamp prefix: "2026-03-10T06:15:21.5295456Z "
+    if [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z[[:space:]] ]]; then
+      line="${line#*Z }"
+    fi
 
     # If `gh` associates log lines with steps, strip the step prefix.
     if [[ "$line" == *"|"* ]]; then

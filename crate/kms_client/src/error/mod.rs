@@ -1,10 +1,12 @@
 use std::io;
 
-use cosmian_http_client::{HttpClientError, reexport::reqwest};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::KmipError;
 use thiserror::Error;
 
-use crate::cosmian_kmip::{kmip_0::kmip_types::ErrorReason, ttlv::TtlvError};
+use crate::{
+    cosmian_kmip::{kmip_0::kmip_types::ErrorReason, ttlv::TtlvError},
+    http_client::{HttpClientError, reexport::reqwest},
+};
 
 pub(crate) mod result;
 

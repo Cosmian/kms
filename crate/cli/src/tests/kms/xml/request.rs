@@ -646,10 +646,8 @@ impl PrepareRequest {
                                 *last_uid = Some(dec.unique_identifier.clone());
                             }
                         }
-                        Op14::Destroy(d) => {
-                            if !d.unique_identifier.is_empty() {
-                                *last_uid = Some(d.unique_identifier.clone());
-                            }
+                        Op14::Destroy(d) if !d.unique_identifier.is_empty() => {
+                            *last_uid = Some(d.unique_identifier.clone());
                         }
                         Op14::Revoke(r) => {
                             if let Some(s) = &mut r.unique_identifier {

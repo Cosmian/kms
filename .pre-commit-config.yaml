@@ -214,12 +214,13 @@ repos:
         pass_filenames: false
         stages: [manual]
 
-      - id: nix-cargo-test-non-fips
+      - id: nix-redis-cargo-test-non-fips
         name: Nix cargo test (redis non-fips)
         entry: bash .github/scripts/nix.sh --variant non-fips test redis
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)

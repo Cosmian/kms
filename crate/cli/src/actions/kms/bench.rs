@@ -331,7 +331,7 @@ async fn encrypt(
         }
         {
             let mut stdout = io::stdout().lock();
-            write!(stdout, ".",)?;
+            write!(stdout, ".")?;
             stdout.flush()?;
         };
         let encrypt = Encrypt {
@@ -381,7 +381,7 @@ async fn decrypt(
         let Some(next) = next else { break };
         {
             let mut stdout = io::stdout().lock();
-            write!(stdout, ".",)?;
+            write!(stdout, ".")?;
             stdout.flush()?;
         };
         let (iv, data, tag) = match BulkData::deserialize(next.ciphertext.as_ref()) {

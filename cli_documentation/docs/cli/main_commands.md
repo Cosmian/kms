@@ -22,6 +22,8 @@ Possible values:  `"true", "false"`
 
 Possible values:  `"true", "false"`
 
+`--header [-H] <NAME: VALUE>` Add a custom HTTP header to every request sent to the KMS server.
+
 `--proxy-url <PROXY_URL>` The proxy URL:
 
   - e.g., `https://secure.example` for an HTTP proxy
@@ -86,7 +88,7 @@ Possible values:  `"true", "false"`
 
 **`markdown`** [[24]](#24-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
-**`configure`** [[25]](#25-ckms-configure)  Configure the KMS CLI (creates/updates ckms.toml)
+**`configure`** [[25]](#25-ckms-configure)  Configure the KMS CLI (create ckms.toml)
 
 ---
 
@@ -3425,7 +3427,7 @@ Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- mark
 
 ## 25 ckms configure
 
-Configure the KMS CLI (creates/updates ckms.toml)
+Configure the KMS CLI (create ckms.toml)
 
 ### Usage
 `ckms configure`

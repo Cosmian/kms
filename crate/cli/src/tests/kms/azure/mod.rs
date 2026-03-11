@@ -24,12 +24,11 @@ fn generate_rsa_keypair() -> KmsCliResult<(PKey<Private>, PKey<Public>)> {
     // Avoid introducing new RNG deps in the CLI crate's dev-deps.
     let bits = key_sizes[std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| {
+        .map_or(0, |d| {
             let len_u32 = u32::try_from(key_sizes.len()).unwrap_or(1);
             let idx_u32 = d.subsec_nanos() % len_u32;
             usize::try_from(idx_u32).unwrap_or(0)
-        })
-        .unwrap_or(0)];
+        })];
 
     let rsa = Rsa::generate(bits)
         .map_err(|e| KmsCliError::Default(format!("Failed to generate RSA key: {e}")))?;
