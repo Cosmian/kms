@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    hash::{BuildHasher, Hash, Hasher, RandomState},
+    hash::{BuildHasher, RandomState},
     num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
@@ -39,6 +39,7 @@ pub struct CachedObject {
 }
 
 impl CachedObject {
+    #[must_use]
     pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
         Self {
             fingerprint: key_signature,
@@ -46,10 +47,12 @@ impl CachedObject {
         }
     }
 
+    #[must_use]
     pub const fn fingerprint(&self) -> u64 {
         self.fingerprint
     }
 
+    #[must_use]
     pub const fn unwrapped_object(&self) -> &Object {
         &self.unwrapped_object
     }
@@ -180,9 +183,7 @@ impl UnwrappedCache {
                 // unguessable which prevents attackers from leveraging
                 // pre-computation to create targeted collisions leading to
                 // undetectable cache corruption.
-                let mut hasher = self.seed.build_hasher();
-                bytes.hash(&mut hasher);
-                hasher.finish()
+                self.seed.hash_one(&bytes)
             })
     }
 
@@ -192,14 +193,11 @@ impl UnwrappedCache {
     /// value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) -> DbResult<()> {
         let mut cache = self.cache.write().await;
-        match cache.peek(uid) {
-            Some(cached_object) => {
-                if cached_object.fingerprint() != self.fingerprint(object)? {
-                    trace!("Invalidating the cache for {}", uid);
-                    cache.pop(uid);
-                }
+        if let Some(cached_object) = cache.peek(uid) {
+            if cached_object.fingerprint() != self.fingerprint(object)? {
+                trace!("Invalidating the cache for {}", uid);
+                cache.pop(uid);
             }
-            None => {}
         }
         Ok(())
     }
@@ -240,7 +238,7 @@ impl UnwrappedCache {
     ) -> DbResult<()> {
         if wrapped_object == &unwrapped_object {
             return Err(DbError::UnwrappedCache(
-                "wrapped and unwrapped objects should be different".to_string(),
+                "wrapped and unwrapped objects should be different".to_owned(),
             ));
         }
 
@@ -354,8 +352,7 @@ mod tests {
             database
                 .unwrapped_cache()
                 .peek(&uid, &symmetric_key)
-                .await
-                .unwrap()
+                .await?
                 .is_none()
         );
 
