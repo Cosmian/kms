@@ -60,14 +60,9 @@ impl KMS {
         }
 
         // check if we have it in the cache
-        match self.database.unwrapped_cache().peek(uid, object).await? {
-            Some(u) => {
-                debug!("Unwrapped cache hit");
-                return Ok(u);
-            }
-            None => {
-                // try unwrapping
-            }
+        if let Some(u) = self.database.unwrapped_cache().peek(uid, object).await? {
+            debug!("Unwrapped cache hit");
+            return Ok(u);
         }
 
         // cache miss, try to unwrap
