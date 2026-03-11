@@ -168,9 +168,10 @@ repos:
   - repo: local
     hooks:
       - id: renew-ckms-markdown
-        name: renew-ckms-markdown
-        description: ./target/debug/ckms markdown cli_documentation/docs/cli/main_commands.md
-        entry: ./target/debug/ckms markdown cli_documentation/docs/cli/main_commands.md
+        name: renew ckms markdown docs
+        description: |
+          Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md.
+        entry: bash .github/scripts/renew_ckms_markdown.sh
         language: system
         types: [rust]
         pass_filenames: false
@@ -187,6 +188,13 @@ repos:
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
         entry: bash .github/scripts/test_wasm.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: ui-e2e
+        name: UI end-to-end
+        entry: bash .github/scripts/test_ui.sh
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
@@ -239,20 +247,15 @@ repos:
         stages: [manual]
 
       - id: renew-server-doc
-        name: renew server cli doc
+        name: renew server docs (CLI help + configuration file)
+        description: |
+          Build cosmian_kms (non-fips) and regenerate:
+            - documentation/docs/server_cli.md from --help
+            - documentation/docs/server_configuration_file.md from --print-default-config
+            - pkg/kms.toml and crate/server/kms_template.toml
         entry: bash .github/scripts/renew_server_doc.sh
         language: system
         types: [rust]
-        pass_filenames: false
-
-      - id: renew-server-configuration-doc
-        name: renew server configuration file doc
-        description: |
-          Regenerate documentation/docs/server_configuration_file.md from ClapConfig
-          (--print-default-config) and append any new ClapConfig sections to pkg/kms.toml.
-        entry: bash .github/scripts/renew_server_configuration_doc.sh
-        language: system
-        files: ^(crate/server/src/config/.*\.rs$|pkg/kms\.toml$)
         pass_filenames: false
 
   - repo: https://github.com/Cosmian/git-hooks.git

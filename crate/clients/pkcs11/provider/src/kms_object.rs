@@ -10,6 +10,7 @@ use ckms::{
                 RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
+                extra::VENDOR_ID_COSMIAN,
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
@@ -102,7 +103,7 @@ pub(crate) async fn get_kms_objects_async(
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes
-            .get_tags()
+            .get_tags(VENDOR_ID_COSMIAN)
             .into_iter()
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
@@ -147,7 +148,7 @@ pub(crate) async fn get_kms_object_async(
     // Get request does not return attributes, try to get them form the object
     let attributes = object.attributes().cloned().unwrap_or_default();
     let other_tags = attributes
-        .get_tags()
+        .get_tags(VENDOR_ID_COSMIAN)
         .into_iter()
         .filter(|t| !t.is_empty() && !t.starts_with('_'))
         .collect::<Vec<String>>();
@@ -161,7 +162,7 @@ pub(crate) async fn get_kms_object_async(
 
 async fn locate_objects(kms_rest_client: &KmsClient, tags: &[String]) -> Pkcs11Result<Vec<String>> {
     let mut attributes = Attributes::default();
-    attributes.set_tags(tags)?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
 
     let locate = Locate {
         attributes,
@@ -240,7 +241,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags.clone())?;
     let object = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -311,7 +312,7 @@ pub(crate) async fn kms_import_object_async(
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
     let mut attributes = Attributes::default();
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags.clone())?;
 
     let object = Object::SecretData(SecretData {
         secret_data_type: SecretDataType::Password,

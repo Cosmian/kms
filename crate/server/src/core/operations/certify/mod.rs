@@ -89,7 +89,8 @@ pub(crate) async fn certify(
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
-    let (certificate, tags, attributes) = build_and_sign_certificate(&issuer, &subject, request)?;
+    let (certificate, tags, attributes) =
+        build_and_sign_certificate(kms.vendor_id(), &issuer, &subject, request)?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
@@ -416,6 +417,7 @@ async fn get_subject(
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
     let key_pair = generate_key_pair(
+        kms.vendor_id(),
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
@@ -427,10 +429,16 @@ async fn get_subject(
         KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
-            private_key_tags: key_pair.private_key().attributes()?.get_tags(),
+            private_key_tags: key_pair
+                .private_key()
+                .attributes()?
+                .get_tags(kms.vendor_id()),
             public_key_id: pk_uid,
             public_key_object: key_pair.public_key().to_owned(),
-            public_key_tags: key_pair.public_key().attributes()?.get_tags(),
+            public_key_tags: key_pair
+                .public_key()
+                .attributes()?
+                .get_tags(kms.vendor_id()),
         },
         subject_name,
     ))
@@ -612,6 +620,7 @@ fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer
 }
 
 fn build_and_sign_certificate(
+    vendor_id: &str,
     issuer: &Issuer,
     subject: &Subject,
     request: Certify,
@@ -640,7 +649,8 @@ fn build_and_sign_certificate(
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
     // retrieve the number of days for the validity of the certificate
-    let mut number_of_days = u32::try_from(attributes.remove_validity_days().unwrap_or(365))?;
+    let mut number_of_days =
+        u32::try_from(attributes.remove_validity_days(vendor_id).unwrap_or(365))?;
     trace!("Number of days: {}", number_of_days);
 
     // the number of days cannot exceed that of the issuer certificate
@@ -664,7 +674,7 @@ fn build_and_sign_certificate(
 
     // Extensions supplied using an extension attribute
     // This requires knowing the issuer certificate
-    if let Some(extensions) = attributes.remove_x509_extension_file() {
+    if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
         let extensions_as_str = String::from_utf8(extensions)?;
         debug!("OpenSSL Extensions: {}", extensions_as_str);
         // Create a new X509V3Context object for the issuer certificate
@@ -688,12 +698,12 @@ fn build_and_sign_certificate(
     let x509 = x509_builder.build();
 
     // Process the tags
-    let mut tags = attributes.remove_tags().unwrap_or_default();
+    let mut tags = attributes.remove_tags(vendor_id).unwrap_or_default();
     if !tags.is_empty() {
         Attributes::check_user_tags(&tags)?;
     }
     // add subject tags if any
-    tags.extend(subject.tags().iter().cloned());
+    tags.extend(subject.tags(vendor_id).iter().cloned());
     // add the certificate "system" tag
     tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
 

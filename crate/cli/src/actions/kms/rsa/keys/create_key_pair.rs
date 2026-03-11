@@ -95,6 +95,7 @@ impl CreateKeyPairAction {
             .as_ref()
             .map(|id| UniqueIdentifier::TextString(id.clone()));
         let create_key_pair_request = create_rsa_key_pair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             private_key_id,
             &self.tags,
             self.key_size,

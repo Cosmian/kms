@@ -135,6 +135,7 @@ pub async fn handle_google_cse_rsa_keypair(
         } else {
             info!("No migration key found, creating new RSA keypair.");
             let create_request = create_rsa_key_pair_request::<Vec<String>>(
+                server_params.vendor_identification.as_str(),
                 Some(UniqueIdentifier::TextString(uid_sk.clone())),
                 Vec::new(),
                 4096,
@@ -287,6 +288,7 @@ async fn import_cse_migration_key(
     // Import PrivateKey
     let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
+            server_params.vendor_identification.as_str(),
             Some(uid_sk.to_owned()),
             object_sk,
             Some(import_attributes_sk),
@@ -299,6 +301,7 @@ async fn import_cse_migration_key(
     let import_pk_fut = {
         // Import PublicKey
         let import_request_pk = import_object_request::<Vec<String>>(
+            server_params.vendor_identification.as_str(),
             Some(uid_pk.to_owned()),
             object_pk,
             Some(import_attributes_pk),

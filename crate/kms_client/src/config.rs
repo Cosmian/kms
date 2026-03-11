@@ -1,3 +1,4 @@
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
 use crate::http_client::HttpClientConfig;
@@ -28,6 +29,15 @@ pub struct KmsClientConfig {
     /// will output the JSON KMIP request and response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub print_json: Option<bool>,
+    /// The vendor identification used in KMIP vendor attributes (default: "cosmian")
+    #[serde(default = "KmsClientConfig::default_vendor_id")]
+    pub vendor_id: String,
+}
+
+impl KmsClientConfig {
+    fn default_vendor_id() -> String {
+        VENDOR_ID_COSMIAN.to_owned()
+    }
 }
 
 impl Default for KmsClientConfig {
@@ -39,6 +49,7 @@ impl Default for KmsClientConfig {
             },
             gmail_api_conf: None,
             print_json: None,
+            vendor_id: Self::default_vendor_id(),
         }
     }
 }

@@ -1,7 +1,6 @@
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, CreateKeyPair},
@@ -21,13 +20,14 @@ pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     access_structure: &str,
     tags: T,
     sensitive: bool,
     wrapping_key_id: Option<&String>,
 ) -> Result<CreateKeyPair, UtilsError> {
     let vendor_attributes = VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(access_structure.as_bytes().to_vec()),
     };
@@ -42,10 +42,10 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     if let Some(wrap_key_id) = wrapping_key_id {
-        attributes.set_wrapping_key_id(wrap_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     let request = CreateKeyPair {
@@ -58,6 +58,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
 
 /// Build a `Create` request for a `CoverCrypt` USK
 pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     access_policy: &str,
     cover_crypt_master_secret_key_id: &str,
     tags: T,
@@ -65,7 +66,7 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
     wrapping_key_id: Option<&String>,
 ) -> Result<Create, UtilsError> {
     let vendor_attributes: VendorAttribute = VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(access_policy.as_bytes().to_vec()),
     };
@@ -85,9 +86,9 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
         activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
     if let Some(wrap_key_id) = wrapping_key_id {
-        attributes.set_wrapping_key_id(wrap_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     let request = Create {

@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
             },
         },
         kmip_2_1::{
-            extra::tagging::EMPTY_TAGS,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
             kmip_messages::RequestMessageBatchItem,
             kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -52,6 +52,7 @@ async fn test_curve_25519() -> KResult<()> {
 
     // request key pair creation
     let request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString("ec_sk_uid".to_owned())),
         EMPTY_TAGS,
         RecommendedCurve::CURVE25519,
@@ -234,6 +235,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
@@ -263,6 +265,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVE25519,
@@ -272,6 +275,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,
@@ -281,6 +285,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::SECT113R1,
@@ -290,6 +295,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     EMPTY_TAGS,
                     RecommendedCurve::CURVEED25519,

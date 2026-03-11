@@ -139,7 +139,8 @@ try {
         "--database-type", "sqlite",
         "--sqlite-path", $SqliteDir,
         "--hostname", "127.0.0.1",
-        "--port", "9998"
+        "--port", "9998",
+        "--vendor-identification", "test_vendor"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $KmsLogOut `

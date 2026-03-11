@@ -43,6 +43,7 @@ impl ReKeyAction {
         let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let res = Box::pin(kms_rest_client.rekey_keypair(build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &uid,
             &RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
         )?))
@@ -99,6 +100,7 @@ impl PruneAction {
         let uid = get_key_uid(self.msk_uid.as_ref(), self.tags.as_ref(), KEY_ID)?;
 
         let request = build_rekey_keypair_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &uid,
             &RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
         )?;

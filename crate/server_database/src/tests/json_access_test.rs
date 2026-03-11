@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
@@ -30,6 +31,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -77,6 +79,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (cryptographic_algorithm)")?;
@@ -96,6 +99,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (cryptographic_length)")?;
@@ -116,6 +120,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (cryptographic_algorithm + cryptographic_length)")?;
@@ -135,6 +140,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (key_format_type)")?;
@@ -157,6 +163,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (all attributes)")?;
@@ -176,6 +183,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (bad cryptographic_algorithm)")?;
@@ -194,6 +202,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await
         .context("find (bad key_format_type)")?;

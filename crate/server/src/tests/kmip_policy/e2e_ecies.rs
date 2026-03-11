@@ -1,5 +1,5 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+    extra::tagging::{SYSTEM_TAG_PUBLIC_KEY, VENDOR_ID_COSMIAN},
     kmip_operations::{CreateKeyPairResponse, DecryptResponse, EncryptResponse},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, RecommendedCurve},
     requests::{create_ec_key_pair_request, decrypt_request, encrypt_request},
@@ -33,8 +33,15 @@ async fn e2e_ecies_roundtrip_with_policy(
     let conf = ecies_policy_conf(curve, allowed_shake);
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
-    let create_kp = create_ec_key_pair_request(None, ["e2e-ecies-matrix"], curve, false, None)
-        .expect("create_ec_key_pair_request should build");
+    let create_kp = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        ["e2e-ecies-matrix"],
+        curve,
+        false,
+        None,
+    )
+    .expect("create_ec_key_pair_request should build");
     let create_resp: CreateKeyPairResponse = post_2_1(&app, &create_kp).await?;
 
     let pk_uid = create_resp
@@ -168,6 +175,7 @@ async fn e2e_ecies_is_allowed_when_curves_allowlist_is_unset() {
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let create_kp = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,
         ["e2e-ecies-curve-unset"],
         RecommendedCurve::P256,
@@ -223,6 +231,7 @@ async fn e2e_ecies_is_denied_when_curves_allowlist_is_empty() {
     let app = Box::pin(test_app_with_clap_config(conf, None)).await;
 
     let create_kp = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,
         ["e2e-ecies-curve-empty"],
         RecommendedCurve::P256,

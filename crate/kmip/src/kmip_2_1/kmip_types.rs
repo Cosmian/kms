@@ -24,7 +24,7 @@ use crate::{
         BlockCipherMode, DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, KeyRoleType,
         MaskGenerator, PaddingMethod, RNGAlgorithm,
     },
-    kmip_2_1::extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+    kmip_2_1::extra::tagging::VENDOR_ATTR_TAG,
 };
 
 pub const VENDOR_ATTR_AAD: &str = "aad";
@@ -973,9 +973,9 @@ impl Display for AttributeReference {
 
 impl AttributeReference {
     #[must_use]
-    pub fn tags_reference() -> Self {
+    pub fn tags_reference(vendor_id: &str) -> Self {
         Self::Vendor(VendorAttributeReference {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            vendor_identification: vendor_id.to_owned(),
             attribute_name: VENDOR_ATTR_TAG.to_owned(),
         })
     }

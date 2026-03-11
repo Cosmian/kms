@@ -1,6 +1,5 @@
 use crate::kmip_2_1::{
-    extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
-    kmip_attributes::Attributes,
+    extra::VENDOR_ATTR_X509_EXTENSION, kmip_attributes::Attributes,
     kmip_types::VendorAttributeValue,
 };
 
@@ -16,9 +15,13 @@ impl Attributes {
     ///
     /// # Returns
     /// * The requested validity days if it was set before
-    pub fn set_requested_validity_days(&mut self, requested_validity_days: i32) -> Option<i32> {
+    pub fn set_requested_validity_days(
+        &mut self,
+        vendor_id: &str,
+        requested_validity_days: i32,
+    ) -> Option<i32> {
         let val = self.set_vendor_attribute(
-            VENDOR_ID_COSMIAN,
+            vendor_id,
             VENDOR_ATTR_REQUESTED_VALIDITY_DAYS,
             VendorAttributeValue::Integer(requested_validity_days),
         )?;
@@ -34,9 +37,8 @@ impl Attributes {
     /// # Returns
     /// * The requested validity days if it was set before
     /// * `None` if it was not set
-    pub fn remove_validity_days(&mut self) -> Option<i32> {
-        let val =
-            self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_REQUESTED_VALIDITY_DAYS)?;
+    pub fn remove_validity_days(&mut self, vendor_id: &str) -> Option<i32> {
+        let val = self.remove_vendor_attribute(vendor_id, VENDOR_ATTR_REQUESTED_VALIDITY_DAYS)?;
         if let VendorAttributeValue::Integer(val) = val {
             Some(val)
         } else {
@@ -52,9 +54,13 @@ impl Attributes {
     /// # Returns
     /// * The X509 extensions file if it was set before
     /// * `None` if it was not set
-    pub fn set_x509_extension_file(&mut self, x509_extension_file: Vec<u8>) -> Option<Vec<u8>> {
+    pub fn set_x509_extension_file(
+        &mut self,
+        vendor_id: &str,
+        x509_extension_file: Vec<u8>,
+    ) -> Option<Vec<u8>> {
         let val = self.set_vendor_attribute(
-            VENDOR_ID_COSMIAN,
+            vendor_id,
             VENDOR_ATTR_X509_EXTENSION,
             VendorAttributeValue::ByteString(x509_extension_file),
         )?;
@@ -70,8 +76,8 @@ impl Attributes {
     /// # Returns
     /// * The X509 extensions file if it was set before
     /// * `None` if it was not set
-    pub fn remove_x509_extension_file(&mut self) -> Option<Vec<u8>> {
-        let val = self.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)?;
+    pub fn remove_x509_extension_file(&mut self, vendor_id: &str) -> Option<Vec<u8>> {
+        let val = self.remove_vendor_attribute(vendor_id, VENDOR_ATTR_X509_EXTENSION)?;
         if let VendorAttributeValue::ByteString(val) = val {
             Some(val)
         } else {

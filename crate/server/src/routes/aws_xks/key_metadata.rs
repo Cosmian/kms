@@ -239,7 +239,7 @@ async fn get_key_metadata_inner(
             let key_spec = format!("RSA_{key_size}");
             if response
                 .attributes
-                .get_tags()
+                .get_tags(&kms.params.vendor_identification)
                 .contains(SYSTEM_TAG_PRIVATE_KEY)
             {
                 // a private key
@@ -300,7 +300,7 @@ async fn create_key(
         ..Attributes::default()
     };
     attributes
-        .set_tags(["aws-xks"])
+        .set_tags(&kms.params.vendor_identification, ["aws-xks"])
         .map_err(|e| XksErrorReply {
             errorName: XksErrorName::InternalException,
             errorMessage: Some(format!("Failed to set tags: {e}")),

@@ -17,10 +17,11 @@ use crate::{
 
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key_kmip_object(
+    vendor_id: &str,
     key_bytes: &[u8],
     create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
-    let mut tags = create_attributes.get_tags();
+    let mut tags = create_attributes.get_tags(vendor_id);
     tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
     // The cryptographic algorithm must be specified
     let cryptographic_algorithm = create_attributes.cryptographic_algorithm.ok_or_else(|| {
@@ -88,7 +89,7 @@ pub fn create_symmetric_key_kmip_object(
         .or(Some(KeyFormatType::TransparentSymmetricKey));
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
     // set the tags in the attributes
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     // The default format for a symmetric key is Raw
     //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
@@ -114,6 +115,7 @@ pub fn create_symmetric_key_kmip_object(
 
 /// Build a `Create` request for a symmetric key
 pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     key_id: Option<UniqueIdentifier>,
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,
@@ -140,9 +142,9 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
     if let Some(wrap_key_id) = wrap_key_id {
-        attributes.set_wrapping_key_id(wrap_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
@@ -153,11 +155,12 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
 
 /// Create a secret data for the given type
 pub fn create_secret_data_kmip_object(
+    vendor_id: &str,
     secret_bytes: &[u8],
     secret_data_type: SecretDataType,
     create_attributes: &Attributes,
 ) -> Result<Object, KmipError> {
-    let mut tags = create_attributes.get_tags();
+    let mut tags = create_attributes.get_tags(vendor_id);
     tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
     // Generate a new UID if none is provided.
     let uid = match &create_attributes
@@ -180,7 +183,7 @@ pub fn create_secret_data_kmip_object(
     attributes.key_format_type = Some(KeyFormatType::Raw);
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid));
     // set the tags in the attributes
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     Ok(Object::SecretData(SecretData {
         secret_data_type,
@@ -200,6 +203,7 @@ pub fn create_secret_data_kmip_object(
 
 /// Build a `Create` request for a secret data - random Seed of 32 bytes generated server-side
 pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     secret_id: Option<UniqueIdentifier>,
     tags: T,
     sensitive: bool,
@@ -221,9 +225,9 @@ pub fn secret_data_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
     if let Some(wrap_key_id) = wrap_key_id {
-        attributes.set_wrapping_key_id(wrap_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
     Ok(Create {
         object_type: ObjectType::SecretData,

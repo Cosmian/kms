@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
         kmip_2_1::{
-            extra::tagging::EMPTY_TAGS,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
             kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
@@ -47,8 +47,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
+    let request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::CURVE25519,
+        false,
+        None,
+    )?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public keys exist
     // check secret key
@@ -266,6 +272,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString("sym_key_id".to_owned())),
         256,
         CryptographicAlgorithm::AES,
@@ -322,8 +329,14 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request =
-        create_ec_key_pair_request(None, EMPTY_TAGS, RecommendedCurve::CURVE25519, false, None)?;
+    let request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::CURVE25519,
+        false,
+        None,
+    )?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
@@ -393,6 +406,7 @@ async fn test_register_operation() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let sym_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &[1, 2, 3, 4],
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20),

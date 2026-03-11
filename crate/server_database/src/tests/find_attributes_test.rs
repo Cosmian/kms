@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_types::{
@@ -40,6 +41,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     };
 
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -90,6 +92,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -107,6 +110,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -125,6 +129,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await?;
     assert_eq!(found.len(), 1);
@@ -147,6 +152,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             Some(State::PreActive),
             owner,
             true,
+            VENDOR_ID_COSMIAN,
         )
         .await?;
     assert_eq!(found.len(), 0);

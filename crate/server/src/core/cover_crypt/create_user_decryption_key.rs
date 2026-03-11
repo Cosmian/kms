@@ -72,10 +72,12 @@ pub(crate) async fn create_user_decryption_key(
             continue;
         }
 
-        let access_policy = access_policy_from_attributes(&create_request.attributes)?;
+        let access_policy =
+            access_policy_from_attributes(kmip_server.vendor_id(), &create_request.attributes)?;
         debug!("create_user_decryption_key_: Access Policy: {access_policy:?}");
 
         let (msk_obj, usk_obj) = create_user_decryption_key_(
+            kmip_server.vendor_id(),
             &owm,
             &cover_crypt,
             &access_policy,
@@ -105,6 +107,7 @@ pub(crate) async fn create_user_decryption_key(
 }
 
 fn create_user_decryption_key_(
+    vendor_id: &str,
     owm: &ObjectWithMetadata,
     cover_crypt: &Covercrypt,
     access_policy: &str,
@@ -121,7 +124,7 @@ fn create_user_decryption_key_(
     let mut usk_handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &mut msk);
 
     let usk_obj = usk_handler
-        .create_usk_object(access_policy, create_attributes, owm.id())
+        .create_usk_object(vendor_id, access_policy, create_attributes, owm.id())
         .map_err(KmsError::from)?;
 
     let msk_bytes = msk.serialize()?;
@@ -140,6 +143,7 @@ fn create_user_decryption_key_(
         })?;
 
     let msk_obj = create_msk_object(
+        vendor_id,
         msk_bytes,
         msk_attributes.clone(),
         &mpk_link.to_string(),

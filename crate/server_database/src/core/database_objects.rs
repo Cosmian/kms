@@ -294,14 +294,21 @@ impl Database {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for (_prefix, db) in map.iter() {
             results.extend(
-                db.find(researched_attributes, state, user, user_must_be_owner)
-                    .await
-                    .unwrap_or(vec![]),
+                db.find(
+                    researched_attributes,
+                    state,
+                    user,
+                    user_must_be_owner,
+                    vendor_id,
+                )
+                .await
+                .unwrap_or(vec![]),
             );
         }
         Ok(results)

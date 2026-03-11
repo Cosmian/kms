@@ -47,10 +47,26 @@ jobs:
 
       - name: Nix installation
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
 
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Warm Nix store
+        run: |
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
+            dest="/tmp/$(basename "$url")"
+            echo "Downloading $url with curl …"
+            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack --name source "file://$dest"
+            rm -f "$dest"
+          done
 
       - name: Login to GHCR
         uses: docker/login-action@v4

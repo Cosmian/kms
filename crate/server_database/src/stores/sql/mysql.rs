@@ -613,6 +613,7 @@ impl ObjectsStore for MySqlPool {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         Ok(find_(
             researched_attributes,
@@ -620,6 +621,7 @@ impl ObjectsStore for MySqlPool {
             user,
             user_must_be_owner,
             &self.pool,
+            vendor_id,
         )
         .await?)
     }
@@ -1076,12 +1078,14 @@ pub(super) async fn find_(
     user: &str,
     user_must_be_owner: bool,
     pool: &Pool,
+    vendor_id: &str,
 ) -> DbResult<Vec<(String, State, Attributes)>> {
     let locate = query_from_attributes::<MySqlPlaceholder>(
         researched_attributes,
         state,
         user,
         user_must_be_owner,
+        vendor_id,
     );
     trace!("find_: {:?}", locate.sql);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;

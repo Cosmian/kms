@@ -73,19 +73,22 @@ impl CreateSecretDataAction {
             SecretDataType::Password => cosmian_kmip::kmip_0::kmip_types::SecretDataType::Password,
         };
 
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
         let unique_identifier = if let Some(value) = &self.secret_value {
             let secret_bytes = Zeroizing::from(value.as_bytes().to_vec());
 
             let mut object = create_secret_data_kmip_object(
+                vendor_id,
                 secret_bytes.as_slice(),
                 secret_data_type,
                 &Attributes::default(),
             )?;
             if let Some(wrapping_key_id) = &self.wrapping_key_id {
                 let attributes = object.attributes_mut()?;
-                attributes.set_wrapping_key_id(wrapping_key_id);
+                attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
             }
             let import_object_request = import_object_request(
+                vendor_id,
                 self.secret_id.clone(),
                 object,
                 None,
@@ -104,6 +107,7 @@ impl CreateSecretDataAction {
                 .as_ref()
                 .map(|id| UniqueIdentifier::TextString(id.clone()));
             let create_secret_data_request = secret_data_create_request(
+                vendor_id,
                 secret_id,
                 &self.tags,
                 self.sensitive,

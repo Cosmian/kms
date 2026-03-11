@@ -17,6 +17,7 @@ use crate::error::CryptoError;
 /// The routine will then locate and renew all user decryption keys linked to
 /// this MSK.
 pub fn build_rekey_keypair_request(
+    vendor_id: &str,
     msk_uid: &str,
     action: &RekeyEditAction,
 ) -> Result<ReKeyKeyPair, CryptoError> {
@@ -26,7 +27,9 @@ pub fn build_rekey_keypair_request(
             object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![rekey_edit_action_as_vendor_attribute(action)?]),
+            vendor_attributes: Some(vec![rekey_edit_action_as_vendor_attribute(
+                vendor_id, action,
+            )?]),
             ..Attributes::default()
         }),
         ..ReKeyKeyPair::default()

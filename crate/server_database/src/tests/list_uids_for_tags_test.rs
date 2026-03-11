@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip_2_1::{
-    kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
-    requests::create_symmetric_key_kmip_object,
+    extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+    kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
@@ -28,6 +28,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -50,6 +51,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

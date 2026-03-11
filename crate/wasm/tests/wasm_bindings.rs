@@ -263,7 +263,7 @@ fn test_certificate_requests() {
             None,
             false,
             vec![],
-            None
+            None,
         )
         .is_ok()
             || w::import_certificate_ttlv_request(
@@ -276,7 +276,7 @@ fn test_certificate_requests() {
                 None,
                 false,
                 vec![],
-                None
+                None,
             )
             .is_err()
     );

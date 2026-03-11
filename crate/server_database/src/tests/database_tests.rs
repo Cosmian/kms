@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, State},
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::{Object, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier},
@@ -32,6 +33,7 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_1 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -44,6 +46,7 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_2 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -69,7 +72,7 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     ];
     db.atomic(owner, &operations).await?;
 
-    let list = db.find(None, None, owner, true).await?;
+    let list = db.find(None, None, owner, true, VENDOR_ID_COSMIAN).await?;
     match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_1, uid_);
@@ -109,6 +112,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_1 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -121,6 +125,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_2 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -223,6 +228,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let mut symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -297,6 +303,7 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let mut symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

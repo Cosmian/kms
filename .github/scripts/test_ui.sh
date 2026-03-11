@@ -103,6 +103,7 @@ echo "==> Starting KMS server (non-fips, sqlite) …"
 KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 cat >"${KMS_CONF_FILE}" <<EOF
 default_username = "admin"
+vendor_identification = "test_vendor"
 
 [db]
 database_type = "sqlite"

@@ -10,8 +10,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS, kmip_messages::RequestMessageBatchItem,
-        kmip_operations::Operation, kmip_types::OperationEnumeration,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_messages::RequestMessageBatchItem,
+        kmip_operations::Operation,
+        kmip_types::OperationEnumeration,
     },
 };
 
@@ -37,6 +39,7 @@ async fn integration_tests_bulk() -> KResult<()> {
         batch_item: vec![
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
+                    VENDOR_ID_COSMIAN,
                     access_structure,
                     EMPTY_TAGS,
                     false,
@@ -45,6 +48,7 @@ async fn integration_tests_bulk() -> KResult<()> {
             )),
             RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
+                    VENDOR_ID_COSMIAN,
                     access_structure,
                     EMPTY_TAGS,
                     false,

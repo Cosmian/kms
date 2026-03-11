@@ -4,7 +4,6 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-            kmip_attributes::Attributes,
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
             kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
@@ -60,7 +59,7 @@ pub(crate) async fn wrap_and_cache(
     let Some(wrapping_key_id) = object
         .attributes_mut()
         .ok()
-        .and_then(Attributes::remove_wrapping_key_id)
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
         .or_else(|| kms.params.key_wrapping_key.clone())
     else {
         // no wrapping key provided

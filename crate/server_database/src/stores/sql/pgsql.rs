@@ -713,6 +713,7 @@ impl ObjectsStore for PgPool {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let client = self
             .pool
@@ -721,7 +722,13 @@ impl ObjectsStore for PgPool {
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let locate = crate::stores::sql::locate_query::query_from_attributes::<
             crate::stores::sql::locate_query::PgSqlPlaceholder,
-        >(researched_attributes, state, user, user_must_be_owner);
+        >(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+        );
         cosmian_logger::debug!("PG find query: {}", locate.sql);
         let stmt = client
             .prepare(&locate.sql)

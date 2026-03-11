@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_in_result)]
 
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
@@ -156,7 +158,7 @@ fn aes_256_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes,

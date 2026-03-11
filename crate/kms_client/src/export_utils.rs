@@ -217,7 +217,9 @@ async fn batch_export(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-                    attribute_reference: Some(vec![AttributeReference::tags_reference()]), // tags
+                    attribute_reference: Some(vec![AttributeReference::tags_reference(
+                        kms_rest_client.config.vendor_id.as_str(),
+                    )]), // tags
                 }),
             ]
         })
@@ -233,7 +235,11 @@ async fn batch_export(
             ] => {
                 let object = export_response.object.clone();
                 let mut attributes = export_response.attributes.clone();
-                attributes.set_tags(get_attributes_response.attributes.get_tags())?;
+                let vendor_id = kms_rest_client.config.vendor_id.as_str();
+                attributes.set_tags(
+                    vendor_id,
+                    get_attributes_response.attributes.get_tags(vendor_id),
+                )?;
                 results.push((
                     get_attributes_response.unique_identifier.clone(),
                     object,

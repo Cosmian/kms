@@ -89,8 +89,10 @@ impl CreateKeyAction {
             prepare_sym_key_elements(self.number_of_bits, &self.wrap_key_b64, self.algorithm)
                 .with_context(|| "failed preparing key elements")?;
 
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
         let unique_identifier = if let Some(key_bytes) = key_bytes {
             let mut object = create_symmetric_key_kmip_object(
+                vendor_id,
                 key_bytes.as_slice(),
                 &Attributes {
                     cryptographic_algorithm: Some(algorithm),
@@ -99,10 +101,17 @@ impl CreateKeyAction {
             )?;
             if let Some(wrapping_key_id) = &self.wrapping_key_id {
                 let attributes = object.attributes_mut()?;
-                attributes.set_wrapping_key_id(wrapping_key_id);
+                attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
             }
-            let import_object_request =
-                import_object_request(self.key_id.clone(), object, None, false, false, &self.tags)?;
+            let import_object_request = import_object_request(
+                vendor_id,
+                self.key_id.clone(),
+                object,
+                None,
+                false,
+                false,
+                &self.tags,
+            )?;
             kms_rest_client
                 .import(import_object_request)
                 .await
@@ -114,6 +123,7 @@ impl CreateKeyAction {
                 .as_ref()
                 .map(|id| UniqueIdentifier::TextString(id.clone()));
             let create_key_request = symmetric_key_create_request(
+                vendor_id,
                 key_id,
                 number_of_bits,
                 algorithm,

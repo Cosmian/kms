@@ -296,7 +296,7 @@ mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
-            extra::tagging::EMPTY_TAGS,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_operations::MAC,
             kmip_types::{CryptographicAlgorithm, CryptographicParameters},
             requests::symmetric_key_create_request,
@@ -369,6 +369,7 @@ mod tests {
         let unique_identifier = Some(
             kms.create(
                 symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     256,
                     CryptographicAlgorithm::SHA3256,

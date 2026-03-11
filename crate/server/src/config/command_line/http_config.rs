@@ -27,7 +27,10 @@ pub struct HttpConfig {
 
 impl Display for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "https://{}:{}, ", self.hostname, self.port)?;
+        write!(f, "http://{}:{}", self.hostname, self.port)?;
+        if let Some(ref token) = self.api_token_id {
+            write!(f, " (api_token: {token})")?;
+        }
         Ok(())
     }
 }

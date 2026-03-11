@@ -22,3 +22,4 @@ mod secret_data;
 mod shared;
 mod symmetric;
 pub(crate) mod utils;
+mod vendor_id;

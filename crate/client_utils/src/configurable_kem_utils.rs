@@ -4,7 +4,6 @@ use clap::ValueEnum;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::CreateKeyPair,
@@ -68,6 +67,7 @@ impl fmt::Display for KemAlgorithm {
 
 /// Build a configurable KEM `CreateKeyPair`.
 pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
     access_structure: Option<&str>,
     tags: T,
     kem_algorithm: KemAlgorithm,
@@ -162,7 +162,7 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
 
     let vendor_attributes = access_structure.map(|access_structure| {
         vec![VendorAttribute {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            vendor_identification: vendor_id.to_owned(),
             attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE.to_owned(),
             attribute_value: VendorAttributeValue::ByteString(access_structure.as_bytes().to_vec()),
         }]
@@ -180,10 +180,10 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
         cryptographic_parameters,
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(vendor_id, tags)?;
 
     if let Some(wrap_key_id) = wrapping_key_id {
-        attributes.set_wrapping_key_id(wrap_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
     }
 
     let request = CreateKeyPair {

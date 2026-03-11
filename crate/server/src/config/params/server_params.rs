@@ -41,6 +41,9 @@ pub struct ServerParams {
     /// The Google CSE config
     pub google_cse: GoogleCseConfig,
 
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    pub vendor_identification: String,
+
     /// The username to use if no authentication method is provided
     pub default_username: String,
 
@@ -264,6 +267,7 @@ impl ServerParams {
             http_port: conf.http.port,
             tls_params,
             kms_public_url: conf.kms_public_url,
+            vendor_identification: conf.vendor_identification,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             api_token_id: conf.http.api_token_id,
@@ -367,7 +371,8 @@ impl fmt::Debug for ServerParams {
         // Always show these non-optional fields
         debug_struct
             .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username);
+            .field("force_default_username", &self.force_default_username)
+            .field("vendor_identification", &self.vendor_identification);
 
         if let Some(ref db_params) = self.main_db_params {
             debug_struct.field("main_db_params", db_params);

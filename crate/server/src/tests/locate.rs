@@ -14,6 +14,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_operations::{Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Locate},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
@@ -57,6 +58,7 @@ async fn test_locate() -> KResult<()> {
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
             RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
                 create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
                     None,
                     vec!["cat"], // changed this line
                     RecommendedCurve::P256,
@@ -83,7 +85,7 @@ async fn test_locate() -> KResult<()> {
             object_type: expected_object_type,
             ..Default::default()
         };
-        key_attrs.set_tags(expected_tags)?;
+        key_attrs.set_tags(VENDOR_ID_COSMIAN, expected_tags)?;
 
         let locate_specific = Locate {
             attributes: key_attrs,
@@ -131,7 +133,7 @@ async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
     };
-    attrs_pub.set_tags(vec!["cat".to_owned()])?;
+    attrs_pub.set_tags(VENDOR_ID_COSMIAN, vec!["cat".to_owned()])?;
     let res_pub: Vec<UniqueIdentifier> = post_2_1(
         &app,
         Locate {

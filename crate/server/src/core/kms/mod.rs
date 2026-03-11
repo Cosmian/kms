@@ -88,6 +88,11 @@ pub struct KMS {
 }
 
 impl KMS {
+    /// Returns the vendor identification string used for KMIP `VendorAttribute` operations.
+    pub(crate) fn vendor_id(&self) -> &str {
+        &self.params.vendor_identification
+    }
+
     /// Instantiate a new KMS instance with the given server parameters.
     /// # Arguments
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
@@ -108,7 +113,11 @@ impl KMS {
         if let Some(hsm) = hsm.as_ref() {
             object_stores.insert(
                 "hsm".to_owned(),
-                Arc::new(HsmStore::new(hsm.clone(), &server_params.hsm_admin)),
+                Arc::new(HsmStore::new(
+                    hsm.clone(),
+                    &server_params.hsm_admin,
+                    &server_params.vendor_identification,
+                )),
             );
         }
         let database = Database::instantiate(

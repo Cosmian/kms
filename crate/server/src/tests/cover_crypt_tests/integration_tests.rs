@@ -7,7 +7,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
         kmip_2_1::{
-            extra::tagging::EMPTY_TAGS,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_operations::{
                 CreateKeyPairResponse, CreateResponse, DecryptResponse, Destroy, DestroyResponse,
                 EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
@@ -38,8 +38,13 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair
-    let create_key_pair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
+    let create_key_pair = build_create_covercrypt_master_keypair_request(
+        VENDOR_ID_COSMIAN,
+        access_structure,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
@@ -77,6 +82,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -132,6 +138,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -147,6 +154,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Create another user decryption key
     let access_policy = "Department::MKG && Security Level::Confidential";
     let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
         access_policy,
         private_key_unique_identifier,
         EMPTY_TAGS,
@@ -214,6 +222,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Rekey all key pairs with matching access policy
     let ap_to_edit = "Department::MKG".to_owned();
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
@@ -285,6 +294,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Prune old keys associated with the access policy
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
@@ -307,6 +317,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encryption_policy = "Security Level::Confidential && (Department::IT || Department::RnD)";
 
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::AddAttribute(vec![(
             QualifiedAttribute::new("Department", "IT"),
@@ -337,6 +348,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Rename Attributes
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::RenameAttribute(vec![(
             QualifiedAttribute::new("Department", "HR"),
@@ -367,6 +379,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Disable ABE Attribute
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::DisableAttribute(vec![QualifiedAttribute::from(("Department", "MKG"))]),
     )?;
@@ -395,6 +408,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     // Delete attribute
     let request = build_rekey_keypair_request(
+        VENDOR_ID_COSMIAN,
         private_key_unique_identifier,
         &RekeyEditAction::DeleteAttribute(vec![
             (QualifiedAttribute::new("Department", "HumanResources")),

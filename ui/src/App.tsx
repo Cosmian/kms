@@ -48,7 +48,7 @@ import SymmetricDecryptForm from "./SymmetricDecrypt";
 import SymmetricEncryptForm from "./SymmetricEncrypt";
 import { useBranding } from "./useBranding";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
-import init from "./wasm/pkg";
+import init, * as wasmModule from "./wasm/pkg";
 
 type AppContentProps = {
     isDarkMode: boolean;
@@ -77,6 +77,31 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
         // Automatically use dev URL in development mode
         const location = (import.meta.env.VITE_KMS_URL as string | undefined) ?? (import.meta.env.DEV ? "http://localhost:9998" : window.location.origin);
         setServerUrl(location);
+
+        // Query the server's vendor_identification via KMIP QueryServerInformation.
+        // This ensures all subsequent WASM calls use the server-configured vendor
+        // instead of the hardcoded default.
+        const syncVendorId = async () => {
+            try {
+                const request = wasmModule.query_server_information_ttlv_request();
+                const resp = await fetch(`${location}/kmip/2_1`, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(request),
+                });
+                if (resp.ok) {
+                    const vendorId = wasmModule.parse_query_server_information_response(
+                        JSON.stringify(await resp.json())
+                    ) as string;
+                    wasmModule.set_vendor_id(vendorId);
+                    console.info(`[KMS] vendor_id set to "${vendorId}"`);
+                }
+            } catch (e) {
+                console.warn("[KMS] Could not query server vendor_id, using default:", e);
+            }
+        };
+        void syncVendorId();
 
         const fetchUser = async () => {
             const authMethod = await fetchAuthMethod(location);

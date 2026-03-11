@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
-        KmipOperation, kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
-        requests::create_symmetric_key_kmip_object,
+        KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     },
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
@@ -26,6 +26,7 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -84,14 +85,16 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     assert!(!operations.contains(&KmipOperation::Create));
 
     // We should still be able to find the object by its owner
-    let objects = db.find(None, None, owner, true).await?;
+    let objects = db.find(None, None, owner, true, VENDOR_ID_COSMIAN).await?;
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _) = &objects[0];
     assert_eq!(o_uid, &uid);
     assert_eq!(o_state, &State::PreActive);
 
     // We should not be able to find the object by specifying  that user_id_2 is the owner
-    let objects = db.find(None, None, user_id_2, true).await?;
+    let objects = db
+        .find(None, None, user_id_2, true, VENDOR_ID_COSMIAN)
+        .await?;
     assert!(objects.is_empty());
 
     let objects = db.list_user_operations_granted(user_id_2).await?;

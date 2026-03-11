@@ -19,6 +19,11 @@ cargo build --features non-fips
 cargo test --features non-fips
 ```
 
+## Coding rules
+
+- Small functions are preferred over large ones. If a function exceeds 100 lines, consider refactoring it into smaller functions.
+- Rust import must always be at top of the file
+
 ## Testing
 
 ```bash

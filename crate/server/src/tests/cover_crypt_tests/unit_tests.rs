@@ -7,7 +7,7 @@ use cosmian_kms_client_utils::cover_crypt_utils::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
-        extra::tagging::EMPTY_TAGS,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_operations::{Get, Import, Locate},
@@ -44,6 +44,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
@@ -145,8 +146,14 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request =
-        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
+    let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
+        access_policy,
+        &sk_uid,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {}", cr);
 
@@ -175,8 +182,14 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request =
-        build_create_covercrypt_usk_request(access_policy, &sk_uid, EMPTY_TAGS, false, None)?;
+    let request = build_create_covercrypt_usk_request(
+        VENDOR_ID_COSMIAN,
+        access_policy,
+        &sk_uid,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {}", cr);
 
@@ -230,6 +243,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let ckr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
@@ -336,6 +350,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 master_secret_key_id,
                 EMPTY_TAGS,
@@ -431,8 +446,13 @@ async fn test_abe_json_access() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
     // Create CC master key pair
-    let master_keypair =
-        build_create_covercrypt_master_keypair_request(access_structure, EMPTY_TAGS, false, None)?;
+    let master_keypair = build_create_covercrypt_master_keypair_request(
+        VENDOR_ID_COSMIAN,
+        access_structure,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -471,6 +491,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 &master_secret_key_uid,
                 EMPTY_TAGS,
@@ -511,6 +532,7 @@ async fn test_import_decrypt() -> KResult<()> {
     let cr = kms
         .create_key_pair(
             build_create_covercrypt_master_keypair_request(
+                VENDOR_ID_COSMIAN,
                 access_structure,
                 EMPTY_TAGS,
                 false,
@@ -559,6 +581,7 @@ async fn test_import_decrypt() -> KResult<()> {
     let cr = kms
         .create(
             build_create_covercrypt_usk_request(
+                VENDOR_ID_COSMIAN,
                 secret_mkg_fin_access_policy,
                 &sk_uid,
                 EMPTY_TAGS,

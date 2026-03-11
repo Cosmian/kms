@@ -96,6 +96,7 @@ impl LocateObjectsAction {
     /// Returns an error if there is a problem communicating with the KMS or if the requested key cannot be located.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<UniqueIdentifier>> {
         let request = build_locate_request(
+            kms_rest_client.config.vendor_id.as_str(),
             self.tags.clone(),
             self.cryptographic_algorithm,
             self.cryptographic_length,

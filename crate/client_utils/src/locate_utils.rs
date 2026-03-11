@@ -9,6 +9,7 @@ use crate::error::UtilsError;
 
 #[expect(clippy::too_many_arguments)]
 pub fn build_locate_request(
+    vendor_id: &str,
     tags: Option<Vec<String>>,
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
     cryptographic_length: Option<i32>,
@@ -58,7 +59,7 @@ pub fn build_locate_request(
     }
 
     if let Some(tags) = tags {
-        attributes.set_tags(tags)?;
+        attributes.set_tags(vendor_id, tags)?;
     }
     Ok(Locate {
         maximum_items: None,

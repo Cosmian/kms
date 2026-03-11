@@ -211,6 +211,7 @@ impl CertifyAction {
             .transpose()?;
 
         let certify_request = build_certify_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &self.certificate_id,
             &Some(self.certificate_signing_request_format.clone()),
             &certificate_signing_request_bytes,

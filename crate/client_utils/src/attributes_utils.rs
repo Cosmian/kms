@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
-    extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+    extra::tagging::VENDOR_ATTR_TAG,
     kmip_attributes::{Attribute, Attributes},
     kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag},
 };
@@ -94,6 +94,7 @@ fn add_if_not_empty(tag: Tag, new_value: &str, results: &mut HashMap<String, Val
 }
 
 pub fn parse_selected_attributes(
+    vendor_id: &str,
     attributes: &Attributes,
     attribute_tags: &[Tag],
     attribute_link_types: &[CLinkType],
@@ -281,7 +282,7 @@ pub fn parse_selected_attributes(
                 }
             }
             Tag::Tag => {
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(vendor_id);
                 results.insert(
                     tag.to_string(),
                     serde_json::to_value(tags).unwrap_or_default(),
@@ -294,7 +295,7 @@ pub fn parse_selected_attributes(
                     let filtered_vendor_attributes: Vec<_> = vendor_attributes
                         .iter()
                         .filter(|va| {
-                            !(va.vendor_identification == VENDOR_ID_COSMIAN
+                            !(va.vendor_identification == vendor_id
                                 && va.attribute_name == VENDOR_ATTR_TAG)
                         })
                         .collect();
@@ -551,7 +552,7 @@ pub fn build_selected_attribute(
 mod tests {
     use super::*;
     use crate::reexport::cosmian_kmip::kmip_2_1::{
-        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        extra::tagging::{VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_types::{CryptographicAlgorithm, VendorAttribute, VendorAttributeValue},
     };
@@ -582,7 +583,7 @@ mod tests {
         attributes.vendor_attributes = Some(vec![tag_vendor_attr, other_vendor_attr]);
 
         // Test the parsing with no specific tags requested (should return all)
-        let result = parse_selected_attributes(&attributes, &[], &[]).unwrap();
+        let result = parse_selected_attributes(VENDOR_ID_COSMIAN, &attributes, &[], &[]).unwrap();
 
         // Check that VendorExtension exists but doesn't contain tag data
         if let Some(vendor_extension) = result.get("VendorExtension") {
@@ -637,7 +638,7 @@ mod tests {
         attributes.vendor_attributes = Some(vec![tag_vendor_attr]);
 
         // Test the parsing
-        let result = parse_selected_attributes(&attributes, &[], &[]).unwrap();
+        let result = parse_selected_attributes(VENDOR_ID_COSMIAN, &attributes, &[], &[]).unwrap();
 
         // Check that VendorExtension is not present when only tag data exists
         assert!(

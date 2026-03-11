@@ -70,15 +70,15 @@ let
   # Reuse the same pinned nixpkgs for internal imports/overlays
   # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
-    # Use an immutable commit tarball so builds are deterministic across machines.
-    url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+    # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+    url = "https://package.cosmian.com/kms/nixpkgs-8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
     sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
-      # Pin rust-overlay to an immutable commit (master is moving).
-      url = "https://github.com/oxalica/rust-overlay/archive/23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+      # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+      url = "https://package.cosmian.com/kms/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
       sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
     }
   );

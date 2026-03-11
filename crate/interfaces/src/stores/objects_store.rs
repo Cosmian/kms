@@ -100,5 +100,6 @@ pub trait ObjectsStore {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 }
