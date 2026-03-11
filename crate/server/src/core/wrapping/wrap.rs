@@ -4,7 +4,6 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-            kmip_attributes::Attributes,
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
             kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
