@@ -26,8 +26,7 @@ function Invoke-NativeCommand {
     }
 }
 
-function BuildProject
-{
+function BuildProject {
     # -------------------------------------------------------------------------
     # Toolchain
     # -------------------------------------------------------------------------
@@ -35,7 +34,8 @@ function BuildProject
     # Add target - rustup exits 1 when the target is already installed.
     try {
         Invoke-NativeCommand rustup target add x86_64-pc-windows-msvc
-    } catch {
+    }
+    catch {
         Write-Host "Note: $_ (target is likely already installed)"
     }
 
@@ -44,8 +44,8 @@ function BuildProject
     # CI sets VCPKG_INSTALLATION_ROOT; local dev sets VCPKG_ROOT
     # -------------------------------------------------------------------------
     $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } `
-                 elseif ($env:VCPKG_ROOT)            { $env:VCPKG_ROOT } `
-                 else { throw "Neither VCPKG_INSTALLATION_ROOT nor VCPKG_ROOT is set" }
+        elseif ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } `
+        else { throw "Neither VCPKG_INSTALLATION_ROOT nor VCPKG_ROOT is set" }
     $env:OPENSSL_DIR = "$vcpkgRoot\packages\openssl_x64-windows-static"
     Write-Host "OPENSSL_DIR=$env:OPENSSL_DIR"
     if (-not (Test-Path $env:OPENSSL_DIR)) {
@@ -61,12 +61,14 @@ function BuildProject
     try {
         $verLine = & cargo packager --version 2>&1 | Select-Object -First 1
         if ($verLine -match "cargo-packager\s+(\S+)") { $installedVersion = $Matches[1] }
-    } catch { }
+    }
+    catch { }
 
     if ($installedVersion -ne $requiredPackagerVersion) {
         Write-Host "Installing cargo-packager $requiredPackagerVersion (found: '$installedVersion')..."
         Invoke-NativeCommand cargo install --version $requiredPackagerVersion cargo-packager --locked
-    } else {
+    }
+    else {
         Write-Host "cargo-packager $requiredPackagerVersion already installed - skipping."
     }
 
@@ -99,18 +101,18 @@ function BuildProject
             -property installationPath 2>$null
         if ($vsPath) {
             $dumpbin = Get-ChildItem -Recurse "$vsPath\VC\Tools\MSVC" -Filter "dumpbin.exe" `
-                           -ErrorAction SilentlyContinue |
-                       Where-Object { $_.FullName -like "*HostX64\x64*" } |
-                       Select-Object -First 1 -ExpandProperty FullName
+                -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like "*HostX64\x64*" } |
+            Select-Object -First 1 -ExpandProperty FullName
         }
     }
 
     # 2. Fallback: search under the standard VS 2022 install path
     if (-not $dumpbin) {
         $dumpbin = Get-ChildItem -Recurse "C:\Program Files\Microsoft Visual Studio\2022" `
-                       -Filter "dumpbin.exe" -ErrorAction SilentlyContinue |
-                   Where-Object { $_.FullName -like "*HostX64\x64*" } |
-                   Select-Object -First 1 -ExpandProperty FullName
+            -Filter "dumpbin.exe" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like "*HostX64\x64*" } |
+        Select-Object -First 1 -ExpandProperty FullName
     }
 
     if ($dumpbin) {
@@ -120,7 +122,8 @@ function BuildProject
             throw "OpenSSL (libcrypto) found in dynamic dependencies of cosmian_kms - build must link OpenSSL statically."
         }
         Write-Host "OK: cosmian_kms.exe has no dynamic libcrypto dependency."
-    } else {
+    }
+    else {
         Write-Warning "dumpbin.exe not found - skipping dynamic-link check."
     }
 
