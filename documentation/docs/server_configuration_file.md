@@ -3,6 +3,62 @@
 The KMS server can be configured using a TOML file. When a configuration file is provided,
 the [command line arguments](./server_cli.md) are ignored (except `--help` / `--version`).
 
+## Interactive configuration wizard
+
+The fastest way to create a valid configuration file is the built-in interactive wizard:
+
+```bash
+cosmian_kms configure
+```
+
+The wizard guides you step-by-step through all configuration sections:
+
+| Step | Section                | What it covers                                                                    |
+| ---- | ---------------------- | --------------------------------------------------------------------------------- |
+| 1/9  | **Database**           | Type (SQLite / PostgreSQL / MySQL / Redis-Findex), URL, paths, cache settings     |
+| 2/9  | **HTTP server**        | Listening port and hostname                                                       |
+| 3/9  | **TLS / Certificates** | Enable TLS; optionally generates a self-signed PKI (CA → server + client certs)   |
+| 4/9  | **KMIP socket server** | Enable the binary KMIP socket listener (port 5696)                                |
+| 5/9  | **Authentication**     | API token, JWT/OIDC providers, mTLS client certificates                           |
+| 6/9  | **HSM**                | Model, admin user, slot numbers and passwords                                     |
+| 7/9  | **Logging**            | Log level, OTLP endpoint, syslog, rolling logs                                    |
+| 8/9  | **Proxy**              | Outbound proxy for JWKS fetch (URL, auth, exclusions)                             |
+| 9/9  | **Advanced**           | Workspace paths, KEK, MS DKE, KMIP policy, Google CSE, Azure EKM, AWS XKS, Web UI |
+
+At the end the wizard writes the resulting TOML file to the default system path
+(`/etc/cosmian/kms.toml` on Linux/macOS, `C:\ProgramData\Cosmian\kms.toml` on Windows)
+and prints the command to start the server:
+
+```bash
+Start the server with:
+  cosmian_kms -c /etc/cosmian/kms.toml
+```
+
+### Self-signed PKI generation
+
+When TLS is enabled and you choose to generate certificates, the wizard creates a
+complete PKI under the chosen output directory (default `/etc/cosmian/`):
+
+| File         | Description                                                           |
+| ------------ | --------------------------------------------------------------------- |
+| `ca.crt`     | Self-signed CA certificate (RSA-4096, valid 10 years by default)      |
+| `server.crt` | Server leaf certificate signed by the CA (RSA-2048)                   |
+| `server.key` | Server private key (PKCS#8 PEM)                                       |
+| `client.crt` | Client leaf certificate signed by the CA — distribute to mTLS clients |
+| `client.key` | Client private key (PKCS#8 PEM)                                       |
+
+Distribute `client.crt` and `client.key` to any client that must authenticate
+with mutual TLS.  You can verify the chain at any time with:
+
+```bash
+openssl verify -CAfile /etc/cosmian/ca.crt /etc/cosmian/server.crt
+openssl verify -CAfile /etc/cosmian/ca.crt /etc/cosmian/client.crt
+```
+
+---
+
+## Manual configuration
+
 Configuration file loading precedence:
 
 1. Command line flag `-c/--config <FILE>` (highest precedence). If the file does not exist, the server exits with an error.
@@ -10,6 +66,10 @@ Configuration file loading precedence:
 3. Default system path: `/etc/cosmian/kms.toml` (Linux/macOS) or `C:\\ProgramData\\Cosmian\\kms.toml` (Windows).
 4. If none of the above files is found, the server falls back to parsing the [command line arguments](./server_cli.md) and environment variables.
 
+> **Important:** If a configuration file is found via the default system path (rule 3) **and** extra
+> command-line arguments are also provided, the server exits with an error. This prevents silently
+> ignoring arguments the user intended to take effect. To use a different configuration, point
+> explicitly to it with `-c/--config <FILE>`.
 Examples:
 
 ```bash
@@ -24,13 +84,6 @@ export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
 The file should be a TOML file with the following structure:
 
 ```toml
-# WHY IT LIVES INSIDE THE CRATE:
-# `cargo publish` only packages files under the crate root (`crate/server/`). The canonical
-# deployment template at `pkg/kms.toml` is outside that boundary and would be absent from
-# the published tarball, breaking `include_str!` at compile time for downstream users.
-# This file is therefore a copy kept in sync with `pkg/kms.toml` by the pre-commit hook
-# `.github/scripts/renew_server_configuration_doc.sh`. Do not edit it manually.
-
 # The default username to use when no authentication method is provided
 default_username = "admin"
 

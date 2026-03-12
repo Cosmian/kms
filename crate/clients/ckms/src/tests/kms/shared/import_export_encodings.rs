@@ -79,7 +79,7 @@ fn test_pems(
     #[cfg(windows)]
     {
         let as_string = String::from_utf8_lossy(&imported_bytes).replace("\r\n", "\n");
-        imported_bytes = as_string.replace("\n", "\r\n").into_bytes();
+        imported_bytes = as_string.replace('\n', "\r\n").into_bytes();
     }
     // export the key
     let export_key_file = tempfile::NamedTempFile::new()?;
@@ -101,7 +101,7 @@ fn test_pems(
     #[cfg(windows)]
     {
         let as_string = String::from_utf8_lossy(&export_bytes).replace("\r\n", "\n");
-        export_bytes = as_string.replace("\n", "\r\n").into_bytes();
+        export_bytes = as_string.replace('\n', "\r\n").into_bytes();
     }
     assert_eq!(imported_bytes, export_bytes);
     // Get the key
@@ -121,7 +121,7 @@ fn test_pems(
     #[cfg(windows)]
     {
         let as_string = String::from_utf8_lossy(&get_bytes).replace("\r\n", "\n");
-        get_bytes = as_string.replace("\n", "\r\n").into_bytes();
+        get_bytes = as_string.replace('\n', "\r\n").into_bytes();
     }
     assert_eq!(imported_bytes, get_bytes);
 

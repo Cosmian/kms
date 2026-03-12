@@ -629,6 +629,13 @@ resolve_openssl_path() {
   local generic_path_workspace="$REPO_ROOT/target/${generic_basename}"
   rm -f "$generic_path_workspace" 2>/dev/null || true
   ln -sf "${stage_basename}" "$generic_path_workspace"
+
+  # Create symlink in crate/clients/ckms/target for cargo-deb/cargo-generate-rpm of the CLI
+  # The CLI Cargo.toml references target/openssl-*/... paths, resolved relative to its crate directory
+  mkdir -p "$REPO_ROOT/crate/clients/ckms/target"
+  local generic_path_cli="$REPO_ROOT/crate/clients/ckms/target/${generic_basename}"
+  rm -f "$generic_path_cli" 2>/dev/null || true
+  ln -sf "$stage_dir" "$generic_path_cli"
 }
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
@@ -959,7 +966,11 @@ build_deb() {
   popd >/dev/null
 
   pushd crate/clients/ckms >/dev/null
-  cargo deb --no-build
+  if [ -n "$deb_variant" ]; then
+    cargo deb --no-build --variant "$deb_variant"
+  else
+    cargo deb --no-build
+  fi
   popd >/dev/null
 }
 
@@ -1091,13 +1102,29 @@ collect_deb() {
   done
 
   local cli_found=0
+  # Build CLI-specific pattern to avoid picking up stale debs from other variants
+  local cli_pattern
+  if [ "$LINK" = "dynamic" ]; then
+    if [ "$VARIANT" = "fips" ]; then
+      cli_pattern="ckms-fips-dynamic_*.deb"
+    else
+      cli_pattern="ckms-non-fips-dynamic_*.deb"
+    fi
+  else
+    if [ "$VARIANT" = "fips" ]; then
+      cli_pattern="ckms-fips_*.deb"
+    else
+      # non-fips static is the default variant (no suffix)
+      cli_pattern="ckms_*.deb"
+    fi
+  fi
   for p in \
     "$REPO_ROOT/crate/clients/ckms/target/debian" \
     "$REPO_ROOT/crate/clients/ckms/target/$HOST_TRIPLE/debian" \
     "$REPO_ROOT/target/debian" \
     "$REPO_ROOT/target/$HOST_TRIPLE/debian"; do
     if [ -d "$p" ]; then
-      find "$p" -maxdepth 1 -type f -name 'ckms*.deb' -print -exec cp -f -v {} "$result_dir/" \;
+      find "$p" -maxdepth 1 -type f -name "$cli_pattern" -print -exec cp -f -v {} "$result_dir/" \;
       cli_found=1
     fi
   done
@@ -1196,7 +1223,11 @@ build_rpm() {
     cargo generate-rpm --target "$HOST_TRIPLE" -p crate/server --metadata-overwrite=pkg/rpm/scriptlets.toml
   fi
 
-  cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms
+  if [ -n "$rpm_variant" ]; then
+    cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms --variant "$rpm_variant"
+  else
+    cargo generate-rpm --target "$HOST_TRIPLE" -p crate/clients/ckms
+  fi
 }
 
 collect_rpm() {

@@ -59,8 +59,14 @@ in this repository under `crate/clients/ckms/`:
 - New `loginCardColor` field in `branding.json` to control the login card background color
 - New blank starter theme at `ui/public/themes/blank/` with SVG placeholder assets
 
+#### Server configure wizard
+
+- New `cosmian_kms configure` interactive wizard to generate a server configuration file (`kms.toml`) and self-signed TLS certificates from the command line
+
 ### 🐛 Bug Fixes
 
+- **CLI**: `ckms` is now installed to `/usr/local/bin/` instead of `/usr/sbin/`, making it accessible to non-root users without requiring elevated privileges ([cli#136](https://github.com/Cosmian/cli/issues/136))
+- **CLI**: FIPS-compliant CLI builds are now published alongside non-FIPS builds ([cli#134](https://github.com/Cosmian/cli/issues/134))
 - **Security**: KMIP `Import` with `replace_existing=true` now verifies the caller owns the
   existing object before overwriting it ([#644](https://github.com/Cosmian/kms/pull/644))
 - **Packaging**: DEB and RPM removal scripts now clean up `/usr/sbin/cosmian_kms` and
@@ -74,12 +80,13 @@ in this repository under `crate/clients/ckms/`:
 - Linux packages: README now installed as `README.md` (was `README` — not rendered as
   markdown by package managers)
 - `pnpm` version pinned to 10 in `build_ui.sh`
+- CI: mirror nixpkgs archives on `package.cosmian.com` with GitHub fallback to avoid 502 errors
 
 ### 🔒 Security
 
-- `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
-- `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
-- `lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
+- **UI** `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
+- **UI** `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
+- **Rust**`lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
   `deny.toml` — no upstream fix available yet; severity low (CVSS 2.7)
 
 ### 📚 Documentation

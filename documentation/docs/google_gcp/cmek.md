@@ -53,7 +53,7 @@ The PublicKey in file ImportWith4096RsaAesKeyWrapSha256.pem was imported with id
 ## Export the symmetric key wrapped by the wrapping key from Cosmian KMS
 
 ```shell
-ckms sym keys export --key-id CMEK_Sym_Key --wrap-key-id  CMEK_Wrapping_Key \
+ckms sym keys export --key-id CMEK_Sym_Key --wrap-key-id CMEK_Wrapping_Key \
  --key-format raw --wrapping-algorithm rsa-aes-key-wrap wrapped_key.bin
 
 The key CMEK_Sym_Key of type SymmetricKey was exported to "wrapped_key.bin"
@@ -75,3 +75,13 @@ Note 2: the wrapped key should be 552 bytes (4416 bits) long:
 The key should now be available in the Google Cloud KMS.
 
 ![The key should now be available in the Google Cloud KMS](./cmek_key_available.png)
+
+## Automated testing
+
+The entire Cosmian KMS side of this workflow (steps 2–4) is covered by the
+script `.github/scripts/test_gcp_cmek.sh`. It uses the test wrapping key at
+`test_data/google_cmek/Import_RSA_AES_WRAP.pem` and can be executed via:
+
+```shell
+bash .github/scripts/nix.sh --variant non-fips test gcp_cmek
+```

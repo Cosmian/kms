@@ -137,7 +137,7 @@ ensure_macos_frameworks_ldflags() {
 # Unified nixpkgs pin (used by all scripts)
 # Keep a single source of truth for the pinned nixpkgs URL.
 # IMPORTANT: Use an immutable commit tarball to ensure builds are deterministic across machines.
-export PIN_URL="https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz"
+export PIN_URL="https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz"
 # Backward-compatible alias used by some scripts
 export PINNED_NIXPKGS_URL="$PIN_URL"
 

@@ -19,12 +19,18 @@ cargo build --features non-fips
 cargo test --features non-fips
 ```
 
+## GitHub issues and pull requests
+
+Read issues and PRs using gh without pager.
+
 ## Coding rules
 
 - Small functions are preferred over large ones. If a function exceeds 100 lines, consider refactoring it into smaller functions.
 - Rust import must always be at top of the file
 
 ## Testing
+
+Do not ignore or skip errors in tests or package builds. If a test fails, investigate and fix the underlying issue rather than bypassing it.
 
 ```bash
 # Run all tests (FIPS mode is default)
@@ -73,6 +79,10 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 ```
 
 Expected response is a KMIP validation error, confirming the server is alive.
+
+## Update CHANGELOG.md
+
+When making changes, update `CHANGELOG.md` with a brief description of the change and its impact. This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
 
 ## Repository layout (high level)
 

@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::{debug, info, log_init};
+use cosmian_logger::{debug, info, log_init, warn};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
@@ -14,7 +14,8 @@ use pkcs11_sys::{
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
 };
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
@@ -579,6 +580,7 @@ pub fn rsa_sha256_sign(slot: &Arc<SlotManager>) -> HResult<()> {
 
 pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
     let session = slot.open_session(true)?;
     let data = b"test data for signing";
     let sk_id = Uuid::new_v4().to_string();
@@ -590,12 +592,33 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
         true,
     )?;
     let algorithms = [
-        ("SHA1WithRsa", HsmSigningAlgorithm::Sha1WithRsa),
-        ("SHA256WithRsa", HsmSigningAlgorithm::Sha256WithRsa),
-        ("SHA384WithRsa", HsmSigningAlgorithm::Sha384WithRsa),
-        ("SHA512WithRsa", HsmSigningAlgorithm::Sha512WithRsa),
+        (
+            "SHA1WithRsa",
+            HsmSigningAlgorithm::Sha1WithRsa,
+            CKM_SHA1_RSA_PKCS,
+        ),
+        (
+            "SHA256WithRsa",
+            HsmSigningAlgorithm::Sha256WithRsa,
+            CKM_SHA256_RSA_PKCS,
+        ),
+        (
+            "SHA384WithRsa",
+            HsmSigningAlgorithm::Sha384WithRsa,
+            CKM_SHA384_RSA_PKCS,
+        ),
+        (
+            "SHA512WithRsa",
+            HsmSigningAlgorithm::Sha512WithRsa,
+            CKM_SHA512_RSA_PKCS,
+        ),
     ];
-    for (name, algorithm) in &algorithms {
+    let mut tested = 0;
+    for (name, algorithm, ckm) in &algorithms {
+        if !supported_mechanisms.contains(ckm) {
+            warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
+            continue;
+        }
         let signature = session.sign(sk, *algorithm, data)?;
         assert_eq!(
             signature.len(),
@@ -603,7 +626,12 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
             "Signature length mismatch for {name}"
         );
         info!("Successfully signed with {name}");
+        tested += 1;
     }
+    assert!(
+        tested > 0,
+        "No signing algorithms were supported by the HSM"
+    );
     Ok(())
 }
 

@@ -1,7 +1,49 @@
+use std::fmt;
+
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
 const HSM_ADMIN_DEFAULT: &str = "admin";
+
+/// Supported HSM models.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HsmModel {
+    Proteccio,
+    Crypt2pay,
+    Utimaco,
+    Softhsm2,
+    Smartcardhsm,
+    Other,
+}
+
+impl HsmModel {
+    pub const VARIANTS: &'static [Self] = &[
+        Self::Proteccio,
+        Self::Crypt2pay,
+        Self::Utimaco,
+        Self::Softhsm2,
+        Self::Smartcardhsm,
+        Self::Other,
+    ];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Proteccio => "proteccio",
+            Self::Crypt2pay => "crypt2pay",
+            Self::Utimaco => "utimaco",
+            Self::Softhsm2 => "softhsm2",
+            Self::Smartcardhsm => "smartcardhsm",
+            Self::Other => "other",
+        }
+    }
+}
+
+impl fmt::Display for HsmModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 #[derive(Args, Clone, Serialize, Deserialize, Default, Debug)]
 #[serde(default)]

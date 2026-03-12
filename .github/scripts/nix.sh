@@ -32,6 +32,7 @@ usage() {
       psql                   Run PostgreSQL tests (requires PostgreSQL server)
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
+      gcp_cmek               Run GCP CMEK wrapping key tests
       pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
@@ -434,6 +435,9 @@ test_command() {
   azure_ekm)
     SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
     ;;
+  gcp_cmek)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_gcp_cmek.sh"
+    ;;
   google_cse)
     SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell
@@ -485,7 +489,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -503,7 +507,7 @@ test_command() {
     export WITH_PYTHON=1
   fi
   # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
     export WITH_CURL=1
   fi
 

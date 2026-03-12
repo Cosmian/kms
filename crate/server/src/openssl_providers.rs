@@ -26,9 +26,9 @@ pub fn safe_openssl_version_info() -> (String, String, u64) {
     // dereferences any pointer, so it is safe to call even when OpenSSL is not
     // fully initialised.  We call it first as a cheap liveness check.
     // Note: Returns `c_ulong` which is u32 on Windows and u64 on Unix.
-    // We need `as u64` for cross-platform compatibility (widening is safe).
-    #[allow(clippy::as_conversions)]
-    let num = unsafe { openssl_sys::OpenSSL_version_num() } as u64;
+    // We need `u64::from()` for cross-platform compatibility (widening is safe).
+    #[allow(clippy::useless_conversion)]
+    let num = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
     if num == 0 {
         return ("<unavailable>".to_owned(), "<unavailable>".to_owned(), 0);
     }
@@ -71,12 +71,7 @@ pub fn safe_openssl_version_info() -> (String, String, u64) {
 /// Note: The default provider is already active via openssl.cnf configuration.
 /// This function only adds the legacy provider on top of it.
 #[cfg(feature = "non-fips")]
-#[allow(
-    unsafe_code,
-    clippy::as_conversions,
-    clippy::missing_panics_doc,
-    clippy::expect_used
-)]
+#[allow(unsafe_code, clippy::missing_panics_doc, clippy::expect_used)]
 pub fn init_openssl_providers_for_tests() {
     use std::sync::OnceLock;
 
@@ -86,7 +81,8 @@ pub fn init_openssl_providers_for_tests() {
     static PROVIDER: OnceLock<Provider> = OnceLock::new();
 
     PROVIDER.get_or_init(|| {
-        let ossl_number = unsafe { openssl_sys::OpenSSL_version_num() as u64 };
+        #[allow(clippy::useless_conversion)]
+        let ossl_number = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
         if ossl_number >= 0x3000_0000 {
             // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
             Provider::try_load(None, "legacy", true).expect("Failed to load legacy provider")
@@ -118,7 +114,7 @@ pub const fn init_openssl_providers_for_tests() {
 /// # Errors
 ///
 /// Returns an error if the provider fails to load.
-#[allow(unsafe_code, clippy::as_conversions)]
+#[allow(unsafe_code)]
 pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     use std::sync::OnceLock;
 
@@ -140,7 +136,8 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
         static PROVIDER: OnceLock<Provider> = OnceLock::new();
 
         if PROVIDER.get().is_none() {
-            let ossl_number = unsafe { openssl_sys::OpenSSL_version_num() as u64 };
+            #[allow(clippy::useless_conversion)]
+            let ossl_number = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
             let provider = if ossl_number >= 0x3000_0000 {
                 // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
                 info!("Load legacy provider");

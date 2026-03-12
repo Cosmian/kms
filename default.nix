@@ -5,7 +5,7 @@
     let
       nixpkgsSrc = builtins.fetchTarball {
         # Use an immutable commit tarball so builds are deterministic across machines.
-        url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+        url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
         sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
       };
     in
@@ -71,14 +71,14 @@ let
   # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
     # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
-    url = "https://package.cosmian.com/kms/nixpkgs-8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+    url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
     sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
       # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
-      url = "https://package.cosmian.com/kms/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+      url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
       sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
     }
   );
@@ -101,7 +101,7 @@ let
   pkgs234 =
     if pkgs.stdenv.isLinux then
       import (builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/380be19fbd2d9079f677978361792cb25e8a3635.tar.gz";
+        url = "https://package.cosmian.com/nixpkgs/380be19fbd2d9079f677978361792cb25e8a3635.tar.gz";
         sha256 = "sha256-Zffu01pONhs/pqH07cjlF10NnMDLok8ix5Uk4rhOnZQ=";
       }) { config.allowUnfree = true; }
     else
@@ -110,11 +110,11 @@ let
   # For Linux, pin nixpkgs ≈ 19.09 (glibc 2.28) for CLI builds targeting
   # RHEL 8 / CentOS 8 / Debian 10 / Ubuntu 18.04 compatibility.
   # Override via `--arg pkgs228 ...` if needed.
-  # To update: nix-prefetch-url --unpack https://github.com/NixOS/nixpkgs/archive/<commit>.tar.gz
+  # To update: nix-prefetch-url --unpack https://package.cosmian.com/nixpkgs/<commit>.tar.gz
   pkgs228 =
     if pkgs.stdenv.isLinux then
       import (builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/nixos-19.03.tar.gz";
+        url = "https://package.cosmian.com/nixpkgs/nixos-19.03.tar.gz";
         sha256 = "sha256-i1XCn9rKuLjvCdu2UeXKzGLF6IuQePQKFt4hEKRU5oc=";
       }) { config.allowUnfree = true; }
     else

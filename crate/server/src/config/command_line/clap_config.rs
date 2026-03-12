@@ -20,11 +20,12 @@ use crate::{
 };
 
 #[cfg(not(target_os = "windows"))]
-const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+pub const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
     std::env::var("LOCALAPPDATA").map_or_else(
         |_| String::from("C:\\ProgramData\\cosmian\\kms.toml"),
         |localappdata| format!("{localappdata}\\Cosmian KMS Server\\kms.toml"),
@@ -32,7 +33,8 @@ fn get_default_config_path() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
     DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
@@ -383,8 +385,17 @@ impl ClapConfig {
     {
         // Collect args so we can re-use for parse + messages
         let args_vec: Vec<T> = args.into_iter().collect();
+        // Remember whether any CLI arguments beyond the binary name were supplied,
+        // before args_vec is consumed by parse_from.
+        let has_extra_args = args_vec.len() > 1;
         // Parse preliminarily to capture the optional config path (this also handles --help / --version)
         let preliminary = Self::parse_from(args_vec);
+
+        // --print-default-config is a meta flag: it must bypass any config file so that
+        // it always outputs the built-in defaults regardless of what is on disk.
+        if preliminary.print_default_config {
+            return Ok(preliminary);
+        }
 
         // Determine configuration file path precedence:
         // 1. Command line -c/--config
@@ -457,12 +468,35 @@ impl ClapConfig {
         }
 
         if default_path.is_file() {
+            // --info is an informational meta-flag: allow it even when the default
+            // config file is present (it loads the file then prints info and exits).
+            let info_only = preliminary.info;
+
+            // If the user also passed CLI arguments (beyond the binary name itself) they
+            // would silently be ignored because the file takes precedence.  This is almost
+            // certainly a mistake, so fail fast with a clear message.
+            if has_extra_args && !info_only {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file found at the default path ({}) but extra command-line \
+                     arguments were also provided. When a configuration file is present, all \
+                     command-line arguments and environment variables are ignored.\n\
+                     Either:\n\
+                     • Remove the extra arguments and edit {} directly, or\n\
+                     • Point to a different file with -c/--config <path>.",
+                    default_path.display(),
+                    default_path.display(),
+                )));
+            }
             println!(
-                "Configuration file {} found (default path). Command line arguments and \
-                 environment variables are ignored.",
+                "Configuration file {} found (default path).",
                 default_path.display()
             );
-            return load_file(&default_path);
+            let mut config = load_file(&default_path)?;
+            // Preserve the --info flag from the command line (it is not in the TOML file)
+            if info_only {
+                config.info = true;
+            }
+            return Ok(config);
         }
 
         eprintln!(
@@ -662,8 +696,13 @@ mod tests {
     where
         F: FnOnce() -> R,
     {
-        // Acquire mutex to serialize environment variable access
-        let _guard = ENV_MUTEX.lock().unwrap();
+        // Acquire mutex to serialize environment variable access.
+        // Use unwrap_or_else to recover from a poisoned mutex (caused by a
+        // previous test panicking while holding the lock) so that one test
+        // failure does not cascade into all subsequent tests.
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
@@ -733,34 +772,81 @@ mod tests {
         });
     }
 
+    /// RAII guard that removes a file when dropped, ensuring cleanup even on panic.
+    struct RemoveOnDrop(PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            drop(std::fs::remove_file(&self.0));
+        }
+    }
+
     #[test]
-    fn precedence_default_config_over_args() {
+    fn precedence_default_config_loads_without_args() {
         with_clean_env(|| {
             if default_path_exists() {
                 eprintln!(
-                    "Skipping precedence_default_config_over_args: default config already exists"
+                    "Skipping precedence_default_config_loads_without_args: default config \
+                     already exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // No extra args beyond the binary name → config file is loaded
+                let args = vec!["kms"];
+                let cfg = ClapConfig::load_from_args(args).expect("load from args");
+                assert_eq!(
+                    cfg.http.port, 34567,
+                    "default config file should be loaded when no extra args are given"
                 );
             } else {
-                // Create a temporary default config file for this test
-                let default_content = "[http]\nport=34567\n";
-                let default_path = PathBuf::from(super::get_default_config_path());
-                if let Some(parent) = default_path.parent() {
-                    drop(std::fs::create_dir_all(parent));
-                }
-                if std::fs::write(&default_path, default_content).is_ok() {
-                    let args = vec!["kms", "--port", "2222"];
-                    let cfg = ClapConfig::load_from_args(args).expect("load from args");
-                    assert_eq!(
-                        cfg.http.port, 34567,
-                        "default config file ignores command line args"
-                    );
-                    drop(std::fs::remove_file(&default_path)); // cleanup
-                } else {
-                    eprintln!(
-                        "Skipping precedence_default_config_over_args: cannot write to default \
-                         path"
-                    );
-                }
+                eprintln!(
+                    "Skipping precedence_default_config_loads_without_args: cannot write to \
+                     default path"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn default_config_with_extra_args_is_error() {
+        with_clean_env(|| {
+            if default_path_exists() {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: default config already \
+                     exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // Extra CLI args when a default config exists should be rejected
+                let args = vec!["kms", "--port", "2222"];
+                let res = ClapConfig::load_from_args(args);
+                assert!(
+                    res.is_err(),
+                    "should error when default config exists and extra args are given"
+                );
+                let err_msg = res.unwrap_err().to_string();
+                assert!(
+                    err_msg.contains("extra command-line arguments were also provided"),
+                    "error message should mention extra args conflict: {err_msg}"
+                );
+            } else {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: cannot write to default \
+                     path"
+                );
             }
         });
     }
