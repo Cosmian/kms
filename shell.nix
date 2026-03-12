@@ -9,7 +9,7 @@
       pinned =
         import
           (builtins.fetchTarball {
-            url = "https://github.com/NixOS/nixpkgs/archive/24.11.tar.gz";
+            url = "https://package.cosmian.com/nixpkgs/24.11.tar.gz";
           })
           {
             overlays = [ rustOverlay ];

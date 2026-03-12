@@ -65,8 +65,13 @@ jobs:
         run: |
           sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
             dest="/tmp/$(basename "$url")"
-            echo "Downloading $url with curl …"
-            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"
+            # Build GitHub fallback URL from mirror URL
+            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
             echo "Injecting into Nix store …"
             nix-prefetch-url --unpack --name source "file://$dest"
             rm -f "$dest"
@@ -149,8 +154,13 @@ jobs:
         run: |
           sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
             dest="/tmp/$(basename "$url")"
-            echo "Downloading $url with curl …"
-            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"
+            # Build GitHub fallback URL from mirror URL
+            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
             echo "Injecting into Nix store …"
             nix-prefetch-url --unpack --name source "file://$dest"
             rm -f "$dest"
