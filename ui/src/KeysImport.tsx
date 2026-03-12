@@ -8,7 +8,7 @@ import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
 
 type ImportKeyFormat = "json-ttlv" | "pem" | "sec1" | "pkcs1-priv" | "pkcs1-pub" | "pkcs8-pub" | "pkcs8-priv" | "aes" | "chacha20";
 
-type KeyUsage = "sign" | "verify" | "encrypt" | "decrypt" | "wrap" | "unwrap";
+type KeyUsage = "Sign" | "Verify" | "Encrypt" | "Decrypt" | "WrapKey" | "UnwrapKey";
 
 interface ImportKeyFormData {
     keyFile: Uint8Array;
@@ -91,12 +91,12 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             { label: "PKCS#8 DER (RSA public)", value: "pkcs8-pub" },
         ];
         key_usages = [
-            { label: "Sign", value: "sign" },
-            { label: "Verify", value: "verify" },
-            { label: "Encrypt", value: "encrypt" },
-            { label: "Decrypt", value: "decrypt" },
-            { label: "Wrap", value: "wrap" },
-            { label: "Unwrap", value: "unwrap" },
+            { label: "Sign", value: "Sign" },
+            { label: "Verify", value: "Verify" },
+            { label: "Encrypt", value: "Encrypt" },
+            { label: "Decrypt", value: "Decrypt" },
+            { label: "Wrap", value: "WrapKey" },
+            { label: "Unwrap", value: "UnwrapKey" },
         ];
     } else if (key_type === "ec") {
         key_formats = [
@@ -107,12 +107,12 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             { label: "PKCS#8 DER (RSA private)", value: "pkcs8-priv" },
         ];
         key_usages = [
-            { label: "Sign", value: "sign" },
-            { label: "Verify", value: "verify" },
-            { label: "Encrypt", value: "encrypt" },
-            { label: "Decrypt", value: "decrypt" },
-            { label: "Wrap", value: "wrap" },
-            { label: "Unwrap", value: "unwrap" },
+            { label: "Sign", value: "Sign" },
+            { label: "Verify", value: "Verify" },
+            { label: "Encrypt", value: "Encrypt" },
+            { label: "Decrypt", value: "Decrypt" },
+            { label: "Wrap", value: "WrapKey" },
+            { label: "Unwrap", value: "UnwrapKey" },
         ];
     } else if (key_type === "symmetric") {
         key_formats = [
@@ -121,22 +121,22 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             { label: "ChaCha20", value: "chacha20" },
         ];
         key_usages = [
-            { label: "Encrypt", value: "encrypt" },
-            { label: "Decrypt", value: "decrypt" },
-            { label: "Wrap", value: "wrap" },
-            { label: "Unwrap", value: "unwrap" },
+            { label: "Encrypt", value: "Encrypt" },
+            { label: "Decrypt", value: "Decrypt" },
+            { label: "Wrap", value: "WrapKey" },
+            { label: "Unwrap", value: "UnwrapKey" },
         ];
     } else if (key_type === "secret-data" || key_type === "opaque-object") {
         key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
         key_usages = [
-            { label: "Wrap", value: "wrap" },
-            { label: "Unwrap", value: "unwrap" },
+            { label: "Wrap", value: "WrapKey" },
+            { label: "Unwrap", value: "UnwrapKey" },
         ];
     } else {
         key_formats = [{ label: "JSON TTLV (default)", value: "json-ttlv" }];
         key_usages = [
-            { label: "Encrypt", value: "encrypt" },
-            { label: "Decrypt", value: "decrypt" },
+            { label: "Encrypt", value: "Encrypt" },
+            { label: "Decrypt", value: "Decrypt" },
         ];
     }
 
