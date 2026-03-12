@@ -1102,13 +1102,29 @@ collect_deb() {
   done
 
   local cli_found=0
+  # Build CLI-specific pattern to avoid picking up stale debs from other variants
+  local cli_pattern
+  if [ "$LINK" = "dynamic" ]; then
+    if [ "$VARIANT" = "fips" ]; then
+      cli_pattern="ckms-fips-dynamic_*.deb"
+    else
+      cli_pattern="ckms-non-fips-dynamic_*.deb"
+    fi
+  else
+    if [ "$VARIANT" = "fips" ]; then
+      cli_pattern="ckms-fips_*.deb"
+    else
+      # non-fips static is the default variant (no suffix)
+      cli_pattern="ckms_*.deb"
+    fi
+  fi
   for p in \
     "$REPO_ROOT/crate/clients/ckms/target/debian" \
     "$REPO_ROOT/crate/clients/ckms/target/$HOST_TRIPLE/debian" \
     "$REPO_ROOT/target/debian" \
     "$REPO_ROOT/target/$HOST_TRIPLE/debian"; do
     if [ -d "$p" ]; then
-      find "$p" -maxdepth 1 -type f -name 'ckms*.deb' -print -exec cp -f -v {} "$result_dir/" \;
+      find "$p" -maxdepth 1 -type f -name "$cli_pattern" -print -exec cp -f -v {} "$result_dir/" \;
       cli_found=1
     fi
   done

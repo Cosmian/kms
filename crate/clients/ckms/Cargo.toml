@@ -109,6 +109,7 @@ assets = [
 
 [package.metadata.deb.variants.fips-dynamic]
 features = []
+depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   [
@@ -150,6 +151,7 @@ assets = [
 
 [package.metadata.deb.variants.non-fips-dynamic]
 features = ["non-fips"]
+depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   [
