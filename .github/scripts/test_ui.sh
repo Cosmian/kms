@@ -60,6 +60,10 @@ cp -r "${PKG_SRC}/." "${PKG_DST}/"
 ensure_pnpm
 
 echo "==> Installing UI dependencies …"
+# Remove any node_modules left by a different pnpm major version to
+# prevent the interactive "modules directory will be removed" prompt that
+# breaks non-interactive / frozen-lockfile installs.
+rm -rf "${UI_DIR}/node_modules"
 run_ui pnpm install --frozen-lockfile
 
 echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) …"

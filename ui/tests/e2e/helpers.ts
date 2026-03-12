@@ -176,7 +176,9 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     if (await listHolder.count() > 0) {
         await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     }
-    const candidates = dropdown.locator(".ant-select-item-option", { hasText: optionText });
+    // Use a regex anchored to start/end so "Active" does not accidentally match "PreActive".
+    const escapedText = optionText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const candidates = dropdown.locator(".ant-select-item-option", { hasText: new RegExp(`^\\s*${escapedText}\\s*$`) });
     const deadline = Date.now() + 10_000;
     let clicked = false;
 
