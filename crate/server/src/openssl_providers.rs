@@ -27,6 +27,7 @@ pub fn safe_openssl_version_info() -> (String, String, u64) {
     // fully initialised.  We call it first as a cheap liveness check.
     // Note: Returns `c_ulong` which is u32 on Windows and u64 on Unix.
     // We need `u64::from()` for cross-platform compatibility (widening is safe).
+    #[allow(clippy::useless_conversion)]
     let num = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
     if num == 0 {
         return ("<unavailable>".to_owned(), "<unavailable>".to_owned(), 0);
@@ -80,6 +81,7 @@ pub fn init_openssl_providers_for_tests() {
     static PROVIDER: OnceLock<Provider> = OnceLock::new();
 
     PROVIDER.get_or_init(|| {
+        #[allow(clippy::useless_conversion)]
         let ossl_number = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
         if ossl_number >= 0x3000_0000 {
             // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
@@ -134,6 +136,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
         static PROVIDER: OnceLock<Provider> = OnceLock::new();
 
         if PROVIDER.get().is_none() {
+            #[allow(clippy::useless_conversion)]
             let ossl_number = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
             let provider = if ossl_number >= 0x3000_0000 {
                 // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats

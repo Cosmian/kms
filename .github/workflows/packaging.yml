@@ -192,13 +192,12 @@ jobs:
             cosmian@package.cosmian.com:${remote_dir}/
 
       - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
-            result-server-${{ matrix.features }}-${{ matrix.link }}/bin/cosmian-kms-server*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   tests:
