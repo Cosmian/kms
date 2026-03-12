@@ -6,8 +6,12 @@
 
 use std::{fmt, sync::Arc};
 
-use alcoholic_jwt::token_kid;
 use cosmian_logger::trace;
+use jsonwebtoken::Validation;
+#[cfg(any(test, feature = "insecure"))]
+use jsonwebtoken::dangerous::insecure_decode;
+#[cfg(all(not(test), not(feature = "insecure")))]
+use jsonwebtoken::decode_header;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
@@ -146,6 +150,43 @@ impl JwtConfig {
             "validating authentication token, expected JWT issuer: {}",
             self.jwt_issuer_uri
         );
+
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        let header = decode_header(token)
+            .map_err(|e| KmsError::Unauthorized(format!("Failed to decode token header: {e}")))?;
+
+        #[cfg(any(test, feature = "insecure"))]
+        let header = insecure_decode(token)
+            .map_err(|e| KmsError::Unauthorized(format!("Failed to decode token header: {e}")))?
+            .header;
+
+        let mut validation = Validation::new(header.alg);
+
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        {
+            validation.set_issuer(&[&self.jwt_issuer_uri]);
+            validation.validate_exp = true;
+        }
+
+        #[cfg(any(test, feature = "insecure"))]
+        {
+            validation.validate_exp = false;
+        }
+
+        validation.set_required_spec_claims(&["sub"]);
+
+
+ZZZZZZZZZZZZZZZZZZZZZ
+
+
+        if let Some(jwt_audience) = &idp_params.jwt_audience {
+            validation.set_audience(&[jwt_audience]);
+        }
+
+        // Extract key ID from token header to locate the correct JWK
+        let kid = header
+            .kid
+            .ok_or_else(|| AuthError::JWT("No 'kid' claim present in token".to_owned()))?;
 
         let mut validations = vec![
             #[cfg(all(not(test), not(feature = "insecure")))]

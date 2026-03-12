@@ -141,7 +141,6 @@ actix-session = { version = "0.8" }
 actix-server = { version = "2.5", default-features = false }
 actix-tls = "3.4"
 actix-web = { version = "4.12", default-features = false }
-alcoholic_jwt = "4091"
 async-recursion = "1.1"
 async-trait = "0.1"
 base64 = "0.22"
