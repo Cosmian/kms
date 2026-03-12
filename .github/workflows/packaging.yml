@@ -62,6 +62,8 @@ jobs:
             nix-prefetch-url --unpack --name source "file://$dest"
             rm -f "$dest"
           done
+
+      - name: Set up GPG
         uses: crazy-max/ghaction-import-gpg@v7
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
