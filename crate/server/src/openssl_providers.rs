@@ -70,11 +70,7 @@ pub fn safe_openssl_version_info() -> (String, String, u64) {
 /// Note: The default provider is already active via openssl.cnf configuration.
 /// This function only adds the legacy provider on top of it.
 #[cfg(feature = "non-fips")]
-#[allow(
-    unsafe_code,
-    clippy::missing_panics_doc,
-    clippy::expect_used
-)]
+#[allow(unsafe_code, clippy::missing_panics_doc, clippy::expect_used)]
 pub fn init_openssl_providers_for_tests() {
     use std::sync::OnceLock;
 
