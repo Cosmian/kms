@@ -84,9 +84,9 @@ in this repository under `crate/clients/ckms/`:
 
 ### 🔒 Security
 
-- `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
-- `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
-- `lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
+- **UI** `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
+- **UI** `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
+- **Rust**`lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
   `deny.toml` — no upstream fix available yet; severity low (CVSS 2.7)
 
 ### 📚 Documentation
