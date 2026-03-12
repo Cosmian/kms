@@ -46,9 +46,17 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
     let (rolling_log_dir, rolling_log_name) = if rolling_log {
+        #[cfg(not(target_os = "windows"))]
+        let default_log_dir = "/var/log".to_owned();
+        #[cfg(target_os = "windows")]
+        let default_log_dir = std::env::var("LOCALAPPDATA").map_or_else(
+            |_| String::from("C:\\ProgramData\\cosmian\\logs"),
+            |localappdata| format!("{localappdata}\\Cosmian KMS Server\\logs"),
+        );
+
         let dir: String = Input::with_theme(&theme)
             .with_prompt("Rolling log directory path")
-            .default("/var/log".to_owned())
+            .default(default_log_dir)
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
         let name: String = Input::with_theme(&theme)

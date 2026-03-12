@@ -22,6 +22,7 @@
     non_snake_case, // case come from C
     clippy::missing_safety_doc,
     clippy::missing_errors_doc,
+    clippy::cast_possible_truncation, // CK_ULONG is u32 on Windows, u64 on Linux; casts are inherent to the PKCS#11 FFI
 )]
 
 pub mod core;

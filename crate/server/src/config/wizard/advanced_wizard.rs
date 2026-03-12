@@ -44,9 +44,17 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
+    #[cfg(not(target_os = "windows"))]
+    let default_tmp = "/tmp".to_owned();
+    #[cfg(target_os = "windows")]
+    let default_tmp = std::env::temp_dir()
+        .to_str()
+        .unwrap_or("C:\\Temp")
+        .to_owned();
+
     let tmp_path: String = Input::with_theme(&theme)
         .with_prompt("Temporary data directory")
-        .default("/tmp".to_owned())
+        .default(default_tmp)
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 

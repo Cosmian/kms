@@ -54,8 +54,16 @@ pub struct CertGenOptions {
 
 impl Default for CertGenOptions {
     fn default() -> Self {
+        #[cfg(not(target_os = "windows"))]
+        let default_dir = PathBuf::from("/etc/cosmian");
+        #[cfg(target_os = "windows")]
+        let default_dir = PathBuf::from(std::env::var("LOCALAPPDATA").map_or_else(
+            |_| String::from("C:\\ProgramData\\cosmian\\certs"),
+            |localappdata| format!("{localappdata}\\Cosmian KMS Server\\certs"),
+        ));
+
         Self {
-            output_dir: PathBuf::from("/etc/cosmian"),
+            output_dir: default_dir,
             ca_cn: "Cosmian KMS CA".to_owned(),
             server_cn: "Cosmian KMS Server".to_owned(),
             client_cn: "Cosmian KMS Client".to_owned(),

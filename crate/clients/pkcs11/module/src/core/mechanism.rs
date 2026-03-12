@@ -146,12 +146,10 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
                 }
             };
 
-            #[expect(clippy::unnecessary_cast)]
             Ok(Mechanism::RsaPss {
                 digest_algorithm: hash_alg,
                 mask_generation_function: mgf,
-                //  Cast needed on windows
-                salt_length: salt_len as u64,
+                salt_length: u64::from(salt_len),
             })
         }
         _ => Err(ModuleError::MechanismInvalid(mechanism.mechanism)),

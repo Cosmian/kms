@@ -17,6 +17,7 @@ pub use azure_ekm_config::AzureEkmConfig;
 pub use clap_config::ClapConfig;
 #[cfg(not(target_os = "windows"))]
 pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;
+pub use clap_config::get_default_config_path;
 pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};

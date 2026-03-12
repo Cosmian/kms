@@ -1,8 +1,8 @@
 //! Interactive configuration wizard for the Cosmian KMS server.
 //!
 //! Invoked via `cosmian_kms configure`.  Walks the user through every
-//! configuration section in sequence and writes the result to
-//! `/etc/cosmian/kms.toml`.
+//! configuration section in sequence and writes the result to the
+//! platform-specific default configuration path.
 //!
 //! The wizard covers:
 //! 1. Database
@@ -31,25 +31,20 @@ mod socket_wizard;
 mod tests;
 mod tls_wizard;
 
-#[cfg(not(target_os = "windows"))]
-use crate::config::DEFAULT_COSMIAN_KMS_CONF;
 use crate::{
-    config::{ClapConfig, UiConfig},
+    config::{ClapConfig, UiConfig, get_default_config_path},
     error::KmsError,
     result::KResult,
 };
 
-#[cfg(not(target_os = "windows"))]
-const OUTPUT_PATH: &str = DEFAULT_COSMIAN_KMS_CONF;
-#[cfg(target_os = "windows")]
-const OUTPUT_PATH: &str = "C:\\ProgramData\\cosmian\\kms.toml";
-
-/// Run the interactive configuration wizard and write `/etc/cosmian/kms.toml`.
+/// Run the interactive configuration wizard and write the configuration file.
 ///
 /// # Errors
 /// Returns an error if any prompt fails, certificate generation fails, or the
 /// resulting TOML cannot be serialized / written to disk.
 pub fn run_configure_wizard() -> KResult<()> {
+    let output_path = get_default_config_path();
+
     // Handle --help / -h early
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -59,7 +54,7 @@ pub fn run_configure_wizard() -> KResult<()> {
              USAGE:\n    cosmian_kms configure [OPTIONS]\n\n\
              OPTIONS:\n    -h, --help    Print this help message\n\n\
              The wizard guides you through all server configuration options and\n\
-             writes the result to {OUTPUT_PATH}.\n"
+             writes the result to {output_path}.\n"
         );
         return Ok(());
     }
@@ -70,7 +65,7 @@ pub fn run_configure_wizard() -> KResult<()> {
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
     println!("This wizard will guide you through all server configuration options.");
-    println!("The resulting configuration will be written to: {OUTPUT_PATH}");
+    println!("The resulting configuration will be written to: {output_path}");
     println!();
 
     // ── [1/9] Database ────────────────────────────────────────────────────────
@@ -164,20 +159,20 @@ pub fn run_configure_wizard() -> KResult<()> {
         .map_err(|e| KmsError::ServerError(format!("Failed to serialize configuration: {e}")))?;
 
     // Write to output path (create parent directory if needed)
-    let output_path = std::path::Path::new(OUTPUT_PATH);
-    if let Some(parent) = output_path.parent() {
+    let output_file = std::path::Path::new(&output_path);
+    if let Some(parent) = output_file.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             KmsError::ServerError(format!("Cannot create directory {}: {e}", parent.display()))
         })?;
     }
-    std::fs::write(output_path, &toml_content)
-        .map_err(|e| KmsError::ServerError(format!("Cannot write {OUTPUT_PATH}: {e}")))?;
+    std::fs::write(output_file, &toml_content)
+        .map_err(|e| KmsError::ServerError(format!("Cannot write {output_path}: {e}")))?;
 
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║                  Configuration complete!                     ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
-    println!("Configuration written to: {OUTPUT_PATH}");
+    println!("Configuration written to: {output_path}");
     println!();
 
     if let Some(client_cert) = tls_result.generated_client_cert {
@@ -189,7 +184,7 @@ pub fn run_configure_wizard() -> KResult<()> {
     }
 
     println!("Start the server with:");
-    println!("  cosmian_kms -c {OUTPUT_PATH}");
+    println!("  cosmian_kms -c {output_path}");
     println!();
 
     Ok(())

@@ -44,9 +44,17 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
     if generate_certs {
+        #[cfg(not(target_os = "windows"))]
+        let default_certs_dir = "/etc/cosmian".to_owned();
+        #[cfg(target_os = "windows")]
+        let default_certs_dir = std::env::var("LOCALAPPDATA").map_or_else(
+            |_| String::from("C:\\ProgramData\\cosmian\\certs"),
+            |localappdata| format!("{localappdata}\\Cosmian KMS Server\\certs"),
+        );
+
         let certs_dir: String = Input::with_theme(&theme)
             .with_prompt("Directory to write certificate files")
-            .default("/etc/cosmian".to_owned())
+            .default(default_certs_dir)
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
