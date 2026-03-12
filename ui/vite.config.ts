@@ -8,14 +8,16 @@ const kmsTarget = process.env.VITE_KMS_URL ?? "http://localhost:9998";
 
 // Proxy rules forwarding KMS API paths to the backend so that the Vite dev and
 // preview servers can reach the KMS without CORS issues or base-path 404s.
-const apiProxy: Record<string, string> = {
-    "/kmip": kmsTarget,
-    "/access": kmsTarget,
-    "/google_cse": kmsTarget,
-    "/ms_dke": kmsTarget,
-    "/aws": kmsTarget,
-    "/azureekm": kmsTarget,
-    "/download-cli": kmsTarget,
+// `secure: false` allows self-signed TLS certificates on the backend.
+const proxyOpts = { target: kmsTarget, secure: false };
+const apiProxy: Record<string, { target: string; secure: boolean }> = {
+    "/kmip": proxyOpts,
+    "/access": proxyOpts,
+    "/google_cse": proxyOpts,
+    "/ms_dke": proxyOpts,
+    "/aws": proxyOpts,
+    "/azureekm": proxyOpts,
+    "/download-cli": proxyOpts,
 };
 
 // https://vite.dev/config/

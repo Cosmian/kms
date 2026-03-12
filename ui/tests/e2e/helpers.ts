@@ -1,4 +1,10 @@
 import { Download, expect, Page } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /** Timeout (ms) used when waiting for the UI to finish loading WASM/React data. */
 export const UI_READY_TIMEOUT = 15_000;
@@ -10,14 +16,14 @@ export function extractUuid(text: string): string | null {
 }
 
 /**
- * Extract the UUID that follows a labelled field in a server response string.
+ * Extract the key identifier that follows a labelled field in a server response string.
  *
- * Example: `extractUuidAfterLabel(text, "Private key Id")` returns the UUID
- * that appears after `"Private key Id:"` in the response.
+ * Captures the full identifier including optional suffixes like `_pk` for public keys.
+ * Example: `extractUuidAfterLabel(text, "Public key Id")` returns `"abc-...-123_pk"`.
  */
 export function extractUuidAfterLabel(text: string, label: string): string | null {
     const pattern = new RegExp(
-        label + ":\\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        label + ":\\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:_[a-z]+)?)",
         "i"
     );
     const m = text.match(pattern);
@@ -253,4 +259,52 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
     expect(privKeyId).not.toBeNull();
     expect(pubKeyId).not.toBeNull();
     return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
+}
+
+/**
+ * Create a fresh EC key pair (NIST P-256) and return both key IDs.
+ */
+export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
+    await gotoAndWait(page, "/ui/ec/keys/create");
+    await selectOption(page, "ec-curve-select", "NIST P-256");
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/Key pair has been created/i);
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
+    return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
+}
+
+/**
+ * Upload a file to the first `FormUploadDragger` on the page.
+ *
+ * Because Ant Design's `Upload` component wraps a hidden `<input type="file">`,
+ * we use Playwright's `setInputFiles()` directly on the native input element.
+ *
+ * @param filePath Absolute path to the file to upload, or the path returned by `download.path()`.
+ */
+export async function uploadFile(page: Page, filePath: string): Promise<void> {
+    const fileInput = page.locator('input[type="file"]').first();
+    await fileInput.setInputFiles(filePath);
+}
+
+/**
+ * Upload a file to the Nth `FormUploadDragger` on the page (0-based).
+ */
+export async function uploadFileNth(page: Page, filePath: string, nth: number): Promise<void> {
+    const fileInput = page.locator('input[type="file"]').nth(nth);
+    await fileInput.setInputFiles(filePath);
+}
+
+/**
+ * Write content to a temporary file and return its path.
+ * Useful for creating test data files to upload.
+ */
+export function writeTempFile(name: string, content: string | Buffer): string {
+    const tmpDir = path.join(__dirname, "..", "..", "test-results");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const filePath = path.join(tmpDir, name);
+    fs.writeFileSync(filePath, content);
+    return filePath;
 }
