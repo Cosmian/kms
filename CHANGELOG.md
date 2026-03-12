@@ -74,6 +74,7 @@ in this repository under `crate/clients/ckms/`:
 - Linux packages: README now installed as `README.md` (was `README` — not rendered as
   markdown by package managers)
 - `pnpm` version pinned to 10 in `build_ui.sh`
+- CI: mirror nixpkgs archives on `package.cosmian.com` with GitHub fallback to avoid 502 errors
 
 ### 🔒 Security
 
