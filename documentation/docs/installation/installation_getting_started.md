@@ -10,10 +10,54 @@ If you wish to change the database configuration, please refer to the [database 
 
 For high availability and scalability, refer to the [High Availability Guide](./high_availability_mode.md).
 
+## Verifying release signatures
+
+All Cosmian KMS release packages (DEB, RPM, DMG) are GPG-signed.
+Each package is accompanied by a `.asc` signature file that can be used to verify its authenticity and integrity.
+
+### Import the Cosmian public key**
+
+```sh
+gpg --import cosmian-kms-public.asc
+```
+
+The key is also bundled inside DMG installers and available in the [GitHub repository](https://github.com/Cosmian/kms/blob/develop/nix/signing-keys/cosmian-kms-public.asc).
+
+### Verify a downloaded package**
+
+```sh
+gpg --verify <package>.asc <package>
+```
+
+For example:
+
+```sh
+# Debian package
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.17.0_amd64.deb.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.17.0_amd64.deb
+
+# RPM package
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.17.0_x86_64.rpm.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.17.0_x86_64.rpm
+
+# DMG package
+gpg --verify cosmian-kms-server-non-fips-static-openssl-5.17.0_arm64.dmg.asc \
+             cosmian-kms-server-non-fips-static-openssl-5.17.0_arm64.dmg
+```
+
+A successful verification prints:
+
+```text
+gpg: Good signature from "Cosmian KMS Release <tech@cosmian.com>"
+```
+
+!!!warning
+    If the signature does not match, do not use the package.
+
+## Installation
+
 !!!info "KMS CLI"
-    The KMS CLI lets you interact with the KMS from the command line.
-    Install it from [KMS CLI](https://package.cosmian.com/kms/)
-    and [configure it](../kms_clients/index.md).
+    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../kms_clients/index.md).
 
 === "Docker"
 
@@ -125,7 +169,7 @@ For high availability and scalability, refer to the [High Availability Guide](./
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
 
-#### Static vs Dynamic builds
+### Static vs Dynamic builds
 
 - Static builds: ship with OpenSSL statically linked into the binary. Simplest to deploy; no external crypto libraries required; consistent behavior across environments.
 - Dynamic builds: link OpenSSL dynamically. This allows replacing the OpenSSL shared library at runtime to use custom or system-provided crypto. On Linux, replace the relevant `.so` files; on macOS, replace the `.dylib` files, ensuring ABI compatibility.

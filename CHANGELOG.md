@@ -65,6 +65,10 @@ in this repository under `crate/clients/ckms/`:
 
 ### 🐛 Bug Fixes
 
+- **Signing key**: Fix corrupted GPG public key (`cosmian-kms-public.asc`) that caused CRC
+  errors on import with GnuPG ([#785](https://github.com/Cosmian/kms/issues/785))
+- **CI**: Fix GCP CMEK FIPS test timeout — strip `LD_PRELOAD`/`LD_LIBRARY_PATH` from `curl`
+  in `wait_for_kms` to prevent the FIPS bootstrap shim from breaking HTTP probes
 - *(ui)* Add Content-Security-Policy against clickjacking attack (#768)
 - Unwrap cache: internalize fingerprint check and seed SipHash (#778)
 - Fail KMIP operation when multiple keys are found to process the operation (#771)
