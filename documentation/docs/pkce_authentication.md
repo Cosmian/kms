@@ -128,4 +128,3 @@ Common issues and solutions:
 - [OAuth 2.0 PKCE RFC 7636](https://tools.ietf.org/html/rfc7636)
 - [OAuth.net PKCE Documentation](https://oauth.net/2/pkce/)
 - [KMS Authentication Documentation](authentication.md)
-- [PKCE Authentication Example](pkce_auth_example.md)

@@ -21,7 +21,7 @@ The tags are assembled in a JSON array and encoded in hex.
 
 The `CryptographicUsageMask` is optional.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```shell
 ckms sym keys create --tag MySymmetricKey
@@ -121,7 +121,7 @@ ckms sym keys create --tag MySymmetricKey
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
 (see [Create Key Pair](./_create_key_pair.md) for the corresponding master key access structure).
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```shell
 ckms cc keys create-user-key -t "MyUserKey"\

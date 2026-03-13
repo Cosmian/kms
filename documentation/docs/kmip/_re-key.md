@@ -16,7 +16,7 @@ The `Re-Key` Operation refreshes Symmetric keys.
 
 ### Example - Refresh a Symmetric Key
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3

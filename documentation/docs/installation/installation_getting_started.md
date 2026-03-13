@@ -57,7 +57,7 @@ gpg: Good signature from "Cosmian KMS Release <tech@cosmian.com>"
 ## Installation
 
 !!!info "KMS CLI"
-    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../kms_clients/index.md).
+    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../../kms_clients/index.md).
 
 === "Docker"
 

@@ -441,8 +441,8 @@ python scripts/pykmip_client.py \
 
 ## Related Documentation
 
-- [KMIP Protocol Support](../documentation/docs/algorithms.md)
-- [TLS Configuration](../crate/server/README.md)
-- [Authentication](../documentation/docs/authentication.md)
+- [KMIP Protocol Support](./algorithms.md)
+- [TLS Configuration](./tls.md)
+- [Authentication](./authentication.md)
 - [PyKMIP Official Documentation](https://pykmip.readthedocs.io/)
-- [Cosmian KMS Server Documentation](../crate/server/README.md)
+- [Cosmian KMS Server Documentation](./index.md)

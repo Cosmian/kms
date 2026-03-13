@@ -27,7 +27,7 @@ For the complete list of supported hashing algorithms, please check the [algorit
 
 Hashing data with SHA256.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms hash --algorithm sha3-512 --data 0011223344556677889900
@@ -90,7 +90,7 @@ ckms hash --algorithm sha3-512 --data 0011223344556677889900
 
 Hashing a large file in multiple parts using SHA256.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 # First part with init indicator

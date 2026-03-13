@@ -16,7 +16,7 @@ First, for the demo purpose create a certificate:
 
 Delete the links on a certificate object.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
   ckms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz
