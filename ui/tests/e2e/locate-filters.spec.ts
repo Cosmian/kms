@@ -8,13 +8,7 @@
  *   ckms locate --state Active
  */
 import { expect, test } from "@playwright/test";
-import {
-    createRsaKeyPair,
-    createSymKey,
-    gotoAndWait,
-    selectOptionById,
-    submitAndWaitForResponse,
-} from "./helpers";
+import { createRsaKeyPair, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Locate filters", () => {
     test("locate by object type finds keys", async ({ page }) => {

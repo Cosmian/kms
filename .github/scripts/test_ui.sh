@@ -105,6 +105,7 @@ trap cleanup EXIT INT TERM
 
 echo "==> Starting KMS server (non-fips, sqlite) …"
 KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
+KMS_LOG="${SQLITE_DIR}/kms-server.log"
 cat >"${KMS_CONF_FILE}" <<EOF
 default_username = "admin"
 vendor_identification = "test_vendor"
@@ -121,11 +122,13 @@ EOF
 
 # Force an explicit config to avoid picking up a host-installed default config
 # at /etc/cosmian/kms.toml (which would ignore CLI args and may crash on log perms).
+# Server output is captured to a log file so that errors can be reported after tests.
 # shellcheck disable=SC2086
-cargo run -p cosmian_kms_server --bin cosmian_kms \
+RUST_LOG="cosmian_kms_server=info,cosmian_kms_server_database=info" \
+    cargo run -p cosmian_kms_server --bin cosmian_kms \
     --features non-fips \
     -- \
-    --config "${KMS_CONF_FILE}" &
+    --config "${KMS_CONF_FILE}" >"${KMS_LOG}" 2>&1 &
 KMS_PID=$!
 
 echo "==> Waiting for KMS to be ready …"
@@ -165,7 +168,27 @@ for i in $(seq 1 60); do
 done
 
 # ── 6. Run Playwright E2E tests ───────────────────────────────────────────────
-echo "==> Running Playwright E2E tests …"
-(cd "${UI_DIR}" && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e)
+echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-1}) …"
+TEST_EXIT=0
+(cd "${UI_DIR}" && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-1}" pnpm run test:e2e) || TEST_EXIT=$?
+
+# ── 7. Report server errors ──────────────────────────────────────────────────
+SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null || true)
+SERVER_WARNS=$(grep -c ' WARN ' "${KMS_LOG}" 2>/dev/null || true)
+
+if [ "${SERVER_ERRORS}" -gt 0 ] || [ "${SERVER_WARNS}" -gt 0 ]; then
+    echo ""
+    echo "==> KMS server log summary: ${SERVER_ERRORS} error(s), ${SERVER_WARNS} warning(s)"
+    echo "--- Server errors/warnings ---"
+    grep -E ' (ERROR|WARN) ' "${KMS_LOG}" || true
+    echo "--- End server errors/warnings ---"
+    echo ""
+fi
+
+if [ "${TEST_EXIT}" -ne 0 ]; then
+    echo "==> Playwright tests FAILED (exit code ${TEST_EXIT})"
+    echo "==> Full KMS server log: ${KMS_LOG}"
+    exit "${TEST_EXIT}"
+fi
 
 echo "==> UI E2E tests passed!"

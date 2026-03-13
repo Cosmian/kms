@@ -539,7 +539,8 @@ test_command() {
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
-        --keep BUILD_PROFILE"
+        --keep BUILD_PROFILE \
+        --keep PLAYWRIGHT_WORKERS"
 }
 
 sbom_command() {

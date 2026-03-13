@@ -30,6 +30,7 @@ jobs:
           - aws_xks
           - azure_ekm
           - ui
+          - gcp_cmek
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips

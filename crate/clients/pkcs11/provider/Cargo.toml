@@ -24,8 +24,8 @@ doctest = false
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
-ckms = { path = "../../ckms", version = "5.16.2" }
-cosmian_pkcs11_module = { path = "../module", version = "5.16.2" }
+ckms = { path = "../../ckms", version = "5.17.0" }
+cosmian_pkcs11_module = { path = "../module", version = "5.17.0" }
 etcetera = "0.8.0"
 hex = "0.4"
 p256 = { version = "0.13.2", default-features = false, features = [
