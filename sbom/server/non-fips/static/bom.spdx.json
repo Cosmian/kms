@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-8w5rj1zjzh44p10glqvv7a30fam58c2x-cosmian-kms-server-5.16.2.drv",
-  "documentNamespace": "sbomnix://f7195732-02d3-4a9d-8fde-d9257748959b",
+  "name": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
+  "documentNamespace": "sbomnix://52e72da3-e6e3-4ea6-90d4-88f2ae7e005d",
   "creationInfo": {
-    "created": "2026-02-22T16:21:37.188615+01:00",
+    "created": "2026-03-13T18:03:27.254937+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -14,8 +14,8 @@
   "packages": [
     {
       "name": "cosmian-kms-server",
-      "SPDXID": "SPDXRef-nix-store-8w5rj1zjzh44p10glqvv7a30fam58c2x-cosmian-kms-server-5.16.2.drv",
-      "versionInfo": "5.16.2",
+      "SPDXID": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
+      "versionInfo": "5.17.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.16.2:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.17.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server@5.16.2"
+          "referenceLocator": "pkg:nix/cosmian-kms-server@5.17.0"
         }
       ]
     },
@@ -98,7 +98,7 @@
     },
     {
       "name": "openssl",
-      "SPDXID": "SPDXRef-nix-store-52hwb8bxdy0l6izhhp719jdq292qpvxp-openssl-3.6.0.drv",
+      "SPDXID": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
       "versionInfo": "3.6.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -120,9 +120,9 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-8w5rj1zjzh44p10glqvv7a30fam58c2x-cosmian-kms-server-5.16.2.drv",
+      "spdxElementId": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-nix-store-52hwb8bxdy0l6izhhp719jdq292qpvxp-openssl-3.6.0.drv"
+      "relatedSpdxElement": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv"
     },
     {
       "spdxElementId": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
@@ -135,7 +135,7 @@
       "relatedSpdxElement": "SPDXRef-nix-store-f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "spdxElementId": "SPDXRef-nix-store-52hwb8bxdy0l6izhhp719jdq292qpvxp-openssl-3.6.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
     }
