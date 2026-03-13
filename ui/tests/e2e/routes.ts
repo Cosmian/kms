@@ -57,6 +57,19 @@ export const EC_KEY_ROUTES: Route[] = [
     { name: "verify", path: "/ui/ec/verify" },
 ];
 
+// ── PQC Key routes ───────────────────────────────────────────────────────────
+export const PQC_KEY_ROUTES: Route[] = [
+    { name: "create", path: "/ui/pqc/keys/create" },
+    { name: "export", path: "/ui/pqc/keys/export" },
+    { name: "import", path: "/ui/pqc/keys/import" },
+    { name: "revoke", path: "/ui/pqc/keys/revoke" },
+    { name: "destroy", path: "/ui/pqc/keys/destroy" },
+    { name: "encapsulate", path: "/ui/pqc/encapsulate" },
+    { name: "decapsulate", path: "/ui/pqc/decapsulate" },
+    { name: "sign", path: "/ui/pqc/sign" },
+    { name: "verify", path: "/ui/pqc/verify" },
+];
+
 // ── Covercrypt Key routes ────────────────────────────────────────────────────
 export const CC_KEY_ROUTES: Route[] = [
     { name: "create master key pair", path: "/ui/cc/keys/create-master-key-pair" },
@@ -136,6 +149,7 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Symmetric Keys", routes: SYM_KEY_ROUTES },
     { section: "RSA Keys", routes: RSA_KEY_ROUTES },
     { section: "EC Keys", routes: EC_KEY_ROUTES },
+    { section: "PQC Keys", routes: PQC_KEY_ROUTES },
     { section: "Covercrypt Keys", routes: CC_KEY_ROUTES },
     { section: "Certificates", routes: CERT_ROUTES },
     { section: "Opaque Objects", routes: OPAQUE_ROUTES },

@@ -8,6 +8,8 @@
   "loginSubtitle": "White-label demo via branding.json",
   "backgroundImageUrl": "/ui/themes/example/example-login-bg.jpg",
   "menuTheme": "dark",
+  "enableCovercrypt": true,
+  "pqcLabel": "Post-Quantum Crypto",
   "tokens": {
     "light": {
       "colorPrimary": "#0057ff",

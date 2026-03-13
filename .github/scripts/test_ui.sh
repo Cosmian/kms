@@ -118,6 +118,9 @@ clear_database = true
 [http]
 hostname = "127.0.0.1"
 port = 9998
+
+[ui_config]
+ui_index_html_folder = "${UI_DIR}/dist"
 EOF
 
 # Force an explicit config to avoid picking up a host-installed default config

@@ -215,7 +215,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)

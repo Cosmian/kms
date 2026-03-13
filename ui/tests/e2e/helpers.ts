@@ -116,6 +116,7 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         // Alternate bottom / top scrolls so all items are rendered by the virtual
         // list across two positions (covers lists of any length).
         let scrolledToBottom = false;
+    let scrollAttempt = 0;
 
         while (Date.now() < deadline && !clicked) {
             // Prefer AntD's visible option container (most reliable click target).
@@ -322,6 +323,23 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
 export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
     await gotoAndWait(page, "/ui/ec/keys/create");
     await selectOption(page, "ec-curve-select", "NIST P-256");
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/Key pair has been created/i);
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
+    return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
+}
+
+/**
+ * Create a fresh PQC key pair and return both key IDs.
+ *
+ * @param algorithm Visible label in the algorithm dropdown, e.g. "ML-KEM-512".
+ */
+export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{ privKeyId: string; pubKeyId: string }> {
+    await gotoAndWait(page, "/ui/pqc/keys/create");
+    await selectOption(page, "pqc-algorithm-select", algorithm);
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = extractUuidAfterLabel(text, "Private key Id");

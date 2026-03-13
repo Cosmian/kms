@@ -25,7 +25,7 @@ interface ImportKeyFormData {
     wrappingKeyId?: string;
 }
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
 
 interface KeyImportFormProps {
     key_type: KeyType;

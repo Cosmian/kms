@@ -11,7 +11,7 @@ export interface MenuItem {
     disabled?: boolean;
 }
 
-// Covercrypt is always available in the menu: TODO: to be fixed
+// Covercrypt is conditionally shown based on branding.enableCovercrypt
 
 const baseMenu: MenuItem[] = [
     {
@@ -37,6 +37,7 @@ const baseMenu: MenuItem[] = [
             },
             {key: "sym/encrypt", label: "Encrypt"},
             {key: "sym/decrypt", label: "Decrypt"},
+            {key: "sym/hash", label: "Hash"},
         ],
     },
     {
@@ -84,6 +85,28 @@ const baseMenu: MenuItem[] = [
         ],
     },
     // Covercrypt section appended below
+    {
+        key: "pqc",
+        label: "__PQC_LABEL__",
+        collapsedlabel: "PQC",
+        children: [
+            {
+                key: "pqc/keys",
+                label: "Keys",
+                children: [
+                    {key: "pqc/keys/create", label: "Create"},
+                    {key: "pqc/keys/export", label: "Export"},
+                    {key: "pqc/keys/import", label: "Import"},
+                    {key: "pqc/keys/revoke", label: "Revoke"},
+                    {key: "pqc/keys/destroy", label: "Destroy"},
+                ],
+            },
+            {key: "pqc/encapsulate", label: "Encapsulate"},
+            {key: "pqc/decapsulate", label: "Decapsulate"},
+            {key: "pqc/sign", label: "Sign"},
+            {key: "pqc/verify", label: "Verify"},
+        ],
+    },
     {
         key: "mac",
         label: "MAC",
@@ -208,4 +231,11 @@ const covercryptSection: MenuItem = {
     ],
 };
 
-export const menuItems: MenuItem[] = [...baseMenu, covercryptSection];
+export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: string }): MenuItem[] {
+    const enableCc = options?.enableCovercrypt ?? true;
+    const pqcLabel = options?.pqcLabel ?? "PQC";
+    const menu = baseMenu.map((item) =>
+        item.key === "pqc" ? { ...item, label: pqcLabel } : item
+    );
+    return enableCc ? [...menu, covercryptSection] : menu;
+}

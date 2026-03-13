@@ -14,7 +14,7 @@ Commands:
   attributes         Get/Set/Delete/Modify the KMIP object attributes
   azure              Support for Azure specific interactions
   cc                 Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
-  kem                Manage Configurable KEM keys. Encrypt and decrypt data
+  pqc                Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
   certificates       Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
   derive-key         Derive a new key from an existing key
   ec                 Manage elliptic curve keys. Encrypt and decrypt data using ECIES

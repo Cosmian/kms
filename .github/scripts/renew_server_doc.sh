@@ -52,7 +52,7 @@ new_content = re.sub(
 )
 
 with open(target_path, "w") as f:
-    f.write(new_content)
+    f.write(new_content.rstrip() + '\n')
 
 print(f"Regenerated {target_path} from `--print-default-config`")
 

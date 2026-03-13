@@ -6,8 +6,6 @@ mod attributes;
 mod auth_tests;
 mod certificates;
 #[cfg(feature = "non-fips")]
-mod configurable_kem;
-#[cfg(feature = "non-fips")]
 mod cover_crypt;
 mod custom_headers_tests;
 mod derive_key;
@@ -18,6 +16,8 @@ mod hash;
 mod hsm;
 mod login_tests;
 mod mac;
+#[cfg(feature = "non-fips")]
+mod pqc;
 mod rsa;
 mod secret_data;
 mod shared;
