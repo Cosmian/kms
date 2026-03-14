@@ -33,8 +33,8 @@ usage() {
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
-      pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
-      synology_dsm           Run Synology DSM KMIP simulation tests (non-FIPS)
+      pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
+      synology_dsm           Alias for 'pykmip' (backward-compatible)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux only)
@@ -80,8 +80,8 @@ usage() {
     $0 test percona
     $0 test mariadb
     $0 --variant non-fips test redis
-    $0 --variant non-fips test pykmip     # PyKMIP client tests
-    $0 --variant non-fips test synology_dsm # Synology DSM KMIP simulation tests
+    $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
+    $0 --variant non-fips test synology_dsm # Alias for pykmip (backward-compatible)
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -471,7 +471,8 @@ test_command() {
     SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
     ;;
   synology_dsm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_synology_dsm.sh"
+    # Merged into pykmip CI job (includes DSM simulation); kept as backward-compatible alias
+    SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
     ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"

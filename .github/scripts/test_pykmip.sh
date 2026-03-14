@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run PyKMIP client tests against a locally launched Cosmian KMS inside nix-shell
+# Run all PyKMIP KMIP-operation tests + Synology DSM end-to-end simulation against a locally launched Cosmian KMS inside nix-shell
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
