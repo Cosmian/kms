@@ -34,7 +34,6 @@ usage() {
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
-      synology_dsm           Alias for 'pykmip' (backward-compatible)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux only)
@@ -81,7 +80,6 @@ usage() {
     $0 test mariadb
     $0 --variant non-fips test redis
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
-    $0 --variant non-fips test synology_dsm # Alias for pykmip (backward-compatible)
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -470,10 +468,6 @@ test_command() {
   pykmip)
     SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
     ;;
-  synology_dsm)
-    # Merged into pykmip CI job (includes DSM simulation); kept as backward-compatible alias
-    SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
-    ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
     ;;
@@ -505,7 +499,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, synology_dsm, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -519,7 +513,7 @@ test_command() {
     export WITH_WASM=1
   fi
   # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
-  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "synology_dsm" ]; then
+  if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi
   # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM

@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [5.18.0] - 2026-04-XX
 
-### � Features
+### 🚀 Features
 
 #### Synology DSM NAS Volume Encryption Integration
 
@@ -20,7 +20,7 @@ to the test matrix so regressions are caught automatically:
   setup, DSM configuration, and automated CI testing
 - `README.md` updated with Synology DSM in the disk encryption compatibility table
 
-### �🐛 Bug Fixes
+### 🐛 Bug Fixes
 
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
@@ -93,13 +93,6 @@ in this repository under `crate/clients/ckms/`:
 
 ### 🐛 Bug Fixes
 
-- **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
-  and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
-  now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
-  DSM ([#760](https://github.com/Cosmian/kms/issues/760))
-- **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
-  (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
-  `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
 - **Signing key**: Fix corrupted GPG public key (`cosmian-kms-public.asc`) that caused CRC
   errors on import with GnuPG ([#785](https://github.com/Cosmian/kms/issues/785))
 - **CI**: Fix GCP CMEK FIPS test timeout — strip `LD_PRELOAD`/`LD_LIBRARY_PATH` from `curl`

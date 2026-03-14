@@ -1,6 +1,7 @@
+---
 apiVersion: 1
 providers:
-  - name: 'Cosmian KMS'
+  - name: Cosmian KMS
     orgId: 1
     folder: ''
     type: file

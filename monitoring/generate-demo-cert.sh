@@ -14,6 +14,7 @@ CRT_FILE="${CERTS_DIR}/kms-demo.crt"
 
 if [ -f .env ]; then
   # Load environment variables from .env (specifically KMS_P12_PASSWORD)
+  # shellcheck disable=SC2046
   export $(grep -v '^#' .env | xargs)
 fi
 P12_PASSWORD="${KMS_P12_PASSWORD}"   # must match --tls-p12-password in docker-compose
@@ -36,7 +37,7 @@ openssl pkcs12 -export \
   -in "${CRT_FILE}" \
   -out "${P12_FILE}" \
   -name "cosmian-kms-demo" \
-  -password pass:${P12_PASSWORD}
+  -password pass:"${P12_PASSWORD}"
 
 echo "PKCS#12 demo certificate generated at: ${P12_FILE}"
 echo "Password: ${P12_PASSWORD}"

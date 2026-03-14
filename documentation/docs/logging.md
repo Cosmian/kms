@@ -112,7 +112,7 @@ It replaces the Jaeger quick-test setup with a persistent metrics pipeline and G
 
 ### Architecture
 
-```
+```text
 KMS ──OTLP gRPC──► OTel Collector ──remote_write──► VictoriaMetrics ◄── Grafana
                         │
                         └──prometheus scrape :8888──► VictoriaMetrics
