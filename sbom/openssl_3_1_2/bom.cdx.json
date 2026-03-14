@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:2dd4fef9-006e-4474-a8f5-3347f3edd93a",
+  "serialNumber": "urn:uuid:47304da8-b803-48b2-9402-0a02a8f27cca",
   "metadata": {
-    "timestamp": "2026-02-22T16:17:48.450389+01:00",
+    "timestamp": "2026-03-13T17:58:26.140487+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -408,6 +408,20 @@
       "id": "ALSA-2026:1334",
       "source": {
         "url": "https://osv.dev/ALSA-2026:1334",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "ALSA-2026:2786",
+      "source": {
+        "url": "https://osv.dev/ALSA-2026:2786",
         "name": "OSV"
       },
       "ratings": [],
@@ -1427,6 +1441,20 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "RLSA-2026:2786",
+      "source": {
+        "url": "https://osv.dev/RLSA-2026:2786",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "SUSE-SU-2025:01702-2",
       "source": {
         "url": "https://osv.dev/SUSE-SU-2025:01702-2",
@@ -1458,6 +1486,20 @@
       "id": "SUSE-SU-2026:0371-1",
       "source": {
         "url": "https://osv.dev/SUSE-SU-2026:0371-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2026:20536-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2026:20536-1",
         "name": "OSV"
       },
       "ratings": [],
@@ -3243,6 +3285,20 @@
     },
     {
       "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+      "id": "ALSA-2026:3042",
+      "source": {
+        "url": "https://osv.dev/ALSA-2026:3042",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
       "id": "BELL-CVE-2023-50782",
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/BELL-CVE-2023-50782",
@@ -3652,20 +3708,6 @@
       "id": "CGA-3564-hcr3-rwcx",
       "source": {
         "url": "https://osv.dev/CGA-3564-hcr3-rwcx",
-        "name": "OSV"
-      },
-      "ratings": [],
-      "tools": [
-        {
-          "name": "osv"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
-      "id": "CGA-3j72-vx7g-q9jf",
-      "source": {
-        "url": "https://osv.dev/CGA-3j72-vx7g-q9jf",
         "name": "OSV"
       },
       "ratings": [],
@@ -6172,6 +6214,48 @@
       "id": "RHSA-2026:1733",
       "source": {
         "url": "https://osv.dev/RHSA-2026:1733",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+      "id": "RHSA-2026:3042",
+      "source": {
+        "url": "https://osv.dev/RHSA-2026:3042",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+      "id": "RHSA-2026:3364",
+      "source": {
+        "url": "https://osv.dev/RHSA-2026:3364",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/dwl5z66dmxs36rnil9djy5fszib2lkva-openssl-3.1.2.drv",
+      "id": "RHSA-2026:3437",
+      "source": {
+        "url": "https://osv.dev/RHSA-2026:3437",
         "name": "OSV"
       },
       "ratings": [],

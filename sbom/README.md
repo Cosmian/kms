@@ -8,7 +8,8 @@ An SBOM is a formal record containing the details and supply chain relationships
 
 Report locations:
 
-- `sbom/openssl/` — SBOM + vulnerability scan for the OpenSSL derivation used by the builds
+- `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
+- `sbom/openssl_3_6_0/` — SBOM + vulnerability scan for the OpenSSL 3.6.0 (non-FIPS) derivation
 - `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
@@ -114,7 +115,7 @@ Note: the current `vulns.csv` includes an `osv` column as well, since `vulnxscan
 
 ### Import to Dependency-Track
 
-Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl/bom.cdx.json`).
+Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl_3_1_2/bom.cdx.json`).
 
 ```bash
 curl -X POST "https://dtrack.example.com/api/v1/bom" \
@@ -208,8 +209,11 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 # From repository root (generates OpenSSL + all server combinations)
 bash .github/scripts/nix.sh sbom
 
-# OpenSSL derivation only (writes under sbom/openssl)
-bash .github/scripts/nix.sh sbom --target openssl
+# OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
+bash .github/scripts/nix.sh sbom --target openssl_3_1_2
+
+# OpenSSL 3.6.0 derivation only (writes under sbom/openssl_3_6_0)
+bash .github/scripts/nix.sh sbom --target openssl_3_6_0
 
 # All server combinations (writes under sbom/server/<variant>/<link>)
 bash .github/scripts/nix.sh sbom --target server

@@ -15,10 +15,10 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
     - A Google Workspace account
     - A Certificate Authority (CA) [compliant with Gmail](https://support.google.com/a/answer/7448393) to generate the certificates for the users
     - An Identity Provider (IdP) (in this tutorial the [Google Identity Provider](./configuring-the-well-known-file-and-server.md#using-google-as-an-identity-provider))
-    - The [Cosmian Key Management Server](../marketplace_guide.md) behind a `Nginx` server:
+    - The [Cosmian Key Management Server](../installation/marketplace_guide.md) behind a `Nginx` server:
         - exposing a valid TLS certificate
         - and serving the [`.well-known`](./configuring-the-well-known-file-and-server.md) file used by the Identity Provider
-    - The [KMS CLI](../kms_clients/index.md)
+    - The [KMS CLI](../../kms_clients/index.md)
         - to generate the [Google CSE key](#creating-google_cse-key) in the Cosmian KMS with correct access rights
         - to generate the [Gmail users keys](configuring_gmail_cse.md#create-user-key-pair)
 
@@ -141,7 +141,7 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
-Using the [KMS CLI](../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../kms_clients/authentication.md#oauth2oidc-configuration).
+Using the [KMS CLI](../../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../../kms_clients/authentication.md#oauth2oidc-configuration).
 
 !!! important
     Concerning the KMS CLI, you will have to log in the first time you use it.

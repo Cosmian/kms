@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.17.0] - 2026-02-24
+## [5.17.0] - 2026-03-13
 
 ### 🚀 Features
 
@@ -53,7 +53,7 @@ in this repository under `crate/clients/ckms/`:
 
 - The vendor identification string used in KMIP `VendorAttribute` operations is now
   configurable via `--vendor-identification` (env: `KMS_VENDOR_IDENTIFICATION`, default:
-  `"cosmian"`); reported back by `QueryServerInformation` responses
+  `"cosmian"`); reported back by `QueryServerInformation` responses (#758)
 - The WASM module exposes `set_vendor_id(id)` and `query_server_information_ttlv_request()`
   so the UI can synchronize its vendor ID with the server at startup
 - New `loginCardColor` field in `branding.json` to control the login card background color
@@ -65,6 +65,14 @@ in this repository under `crate/clients/ckms/`:
 
 ### 🐛 Bug Fixes
 
+- **Signing key**: Fix corrupted GPG public key (`cosmian-kms-public.asc`) that caused CRC
+  errors on import with GnuPG ([#785](https://github.com/Cosmian/kms/issues/785))
+- **CI**: Fix GCP CMEK FIPS test timeout — strip `LD_PRELOAD`/`LD_LIBRARY_PATH` from `curl`
+  in `wait_for_kms` to prevent the FIPS bootstrap shim from breaking HTTP probes
+- *(ui)* Add Content-Security-Policy against clickjacking attack (#768)
+- Unwrap cache: internalize fingerprint check and seed SipHash (#778)
+- Fail KMIP operation when multiple keys are found to process the operation (#771)
+- Systemd mitigations (#711)
 - **CLI**: `ckms` is now installed to `/usr/local/bin/` instead of `/usr/sbin/`, making it accessible to non-root users without requiring elevated privileges ([cli#136](https://github.com/Cosmian/cli/issues/136))
 - **CLI**: FIPS-compliant CLI builds are now published alongside non-FIPS builds ([cli#134](https://github.com/Cosmian/cli/issues/134))
 - **Security**: KMIP `Import` with `replace_existing=true` now verifies the caller owns the
@@ -81,6 +89,20 @@ in this repository under `crate/clients/ckms/`:
   markdown by package managers)
 - `pnpm` version pinned to 10 in `build_ui.sh`
 - CI: mirror nixpkgs archives on `package.cosmian.com` with GitHub fallback to avoid 502 errors
+- *(deps)* Bump actions/upload-artifact from 6 to 7 (#740)
+- *(deps)* Bump actions/download-artifact from 7 to 8 (#741)
+- *(deps)* Bump crazy-max/ghaction-import-gpg from 6 to 7 (#747)
+- *(deps)* Bump actions/setup-node from 4 to 6 (#755)
+- *(deps)* Bump actions/upload-artifact from 4 to 7 (#756)
+- *(deps)* Bump docker/login-action from 3 to 4 (#759)
+- *(deps)* Bump docker/metadata-action from 5 to 6 (#765)
+- *(deps)* Bump docker/setup-buildx-action from 3 to 4 (#766)
+- *(deps)* Bump sigstore/cosign-installer from 4.0.0 to 4.1.0 (#774)
+
+### 🧪 Testing
+
+- Add End-to-End (E2E) tests on UI (in browser-tests) (#736)
+- Re-enable hsm Proteccio tests (#781)
 
 ### 🔒 Security
 
@@ -97,8 +119,8 @@ in this repository under `crate/clients/ckms/`:
 - New AWS XKS guide (`documentation/docs/aws/xks.md`)
 - HSM operations: added `pkcs11-tool` key creation examples and label uniqueness constraint warning
 - UI branding: `loginCardColor` field reference and blank theme usage
-- README: new `🔗 Integrations` section covering cloud providers (AWS/Azure/GCP),
-  databases, and HSMs
+- README: new `🔗 Integrations` section covering cloud providers (AWS/Azure/GCP), databases, and HSMs
+- Add HAProxy+KeepAlived example
 
 ## [5.16.2] - 2026-02-22
 

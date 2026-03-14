@@ -34,7 +34,7 @@ The operation has currently no other usages on the Cosmian server.
 
 ### Example - Rotate the `Security Level::Confidential` attribute
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms cc keys rekey -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"

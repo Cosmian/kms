@@ -5,7 +5,7 @@ This page lists the supported algorithms, their details and their reference in v
 FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [KMS CLI](ckms/index.md)
+unwrapped... using the Cosmian KMS server [API](./kmip/json_ttlv_api.md) or [KMS CLI](../kms_clients/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
@@ -32,7 +32,7 @@ Any encryption scheme below can be used for key-wrapping as well.
 
 Encryption is supported via the `Encrypt` and `Decrypt` kmip operations.
 For bulk operations (i.e. encrypting/decrypting multiple data with the same key),
-please refer to [KMIP Messages](kmip_2_1/messages.md) that allow combining multiple operations in a
+please refer to [KMIP Messages](kmip/messages.md) that allow combining multiple operations in a
 single request.
 
 Encryption can be performed using a key or a certificate. Decryption can be performed using a key.

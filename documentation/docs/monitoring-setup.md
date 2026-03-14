@@ -1,7 +1,7 @@
 # Monitoring Stack — Setup Guide
 
 > This guide walks you through deploying the KMS observability stack step by step.
-> For a full reference of OTLP options and pipeline internals, see → [KMS Telemetry](./telemetry.md)
+> For a full reference of OTLP options and pipeline internals, see → [KMS Telemetry](./logging.md)
 
 ---
 
@@ -50,7 +50,7 @@ Before getting started, make sure the following tools are installed on your mach
   # or HTTP
   KMS_OTLP_URL=http://<collector-host>:4318
   ```
-  See → [KMS Telemetry — OTLP configuration](./telemetry.md#otlp-telemetry)
+  See → [KMS Telemetry — OTLP configuration](./logging.md#otlp-telemetry)
 
 ### Ports availability
 
@@ -326,4 +326,4 @@ Then either stop the conflicting process or edit the port mapping in `docker-com
 ---
 
 > For a complete reference of all OTLP options, log levels, and pipeline internals,
-> see → [KMS Telemetry](./telemetry.md)
+> see → [KMS Telemetry](./logging.md)

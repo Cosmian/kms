@@ -57,7 +57,7 @@ function Build-UI {
 {
   "name": "cosmian_kms_client_wasm",
   "type": "module",
-  "version": "5.16.2",
+  "version": "5.17.0",
   "main": "cosmian_kms_client_wasm.js",
   "types": "cosmian_kms_client_wasm.d.ts"
 }

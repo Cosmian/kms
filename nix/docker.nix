@@ -398,7 +398,9 @@ pkgs.dockerTools.buildLayeredImage {
   };
 
   # Enable reproducible builds
-  enableFakechroot = true;
+  # proot (required by enableFakechroot) is not available on Darwin;
+  # the Docker image is Linux-only so this only matters on Linux builders.
+  enableFakechroot = !pkgs.stdenv.hostPlatform.isDarwin;
 
   # Layer configuration for better caching
   maxLayers = 100;

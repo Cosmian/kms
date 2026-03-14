@@ -2,16 +2,16 @@
   "spec_version": "1.0.0",
   "build": {
     "variant": "fips",
-    "derivation": "openssl312",
-    "output_path": "/nix/store/63mrpalm2shad42p07s7vrxhchy1cgxg-openssl-3.1.2",
-    "timestamp": "2026-02-22T15:18:49Z",
+    "derivation": "openssl36-static",
+    "output_path": "/nix/store/1ffcpid8inwxv6isn3dsg61xcijrhj3f-openssl-3.6.0",
+    "timestamp": "2026-03-13T17:00:42Z",
     "generator": {
       "tool": "sbomnix",
       "version": "1.7.3"
     }
   },
   "component_count": 4,
-  "vulnerability_count": 361,
+  "vulnerability_count": 313,
   "notes": [
     "SBOM targets the OpenSSL derivation itself",
     "All dependencies are from Nix store with pinned versions",

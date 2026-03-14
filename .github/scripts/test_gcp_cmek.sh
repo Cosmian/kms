@@ -49,7 +49,8 @@ wait_for_kms() {
       return 1
     fi
 
-    if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
+    if env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+      curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
       -X POST "${url}" -H "Content-Type: application/json" -d '{}' 2>/dev/null |
       grep -Eq '^[0-9]{3}$'; then
       return 0

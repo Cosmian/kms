@@ -56,7 +56,7 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.16.2/debian10-release.zip).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.17.0/debian10-release.zip).
 
 - Extract debian10-release.zip (debian 10 Buster is used for Glibc compatibility)
 - Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
@@ -126,7 +126,7 @@ graph TD
 
 1. **Install Cosmian PKCS#11 Library**
 
-   For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.16.2/debian10-release.zip).
+   For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.17.0/debian10-release.zip).
 
    ```bash
    # Extract library from debian10-release.zip.

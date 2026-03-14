@@ -27,7 +27,7 @@ For the complete list of supported MAC algorithms, please check the [algorithms 
 
 Computing MAC with SHA3-512 using a MAC key.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --data 0011223344556677889900
@@ -90,7 +90,7 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
 
 Computing MAC for a large file in multiple parts using SHA3-512.
 
-Corresponding [KMS CLI](../kms_clients/index.md) commands:
+Corresponding [KMS CLI](../../kms_clients/index.md) commands:
 
 ```bash
 # First part with init indicator

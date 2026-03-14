@@ -31,7 +31,7 @@ Please note:
 - The `CryptographicAlgorithm` is set to `ECDH`.
 - The `RecommendedCurve` is set to `CURVE25519`.
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```shell
 ckms ec keys create
@@ -149,7 +149,7 @@ ckms ec keys create
 Creating a Covercrypt master key pair with the following access structure specifications which is hex-encoded before being
 added to the KMIP request.
 
-**Note**: it is much easier to use the [KMS CLI](../kms_clients/index.md) to create Covercrypt master keys where a simple
+**Note**: it is much easier to use the [KMS CLI](../../kms_clients/index.md) to create Covercrypt master keys where a simple
 specification file can be used. Use the [debug mode](./json_ttlv_api.md) to get the hex-encoded access structure from the
 specifications.
 
@@ -245,7 +245,7 @@ The access structure to hex-encode to the call will be:
 }
 ```
 
-Corresponding [KMS CLI](../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```shell
 ckms cc keys create-master-key-pair -s access_structure_specifications.json
