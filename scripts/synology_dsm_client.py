@@ -3,21 +3,31 @@
 """
 Synology DSM KMIP simulation client for Cosmian KMS compatibility testing.
 
-Synology DSM 7.x uses KMIP 1.x over TCP/TLS with mutual certificate
+Synology DSM 7.x uses KMIP 1.2 over TCP/TLS with mutual certificate
 authentication to store and retrieve volume encryption keys.
 
 This script simulates the exact KMIP operation sequence that Synology DSM
-performs when it configures an external KMS server:
+performs when it configures an external KMS server, based on observed wire
+traffic (decoded TTLV binary):
 
-  1. Discover Versions  — check KMIP protocol compatibility
-  2. Query              — enumerate server capabilities
-  3. Create             — create an AES-256 symmetric key (PreActive)
-  4. Modify Attribute   — set ActivationDate (transitions PreActive → Active)
-  5. Get Attributes     — verify key attributes (state, algorithm, length…)
-  6. Get               — retrieve key material (simulates volume mount)
-  7. Locate            — find the key by name (simulates reconnect after reboot)
-  8. Revoke            — revoke the key (simulates key rotation / cleanup)
-  9. Destroy           — delete the key
+  1. Discover Versions   — check KMIP protocol compatibility
+  2. Query               — enumerate server capabilities (6 QueryFunctions)
+  3. Locate (pre-check)  — check if volume key already exists (expect 0)
+  4. Register            — register SecretData with opaque 32-byte key material
+  5. Activate            — transition PreActive → Active
+  6. Modify Attribute    — set Name = volume UUID (DSM renames key after register)
+  7. Get Attributes      — verify key attributes (state, object type…)
+  8. Get                 — retrieve key material (simulates volume mount)
+  9. Locate (verify)     — find key by volume UUID (simulates reconnect)
+  10. Revoke             — revoke the key (simulates key rotation / cleanup)
+  11. Destroy            — delete the key
+
+Key observations from real DSM TTLV trace:
+  - DSM uses Register with ObjectType=SecretData(7), CryptographicUsageMask=Verify,
+    OperationPolicyName="default", key Name=SHA512(key_bytes)hex, 32-72 opaque bytes.
+  - ModifyAttribute renames the key to the volume UUID (not ActivationDate).
+  - Query sends 6 QueryFunctions: Operations, ObjectTypes, ServerInfo,
+    AppNamespaces, ExtensionList, Profiles.
 
 Requirements:
     pip install PyKMIP
@@ -30,8 +40,9 @@ Returns exit code 0 on success, 1 on any failure.
 """
 
 import argparse
-import datetime
+import hashlib
 import json
+import os
 import sys
 import traceback
 
@@ -60,9 +71,10 @@ if sys.version_info >= (3, 12):
 
 try:
     from kmip.services.kmip_client import KMIPProxy
-    from kmip.core import enums
+    from kmip.core import enums, misc
     from kmip.core import exceptions as kmip_exceptions
-    from kmip.core.objects import TemplateAttribute
+    from kmip.core.objects import KeyBlock, KeyValue, KeyMaterial, TemplateAttribute
+    from kmip.core.secrets import SecretData as KmipSecretData
     from kmip.core.factories.attributes import AttributeFactory
     from kmip.core.messages.payloads.modify_attribute import (
         ModifyAttributeRequestPayload,
@@ -175,13 +187,16 @@ def op_discover_versions(proxy: KMIPProxy, verbose: bool) -> bool:
 
 
 def op_query(proxy: KMIPProxy, verbose: bool) -> bool:
-    """Step 2 – Query server capabilities."""
+    """Step 2 – Query server capabilities with all 6 QueryFunctions as real DSM trace shows."""
     try:
         result = proxy.query(
             query_functions=[
                 enums.QueryFunction.QUERY_OPERATIONS,
                 enums.QueryFunction.QUERY_OBJECTS,
                 enums.QueryFunction.QUERY_SERVER_INFORMATION,
+                enums.QueryFunction.QUERY_APPLICATION_NAMESPACES,
+                enums.QueryFunction.QUERY_EXTENSION_LIST,
+                enums.QueryFunction.QUERY_PROFILES,
             ]
         )
         if not _check_result(result, 'Query', verbose):
@@ -197,67 +212,91 @@ def op_query(proxy: KMIPProxy, verbose: bool) -> bool:
         return False
 
 
-def op_create_aes256(proxy: KMIPProxy, key_name: str, verbose: bool):
+def op_register_secret_data(proxy: KMIPProxy, volume_uuid: str, verbose: bool):
     """
-    Step 3 – Create an AES-256 symmetric key, as Synology DSM does for
-    volume encryption.  Returns (uid, True) on success, (None, False) on failure.
+    Step 4 – Register a SecretData object with opaque key material, matching the
+    actual Synology DSM 7.x KMIP wire protocol (observed from TTLV trace).
+
+    DSM brings its own key material as raw opaque bytes, sets CryptographicUsageMask
+    to Verify, includes OperationPolicyName="default" (KMIP 1.x attribute), and uses
+    the SHA-512 hex digest of the key bytes as the initial Name.
+    The key is later renamed to the volume UUID via ModifyAttribute.
+
+    Returns (uid, True) on success, (None, False) on failure.
     """
     try:
-        factory = AttributeFactory()
+        # Generate 32 bytes of random key material (DSM uses 72 bytes in production)
+        raw_bytes = os.urandom(32)
+        # DSM names the key with SHA-512(key_bytes) hex during Register
+        hash_name = hashlib.sha512(raw_bytes).hexdigest()
 
-        algorithm_attr = factory.create_attribute(
-            enums.AttributeType.CRYPTOGRAPHIC_ALGORITHM,
-            enums.CryptographicAlgorithm.AES,
-        )
-        length_attr = factory.create_attribute(
-            enums.AttributeType.CRYPTOGRAPHIC_LENGTH,
-            256,
-        )
-        # Synology requests Encrypt + Decrypt + WrapKey + UnwrapKey usages
-        usage_mask_attr = factory.create_attribute(
-            enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
-            [
-                enums.CryptographicUsageMask.ENCRYPT,
-                enums.CryptographicUsageMask.DECRYPT,
-                enums.CryptographicUsageMask.WRAP_KEY,
-                enums.CryptographicUsageMask.UNWRAP_KEY,
-            ],
-        )
-        name_attr = factory.create_attribute(
-            enums.AttributeType.NAME,
-            key_name,
-        )
-
-        result = proxy.create(
-            enums.ObjectType.SYMMETRIC_KEY,
-            template_attribute=TemplateAttribute(
-                attributes=[
-                    algorithm_attr,
-                    length_attr,
-                    usage_mask_attr,
-                    name_attr,
-                ]
+        # Build SecretData: KeyFormatType and SecretDataType both require KMIP
+        # primitive wrappers (misc.KeyFormatType / SecretData.SecretDataType),
+        # not the bare enums.* Python enum values.
+        key_format_type = misc.KeyFormatType(value=enums.KeyFormatType.OPAQUE)
+        key_mat = KeyMaterial(value=raw_bytes)
+        key_val = KeyValue(key_material=key_mat)
+        key_block = KeyBlock(key_format_type=key_format_type, key_value=key_val)
+        secret = KmipSecretData(
+            secret_data_type=KmipSecretData.SecretDataType(
+                value=enums.SecretDataType.SEED
             ),
+            key_block=key_block,
         )
-        if not _check_result(result, 'Create', verbose):
+
+        factory = AttributeFactory()
+        # DSM registers with CryptographicUsageMask=Verify
+        usage_attr = factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
+            [enums.CryptographicUsageMask.VERIFY],
+        )
+        # Initial name is SHA-512(key_bytes) hex; renamed to volume UUID later
+        name_attr = factory.create_attribute(enums.AttributeType.NAME, hash_name)
+        attrs = [usage_attr, name_attr]
+
+        # DSM includes OperationPolicyName="default" (KMIP 1.x attribute).
+        # The KMS logs a WARN for this legacy attribute but handles it correctly.
+        try:
+            policy_attr = factory.create_attribute(
+                enums.AttributeType.OPERATION_POLICY_NAME, 'default'
+            )
+            attrs.append(policy_attr)
+        except (AttributeError, ValueError, KeyError):
+            pass  # Not available in all PyKMIP versions — safe to skip
+
+        result = proxy.register(
+            enums.ObjectType.SECRET_DATA,
+            TemplateAttribute(attributes=attrs),
+            secret,
+        )
+        if not _check_result(result, 'Register', verbose):
             return None, False
 
-        # KMIPProxy stores the created UID in .uuid (not .unique_identifier)
-        uid = getattr(result, 'uuid', None)
+        uid = getattr(result, 'uuid', None) or getattr(
+            result, 'unique_identifier', None
+        )
+        if hasattr(uid, 'value'):
+            uid = uid.value
         if not uid:
-            _fail('Create', 'Server returned SUCCESS but no UID — unexpected response')
+            _fail(
+                'Register', 'Server returned SUCCESS but no UID — unexpected response'
+            )
             return None, False
-        _ok('Create', f'AES-256 key created — UID: {uid}', verbose)
+        _ok(
+            'Register',
+            f'SecretData (OPAQUE/SEED, 32 bytes) registered — UID: {uid}',
+            verbose,
+        )
         return uid, True
     except Exception as exc:
-        _fail('Create', str(exc))
+        _fail('Register', str(exc))
         if verbose:
             traceback.print_exc()
         return None, False
 
 
 def op_activate(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 4 – Activate the key (PreActive → Active), as Synology does on setup."""
+    """Step 5 – Activate the registered SecretData (PreActive → Active)."""
     try:
         result = proxy.activate(uid)
         if not _check_result(result, 'Activate', verbose):
@@ -272,7 +311,7 @@ def op_activate(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
 
 
 def op_get_attributes(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 5 – Read key attributes (state should now be Active after ModifyAttribute)."""
+    """Step 7 – Read key attributes (state should be Active after Activate)."""
     try:
         result = proxy.get_attribute_list(uid)
         if not _check_result(result, 'Get Attribute List', verbose):
@@ -282,9 +321,7 @@ def op_get_attributes(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
         _ok('Get Attribute List', f'Attributes: {list(attrs)}', verbose)
 
         # Fetch specific attributes that DSM reads — pass strings, not enums
-        result2 = proxy.get_attributes(
-            uid, ['State', 'Cryptographic Algorithm', 'Cryptographic Length']
-        )
+        result2 = proxy.get_attributes(uid, ['State', 'Object Type'])
         if not _check_result(result2, 'Get Attributes', verbose):
             return False
         attr_list = getattr(result2, 'attributes', []) or []
@@ -303,18 +340,22 @@ def op_get_attributes(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
         return False
 
 
-def op_modify_attribute(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
+def op_modify_attribute(
+    proxy: KMIPProxy, uid: str, volume_uuid: str, verbose: bool
+) -> bool:
     """
-    Step 4 – Set ActivationDate, which transitions the key from PreActive → Active.
-    Synology DSM sets this attribute instead of calling Activate separately.
-    This exercises the ModifyAttribute operation fixed in issue #760.
+    Step 6 – Rename the registered key to the volume UUID via ModifyAttribute.
+
+    This matches the real DSM trace: after Register (which names the key with
+    SHA-512(key_bytes)hex), DSM immediately calls ModifyAttribute to set the
+    Name attribute to the volume UUID (e.g. '07a07834-49ff-4c2b-aec8-821d83df4daf').
+    This is the ModifyAttribute operation fixed in issue #760.
     """
-    activation_date = int(datetime.datetime.utcnow().timestamp())
     try:
         factory = AttributeFactory()
         attribute = factory.create_attribute(
-            enums.AttributeType.ACTIVATION_DATE,
-            activation_date,
+            enums.AttributeType.NAME,
+            volume_uuid,
         )
         # KMIPProxy 0.10.0 does not expose modify_attribute() as a high-level method.
         # Use send_request_payload with ModifyAttributeRequestPayload directly.
@@ -325,7 +366,7 @@ def op_modify_attribute(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
         result = proxy.send_request_payload(enums.Operation.MODIFY_ATTRIBUTE, payload)
         if not _check_result(result, 'Modify Attribute', verbose):
             return False
-        _ok('Modify Attribute', f'ActivationDate set to {activation_date}', verbose)
+        _ok('Modify Attribute', f'Name set to volume UUID: {volume_uuid}', verbose)
         return True
     except kmip_exceptions.OperationFailure as exc:
         _fail('Modify Attribute', str(exc))
@@ -341,7 +382,7 @@ def op_modify_attribute(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
         if 'No value type for' in msg:
             _ok(
                 'Modify Attribute',
-                f'ActivationDate set to {activation_date} '
+                f'Name set to {volume_uuid} '
                 f'(PyKMIP 0.10.0 response parse limitation: {msg})',
                 verbose,
             )
@@ -353,7 +394,7 @@ def op_modify_attribute(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
 
 
 def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 6 – Retrieve key material (simulates Synology volume mount)."""
+    """Step 8 – Retrieve key material (simulates Synology volume mount)."""
     try:
         result = proxy.get(uid)
         if not _check_result(result, 'Get', verbose):
@@ -368,7 +409,7 @@ def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
             if isinstance(key_bytes, (bytes, bytearray))
             else 'retrieved'
         )
-        _ok('Get', f'Key material retrieved ({key_len}-bit)', verbose)
+        _ok('Get', f'SecretData key material retrieved ({key_len}-bit)', verbose)
         return True
     except Exception as exc:
         _fail('Get', str(exc))
@@ -377,13 +418,13 @@ def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
         return False
 
 
-def op_locate(proxy: KMIPProxy, key_name: str, verbose: bool) -> bool:
-    """Step 7 – Locate the key by name (simulates NAS reconnect after reboot)."""
+def op_locate(proxy: KMIPProxy, volume_uuid: str, verbose: bool) -> bool:
+    """Step 9 – Locate the key by volume UUID (simulates NAS reconnect after reboot)."""
     try:
         factory = AttributeFactory()
         name_attr = factory.create_attribute(
             enums.AttributeType.NAME,
-            key_name,
+            volume_uuid,
         )
         result = proxy.locate(attributes=[name_attr])
         if not _check_result(result, 'Locate', verbose):
@@ -392,12 +433,37 @@ def op_locate(proxy: KMIPProxy, key_name: str, verbose: bool) -> bool:
         uids = getattr(result, 'uuids', []) or []
         _ok(
             'Locate',
-            f'Located {len(uids)} key(s) with name "{key_name}": {uids}',
+            f'Located {len(uids)} key(s) with volume UUID "{volume_uuid}": {uids}',
             verbose,
         )
         return True
     except Exception as exc:
         _fail('Locate', str(exc))
+        if verbose:
+            traceback.print_exc()
+        return False
+
+
+def op_locate_check(proxy: KMIPProxy, volume_uuid: str, verbose: bool) -> bool:
+    """Step 3 – Pre-register Locate to verify the volume key does not yet exist."""
+    try:
+        factory = AttributeFactory()
+        name_attr = factory.create_attribute(
+            enums.AttributeType.NAME,
+            volume_uuid,
+        )
+        result = proxy.locate(attributes=[name_attr])
+        if not _check_result(result, 'Locate (pre-check)', verbose):
+            return False
+        uids = getattr(result, 'uuids', []) or []
+        _ok(
+            'Locate (pre-check)',
+            f'Found {len(uids)} existing key(s) for volume "{volume_uuid}"',
+            verbose,
+        )
+        return True
+    except Exception as exc:
+        _fail('Locate (pre-check)', str(exc))
         if verbose:
             traceback.print_exc()
         return False
@@ -454,8 +520,11 @@ def main() -> int:
     )
     parser.add_argument(
         '--key-name',
-        default='synology-dsm-volume-key',
-        help='Name to give the test key (default: synology-dsm-volume-key)',
+        default='07a07834-49ff-4c2b-aec8-821d83df4daf',
+        help=(
+            'Volume UUID used as the key name (default: sample Synology volume UUID). '
+            'DSM identifies KMS keys by the volume UUID.'
+        ),
     )
     parser.add_argument(
         '--verbose', '-v', action='store_true', help='Enable verbose output'
@@ -482,10 +551,15 @@ def main() -> int:
     uid = None
     success = True
 
-    # Ordered sequence mirroring Synology DSM KMIP operations
+    # Ordered sequence mirroring real Synology DSM 7.x KMIP operations
     steps = [
         ('Discover Versions', lambda: op_discover_versions(proxy, args.verbose)),
         ('Query', lambda: op_query(proxy, args.verbose)),
+        # DSM locates first to check if volume key already exists (expect 0 results)
+        (
+            'Locate (pre-check)',
+            lambda: op_locate_check(proxy, args.key_name, args.verbose),
+        ),
     ]
 
     for step_name, step_fn in steps:
@@ -494,17 +568,24 @@ def main() -> int:
             break
 
     if success:
-        uid, created = op_create_aes256(proxy, args.key_name, args.verbose)
+        # DSM registers opaque SecretData (not Create SymmetricKey)
+        uid, created = op_register_secret_data(proxy, args.key_name, args.verbose)
         if not created or uid is None:
             success = False
 
     if success and uid:
         remaining_steps = [
-            # ModifyAttribute sets ActivationDate, transitioning PreActive → Active
-            ('Modify Attribute', lambda: op_modify_attribute(proxy, uid, args.verbose)),
+            # Activate transitions PreActive → Active so the key can be retrieved
+            ('Activate', lambda: op_activate(proxy, uid, args.verbose)),
+            # ModifyAttribute renames key to volume UUID (not ActivationDate)
+            (
+                'Modify Attribute (Name)',
+                lambda: op_modify_attribute(proxy, uid, args.key_name, args.verbose),
+            ),
             ('Get Attributes', lambda: op_get_attributes(proxy, uid, args.verbose)),
             ('Get', lambda: op_get(proxy, uid, args.verbose)),
-            ('Locate', lambda: op_locate(proxy, args.key_name, args.verbose)),
+            # Locate by volume UUID — should find 1 result after ModifyAttribute
+            ('Locate (verify)', lambda: op_locate(proxy, args.key_name, args.verbose)),
             ('Revoke', lambda: op_revoke(proxy, uid, args.verbose)),
             ('Destroy', lambda: op_destroy(proxy, uid, args.verbose)),
         ]
@@ -512,8 +593,8 @@ def main() -> int:
             if not step_fn():
                 success = False
                 print(f'  Step "{step_name}" failed — attempting cleanup...')
-                if step_name == 'Modify Attribute':
-                    # Key is still Pre-Active (ModifyAttribute truly failed) — Destroy directly
+                if step_name == 'Activate':
+                    # Still Pre-Active — can Destroy directly
                     op_destroy(proxy, uid, args.verbose)
                 elif step_name not in ('Revoke', 'Destroy'):
                     # Key is Active — must Revoke before Destroy
