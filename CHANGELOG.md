@@ -29,6 +29,9 @@ to the test matrix so regressions are caught automatically:
 - **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
   (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
   `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
+- **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
+  instead of `ActivationDate`; symmetric keys are created Active by default so the previous
+  `ActivationDate` test was never reachable on an Active object
 
 ## [5.17.0] - 2026-03-13
 

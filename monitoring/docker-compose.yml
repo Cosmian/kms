@@ -98,7 +98,12 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     healthcheck:
-      test: [CMD, wget, --spider, -q, http://localhost:3000/api/health]
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - http://localhost:3000/api/health
       interval: 10s
       timeout: 5s
       retries: 3

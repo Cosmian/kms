@@ -56,13 +56,7 @@ async fn test_modify_attribute() -> CosmianResult<()> {
     // Create a symmetric key
     let key_id = create_symmetric_key(&owner_conf, CreateKeyAction::default())?;
 
-    // Set initial activation date
-    set_attribute(&owner_conf, &key_id, &["--activation-date", "5"])?;
-
-    // Modify activation date to a new value
-    modify_attribute(&owner_conf, &key_id, &["--activation-date", "100"])?;
-
-    // Set cryptographic length
+    // Set cryptographic length (state-independent attribute)
     set_attribute(&owner_conf, &key_id, &["--cryptographic-length", "128"])?;
 
     // Modify cryptographic length
