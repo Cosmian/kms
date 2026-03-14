@@ -94,6 +94,7 @@ nav:
       - MySQL Enterprise Edition: mysql.md
       - Postgresql Percona Database: percona.md
       - PyKMIP: pykmip.md
+      - Synology DSM (NAS volume encryption): synology_dsm.md
       - S/MIME Email encryption: pki/smime.md
       - Snowflake Native App: snowflake/index.md
       - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md

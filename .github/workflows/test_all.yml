@@ -26,6 +26,7 @@ jobs:
           - google_cse
           - redis
           - pykmip
+          - synology_dsm
           - wasm
           - aws_xks
           - azure_ekm
@@ -38,6 +39,9 @@ jobs:
             features: fips
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
+            features: fips
+          # synology_dsm simulation is also exclusively for non-fips (same reason)
+          - type: synology_dsm
             features: fips
           # aws_xks relies on curl SigV4 + non-FIPS build flags
           - type: aws_xks
