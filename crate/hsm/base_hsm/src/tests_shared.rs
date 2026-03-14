@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::{debug, info, log_init};
+use cosmian_logger::{debug, info, log_init, warn};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{
@@ -14,14 +14,15 @@ use pkcs11_sys::{
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
 };
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
 
 use crate::{
-    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, RsaKeySize, RsaOaepDigest,
-    Session, SlotManager, hsm_call,
+    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize,
+    RsaOaepDigest, Session, SlotManager, hsm_call,
 };
 
 /// Returns the library path for a given HSM, checking environment variable override first.
@@ -519,6 +520,118 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(plaintext_8k_multi_multi.as_slice(), data_8k);
 
     info!("Successfully multi round encrypted/decrypted with AES CBC");
+    Ok(())
+}
+
+pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    // For CKM_RSA_PKCS (raw PKCS#1 v1.5), the data must be a pre-formatted DigestInfo.
+    // Use a SHA-256 DigestInfo over "Hello, World!" for the test.
+    let digest_info: [u8; 35] = [
+        // DER-encoded DigestInfo prefix for SHA-256 (19 bytes)
+        0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x10,
+        // 16-byte truncated hash placeholder (actual content doesn't matter for the test)
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10,
+    ];
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let signature = session.sign(sk, HsmSigningAlgorithm::RsaPkcsV15, &digest_info)?;
+    // RSA-2048 signature is 256 bytes
+    assert_eq!(signature.len(), 2048 / 8);
+    info!("Successfully signed with RSA PKCS#1 v1.5 (raw)");
+    Ok(())
+}
+
+pub fn rsa_sha256_sign(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let data = b"Hello, World!";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let signature = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data)?;
+    // RSA-2048 signature is 256 bytes
+    assert_eq!(signature.len(), 2048 / 8);
+    // Signing the same data again must produce the same deterministic signature (PKCS#1 v1.5)
+    let signature_2 = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data)?;
+    assert_eq!(signature, signature_2);
+    // Signing different data must produce a different signature
+    let data_2 = b"Goodbye, World!";
+    let signature_3 = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data_2)?;
+    assert_eq!(signature_3.len(), 2048 / 8);
+    assert_ne!(signature, signature_3);
+    info!("Successfully signed with SHA-256 RSA PKCS#1 v1.5");
+    Ok(())
+}
+
+pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for signing";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+    )?;
+    let algorithms = [
+        (
+            "SHA1WithRsa",
+            HsmSigningAlgorithm::Sha1WithRsa,
+            CKM_SHA1_RSA_PKCS,
+        ),
+        (
+            "SHA256WithRsa",
+            HsmSigningAlgorithm::Sha256WithRsa,
+            CKM_SHA256_RSA_PKCS,
+        ),
+        (
+            "SHA384WithRsa",
+            HsmSigningAlgorithm::Sha384WithRsa,
+            CKM_SHA384_RSA_PKCS,
+        ),
+        (
+            "SHA512WithRsa",
+            HsmSigningAlgorithm::Sha512WithRsa,
+            CKM_SHA512_RSA_PKCS,
+        ),
+    ];
+    let mut tested = 0;
+    for (name, algorithm, ckm) in &algorithms {
+        if !supported_mechanisms.contains(ckm) {
+            warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
+            continue;
+        }
+        let signature = session.sign(sk, *algorithm, data)?;
+        assert_eq!(
+            signature.len(),
+            2048 / 8,
+            "Signature length mismatch for {name}"
+        );
+        info!("Successfully signed with {name}");
+        tested += 1;
+    }
+    assert!(
+        tested > 0,
+        "No signing algorithms were supported by the HSM"
+    );
     Ok(())
 }
 

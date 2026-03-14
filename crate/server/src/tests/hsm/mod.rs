@@ -1,6 +1,7 @@
 use std::{ops::Add, sync::Arc};
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_attributes::Attributes,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Export, Import},
@@ -28,6 +29,8 @@ use cosmian_logger::{debug, info, log_init};
 use uuid::Uuid;
 
 const EMPTY_TAGS: [&str; 0] = [];
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 
 use crate::{
     config::ClapConfig,
@@ -127,6 +130,7 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
@@ -149,6 +153,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
 async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
     let create_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         EMPTY_TAGS,
         2048,
@@ -170,7 +175,7 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     );
     assert!(
         create_response.public_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned().add("_pk"))
+            == UniqueIdentifier::TextString(key_uid.to_owned().add(SYSTEM_TAG_PUBLIC_KEY))
     );
     Ok(())
 }

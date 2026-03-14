@@ -13,7 +13,7 @@ setup_test_logging
 
 echo "========================================="
 echo "Running ALL tests"
-echo "Variant: ${VARIANT_NAME} | Mode: ${BUILD_PROFILE}"
+echo "Variant: ${VARIANT_NAME}"
 echo "========================================="
 
 # Helper to run a test script with a nice header and capture/continue on skip-eligible failures
@@ -31,7 +31,7 @@ run_step() {
 run_step "SQLite" "$SCRIPT_DIR/test_sqlite.sh"
 
 # 1b) WASM (always)
-run_step "WASM" "$SCRIPT_DIR/test_wasm.sh" --profile "${BUILD_PROFILE}" --variant "${VARIANT}"
+run_step "WASM" "$SCRIPT_DIR/test_wasm.sh" --variant "${VARIANT}"
 
 # 1c) OpenTelemetry export integration (requires Docker)
 if command -v docker >/dev/null 2>&1; then
@@ -41,7 +41,7 @@ if command -v docker >/dev/null 2>&1; then
     # Start the OTEL collector stack required by the ignored integration test
     docker compose --profile otel-test up -d jaeger otel-collector
     trap 'docker compose --profile otel-test down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
-    bash "$SCRIPT_DIR/test_otel_export.sh" --profile "${BUILD_PROFILE}" --variant "${VARIANT}"
+    bash "$SCRIPT_DIR/test_otel_export.sh" --variant "${VARIANT}"
   )
 else
   echo "Skipping OTEL export (docker not available)"
@@ -82,6 +82,13 @@ if [ -f /etc/lsb-release ]; then
   run_step "HSM (SoftHSM2 + Utimaco)" "$SCRIPT_DIR/test_hsm.sh"
 else
   echo "Skipping HSM tests (non-Linux environment)"
+fi
+
+# 7) Azure EKM tests - this API does not need fips features, and curl command seems to not download on the FIPS machine, so skipping it
+if [ "$VARIANT_NAME" = "non-FIPS" ]; then
+  run_step "Azure EKM" "$SCRIPT_DIR/test_azure_ekm.sh"
+else
+  echo "Skipping Azure EKM (FIPS mode)"
 fi
 
 echo "========================================="

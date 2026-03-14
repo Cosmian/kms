@@ -7,6 +7,7 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_0::kmip_types::BlockCipherMode,
     export_object,
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_PRIVATE_KEY,
         kmip_attributes::Attributes,
         kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{Certify, GetAttributes},
@@ -215,6 +216,7 @@ impl CreateKeyPairsAction {
         } else {
             let created_key_pair = kms_rest_client
                 .create_key_pair(create_rsa_key_pair_request(
+                    kms_rest_client.config.vendor_id.as_str(),
                     None,
                     Vec::<String>::new(),
                     RSA_4096,
@@ -285,8 +287,12 @@ impl CreateKeyPairsAction {
                     ..Attributes::default()
                 };
 
-                attributes.set_x509_extension_file(certificate_extensions_bytes);
+                attributes.set_x509_extension_file(
+                    kms_rest_client.config.vendor_id.as_str(),
+                    certificate_extensions_bytes,
+                );
                 attributes.set_requested_validity_days(
+                    kms_rest_client.config.vendor_id.as_str(),
                     i32::try_from(self.number_of_days).map_err(|_e| {
                         KmsCliError::Conversion(
                             "number of days must be a positive integer".to_owned(),
@@ -337,7 +343,8 @@ impl CreateKeyPairsAction {
                         })?;
 
                 // Only remove suffix _sk to get certificate unique identifier
-                let certificate_unique_identifier = private_unique_identifier.replace("_sk", "");
+                let certificate_unique_identifier =
+                    private_unique_identifier.replace(SYSTEM_TAG_PRIVATE_KEY, "");
                 println!("[{email}] - certificate ID: {certificate_unique_identifier}");
                 UniqueIdentifier::TextString(certificate_unique_identifier)
             }

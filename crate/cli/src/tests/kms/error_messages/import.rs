@@ -1,16 +1,19 @@
 // KMIP 2.1 Import Operation Compliance Tests
 // Verifies that Import operation returns proper error reasons per Table 240: Import Errors
 
-use cosmian_kms_client::cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyValue},
-        kmip_objects::{Object, ObjectType, SplitKey},
-        kmip_operations::{Get, Import, ImportResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, SplitKeyMethod, UniqueIdentifier},
-        requests::create_symmetric_key_kmip_object,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyValue},
+            kmip_objects::{Object, ObjectType, SplitKey},
+            kmip_operations::{Get, Import, ImportResponse},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType, SplitKeyMethod, UniqueIdentifier},
+            requests::create_symmetric_key_kmip_object,
+        },
     },
+    kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
 };
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
@@ -38,7 +41,7 @@ async fn test_import_success_symmetric_key() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Import the key
     let import_request = Import {
@@ -89,7 +92,7 @@ async fn test_import_error_object_already_exists() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object1 = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object1 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // First import with a specific UID
     let import_request1 = Import {
@@ -108,7 +111,7 @@ async fn test_import_error_object_already_exists() -> KmsCliResult<()> {
     );
 
     // Try to import again with the same UID and replace_existing = false
-    let object2 = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object2 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
     let import_request2 = Import {
         unique_identifier: "test-duplicate-uid-12345".into(),
         object_type: ObjectType::SymmetricKey,
@@ -155,7 +158,7 @@ async fn test_import_success_replace_existing() -> KmsCliResult<()> {
     };
 
     // First import
-    let object1 = create_symmetric_key_kmip_object(&key_bytes1, &attributes)?;
+    let object1 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes1, &attributes)?;
     let import_request1 = Import {
         unique_identifier: "test-replace-uid-67890".into(),
         object_type: ObjectType::SymmetricKey,
@@ -169,7 +172,7 @@ async fn test_import_success_replace_existing() -> KmsCliResult<()> {
 
     // Replace with different key material
     let key_bytes2 = vec![0xDD; 32];
-    let object2 = create_symmetric_key_kmip_object(&key_bytes2, &attributes)?;
+    let object2 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes2, &attributes)?;
     let import_request2 = Import {
         unique_identifier: "test-replace-uid-67890".into(),
         object_type: ObjectType::SymmetricKey,
@@ -271,7 +274,7 @@ async fn test_import_error_invalid_uid_reserved() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Try to import with reserved UID starting with '['
     let import_request = Import {
@@ -319,7 +322,7 @@ async fn test_import_sets_initial_date() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     let import_request = Import {
         unique_identifier: UniqueIdentifier::default(),
@@ -368,7 +371,7 @@ async fn test_import_preserves_key_format_type() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
     // Clear the key_format_type from attributes to test preservation from object
     attributes.key_format_type = None;
 

@@ -10,7 +10,7 @@ use std::{
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
-    cosmian_kmip::time_normalize,
+    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN, time_normalize},
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -187,6 +187,25 @@ fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
             _ => sqlite_db_config(workspace_dir),
         },
     )
+}
+
+/// Start a test KMS server in a thread with the default options:
+/// No TLS, no certificate authentication
+/// # Panics
+/// - if the server fails to start
+pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static TestsContext {
+    trace!("Starting test server with config : {:#?}", config);
+    ONCE.get_or_try_init(|| async move {
+        let server_params = ServerParams::try_from(config).context(
+            "Failed to create ServerParams from ClapConfig in start_default_test_kms_server",
+        )?;
+        start_from_server_params(server_params).await
+    })
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start default test server: {e}");
+        std::process::abort();
+    })
 }
 
 /// Start a test KMS server in a thread with the default options:
@@ -390,7 +409,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
         let _response = ctx.get_owner_client().create(create_request).await?;
     }
 
-    // No grant access is required on external keys (e.g., when using HSM encryption oracles)
+    // No grant access is required on external keys (e.g., when using HSM crypto oracles)
 
     ctx.stop_server().await?;
 
@@ -783,6 +802,7 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
             tls_p12_password: Some("password".to_owned()),
             clients_ca_cert_file: clients_ca,
             tls_cipher_suites: server_tls_cipher_suites,
+            ..Default::default()
         }
     }
     #[cfg(not(feature = "non-fips"))]
@@ -1096,6 +1116,7 @@ fn generate_owner_conf(
         http_config: http_conf,
         gmail_api_conf,
         print_json: None,
+        vendor_id: VENDOR_ID_COSMIAN.to_owned(),
     };
 
     Ok(conf)

@@ -10,6 +10,12 @@ Options:
   -c, --config <COSMIAN_KMS_CONF>
           Explicit configuration file path provided via -c / --config. When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable and the default system path. All other command line arguments (except `--help` / `--version`) and environment variables are ignored once the configuration file is loaded
 
+      --vendor-identification <VENDOR_IDENTIFICATION>
+          The vendor identification string reported in KMIP `QueryServerInformation` responses
+          
+          [env: KMS_VENDOR_IDENTIFICATION=]
+          [default: cosmian]
+
       --default-username <DEFAULT_USERNAME>
           The default username to use when no authentication method is provided
           
@@ -34,6 +40,9 @@ Options:
 
       --info
           Print the server configuration information and exit
+
+      --print-default-config
+          Serialize the default server configuration as TOML to stdout and exit. This is used to keep the documentation in sync with the Rust struct
 
       --hsm-model <HSM_MODEL>
           The HSM model.
@@ -153,8 +162,8 @@ Options:
           [default: 0.0.0.0]
 
       --tls-p12-file <TLS_P12_FILE>
-          The KMS server optional PKCS#12 Certificates and Key file.
-          Mandatory when starting the socket server.
+          The KMS server optional PKCS#12 Certificates and Key file as an alternative
+          to providing the key, certificate and chain in PEM format.
           When provided, the Socket and HTTP server will start in TLS Mode.
           
           [env: KMS_TLS_P12_FILE=]
@@ -163,6 +172,29 @@ Options:
           The password to open the PKCS#12 Certificates and Key file
           
           [env: KMS_TLS_P12_PASSWORD=]
+
+      --tls-cert-file <TLS_CERT_FILE>
+          The server's X.509 certificate in PEM format.
+          Provide a PEM containing the server leaf certificate,
+          optionally followed by intermediate certificates (full chain). When provided along with
+          `--tls-key-file`, the servers will start in TLS mode.
+          Do not use in combination with `--tls-p12-file`.
+          
+          [env: KMS_TLS_CERT_FILE=]
+
+      --tls-key-file <TLS_KEY_FILE>
+          The server's private key in PEM format (PKCS#8 or traditional format).
+          Must correspond to the certificate in `--tls-cert-file`.
+          Do not use in combination with `--tls-p12-file`.
+          
+          [env: KMS_TLS_KEY_FILE=]
+
+      --tls-chain-file <TLS_CHAIN_FILE>
+          Optional certificate chain in PEM format (intermediate CAs).
+          If not provided, the chain may be appended to `--tls-cert-file` instead.
+          Do not use in combination with `--tls-p12-file`.
+          
+          [env: KMS_TLS_CHAIN_FILE=]
 
       --clients-ca-cert-file <CLIENTS_CA_CERT_FILE>
           The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
@@ -308,6 +340,48 @@ Options:
           
           [env: KMS_GOOGLE_CSE_MIGRATION_KEY=]
 
+      --azure-ekm-enable
+          This setting turns on/off the endpoints handling Azure EKM features
+          
+          [env: KMS_AZURE_EKM_ENABLE=]
+
+      --azure-ekm-path-prefix <AZURE_EKM_PATH_PREFIX>
+          Optional path prefix set within Managed HSM during EKM configuration.
+          
+          Enables multi-customer use or isolation of different MHSM pools using the same proxy.
+          Must be max 64 characters: letters (a-z, A-Z), numbers (0-9), slashes (/), dashes (-).
+          
+          [env: KMS_AZURE_EKM_PATH_PREFIX=]
+
+      --azure-ekm-disable-client-auth
+          WARNING: This bypasses mTLS authentication entirely. Only use for testing!
+          
+          [env: KMS_AZURE_EKM_DISABLE_CLIENT_AUTH=]
+
+      --azure-ekm-proxy-vendor <AZURE_EKM_PROXY_VENDOR>
+          Proxy vendor name to report in /info endpoint
+          
+          [env: KMS_AZURE_EKM_PROXY_VENDOR=]
+          [default: Cosmian]
+
+      --azure-ekm-proxy-name <AZURE_EKM_PROXY_NAME>
+          Proxy name to report in /info endpoint
+          
+          [env: KMS_AZURE_EKM_PROXY_NAME=]
+          [default: "EKM Proxy Service"]
+
+      --azure-ekm-ekm-vendor <AZURE_EKM_EKM_VENDOR>
+          EKMS vendor name report in the /info endpoint
+          
+          [env: KMS_AZURE_EKM_VENDOR=]
+          [default: Cosmian]
+
+      --azure-ekm-ekm-product <AZURE_EKM_EKM_PRODUCT>
+          Product Name and Version of the EKMS to report in the /info endpoint
+          
+          [env: KMS_AZURE_EKM_PRODUCT=]
+          [default: "Cosmian KMS v5.17.0"]
+
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
           
@@ -376,6 +450,29 @@ Options:
       --privileged-users <PRIVILEGED_USERS>
           List of users who have the right to create and import Objects
           and grant access rights for Create Kmip Operation.
+
+      --aws-xks-enable
+          This setting turns on endpoints handling the AWS XKS feature
+          
+          [env: KMS_AWS_XKS_ENABLE=]
+
+      --aws-xks-region <AWS_XKS_REGION>
+          The AWS XKS region to use for signing requests (sigv4)
+          
+          [env: KMS_AWS_XKS_REGION=]
+
+      --aws-xks-service <AWS_XKS_SERVICE>
+          The AWS XKS service name to use for signing requests (sigv4)
+          
+          [env: KMS_AWS_XKS_SERVICE=]
+
+      --aws-xks-sigv4-access-key-id <AWS_XKS_SIGV4_ACCESS_KEY_ID>
+          The AWS XKS `SigV4` access key ID used to sign requests
+          
+          [env: KMS_AWS_XKS_SIGV4_ACCESS_KEY_ID=]
+
+      --aws-xks-sigv4-secret-access-key <AWS_XKS_SIGV4_SECRET_ACCESS_KEY>
+          [env: KMS_AWS_XKS_SIGV4_SECRET_ACCESS_KEY=]
 
       --kmip-policy-id <POLICY_ID>
           KMIP algorithm policy selector.

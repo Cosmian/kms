@@ -7,6 +7,12 @@ All configuration examples can be used by:
 1. Saving the content to a file (e.g., `kms.toml`)
 2. Starting the server with: `cosmian_kms_server -c kms.toml` or using the environment variable `COSMIAN_KMS_CONF=kms.toml`
 
+> **Note on default path:** If no `-c` flag or `COSMIAN_KMS_CONF` variable is set, the server
+> automatically loads `/etc/cosmian/kms.toml` (Linux/macOS) or
+> `C:\ProgramData\Cosmian\kms.toml` (Windows) when it exists. If that file is present and you
+> also pass command-line arguments, the server **exits with an error** to prevent your arguments
+> from being silently ignored.
+
 For complete documentation on all available configuration options, see the [Configuration file](server_configuration_file.md) reference.
 
 ## Quick Start Configurations
@@ -492,3 +498,4 @@ rust_log = "error"
 - [Database configuration](database.md) - Database backend options
 - [TLS configuration](tls.md) - TLS and certificate setup
 - [Logging](logging.md) - Logging and monitoring options
+- [Monitoring](monitoring-setup.md) - Monitoring and dashboarding

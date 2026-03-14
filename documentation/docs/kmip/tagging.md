@@ -9,11 +9,12 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
 - `_sd`: for a secret data
+- `_oo`: for an opaque object
 
 Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
 
 1. When `Attributes` are passed as part of the KMIP operation, such as in the `Create`, `Create Key Pair`, `Locate`, `Certify` and `Import` operations,
-the tags are passed as `VendorAttributes` with the vendor identification `Cosmian` and attribute name `tag`.
+the tags are passed as `VendorAttributes` with the server's configured vendor identification (default: `cosmian`, configurable via `--vendor-identification` / `KMS_VENDOR_IDENTIFICATION`) and attribute name `tag`.
 The value is the serialization of the tags as a JSON array of strings.
 
 2. When unique identifiers are passed as part of the KMIP operation, such as in the `Certify`, `Encrypt`, `Export`, `Decrypt`, `Get`, `Get Attributes`, `Revoke`, and `Destroy` operations,

@@ -248,21 +248,17 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     current.push_str("/>");
                 }
             }
-            Ok(Event::Text(e)) => {
-                if capturing {
-                    if let Ok(txt) = e.unescape() {
-                        current.push_str(&txt);
-                    } else {
-                        current.push_str(&String::from_utf8_lossy(e.as_ref()));
-                    }
+            Ok(Event::Text(e)) if capturing => {
+                if let Ok(txt) = e.unescape() {
+                    current.push_str(&txt);
+                } else {
+                    current.push_str(&String::from_utf8_lossy(e.as_ref()));
                 }
             }
-            Ok(Event::CData(e)) => {
-                if capturing {
-                    current.push_str("<![CDATA[");
-                    current.push_str(&String::from_utf8_lossy(&e.into_inner()));
-                    current.push_str("]]>");
-                }
+            Ok(Event::CData(e)) if capturing => {
+                current.push_str("<![CDATA[");
+                current.push_str(&String::from_utf8_lossy(&e.into_inner()));
+                current.push_str("]]>");
             }
             Ok(Event::End(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();

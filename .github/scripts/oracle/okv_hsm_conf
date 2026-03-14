@@ -1,0 +1,16 @@
+# Oracle Key Vault HSM vendor configuration file
+# Lines must be shorter than 4096 characters.
+
+# The vendor name, to be displayed on the HSM page on the management console.
+VENDOR_NAME="Cosmian"
+
+# The location of the PKCS#11 library. This file must be preserved on upgrade.
+PKCS11_LIB_LOC="/usr/local/okv/hsm/generic/libcosmian_pkcs11.so"
+
+# A colon-separated list of the full paths of files and directories that must
+# be preserved on upgrade. All of these files and directories should have been
+# created by the HSM client software setup; none should have existed on Oracle
+# Key Vault by default. These will be necessary when upgrading to a version
+# of Oracle Key Vault that is running on a higher major OS version.
+# Do not use wildcards.
+PRESERVED_FILES=""

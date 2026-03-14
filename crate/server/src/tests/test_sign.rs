@@ -8,7 +8,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS,
+    extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
     kmip_operations::{Sign, SignResponse, SignatureVerify},
     kmip_types::ValidityIndicator,
     requests::create_ec_key_pair_request,
@@ -177,6 +177,7 @@ async fn test_sign_rsa() -> KResult<()> {
 
     // Create RSA key pair
     let request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,       // private_key_id
         EMPTY_TAGS, // tags
         2048,       // cryptographic_length
@@ -214,6 +215,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
 
     // Create EC key pair with specified curve
     let request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
         None,       // private_key_id
         EMPTY_TAGS, // tags
         curve,      // curve

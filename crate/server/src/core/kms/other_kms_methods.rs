@@ -4,22 +4,20 @@ use std::collections::HashSet;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject, DbError,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::SecretDataType,
-            kmip_2_1::{
-                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-                kmip_objects::{Object, SecretData},
-                kmip_operations::Create,
-                kmip_types::{CryptographicAlgorithm, KeyFormatType},
-                requests::create_symmetric_key_kmip_object,
-            },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType,
+        kmip_2_1::{
+            extra::tagging::SYSTEM_TAG_SECRET_DATA,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, SecretData},
+            kmip_operations::Create,
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+            requests::create_symmetric_key_kmip_object,
         },
-        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
-        cosmian_kms_interfaces::EncryptionOracle,
     },
+    cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
+    cosmian_kms_interfaces::CryptoOracle,
 };
 use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
@@ -62,53 +60,26 @@ impl KMS {
         }
 
         // check if we have it in the cache
-        match self.database.unwrapped_cache().peek(uid).await {
-            Some(Ok(u)) => {
-                // Note: In theory, the cache should always be in sync...
-                if u.fingerprint() == object.fingerprint()? {
-                    debug!("Unwrapped cache hit");
-                    return Ok(u.unwrapped_object().clone());
-                }
-            }
-            Some(Err(e)) => {
-                return Err(KmsError::Database(DbError::UnwrappedCache(format!(
-                    "Error retrieving cached object for {uid}: {e}",
-                ))));
-            }
-            None => {
-                // try unwrapping
-            }
+        if let Some(u) = self.database.unwrapped_cache().peek(uid, object).await? {
+            debug!("Unwrapped cache hit");
+            return Ok(u);
         }
-
-        // local async future that unwraps the object
-        let unwrap_local = async {
-            let fingerprint = object.fingerprint()?;
-            let mut unwrapped_object = object.clone();
-            unwrap_object(&mut unwrapped_object, self, user).await?;
-            Ok::<_, KmsError>(CachedUnwrappedObject::new(fingerprint, unwrapped_object))
-        };
 
         // cache miss, try to unwrap
         debug!("Unwrapped cache miss. Calling unwrap");
-        let unwrapped_object = unwrap_local.await;
-        // pre-calculating the result avoids a clone on the `CachedUnwrappedObject`
-        let result = unwrapped_object
-            .as_ref()
-            .map(|u| u.unwrapped_object().to_owned())
-            .map_err(|e| {
-                // an error reference is returned, but we need an owned one
-                KmsError::Database(DbError::UnwrappedCache(format!("Unwrapping error: {e}")))
-            });
+        let unwrapped_object = {
+            let mut unwrapped_object = object.clone();
+            unwrap_object(&mut unwrapped_object, self, user).await?;
+            unwrapped_object
+        };
+
         // update cache if there is one
         self.database
             .unwrapped_cache()
-            .insert(
-                uid.to_owned(),
-                unwrapped_object.map_err(|e| DbError::UnwrappedCache(e.to_string())),
-            )
-            .await;
-        // return the result
-        result
+            .insert(uid.to_owned(), object, unwrapped_object.clone())
+            .await?;
+
+        Ok(unwrapped_object)
     }
 
     /// Create a new symmetric key and the corresponding system tags
@@ -116,6 +87,7 @@ impl KMS {
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
@@ -170,10 +142,14 @@ impl KMS {
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                         rand_bytes(&mut symmetric_key)?;
-                        let object = create_symmetric_key_kmip_object(&symmetric_key, attributes)?;
+                        let object = create_symmetric_key_kmip_object(
+                            vendor_id,
+                            &symmetric_key,
+                            attributes,
+                        )?;
                         let attributes = object.attributes()?;
                         debug!("Created symmetric key with attributes: {}", attributes);
-                        let tags = attributes.get_tags();
+                        let tags = attributes.get_tags(vendor_id);
                         let uid = attributes
                             .unique_identifier
                             .as_ref()
@@ -220,6 +196,7 @@ impl KMS {
                 use cosmian_kms_server_database::reexport::cosmian_kmip::{
                     SafeBigInt,
                     kmip_2_1::{
+                        extra::tagging::SYSTEM_TAG_COVER_CRYPT_USER_KEY,
                         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                         kmip_objects::Object,
                         kmip_types::{
@@ -271,10 +248,10 @@ impl KMS {
                 attributes.cryptographic_algorithm = Some(CryptographicAlgorithm::DSA);
                 attributes.cryptographic_length = Some(requested_bits);
                 attributes.key_format_type = Some(KeyFormatType::TransparentDSAPrivateKey);
-                let mut tags = attributes.get_tags();
-                tags.insert("_uk".to_owned());
+                let mut tags = attributes.get_tags(self.vendor_id());
+                tags.insert(SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_owned());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(UniqueIdentifier::TextString(
                         uuid::Uuid::new_v4().to_string(),
@@ -293,7 +270,7 @@ impl KMS {
                 };
                 let object = Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -343,7 +320,7 @@ impl KMS {
                 // Update the attributes with state Active
                 object.attributes_mut()?.state = Some(State::Active);
                 let attributes = object.attributes()?;
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(self.vendor_id());
                 let uid = attributes
                     .unique_identifier
                     .as_ref()
@@ -398,9 +375,9 @@ impl KMS {
                 attributes.key_format_type = Some(
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::TransparentDSAPrivateKey,
                 );
-                let mut tags = attributes.get_tags();
+                let mut tags = attributes.get_tags(self.vendor_id());
                 tags.insert("_dsa".to_owned());
-                attributes.set_tags(tags.clone())?;
+                attributes.set_tags(self.vendor_id(), tags.clone())?;
                 if attributes.unique_identifier.is_none() {
                     attributes.unique_identifier = Some(
                         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(
@@ -420,7 +397,7 @@ impl KMS {
                 };
                 let object = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey { key_block });
                 let attributes_view = object.attributes()?;
-                let tags = attributes_view.get_tags();
+                let tags = attributes_view.get_tags(self.vendor_id());
                 let uid = attributes_view
                     .unique_identifier
                     .as_ref()
@@ -438,11 +415,12 @@ impl KMS {
     ///  - "_sd"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_secret_data_and_tags(
+        vendor_id: &str,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let attributes = &request.attributes;
-        let mut tags = attributes.get_tags();
-        tags.insert("_sd".to_owned());
+        let mut tags = attributes.get_tags(vendor_id);
+        tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         rand_bytes(&mut secret_data)?;
         let object = Object::SecretData(SecretData {
@@ -470,17 +448,17 @@ impl KMS {
         Ok((uid, object, tags))
     }
 
-    /// Register an encryption oracle for a given key prefix.
-    /// The encryption oracle will be used to encrypt/decrypt data using keys with the given prefix.
+    /// Register a crypto oracle for a given key prefix.
+    /// The crypto oracle will be used to encrypt/decrypt/sign data using keys with the given prefix.
     /// # Arguments
-    /// * `prefix` - The key prefix for which the encryption oracle will be used.
-    /// * `oracle` - The encryption oracle to register.
-    pub async fn register_encryption_oracles(
+    /// * `prefix` - The key prefix for which the crypto oracle will be used.
+    /// * `oracle` - The crypto oracle to register.
+    pub async fn register_crypto_oracle(
         &self,
         prefix: &str,
-        oracle: Box<dyn EncryptionOracle + Sync + Send>,
+        oracle: Box<dyn CryptoOracle + Sync + Send>,
     ) {
-        let mut oracles = self.encryption_oracles.write().await;
+        let mut oracles = self.crypto_oracles.write().await;
         oracles.insert(prefix.to_owned(), oracle);
     }
 }

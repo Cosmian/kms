@@ -5,7 +5,7 @@
     let
       nixpkgsSrc = builtins.fetchTarball {
         # Use an immutable commit tarball so builds are deterministic across machines.
-        url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+        url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
         sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
       };
     in
@@ -70,15 +70,15 @@ let
   # Reuse the same pinned nixpkgs for internal imports/overlays
   # Reuse the same pinned nixpkgs; Linux builds target glibc 2.34 compatibility.
   nixpkgsSrc = builtins.fetchTarball {
-    # Use an immutable commit tarball so builds are deterministic across machines.
-    url = "https://github.com/NixOS/nixpkgs/archive/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
+    # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+    url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
     sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
   # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
-      # Pin rust-overlay to an immutable commit (master is moving).
-      url = "https://github.com/oxalica/rust-overlay/archive/23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+      # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+      url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
       sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
     }
   );
@@ -101,8 +101,21 @@ let
   pkgs234 =
     if pkgs.stdenv.isLinux then
       import (builtins.fetchTarball {
-        url = "https://github.com/NixOS/nixpkgs/archive/380be19fbd2d9079f677978361792cb25e8a3635.tar.gz";
+        url = "https://package.cosmian.com/nixpkgs/380be19fbd2d9079f677978361792cb25e8a3635.tar.gz";
         sha256 = "sha256-Zffu01pONhs/pqH07cjlF10NnMDLok8ix5Uk4rhOnZQ=";
+      }) { config.allowUnfree = true; }
+    else
+      pkgs;
+
+  # For Linux, pin nixpkgs ≈ 19.09 (glibc 2.28) for CLI builds targeting
+  # RHEL 8 / CentOS 8 / Debian 10 / Ubuntu 18.04 compatibility.
+  # Override via `--arg pkgs228 ...` if needed.
+  # To update: nix-prefetch-url --unpack https://package.cosmian.com/nixpkgs/<commit>.tar.gz
+  pkgs228 =
+    if pkgs.stdenv.isLinux then
+      import (builtins.fetchTarball {
+        url = "https://package.cosmian.com/nixpkgs/nixos-19.03.tar.gz";
+        sha256 = "sha256-i1XCn9rKuLjvCdu2UeXKzGLF6IuQePQKFt4hEKRU5oc=";
       }) { config.allowUnfree = true; }
     else
       pkgs;
@@ -112,6 +125,20 @@ let
   rustPlatform190 =
     if pkgs.stdenv.isLinux then
       pkgs234.makeRustPlatform {
+        cargo = rustToolchain;
+        rustc = rustToolchain;
+      }
+    else
+      pkgsWithRust.makeRustPlatform {
+        cargo = rustToolchain;
+        rustc = rustToolchain;
+      };
+
+  # rustPlatform for CLI builds: on Linux use pkgs228.makeRustPlatform (glibc 2.28)
+  # so the CLI binary only references glibc symbols ≤ 2.28.
+  rustPlatform190_228 =
+    if pkgs.stdenv.isLinux then
+      pkgs228.makeRustPlatform {
         cargo = rustToolchain;
         rustc = rustToolchain;
       }
@@ -139,6 +166,14 @@ let
   };
   openssl36-static = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
   openssl36-dynamic = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = false; });
+
+  # OpenSSL variants built against pkgs228 (glibc 2.28) for CLI binaries
+  openssl312-static-228 = pkgs228.callPackage ./nix/openssl.nix { static = true; };
+  openssl312-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix { static = false; };
+  openssl36-static-228 = pkgs228.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
+  openssl36-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix (
+    openssl36Args // { static = false; }
+  );
 
   # Tool: cargo-generate-rpm (not available in some nixpkgs pins). Build it from crates.io.
   # Build cargo-generate-rpm with the same modern Rust toolchain (Cargo 1.90)
@@ -225,6 +260,24 @@ let
         ;
     };
 
+  mkKmsCli =
+    {
+      features,
+      static ? true,
+    }:
+    pkgs.callPackage ./nix/cli.nix {
+      # Use pkgs228 (glibc 2.28) so the CLI binary only requires GLIBC ≤ 2.28.
+      openssl312 = if static then openssl312-static-228 else openssl312-dynamic-228;
+      openssl36 = if static then openssl36-static-228 else openssl36-dynamic-228;
+      inherit pkgs228;
+      rustPlatform = rustPlatform190_228;
+      version = kmsVersion;
+      inherit
+        features
+        static
+        ;
+    };
+
   # Build KMS server in both variants with static OpenSSL
   kms-server-fips-static-openssl = mkKmsServer {
     features = [ ];
@@ -251,9 +304,30 @@ let
     static = false;
   };
 
+  kms-cli-fips-static-openssl = mkKmsCli {
+    features = [ ];
+    static = true;
+  };
+
+  kms-cli-non-fips-static-openssl = mkKmsCli {
+    features = [ "non-fips" ];
+    static = true;
+  };
+
+  kms-cli-fips-dynamic-openssl = mkKmsCli {
+    features = [ ];
+    static = false;
+  };
+
+  kms-cli-non-fips-dynamic-openssl = mkKmsCli {
+    features = [ "non-fips" ];
+    static = false;
+  };
+
   # Docker images using dockerTools (minimal images)
   docker-image-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-fips-static-openssl;
+    pkcs11LibDrv = kms-cli-fips-static-openssl;
     variant = "fips";
     version = kmsVersion;
     opensslDrv = openssl312;
@@ -261,6 +335,7 @@ let
 
   docker-image-non-fips = pkgs.callPackage ./nix/docker.nix {
     kmsServer = kms-server-non-fips-static-openssl;
+    pkcs11LibDrv = kms-cli-non-fips-static-openssl;
     variant = "non-fips";
     version = kmsVersion;
     # Provide OpenSSL 3.6.0 so the Docker image ships legacy provider + non-FIPS openssl.cnf
@@ -275,6 +350,10 @@ rec {
     kms-server-non-fips-static-openssl
     kms-server-fips-dynamic-openssl
     kms-server-non-fips-dynamic-openssl
+    kms-cli-fips-static-openssl
+    kms-cli-non-fips-static-openssl
+    kms-cli-fips-dynamic-openssl
+    kms-cli-non-fips-dynamic-openssl
     ;
 
   # Export UI builds for debugging/development
@@ -300,6 +379,7 @@ rec {
 
   # Default to FIPS variant
   kms-server = kms-server-fips-static-openssl;
+  kms-cli = kms-cli-fips-static-openssl;
   docker-image = docker-image-fips;
 
   # Expected-hash files (generated by Nix, copyable into nix/expected-hashes)

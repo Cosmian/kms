@@ -3,6 +3,10 @@ use std::fmt;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+/// Default UI distribution folder path on Linux.
+#[cfg(target_os = "linux")]
+const LINUX_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
+
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
 #[must_use]
@@ -16,7 +20,7 @@ pub fn get_default_ui_dist_path() -> String {
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn get_default_ui_dist_path() -> String {
-    "/usr/local/cosmian/ui/dist/".to_owned()
+    LINUX_UI_DIST_PATH.to_owned()
 }
 
 #[cfg(target_os = "macos")]

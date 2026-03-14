@@ -2,43 +2,7 @@
 The Cosmian KMS strives to be compatible with the PyKMIP client library, which is widely used for KMIP protocol interactions.
 This document provides a comprehensive guide to testing and validating PyKMIP compatibility with the Cosmian KMS server.
 
-<!-- TOC -->
-- [Purpose of PyKMIP compatibility tests](#purpose-of-pykmip-compatibility-tests)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Supported Operations](#supported-operations)
-    - [Core Operations](#core-operations)
-    - [Cryptographic Operations](#cryptographic-operations)
-    - [Management Operations](#management-operations)
-    - [Special Commands](#special-commands)
-    - [Experimental/Unsupported Operations](#experimentalunsupported-operations)
-- [Understanding Test Results](#understanding-test-results)
-    - [Success Case](#success-case)
-    - [Failure Case](#failure-case)
-    - [Test Summary](#test-summary)
-    - [Operation Status Types](#operation-status-types)
-- [Troubleshooting](#troubleshooting)
-    - [Common Issues](#common-issues)
-    - [Advanced Troubleshooting](#advanced-troubleshooting)
-- [File Structure](#file-structure)
-    - [Key Files](#key-files)
-- [Configuration](#configuration)
-    - [Server Connection](#server-connection)
-    - [TLS Configuration](#tls-configuration)
-    - [Protocol Settings](#protocol-settings)
-    - [KMS Server Configuration](#kms-server-configuration)
-- [Contributing](#contributing)
-    - [Testing Best Practices](#testing-best-practices)
-- [Available Operations (Detailed Examples)](#available-operations-detailed-examples)
-    - [Using the Test Runner (Recommended)](#using-the-test-runner-recommended)
-    - [Manual Client Usage (Advanced)](#manual-client-usage-advanced)
-        - [1. Query Server Capabilities](#1-query-server-capabilities)
-        - [2. Create Symmetric Key](#2-create-symmetric-key)
-        - [3. Create RSA Key Pair](#3-create-rsa-key-pair)
-        - [4. Test Encryption/Decryption](#4-test-encryptiondecryption)
-        - [5. Activate Objects](#5-activate-objects)
-- [Related Documentation](#related-documentation)
-<!-- TOC -->
+[TOC]
 
 ## Purpose of PyKMIP compatibility tests
 
@@ -477,8 +441,8 @@ python scripts/pykmip_client.py \
 
 ## Related Documentation
 
-- [KMIP Protocol Support](../documentation/docs/algorithms.md)
-- [TLS Configuration](../crate/server/README.md)
-- [Authentication](../documentation/docs/authentication.md)
+- [KMIP Protocol Support](./algorithms.md)
+- [TLS Configuration](./tls.md)
+- [Authentication](./authentication.md)
 - [PyKMIP Official Documentation](https://pykmip.readthedocs.io/)
-- [Cosmian KMS Server Documentation](../crate/server/README.md)
+- [Cosmian KMS Server Documentation](./index.md)

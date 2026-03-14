@@ -27,8 +27,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     const serverHealthLabel =
         serverHealthLatencyMs === null
-            ? `Health: ${serverHealth}`
-            : `Health: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+            ? `Health DB: ${serverHealth}`
+            : `Health DB: ${serverHealth} (${serverHealthLatencyMs}ms)`;
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {
@@ -74,7 +74,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         if (response.status == 200) {
             setDownloadTarget(serverUrl + downloadCliUrl)
         } else {
-            setDownloadTarget('https://package.cosmian.com/cli')
+            setDownloadTarget('https://package.cosmian.com/kms')
         }
     }, [downloadCliUrl, idToken, serverUrl]);
 

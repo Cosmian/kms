@@ -9,34 +9,40 @@ Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Manageme
 git submodule update --init --recursive
 
 # Build the project (FIPS mode is default)
-cargo build --release
+cargo build
 
 # Run tests (FIPS mode is default)
 cargo test
 
 # For non-FIPS mode (includes additional algorithms)
-cargo build --release --features non-fips
+cargo build --features non-fips
 cargo test --features non-fips
 ```
 
+## GitHub issues and pull requests
+
+Read issues and PRs using gh without pager.
+
+## Coding rules
+
+- Small functions are preferred over large ones. If a function exceeds 100 lines, consider refactoring it into smaller functions.
+- Rust import must always be at top of the file
+
 ## Testing
+
+Do not ignore or skip errors in tests or package builds. If a test fails, investigate and fix the underlying issue rather than bypassing it.
 
 ```bash
 # Run all tests (FIPS mode is default)
-cargo test
+cargo test-fips
+cargo test-non-fips
+
+# Run Clippy on all code paths
+cargo clippy-all
 
 # Run tests for a specific package
 cargo test -p cosmian_kms_server
 cargo test -p cosmian_kms_cli
-
-# Run specific test suites
-cargo test sqlite       # SQLite tests
-cargo test postgres     # PostgreSQL tests (requires local PostgreSQL)
-cargo test redis        # Redis tests
-
-# Run tests in non-FIPS mode (includes additional algorithms)
-cargo test --features non-fips
-cargo test --features non-fips sqlite
 ```
 
 Environment variables for DB tests:
@@ -57,7 +63,7 @@ Notes:
 After building, you can run the server manually:
 
 ```bash
-cargo run --release --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
+cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
 ```
 
 Or run the compiled binary directly:
@@ -74,6 +80,10 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 Expected response is a KMIP validation error, confirming the server is alive.
 
+## Update CHANGELOG.md
+
+When making changes, update `CHANGELOG.md` with a brief description of the change and its impact. This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
+
 ## Repository layout (high level)
 
 ```text
@@ -89,7 +99,7 @@ ui/                     # Web UI source
 ## Tips
 
 - Format/lints: run `cargo fmt --check` and `cargo clippy` to check code style
-- Use `cargo build --release` for optimized builds
+- Use `cargo build` for optimized builds
 - Run `cargo test` frequently to ensure changes don't break functionality
 
 ## Docker
@@ -100,3 +110,17 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 ```
 
 Images include the UI at `http://localhost:9998/ui`.
+
+## Debugging the repository
+
+Usually, when debugging, you want to run the server with maximum logging;
+
+```bash
+RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" cargo run --debug --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data # or whatever kms run command you should run
+```
+
+The previous command is a generic example, if you think that the problem, add it to the `RUST_LOG` environment variable.
+
+### Common issues
+
+- When the KMS complains about some "usage mask" on the KMIP requests, the keys might not have the correct usage masks setup (for example to decrypt/encrypt, sign/verify, etc.)

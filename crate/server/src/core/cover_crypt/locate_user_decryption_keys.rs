@@ -32,7 +32,10 @@ pub(crate) async fn locate_usk(
 ) -> KResult<Option<Vec<String>>> {
     // Convert the access structure attributes to vendor attributes
     let vendor_attributes = match cover_crypt_policy_attributes_to_revoke {
-        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(&att)?]),
+        Some(att) => Some(vec![qualified_attributes_as_vendor_attributes(
+            kmip_server.vendor_id(),
+            &att,
+        )?]),
         None => None,
     };
     // Search the user decryption keys that need to be refreshed

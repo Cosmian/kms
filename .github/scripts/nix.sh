@@ -32,6 +32,7 @@ usage() {
       psql                   Run PostgreSQL tests (requires PostgreSQL server)
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
+      gcp_cmek               Run GCP CMEK wrapping key tests
       pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
@@ -45,15 +46,14 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
-                       Default: generates all combinations (openssl + server fips/non-fips × static/dynamic)
+                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_0 + server fips/non-fips × static/dynamic)
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
-                         --target <openssl|server>  Choose SBOM target (default: openssl)
+                         --target <openssl_3_1_2|openssl_3_6_0|server>  Choose SBOM target (default: all)
     update-hashes
-           Update expected hashes for current platform (release profile mandatory)
+           Update expected hashes for current platform (release build mandatory)
 
   Global options:
-    -p, --profile <debug|release>   Build/test profile (default: debug)
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
                     static: statically link OpenSSL 3.6.0
@@ -89,8 +89,9 @@ usage() {
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate all SBOMs (OpenSSL + all server combinations)
-    $0 sbom --target openssl                # SBOM for the OpenSSL 3.1.2 only derivation
+    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.0 + all server combinations)
+    $0 sbom --target openssl_3_1_2            # SBOM for the OpenSSL 3.1.2 (FIPS) derivation
+    $0 sbom --target openssl_3_6_0            # SBOM for the OpenSSL 3.6.0 (non-FIPS) derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
     $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
@@ -157,17 +158,12 @@ prewarm_nixpkgs_and_tools() {
 }
 
 parse_global_options() {
-  PROFILE="debug"
   VARIANT="fips"
   LINK="static"
 
   # Parse global options before the subcommand
   while [ $# -gt 0 ]; do
     case "$1" in
-    -p | --profile)
-      PROFILE="${2:-}"
-      shift 2 || true
-      ;;
     -v | --variant)
       VARIANT="${2:-}"
       VARIANT_EXPLICIT=1
@@ -200,7 +196,16 @@ parse_global_options() {
   # Validate command argument
   [ -z "${COMMAND:-}" ] && usage
 
-  export PROFILE VARIANT LINK
+  # Build profile is hardcoded per command: package always uses release, test always uses debug
+  if [ "$COMMAND" = "package" ]; then
+    RELEASE_FLAG="--release"
+    BUILD_PROFILE="release"
+  else
+    RELEASE_FLAG=""
+    BUILD_PROFILE="debug"
+  fi
+
+  export VARIANT LINK RELEASE_FLAG BUILD_PROFILE
   REMAINING_ARGS=("$@")
 }
 
@@ -356,6 +361,15 @@ docker_command() {
   # Map variant to attribute (docker is always static-linked)
   ATTR="docker-image-$DOCKER_VARIANT"
 
+  # Docker images are Linux containers built via Nix; they require Linux-only
+  # packages (busybox, glibc, proot) and cannot be built natively on macOS.
+  if [ "$(uname)" = "Darwin" ]; then
+    echo "Error: Docker image builds require a Linux builder." >&2
+    echo "       The Nix Docker derivation uses Linux-only packages (busybox, glibc)." >&2
+    echo "       Use a Linux CI runner or a remote Nix builder to build Docker images." >&2
+    exit 1
+  fi
+
   # Extract version from Cargo.toml
   VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
 
@@ -401,6 +415,9 @@ test_command() {
   all)
     SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
     ;;
+  aws_xks)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_xks.sh"
+    ;;
   wasm)
     SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
     ;;
@@ -425,6 +442,12 @@ test_command() {
   redis)
     SCRIPT="$REPO_ROOT/.github/scripts/test_redis.sh"
     ;;
+  azure_ekm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
+    ;;
+  gcp_cmek)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_gcp_cmek.sh"
+    ;;
   google_cse)
     SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell
@@ -444,6 +467,9 @@ test_command() {
     ;;
   pykmip)
     SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
+    ;;
+  ui)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
     ;;
   hsm)
     # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
@@ -473,7 +499,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: sqlite, mysql, percona, mariadb, psql, redis, google_cse, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all]" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -483,12 +509,22 @@ test_command() {
     export WITH_HSM=1
   fi
   # For WASM/UI tests, ensure shell.nix includes Node.js + wasm-pack (+ pnpm).
-  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
   # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
+  fi
+  # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
+    export WITH_CURL=1
+  fi
+
+  # AWS XKS curl-based test client requires extra tooling inside nix-shell
+  if [ "$TEST_TYPE" = "aws_xks" ]; then
+    export WITH_XKS=1
+    export WITH_CURL=1
   fi
 
   KEEP_VARS=" \
@@ -506,12 +542,15 @@ test_command() {
         --keep GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY \
         --keep WITH_WGET \
         --keep WITH_CURL \
+        --keep WITH_XKS \
         --keep WITH_DOCKER \
         --keep WITH_HSM \
         --keep WITH_PYTHON \
         --keep VARIANT \
         --keep LINK \
-        --keep BUILD_PROFILE"
+        --keep RELEASE_FLAG \
+        --keep BUILD_PROFILE \
+        --keep PLAYWRIGHT_WORKERS"
 }
 
 sbom_command() {
@@ -556,7 +595,7 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl|server> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
     exit 1
   fi
 
@@ -581,10 +620,18 @@ sbom_command() {
     echo "========================================="
     echo ""
 
-    # Generate SBOM for OpenSSL first
+    # Generate SBOM for OpenSSL 3.1.2 first
     echo ">>> Generating SBOM for OpenSSL 3.1.2..."
-    bash "$SCRIPT" --target openssl || {
-      echo "ERROR: OpenSSL SBOM generation failed" >&2
+    bash "$SCRIPT" --target openssl_3_1_2 || {
+      echo "ERROR: OpenSSL 3.1.2 SBOM generation failed" >&2
+      exit 1
+    }
+    echo ""
+
+    # Generate SBOM for OpenSSL 3.6.0
+    echo ">>> Generating SBOM for OpenSSL 3.6.0..."
+    bash "$SCRIPT" --target openssl_3_6_0 || {
+      echo "ERROR: OpenSSL 3.6.0 SBOM generation failed" >&2
       exit 1
     }
     echo ""
@@ -739,7 +786,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on .deb package..."
             echo "=========================================="
-            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
+            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -752,6 +799,23 @@ package_command() {
               fi
             else
               echo "Warning: .deb file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI .deb package..."
+            echo "=========================================="
+            CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
+            if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_deb.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .deb file not found in $REAL_OUT" >&2
             fi
           else
             echo "DEB packaging is only supported on Linux in this flow." >&2
@@ -772,7 +836,7 @@ package_command() {
             echo "=========================================="
             echo "Running smoke test on RPM package..."
             echo "=========================================="
-            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
+            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
               SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
@@ -785,6 +849,23 @@ package_command() {
               fi
             else
               echo "Warning: RPM file not found in $REAL_OUT" >&2
+            fi
+            echo "=========================================="
+            echo "Running smoke test on CLI RPM package..."
+            echo "=========================================="
+            CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
+            if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_rpm.sh"
+              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
+                  echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: CLI .rpm file not found in $REAL_OUT" >&2
             fi
           else
             echo "RPM packaging is only supported on Linux in this flow." >&2
@@ -832,20 +913,22 @@ package_command() {
 
         case "$TYPE" in
         deb)
-          deb_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' | head -n1 || true)
-          if [ -n "${deb_file:-}" ] && [ -f "$deb_file" ]; then
+          # Write checksums for all .deb files (server + cli)
+          while IFS= read -r deb_file; do
+            if [ -z "$deb_file" ] || [ ! -f "$deb_file" ]; then continue; fi
             sum=$(compute_sha256 "$deb_file")
             echo "$sum  $(basename "$deb_file")" >"$deb_file.sha256"
             echo "Wrote checksum: $deb_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' 2>/dev/null || true)
           ;;
         rpm)
-          rpm_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' | head -n1 || true)
-          if [ -n "${rpm_file:-}" ] && [ -f "$rpm_file" ]; then
+          # Write checksums for all .rpm files (server + cli)
+          while IFS= read -r rpm_file; do
+            if [ -z "$rpm_file" ] || [ ! -f "$rpm_file" ]; then continue; fi
             sum=$(compute_sha256 "$rpm_file")
             echo "$sum  $(basename "$rpm_file")" >"$rpm_file.sha256"
             echo "Wrote checksum: $rpm_file.sha256 ($sum)"
-          fi
+          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' 2>/dev/null || true)
           ;;
         dmg)
           dmg_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
@@ -926,11 +1009,7 @@ run_in_nix_shell() {
       fi
     fi
 
-    if [ "$COMMAND" = "sbom" ]; then
-      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
-    else
-      CMD="export VARIANT='$VARIANT' LINK='$LINK' BUILD_PROFILE='$PROFILE'; bash '$SCRIPT' --profile '$PROFILE' --variant '$VARIANT' --link '$LINK'"
-    fi
+    CMD="export VARIANT='$VARIANT' LINK='$LINK' RELEASE_FLAG='$RELEASE_FLAG' BUILD_PROFILE='$BUILD_PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
 
     ARGSTR_VARIANT=""
     if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then

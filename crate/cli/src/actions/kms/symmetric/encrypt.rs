@@ -408,6 +408,7 @@ impl EncryptAction {
         .1;
         // Create the KMIP object corresponding to the DEK
         let mut dek_object = create_symmetric_key_kmip_object(
+            kms_rest_client.config.vendor_id.as_str(),
             &dek,
             &Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

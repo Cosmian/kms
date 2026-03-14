@@ -18,12 +18,6 @@ const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.
 const OPENSSL_MAIN_SHA256: &str =
     "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
 
-const OPENSSL_FIPS_VERSION: &str = "3.1.2";
-const OPENSSL_FIPS_TARBALL: &str = "openssl-3.1.2.tar.gz";
-const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
-const OPENSSL_FIPS_SHA256: &str =
-    "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
-
 fn main() {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
@@ -78,19 +72,11 @@ fn main() {
             OPENSSL_MAIN_VERSION
         ))
     };
-    let fipsprov_prefix = target_dir.join(format!(
-        "openssl-fipsprov-{}-{os}-{arch}",
-        OPENSSL_FIPS_VERSION
-    ));
-
     let out_dir_os = env::var_os("OUT_DIR").unwrap();
     let out_dir = Path::new(&out_dir_os);
     let build_root = out_dir.join("openssl_build_crypto");
     let _ = fs::create_dir_all(&build_root);
     let _ = fs::create_dir_all(&main_prefix);
-    if fips_mode {
-        let _ = fs::create_dir_all(&fipsprov_prefix);
-    }
 
     // Build main OpenSSL (3.6.0) if not present
     if !main_prefix.join("lib/libcrypto.a").exists() {
@@ -103,35 +89,20 @@ fn main() {
             OPENSSL_MAIN_SHA256,
             &main_prefix,
             // enable_fips=
-            false,
+            fips_mode,
             // enable_legacy=
             !fips_mode,
         );
     }
 
-    // Always build FIPS provider (3.1.2) for test compatibility, regardless of feature flags
-    // This ensures `cargo test` works for both FIPS and non-FIPS code paths
-    if !fipsprov_prefix.join("lib/ossl-modules").exists() {
-        let _ = build_and_install_openssl(
-            &workspace_root,
-            &build_root,
-            OPENSSL_FIPS_VERSION,
-            OPENSSL_FIPS_TARBALL,
-            OPENSSL_FIPS_URL,
-            OPENSSL_FIPS_SHA256,
-            &fipsprov_prefix,
-            // enable_fips=
-            true,
-            // enable_legacy=
-            false,
-        );
-    }
-
-    // Normalize provider layout and integrate FIPS provider/config into main prefix
+    // Normalize provider layout
     normalize_provider_layout(&main_prefix);
-    normalize_provider_layout(&fipsprov_prefix);
     if fips_mode {
-        integrate_assets_into_main(&main_prefix, Some(&fipsprov_prefix));
+        integrate_assets_into_main(&main_prefix, None);
+        // Always re-patch openssl.cnf to use the local fipsmodule.cnf path.
+        // This is needed when the nix build has overwritten openssl.cnf with the
+        // production path (/usr/local/cosmian/lib/ssl/fipsmodule.cnf).
+        patch_fipsmodule_include(&main_prefix);
     }
 
     // Emit link + runtime env to use our local OpenSSL
@@ -165,6 +136,54 @@ fn main() {
         "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
         main_prefix.display()
     );
+}
+
+/// Patch `openssl.cnf` so the `.include` directive for `fipsmodule.cnf` points to the
+/// local path.  This is needed because nix builds write the production absolute path
+/// (`/usr/local/cosmian/lib/ssl/fipsmodule.cnf`) into `openssl.cnf`, which breaks local
+/// `cargo test` runs.  The function is idempotent and a no-op when the path is already
+/// correct.
+fn patch_fipsmodule_include(install_prefix: &Path) {
+    let ssl_dir = install_prefix.join("ssl");
+    let openssl_cnf = ssl_dir.join("openssl.cnf");
+    let fipsmodule_cnf = ssl_dir.join("fipsmodule.cnf");
+    let correct_include = format!(".include {}", fipsmodule_cnf.display());
+
+    // Tell Cargo to re-run this build script whenever openssl.cnf changes
+    // (e.g. after a nix build overwrites it with the production path).
+    println!("cargo:rerun-if-changed={}", openssl_cnf.display());
+
+    let Ok(cnf) = fs::read_to_string(&openssl_cnf) else {
+        return;
+    };
+
+    // Replace any `.include <something>fipsmodule.cnf` line with the correct path.
+    let new_cnf: String = cnf
+        .lines()
+        .map(|line| {
+            if line.trim_start().starts_with(".include") && line.contains("fipsmodule.cnf") {
+                correct_include.clone()
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Restore trailing newline if the original had one.
+    let new_cnf = if cnf.ends_with('\n') {
+        format!("{new_cnf}\n")
+    } else {
+        new_cnf
+    };
+
+    if new_cnf != cnf {
+        let _ = fs::write(&openssl_cnf, new_cnf);
+        println!(
+            "cargo:warning=Patched {} to use local fipsmodule.cnf",
+            openssl_cnf.display()
+        );
+    }
 }
 
 fn run_cmd(cmd: &mut Command, context: &str) -> Result<(), String> {

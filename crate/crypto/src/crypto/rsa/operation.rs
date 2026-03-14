@@ -6,6 +6,7 @@ use cosmian_kmip::{
     SafeBigInt,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -204,6 +205,7 @@ pub fn to_rsa_private_key(
 }
 
 pub fn create_rsa_key_pair(
+    vendor_id: &str,
     private_key_uid: &str,
     public_key_uid: &str,
     mut common_attributes: Attributes,
@@ -236,7 +238,7 @@ pub fn create_rsa_key_pair(
     check_rsa_mask_compliance(private_key_mask, public_key_mask)?;
 
     // recover tags and clean them up from the common attributes
-    let tags = common_attributes.remove_tags().unwrap_or_default();
+    let tags = common_attributes.remove_tags(vendor_id).unwrap_or_default();
     Attributes::check_user_tags(&tags)?;
 
     // Generate the RSA Key Pair with openssl
@@ -260,8 +262,8 @@ pub fn create_rsa_key_pair(
         Some(UniqueIdentifier::TextString(private_key_uid.to_owned()));
     // Add the tags
     let mut sk_tags = tags.clone();
-    sk_tags.insert("_sk".to_owned());
-    private_key_attributes.set_tags(sk_tags)?;
+    sk_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+    private_key_attributes.set_tags(vendor_id, sk_tags)?;
     // and set them on the object
     let Some(&mut KeyValue::Structure {
         ref mut attributes, ..
@@ -290,8 +292,8 @@ pub fn create_rsa_key_pair(
         Some(UniqueIdentifier::TextString(public_key_uid.to_owned()));
     // Add the tags
     let mut pk_tags = tags;
-    pk_tags.insert("_pk".to_owned());
-    public_key_attributes.set_tags(pk_tags)?;
+    pk_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
+    public_key_attributes.set_tags(vendor_id, pk_tags)?;
     // and set them on the object
     let Some(&mut KeyValue::Structure {
         ref mut attributes, ..
@@ -314,7 +316,10 @@ mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
-            extra::fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+            extra::{
+                fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+                tagging::VENDOR_ID_COSMIAN,
+            },
             kmip_attributes::Attributes,
         },
     };
@@ -323,9 +328,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_incorrect_mask() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()
@@ -342,6 +344,7 @@ mod tests {
         };
 
         let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
             "privkey01",
             "pubkey01",
             common_attributes,
@@ -369,6 +372,7 @@ mod tests {
         };
 
         let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
             "privkey02",
             "pubkey02",
             common_attributes,
@@ -381,9 +385,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_incorrect_mask_unrestricted() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()
@@ -398,6 +399,7 @@ mod tests {
         };
 
         let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
             "privkey01",
             "pubkey01",
             common_attributes,
@@ -421,6 +423,7 @@ mod tests {
         };
 
         let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
             "privkey02",
             "pubkey02",
             common_attributes,
@@ -433,9 +436,6 @@ mod tests {
 
     #[test]
     fn test_create_rsa_fips_mask() {
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         let common_attributes = Attributes {
             cryptographic_length: Some(2048),
             ..Attributes::default()
@@ -450,6 +450,7 @@ mod tests {
         };
 
         let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
             "privkey01",
             "pubkey01",
             common_attributes,

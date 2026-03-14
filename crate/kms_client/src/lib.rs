@@ -17,12 +17,14 @@ mod config;
 mod error;
 mod export_utils;
 mod file_utils;
+pub mod http_client;
 mod kms_rest_client;
 
 pub mod reexport {
-    pub use cosmian_http_client;
     pub use cosmian_kms_client_utils::{
         self,
         reexport::{cosmian_config_utils, cosmian_kmip, cosmian_kms_access},
     };
+
+    pub use crate::http_client as cosmian_http_client;
 }

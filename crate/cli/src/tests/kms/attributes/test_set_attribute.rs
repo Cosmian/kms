@@ -1,7 +1,7 @@
 use cosmian_kms_client::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
-        extra::VENDOR_ID_COSMIAN,
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_types::{CryptographicAlgorithm, LinkType, Tag, VendorAttribute},
     },
     reexport::cosmian_kms_client_utils::{
@@ -335,7 +335,7 @@ async fn check_set_delete_attributes(uid: &str, ctx: &TestsContext) -> KmsCliRes
 /// This function will return an error if any of the attribute operations (set, get, delete)
 /// fail or if the test KMS server fails to start.
 /// ```
-#[ignore = "too much verbosity"]
+#[ignore = "Too much verbosity"]
 #[tokio::test]
 async fn test_set_attribute() -> KmsCliResult<()> {
     // Create a test server

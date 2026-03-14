@@ -187,14 +187,14 @@ const ECVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Verify Signature
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="EC verify response">{res}</Card>
                 </div>
             )}

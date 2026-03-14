@@ -37,13 +37,34 @@ jobs:
     steps:
       - name: Nix installation
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
 
       - uses: actions/checkout@v6
         with:
           submodules: recursive
 
+      - name: Warm Nix store
+        run: |
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
+            dest="/tmp/$(basename "$url")"
+            # Build GitHub fallback URL from mirror URL
+            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack --name source "file://$dest"
+            rm -f "$dest"
+          done
+
       - name: Set up GPG
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@v7
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -53,13 +74,13 @@ jobs:
 
       - name: Package with GPG signature
         run: |
-          bash .github/scripts/nix.sh --profile release --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} --link ${{ matrix.link }} package
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
@@ -114,7 +135,7 @@ jobs:
           submodules: false
 
       - name: Download packaged artifact for this matrix
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -163,7 +184,7 @@ jobs:
             PACKAGE_PATTERN="${{ matrix.cpu-arch }}"
           fi
 
-          # Upload package files
+          # Upload package files (installer packages + server binary)
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             ./nix/signing-keys/cosmian-kms-public.asc \
             $RESULT_DIR/*${PACKAGE_PATTERN}*${{ matrix.package-type }}* \
@@ -171,12 +192,12 @@ jobs:
             cosmian@package.cosmian.com:${remote_dir}/
 
       - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
-            result-server-${{ matrix.features }}-${{ matrix.link }}/bin/cosmian-kms-server*
+            result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   tests:

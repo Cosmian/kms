@@ -1,9 +1,36 @@
+use std::fmt;
+
 use clap::Args;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, MaskGenerator, PaddingMethod},
     kmip_2_1::kmip_types::{CryptographicAlgorithm, DigitalSignatureAlgorithm, RecommendedCurve},
 };
 use serde::{Deserialize, Serialize};
+
+/// Selector for the built-in KMIP algorithm policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KmipPolicyId {
+    Default,
+    Custom,
+}
+
+impl KmipPolicyId {
+    pub const VARIANTS: &'static [Self] = &[Self::Default, Self::Custom];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "DEFAULT",
+            Self::Custom => "CUSTOM",
+        }
+    }
+}
+
+impl fmt::Display for KmipPolicyId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Args)]
 #[serde(default, deny_unknown_fields)]

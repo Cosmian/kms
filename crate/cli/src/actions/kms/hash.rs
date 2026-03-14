@@ -14,7 +14,7 @@ pub struct HashAction {
     /// Hashing algorithm (case insensitive)
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms hash --algorithm WRONG`
+    /// e.g. `ckms hash --algorithm WRONG`
     #[clap(
         long = "algorithm",
         short = 'a',

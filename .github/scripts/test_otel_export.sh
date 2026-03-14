@@ -496,12 +496,10 @@ EOF
 
   echo "Building KMS server (may take a while on cold caches)..."
   # Build first so the readiness wait doesn't time out while `cargo run` is compiling.
-  # shellcheck disable=SC2086
-  cargo build -p cosmian_kms_server $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
+  cargo build -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
 
   # Start the server with OTEL export enabled.
-  # shellcheck disable=SC2086
-  stdbuf -oL -eL cargo run -p cosmian_kms_server $RELEASE_FLAG ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms -- \
+  stdbuf -oL -eL cargo run -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms -- \
     --config "${KMS_CONF_PATH}" \
     >"${LOG_PATH}" 2>&1 &
 

@@ -35,4 +35,14 @@ fi
 
 systemctl daemon-reload >/dev/null 2>&1 || true
 
+# On removal and purge, clean up files that are not tracked by dpkg
+# (e.g. user-added branding overrides, OpenSSL libraries placed in the
+# Cosmian lib directory) and the binary itself.
+case "$1" in
+  remove | purge)
+    rm -f  /usr/sbin/cosmian_kms
+    rm -rf /usr/local/cosmian
+    ;;
+esac
+
 #DEBHELPER#

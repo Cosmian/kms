@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{cell::RefCell, str::FromStr};
 
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
@@ -26,6 +26,7 @@ use cosmian_kms_client_utils::{
             kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
         },
         kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyMaterial, KeyValue},
             kmip_objects::{
@@ -36,14 +37,14 @@ use cosmian_kms_client_utils::{
                 CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
                 DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-                GetAttributesResponse, ImportResponse, LocateResponse, RevokeResponse,
-                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
-                SignatureVerifyResponse, Validate, ValidateResponse,
+                GetAttributesResponse, ImportResponse, LocateResponse, Query, QueryResponse,
+                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-                LinkType, LinkedObjectIdentifier, OpaqueDataType, RecommendedCurve, Tag,
-                UniqueIdentifier,
+                LinkType, LinkedObjectIdentifier, OpaqueDataType, QueryFunction, RecommendedCurve,
+                Tag, UniqueIdentifier,
             },
             requests::{
                 build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -66,6 +67,54 @@ use x509_cert::{
     der::{Decode, DecodePem, Encode},
 };
 use zeroize::Zeroizing;
+
+// ── Vendor-id module-level state ──────────────────────────────────────────────
+// Stores the vendor identification string that the connected KMS server uses for
+// KMIP VendorAttribute operations.  Defaults to VENDOR_ID_COSMIAN ("cosmian")
+// and is overwritten by `set_vendor_id()` once the UI has queried the server.
+thread_local! {
+    static VENDOR_ID: RefCell<String> = RefCell::new(VENDOR_ID_COSMIAN.to_owned());
+}
+
+/// Returns the currently configured vendor identification string.
+fn get_vendor_id() -> String {
+    VENDOR_ID.with(|v| v.borrow().clone())
+}
+
+/// Set the vendor identification used for all KMIP `VendorAttribute` operations.
+///
+/// Call this once at UI startup after querying the KMS server's
+/// `QueryServerInformation` response via [`query_server_information_ttlv_request`].
+#[wasm_bindgen]
+pub fn set_vendor_id(vendor_id: &str) {
+    VENDOR_ID.with(|v| {
+        vendor_id.clone_into(&mut v.borrow_mut());
+    });
+}
+
+/// Build a KMIP `Query` TTLV request that asks the server for
+/// its `vendor_identification` (via `QueryServerInformation`).
+#[wasm_bindgen]
+pub fn query_server_information_ttlv_request() -> Result<JsValue, JsValue> {
+    let request = Query {
+        query_function: Some(vec![QueryFunction::QueryServerInformation]),
+    };
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Parse a KMIP `QueryResponse` TTLV string and return the `vendor_identification`
+/// reported by the server, or `"cosmian"` when absent.
+#[wasm_bindgen]
+pub fn parse_query_server_information_response(response: &str) -> Result<JsValue, JsValue> {
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let qr: QueryResponse = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let vendor_id = qr
+        .vendor_identification
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned());
+    Ok(JsValue::from_str(&vendor_id))
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
 struct AlgoOption {
@@ -158,16 +207,10 @@ fn list_symmetric_algorithms() -> Vec<AlgoOption> {
 fn list_ec_algorithms() -> Vec<AlgoOption> {
     // Build from client_utils' Curve enum to ensure feature gating consistency
     #[allow(unused_mut)]
-    let mut curves: Vec<Curve> = vec![
-        Curve::NistP224,
-        Curve::NistP256,
-        Curve::NistP384,
-        Curve::NistP521,
-    ];
+    let mut curves: Vec<Curve> = vec![Curve::NistP256, Curve::NistP384, Curve::NistP521];
     #[cfg(feature = "non-fips")]
     {
-        curves.insert(0, Curve::NistP192);
-        curves.push(Curve::Secp224k1);
+        curves.insert(0, Curve::Secp224k1);
         curves.push(Curve::Secp256k1);
         curves.push(Curve::X25519);
         curves.push(Curve::Ed25519);
@@ -180,9 +223,6 @@ fn list_ec_algorithms() -> Vec<AlgoOption> {
         .map(|c| {
             // Value must be kebab-case identifier that `Curve::from_str` accepts
             let (value, label): (&'static str, &'static str) = match c {
-                #[cfg(feature = "non-fips")]
-                Curve::NistP192 => ("nist-p192", "NIST P-192"),
-                Curve::NistP224 => ("nist-p224", "NIST P-224"),
                 Curve::NistP256 => ("nist-p256", "NIST P-256"),
                 Curve::NistP384 => ("nist-p384", "NIST P-384"),
                 Curve::NistP521 => ("nist-p521", "NIST P-521"),
@@ -487,6 +527,8 @@ pub fn locate_ttlv_request(
     private_key_id: Option<String>,
     certificate_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let cryptographic_algorithm: Option<CryptographicAlgorithm> = cryptographic_algorithm
         .as_deref()
         .map(|s| CryptographicAlgorithm::from_str(s).map_err(|e| JsValue::from(e.to_string())))
@@ -507,6 +549,7 @@ pub fn locate_ttlv_request(
         .transpose()?;
 
     let request = build_locate_request(
+        vendor_id,
         tags,
         cryptographic_algorithm,
         cryptographic_length,
@@ -537,8 +580,11 @@ pub fn create_rsa_key_pair_ttlv_request(
     sensitive: bool,
     wrapping_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
     let request: CreateKeyPair = create_rsa_key_pair_request(
+        vendor_id,
         private_key_id,
         tags,
         cryptographic_length,
@@ -560,11 +606,14 @@ pub fn create_ec_key_pair_ttlv_request(
     sensitive: bool,
     wrapping_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
     let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
         .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
         .into();
     let request: CreateKeyPair = create_ec_key_pair_request(
+        vendor_id,
         private_key_id,
         tags,
         recommended_curve,
@@ -582,7 +631,7 @@ pub fn parse_create_keypair_ttlv_response(response: &str) -> Result<JsValue, JsV
 }
 
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 pub fn create_sym_key_ttlv_request(
     key_id: Option<String>,
     tags: Vec<String>,
@@ -592,6 +641,8 @@ pub fn create_sym_key_ttlv_request(
     wrap_key_id: Option<String>,
     wrap_key_b64: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let algorithm = SymmetricAlgorithm::from_str(symmetric_algorithm)
         .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {e}")))?;
     let (number_of_bits, key_bytes, algorithm) =
@@ -601,6 +652,7 @@ pub fn create_sym_key_ttlv_request(
 
     if let Some(key_bytes) = key_bytes {
         let mut object = create_symmetric_key_kmip_object(
+            vendor_id,
             key_bytes.as_slice(),
             &Attributes {
                 cryptographic_algorithm: Some(algorithm),
@@ -612,15 +664,17 @@ pub fn create_sym_key_ttlv_request(
             let attributes = object.attributes_mut().map_err(|e| {
                 JsValue::from_str(&format!("Error creating symmetric key attributes: {e}"))
             })?;
-            attributes.set_wrapping_key_id(wrapping_key_id);
+            attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
         }
-        let request = import_object_request(key_id, object, None, false, false, &tags)
-            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+        let request =
+            import_object_request(vendor_id, key_id, object, None, false, false, &tags)
+                .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
         let key_id = key_id.map(UniqueIdentifier::TextString);
         let request = symmetric_key_create_request(
+            vendor_id,
             key_id,
             number_of_bits,
             algorithm,
@@ -644,11 +698,14 @@ pub fn create_secret_data_ttlv_request(
     sensitive: bool,
     wrap_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let secret_data_type = SecretDataType::from_str(secret_type)
         .map_err(|e| JsValue::from_str(&format!("Invalid secret data type: {e}")))?;
 
     if let Some(secret_value) = secret_value {
         let mut object = create_secret_data_kmip_object(
+            vendor_id,
             secret_value.as_bytes(),
             secret_data_type,
             &Attributes::default(),
@@ -658,17 +715,24 @@ pub fn create_secret_data_ttlv_request(
             let attributes = object.attributes_mut().map_err(|e| {
                 JsValue::from_str(&format!("Error creating secret data attributes: {e}"))
             })?;
-            attributes.set_wrapping_key_id(wrapping_key_id);
+            attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
         }
-        let request = import_object_request(secret_id, object, None, false, false, &tags)
-            .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
+        let request =
+            import_object_request(vendor_id, secret_id, object, None, false, false, &tags)
+                .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
 
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
         let secret_id = secret_id.map(UniqueIdentifier::TextString);
-        let request = secret_data_create_request(secret_id, &tags, sensitive, wrap_key_id.as_ref())
-            .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
+        let request = secret_data_create_request(
+            vendor_id,
+            secret_id,
+            &tags,
+            sensitive,
+            wrap_key_id.as_ref(),
+        )
+        .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     }
@@ -691,6 +755,8 @@ pub fn create_opaque_object_ttlv_request(
     _sensitive: bool,
     wrap_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     // Allow empty opaque object when value not provided
     #[allow(clippy::redundant_closure_for_method_calls)]
     let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
@@ -704,10 +770,10 @@ pub fn create_opaque_object_ttlv_request(
         let attributes = object.attributes_mut().map_err(|e| {
             JsValue::from_str(&format!("Error creating opaque object attributes: {e}"))
         })?;
-        attributes.set_wrapping_key_id(wrapping_key_id);
+        attributes.set_wrapping_key_id(vendor_id, wrapping_key_id);
     }
 
-    let request = import_object_request(object_id, object, None, false, false, &tags)
+    let request = import_object_request(vendor_id, object_id, object, None, false, false, &tags)
         .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
     let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
@@ -1199,6 +1265,8 @@ pub fn import_ttlv_request(
     key_usage: Option<Vec<String>>,
     wrapping_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let key_usage = key_usage.map(|vec| {
         vec.into_iter()
             .filter_map(|s| s.parse::<KeyUsage>().ok())
@@ -1208,6 +1276,7 @@ pub fn import_ttlv_request(
         ImportKeyFormat::from_str(key_format).map_err(|e| JsValue::from(e.to_string()))?;
 
     let (object, import_attributes) = prepare_key_import_elements(
+        vendor_id,
         &key_usage,
         &key_format,
         key_bytes,
@@ -1218,6 +1287,7 @@ pub fn import_ttlv_request(
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
     let request = import_object_request(
+        vendor_id,
         unique_identifier,
         object,
         Some(import_attributes),
@@ -1266,7 +1336,10 @@ pub fn create_cc_master_keypair_ttlv_request(
     sensitive: bool,
     wrapping_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let request = build_create_covercrypt_master_keypair_request(
+        vendor_id,
         access_structure,
         tags,
         sensitive,
@@ -1286,7 +1359,10 @@ pub fn create_cc_user_key_ttlv_request(
     sensitive: bool,
     wrapping_key_id: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let request = build_create_covercrypt_usk_request(
+        vendor_id,
         access_policy,
         master_secret_key_id,
         tags,
@@ -1358,6 +1434,8 @@ pub fn import_certificate_ttlv_request(
     tags: Vec<String>,
     key_usage: Option<Vec<String>>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let input_format =
         CertificateInputFormat::from_str(input_format).map_err(|e| JsValue::from(e.to_string()))?;
     let key_usage: Option<Vec<KeyUsage>> = key_usage.map(|vec| {
@@ -1372,6 +1450,7 @@ pub fn import_certificate_ttlv_request(
             let object: Object = read_object_from_json_ttlv_bytes(&certificate_bytes)
                 .map_err(|e| JsValue::from(e.to_string()))?;
             import_object_request(
+                vendor_id,
                 certificate_id,
                 object,
                 attributes,
@@ -1390,6 +1469,7 @@ pub fn import_certificate_ttlv_request(
                     .map_err(|e| JsValue::from(e.to_string()))?,
             });
             import_object_request(
+                vendor_id,
                 certificate_id,
                 object,
                 attributes,
@@ -1408,6 +1488,7 @@ pub fn import_certificate_ttlv_request(
                     .map_err(|e| JsValue::from(e.to_string()))?,
             });
             import_object_request(
+                vendor_id,
                 certificate_id,
                 object,
                 attributes,
@@ -1431,6 +1512,7 @@ pub fn import_certificate_ttlv_request(
                 );
             }
             import_object_request(
+                vendor_id,
                 certificate_id,
                 private_key,
                 Some(attributes),
@@ -1631,9 +1713,12 @@ pub fn certify_ttlv_request(
     certificate_extensions: Option<Vec<u8>>,
     tags: Vec<String>,
 ) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
     let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
         .map_err(|e| JsValue::from(e.to_string()))?;
     let request = build_certify_request(
+        vendor_id,
         &certificate_id,
         &certificate_signing_request_format,
         &certificate_signing_request,

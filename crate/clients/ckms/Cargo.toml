@@ -1,0 +1,274 @@
+[package]
+name = "ckms"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["ckms", "kms", "cosmian"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = """
+Command Line Interface used to manage the Cosmian KMS server.
+
+If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
+or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
+"""
+
+[[bin]]
+name = "ckms"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[features]
+non-fips = ["cosmian_kms_cli/non-fips", "test_kms_server/non-fips"]
+
+[dependencies]
+base64 = { workspace = true }
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cosmian_config_utils = { workspace = true }
+cosmian_kms_cli = { path = "../../cli", version = "5.17.0" }
+cosmian_logger = { workspace = true }
+csv = "1.3"
+der = { workspace = true, features = ["pem"] }
+hex = { workspace = true }
+dialoguer = { version = "0.11", default-features = false, features = [
+  "fuzzy-select",
+  "password",
+  "editor",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+openssl = { workspace = true }
+predicates = "3.1"
+regex = { version = "1.11", default-features = false }
+tempfile = { workspace = true }
+test_kms_server = { path = "../../test_kms_server" }
+x509-parser = { workspace = true, features = ["verify"] }
+
+# ------------------------------------------------------------------------------
+# START DEBIAN PACKAGING
+[package.metadata.deb]
+maintainer = "Cosmian support team <tech@cosmian.com>"
+copyright = "2026, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../../LICENSE", "0"]
+changelog = "../../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+]
+features = ["non-fips"]
+
+[package.metadata.deb.variants.fips]
+features = []
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+]
+
+[package.metadata.deb.variants.fips-dynamic]
+features = []
+depends = ""
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/ckms/lib/libssl.so.3",
+    "555",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/ckms/lib/libcrypto.so.3",
+    "555",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
+    "usr/local/cosmian/ckms/lib/ossl-modules/fips.so",
+    "555",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/openssl.cnf",
+    "usr/local/cosmian/ckms/lib/ssl/openssl.cnf",
+    "644",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
+    "usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf",
+    "644",
+  ],
+]
+
+[package.metadata.deb.variants.non-fips-dynamic]
+features = ["non-fips"]
+depends = ""
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+  [
+    "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/libcosmian_pkcs11.so",
+    "usr/local/lib/",
+    "555",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/ckms/lib/libssl.so.3",
+    "555",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/ckms/lib/libcrypto.so.3",
+    "555",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
+    "usr/local/cosmian/ckms/lib/ossl-modules/legacy.so",
+    "555",
+  ],
+]
+
+# END DEBIAN PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START RPM PACKAGING
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+]
+auto-req = "no" # do not try to discover .so dependencies
+require-sh = true
+features = ["non-fips"]
+
+[package.metadata.generate-rpm.variants.fips]
+license = "BUSL-1.1"
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+]
+auto-req = "no"
+require-sh = true
+features = []
+
+[package.metadata.generate-rpm.variants.fips-dynamic]
+license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+  { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
+  { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
+  { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/fips.so", mode = "555" },
+  { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf", mode = "644" },
+]
+auto-req = "no"
+require-sh = true
+features = []
+
+[package.metadata.generate-rpm.variants.non-fips-dynamic]
+license = "BUSL-1.1"
+# Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
+assets = [
+  { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/legacy.so", mode = "555" },
+]
+auto-req = "no"
+require-sh = true
+features = ["non-fips"]
+
+# END RPM PACKAGING
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# START WINDOWS/macOS INSTALLER PACKAGING (cargo-packager)
+# Windows NSIS:  cargo packager --verbose --formats nsis --release
+# macOS   DMG:   cargo packager --verbose --formats dmg  --release
+[package.metadata.packager]
+product-name = "Cosmian KMS CLI"
+long-description = "Command-line interface to manage the Cosmian KMS server, including a PKCS#11 provider."
+license-file = "../../../LICENSE"
+identifier = "com.cosmian.kms.cli"
+formats = ["nsis", "dmg"]
+
+[[package.metadata.packager.resources]]
+src = "../../../README.md"
+target = "README.md"
+
+# PKCS#11 provider DLL (Windows only).
+# On macOS, cargo-packager only builds the DMG format; the dylib is embedded
+# into the .app bundle by package_dmg.sh after cargo-packager creates the app,
+# following the same pattern used for the KMS server's OpenSSL modules.
+# To avoid a missing-file error when cargo-packager runs on macOS, a zero-byte
+# placeholder is created by package_dmg.sh before invoking cargo-packager and
+# removed from the final .app bundle before DMG creation.
+[[package.metadata.packager.resources]]
+src = "target/release/cosmian_pkcs11.dll"
+target = "cosmian_pkcs11.dll"
+
+[package.metadata.packager.nsis]
+display-language-selector = false
+installer-mode = "currentUser"
+languages = ["English"]
+
+# END WINDOWS/macOS INSTALLER PACKAGING
+# ------------------------------------------------------------------------------

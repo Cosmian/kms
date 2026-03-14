@@ -3,6 +3,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_data_structures::{KeyBlock, KeyValue},
             kmip_objects::{Object, ObjectType},
             kmip_types::LinkType,
@@ -61,8 +62,7 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
              oracle, user: {user}"
         );
         unwrapping_key_uid =
-            unwrap_using_encryption_oracle(object_key_block, kms, &unwrapping_key_uid, prefix)
-                .await?;
+            unwrap_using_crypto_oracle(object_key_block, kms, &unwrapping_key_uid, prefix).await?;
     } else {
         debug!(
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
@@ -108,7 +108,7 @@ async fn unwrap_using_kms(
             let private_key_uid = attributes.get_link(LinkType::PrivateKeyLink);
             let sk_id = if let Some(private_key_uid) = private_key_uid {
                 private_key_uid.to_string()
-            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix("_pk") {
+            } else if let Some(stripped) = unwrapping_key_uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY) {
                 stripped.to_owned()
             } else {
                 kms_bail!(
@@ -168,10 +168,10 @@ async fn unwrap_using_kms(
     Ok(())
 }
 
-/// Unwrap a key with a wrapping key using an encryption oracle
+/// Unwrap a key with a wrapping key using a crypto oracle
 /// If the unwrapping key is a public key, it will be stripped of the "_pk" suffix
 /// and the stripped version will be replaced.
-async fn unwrap_using_encryption_oracle(
+async fn unwrap_using_crypto_oracle(
     object_key_block: &mut KeyBlock,
     kms: &KMS,
     unwrapping_key_uid: &str,
@@ -179,7 +179,7 @@ async fn unwrap_using_encryption_oracle(
 ) -> KResult<String> {
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
-        .strip_suffix("_pk")
+        .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
         .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
 
     // Permission checks on HSM keys are not performed during unwrapping.
@@ -196,13 +196,11 @@ async fn unwrap_using_encryption_oracle(
     };
 
     // decrypt the wrapped key
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let plaintext = encryption_oracle
+    let plaintext = crypto_oracle
         .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
         .await?;
 

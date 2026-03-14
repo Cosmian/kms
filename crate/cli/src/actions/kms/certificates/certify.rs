@@ -49,7 +49,7 @@ use crate::{
 ///
 /// 1. Generate a self-signed certificate with 10 years validity using curve (NIST) P-256
 /// ```sh
-/// cosmian kms certificates certify --certificate-id acme_root_ca \
+/// ckms certificates certify --certificate-id acme_root_ca \
 /// --generate-key-pair --algorithm nist-p256  \
 /// --subject-name "CN=ACME Root CA,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
 /// --days 3650
@@ -69,7 +69,7 @@ use crate::{
 /// ```
 ///
 /// ```sh
-/// cosmian kms -- certificates certify --certificate-id acme_intermediate_ca \
+/// ckms -- certificates certify --certificate-id acme_intermediate_ca \
 /// --issuer-private-key-id 1bba3cfa-4ecb-47ad-a9cf-7a2c236e25a8 \
 /// --generate-key-pair --algorithm nist-p256  \
 /// --subject-name "CN=ACME S/MIME intermediate,OU=IT,O=ACME,L=New York,ST=New York,C=US" \
@@ -211,6 +211,7 @@ impl CertifyAction {
             .transpose()?;
 
         let certify_request = build_certify_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &self.certificate_id,
             &Some(self.certificate_signing_request_format.clone()),
             &certificate_signing_request_bytes,

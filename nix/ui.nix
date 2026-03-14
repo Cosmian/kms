@@ -181,10 +181,14 @@ let
     '';
   };
 
-  # Build the UI using buildNpmPackage for proper dependency management
-  uiBuild = pkgs.buildNpmPackage {
+  # Build the UI pnpm dependency store for reproducible offline installs
+  uiBuild = stdenv.mkDerivation {
     pname = "cosmian-kms-ui-deps-${finalVariant}";
     inherit version;
+
+    # Use Node.js 22 to satisfy engine requirements of vite@7 and eslint-visitor-keys@5
+    # (both require node >=20.19 / >=22.12, while the nixpkgs default nodejs_20 is 20.18)
+    nodejs = pkgs.nodejs_22;
 
     src = lib.cleanSourceWith {
       src = ../ui;
@@ -196,25 +200,43 @@ let
         baseName != "node_modules" && baseName != "dist";
     };
 
-    # Read NPM dependencies hash from external file
-    npmDepsHash =
-      let
-        placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-        hashFile = ../nix/expected-hashes + "/ui.npm.sha256";
-      in
-      if builtins.pathExists hashFile then
-        let
-          raw = builtins.readFile hashFile;
-          trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
-        in
-        assert trimmed != placeholder && trimmed != "";
-        trimmed
-      else
-        builtins.throw ("Expected UI npm deps hash file not found: " + hashFile);
+    # pnpmDeps is read by pnpm_9.configHook to set up the offline virtual store
+    pnpmDeps = pkgs.pnpm_9.fetchDeps {
+      pname = "cosmian-kms-ui-deps-${finalVariant}";
+      inherit version;
 
-    # eslint-plugin-react-hooks@7 declares peer eslint@^9 but works fine with eslint@10.
-    # Pass --legacy-peer-deps so npm does not try to reach the network to resolve the conflict.
-    npmFlags = [ "--legacy-peer-deps" ];
+      src = lib.cleanSourceWith {
+        src = ../ui;
+        filter =
+          path: _type:
+          let
+            baseName = baseNameOf path;
+          in
+          baseName != "node_modules" && baseName != "dist";
+      };
+
+      hash =
+        let
+          placeholder = "sha256-DDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          platformSuffix = if stdenv.hostPlatform.isDarwin then "darwin" else "linux";
+          hashFile = ../nix/expected-hashes + "/ui.pnpm." + platformSuffix + ".sha256";
+        in
+        if builtins.pathExists hashFile then
+          let
+            raw = builtins.readFile hashFile;
+            trimmed = lib.replaceStrings [ "\n" "\r" " " "\t" ] [ "" "" "" "" ] raw;
+          in
+          assert trimmed != placeholder && trimmed != "";
+          trimmed
+        else
+          builtins.throw ("Expected UI pnpm deps hash file not found: " + hashFile);
+    };
+
+    # configHook runs pnpm install --offline --frozen-lockfile, creating node_modules
+    nativeBuildInputs = [
+      pkgs.nodejs_22
+      pkgs.pnpm_9.configHook
+    ];
 
     # Disable build phase - we only want dependencies installed
     dontBuild = true;
@@ -222,7 +244,6 @@ let
     installPhase = ''
       mkdir -p $out
       cp -r node_modules $out/
-      cp package*.json $out/
     '';
   };
 
@@ -239,7 +260,10 @@ stdenv.mkDerivation {
   };
 
   # Vite requires Node >= 20.19; use a recent Node to avoid warnings
-  nativeBuildInputs = with pkgs; [ nodejs_22 ];
+  nativeBuildInputs = with pkgs; [
+    nodejs_22
+    pnpm_9
+  ];
 
   buildPhase = ''
       export HOME=$TMPDIR
@@ -279,9 +303,7 @@ stdenv.mkDerivation {
     export default init;
     EOF
 
-      # Avoid depending on pnpm being present in the Nix build env.
-      # Use npm directly to run TypeScript + Vite build.
-      npm run build
+      pnpm run build
 
       # Return to root directory after build
       cd ..

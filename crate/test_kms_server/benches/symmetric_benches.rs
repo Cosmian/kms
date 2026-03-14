@@ -12,7 +12,7 @@ use cosmian_kms_client::{
     KmsClient, KmsClientError,
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
-        extra::BulkData,
+        extra::{BulkData, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, Decrypt, Encrypt},
@@ -116,7 +116,7 @@ fn create_symmetric_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::SymmetricKey),
         ..Attributes::default()
     };
-    attributes.set_tags(tags)?;
+    attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes,
@@ -323,7 +323,7 @@ pub(crate) fn bench_decrypt(
 
     let mut group = c.benchmark_group("Symmetric encryption");
     group.bench_function(
-        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)",),
+        format!("{name} {num_bits}bit decryption of {num_ciphertexts} ciphertext(s)"),
         |b| {
             b.to_async(&runtime).iter(|| async {
                 let _ = decrypt(

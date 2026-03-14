@@ -155,7 +155,7 @@ const ImportAzureKekForm: React.FC = () => {
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading}
-                                className="w-full text-white font-medium">
+                                className="w-full text-white font-medium" data-testid="submit-btn">
                             Import Azure KEK
                         </Button>
                     </Form.Item>
@@ -163,7 +163,7 @@ const ImportAzureKekForm: React.FC = () => {
             </Form>
 
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Import Response">{res}</Card>
                 </div>
             )}

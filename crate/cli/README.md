@@ -4,12 +4,10 @@ This command line interface (CLI) crate is a component primarily used for testin
 
 ## Important Note
 
-⚠️ **The main Cosmian CLI is now maintained in a separate repository**: <https://github.com/Cosmian/cli>
-
 For production use, please install the CLI from:
 
-- [Cosmian packages](https://package.cosmian.com/cli/)
-- Cargo: `cargo install cosmian_cli`
+- [Cosmian packages](https://package.cosmian.com/kms/)
+- Cargo: `cargo install ckms`
 - [GitHub releases](https://github.com/Cosmian/cli/releases)
 
 ## Current Status

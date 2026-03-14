@@ -74,7 +74,7 @@ pub(crate) async fn rekey_keypair(
         #[expect(clippy::used_underscore_binding)]
         #[cfg(feature = "non-fips")]
         if Some(CryptographicAlgorithm::CoverCrypt) == _attributes.cryptographic_algorithm {
-            let action = rekey_edit_action_from_attributes(_attributes)?;
+            let action = rekey_edit_action_from_attributes(kms.vendor_id(), _attributes)?;
             return Box::pin(rekey_keypair_cover_crypt(
                 kms,
                 Covercrypt::default(),

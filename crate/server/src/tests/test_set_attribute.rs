@@ -29,6 +29,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::{Attribute, Attributes},
         kmip_operations::{DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute},
         kmip_types::{
@@ -93,6 +94,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let sym_key_object = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         symmetric_key.as_slice(),
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

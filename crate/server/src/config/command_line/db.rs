@@ -15,6 +15,44 @@ use crate::{
 
 pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
+/// Supported database backends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseType {
+    Sqlite,
+    Postgresql,
+    Mysql,
+    #[cfg(feature = "non-fips")]
+    RedisFindex,
+}
+
+impl DatabaseType {
+    pub const FIPS_VARIANTS: &'static [Self] = &[Self::Sqlite, Self::Postgresql, Self::Mysql];
+    #[cfg(feature = "non-fips")]
+    pub const NON_FIPS_VARIANTS: &'static [Self] = &[
+        Self::Sqlite,
+        Self::Postgresql,
+        Self::Mysql,
+        Self::RedisFindex,
+    ];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgresql => "postgresql",
+            Self::Mysql => "mysql",
+            #[cfg(feature = "non-fips")]
+            Self::RedisFindex => "redis-findex",
+        }
+    }
+}
+
+impl Display for DatabaseType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Configuration for the database
 #[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]

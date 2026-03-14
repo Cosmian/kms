@@ -29,6 +29,7 @@ repos:
             --disable=MD046,
             --fix,
           ]
+        exclude: cli_documentation/docs/cli/main_commands.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
@@ -41,7 +42,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/cli/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|crate/cli/src/tests/kms/shared/export_import.rs|nix/signing-keys/cosmian-kms-public.asc|sbom/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -72,7 +73,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ui/public
+        exclude: ui/public|cli_documentation/docs/pkcs11/images
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals
@@ -91,7 +92,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/cli/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests|crate/cli/src/tests/kms/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs
+        exclude: test_data|documentation/docs|crate/clap/src/tests/kms/google_cmd/identities.rs|crate/clients/ckms/src/tests/kms/google_cmd/identities.rs|crate/server/src/tests|crate/clap/src/tests/kms/shared/export_import.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/cli/src/tests/kms/shared/export_import.rs|crate/cli/src/tests/kms/google_cmd/identities.rs
 
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
@@ -160,10 +161,21 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
+      - id: clippy-all-targets-all-features
+      - id: clippy-all-targets
       - id: docker-compose-up
 
   - repo: local
     hooks:
+      - id: renew-ckms-markdown
+        name: renew ckms markdown docs
+        description: |
+          Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md.
+        entry: bash .github/scripts/renew_ckms_markdown.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+
       # Remove folders result*
       - id: clean-result-folders
         name: Clean result* folders
@@ -180,12 +192,20 @@ repos:
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
+      - id: ui-e2e
+        name: UI end-to-end
+        entry: bash .github/scripts/test_ui.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
         entry: bash .github/scripts/test_sqlite.sh --variant fips
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
@@ -201,13 +221,15 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
-      - id: nix-cargo-test-fips
-        name: Nix cargo test (sqlite fips)
-        entry: bash .github/scripts/nix.sh --variant fips test sqlite
+      - id: nix-redis-cargo-test-non-fips
+        name: Nix cargo test (redis non-fips)
+        entry: bash .github/scripts/nix.sh --variant non-fips test redis
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: nix-cargo-test-non-fips
         name: Nix cargo test (sqlite non-fips)
@@ -223,9 +245,15 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: renew-server-doc
-        name: renew server cli doc
+        name: renew server docs (CLI help + configuration file)
+        description: |
+          Build cosmian_kms (non-fips) and regenerate:
+            - documentation/docs/server_cli.md from --help
+            - documentation/docs/server_configuration_file.md from --print-default-config
+            - pkg/kms.toml and crate/server/kms_template.toml
         entry: bash .github/scripts/renew_server_doc.sh
         language: system
         types: [rust]
@@ -237,8 +265,6 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
-      - id: clippy-all-targets-all-features
-      - id: clippy-all-targets
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 

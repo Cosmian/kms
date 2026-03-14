@@ -10,4 +10,13 @@ if has_systemd; then
   systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
+case "$1" in
+0)
+  # erase: remove files not tracked by rpm (user branding overrides,
+  # custom OpenSSL libraries, etc.) and the binary itself.
+  rm -f  /usr/sbin/cosmian_kms
+  rm -rf /usr/local/cosmian
+  ;;
+esac
+
 exit 0

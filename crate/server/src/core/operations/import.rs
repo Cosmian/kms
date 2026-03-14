@@ -7,6 +7,10 @@ use cosmian_kms_server_database::reexport::{
         self,
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
+            extra::tagging::{
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PRIVATE_KEY,
+                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+            },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
             kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
@@ -25,13 +29,14 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
 use crate::{
     core::{
         KMS,
+        operations::validate::verify_crls,
         retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -44,7 +49,7 @@ use crate::{
 pub(crate) async fn import(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
     trace!("Entering import KMIP operation: {}", request);
@@ -65,17 +70,38 @@ pub(crate) async fn import(
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
     if let Some(users) = privileged_users {
         let has_permission = user_has_permission(
-            owner,
+            user,
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
         )
         .await?;
 
-        if !has_permission && !users.iter().any(|u| u == owner) {
+        if !has_permission && !users.iter().any(|u| u == user) {
             kms_bail!(KmsError::Unauthorized(
                 "User does not have create access-right.".to_owned()
             ))
+        }
+    }
+
+    // When replace_existing is requested with an explicit UID, verify the caller owns the
+    // target object. Without this check, any user with Create rights could overwrite another
+    // user's object. The ownership check must happen before any processing or cache mutation.
+    if request.replace_existing.unwrap_or(false) {
+        if let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty()) {
+            if let Some(existing) = kms
+                .database
+                .retrieve_objects(uid_str)
+                .await?
+                .values()
+                .next()
+            {
+                if existing.owner() != user {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User '{user}' does not own object '{uid_str}' and cannot replace it"
+                    )));
+                }
+            }
         }
     }
 
@@ -85,7 +111,7 @@ pub(crate) async fn import(
     let mut request = request;
     let now = time_normalize()?;
     let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-    let desired_state = if activation_allows_active {
+    let mut desired_state = if activation_allows_active {
         debug!(
             "Import: activation_date={:?} <= now, setting state to Active",
             request.attributes.activation_date
@@ -95,6 +121,37 @@ pub(crate) async fn import(
         debug!("Import: no activation_date or future date, setting state to PreActive");
         State::PreActive
     };
+
+    // For Active certificates, check CRL revocation status.
+    // If revoked, transition directly to Compromised instead of Active.
+    if desired_state == State::Active && request.object.object_type() == ObjectType::Certificate {
+        if let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+            certificate_value,
+            ..
+        }) = &request.object
+        {
+            if let Ok(cert) = X509::from_der(certificate_value) {
+                match verify_crls(vec![cert]).await {
+                    Err(KmsError::Certificate(_)) => {
+                        debug!(
+                            "Import: certificate is revoked per CRL check, \
+                             setting state to Compromised"
+                        );
+                        desired_state = State::Compromised;
+                    }
+                    Err(e) => {
+                        // Network or other transient errors: log and proceed with Active
+                        warn!(
+                            "Import: CRL check could not be completed ({e}), \
+                             proceeding with {desired_state:?} state"
+                        );
+                    }
+                    Ok(_) => {}
+                }
+            }
+        }
+    }
+
     request.attributes.state = Some(desired_state);
     if let Ok(object_attributes) = request.object.attributes_mut() {
         object_attributes.state = Some(desired_state);
@@ -102,12 +159,12 @@ pub(crate) async fn import(
 
     // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
-        ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, owner)).await?,
-        ObjectType::Certificate => process_certificate(request)?,
-        ObjectType::PublicKey => Box::pin(process_public_key(kms, request, owner)).await?,
-        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, owner)).await?,
-        ObjectType::SecretData => Box::pin(process_secret_data(kms, request, owner)).await?,
-        ObjectType::OpaqueObject => process_opaque_object(request)?,
+        ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, user)).await?,
+        ObjectType::Certificate => process_certificate(kms.vendor_id(), request)?,
+        ObjectType::PublicKey => Box::pin(process_public_key(kms, request, user)).await?,
+        ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, user)).await?,
+        ObjectType::SecretData => Box::pin(process_secret_data(kms, request, user)).await?,
+        ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -115,7 +172,7 @@ pub(crate) async fn import(
         }
     };
     // execute the operations
-    kms.database.atomic(owner, &operations).await?;
+    kms.database.atomic(user, &operations).await?;
     // return the uid
     debug!("Imported object with uid: {}", uid);
     Ok(ImportResponse {
@@ -126,9 +183,13 @@ pub(crate) async fn import(
 /// If the user specified tags, we will use these and remove them from the request.
 /// else we will use the tags with the object attributes
 /// If no tags are found, an empty set is returned
-pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> HashSet<String> {
+pub(super) fn recover_tags(
+    vendor_id: &str,
+    request_attributes: &Attributes,
+    object: &Object,
+) -> HashSet<String> {
     // extract the tags from the request attributes
-    let mut tags = request_attributes.get_tags();
+    let mut tags = request_attributes.get_tags(vendor_id);
     if !tags.is_empty() {
         // remove system tags starting with '_'
         tags.retain(|t| !t.starts_with('_'));
@@ -141,7 +202,7 @@ pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> 
             ..
         }) = key_block.key_value.as_ref()
         {
-            return attributes.get_tags();
+            return attributes.get_tags(vendor_id);
         }
     }
     HashSet::new()
@@ -150,7 +211,7 @@ pub(super) fn recover_tags(request_attributes: &Attributes, object: &Object) -> 
 pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -164,12 +225,12 @@ pub(super) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // Tag the object as a symmetric key
-    let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_kk".to_owned());
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
@@ -179,7 +240,7 @@ pub(super) async fn process_symmetric_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
@@ -225,7 +286,7 @@ pub(super) async fn process_symmetric_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -244,14 +305,15 @@ pub(super) async fn process_symmetric_key(
 }
 
 pub(super) fn process_certificate(
+    vendor_id: &str,
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Tag the object as a certificate
-    let mut tags = recover_tags(&request.attributes, &request.object);
-    tags.insert("_cert".to_owned());
+    let mut tags = recover_tags(vendor_id, &request.attributes, &request.object);
+    tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
 
     // The specification says that this should be DER bytes
     let certificate_der_bytes = match request.object {
@@ -286,7 +348,7 @@ pub(super) fn process_certificate(
     // Set Certificate Length as the DER length, per KMIP guidance
     attributes.certificate_length = i32::try_from(certificate_der_bytes.len()).ok();
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(vendor_id, tags.clone())?;
 
     // Merge the object attributes with the request attributes without overwriting
     // Certificates do not hold attributes at this stage
@@ -320,7 +382,7 @@ pub(super) fn process_certificate(
 pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -329,13 +391,13 @@ pub(super) async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, owner).await?;
+            unwrap_object(&mut object, kms, user).await?;
         }
     }
 
     // Tag the object as a public key
-    let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_pk".to_owned());
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
     let uid = match request.unique_identifier.to_string() {
@@ -418,7 +480,7 @@ pub(super) async fn process_public_key(
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
@@ -440,7 +502,7 @@ pub(super) async fn process_public_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -461,7 +523,7 @@ pub(super) async fn process_public_key(
 pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Whether the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -469,7 +531,7 @@ pub(super) async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // PKCS12 has its own processing
@@ -477,7 +539,7 @@ pub(super) async fn process_private_key(
         // PKCS#12 contains more than just a private key, and performs specific processing
         return Box::pin(process_pkcs12(
             kms,
-            owner,
+            user,
             &request.unique_identifier,
             object,
             request.attributes,
@@ -487,8 +549,8 @@ pub(super) async fn process_private_key(
     }
 
     // Tag the object as a private key
-    let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_sk".to_owned());
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
     let uid = match request.unique_identifier.to_string() {
@@ -607,7 +669,7 @@ pub(super) async fn process_private_key(
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), tags.clone())?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
@@ -629,7 +691,7 @@ pub(super) async fn process_private_key(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -670,7 +732,7 @@ fn single_operation(
 
 async fn process_pkcs12(
     kms: &KMS,
-    owner: &str,
+    user: &str,
     unique_identifier: &UniqueIdentifier,
     object: Object,
     request_attributes: Attributes,
@@ -682,7 +744,7 @@ async fn process_pkcs12(
         Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs_der_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
-    let user_tags = request_attributes.get_tags();
+    let user_tags = request_attributes.get_tags(kms.vendor_id());
 
     // recover the password from the attributes
     let password = request_attributes
@@ -708,7 +770,7 @@ async fn process_pkcs12(
         uid => uid,
     };
     // Build the private key ID
-    let private_key_id = format!("{leaf_certificate_id}_sk");
+    let private_key_id = format!("{leaf_certificate_id}{SYSTEM_TAG_PRIVATE_KEY}");
 
     // First, build the tuples (id, Object) for the private key, the leaf certificate
     // and the chain certificates
@@ -730,9 +792,9 @@ async fn process_pkcs12(
         }
         // create the private key tags
         let mut private_key_tags = user_tags.clone();
-        private_key_tags.insert("_sk".to_owned());
+        private_key_tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
         // set tags in the attributes
-        attributes.set_tags(private_key_tags.clone())?;
+        attributes.set_tags(kms.vendor_id(), private_key_tags.clone())?;
         // Ensure InitialDate is set for PKCS#12-derived private key
         if attributes.initial_date.is_none() {
             attributes.initial_date = Some(time_normalize()?);
@@ -766,7 +828,7 @@ async fn process_pkcs12(
     trace!("Leaf certificate extracted from PKCS12");
 
     // Build the public key ID
-    let public_key_id = format!("{leaf_certificate_id}_pk");
+    let public_key_id = format!("{leaf_certificate_id}{SYSTEM_TAG_PUBLIC_KEY}");
 
     // build the public key from the X509 certificate
     let public_key = {
@@ -792,9 +854,9 @@ async fn process_pkcs12(
 
         // create the public key tags
         let mut public_key_tags = user_tags.clone();
-        public_key_tags.insert("_pk".to_owned());
+        public_key_tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
         // set tags in the attributes
-        attributes.set_tags(public_key_tags.clone())?;
+        attributes.set_tags(kms.vendor_id(), public_key_tags.clone())?;
         // set the updated attributes on the key
         if let Some(KeyValue::Structure {
             attributes: attrs, ..
@@ -860,7 +922,7 @@ async fn process_pkcs12(
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(private_key_id.clone()),
         &mut private_key,
     ))
@@ -869,7 +931,7 @@ async fn process_pkcs12(
 
     // Create an operation to set the private key
     operations.push(single_operation(
-        private_key_attributes.get_tags(),
+        private_key_attributes.get_tags(kms.vendor_id()),
         replace_existing,
         private_key,
         private_key_attributes,
@@ -880,7 +942,7 @@ async fn process_pkcs12(
     // Create an operation to set the public key
     let public_key_attributes = public_key.attributes()?.clone();
     operations.push(single_operation(
-        public_key_attributes.get_tags(),
+        public_key_attributes.get_tags(kms.vendor_id()),
         replace_existing,
         public_key,
         public_key_attributes,
@@ -906,8 +968,8 @@ async fn process_pkcs12(
     }
     // certificate tags
     let mut leaf_tags = user_tags.clone();
-    leaf_tags.insert("_cert".to_owned());
-    leaf_attributes.set_tags(leaf_tags)?;
+    leaf_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+    leaf_attributes.set_tags(kms.vendor_id(), leaf_tags)?;
 
     // Add links to the leaf certificate
     // add private key link to certificate
@@ -937,7 +999,7 @@ async fn process_pkcs12(
     );
 
     operations.push(single_operation(
-        leaf_attributes.get_tags(),
+        leaf_attributes.get_tags(kms.vendor_id()),
         replace_existing,
         leaf_certificate,
         leaf_attributes,
@@ -970,8 +1032,8 @@ async fn process_pkcs12(
         }
         // certificate tags
         let mut chain_tags = user_tags.clone();
-        chain_tags.insert("_cert".to_owned());
-        chain_attributes.set_tags(chain_tags)?;
+        chain_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+        chain_attributes.set_tags(kms.vendor_id(), chain_tags)?;
 
         if let Some(parent_certificate_id) = parent_certificate_id {
             // add parent link to certificate
@@ -982,7 +1044,7 @@ async fn process_pkcs12(
             );
         }
         operations.push(single_operation(
-            chain_attributes.get_tags(),
+            chain_attributes.get_tags(kms.vendor_id()),
             true,
             chain_certificate,
             chain_attributes,
@@ -998,7 +1060,7 @@ async fn process_pkcs12(
 pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
-    owner: &str,
+    user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("{request}");
     // check if the object will be replaced if it already exists
@@ -1013,12 +1075,12 @@ pub(super) async fn process_secret_data(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, owner).await?;
+        unwrap_object(&mut object, kms, user).await?;
     }
 
     // Tag the object as a secret data
-    let mut tags = recover_tags(&request.attributes, &object);
-    tags.insert("_sd".to_owned());
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
@@ -1028,7 +1090,7 @@ pub(super) async fn process_secret_data(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), tags.clone())?;
     // merge the object attributes with the request attributes without overwriting
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
@@ -1061,7 +1123,7 @@ pub(super) async fn process_secret_data(
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(
         kms,
-        owner,
+        user,
         &UniqueIdentifier::TextString(uid.clone()),
         &mut object,
     ))
@@ -1080,6 +1142,7 @@ pub(super) async fn process_secret_data(
 }
 
 pub(super) fn process_opaque_object(
+    vendor_id: &str,
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("{request}");
@@ -1093,8 +1156,8 @@ pub(super) fn process_opaque_object(
     };
 
     // Tag the object as a opaque object
-    let mut tags = recover_tags(&request.attributes, &request.object);
-    tags.insert("_oo".to_owned());
+    let mut tags = recover_tags(vendor_id, &request.attributes, &request.object);
+    tags.insert(SYSTEM_TAG_OPAQUE_OBJECT.to_owned());
 
     // Request attributes will hold the final attributes of the object.
     let mut attributes = request.attributes;
@@ -1104,7 +1167,7 @@ pub(super) fn process_opaque_object(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(tags.clone())?;
+    attributes.set_tags(vendor_id, tags.clone())?;
 
     Ok((
         uid.clone(),

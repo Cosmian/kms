@@ -50,15 +50,15 @@ non-fips = [
 interop = ["cosmian_kms_server_database/interop"]
 
 [dependencies]
-actix-cors = "0.6"
-actix-files = "0.6.10"
-actix-identity = "0.6"
+actix-cors = { workspace = true }
+actix-files = { workspace = true }
+actix-identity = { workspace = true }
 actix-rt = { workspace = true }
-actix-session = { version = "0.8", features = ["cookie-session"] }
-actix-tls = "3.4"
+actix-session = { workspace = true, features = ["cookie-session"] }
+actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
-alcoholic_jwt = "4091"
-async-recursion = "1.1"
+alcoholic_jwt = { workspace = true }
+async-recursion = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
@@ -70,15 +70,17 @@ clap = { workspace = true, features = [
     "derive",
     "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.16.2" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.16.2" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.16.2" }
+cosmian_kms_access = { path = "../access", version = "5.17.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.17.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.17.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.16.2" }
-dotenvy = "0.15"
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.17.0" }
+dialoguer = { workspace = true }
+dotenvy = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
-jsonwebtoken = "10.3"
+http = { workspace = true }
+jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
     "std",
     "rand",
@@ -91,38 +93,40 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.16.2" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.17.0" }
 reqwest = { workspace = true, features = [
     # Remove "default" which includes rustls
     "json",
     "native-tls",
     "socks",
 ] }
+scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.16.2" }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.16.2" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.17.0" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.17.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
-toml = "0.8"
+toml = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.16.2" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.17.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-http = "3.10"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.16.2" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.16.2" }
+actix-http = { workspace = true }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.17.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.17.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
-actix-http = "3.10"
+actix-http = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 sha2 = { workspace = true }
 
@@ -135,7 +139,7 @@ ignored = ["sha2"]
 features = ["non-fips"]
 maintainer = "Cosmian support team <tech@cosmian.com>"
 maintainer-scripts = "../../pkg/deb/"
-copyright = "2025, Cosmian Tech SAS <tech@cosmian.com>"
+copyright = "2026, Cosmian Tech SAS <tech@cosmian.com>"
 license-file = ["../../LICENSE", "0"]
 changelog = "../../CHANGELOG.md"
 section = "security"
@@ -156,7 +160,7 @@ assets = [
     ],
     [
         "../../README.md",
-        "usr/share/doc/cosmian/README",
+        "usr/share/doc/cosmian/README.md",
         "644",
     ],
     [
@@ -189,7 +193,7 @@ assets = [
     ],
     [
         "../../README.md",
-        "usr/share/doc/cosmian/README",
+        "usr/share/doc/cosmian/README.md",
         "644",
     ],
     [
@@ -234,7 +238,7 @@ assets = [
     ],
     [
         "../../README.md",
-        "usr/share/doc/cosmian/README",
+        "usr/share/doc/cosmian/README.md",
         "644",
     ],
     [
@@ -288,7 +292,7 @@ assets = [
     ],
     [
         "../../README.md",
-        "usr/share/doc/cosmian/README",
+        "usr/share/doc/cosmian/README.md",
         "644",
     ],
     [
@@ -324,7 +328,7 @@ assets = [
     { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
     { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
@@ -341,7 +345,7 @@ assets = [
     { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
     { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
     { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
@@ -362,7 +366,7 @@ assets = [
     { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
     { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
     { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
@@ -381,7 +385,7 @@ assets = [
     { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
     { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README", mode = "644", doc = true },
+    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
     { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
     { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]

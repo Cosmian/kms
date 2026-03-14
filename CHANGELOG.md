@@ -2,6 +2,126 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.17.0] - 2026-03-13
+
+### 🚀 Features
+
+#### AWS External Key Store (XKS) v2
+
+Cosmian KMS can now act as an **AWS XKS proxy** ([#644](https://github.com/Cosmian/kms/pull/644)),
+enabling transparent integration with AWS KMS External Key Store:
+
+- Implements the full XKS Proxy API — a single endpoint that gives AWS KMS live-proxy coverage
+  for all XKS-capable services (S3, EBS, RDS, DynamoDB, Secrets Manager, and more)
+- AWS SigV4 request authentication middleware
+- XKS endpoints: health status, key metadata retrieval, encrypt, decrypt
+- New `--xks-*` server configuration flags
+- New `documentation/docs/aws/xks.md` guide
+
+#### Azure External Key Manager (EKM) v0.1-preview
+
+Cosmian KMS now implements the **Azure EKM proxy API v0.1-preview**
+([#601](https://github.com/Cosmian/kms/pull/601)):
+
+- Endpoints: info, key metadata, Wrap, Unwrap — faithful to the Azure EKM specification
+- mTLS (mutual TLS) authentication
+- New `--azure-ekm-*` server configuration flags
+- Flexible versioning structure for future API versions
+- New `documentation/docs/azure/ekm/ekm.md` guide
+
+#### CLI (`ckms`) moved into this repository
+
+The `cosmian` CLI (previously maintained in a separate `cli` repository) is now co-located
+in this repository under `crate/clients/ckms/`:
+
+- The `ckms` binary and its full test suite are now built and tested from this repo
+- CLI documentation moved into `cli_documentation/` with its own MkDocs configuration
+- Findex server references removed from the CLI documentation and configuration examples
+- Nix packaging extended: `nix/cli.nix` and `nix/common.nix` added for building and
+  distributing the CLI as a standalone DEB, RPM, and DMG package
+- Hardcoded system tag strings (e.g. `"_sk"`, `"_pk"`) replaced with `SYSTEM_TAG_*`
+  constants from `cosmian_kmip::kmip_2_1::extra::tagging`
+- WASM and UI test scripts hardened against pnpm major-version mismatches between the
+  system pnpm and the nix-shell pnpm
+- add `--header`/`-H` flag and `custom_headers` config option to forward arbitrary HTTP headers with every request, enabling use behind zero-trust proxies such as Cloudflare Access ([#138](https://github.com/Cosmian/cli/issues/138))
+
+#### HSM signing via Crypto Oracles
+
+- KMIP `Sign` operation is now delegated to HSM Crypto Oracles via PKCS#11 `C_SignInit`/`C_Sign` ([#771](https://github.com/Cosmian/kms/pull/771))
+
+#### White labeling
+
+- The vendor identification string used in KMIP `VendorAttribute` operations is now
+  configurable via `--vendor-identification` (env: `KMS_VENDOR_IDENTIFICATION`, default:
+  `"cosmian"`); reported back by `QueryServerInformation` responses (#758)
+- The WASM module exposes `set_vendor_id(id)` and `query_server_information_ttlv_request()`
+  so the UI can synchronize its vendor ID with the server at startup
+- New `loginCardColor` field in `branding.json` to control the login card background color
+- New blank starter theme at `ui/public/themes/blank/` with SVG placeholder assets
+
+#### Server configure wizard
+
+- New `cosmian_kms configure` interactive wizard to generate a server configuration file (`kms.toml`) and self-signed TLS certificates from the command line
+
+### 🐛 Bug Fixes
+
+- **Signing key**: Fix corrupted GPG public key (`cosmian-kms-public.asc`) that caused CRC
+  errors on import with GnuPG ([#785](https://github.com/Cosmian/kms/issues/785))
+- **CI**: Fix GCP CMEK FIPS test timeout — strip `LD_PRELOAD`/`LD_LIBRARY_PATH` from `curl`
+  in `wait_for_kms` to prevent the FIPS bootstrap shim from breaking HTTP probes
+- *(ui)* Add Content-Security-Policy against clickjacking attack (#768)
+- Unwrap cache: internalize fingerprint check and seed SipHash (#778)
+- Fail KMIP operation when multiple keys are found to process the operation (#771)
+- Systemd mitigations (#711)
+- **CLI**: `ckms` is now installed to `/usr/local/bin/` instead of `/usr/sbin/`, making it accessible to non-root users without requiring elevated privileges ([cli#136](https://github.com/Cosmian/cli/issues/136))
+- **CLI**: FIPS-compliant CLI builds are now published alongside non-FIPS builds ([cli#134](https://github.com/Cosmian/cli/issues/134))
+- **Security**: KMIP `Import` with `replace_existing=true` now verifies the caller owns the
+  existing object before overwriting it ([#644](https://github.com/Cosmian/kms/pull/644))
+- **Packaging**: DEB and RPM removal scripts now clean up `/usr/sbin/cosmian_kms` and
+  `/usr/local/cosmian/` on uninstall
+- **macOS build**: retry loop in `nix/scripts/package_dmg.sh` handles intermittent
+  `hdiutil: create failed - Resource busy` CI errors
+- KMIP `Encrypt` and `Sign` now fail with a clear error when multiple eligible keys match the identifier, preventing silent key substitution ([#771](https://github.com/Cosmian/kms/pull/771))
+
+### ⚙️ Build
+
+- Linux packages: README now installed as `README.md` (was `README` — not rendered as
+  markdown by package managers)
+- `pnpm` version pinned to 10 in `build_ui.sh`
+- CI: mirror nixpkgs archives on `package.cosmian.com` with GitHub fallback to avoid 502 errors
+- *(deps)* Bump actions/upload-artifact from 6 to 7 (#740)
+- *(deps)* Bump actions/download-artifact from 7 to 8 (#741)
+- *(deps)* Bump crazy-max/ghaction-import-gpg from 6 to 7 (#747)
+- *(deps)* Bump actions/setup-node from 4 to 6 (#755)
+- *(deps)* Bump actions/upload-artifact from 4 to 7 (#756)
+- *(deps)* Bump docker/login-action from 3 to 4 (#759)
+- *(deps)* Bump docker/metadata-action from 5 to 6 (#765)
+- *(deps)* Bump docker/setup-buildx-action from 3 to 4 (#766)
+- *(deps)* Bump sigstore/cosign-installer from 4.0.0 to 4.1.0 (#774)
+
+### 🧪 Testing
+
+- Add End-to-End (E2E) tests on UI (in browser-tests) (#736)
+- Re-enable hsm Proteccio tests (#781)
+
+### 🔒 Security
+
+- **UI** `ajv` updated 6.12.6 → 6.14.0 (vulnerability fix)
+- **UI** `minimatch` overridden to `>=10.2.1` (ReDoS CVE)
+- **Rust**`lru` 0.14.0 (transitive via `mysql_async 0.36.1`): RUSTSEC-2026-0002 acknowledged in
+  `deny.toml` — no upstream fix available yet; severity low (CVSS 2.7)
+
+### 📚 Documentation
+
+- New `openssl_override.md`: how to point Cosmian KMS to a custom OpenSSL build using a
+  systemd drop-in override
+- New Azure EKM guide (`documentation/docs/azure/ekm/ekm.md`)
+- New AWS XKS guide (`documentation/docs/aws/xks.md`)
+- HSM operations: added `pkcs11-tool` key creation examples and label uniqueness constraint warning
+- UI branding: `loginCardColor` field reference and blank theme usage
+- README: new `🔗 Integrations` section covering cloud providers (AWS/Azure/GCP), databases, and HSMs
+- Add HAProxy+KeepAlived example
+
 ## [5.16.2] - 2026-02-22
 
 ### 🐛 Bug Fixes
@@ -279,7 +399,7 @@ jwt_auth_provider = [
 ### ⚙️ Build
 
 - Reproducible Package Management with Nix ([#596](https://github.com/Cosmian/kms/pull/596))
-- *(deps)* Bump docker/metadata-action from 4 to 5 ([#613](https://github.com/Cosmian/kms/vpull/613))
+- *(deps)* Bump docker/metadata-action from 4 to 5 ([#613](https://github.com/Cosmian/kms/pull/613))
 - *(deps)* Bump actions/checkout from 4 to 6 ([#614](https://github.com/Cosmian/kms/pull/614))
 - *(deps)* Bump crazy-max/ghaction-import-gpg from 5 to 6 ([#615](https://github.com/Cosmian/kms/pull/615))
 - *(deps)* Bump actions/upload-artifact from 4 to 5 ([#616](https://github.com/Cosmian/kms/pull/616))

@@ -1,8 +1,6 @@
 use std::{
     convert::TryFrom,
-    fmt,
-    fmt::Display,
-    hash::{DefaultHasher, Hash, Hasher},
+    fmt::{self, Display},
 };
 
 use cosmian_logger::trace;
@@ -22,9 +20,8 @@ use super::{
     kmip_types::{CertificateRequestType, OpaqueDataType, SplitKeyMethod},
 };
 use crate::{
-    error::{KmipError, result::KmipResult},
+    error::KmipError,
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
-    ttlv::{KmipFlavor, to_ttlv},
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.
@@ -418,25 +415,11 @@ impl Object {
         }
     }
 
-    /// Return the fingerprint of this object.
-    /// The value is the `SipHash` of the key block key bytes.
-    pub fn fingerprint(&self) -> KmipResult<u64> {
-        to_ttlv(&self)
-            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-            .map_err(KmipError::from)
-            .map(|bytes| {
-                let mut hasher = DefaultHasher::new();
-                bytes.hash(&mut hasher);
-                hasher.finish()
-            })
-    }
-
     /// Determines if the object is wrapped
     #[must_use]
     pub fn is_wrapped(&self) -> bool {
         self.key_block()
-            .map(|kb| kb.key_wrapping_data.is_some())
-            .unwrap_or(false)
+            .is_ok_and(|kb| kb.key_wrapping_data.is_some())
     }
 }
 

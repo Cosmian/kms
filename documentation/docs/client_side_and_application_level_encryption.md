@@ -7,24 +7,7 @@ The KMS offers two mechanisms for encrypting and decrypting data:
   parallelization, concurrency, and optimized batching capabilities.
 - by using the `cosmian` CLI client to encrypt and decrypt data locally, including large files.
 
-<!-- TOC -->
-
-- [Calling the KMS API](#calling-the-kms-api)
-    - [Parallelization, concurrency, and batching](#parallelization-concurrency-and-batching)
-    - [Efficient batching](#efficient-batching)
-        - [The KMIP way](#the-kmip-way)
-        - [Optimized batching](#optimized-batching)
-        - [Encoding scheme](#encoding-scheme)
-    - [Performance heuristics](#performance-heuristics)
-- [Using the Cosmian CLI client](#using-the-cosmian-cli-client)
-    - [Server-side encryption and decryption](#server-side-encryption-and-decryption)
-        - [Available ciphers](#available-ciphers)
-        - [Format of the encrypted file](#format-of-the-encrypted-file)
-    - [Client-side encryption and decryption](#client-side-encryption-and-decryption)
-        - [Available ciphers](#available-ciphers-1)
-        - [Format of the encrypted file](#format-of-the-encrypted-file-1)
-
-<!-- TOC -->
+[TOC]
 
 ## Calling the KMS API
 
@@ -121,9 +104,9 @@ Hence, to encrypt 5 million messages on 10 core machines, 50 requests of 100,000
 should be sent in parallel. On a standard server CPU, the total processing time should be around 8
 seconds, excluding network latency.
 
-## Using the [Cosmian CLI](../cosmian_cli/index.md) client
+## Using the [KMS CLI](../kms_clients/index.md) client
 
-The [Cosmian CLI](../cosmian_cli/index.md) client can be used to encrypt and decrypt data locally, including large
+The [KMS CLI](../kms_clients/index.md) client can be used to encrypt and decrypt data locally, including large
 files.
 
 Encryption can be performed in two modes:
@@ -137,7 +120,7 @@ Encryption can be performed in two modes:
 ### Server-side encryption and decryption
 
 The file content is sent to the server when using server-side encryption or decryption. To use
-This method uses the `encrypt` or `decrypt` command of the [Cosmian CLI](../cosmian_cli/index.md) client WITHOUT
+This method uses the `encrypt` or `decrypt` command of the [KMS CLI](../kms_clients/index.md) client WITHOUT
 specifying a
 `--key-encryption-algorithm` option.
 
@@ -145,7 +128,7 @@ Say, the KMS holds a 256-bit AES key with the ID `43d28ec7-7438-4d2c-a1a0-00379f
 `image.png` with AES 256-bit GCM encryption:
 
 ```bash
-cosmian kms sym encrypt \
+ckms sym encrypt \
 --data-encryption-algorithm aes-gcm \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
 --output-file image.enc \
@@ -155,7 +138,7 @@ image.png
 To decrypt the file, use the `decrypt` command:
 
 ```bash
-cosmian kms sym decrypt \
+ckms sym decrypt \
 --data-encryption-algorithm aes-gcm \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
 --output-file decrypted-image.png \
@@ -224,7 +207,7 @@ Say, the KMS holds a 256-bit AES KEK (key encryption key) with the ID
 the ephemeral KEK key is wrapped with RFC5649 (a.k.a. NIST key wrap):
 
 ```bash
-cosmian kms sym encrypt \
+ckms sym encrypt \
 --data-encryption-algorithm aes-gcm \
 --key-encryption-algorithm rfc5649 \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \
@@ -235,7 +218,7 @@ image.png
 To decrypt the file, use the `decrypt` command:
 
 ```bash
-cosmian kms sym decrypt \
+ckms sym decrypt \
 --data-encryption-algorithm aes-gcm \
 --key-encryption-algorithm rfc5649 \
 --key-id 43d28ec7-7438-4d2c-a1a0-00379fa4fe5d \

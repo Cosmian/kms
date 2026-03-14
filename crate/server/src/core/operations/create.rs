@@ -53,12 +53,12 @@ pub(crate) async fn create(
     }
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(&request)?,
+        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
         ObjectType::PrivateKey => {
             kms.create_private_key_and_tags(&request, owner, privileged_users)
                 .await?
         }
-        ObjectType::SecretData => KMS::create_secret_data_and_tags(&request)?,
+        ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",

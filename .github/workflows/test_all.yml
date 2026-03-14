@@ -7,9 +7,6 @@ on:
       toolchain:
         required: true
         type: string
-      debug_or_release:
-        required: true
-        type: string
   workflow_dispatch:
 
 jobs:
@@ -30,6 +27,10 @@ jobs:
           - redis
           - pykmip
           - wasm
+          - aws_xks
+          - azure_ekm
+          - ui
+          - gcp_cmek
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -38,14 +39,44 @@ jobs:
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
             features: fips
+          # aws_xks relies on curl SigV4 + non-FIPS build flags
+          - type: aws_xks
+            features: fips
+          # azure_ekm is only run with non-fips
+          - type: azure_ekm
+            features: fips
+          # ui E2E tests use non-fips WASM build
+          - type: ui
+            features: fips
 
     steps:
       - name: Nix installation
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
 
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Warm Nix store
+        run: |
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
+            dest="/tmp/$(basename "$url")"
+            # Build GitHub fallback URL from mirror URL
+            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack --name source "file://$dest"
+            rm -f "$dest"
+          done
 
       - name: Run docker containers
         run: |
@@ -89,7 +120,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
           set -ex
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test ${{ matrix.type }}
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -110,10 +141,31 @@ jobs:
     steps:
       - name: Nix installation
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
 
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Warm Nix store
+        run: |
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
+            dest="/tmp/$(basename "$url")"
+            # Build GitHub fallback URL from mirror URL
+            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack --name source "file://$dest"
+            rm -f "$dest"
+          done
 
       - name: Test
         env:
@@ -127,14 +179,13 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
-          bash .github/scripts/nix.sh --profile ${{ inputs.debug_or_release }} --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
 
   windows-2022:
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
-      debug_or_release: ${{ inputs.debug_or_release }}
 
   cleanup:
     needs:

@@ -6,7 +6,7 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 /// Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 ///
 /// This command will open a browser window and ask you to login to the Identity Provider.
-/// Once you have logged in, the access token will be saved in the cosmian configuration file.
+/// Once you have logged in, the access token will be saved in the ckms configuration file.
 ///
 /// The configuration file must contain an `oauth2_conf` object with the following fields:
 /// - `client_id`: The client ID of your application. This is provided by the Identity Provider.

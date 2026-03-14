@@ -529,7 +529,7 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "query");
         let _enter = span.enter();
 
-        operations::query(request).await
+        operations::query(request, self.vendor_id()).await
     }
 
     /// This operation requests the server to perform message authentication code (MAC) operation on the provided data using a Managed Cryptographic Object as the key for the MAC operation.

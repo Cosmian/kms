@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, ServerParams},
+    config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
@@ -44,7 +44,21 @@ async fn run() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
+    // Early dispatch: if the first argument is "configure", run the interactive wizard
+    if std::env::args().nth(1).as_deref() == Some("configure") {
+        return run_configure_wizard();
+    }
+
     let clap_config = ClapConfig::load_configuration()?;
+
+    if clap_config.print_default_config {
+        let commented = ClapConfig::default_config_with_comments()?;
+        #[allow(clippy::print_stdout)]
+        {
+            println!("{commented}");
+        }
+        return Ok(());
+    }
 
     let info_only = clap_config.info;
 
@@ -93,6 +107,10 @@ async fn run() -> KResult<()> {
             "OpenSSL is not available – cannot start the KMS server".to_owned(),
         ));
     }
+    info!(
+        "Starting Cosmian KMS server version {}",
+        env!("CARGO_PKG_VERSION")
+    );
     info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
 
     // For an explanation of OpenSSL providers,
@@ -105,13 +123,15 @@ async fn run() -> KResult<()> {
     // Instantiate a config object using the env variables and the args of the binary
     info!("Command line / file config: {clap_config:#?}");
 
-    // Parse the Server Config from the command line arguments
-    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
-
+    // --info is a lightweight probe: log the configuration then exit without
+    // initialising the database, workspace directories etc.
     if info_only {
         info!("Server started with --info. Exiting");
         return Ok(());
     }
+
+    // Parse the Server Config from the command line arguments
+    let server_params = Arc::new(ServerParams::try_from(clap_config)?);
 
     #[cfg(test)]
     info!("Feature Test enabled");
@@ -132,11 +152,15 @@ async fn run() -> KResult<()> {
 mod tests {
     use std::path::PathBuf;
 
-    use cosmian_kms_server::config::{
-        ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, LoggingConfig,
-        MainDBConfig, OidcConfig, ProxyConfig, SocketServerConfig, TlsConfig, UiConfig,
-        WorkspaceConfig,
+    use cosmian_kms_server::{
+        config::{
+            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
+            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
+            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+        },
+        routes::aws_xks::AwsXksConfig,
     };
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 
     #[cfg(feature = "non-fips")]
     #[test]
@@ -164,6 +188,7 @@ mod tests {
                 tls_p12_password: Some("[tls p12 password]".to_owned()),
                 clients_ca_cert_file: Some(PathBuf::from("[authority cert file]")),
                 tls_cipher_suites: Some("TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256".to_owned()),
+                ..Default::default()
             },
             http: HttpConfig {
                 port: 443,
@@ -202,6 +227,15 @@ mod tests {
                 ]),
                 google_cse_migration_key: None,
             },
+            azure_ekm_config: AzureEkmConfig {
+                azure_ekm_enable: false,
+                azure_ekm_path_prefix: None,
+                azure_ekm_disable_client_auth: false,
+                azure_ekm_proxy_vendor: String::new(),
+                azure_ekm_proxy_name: String::new(),
+                azure_ekm_ekm_vendor: String::new(),
+                azure_ekm_ekm_product: String::new(),
+            },
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -209,6 +243,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
@@ -230,10 +265,20 @@ mod tests {
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
+            aws_xks_config: AwsXksConfig {
+                aws_xks_enable: true,
+                aws_xks_region: Some("us-east-1".to_owned()),
+                aws_xks_service: Some("xks-kms".to_owned()),
+                aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+                aws_xks_sigv4_secret_access_key: Some(
+                    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
+                ),
+            },
             key_encryption_key: Some("key wrapping key".to_owned()),
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            print_default_config: false,
         };
 
         let toml_string = r#"
@@ -294,6 +339,9 @@ google_cse_enable = false
 google_cse_disable_tokens_validation = false
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
 
+[azure_ekm_config]
+azure_ekm_enable = false
+
 [workspace]
 root_data_path = "[root data path]"
 tmp_path = "[tmp path]"
@@ -308,6 +356,16 @@ rolling_log_name = "kms_log"
 enable_metering = false
 environment = "development"
 ansi_colors = false
+
+[aws_xks_config]
+aws_xks_enable = true
+aws_xks_region = "us-east-1"
+aws_xks_service = "xks-kms"
+aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+aws_xks_kek_user = "kek_user"
+
+[kmip.allowlists]
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

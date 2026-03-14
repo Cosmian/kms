@@ -670,10 +670,10 @@ fn substitute_key_material_from_actual(expected: &mut ResponseMessage, actual: &
 
             if let (Some(exp_kv), Some(act_kv)) = (exp_kv_opt.as_mut(), act_kv_opt.as_ref()) {
                 match (exp_kv, act_kv) {
-                    (KeyValue::ByteString(ebs), KeyValue::ByteString(abs)) => {
-                        if is_placeholder_bytes_slice(&ebs[..]) {
-                            *ebs = abs.clone();
-                        }
+                    (KeyValue::ByteString(ebs), KeyValue::ByteString(abs))
+                        if is_placeholder_bytes_slice(&ebs[..]) =>
+                    {
+                        *ebs = abs.clone();
                     }
                     (
                         KeyValue::Structure {
@@ -683,18 +683,16 @@ fn substitute_key_material_from_actual(expected: &mut ResponseMessage, actual: &
                             key_material: akm, ..
                         },
                     ) => match (ekm, akm) {
-                        (KeyMaterial::ByteString(ebs), KeyMaterial::ByteString(abs)) => {
-                            if is_placeholder_bytes_slice(&ebs[..]) {
-                                *ebs = abs.clone();
-                            }
+                        (KeyMaterial::ByteString(ebs), KeyMaterial::ByteString(abs))
+                            if is_placeholder_bytes_slice(&ebs[..]) =>
+                        {
+                            *ebs = abs.clone();
                         }
                         (
                             KeyMaterial::TransparentSymmetricKey { key: ekey },
                             KeyMaterial::TransparentSymmetricKey { key: akey },
-                        ) => {
-                            if ekey.is_empty() {
-                                *ekey = akey.clone();
-                            }
+                        ) if ekey.is_empty() => {
+                            *ekey = akey.clone();
                         }
                         _ => {}
                     },

@@ -73,7 +73,7 @@ if [ "$reuse_server" = true ]; then
   echo "Reusing existing server derivation at $OUT_LINK (skip nix-build)"
   REAL_OUT="$REAL_OUT_EXISTING"
 else
-  echo "Building server derivation (variant: $VARIANT) via nix-build…"
+  echo "Building server derivation (variant: $VARIANT) via nix-build..."
   # Preserve existing link if reuse failed; replace atomically.
   rm -f "$OUT_LINK" 2>/dev/null || true
   nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
@@ -111,7 +111,7 @@ ensure_packager() {
     return 0
   fi
 
-  echo "Installing cargo-packager $REQUIRED via cargo…"
+  echo "Installing cargo-packager $REQUIRED via cargo..."
   cargo install cargo-packager --locked --version "$REQUIRED" --force
   export PATH="$CARGO_HOME/bin:$PATH"
   if ! command -v cargo-packager >/dev/null 2>&1; then
@@ -146,11 +146,14 @@ if [ "$skip_packager" = true ]; then
   echo "Reusing existing .app bundle (skip cargo-packager)"
 else
   # Package .app with cargo-packager (avoid create-dmg AppleScript in sandbox)
+  # Remove any stale .app bundle from a previous (possibly failed) run so
+  # cargo-packager creates a fresh, complete bundle structure.
+  rm -rf "target/release/Cosmian KMS Server.app" "crate/server/target/release/Cosmian KMS Server.app"
   pushd crate/server >/dev/null
   echo "Building .app bundle via cargo-packager..."
-  if ! cargo packager --verbose --formats app --release; then
+  if ! cargo packager --verbose --formats app --release -p cosmian_kms_server; then
     echo "Retrying cargo packager without verbose..."
-    cargo packager --formats app --release
+    cargo packager --formats app --release -p cosmian_kms_server
   fi
   popd >/dev/null
 fi
@@ -159,13 +162,13 @@ fi
 RESULT_DIR="$REPO_ROOT/result-dmg-${VARIANT}-${LINK}"
 mkdir -p "$RESULT_DIR"
 # Create a DMG from the generated .app using hdiutil (no AppleScript)
-APP_BUNDLE=$(find crate/server/target/release -maxdepth 1 -name '*.app' | head -n1 || true)
+APP_BUNDLE=$(find crate/server/target/release -maxdepth 1 -name 'Cosmian KMS Server.app' | head -n1 || true)
 if [ -z "$APP_BUNDLE" ]; then
   # cargo-packager may place the .app under the workspace root target/release
-  APP_BUNDLE=$(find target/release -maxdepth 1 -name '*.app' | head -n1 || true)
+  APP_BUNDLE=$(find target/release -maxdepth 1 -name 'Cosmian KMS Server.app' | head -n1 || true)
 fi
 if [ -z "$APP_BUNDLE" ]; then
-  echo "Error: .app bundle not found under crate/server/target/release or target/release" >&2
+  echo "Error: Cosmian KMS Server.app not found under crate/server/target/release or target/release" >&2
   exit 1
 fi
 
@@ -220,7 +223,39 @@ DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg
 echo "Creating DMG $DMG_NAME from $APP_BUNDLE..."
 # Always recreate DMG to reflect updated app bundle resources (FIPS assets)
 rm -f "$RESULT_DIR/$DMG_NAME" 2>/dev/null || true
-hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"
+
+# hdiutil can return "Resource busy" when a stale backing store from a previous
+# (failed) run is still held by the kernel, or when two CI jobs race on the same
+# volume name.  Retry up to 5 times, detaching any stale mount with the same
+# volume name between attempts.
+HDIUTIL_RETRIES=5
+HDIUTIL_DELAY=5 # seconds between retries
+for attempt in $(seq 1 $HDIUTIL_RETRIES); do
+  # Detach any already-mounted volume with the same name to release the lock.
+  stale_dev=$(hdiutil info 2>/dev/null |
+    awk -v vol="Cosmian KMS Server" '
+        /image-path/ { path=$0 }
+        /\/Volumes\// && $0 ~ vol { print prev }
+        { prev=$1 }
+      ' |
+    head -n1 || true)
+  if [ -n "$stale_dev" ]; then
+    echo "Detaching stale volume $stale_dev before attempt $attempt…"
+    hdiutil detach "$stale_dev" -force 2>/dev/null || true
+    sleep 2
+  fi
+
+  if hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"; then
+    break
+  fi
+
+  if [ "$attempt" -eq "$HDIUTIL_RETRIES" ]; then
+    echo "Error: hdiutil create failed after $HDIUTIL_RETRIES attempts" >&2
+    exit 1
+  fi
+  echo "hdiutil create failed (attempt $attempt/$HDIUTIL_RETRIES), retrying in ${HDIUTIL_DELAY}s…" >&2
+  sleep "$HDIUTIL_DELAY"
+done
 
 echo "Built dmg (${VARIANT}): $RESULT_DIR/$DMG_NAME"
 
@@ -260,4 +295,124 @@ PUBLIC_KEY="$REPO_ROOT/nix/signing-keys/cosmian-kms-public.asc"
 if [ -f "$PUBLIC_KEY" ]; then
   cp -v "$PUBLIC_KEY" "$RESULT_DIR/"
   echo "Copied public key to $RESULT_DIR/"
+fi
+
+# =============================================================================
+# Build ckms CLI DMG
+# =============================================================================
+echo "=========================================="
+echo "Building ckms CLI DMG (variant: $VARIANT, link: $LINK)..."
+echo "=========================================="
+
+# Resolve / build the CLI Nix derivation (same pattern as the server above)
+if [ "$LINK" = "dynamic" ]; then
+  CLI_ATTR="kms-cli-${VARIANT}-dynamic-openssl"
+else
+  CLI_ATTR="kms-cli-${VARIANT}-static-openssl"
+fi
+CLI_OUT_LINK="$REPO_ROOT/result-cli-${VARIANT}-${LINK}"
+
+reuse_cli=false
+if [ -z "${FORCE_REBUILD:-}" ] && [ -L "$CLI_OUT_LINK" ]; then
+  REAL_CLI_EXISTING=$(readlink -f "$CLI_OUT_LINK" || true)
+  if [ -n "$REAL_CLI_EXISTING" ] && [ -x "$REAL_CLI_EXISTING/bin/ckms" ]; then
+    CLI_INFO=$("$REAL_CLI_EXISTING/bin/ckms" --version 2>&1 || true)
+    if echo "$CLI_INFO" | grep -q "${VERSION_STR}"; then
+      reuse_cli=true
+    fi
+  fi
+fi
+
+if [ "$reuse_cli" = true ]; then
+  echo "Reusing existing CLI derivation at $CLI_OUT_LINK (skip nix-build)"
+  REAL_CLI="$REAL_CLI_EXISTING"
+else
+  echo "Building CLI derivation (variant: $VARIANT) via nix-build..."
+  rm -f "$CLI_OUT_LINK" 2>/dev/null || true
+  nix-build -I "nixpkgs=${PIN_URL}" -A "$CLI_ATTR" -o "$CLI_OUT_LINK"
+  REAL_CLI=$(readlink -f "$CLI_OUT_LINK" || echo "$CLI_OUT_LINK")
+fi
+
+CLI_BIN_OUT="$REAL_CLI/bin/ckms"
+CLI_DYLIB_OUT="$REAL_CLI/lib/libcosmian_pkcs11.dylib"
+
+[ -x "$CLI_BIN_OUT" ] || {
+  echo "ERROR: ckms binary not found: $CLI_BIN_OUT" >&2
+  exit 1
+}
+[ -f "$CLI_DYLIB_OUT" ] || {
+  echo "ERROR: libcosmian_pkcs11.dylib not found: $CLI_DYLIB_OUT" >&2
+  exit 1
+}
+
+# Prepare staging directories for cargo-packager.
+# NOTE: cargo-packager resolves binaries from the workspace-root target/release/,
+# so the binary must also be present there in addition to the crate-local target dirs.
+mkdir -p "crate/clients/ckms/target/$HOST_TRIPLE/release" "crate/clients/ckms/target/release" "target/release"
+cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/$HOST_TRIPLE/release/ckms"
+cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/release/ckms"
+cp -f -v "$CLI_BIN_OUT" "target/release/ckms"
+
+# The ckms Cargo.toml packager metadata references `target/release/cosmian_pkcs11.dll`
+# as a resource (for the Windows/NSIS build).  On macOS, that file does not exist,
+# which would cause cargo-packager to abort.  Create a zero-byte placeholder so the
+# resource check passes; it will be removed from the .app bundle right after packaging.
+touch "crate/clients/ckms/target/release/cosmian_pkcs11.dll"
+
+# Remove any stale CLI .app bundle from a previous (possibly failed) run so
+# cargo-packager creates a fresh, complete bundle structure.
+rm -rf "target/release/Cosmian KMS CLI.app" "crate/clients/ckms/target/release/Cosmian KMS CLI.app"
+
+# Build the ckms .app bundle with cargo-packager
+pushd crate/clients/ckms >/dev/null
+echo "Building ckms .app bundle via cargo-packager..."
+if ! cargo packager --verbose --formats app --release -p ckms; then
+  echo "Retrying cargo packager without verbose..."
+  cargo packager --formats app --release -p ckms
+fi
+popd >/dev/null
+
+# Locate the generated .app bundle (may land under the crate or workspace target)
+CLI_APP_BUNDLE=""
+for search_path in "crate/clients/ckms/target/release" "target/release"; do
+  found=$(find "$search_path" -maxdepth 1 -name 'Cosmian KMS CLI.app' | head -n1 || true)
+  if [ -n "$found" ]; then
+    CLI_APP_BUNDLE="$found"
+    break
+  fi
+done
+[ -n "$CLI_APP_BUNDLE" ] || {
+  echo "ERROR: Cosmian KMS CLI.app not found" >&2
+  exit 1
+}
+
+# Remove the Windows-only placeholder DLL from the app bundle (it must not ship on macOS)
+find "$CLI_APP_BUNDLE" -name 'cosmian_pkcs11.dll' -delete 2>/dev/null || true
+
+# Embed the macOS PKCS#11 dylib into the app bundle's Resources/lib/ directory
+CLI_LIB_DIR="$CLI_APP_BUNDLE/Contents/Resources/lib"
+mkdir -p "$CLI_LIB_DIR"
+cp -f -v "$CLI_DYLIB_OUT" "$CLI_LIB_DIR/libcosmian_pkcs11.dylib"
+echo "Embedded libcosmian_pkcs11.dylib into $CLI_LIB_DIR/"
+
+# Create the ckms DMG using hdiutil
+CLI_DMG_NAME="cosmian-kms-cli-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"
+echo "Creating ckms DMG $CLI_DMG_NAME from ${CLI_APP_BUNDLE}..."
+rm -f "$RESULT_DIR/$CLI_DMG_NAME" 2>/dev/null || true
+hdiutil create -volname "Cosmian KMS CLI" -srcfolder "$CLI_APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$CLI_DMG_NAME"
+echo "Built ckms dmg (${VARIANT}): $RESULT_DIR/$CLI_DMG_NAME"
+
+# Checksum
+CLI_DMG_SHA256=$(shasum -a 256 "$RESULT_DIR/$CLI_DMG_NAME" | awk '{print $1}')
+CLI_CHECKSUM_FILE="$RESULT_DIR/${CLI_DMG_NAME}.sha256"
+echo "$CLI_DMG_SHA256  $CLI_DMG_NAME" >"$CLI_CHECKSUM_FILE"
+echo "Wrote checksum: $CLI_CHECKSUM_FILE ($CLI_DMG_SHA256)"
+
+# GPG sign the ckms DMG (same pattern as server DMG above)
+if [ -f "$COMMON_LIB" ]; then
+  if [ -n "${GITHUB_ACTION:-}" ]; then
+    sign_packages "$RESULT_DIR/$CLI_DMG_NAME"
+  else
+    echo "Skipping ckms DMG signing (not running in GitHub Actions)."
+  fi
 fi

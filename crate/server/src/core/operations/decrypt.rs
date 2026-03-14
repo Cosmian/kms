@@ -46,6 +46,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
+            is_user_authorized_for_operation,
         },
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
@@ -84,32 +85,23 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
     // for each uid. This is also based on the high probability that there is still a single object
     // in the candidates' list.
     let mut selected_owm = None;
+    let mut found_but_no_permission = false;
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
-            if !kms.database.is_object_owned_by(&uid, user).await? {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false)
-                    .await?;
-                if !ops
-                    .iter()
-                    .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-                {
-                    debug!("{user} is not authorized to decrypt using: {uid}");
-                    continue;
-                }
+            if !is_user_authorized_for_operation(&kms.database, &uid, user, KmipOperation::Decrypt)
+                .await?
+            {
+                debug!("{user} is not authorized to decrypt using: {uid}");
+                continue;
             }
             debug!("{user} is authorized to decrypt using: {uid}");
-            return decrypt_using_encryption_oracle(kms, &request, &uid, prefix).await;
+            return decrypt_using_crypto_oracle(kms, &request, &uid, prefix).await;
         }
 
         // Default database
         let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
             debug!("failed to retrieve the key: {uid}");
-            KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("Decrypt: failed to retrieve the key: {uid}"),
-            )
+            KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {uid}"))
         })?;
         // Check effective state (PreActive with past activation_date counts as Active)
         if get_effective_state(&owm)? != State::Active {
@@ -137,6 +129,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
                 .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
             {
                 debug!("{user} is not authorized to decrypt using: {uid}");
+                found_but_no_permission = true;
                 continue;
             }
         }
@@ -152,7 +145,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
             if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
                 // does it have an access access structure that allows decryption?
                 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-                if access_policy_from_attributes(attributes).is_err() {
+                if access_policy_from_attributes(kms.vendor_id(), attributes).is_err() {
                     continue;
                 }
             }
@@ -161,10 +154,13 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         }
     }
     let mut owm = selected_owm.ok_or_else(|| {
-        KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("Decrypt: no valid key for id: {unique_identifier}"),
-        )
+        if found_but_no_permission {
+            KmsError::Unauthorized(format!(
+                "Decrypt: the user {user} does not have the permission to decrypt using the key: {unique_identifier}"
+            ))
+        } else {
+            KmsError::ItemNotFound(format!("Decrypt: key id: {unique_identifier}, not found"))
+        }
     })?;
 
     // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when
@@ -220,7 +216,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
 ///
 /// # Returns
 /// * the decrypt response
-async fn decrypt_using_encryption_oracle(
+async fn decrypt_using_crypto_oracle(
     kms: &KMS,
     request: &Decrypt,
     uid: &str,
@@ -247,7 +243,7 @@ async fn decrypt_using_encryption_oracle(
         data.len()
     );
     let cleartext = kms
-        .encryption_oracles
+        .crypto_oracles
         .read()
         .await
         .get(prefix)
@@ -387,7 +383,7 @@ fn decrypt_single(
     server_params: &crate::config::ServerParams,
     request: &Decrypt,
 ) -> KResult<DecryptResponse> {
-    trace!("entering");
+    trace!("Extracting key block for decryption to identify key format type...");
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
@@ -451,6 +447,11 @@ fn decrypt_single_with_symmetric_key(
         )
     })?;
     let (key_bytes, aead) = get_aead_and_key(owm, request)?;
+    trace!(
+        "got key bytes of length: {}, aead: {:?}. Proceeding to get the nonce...",
+        key_bytes.len(),
+        aead
+    );
     // For modes with nonce_size()==0 (e.g. ECB) we do not expect / require an IV.
     // For modes with nonce_size()>0 we require an IV. Some KMIP vectors supply an empty
     // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a

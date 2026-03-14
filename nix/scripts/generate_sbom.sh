@@ -7,10 +7,11 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 # Parse arguments
-# Target: what to generate SBOM for. Supported: 'openssl' or 'server'.
-# - openssl: scans the OpenSSL 3.1.2 derivation from nix/openssl.nix
-# - server:  scans the KMS server derivation
-TARGET="openssl"
+# Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_0', or 'server'.
+# - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
+# - openssl_3_6_0: scans the OpenSSL 3.6.0 (non-FIPS) derivation from nix/openssl.nix
+# - server:        scans the KMS server derivation
+TARGET="openssl_3_1_2"
 # Variant and link are only relevant for 'server' target
 VARIANT="fips" # fips | non-fips
 LINK="static"  # static | dynamic (static by default)
@@ -23,21 +24,23 @@ Generate SBOM (Software Bill of Materials) using sbomnix standard tools
 Usage: $0 [OPTIONS]
 
 Options:
-  --target TARGET      One of: openssl | server (default: openssl)
+  --target TARGET      One of: openssl_3_1_2 | openssl_3_6_0 | server (default: openssl_3_1_2)
   --variant VARIANT    One of: fips | non-fips (server target only; default: fips)
   --link LINK          One of: static | dynamic (server target only; default: static)
   --output DIR         Output directory for SBOM files (default:
-                       - openssl: ./sbom/openssl
-                       - server:  ./sbom/server/<variant>/<link>)
+                       - openssl_3_1_2: ./sbom/openssl_3_1_2
+                       - openssl_3_6_0: ./sbom/openssl_3_6_0
+                       - server:        ./sbom/server/<variant>/<link>)
   -h, --help           Show this help message
 
 Examples:
-  $0                           # Generate SBOM for OpenSSL (default)
-  $0 --target openssl          # Explicitly target OpenSSL 3.1.2
-  $0 --target server           # Target KMS server (fips, static OpenSSL)
+  $0                                       # Generate SBOM for OpenSSL 3.1.2 (default)
+  $0 --target openssl_3_1_2                # Explicitly target OpenSSL 3.1.2 (FIPS)
+  $0 --target openssl_3_6_0                # Target OpenSSL 3.6.0 (non-FIPS)
+  $0 --target server                       # Target KMS server (fips, static OpenSSL)
   $0 --target server --variant non-fips    # Target KMS server (non-fips)
   $0 --target server --link dynamic        # Target KMS server (dynamic link, if available)
-  $0 --output /tmp/sbom        # Use custom output directory
+  $0 --output /tmp/sbom                    # Use custom output directory
 
 Generated files:
   - bom.cdx.json               CycloneDX SBOM (industry standard)
@@ -81,9 +84,13 @@ done
 
 # Determine the derivation to analyze based on target
 case "$TARGET" in
-openssl)
+openssl_3_1_2)
   DERIVATION="openssl312"
   NIX_RESULT="$REPO_ROOT/result-openssl-312"
+  ;;
+openssl_3_6_0)
+  DERIVATION="openssl36-static"
+  NIX_RESULT="$REPO_ROOT/result-openssl-360"
   ;;
 server)
   # Validate variant/link values
@@ -112,7 +119,7 @@ server)
   fi
   ;;
 *)
-  echo "Error: Unknown --target '$TARGET'. Use 'openssl' or 'server'." >&2
+  echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_0', or 'server'." >&2
   exit 1
   ;;
 esac
@@ -123,8 +130,11 @@ if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
   server)
     OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
     ;;
-  openssl)
-    OUTPUT_DIR="$REPO_ROOT/sbom/openssl"
+  openssl_3_1_2)
+    OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
+    ;;
+  openssl_3_6_0)
+    OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_6_0"
     ;;
   esac
 fi
@@ -150,8 +160,8 @@ rm -f \
   "$OUTPUT_DIR/vulns.pc.deb-ubu-rocky.csv" \
   "$OUTPUT_DIR/vulns.runtime.pc.deb-ubu-rocky.csv" \
   "$OUTPUT_DIR/cves.pc.deb-ubu-rocky.txt" \
-  "$OUTPUT_DIR/cves.runtime.pc.deb-ubu-rocky.txt" \
-  || true
+  "$OUTPUT_DIR/cves.runtime.pc.deb-ubu-rocky.txt" ||
+  true
 
 echo "========================================="
 echo "SBOM Generation"

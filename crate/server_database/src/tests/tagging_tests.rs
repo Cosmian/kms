@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_SYMMETRIC_KEY, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
@@ -32,6 +33,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     rng.fill_bytes(&mut symmetric_key_bytes);
     // create a symmetric key
     let symmetric_key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
         &symmetric_key_bytes,
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -74,7 +76,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
         unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
         ..Attributes::default()
     };
-    expected_attributes.set_tags(["_kk".to_owned()])?;
+    expected_attributes.set_tags(VENDOR_ID_COSMIAN, [SYSTEM_TAG_SYMMETRIC_KEY.to_owned()])?;
     assert_eq!(State::PreActive, owm.state());
     assert_eq!(&symmetric_key, owm.object());
 

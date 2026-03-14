@@ -10,7 +10,7 @@ Go the Cosmian marketplace webpage of the chosen [cloud provider](https://cosmia
 
 Select an OS and continue until the Cosmian VM KMS instance is spawned.
 
-!!! important "Cloud provider support"
+!!! important Cloud provider support
 
     Here's the list of instance types by cloud provider
 
@@ -68,7 +68,7 @@ port = 9998
 hostname = "0.0.0.0"
 ```
 
-!!! important "Protect your secrets"
+!!! important Protect your secrets
 
     The Cosmian KMS configuration can potentially contain secrets
     (such as this `redis_master_password` field), that is why
@@ -146,7 +146,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"5.16.2"
+"5.17.0"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"
@@ -157,7 +157,7 @@ $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
     These certificates must be replaced by trusted ones using tools like
     `cosmian_certtool` or Linux tools (`certbot` with **Let's Encrypt** for instance).
 
-    See [how to setup trusted certificates](../cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
+    See [how to setup trusted certificates](../../cosmian_vm/deployment_guide.md#configure-https-with-your-own-domain).
 
 ## Snapshot the VM 📸
 
@@ -181,9 +181,9 @@ cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls snapsho
 ## Verify the Cosmian VM KMS integrity ✅
 
 Verifying trustworthiness of the Cosmian VM KMS is exactly the same process
-as [verifying the Cosmian VM](../../cosmian_vm/overview.md) itself.
+as [verifying the Cosmian VM](../../cosmian_vm/index.md) itself.
 
-In short, to verify a snapshot, please [follow](../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
+In short, to verify a snapshot, please [follow](../../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
 
 The associated command is:
 

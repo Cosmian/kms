@@ -56,6 +56,7 @@ impl CreateUserKeyAction {
         AccessPolicy::parse(&self.access_policy).with_context(|| "bad access policy syntax")?;
 
         let request = build_create_covercrypt_usk_request(
+            kms_rest_client.config.vendor_id.as_str(),
             &self.access_policy,
             &self.master_secret_key_id,
             &self.tags,

@@ -8,7 +8,7 @@ The `cosmian_kms_interfaces` crate is designed to enable extensibility of the Co
 
 - **Hardware Security Modules (HSMs)** - Integration with PKCS#11 compatible HSMs
 - **Object Stores** - Custom storage backends for cryptographic objects
-- **Encryption Oracles** - External encryption/decryption services
+- **Crypto Oracles** - External encryption/decryption/signing services
 - **Permission Systems** - Access control and authorization mechanisms
 
 ## Key Components
@@ -19,7 +19,7 @@ The HSM interface (`hsm` module) provides:
 
 - **HSM Trait**: Core interface for Hardware Security Module integration
 - **Key Management**: Support for AES symmetric keys and RSA key pairs
-- **Encryption Oracle**: HSM-backed encryption and decryption operations
+- **Crypto Oracle**: HSM-backed encryption, decryption, and signing operations
 - **Object Storage**: Secure storage of cryptographic objects within HSMs
 
 Supported algorithms:
@@ -36,11 +36,11 @@ The stores interface (`stores` module) provides:
 - **Atomic Operations**: Transactional database operations
 - **Metadata Management**: Rich metadata support for stored objects
 
-### Encryption Oracle Interface
+### Crypto Oracle Interface
 
-The encryption oracle interface provides:
+The crypto oracle interface provides:
 
-- **EncryptionOracle Trait**: External encryption/decryption services
+- **CryptoOracle Trait**: External encryption/decryption/signing services
 - **Algorithm Support**: Pluggable cryptographic algorithm implementations
 - **Key Metadata**: Rich key material metadata and capabilities
 
@@ -60,25 +60,27 @@ This crate is primarily intended for:
 To implement a plugin:
 
 1. Add a dependency on `cosmian_kms_interfaces`
-2. Implement the relevant traits (`HSM`, `ObjectsStore`, `EncryptionOracle`, etc.)
+2. Implement the relevant traits (`HSM`, `ObjectsStore`, `CryptoOracle`, etc.)
 3. Handle the specific error types defined in `InterfaceError`
 4. Follow the async patterns using `async-trait`
 
 ## Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                  Cosmian KMS Server                         │
-├─────────────────────────────────────────────────────────────┤
-│                 cosmian_kms_interfaces                      │
-├─────────────────────────────────────────────────────────────┤
-│  HSM Interface  │  Storage Interface  │  Encryption Oracle  │
-├─────────────────┼─────────────────────┼─────────────────────┤
-│   PKCS#11 HSMs  │   Database Backends │   Crypto Providers  │
-│   - Utimaco     │   - SQLite          │   - Custom Algos    │
-│   - SoftHSM     │   - PostgreSQL      │   - External APIs   │
-│   - Proteccio   │   - MySQL           │                     │
-└─────────────────┴─────────────────────┴─────────────────────┘
+```mermaid
+flowchart TB
+    A["Cosmian KMS Server"]
+    B["cosmian_kms_interfaces"]
+    C["HSM Interface"]
+    D["Storage Interface"]
+    E["Crypto Oracle"]
+    F["PKCS#11 HSMs<br/>· Utimaco<br/>· SoftHSM<br/>· Proteccio"]
+    G["Database Backends<br/>· SQLite<br/>· PostgreSQL<br/>· MySQL"]
+    H["Crypto Providers<br/>· Custom Algos<br/>· External APIs"]
+    A --> B
+    B --> C & D & E
+    C --> F
+    D --> G
+    E --> H
 ```
 
 ## Error Handling
@@ -103,7 +105,7 @@ See the existing implementations in the KMS codebase:
 
 - **HSM Integration**: `crate/hsm/base_hsm/`, `crate/hsm/utimaco/`, etc.
 - **Database Stores**: `crate/server_database/`
-- **Encryption Oracles**: HSM-based implementations
+- **Crypto Oracles**: HSM-based implementations
 
 ## Future Development
 

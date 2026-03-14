@@ -20,7 +20,7 @@ use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer,
     cookie::{Key, time::Duration},
     dev::ServerHandle,
-    middleware::Condition,
+    middleware::{Condition, DefaultHeaders},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
 use cosmian_kms_server_database::reexport::{
@@ -37,7 +37,7 @@ use cosmian_kms_server_database::reexport::{
         openssl::kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, error, info, trace};
+use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,
@@ -55,7 +55,9 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        access, cli_archive_download, cli_archive_exists, get_version,
+        access,
+        aws_xks::{self},
+        azure_ekm, cli_archive_download, cli_archive_exists, get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -133,6 +135,7 @@ pub async fn handle_google_cse_rsa_keypair(
         } else {
             info!("No migration key found, creating new RSA keypair.");
             let create_request = create_rsa_key_pair_request::<Vec<String>>(
+                server_params.vendor_identification.as_str(),
                 Some(UniqueIdentifier::TextString(uid_sk.clone())),
                 Vec::new(),
                 4096,
@@ -285,6 +288,7 @@ async fn import_cse_migration_key(
     // Import PrivateKey
     let import_sk_fut = {
         let import_request_sk = import_object_request::<Vec<String>>(
+            server_params.vendor_identification.as_str(),
             Some(uid_sk.to_owned()),
             object_sk,
             Some(import_attributes_sk),
@@ -297,6 +301,7 @@ async fn import_cse_migration_key(
     let import_pk_fut = {
         // Import PublicKey
         let import_request_pk = import_object_request::<Vec<String>>(
+            server_params.vendor_identification.as_str(),
             Some(uid_pk.to_owned()),
             object_pk,
             Some(import_attributes_pk),
@@ -662,8 +667,48 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         None
     };
 
-    // Should we enable the MS DKE Service?
+    // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
+
+    // Should we enable the AWS XKS Service?
+    let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+
+    // Should we enable the Azure EKM API ?
+    let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
+    if enable_azure_ekm {
+        // Validate path prefix if provided
+        if let Some(prefix) = &kms_server.params.azure_ekm.azure_ekm_path_prefix {
+            // Check length (max 64 characters)
+            if prefix.len() > 64 {
+                return Err(KmsError::ServerError(format!(
+                    "Azure EKM path prefix is too long ({} chars). Maximum allowed is 64 characters.",
+                    prefix.len()
+                )));
+            }
+
+            if !prefix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-')
+            {
+                return Err(KmsError::ServerError(format!(
+                    "Azure EKM path prefix contains illegal characters: '{prefix}'. Only a-z, A-Z, 0-9, '/', and '-' are allowed."
+                )));
+            }
+
+            // Check for leading or trailing slashes
+            if prefix.starts_with('/') || prefix.ends_with('/') {
+                return Err(KmsError::ServerError(
+                    "Azure EKM path prefix cannot start or end with '/'".to_owned(),
+                ));
+            }
+        }
+
+        if !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && !use_cert_auth {
+            return Err(KmsError::ServerError(
+                "Azure EKM requires mTLS authentication but the KMS server is not configured with client certificate authentication.".to_owned()
+            ));
+        }
+    }
 
     let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
 
@@ -693,6 +738,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(
+                DefaultHeaders::new()
+                    // Prevent the UI from being embedded in a foreign frame (clickjacking)
+                    .add(("X-Frame-Options", "DENY"))
+                    .add(("Content-Security-Policy", "frame-ancestors 'none'")),
+            )
             .wrap(IdentityMiddleware::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
@@ -742,6 +793,62 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             app = app.service(ms_dke_scope);
         }
 
+        if enable_aws_xks {
+            // The scope for the AWS XKS (External Key Store) endpoints served from /aws
+            let aws_xks_scope = web::scope("/aws")
+                .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))
+                .wrap(Cors::permissive())
+                .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
+                .service(aws_xks::get_health_status)
+                .service(aws_xks::get_key_metadata)
+                .service(aws_xks::encrypt)
+                .service(aws_xks::decrypt)
+                .default_service(web::to(aws_xks::xks_path_not_found_handler));
+
+            app = app.service(aws_xks_scope);
+        }
+
+        if enable_azure_ekm {
+            if kms_server.params.azure_ekm.azure_ekm_disable_client_auth {
+                warn!(
+                    "Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments."
+                );
+            }
+
+            let base_path = kms_server
+                .params
+                .azure_ekm
+                .azure_ekm_path_prefix
+                .as_ref()
+                .map_or_else(
+                    // for unknown reasons, an "azure-ekm" base path will get compiled to "azure_ekm" in the binary, but underscores go against the path specs.
+                    || "/azureekm".to_owned(),
+                    |prefix| format!("/azureekm/{prefix}"),
+                );
+
+            info!("azure EKM API enabled at {}", base_path);
+
+            let azure_ekm_scope = web::scope(&base_path)
+                .wrap(Condition::new(
+                    !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
+                    EnsureAuth::new(kms_server_for_http.clone(), use_cert_auth),
+                ))
+                .wrap(Condition::new(
+                    !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
+                    SslAuth,
+                ))
+                .wrap(
+                    // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
+                    Cors::default(),
+                )
+                .service(azure_ekm::get_proxy_info)
+                .service(azure_ekm::get_key_metadata)
+                .service(azure_ekm::wrap_key)
+                .service(azure_ekm::unwrap_key);
+
+            app = app.service(azure_ekm_scope);
+        }
+
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
@@ -755,6 +862,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 None
             };
 
+            // These paths mirror the React application's client-side routes
+            // (declared with react-router-dom).  Actix-Web must forward every
+            // deep-link request to the SPA's `index.html` so the browser can
+            // perform client-side navigation; without these registrations the
+            // server would return 404 when a page is loaded directly (e.g. on
+            // a browser refresh or when following a bookmark).
             let spa_routes = [
                 "/login",
                 "/locate",
@@ -763,9 +876,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/ec{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
+                "/opaque-object{_:.*}",
                 "/certificates{_:.*}",
                 "/attributes{_:.*}",
                 "/access-rights{_:.*}",
+                "/azure{_:.*}",
                 "/google-cse",
             ];
             let mut auth_routes = web::scope("/ui")
@@ -891,25 +1006,14 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     trace!("Creating OpenSSL SslAcceptorBuilder with TLS parameters");
 
     // Use the common TLS configuration
-    let tls_config = {
+    let tls_config = TlsConfig {
         #[cfg(feature = "non-fips")]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.as_deref(),
-                p12: &server_config.p12,
-                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
-            }
-        }
-        #[cfg(not(feature = "non-fips"))]
-        {
-            TlsConfig {
-                cipher_suites: server_config.cipher_suites.as_deref(),
-                server_cert_pem: &server_config.server_cert_pem,
-                server_key_pem: &server_config.server_key_pem,
-                server_chain_pem: server_config.server_chain_pem.as_deref(),
-                client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
-            }
-        }
+        p12: server_config.p12.as_ref(),
+        cipher_suites: server_config.cipher_suites.as_deref(),
+        server_cert_pem: &server_config.server_cert_pem,
+        server_key_pem: &server_config.server_key_pem,
+        server_chain_pem: server_config.server_chain_pem.as_deref(),
+        client_ca_cert_pem: server_config.clients_ca_cert_pem.as_deref(),
     };
 
     let mut builder = create_base_openssl_acceptor(&tls_config, "http server")?;

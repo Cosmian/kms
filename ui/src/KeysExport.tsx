@@ -54,7 +54,6 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const responseRef = useRef<HTMLDivElement>(null);
     const wrapKeyId = Form.useWatch("wrapKeyId", form);
     const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
-    const selectedFormat: ExportKeyFormat | undefined = Form.useWatch("keyFormat", form);
 
     const isSecretData = key_type === "secret-data";
     const isOpaqueObject = key_type === "opaque-object";
@@ -199,24 +198,20 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                                 <Checkbox>Unwrap {isDataLike ? "object" : "key"} before export</Checkbox>
                             </Form.Item>
 
-                            {selectedFormat !== "raw" && selectedFormat !== "base64" && (
-                                <>
-                                    <Divider />
-                                    <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
-                                    <Form.Item name="wrapKeyId" label="Wrap Key ID">
-                                        <Input placeholder="Enter wrap key ID" />
-                                    </Form.Item>
+                            <Divider />
+                            <h3 className="text-m font-bold mb-4">Wrapping Options</h3>
+                            <Form.Item name="wrapKeyId" label="Wrap Key ID">
+                                <Input placeholder="Enter wrap key ID" />
+                            </Form.Item>
 
-                                    <Form.Item name="wrappingAlgorithm" label="Wrapping Algorithm">
-                                        <Select options={WRAPPING_ALGORITHMS} placeholder="Select algorithm" disabled={!wrapKeyId} />
-                                    </Form.Item>
+                            <Form.Item name="wrappingAlgorithm" label="Wrapping Algorithm">
+                                <Select options={WRAPPING_ALGORITHMS} placeholder="Select algorithm" disabled={!wrapKeyId} />
+                            </Form.Item>
 
-                                    {selectedAlgorithm === "aes-gcm" && (
-                                        <Form.Item name="authenticatedAdditionalData" label="Authenticated Additional Data">
-                                            <Input placeholder="Enter authenticated data" disabled={!wrapKeyId} />
-                                        </Form.Item>
-                                    )}
-                                </>
+                            {selectedAlgorithm === "aes-gcm" && (
+                                <Form.Item name="authenticatedAdditionalData" label="Authenticated Additional Data">
+                                    <Input placeholder="Enter authenticated data" disabled={!wrapKeyId} />
+                                </Form.Item>
                             )}
                         </Card>
                     )}
@@ -228,7 +223,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Export {isDataLike ? "Object" : "Key"}
                         </Button>
                     </Form.Item>
@@ -236,7 +231,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             </Form>
 
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title={isDataLike ? "Object Export Response" : "Key Export Response"}>{res}</Card>
                 </div>
             )}

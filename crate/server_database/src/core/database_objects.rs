@@ -147,7 +147,7 @@ impl Database {
             .await?;
         let uid = db.create(uid, owner, object, attributes, tags).await?;
         // Clear the cache for the unwrapped key (if any)
-        self.unwrapped_cache.validate_cache(&uid, object).await;
+        self.unwrapped_cache.validate_cache(&uid, object).await?;
         Ok(uid)
     }
 
@@ -253,7 +253,7 @@ impl Database {
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
         db.update_object(uid, object, attributes, tags).await?;
-        self.unwrapped_cache.validate_cache(uid, object).await;
+        self.unwrapped_cache.validate_cache(uid, object).await?;
         Ok(())
     }
 
@@ -294,14 +294,21 @@ impl Database {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
         for (_prefix, db) in map.iter() {
             results.extend(
-                db.find(researched_attributes, state, user, user_must_be_owner)
-                    .await
-                    .unwrap_or(vec![]),
+                db.find(
+                    researched_attributes,
+                    state,
+                    user,
+                    user_must_be_owner,
+                    vendor_id,
+                )
+                .await
+                .unwrap_or(vec![]),
             );
         }
         Ok(results)
@@ -345,7 +352,7 @@ impl Database {
                 AtomicOperation::Create((uid, object, ..))
                 | AtomicOperation::UpdateObject((uid, object, ..))
                 | AtomicOperation::Upsert((uid, object, ..)) => {
-                    self.unwrapped_cache.validate_cache(uid, object).await;
+                    self.unwrapped_cache.validate_cache(uid, object).await?;
                 }
                 AtomicOperation::Delete(uid) => {
                     self.unwrapped_cache.clear_cache(uid).await;

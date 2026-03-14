@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Download package artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -54,13 +54,26 @@ jobs:
           set -ex
           if [ "${{ startsWith(matrix.container, 'rockylinux') }}" = "true" ]; then
             # RPM-based (Rocky Linux)
-            rpm -qpl ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm
-            rpm -i ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm --nodeps || true
+            # rpm -qpl accepts only one file at a time
+            for pkg in ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm; do
+              rpm -qpl "$pkg"
+            done
+            rpm -i ./result-rpm-${{ matrix.features }}-${{ matrix.link }}/*.rpm --nodeps
           else
             # DEB-based (Ubuntu/Debian)
-            dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
-            # Use apt to handle dependencies when installing local .deb files
-            dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+            # dpkg --contents accepts only one file at a time
+            for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
+              dpkg --contents "$pkg"
+            done
+            if [ "${{ matrix.link }}" = "dynamic" ]; then
+              # Dynamic builds depend on system libssl3/libssl3t64 for ckms;
+              # dpkg -i will report dependency errors — fix them with apt.
+              dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+              apt-get update -qq && apt-get install -f -y
+            else
+              # Static builds should install cleanly with no missing deps
+              dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
+            fi
           fi
 
       - name: Enable info flag in config
@@ -74,11 +87,22 @@ jobs:
             exit 1
           fi
 
-      - name: Pre-check file
+      - name: Pre-check ckms
         shell: bash
         run: |
           set -ex
-          # Ensure OpenSSL uses packaged config and modules
+          # Determine installed ckms binary path (Nix: /usr/sbin, cargo-deb: /usr/local/bin)
+          CKMS="/usr/local/bin/ckms"
+          # Verify ckms is accessible without elevated privileges.
+          # LD_LIBRARY_PATH ensures dynamic builds can find libssl.so.3
+          # bundled in the CLI package under /usr/local/cosmian/ckms/lib/
+          su -s /bin/sh nobody -c "LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib $CKMS --version"
+
+      - name: Pre-check server binary
+        shell: bash
+        run: |
+          set -ex
+          # Ensure OpenSSL uses the server package's config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
           export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path
@@ -147,8 +171,12 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
       - name: Download package artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -160,9 +188,34 @@ jobs:
         run: |
           set -ex
           # DEB-based (Ubuntu/Debian)
-          dpkg --contents ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
-          # Use apt to handle dependencies when installing local .deb files
-          sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+          # dpkg --contents accepts only one file at a time
+          for pkg in ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb; do
+            dpkg --contents "$pkg"
+          done
+          if [ "${{ matrix.link }}" = "dynamic" ]; then
+            # Dynamic builds depend on system libssl3/libssl3t64 for ckms;
+            # dpkg -i will report dependency errors — fix them with apt.
+            sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb || true
+            sudo apt-get update -qq && sudo apt-get install -f -y
+          else
+            # Static builds should install cleanly with no missing deps
+            sudo dpkg -i ./result-deb-${{ matrix.features }}-${{ matrix.link }}/*.deb
+          fi
+
+      - name: Pre-check ckms
+        shell: bash
+        run: |
+          set -ex
+          # Determine installed ckms binary path (Nix: /usr/sbin, cargo-deb: /usr/local/bin)
+          CKMS="/usr/local/bin/ckms"
+          # Verify ckms is accessible without elevated privileges
+          sudo -u nobody "$CKMS" --version
+
+      - name: systemd-analyze security cosmian_kms.service
+        shell: bash
+        run: |
+          set -ex
+          systemd-analyze security cosmian_kms.service
 
       - name: Enable info flag in config
         shell: bash
@@ -175,11 +228,18 @@ jobs:
             exit 1
           fi
 
-      - name: Pre-check file
+      - name: Pre-check ckms
         shell: bash
         run: |
           set -ex
-          # Ensure OpenSSL uses packaged config and modules
+          # Verify ckms is accessible without elevated privileges
+          sudo -u nobody /usr/local/bin/ckms --version
+
+      - name: Pre-check server binary
+        shell: bash
+        run: |
+          set -ex
+          # Ensure OpenSSL uses the server package's config and modules
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
           export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
           # Determine installed binary path
@@ -212,14 +272,14 @@ jobs:
           set -ex
 
           sudo systemctl start cosmian_kms
-          sleep 5
+          sleep 30
 
           # Check systemd service status
-          sudo systemctl status cosmian_kms --no-pager
+          sudo systemctl status cosmian_kms --no-pager || true
           if ! systemctl is-active --quiet cosmian_kms; then
             echo "ERROR: cosmian_kms service is not active"
-            sudo systemctl status cosmian_kms --no-pager
-            sudo journalctl -u cosmian_kms --no-pager -n 50
+            sudo systemctl status cosmian_kms --no-pager || true
+            sudo journalctl -u cosmian_kms --no-pager -n 200 || true
             exit 1
           fi
 
@@ -241,6 +301,26 @@ jobs:
             set -e
             exit $rc
           fi
+
+      - name: Create keys with ckms
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo run -p ckms -- --version
+
+          # Configure ckms to talk to the locally running KMS.
+          mkdir -p "$HOME/.cosmian"
+          COSMIAN_CONFIG="$HOME/.cosmian/ci-kms.toml"
+          cat >"$COSMIAN_CONFIG" <<'TOML'
+          print_json = false
+
+          [http_config]
+          server_url = "http://127.0.0.1:9998"
+          TOML
+
+          # Create one key of each type.
+          cargo run -p ckms -- -c "$COSMIAN_CONFIG" sym keys create --algorithm aes --number-of-bits 256 ci_sym_key
 
       - name: Override branding.json and verify served
         shell: bash

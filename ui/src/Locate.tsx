@@ -730,14 +730,14 @@ const LocateForm: React.FC = () => {
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading}
-                                className="w-full text-white font-medium">
+                                className="w-full text-white font-medium" data-testid="submit-btn">
                             Search Objects
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Locate response">
                         <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                             <div className="font-bold">{res}</div>

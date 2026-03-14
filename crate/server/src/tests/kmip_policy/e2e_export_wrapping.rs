@@ -9,6 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         HashingAlgorithm, PaddingMethod,
     },
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{
@@ -30,6 +31,7 @@ use crate::{
     error::KmsError,
     tests::test_utils::{https_clap_config_opts, post_2_1, test_app_with_clap_config},
 };
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 
 async fn create_kek_and_target_for_export<B, S>(app: &S) -> (String, String)
 where
@@ -258,6 +260,7 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
     // Use a pre-quantum KEM tag (P-256) so the request does not include a nested
     // post-quantum `CryptographicAlgorithm` in `CryptographicParameters`.
     let create_kp = build_create_configurable_kem_keypair_request(
+        VENDOR_ID_COSMIAN,
         None,
         ["e2e-configurable-kem"],
         KemAlgorithm::P256,
@@ -272,10 +275,10 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
         .as_str()
         .expect("public key uid should be a string")
         .to_owned();
-    let pk_uid_for_encrypt = if pk_uid.ends_with("_pk") {
+    let pk_uid_for_encrypt = if pk_uid.ends_with(SYSTEM_TAG_PUBLIC_KEY) {
         pk_uid
     } else {
-        format!("{pk_uid}_pk")
+        format!("{pk_uid}{SYSTEM_TAG_PUBLIC_KEY}")
     };
     let sk_uid = create_resp
         .private_key_unique_identifier

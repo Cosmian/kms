@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
     kmip_2_1::{
-        extra::{VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG},
+        extra::tagging::VENDOR_ATTR_TAG,
         kmip_messages::ResponseMessageBatchItem,
         kmip_operations::{InteropResponse, LogResponse, Operation},
         kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
@@ -132,6 +132,24 @@ pub(crate) async fn message(
                         Some(error_message),
                         None,
                     ),
+                    Err(KmsError::ItemNotFound(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Item_Not_Found),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::CryptographicError(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Cryptographic_Failure),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(KmsError::Unauthorized(error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Permission_Denied),
+                        Some(error_message),
+                        None,
+                    ),
                     Err(err) => (
                         ResultStatusEnumeration::OperationFailed,
                         Some(ErrorReason::Operation_Not_Supported),
@@ -163,6 +181,7 @@ pub(crate) async fn message(
             get_attrs_requested_refs
                 .as_ref()
                 .is_some_and(|v| !v.is_empty()),
+            kms.vendor_id(),
         );
 
         // Update ID placeholder after successful operations that yield a clear target UID.
@@ -662,6 +681,7 @@ fn shape_kmip1_get_attributes_response(
     kmip_version: KmipFlavor,
     item: &mut V21ResponseMessageBatchItem,
     explicit_request: bool,
+    vendor_id: &str,
 ) {
     if !matches!(kmip_version, KmipFlavor::Kmip1)
         || item.result_status != ResultStatusEnumeration::Success
@@ -671,11 +691,10 @@ fn shape_kmip1_get_attributes_response(
     if let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload {
         let attrs = &mut gar.attributes;
         if explicit_request {
-            // Still remove internal Cosmian tagging attribute if present
+            // Still remove internal tagging attribute if present
             if let Some(vas) = attrs.vendor_attributes.as_mut() {
                 vas.retain(|va| {
-                    !(va.vendor_identification == VENDOR_ID_COSMIAN
-                        && va.attribute_name == VENDOR_ATTR_TAG)
+                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
                 });
                 if vas.is_empty() {
                     attrs.vendor_attributes = None;
@@ -694,7 +713,7 @@ fn shape_kmip1_get_attributes_response(
             if let Some(vas) = attrs.vendor_attributes.as_mut() {
                 vas.retain(|va| {
                     va.vendor_identification == "x"
-                        && !(va.vendor_identification == VENDOR_ID_COSMIAN
+                        && !(va.vendor_identification == vendor_id
                             && va.attribute_name == VENDOR_ATTR_TAG)
                 });
                 if vas.is_empty() {

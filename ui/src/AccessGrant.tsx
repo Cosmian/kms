@@ -98,6 +98,7 @@ const AccessGrantForm: React.FC = () => {
                                 mode="multiple"
                                 options={KMIP_OPERATIONS}
                                 placeholder="Select operations"
+                                data-testid="operation-types-select"
                                 onChange={() => {
                                     form.validateFields(["unique_identifier"]);
                                 }}
@@ -139,14 +140,14 @@ const AccessGrantForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium">
+                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
                             Grant Access
                         </Button>
                     </Form.Item>
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Grant access response">{res}</Card>
                 </div>
             )}

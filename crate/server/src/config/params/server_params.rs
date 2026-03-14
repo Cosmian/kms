@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -16,6 +16,7 @@ use crate::{
     },
     error::KmsError,
     result::{KResult, KResultHelper},
+    routes::aws_xks::AwsXksParams,
 };
 
 /// This structure is the context used by the server
@@ -39,6 +40,9 @@ pub struct ServerParams {
 
     /// The Google CSE config
     pub google_cse: GoogleCseConfig,
+
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    pub vendor_identification: String,
 
     /// The username to use if no authentication method is provided
     pub default_username: String,
@@ -125,8 +129,13 @@ pub struct ServerParams {
     /// If None, all users can create and grant create access rights.
     pub privileged_users: Option<Vec<String>>,
 
+    /// AWS XKS parameters, if any
+    pub aws_xks_params: Option<AwsXksParams>,
+
     /// KMIP algorithm policy.
     pub kmip_policy: KmipPolicyParams,
+
+    pub azure_ekm: AzureEkmConfig,
 }
 
 /// Represents the server parameters.
@@ -258,6 +267,7 @@ impl ServerParams {
             http_port: conf.http.port,
             tls_params,
             kms_public_url: conf.kms_public_url,
+            vendor_identification: conf.vendor_identification,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
             api_token_id: conf.http.api_token_id,
@@ -321,6 +331,11 @@ impl ServerParams {
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
+            aws_xks_params: if conf.aws_xks_config.aws_xks_enable {
+                Some(conf.aws_xks_config.try_into()?)
+            } else {
+                None
+            },
             kmip_policy: KmipPolicyParams {
                 policy_id: kmip_policy_id,
                 allowlists: KmipAllowlistsParams {
@@ -336,7 +351,9 @@ impl ServerParams {
                     aes_key_sizes: kmip_allowlists.aes_key_sizes,
                 },
             },
+            azure_ekm: conf.azure_ekm_config,
         };
+
         debug!("{res:#?}");
 
         Ok(res)
@@ -354,7 +371,8 @@ impl fmt::Debug for ServerParams {
         // Always show these non-optional fields
         debug_struct
             .field("default_username", &self.default_username)
-            .field("force_default_username", &self.force_default_username);
+            .field("force_default_username", &self.force_default_username)
+            .field("vendor_identification", &self.vendor_identification);
 
         if let Some(ref db_params) = self.main_db_params {
             debug_struct.field("main_db_params", db_params);
@@ -449,6 +467,45 @@ impl fmt::Debug for ServerParams {
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+        }
+
+        if let Some(aws_xks_params) = &self.aws_xks_params {
+            debug_struct
+                .field("aws_xks_params", &"configured")
+                .field("aws_xks_region", &aws_xks_params.region)
+                .field("aws_xks_service", &aws_xks_params.service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &aws_xks_params.sigv4_access_key_id,
+                );
+        } else {
+            debug_struct.field("aws_xks_params", &"not configured");
+        }
+
+        // Azure EKM configuration
+        if self.azure_ekm.azure_ekm_enable {
+            debug_struct
+                .field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm.azure_ekm_proxy_vendor,
+                )
+                .field("azure_ekm_proxy_name", &self.azure_ekm.azure_ekm_proxy_name)
+                .field("azure_ekm_ekm_vendor", &self.azure_ekm.azure_ekm_ekm_vendor)
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm.azure_ekm_ekm_product,
+                );
+        } else {
+            debug_struct.field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable);
         }
 
         if self.hsm_model.is_some() {

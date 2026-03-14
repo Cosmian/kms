@@ -45,6 +45,9 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     test_hsm_smartcardhsm_rsa_oaep_encrypt()?;
     test_hsm_smartcardhsm_aes_cbc_encrypt()?;
     test_hsm_smartcardhsm_aes_cbc_multi_round_encrypt()?;
+    test_hsm_smartcardhsm_rsa_pkcs_v15_sign()?;
+    test_hsm_smartcardhsm_rsa_sha256_sign()?;
+    test_hsm_smartcardhsm_rsa_sign_all_algorithms()?;
     test_hsm_smartcardhsm_multi_threaded_rsa_encrypt_decrypt_test()?;
     test_hsm_smartcardhsm_get_key_metadata()?;
     test_hsm_smartcardhsm_list_objects()?;
@@ -142,6 +145,27 @@ fn test_hsm_smartcardhsm_aes_cbc_encrypt() -> HResult<()> {
 fn test_hsm_smartcardhsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
     shared::aes_cbc_multi_round(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_pkcs_v15_sign() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pkcs_v15_sign(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_sha256_sign() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_sha256_sign(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_rsa_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::rsa_sign_all_algorithms(&slot)
 }
 
 #[test]

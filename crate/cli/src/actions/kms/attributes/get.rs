@@ -139,6 +139,11 @@ pub(crate) async fn get_attributes(
 
     debug!("GetAttributes response for {unique_identifier}: {attributes}",);
 
-    let results = parse_selected_attributes(&attributes, attribute_tags, attribute_link_types)?;
+    let results = parse_selected_attributes(
+        kms_rest_client.config.vendor_id.as_str(),
+        &attributes,
+        attribute_tags,
+        attribute_link_types,
+    )?;
     Ok((unique_identifier, results))
 }

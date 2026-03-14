@@ -92,12 +92,14 @@ impl WrapSecretDataOrKeyAction {
         // cache the object type
         let object_type = object.object_type();
 
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
         // if the key must be wrapped, prepare the wrapping key
         let wrapping_key = if let Some(b64) = &self.wrap_key_b64 {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
             create_symmetric_key_kmip_object(
+                vendor_id,
                 &key_bytes,
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -111,6 +113,7 @@ impl WrapSecretDataOrKeyAction {
             )?;
 
             let symmetric_key_object = create_symmetric_key_kmip_object(
+                vendor_id,
                 key_bytes.as_ref(),
                 &Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

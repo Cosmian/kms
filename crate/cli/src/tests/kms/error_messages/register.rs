@@ -1,13 +1,16 @@
 use cosmian_kmip::time_normalize;
-use cosmian_kms_client::cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_objects::ObjectType,
-        kmip_operations::{Register, RegisterResponse},
-        kmip_types::{CryptographicAlgorithm, ProtectionStorageMasks},
-        requests::create_symmetric_key_kmip_object,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::ObjectType,
+            kmip_operations::{Register, RegisterResponse},
+            kmip_types::{CryptographicAlgorithm, ProtectionStorageMasks},
+            requests::create_symmetric_key_kmip_object,
+        },
     },
+    kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
 };
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
@@ -35,7 +38,7 @@ async fn test_register_success_preactive() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Register the key
     let register_request = Register {
@@ -75,7 +78,7 @@ async fn test_register_success_active() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Register the key
     let register_request = Register {
@@ -111,7 +114,7 @@ async fn test_register_invalid_object_type() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Register with MISMATCHED object_type (say it's a PrivateKey when it's actually SymmetricKey)
     let register_request = Register {
@@ -155,7 +158,7 @@ async fn test_register_feature_not_supported() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object = create_symmetric_key_kmip_object(&key_bytes, &attributes)?;
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes, &attributes)?;
 
     // Register with unsupported protection_storage_masks
     let register_request = Register {
@@ -208,7 +211,8 @@ async fn test_register_invalid_attribute() -> KmsCliResult<()> {
     };
 
     // Try to create object with invalid key size
-    let object_result = create_symmetric_key_kmip_object(&invalid_key_bytes, &attributes);
+    let object_result =
+        create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &invalid_key_bytes, &attributes);
 
     // The object creation currently succeeds (server is lenient about key sizes)
     // In a strict KMIP 2.1 implementation, this would fail with Invalid_Attribute error
@@ -261,7 +265,7 @@ async fn test_register_state_determination() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object1 = create_symmetric_key_kmip_object(&key_bytes1, &attributes1)?;
+    let object1 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes1, &attributes1)?;
     let register_request1 = Register {
         object_type: ObjectType::SymmetricKey,
         object: object1,
@@ -287,7 +291,7 @@ async fn test_register_state_determination() -> KmsCliResult<()> {
         ..Default::default()
     };
 
-    let object2 = create_symmetric_key_kmip_object(&key_bytes2, &attributes2)?;
+    let object2 = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &key_bytes2, &attributes2)?;
     let register_request2 = Register {
         object_type: ObjectType::SymmetricKey,
         object: object2,

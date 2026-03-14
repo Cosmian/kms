@@ -53,7 +53,8 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
             attributes: owm.attributes().to_owned(),
             protection_storage_masks: None,
         };
-        let (_uid, new_object, _tags) = KMS::create_symmetric_key_and_tags(&create_request)?;
+        let (_uid, new_object, _tags) =
+            KMS::create_symmetric_key_and_tags(kms.vendor_id(), &create_request)?;
 
         // import new KMIP object into the database (but overwrite the existing one)
         let import_request = Import {

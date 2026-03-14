@@ -294,6 +294,7 @@ impl ImportCertificateAction {
         }
 
         let import_object_request = import_object_request(
+            kms_rest_client.config.vendor_id.as_str(),
             self.certificate_id.clone(),
             private_key,
             Some(attributes),
@@ -348,6 +349,7 @@ impl ImportCertificateAction {
             attributes.activation_date = Some(time_normalize()?);
             // import the certificate
             let import_object_request = import_object_request(
+                kms_rest_client.config.vendor_id.as_str(),
                 self.certificate_id.clone(),
                 object,
                 import_attributes,

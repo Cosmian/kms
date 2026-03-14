@@ -1,23 +1,21 @@
-use cosmian_http_client::{
-    HttpClient,
-    reexport::reqwest::{Response, StatusCode},
-};
 // re-export the kmip module as kmip
 use cosmian_kms_client_utils::reexport::{
-    cosmian_kmip::kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-    cosmian_kmip::kmip_2_1::kmip_operations::{
-        Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
-        Check, CheckResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
-        DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributeList, GetAttributeListResponse, GetAttributes,
-        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
-        ModifyAttributeResponse, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
-        RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
-        RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
-        SignResponse, SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate,
-        ValidateResponse,
+    cosmian_kmip::{
+        kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_2_1::kmip_operations::{
+            Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify,
+            CertifyResponse, Check, CheckResponse, Create, CreateKeyPair, CreateKeyPairResponse,
+            CreateResponse, Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse,
+            DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse,
+            Export, ExportResponse, Get, GetAttributeList, GetAttributeListResponse, GetAttributes,
+            GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
+            LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
+            ModifyAttributeResponse, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse,
+            RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
+            Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse,
+            Sign, SignResponse, SignatureVerify, SignatureVerifyResponse, StatusResponse, Validate,
+            ValidateResponse,
+        },
     },
     cosmian_kms_access::access::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
@@ -34,6 +32,10 @@ use crate::{
         ttlv::{TTLV, from_ttlv, to_ttlv},
     },
     error::{KmsClientError, result::KmsClientResultHelper},
+    http_client::{
+        HttpClient,
+        reexport::reqwest::{Response, StatusCode},
+    },
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:

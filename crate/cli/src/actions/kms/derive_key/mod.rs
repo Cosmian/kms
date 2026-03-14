@@ -97,12 +97,14 @@ impl DeriveKeyAction {
             let password_bytes = Zeroizing::from(password.as_bytes().to_vec());
 
             let secret_data_object = create_secret_data_kmip_object(
+                kms_rest_client.config.vendor_id.as_str(),
                 password_bytes.as_slice(),
                 cosmian_kmip::kmip_0::kmip_types::SecretDataType::Password,
                 &Attributes::default(),
             )?;
 
             let import_request = import_object_request(
+                kms_rest_client.config.vendor_id.as_str(),
                 None, // Let the server generate the ID
                 secret_data_object,
                 None,

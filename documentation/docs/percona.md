@@ -2,16 +2,7 @@
 
 This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` extension to use Cosmian KMS for transparent data encryption (TDE).
 
-## Table of Contents
-
-- [Prerequisites](#prerequisites)
-- [Before You Start: Understanding pg_tde Architecture](#before-you-start-understanding-pgtde-architecture)
-- [Configuration Steps](#configuration-steps)
-- [Encryption Scope and What Gets Encrypted](#encryption-scope-and-what-gets-encrypted)
-- [Key Management: DEK, Internal Keys and Principal Keys](#key-management-dek-internal-keys-and-principal-keys)
-- [Verification and Testing](#verification-and-testing)
-- [Troubleshooting & Solutions](#troubleshooting--solutions)
-- [Operational Considerations](#operational-considerations)
+[TOC]
 
 ---
 
@@ -19,10 +10,10 @@ This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` e
 
 Before starting, ensure you have:
 
-- PostgreSQL 17 (Percona Server for PostgreSQL 17.x or later)[1]
+- PostgreSQL 17 [Percona Server for PostgreSQL 17.x or later](1)
 - `pg_tde` extension installed
 - Access to a running Cosmian KMS server
-- Appropriate SSL certificates for KMIP communication (TLS 1.2+)[2]
+- Appropriate SSL certificates for KMIP communication [TLS 1.2+](2)
 
 ---
 
@@ -30,74 +21,35 @@ Before starting, ensure you have:
 
 ### Global Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│            Application / SQL Queries                        │
-│           (SELECT, INSERT, UPDATE, DELETE)                  │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-                  (Data in plaintext in memory)
-                             │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│      PostgreSQL + pg_tde Extension + Percona Patches        │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ SMGR (Storage Manager) - Interception Layer          │   │
-│  └────────────────────────┬─────────────────────────────┘   │
-│                           │                                 │
-│       ┌───────────────────┴───────────────────────┐         │
-│       │                                           │         │
-│       ▼                                           ▼         │
-│    TDE Tables                                Non-TDE Tables │
-│ (USING tde_heap)                            (standard heap) │ 
-│                                                             │
-│             ┌─────────────┬──────────────┐                  │
-│             │             │              │                  │
-│             ▼             ▼              ▼                  │
-│         Encryption        No         Encryption (optional,  │
-│          of pages      encryption    WAL only if enabled)   │
-│         (CBC-128)                    (CTR-128) WAL          │
-└──────────────┬─────────────┬──────────────┬─────────────────┘
-               │             │              │
-               ▼             ▼              ▼
-           Disk (encrypted data)
-           WAL Files (encrypted if pg_tde.wal_encrypt = on)
+```mermaid
+flowchart TB
+    app["Application / SQL Queries<br/>(SELECT, INSERT, UPDATE, DELETE)"]
+    plain["Data in plaintext in memory"]
+    subgraph pg["PostgreSQL + pg_tde Extension + Percona Patches"]
+        smgr["SMGR (Storage Manager) — Interception Layer"]
+        tde["TDE Tables<br/>(USING tde_heap)"]
+        nontde["Non-TDE Tables<br/>(standard heap)"]
+        enc["Encryption of pages<br/>(CBC-128)"]
+        noenc["No encryption"]
+        walenc["Encryption (optional, WAL only)<br/>(CTR-128) WAL"]
+        smgr --> tde & nontde
+        tde --> enc
+        nontde --> noenc & walenc
+    end
+    disk["Disk (encrypted data)<br/>WAL Files (encrypted if pg_tde.wal_encrypt = on)"]
+    app --> plain --> smgr
+    enc --> disk
+    noenc --> disk
+    walenc --> disk
 ```
 
 ### KMIP Communication Flow
 
-```
-┌──────────────────────────────────────┐
-│   PostgreSQL + pg_tde                │
-│   (KMIP Client)                      │
-└────────────┬─────────────────────────┘
-             │
-             │ KMIP over TLS 1.2/1.3
-             │ Port 5696 (binary)
-             │ Required certificates:
-             │  - client_cert.pem
-             │  - client_key.pem
-             │  - ca_cert.pem
-             │
-             ▼
-┌──────────────────────────────────────┐
-│   Cosmian KMS 5.6+                   │
-│   (KMIP Server)                      │
-│                                      │
-│  Supported operations:               │
-│  ✓ Create (create keys)              │
-│  ✓ Get (retrieve keys)               │
-│  ✓ Destroy (delete keys)             │
-│  ✓ Register (register objects)       │
-│  ✓ Locate (find objects)             │
-│  ✓ Activate (activate)               │
-│  ✓ Revoke (revoke)                   │
-│                                      │
-│  Protocol: KMIP 1.x and 2.x[2]       │
-│  Profile: Baseline Server            │
-└──────────────────────────────────────┘
+```mermaid
+flowchart TB
+    pg["PostgreSQL + pg_tde<br/>(KMIP Client)"]
+    kms["Cosmian KMS 5.6+<br/>(KMIP Server)<br/><br/>Supported operations:<br/>✓ Create · Get · Destroy · Register<br/>✓ Locate · Activate · Revoke<br/><br/>Protocol: KMIP 1.x and 2.x<br/>Profile: Baseline Server"]
+    pg -->|"KMIP over TLS 1.2/1.3<br/>Port 5696 (binary)<br/>Required: client_cert.pem, client_key.pem, ca_cert.pem"| kms
 ```
 
 ---
@@ -146,6 +98,7 @@ SELECT pg_tde_add_global_key_provider_kmip(
 **Note:** Replace the placeholder values with your actual KMS server details and certificate paths.[1]
 
 **Certificate Requirements:**[2]
+
 - All certificates must be in PEM format
 - Client certificates must be X.509 compliant
 - TLS 1.2 or higher is required for KMIP communication
@@ -166,6 +119,7 @@ SELECT pg_tde_set_default_key_using_global_key_provider('key_01', 'kms_provider'
 The first parameter (`key_01`) is the key identifier, and the second parameter (`kms_provider`) must match the provider name from step 3.[1]
 
 **What happens in this step:**
+
 - `pg_tde_create_key_using_global_key_provider()` creates a Principal Key managed by Cosmian KMS
 - `pg_tde_set_server_key_using_global_key_provider()` sets the server-level default key
 - `pg_tde_set_default_key_using_global_key_provider()` sets the database-level default key
@@ -202,6 +156,7 @@ sudo systemctl restart postgresql@17-main.service
 ```
 
 **About these parameters:**[1]
+
 - `pg_tde.wal_encrypt = on` encrypts Write-Ahead Log files (production-ready as of Percona PostgreSQL 17.5.3)
 - `pg_tde.enforce_encryption = on` prevents creation of unencrypted tables when a default key is set (strongly recommended)
 
@@ -257,7 +212,7 @@ SHOW pg_tde.inherit_global_providers;
 |-----------|--------|---------|
 | Tables `USING tde_heap` | ✓ Encrypted | Complete row data, all columns[3] |
 | Index on TDE tables | ✓ Encrypted | B-trees, Hash, GiST, GIN, BRIN, etc.[3] |
-| TOAST tables | ✓ Encrypted | Compressed/out-of-page data (e.g. long TEXT)[3] |
+| TOAST tables | ✓ Encrypted | Compressed/out-of-page data [e.g. long TEXT](3) |
 | Sequences (TDE tables) | ✓ Encrypted | Related to encrypted tables[3] |
 | Temporary tables (TDE) | ✓ Encrypted | Temporary tables for TDE data operations[3] |
 
@@ -265,7 +220,7 @@ SHOW pg_tde.inherit_global_providers;
 
 | Component | With `pg_tde.wal_encrypt = on` | Details |
 |-----------|--------------------------------|---------|
-| WAL (Write-Ahead Log) | ✓ Encrypted | Transaction logs (GA status since v17.5.3)[4] |
+| WAL (Write-Ahead Log) | ✓ Encrypted | Transaction logs [GA status since v17.5.3](4) |
 | WAL before images | ✓ Encrypted | Row states before modification[4] |
 | WAL after images | ✓ Encrypted | Row states after modification[4] |
 
@@ -305,45 +260,13 @@ SHOW pg_tde.inherit_global_providers;
 
 pg_tde uses a **two-level key hierarchy** for data encryption:[3]
 
-```
-┌────────────────────────────────────────────────────────┐
-│         PRINCIPAL KEY (Master Key)                     │
-│                                                        │
-│  - Stored externally in Cosmian KMS (KMIP)             │
-│  - ONE per database                                    │
-│  - Encrypts Internal Keys (AES-128-GCM)[3]             │
-│  - Accessible only via TLS KMIP connection[2]          │
-│                                                        │
-│  Creation:                                             │
-│  pg_tde_create_key_using_global_key_provider()         │
-└────────────────────┬───────────────────────────────────┘
-                     │
-                     │ Encrypts (AES-128-GCM)
-                     │ via KMIP wrap function
-                     │
-                     ▼
-┌────────────────────────────────────────────────────────┐
-│  INTERNAL KEYS (Data Encryption Keys / DEK)            │
-│                                                        │
-│  - Stored locally: $PGDATA/pg_tde/[3]                  │
-│  - Encrypted by Principal Key[3]                       │
-│  - ONE unique key per relation (OID)[3]                │
-│  - Data encryption algorithms:[3]                      │
-│    * Tables: AES-128-CBC                               │
-│    * WAL: AES-128-CTR                                  │
-│    * Keys: AES-128-GCM (principal wrap)                │
-└────────────────────┬───────────────────────────────────┘
-                     │
-                     │ Encrypt (AES-128-CBC/CTR)
-                     │
-                     ▼
-┌────────────────────────────────────────────────────────┐
-│  ENCRYPTED DATA (User Data)                            │
-│                                                        │
-│  - Table pages stored encrypted on disk[3]             │
-│  - Index pages stored encrypted[3]                     │
-│  - WAL data encrypted (if pg_tde.wal_encrypt = on)[3]  │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    principal["PRINCIPAL KEY (Master Key)<br/><br/>Stored externally in Cosmian KMS via KMIP<br/>ONE per database<br/>Encrypts Internal Keys (AES-128-GCM)<br/>Accessible only via TLS KMIP connection<br/><br/>Created with pg_tde_create_key_using_global_key_provider()"]
+    internal["INTERNAL KEYS (Data Encryption Keys / DEK)<br/><br/>Stored locally in $PGDATA/pg_tde/<br/>Encrypted by Principal Key<br/>ONE unique key per relation (OID)<br/><br/>Tables: AES-128-CBC · WAL: AES-128-CTR · Keys: AES-128-GCM"]
+    data["ENCRYPTED DATA (User Data)<br/><br/>Table pages stored encrypted on disk<br/>Index pages stored encrypted<br/>WAL data encrypted (if pg_tde.wal_encrypt = on)"]
+    principal -->|"Encrypts via KMIP wrap (AES-128-GCM)"| internal
+    internal -->|"Encrypt (AES-128-CBC / CTR)"| data
 ```
 
 ### Internal Keys (DEK) Details
@@ -355,13 +278,13 @@ pg_tde uses a **two-level key hierarchy** for data encryption:[3]
 | **Generation** | Automatic when `CREATE TABLE ... USING tde_heap`[3] |
 | **Identifier** | Unique OID (Object Identifier) per relation[3] |
 | **Location** | `$PGDATA/pg_tde/<database_oid>/`[3] |
-| **File** | `<relation_oid>.key` (binary, encrypted)[3] |
+| **File** | `<relation_oid>.key` [binary, encrypted](3) |
 | **Visibility** | Not readable directly without Principal Key[3] |
 | **Rotation** | Via `VACUUM FULL`, `ALTER TABLE SET ACCESS METHOD`, or `CREATE TABLE AS SELECT`[3] |
 
 #### Disk Structure Example
 
-```
+```text
 $PGDATA/pg_tde/
 ├── global/                          # Global section
 │   ├── provider_config              # Global provider configuration
@@ -380,8 +303,8 @@ $PGDATA/pg_tde/
 
 | Aspect | Detail | Recommendation |
 |--------|--------|-----------------|
-| **File Permissions** | Inherited from `$PGDATA` (pg:pg 700)[3] | ✓ Good, ensure root cannot read |
-| **Backup Protection** | DEK files copied with backup (remain encrypted)[3] | ✓ Safe for off-site storage |
+| **File Permissions** | Inherited from `$PGDATA` [pg:pg 700](3) | ✓ Good, ensure root cannot read |
+| **Backup Protection** | DEK files copied with backup [remain encrypted](3) | ✓ Safe for off-site storage |
 | **RAM Cache** | Principal Key and DEKs decrypted in RAM[3] | ⚠️ Protect with: lock_memory, disable core dumps |
 | **Swap Memory** | Keys can be paged to swap[3] | ⚠️ Use encrypted swap (dm-crypt, zswap) |
 
@@ -490,7 +413,7 @@ SHOW pg_tde.wal_encrypt;
 SELECT pg_tde_is_wal_encrypted();
 
 -- Check WAL files (encrypted WAL segments have standard naming)
-SELECT name FROM pg_ls_waldir() 
+SELECT name FROM pg_ls_waldir()
 ORDER BY name DESC LIMIT 5;
 ```
 
@@ -502,7 +425,7 @@ ORDER BY name DESC LIMIT 5;
 
 #### 1. PostgreSQL Fails to Start
 
-```
+```text
 ERROR: could not load shared library "pg_tde"
 or
 ERROR: could not connect to KMIP server
@@ -534,6 +457,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 ```
 
 **Solutions:**
+
 - Verify `shared_preload_libraries` contains `pg_tde`
 - Restart PostgreSQL after configuration changes
 - Ensure Cosmian KMS is running: `telnet <kms-host> 5696`
@@ -541,7 +465,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 
 #### 2. TLS Certificate Verification Failed
 
-```
+```text
 ERROR: SSL/TLS certificate verification failed
 DETAIL: certificate verify failed / self signed certificate
 ```
@@ -566,6 +490,7 @@ python3 -m kmip.demos.client -b /path/to/client_cert.pem \
 ```
 
 **Solutions:**
+
 - Verify certificate files exist and are readable: `ls -la /path/to/*.pem`
 - Check certificate expiration dates
 - Verify CA certificate chain is complete
@@ -573,7 +498,7 @@ python3 -m kmip.demos.client -b /path/to/client_cert.pem \
 
 #### 3. Key Not Found or Access Denied
 
-```
+```text
 ERROR: Failed to retrieve principal key 'key_01' from KMS provider 'kms_provider'
 DETAIL: Key not found / Access denied
 ```
@@ -594,6 +519,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 ```
 
 **Solutions:**
+
 - Verify the key exists on Cosmian KMS
 - Verify the key name matches exactly (case-sensitive)
 - Check KMS user/role has permissions to access the key
@@ -602,7 +528,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 
 #### 4. Performance Degradation After Enabling TDE
 
-```
+```text
 Problem: Slower queries, high CPU usage
 ```
 
@@ -610,7 +536,7 @@ Problem: Slower queries, high CPU usage
 
 ```sql
 -- Check cache hit ratio
-SELECT sum(heap_blks_read) / (sum(heap_blks_read) + 
+SELECT sum(heap_blks_read) / (sum(heap_blks_read) +
         sum(heap_blks_hit)) AS cache_hit_ratio
 FROM pg_stat_user_tables;
 
@@ -619,11 +545,14 @@ EXPLAIN ANALYZE SELECT * FROM sensitive_data LIMIT 1000;
 ```
 
 **Solutions:**
+
 - Increase `shared_buffers` to reduce disk I/O
 - Check CPU supports AES-NI (hardware acceleration):
+
   ```bash
   grep -o 'aes' /proc/cpuinfo | head -1
   ```
+
 - Monitor I/O performance with `iostat -x 1`
 - Note: Percona reports ~10% overhead in most cases[4]
 
@@ -653,42 +582,30 @@ openssl x509 -in /etc/postgresql/kmip-certs/client_cert.pem -noout -dates | \
 # 4. Plan certificate rotation before expiration
 # Test with new certificates before cutover
 ```
+
 ---
 
 ## Operational Considerations
 
 ### Migration from Non-TDE to TDE Tables
 
-```
-┌────────────────────────────────────────────────┐
-│  Migration from non-TDE to TDE table           │
-└────────────────────┬───────────────────────────┘
-                     │
-        ┌────────────┴────────────┐
-        │                         │
-        ▼                         ▼
-    Method 1:                  Method 2:
-  CREATE TABLE AS             ALTER TABLE
-        │                         │
-        ▼                         ▼
-  CREATE TABLE t_new       ALTER TABLE t_old
-  USING tde_heap           SET ACCESS METHOD
-  AS SELECT * FROM         tde_heap;
-  t_old;
-        │                         │
-        ▼                         ▼
-  DROP TABLE t_old;   (Recreates index, constraints,
-  ALTER TABLE t_new   foreign keys)
-  RENAME TO t_old;
-        │                         │
-        └────────────┬────────────┘
-                     │
-                     ▼
-            ✓ TDE table created
-              (exclusive lock)
+```mermaid
+flowchart TB
+    start["Migration: non-TDE → TDE table"]
+    m1["Method 1: CREATE TABLE AS"]
+    m2["Method 2: ALTER TABLE"]
+    m1a["CREATE TABLE t_new USING tde_heap<br/>AS SELECT * FROM t_old"]
+    m2a["ALTER TABLE t_old<br/>SET ACCESS METHOD tde_heap"]
+    m1b["DROP TABLE t_old<br/>ALTER TABLE t_new RENAME TO t_old"]
+    m2b["Recreates index, constraints, foreign keys"]
+    done["✓ TDE table created (exclusive lock)"]
+    start --> m1 & m2
+    m1 --> m1a --> m1b --> done
+    m2 --> m2a --> m2b --> done
 ```
 
 **Impact:**
+
 - Exclusive lock on table during migration
 - Complete data rewrite
 - Time proportional to table size
@@ -720,6 +637,7 @@ SELECT pg_tde_default_key_info();
 ```
 
 **Notes:**
+
 - Internal keys are re-encrypted (non-blocking operation)
 - Old key retained for recovery purposes
 - Does not re-encrypt user data (only wraps internal keys)
@@ -735,7 +653,7 @@ VACUUM FULL sensitive_data;
 -- Note: Table remains in memory during operation
 
 -- Method 2: CREATE TABLE AS (more controlled)
-CREATE TABLE sensitive_data_new USING tde_heap AS 
+CREATE TABLE sensitive_data_new USING tde_heap AS
   SELECT * FROM sensitive_data;
 
 -- Recreate indexes
@@ -750,6 +668,7 @@ SELECT pg_tde_is_encrypted('public.sensitive_data'::regclass);
 ```
 
 **Performance Comparison:**
+
 | Method | Lock Duration | Disk I/O | Downtime |
 |--------|--------------|----------|----------|
 | VACUUM FULL | Full table | Low | Minimal |
@@ -781,25 +700,13 @@ restore_command = 'pgbackrest archive-get %f %p'
 
 #### Recovery Point Objective (RPO)
 
-```
-┌──────────────────────────────────────────────────────┐
-│  Recommended backup strategy                         │
-├──────────────────────────────────────────────────────┤
-│                                                      │
-│ Baseline + Continuous WAL Archiving:                 │
-│                                                      │
-│  pg_tde_basebackup (baseline)                        │
-│      │                                               │
-│  ────┼──────────────────────────────────             │
-│      │  WAL segments (archived)                      │
-│      │  (archive_command)                            │
-│      │                                               │
-│      └──► Allows PITR up to last WAL segment         │
-│                                                      │
-│  RPO = 1 WAL segment (16 MB by default)              │
-│  RTO = Time to replay WAL                            │
-│                                                      │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    base["pg_tde_basebackup (baseline)"]
+    wal["WAL segments (archived via archive_command)"]
+    pitr["Allows PITR up to last WAL segment"]
+    rpo["RPO = 1 WAL segment (16 MB by default)<br/>TO = Time to replay WAL"]
+    base --> wal --> pitr --> rpo
 ```
 
 ### Failover and Standby Setup
@@ -811,12 +718,12 @@ restore_command = 'pgbackrest archive-get %f %p'
 postgresql:
   # Use pg_tde_rewind, NOT standard pg_rewind if WAL encrypted
   pg_rewind: pg_tde_rewind
-  
+
   parameters:
     shared_preload_libraries: pg_tde
     pg_tde.wal_encrypt: on
     pg_tde.enforce_encryption: on
-    
+
     # Archive settings
     archive_mode: on
     archive_command: "pg_tde_archive_decrypt %f %p | pgbackrest archive-push %p"
@@ -837,6 +744,7 @@ postgresql:
 ### Cosmian KMS Compatibility
 
 **Supported features with pg_tde:**[2]
+
 - KMIP 1.x and 2.x protocols
 - Baseline Server profile (fully compliant)
 - AES-128-CBC, AES-128-CTR, AES-128-GCM algorithms
@@ -860,6 +768,7 @@ postgresql:
 ### Ongoing Maintenance
 
 1. **Monitor KMS connectivity:**
+
    ```sql
    SELECT pg_tde_verify_key();
    ```
@@ -879,11 +788,11 @@ postgresql:
 
 ### References
 
-- [Percona pg_tde Documentation](https://percona.github.io/pg_tde/main/)[1]
-- [Cosmian KMS KMIP Support](https://docs.cosmian.com/key_management_system/kmip/)[2]
-- [Percona pg_tde Architecture](https://docs.percona.com/pg-tde/architecture/architecture.html)[3]
-- [Percona WAL Encryption Blog (2025-09-01)](https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/)[4]
-- [Percona pg_tde Limitations](https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools)[5]
+- [Percona pg_tde Documentation][https://percona.github.io/pg_tde/main/](1)
+- [Cosmian KMS KMIP Support][https://docs.cosmian.com/key_management_system/kmip/](2)
+- [Percona pg_tde Architecture][https://docs.percona.com/pg-tde/architecture/architecture.html](3)
+- [Percona WAL Encryption Blog (2025-09-01)][https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/](4)
+- [Percona pg_tde Limitations][https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools](5)
 
 ---
 
@@ -892,4 +801,3 @@ postgresql:
 - [Percona pg_tde Official Docs](https://docs.percona.com/pg-tde/)
 - [Cosmian KMS Percona Integration](https://docs.cosmian.com/key_management_system/percona/)
 - [Percona Server for PostgreSQL 17](https://www.percona.com/software/postgresql/percona-server-for-postgresql)
-

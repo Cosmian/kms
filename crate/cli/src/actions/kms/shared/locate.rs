@@ -32,7 +32,7 @@ pub struct LocateObjectsAction {
     /// Possible values include "Covercrypt", "ECDH", "`ChaCha20Poly1305`", "AES", "Ed25519"
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms locate --algorithm WRONG`
+    /// e.g. `ckms locate --algorithm WRONG`
     #[clap(
         long = "algorithm",
         short = 'a',
@@ -53,7 +53,7 @@ pub struct LocateObjectsAction {
     /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
-    /// e.g. `cosmian kms locate --key-format-type WRONG`
+    /// e.g. `ckms locate --key-format-type WRONG`
     #[clap(long = "key-format-type", short = 'f',
         value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     pub(crate) key_format_type: Option<KeyFormatType>,
@@ -96,6 +96,7 @@ impl LocateObjectsAction {
     /// Returns an error if there is a problem communicating with the KMS or if the requested key cannot be located.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Vec<UniqueIdentifier>> {
         let request = build_locate_request(
+            kms_rest_client.config.vendor_id.as_str(),
             self.tags.clone(),
             self.cryptographic_algorithm,
             self.cryptographic_length,

@@ -32,7 +32,6 @@ env \
   cargo test \
   -p cosmian_kms_server \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  "$RELEASE_FLAG" \
   -- tests::hsm::test_hsm_all --ignored --exact
 
 env \
@@ -42,7 +41,6 @@ env \
   HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
   cargo test \
   -p crypt2pay_pkcs11_loader \
-  "$RELEASE_FLAG" \
   --features crypt2pay \
   -- tests::test_hsm_crypt2pay_all --ignored --exact
 

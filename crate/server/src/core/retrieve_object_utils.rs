@@ -147,6 +147,10 @@ pub(crate) async fn retrieve_object_for_operation(
 
             return Ok(owm);
         }
+        trace!(
+            "User {user} does not have permission for operation {operation_type:?} on object {}",
+            owm.id()
+        );
     }
 
     Err(KmsError::Kmip21Error(

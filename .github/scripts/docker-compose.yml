@@ -1,0 +1,215 @@
+---
+services:
+  # === Authentication/TLS test stack ===
+  no-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 9998
+        protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  tls-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data:/data:ro
+      - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9999
+        published: 9999
+        protocol: tcp
+      - target: 5696
+        published: 5696
+        protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 9999]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  tls13-authentication:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data:/data:ro
+      - ../../test_data/configs/server/tls13_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 10000
+        published: 10000
+        protocol: tcp
+      - target: 5697
+        published: 5697
+        protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, nc -z localhost 10000]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === Config-file based smoke test ===
+  kms-with-conf:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 11098
+        protocol: tcp
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === Minimal example smoke test ===
+  kms-example:
+    image: ${DOCKER_IMAGE_NAME}
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
+    ports:
+      - target: 9998
+        published: 12098
+        protocol: tcp
+    restart: no
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # === Load balancer stack ===
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kms
+      POSTGRES_PASSWORD: kms
+      POSTGRES_DB: kms
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U kms -d kms]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kms1:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms1_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  kms2:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      kms1:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms2_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  kms3:
+    image: ${DOCKER_IMAGE_NAME}
+    depends_on:
+      kms1:
+        condition: service_healthy
+    environment:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+    volumes:
+      - ../../test_data/configs/server/lb_kms3_postgres.toml:/etc/cosmian/kms.toml:ro
+    expose:
+      - '9998'
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  nginx-load-balancer:
+    image: nginx:1.27-alpine
+    depends_on:
+      - kms1
+      - kms2
+      - kms3
+    ports:
+      - target: 8080
+        published: 18080
+        protocol: tcp
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+  # === Oracle TDE HSM stack ===
+  # Start with: docker compose --profile oracle up -d --wait
+  oracle:
+    container_name: oracle
+    image: container-registry.oracle.com/database/free:23.9.0.0-lite
+    profiles: [oracle]
+    ports:
+      - 1521:1521
+    environment:
+      ORACLE_PWD: 1234
+      ENABLE_ARCHIVELOG: true
+      ENABLE_FORCE_LOGGING: true
+      COSMIAN_PKCS11_LOGGING_LEVEL: trace
+
+  kms-oracle:
+    container_name: kms-oracle
+    image: ${DOCKER_IMAGE_NAME}
+    profiles: [oracle]
+    ports:
+      - 19998:9998
+    networks:
+      default:
+        aliases:
+          - kms
+    environment:
+      RUST_LOG: cosmian_kms_server=trace
+    volumes:
+      - ./oracle/cosmian-kms:/cosmian-kms
+
+volumes:
+  postgres-data:

@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// Wrap a KMS key with an Azure Key Encryption Key (KEK),
-/// previously imported using the `cosmian kms azure byok import` command.
+/// previously imported using the `ckms azure byok import` command.
 /// Generate the `.byok` file that can be used to import the KMS key into Azure Key Vault.
 /// See: <https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification>
 #[derive(Parser)]
@@ -50,7 +50,7 @@ impl ExportByokAction {
                 .get("Tag")
                 .context(
                     "The KEK is not an Azure Key Encryption Key: no tags. Import it using the \
-                     `cosmian kms azure byok import` command.",
+                     `ckms azure byok import` command.",
                 )?
                 .clone(),
         )?;
@@ -58,13 +58,13 @@ impl ExportByokAction {
         if !tags.contains(&"azure".to_owned()) {
             cli_bail!(
                 "The KEK is not an Azure Key Encryption Key: missing `azure` tag. Import it using \
-                 the `cosmian kms azure byok import` command."
+                 the `ckms azure byok import` command."
             );
         }
 
         let kid = tags.iter().find(|t| t.starts_with("kid:")).context(
             "The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the \
-             `cosmian kms azure byok import` command.",
+             `ckms azure byok import` command.",
         )?[4..]
             .to_string();
 

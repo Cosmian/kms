@@ -188,7 +188,7 @@ const ExportAzureBYOKForm: React.FC = () => {
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" loading={isLoading}
-                                className="w-full text-white font-medium">
+                                className="w-full text-white font-medium" data-testid="submit-btn">
                             Export BYOK File
                         </Button>
                     </Form.Item>
@@ -196,7 +196,7 @@ const ExportAzureBYOKForm: React.FC = () => {
             </Form>
 
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title="Export Response">{res}</Card>
                 </div>
             )}

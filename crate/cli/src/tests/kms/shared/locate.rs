@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
-use cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
+use cosmian_kmip::kmip_2_1::{
+    extra::tagging::{
+        SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
+        SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+    },
+    kmip_objects::ObjectType,
+};
 use cosmian_kms_client::{
     kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     reexport::cosmian_kms_client_utils::create_utils::Curve,
@@ -152,7 +158,10 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_uk".to_string()]),
+        tags: Some(vec![
+            base_tag.clone(),
+            SYSTEM_TAG_COVER_CRYPT_USER_KEY.to_string(),
+        ]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -160,7 +169,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&user_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_sk".to_string()]),
+        tags: Some(vec![base_tag.clone(), SYSTEM_TAG_PRIVATE_KEY.to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -168,7 +177,7 @@ pub(crate) async fn test_locate_cover_crypt() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag, "_pk".to_string()]),
+        tags: Some(vec![base_tag, SYSTEM_TAG_PUBLIC_KEY.to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -324,7 +333,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_sk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), SYSTEM_TAG_PRIVATE_KEY.to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -332,7 +341,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> KmsCliResult<()> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_pk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), SYSTEM_TAG_PUBLIC_KEY.to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -409,7 +418,7 @@ pub(crate) async fn test_locate_symmetric_key() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_kk".to_owned()]),
+        tags: Some(vec![base_tag.clone(), SYSTEM_TAG_SYMMETRIC_KEY.to_owned()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -588,7 +597,7 @@ pub(crate) async fn test_locate_secret_data() -> KmsCliResult<()> {
 
     // test using system Tags
     let ids = LocateObjectsAction {
-        tags: Some(vec![base_tag.clone(), "_sd".to_string()]),
+        tags: Some(vec![base_tag.clone(), SYSTEM_TAG_SECRET_DATA.to_string()]),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

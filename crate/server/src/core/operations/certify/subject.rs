@@ -118,9 +118,9 @@ impl Subject {
         }
     }
 
-    pub(crate) fn tags(&self) -> HashSet<String> {
+    pub(crate) fn tags(&self, vendor_id: &str) -> HashSet<String> {
         match self {
-            Self::Certificate(_, _, attributes) => attributes.get_tags(),
+            Self::Certificate(_, _, attributes) => attributes.get_tags(vendor_id),
             // It is an open question whether the tags from an existing public key should be
             // added to those of the certificate. For now, we return an empty set.
             _ => HashSet::new(),

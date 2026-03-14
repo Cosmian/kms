@@ -9,6 +9,7 @@ use cosmian_kmip::{
     SafeBigInt,
     kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
+        extra::tagging::{SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SYMMETRIC_KEY},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
@@ -26,13 +27,15 @@ use crate::{
 pub struct HsmStore {
     hsm: Arc<dyn HSM + Send + Sync>,
     hsm_admin: String,
+    vendor_id: String,
 }
 
 impl HsmStore {
-    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &str) -> Self {
+    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &str, vendor_id: &str) -> Self {
         Self {
             hsm,
             hsm_admin: hsm_admin.to_owned(),
+            vendor_id: vendor_id.to_owned(),
         }
     }
 }
@@ -104,7 +107,12 @@ impl ObjectsStore for HsmStore {
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
                 // Convert the HSM object into an ObjectWithMetadata
-                let owm = to_object_with_metadata(&hsm_object, uid, self.hsm_admin.as_str())?;
+                let owm = to_object_with_metadata(
+                    &hsm_object,
+                    uid,
+                    self.hsm_admin.as_str(),
+                    &self.vendor_id,
+                )?;
                 Some(owm)
             } else {
                 None
@@ -156,7 +164,7 @@ impl ObjectsStore for HsmStore {
                 ));
             }
             let (slot_id, sk_id) = parse_uid(&uid)?;
-            let pk_id = sk_id.clone() + "_pk";
+            let pk_id = sk_id.clone() + SYSTEM_TAG_PUBLIC_KEY;
             self.hsm
                 .create_keypair(
                     slot_id,
@@ -202,6 +210,7 @@ impl ObjectsStore for HsmStore {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
@@ -216,7 +225,7 @@ impl ObjectsStore for HsmStore {
             debug!("No researched_attributes provided. Defaulting to empty filter attributes");
             Attributes::default()
         });
-        match check_basic_compatibility(&search_attributes, state) {
+        match check_basic_compatibility(vendor_id, &search_attributes, state) {
             Ok(()) => {}
             Err(e) => {
                 debug!("{e}");
@@ -286,6 +295,7 @@ impl ObjectsStore for HsmStore {
 }
 
 fn check_basic_compatibility(
+    vendor_id: &str,
     researched_attributes: &Attributes,
     state: Option<State>,
 ) -> InterfaceResult<()> {
@@ -304,7 +314,7 @@ fn check_basic_compatibility(
         ));
     }
 
-    if !researched_attributes.get_tags().is_empty() {
+    if !researched_attributes.get_tags(vendor_id).is_empty() {
         return Err(InterfaceError::Default(
             "Unsupported attribute for HSMs: tags".to_owned(),
         ));
@@ -448,6 +458,7 @@ fn to_object_with_metadata(
     hsm_object: &HsmObject,
     uid: &str,
     user: &str,
+    vendor_id: &str,
 ) -> InterfaceResult<ObjectWithMetadata> {
     match hsm_object.key_material() {
         KeyMaterial::AesKey(bytes) => {
@@ -469,9 +480,9 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_kk".to_owned());
+            tags.insert(SYSTEM_TAG_SYMMETRIC_KEY.to_owned());
             attributes
-                .set_tags(tags)
+                .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey { key: bytes.clone() };
             let object = Object::SymmetricKey(SymmetricKey {
@@ -518,9 +529,9 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_sk".to_owned());
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
-                .set_tags(tags)
+                .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = KmipKeyMaterial::TransparentRSAPrivateKey {
                 modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),
@@ -587,9 +598,9 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert("_sk".to_owned());
+            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
             attributes
-                .set_tags(tags)
+                .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
             let kmip_key_material = TransparentRSAPublicKey {
                 modulus: Box::new(BigInt::from_bytes_be(Sign::Plus, km.modulus.as_slice())),

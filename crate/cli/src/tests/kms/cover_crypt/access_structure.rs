@@ -63,7 +63,7 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    let output = format!("{view_access_structure:?}",);
+    let output = format!("{view_access_structure:?}");
     assert!(output.contains("Security Level"));
     assert!(output.contains("Top Secret"));
     assert!(output.contains("RnD"));

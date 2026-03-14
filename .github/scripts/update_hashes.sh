@@ -136,13 +136,15 @@ stream_job_logs() {
 
   # Prefer `gh run view` (nice formatting and smaller for failed steps),
   # but it may refuse logs while the overall run is still in progress.
-  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+  # Also fall through if the output is empty (gh exits 0 but writes nothing
+  # when the job has no failed steps in its view).
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     cat "$tmp"
     rm -f "$tmp"
     return 0
   fi
 
-  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
     cat "$tmp"
     rm -f "$tmp"
     return 0
@@ -174,6 +176,11 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
   while IFS= read -r raw_line; do
     line="$raw_line"
 
+    # Strip GHA raw-log timestamp prefix: "2026-03-10T06:15:21.5295456Z "
+    if [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z[[:space:]] ]]; then
+      line="${line#*Z }"
+    fi
+
     # If `gh` associates log lines with steps, strip the step prefix.
     if [[ "$line" == *"|"* ]]; then
       msg=${line#*|}
@@ -196,29 +203,42 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
       if [ -n "$got_hash" ] && [ -n "$last_drv_name" ]; then
         target_file=""
 
-        # UI npm deps (both fips and non-fips share the same npm deps)
-        if [[ "$last_drv_name" =~ ui-deps-(fips|non-fips).*-npm-deps ]]; then
-          target_file="$EXPECTED_DIR/ui.npm.sha256"
+        # UI pnpm deps — platform-specific (fips and non-fips share the same pnpm deps per platform)
+        if [[ "$last_drv_name" =~ ui-deps-(fips|non-fips).*-pnpm-deps ]]; then
+          if [[ "$JOB_NAME" == *darwin* ]] || [[ "$JOB_NAME" == *macos* ]] || [[ "$JOB_NAME" == *mac* ]]; then
+            target_file="$EXPECTED_DIR/ui.pnpm.darwin.sha256"
+          else
+            target_file="$EXPECTED_DIR/ui.pnpm.linux.sha256"
+          fi
         # UI wasm vendor - fips
         elif [[ "$last_drv_name" =~ ui-wasm-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.fips.sha256"
         # UI wasm vendor - non-fips
         elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
-        # Server vendor (Cargo vendoring). Derivation names do not reliably include platform/linkage;
-        # infer linkage from the GitHub Actions job name. Linux and Darwin share the same hash files.
-        elif [[ "$last_drv_name" =~ (kms-server|server).*vendor|(^|-)vendor($|-) ]]; then
-          if [[ "$JOB_NAME" == *"dynamic"* ]]; then
-            target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
-          elif [[ "$JOB_NAME" == *"static"* ]] || [[ "$JOB_NAME" == *"docker"* ]]; then
-            target_file="$EXPECTED_DIR/server.vendor.static.sha256"
+        # Cargo vendor derivations for CLI and server.
+        # CLI vendor hash varies by linkage mode (static/dynamic) AND OS (linux/darwin).
+        # Server vendor hash varies by linkage mode (static/dynamic) but is platform-stable.
+        elif [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms|kms-server|server).*vendor|cli.*vendor|(^|-)vendor($|-) ]]; then
+          # Distinguish CLI vs server vendor derivation by name
+          if [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
+            # CLI vendor: Linux uses a shared file; macOS is linkage-specific
+            cli_link="static"
+            [[ "$JOB_NAME" == *"dynamic"* ]] && cli_link="dynamic"
+            cli_os="linux"
+            { [[ "$JOB_NAME" == *"darwin"* ]] || [[ "$JOB_NAME" == *"macos"* ]]; } && cli_os="darwin"
+            if [[ "$cli_os" == "linux" ]]; then
+              target_file="$EXPECTED_DIR/cli.vendor.linux.sha256"
+            else
+              target_file="$EXPECTED_DIR/cli.vendor.${cli_link}.${cli_os}.sha256"
+            fi
           else
-            # Docker packaging builds are always static-linked.
-            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.static.sha256"]="$got_hash"
-            FILE_TO_HASH["$EXPECTED_DIR/server.vendor.dynamic.sha256"]="$got_hash"
-            echo "  Found hash for $EXPECTED_DIR/server.vendor.static.sha256: $got_hash"
-            echo "  Found hash for $EXPECTED_DIR/server.vendor.dynamic.sha256: $got_hash"
-            target_file=""
+            # Server vendor: keyed by linkage mode (same on Linux and macOS)
+            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
+              target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
+            else
+              target_file="$EXPECTED_DIR/server.vendor.static.sha256"
+            fi
           fi
         fi
 

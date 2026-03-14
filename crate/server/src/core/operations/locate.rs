@@ -21,7 +21,13 @@ pub(crate) async fn locate(
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .database
-        .find(Some(&request.attributes), effective_state, user, false)
+        .find(
+            Some(&request.attributes),
+            effective_state,
+            user,
+            false,
+            kms.vendor_id(),
+        )
         .await?;
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
@@ -62,7 +68,7 @@ pub(crate) async fn locate(
         use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
 
         let mut uids = Vec::new();
-        if access_policy_from_attributes(&request.attributes).is_err() {
+        if access_policy_from_attributes(kms.vendor_id(), &request.attributes).is_err() {
             for (uid, state_found, attributes) in uids_attrs {
                 trace!(
                     "UID: {:?}, State: {:?}, Attributes: {}",

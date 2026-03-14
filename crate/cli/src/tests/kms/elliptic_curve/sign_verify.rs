@@ -132,7 +132,6 @@ async fn ecdsa_digested_sign_verify_cli_end_to_end() -> crate::error::result::Km
 
 // Negative test: providing both data and digested_data must fail
 #[tokio::test]
-#[ignore = "Server currently accepts either data or digested_data; revisit when strict validation is enforced"]
 async fn ecdsa_sign_both_data_and_digest_should_fail() -> crate::error::result::KmsCliResult<()> {
     cosmian_logger::log_init(None);
     let ctx = test_kms_server::start_default_test_kms_server().await;

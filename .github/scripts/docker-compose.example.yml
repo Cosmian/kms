@@ -1,8 +1,0 @@
----
-# Simple example of docker-compose file to run the KMS server
-services:
-  kms:
-    image: ${DOCKER_IMAGE_NAME}
-    ports:
-      - 9998:9998
-    restart: no

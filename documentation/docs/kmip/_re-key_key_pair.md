@@ -34,10 +34,10 @@ The operation has currently no other usages on the Cosmian server.
 
 ### Example - Rotate the `Security Level::Confidential` attribute
 
-Corresponding [Cosmian CLI](../../cosmian_cli/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
-cosmian kms cc keys rekey -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"
+ckms cc keys rekey -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"
 ```
 
 Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a master secret key, construct a JSON object containing

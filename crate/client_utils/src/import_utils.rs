@@ -85,7 +85,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, UtilsError> {
             Ok(object)
         }
         ObjectType::Certificate => Err(UtilsError::Default(
-            "For certificates, use the `cosmian kms certificate` sub-command".to_owned(),
+            "For certificates, use the `ckms certificate` sub-command".to_owned(),
         )),
         _ => Err(UtilsError::Default(format!(
             "The PEM file contains an object of type {:?} which is not supported",
@@ -325,7 +325,9 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 pub fn prepare_key_import_elements(
+    vendor_id: &str,
     key_usage: &Option<Vec<KeyUsage>>,
     key_format: &ImportKeyFormat,
     key_bytes: Vec<u8>,
@@ -382,7 +384,7 @@ pub fn prepare_key_import_elements(
         );
     }
     if let Some(kek) = wrapping_key_id {
-        import_attributes.set_wrapping_key_id(kek);
+        import_attributes.set_wrapping_key_id(vendor_id, kek);
     }
     // Activate the key by default
     import_attributes.activation_date = Some(time_normalize()?);

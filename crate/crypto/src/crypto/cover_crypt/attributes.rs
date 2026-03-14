@@ -1,7 +1,6 @@
 use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ID_COSMIAN,
     kmip_attributes::Attributes,
     kmip_types::{VendorAttribute, VendorAttributeValue},
 };
@@ -18,10 +17,11 @@ use crate::{
 
 /// Convert an access structure to a vendor attribute
 pub fn access_structure_as_vendor_attribute(
+    vendor_id: &str,
     access_structure: &AccessStructure,
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(
             access_structure
@@ -38,10 +38,11 @@ pub fn access_structure_as_vendor_attribute(
 
 /// Extract an `Covercrypt` access structure from attributes
 pub fn access_structure_from_attributes(
+    vendor_id: &str,
     attributes: &Attributes,
 ) -> Result<AccessStructure, CryptoError> {
     attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE)
+        .get_vendor_attribute_value(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE)
         .map_or_else(
             || {
                 Err(CryptoError::Kmip(
@@ -61,21 +62,23 @@ pub fn access_structure_from_attributes(
 
 /// Add or replace an access policy in attributes in place
 pub fn upsert_access_structure_in_attributes(
+    vendor_id: &str,
     attributes: &mut Attributes,
     access_structure: &AccessStructure,
 ) -> Result<(), CryptoError> {
-    let va = access_structure_as_vendor_attribute(access_structure)?;
-    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
+    let va = access_structure_as_vendor_attribute(vendor_id, access_structure)?;
+    attributes.remove_vendor_attribute(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE);
     attributes.add_vendor_attribute(va);
     Ok(())
 }
 
 /// Convert a list of `Covercrypt` qualified attributes to a vendor attribute.
 pub fn qualified_attributes_as_vendor_attributes(
+    vendor_id: &str,
     attributes: &[QualifiedAttribute],
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ATTR.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(
             serde_json::to_vec(&attributes).map_err(|e| {
@@ -87,10 +90,11 @@ pub fn qualified_attributes_as_vendor_attributes(
 
 /// Extract qualified attributes from the given KMIP attributes.
 pub fn qualified_attributes_from_attributes(
+    vendor_id: &str,
     attributes: &Attributes,
 ) -> Result<Vec<QualifiedAttribute>, CryptoError> {
     let bytes = attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
+        .get_vendor_attribute_value(vendor_id, VENDOR_ATTR_COVER_CRYPT_ATTR)
         .ok_or_else(|| {
             CryptoError::Kmip(
                 "the attributes do not contain Covercrypt (vendor) Attributes".to_owned(),
@@ -120,10 +124,11 @@ pub fn qualified_attributes_from_attributes(
 
 /// Convert an access policy to a vendor attribute
 pub fn access_policy_as_vendor_attribute(
+    vendor_id: &str,
     access_policy: &str,
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(access_policy.as_bytes().to_vec()),
     })
@@ -131,11 +136,12 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Add or replace an access policy in attributes in place
 pub fn upsert_access_policy_in_attributes(
+    vendor_id: &str,
     attributes: &mut Attributes,
     access_policy: &str,
 ) -> Result<(), CryptoError> {
-    let va = access_policy_as_vendor_attribute(access_policy)?;
-    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY);
+    let va = access_policy_as_vendor_attribute(vendor_id, access_policy)?;
+    attributes.remove_vendor_attribute(vendor_id, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY);
     attributes.add_vendor_attribute(va);
     Ok(())
 }
@@ -152,10 +158,11 @@ pub enum RekeyEditAction {
 
 /// Convert an edit action to a vendor attribute
 pub fn rekey_edit_action_as_vendor_attribute(
+    vendor_id: &str,
     action: &RekeyEditAction,
 ) -> Result<VendorAttribute, CryptoError> {
     Ok(VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        vendor_identification: vendor_id.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
         attribute_value: VendorAttributeValue::ByteString(serde_json::to_vec(action).map_err(
             |e| CryptoError::Kmip(format!("failed serializing the Covercrypt action: {e}")),
@@ -168,10 +175,11 @@ pub fn rekey_edit_action_as_vendor_attribute(
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.
 pub fn rekey_edit_action_from_attributes(
+    vendor_id: &str,
     attributes: &Attributes,
 ) -> Result<RekeyEditAction, CryptoError> {
     attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)
+        .get_vendor_attribute_value(vendor_id, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)
         .map_or_else(
             || {
                 Err(CryptoError::Kmip(

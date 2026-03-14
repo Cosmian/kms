@@ -1,9 +1,11 @@
 use std::{
+    collections::HashMap,
     fmt::{self},
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -11,17 +13,19 @@ use super::{
     WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
-    config::{ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
+    routes::aws_xks::AwsXksConfig,
 };
 
 #[cfg(not(target_os = "windows"))]
-const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
+pub const DEFAULT_COSMIAN_KMS_CONF: &str = "/etc/cosmian/kms.toml";
 
 // On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
     std::env::var("LOCALAPPDATA").map_or_else(
         |_| String::from("C:\\ProgramData\\cosmian\\kms.toml"),
         |localappdata| format!("{localappdata}\\Cosmian KMS Server\\kms.toml"),
@@ -29,7 +33,8 @@ fn get_default_config_path() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_default_config_path() -> String {
+#[must_use]
+pub fn get_default_config_path() -> String {
     DEFAULT_COSMIAN_KMS_CONF.to_owned()
 }
 
@@ -49,17 +54,21 @@ impl Default for ClapConfig {
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
             ms_dke_service_url: None,
             logging: LoggingConfig::default(),
             info: false,
+            print_default_config: false,
             hsm: HsmConfig::default(),
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
+            azure_ekm_config: AzureEkmConfig::default(),
         }
     }
 }
@@ -74,6 +83,10 @@ pub struct ClapConfig {
     /// and environment variables are ignored once the configuration file is loaded.
     #[clap(short = 'c', long = "config", value_name = "COSMIAN_KMS_CONF")]
     pub config_path: Option<PathBuf>,
+
+    /// The vendor identification string reported in KMIP `QueryServerInformation` responses
+    #[clap(long, env = "KMS_VENDOR_IDENTIFICATION", default_value = VENDOR_ID_COSMIAN)]
+    pub vendor_identification: String,
 
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
@@ -96,6 +109,12 @@ pub struct ClapConfig {
     /// Print the server configuration information and exit
     #[clap(long, default_value = "false")]
     pub info: bool,
+
+    /// Serialize the default server configuration as TOML to stdout and exit.
+    /// This is used to keep the documentation in sync with the Rust struct.
+    #[clap(long, default_value = "false")]
+    #[serde(skip)]
+    pub print_default_config: bool,
 
     #[clap(flatten)]
     #[serde(flatten)]
@@ -150,6 +169,9 @@ pub struct ClapConfig {
     pub google_cse_config: GoogleCseConfig,
 
     #[clap(flatten)]
+    pub azure_ekm_config: AzureEkmConfig,
+
+    #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
     #[clap(flatten)]
@@ -163,6 +185,9 @@ pub struct ClapConfig {
     /// and grant access rights for Create Kmip Operation.
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
+
+    #[clap(flatten)]
+    pub aws_xks_config: AwsXksConfig,
 
     /// KMIP algorithm policy.
     ///
@@ -180,6 +205,165 @@ pub struct ClapConfig {
 }
 
 impl ClapConfig {
+    /// Serialize the default configuration as TOML with comments extracted from
+    /// the clap help strings. Each field is preceded by its `///` doc comment as
+    /// TOML `# …` lines, making the output directly useful as a reference config file.
+    ///
+    /// # Errors
+    /// Returns an error if TOML serialization of the default config fails.
+    pub fn default_config_with_comments() -> KResult<String> {
+        use std::fmt::Write as _;
+
+        let cmd = Self::command();
+
+        // Build a map: toml_key (underscore form) → help text.
+        // Prefer long_help (full /// doc comment) over short help (first line only).
+        let help_map: HashMap<String, String> = cmd
+            .get_arguments()
+            .filter_map(|arg| {
+                let long = arg.get_long()?;
+                let help = arg
+                    .get_long_help()
+                    .or_else(|| arg.get_help())
+                    .map(ToString::to_string)?;
+                // Clap uses --long-flag-name; TOML serialization uses field_name.
+                Some((long.replace('-', "_"), help))
+            })
+            .collect();
+
+        // Use kms_template.toml as the structural template (lives at the crate root so
+        // it is included in the published tarball).
+        // It documents ALL known fields — including optional ones shown as "# key = value".
+        // For each field, the clap help string replaces the manual comment when available.
+        let template = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/kms_template.toml"));
+
+        // Collect the section headers present in the template so Phase 2 can detect gaps.
+        let template_sections: std::collections::HashSet<&str> =
+            template.lines().filter(|l| l.starts_with('[')).collect();
+
+        let mut output = String::new();
+        // Accumulate consecutive comment lines until a field or section header is reached.
+        let mut pending_comments: Vec<&str> = Vec::new();
+        // Skip the very first line (template file header: "## Cosmian KMS configuration file").
+        let mut first_line = true;
+
+        // ── Phase 1: process the template ──────────────────────────────────────────
+        for line in template.lines() {
+            if first_line {
+                first_line = false;
+                continue;
+            }
+
+            // Detect field lines:
+            //   "# key = …" where key is a valid identifier → optional field (commented-out)
+            //   "key = …"    → active field (not starting with '#', '[', or blank)
+            //
+            // Distinguishing "# key = val" (optional field) from "# plain comment" is done by
+            // checking that the token before '=' consists only of lowercase ASCII, digits and '_'.
+            let key_opt: Option<&str> = line.strip_prefix("# ").map_or_else(
+                || {
+                    if !line.starts_with('#') && !line.starts_with('[') && !line.trim().is_empty() {
+                        line.split('=')
+                            .next()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                    } else {
+                        None
+                    }
+                },
+                |rest| {
+                    let before_eq = rest.split('=').next().map_or("", str::trim);
+                    if !before_eq.is_empty()
+                        && rest.contains('=')
+                        && before_eq
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+                    {
+                        Some(before_eq)
+                    } else {
+                        None
+                    }
+                },
+            );
+
+            if let Some(key) = key_opt {
+                // Emit comments: prefer clap help when available, else use manual comments.
+                if let Some(help) = help_map.get(key) {
+                    for help_line in help.lines() {
+                        if help_line.is_empty() {
+                            let _ = writeln!(output, "#");
+                        } else {
+                            let _ = writeln!(output, "# {help_line}");
+                        }
+                    }
+                } else {
+                    for comment in &pending_comments {
+                        let _ = writeln!(output, "{comment}");
+                    }
+                }
+                pending_comments.clear();
+                // Emit the field line as-is: already "# key = val" or "key = val".
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('[') {
+                // Section header: flush accumulated comments before it.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            } else if line.starts_with('#') {
+                // Comment line: accumulate until the associated field is found.
+                pending_comments.push(line);
+            } else {
+                // Empty line or other content: flush pending comments then emit.
+                for comment in &pending_comments {
+                    let _ = writeln!(output, "{comment}");
+                }
+                pending_comments.clear();
+                let _ = writeln!(output, "{line}");
+            }
+        }
+        // Flush any remaining accumulated comments.
+        for comment in &pending_comments {
+            let _ = writeln!(output, "{comment}");
+        }
+
+        // ── Phase 2: append sections missing from the template ─────────────────────
+        // `toml::to_string_pretty` covers every section in the struct (e.g. [aws_xks_config],
+        // [azure_ekm_config], [kmip], …) but omits Option<None> fields.
+        // We emit only sections not already covered by the template, using clap help comments.
+        let plain = toml::to_string_pretty(&Self::default())
+            .map_err(|e| KmsError::ServerError(e.to_string()))?;
+
+        let mut in_missing_section = false;
+        for line in plain.lines() {
+            if line.starts_with('[') {
+                in_missing_section = !template_sections.contains(line);
+                if in_missing_section {
+                    let _ = writeln!(output, "\n{line}");
+                }
+            } else if in_missing_section {
+                if !line.starts_with('#') && !line.trim().is_empty() {
+                    // Key = value: prepend clap help if available.
+                    if let Some(key) = line.split('=').next().map(str::trim) {
+                        if let Some(help) = help_map.get(key) {
+                            for help_line in help.lines() {
+                                if help_line.is_empty() {
+                                    let _ = writeln!(output, "#");
+                                } else {
+                                    let _ = writeln!(output, "# {help_line}");
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = writeln!(output, "{line}");
+            }
+        }
+
+        Ok(output)
+    }
+
     /// Load the configuration from the default configuration file
     ///
     /// # Errors
@@ -201,8 +385,17 @@ impl ClapConfig {
     {
         // Collect args so we can re-use for parse + messages
         let args_vec: Vec<T> = args.into_iter().collect();
+        // Remember whether any CLI arguments beyond the binary name were supplied,
+        // before args_vec is consumed by parse_from.
+        let has_extra_args = args_vec.len() > 1;
         // Parse preliminarily to capture the optional config path (this also handles --help / --version)
         let preliminary = Self::parse_from(args_vec);
+
+        // --print-default-config is a meta flag: it must bypass any config file so that
+        // it always outputs the built-in defaults regardless of what is on disk.
+        if preliminary.print_default_config {
+            return Ok(preliminary);
+        }
 
         // Determine configuration file path precedence:
         // 1. Command line -c/--config
@@ -231,13 +424,19 @@ impl ClapConfig {
         };
 
         if let Some(path) = explicit {
-            if path.exists() {
+            if path.is_file() {
                 println!(
                     "Configuration file {} found (via -c/--config). Command line arguments and \
                      env variables are ignored.",
                     path.display()
                 );
                 return load_file(&path);
+            }
+            if path.exists() {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file specified with -c/--config is not a regular file: {}",
+                    path.display()
+                )));
             }
             return Err(KmsError::ServerError(format!(
                 "Configuration file specified with -c/--config not found: {}",
@@ -246,7 +445,7 @@ impl ClapConfig {
         }
 
         if let Some(env_path) = env_path {
-            if env_path.exists() {
+            if env_path.is_file() {
                 println!(
                     "Configuration file {} found (via COSMIAN_KMS_CONF). Command line arguments \
                      and env variables are ignored.",
@@ -254,22 +453,53 @@ impl ClapConfig {
                 );
                 return load_file(&env_path);
             }
-            println!(
-                "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
-                env_path.display()
-            );
+            if env_path.exists() {
+                println!(
+                    "WARNING: COSMIAN_KMS_CONF path {} exists but is not a regular file (e.g. a \
+                     directory). Ignoring and falling back.",
+                    env_path.display()
+                );
+            } else {
+                println!(
+                    "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
+                    env_path.display()
+                );
+            }
         }
 
-        if default_path.exists() {
+        if default_path.is_file() {
+            // --info is an informational meta-flag: allow it even when the default
+            // config file is present (it loads the file then prints info and exits).
+            let info_only = preliminary.info;
+
+            // If the user also passed CLI arguments (beyond the binary name itself) they
+            // would silently be ignored because the file takes precedence.  This is almost
+            // certainly a mistake, so fail fast with a clear message.
+            if has_extra_args && !info_only {
+                return Err(KmsError::ServerError(format!(
+                    "Configuration file found at the default path ({}) but extra command-line \
+                     arguments were also provided. When a configuration file is present, all \
+                     command-line arguments and environment variables are ignored.\n\
+                     Either:\n\
+                     • Remove the extra arguments and edit {} directly, or\n\
+                     • Point to a different file with -c/--config <path>.",
+                    default_path.display(),
+                    default_path.display(),
+                )));
+            }
             println!(
-                "Configuration file {} found (default path). Command line arguments and \
-                 environment variables are ignored.",
+                "Configuration file {} found (default path).",
                 default_path.display()
             );
-            return load_file(&default_path);
+            let mut config = load_file(&default_path)?;
+            // Preserve the --info flag from the command line (it is not in the TOML file)
+            if info_only {
+                config.info = true;
+            }
+            return Ok(config);
         }
 
-        println!(
+        eprintln!(
             "No configuration file found (-c/--config, COSMIAN_KMS_CONF, default path). Using \
              command line arguments and environment variables."
         );
@@ -281,6 +511,7 @@ impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
         let x = x.field("config_path", &self.config_path);
+        let x = x.field("print_default_config", &self.print_default_config);
         let x = x.field("db", &self.db);
         let x = if self.idp_auth.jwt_auth_provider.is_some() {
             x.field("idp_auth", &self.idp_auth)
@@ -308,6 +539,7 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("KMS public URL", &self.kms_public_url);
 
         let x = x.field("workspace", &self.workspace);
+        let x = x.field("vendor identification", &self.vendor_identification);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
         let x = if self.google_cse_config.google_cse_enable {
@@ -332,6 +564,35 @@ impl fmt::Debug for ClapConfig {
                 "google_cse_enable",
                 &self.google_cse_config.google_cse_enable,
             )
+        };
+        let x = if self.azure_ekm_config.azure_ekm_enable {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+                .field(
+                    "azure_ekm_path_prefix",
+                    &self.azure_ekm_config.azure_ekm_path_prefix,
+                )
+                .field(
+                    "azure_ekm_disable_client_auth",
+                    &self.azure_ekm_config.azure_ekm_disable_client_auth,
+                )
+                .field(
+                    "azure_ekm_proxy_vendor",
+                    &self.azure_ekm_config.azure_ekm_proxy_vendor,
+                )
+                .field(
+                    "azure_ekm_proxy_name",
+                    &self.azure_ekm_config.azure_ekm_proxy_name,
+                )
+                .field(
+                    "azure_ekm_ekm_vendor",
+                    &self.azure_ekm_config.azure_ekm_ekm_vendor,
+                )
+                .field(
+                    "azure_ekm_ekm_product",
+                    &self.azure_ekm_config.azure_ekm_ekm_product,
+                )
+        } else {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
         };
         let x = x.field(
             "Microsoft Double Key Encryption URL",
@@ -362,6 +623,23 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users", &self.privileged_users);
+
+        let x = x.field("aws_xks_config", &self.aws_xks_config);
+        let x = if self.aws_xks_config.aws_xks_enable {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+                .field("aws_xks_region", &self.aws_xks_config.aws_xks_region)
+                .field("aws_xks_service", &self.aws_xks_config.aws_xks_service)
+                .field(
+                    "aws_xks_sigv4_access_key_id",
+                    &self.aws_xks_config.aws_xks_sigv4_access_key_id,
+                )
+                .field(
+                    "aws_xks_sigv4_secret_access_key",
+                    &self.aws_xks_config.aws_xks_sigv4_secret_access_key,
+                )
+        } else {
+            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+        };
         let x = x.field("kmip", &self.kmip_policy);
 
         x.finish()
@@ -418,8 +696,13 @@ mod tests {
     where
         F: FnOnce() -> R,
     {
-        // Acquire mutex to serialize environment variable access
-        let _guard = ENV_MUTEX.lock().unwrap();
+        // Acquire mutex to serialize environment variable access.
+        // Use unwrap_or_else to recover from a poisoned mutex (caused by a
+        // previous test panicking while holding the lock) so that one test
+        // failure does not cascade into all subsequent tests.
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
@@ -489,34 +772,81 @@ mod tests {
         });
     }
 
+    /// RAII guard that removes a file when dropped, ensuring cleanup even on panic.
+    struct RemoveOnDrop(PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            drop(std::fs::remove_file(&self.0));
+        }
+    }
+
     #[test]
-    fn precedence_default_config_over_args() {
+    fn precedence_default_config_loads_without_args() {
         with_clean_env(|| {
             if default_path_exists() {
                 eprintln!(
-                    "Skipping precedence_default_config_over_args: default config already exists"
+                    "Skipping precedence_default_config_loads_without_args: default config \
+                     already exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // No extra args beyond the binary name → config file is loaded
+                let args = vec!["kms"];
+                let cfg = ClapConfig::load_from_args(args).expect("load from args");
+                assert_eq!(
+                    cfg.http.port, 34567,
+                    "default config file should be loaded when no extra args are given"
                 );
             } else {
-                // Create a temporary default config file for this test
-                let default_content = "[http]\nport=34567\n";
-                let default_path = PathBuf::from(super::get_default_config_path());
-                if let Some(parent) = default_path.parent() {
-                    drop(std::fs::create_dir_all(parent));
-                }
-                if std::fs::write(&default_path, default_content).is_ok() {
-                    let args = vec!["kms", "--port", "2222"];
-                    let cfg = ClapConfig::load_from_args(args).expect("load from args");
-                    assert_eq!(
-                        cfg.http.port, 34567,
-                        "default config file ignores command line args"
-                    );
-                    drop(std::fs::remove_file(&default_path)); // cleanup
-                } else {
-                    eprintln!(
-                        "Skipping precedence_default_config_over_args: cannot write to default \
-                         path"
-                    );
-                }
+                eprintln!(
+                    "Skipping precedence_default_config_loads_without_args: cannot write to \
+                     default path"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn default_config_with_extra_args_is_error() {
+        with_clean_env(|| {
+            if default_path_exists() {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: default config already \
+                     exists"
+                );
+                return;
+            }
+            let default_content = "[http]\nport=34567\n";
+            let default_path = PathBuf::from(super::get_default_config_path());
+            if let Some(parent) = default_path.parent() {
+                drop(std::fs::create_dir_all(parent));
+            }
+            if std::fs::write(&default_path, default_content).is_ok() {
+                let _cleanup = RemoveOnDrop(default_path);
+                // Extra CLI args when a default config exists should be rejected
+                let args = vec!["kms", "--port", "2222"];
+                let res = ClapConfig::load_from_args(args);
+                assert!(
+                    res.is_err(),
+                    "should error when default config exists and extra args are given"
+                );
+                let err_msg = res.unwrap_err().to_string();
+                assert!(
+                    err_msg.contains("extra command-line arguments were also provided"),
+                    "error message should mention extra args conflict: {err_msg}"
+                );
+            } else {
+                eprintln!(
+                    "Skipping default_config_with_extra_args_is_error: cannot write to default \
+                     path"
+                );
             }
         });
     }

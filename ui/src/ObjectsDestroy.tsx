@@ -131,6 +131,7 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                             danger
                             disabled={isLoading}
                             className="w-full text-white font-medium"
+                            data-testid="submit-btn"
                         >
                             Destroy {label.charAt(0).toUpperCase() + label.slice(1)}
                         </Button>
@@ -138,7 +139,7 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                 </Space>
             </Form>
             {res && (
-                <div ref={responseRef}>
+                <div ref={responseRef} data-testid="response-output">
                     <Card title={`${label.charAt(0).toUpperCase() + label.slice(1)} destroy response`}>{res}</Card>
                 </div>
             )}

@@ -179,7 +179,7 @@ async fn dispatch_inner(
         "Query" => {
             let req = from_ttlv::<Query>(ttlv)?;
             // Use operation-level query to keep parity with message.rs
-            let resp = query_op(req).await?;
+            let resp = query_op(req, kms.vendor_id()).await?;
             Operation::QueryResponse(Box::new(resp))
         }
         "ModifyAttribute" => {

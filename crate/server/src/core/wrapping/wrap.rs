@@ -1,20 +1,15 @@
-use cosmian_kms_server_database::{
-    CachedUnwrappedObject,
-    reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::{CryptographicUsageMask, State},
-            kmip_2_1::{
-                KmipOperation,
-                kmip_attributes::Attributes,
-                kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-                kmip_objects::{Object, ObjectType},
-                kmip_types::{
-                    EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier,
-                },
-            },
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CryptographicUsageMask, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+            kmip_objects::{Object, ObjectType},
+            kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
         },
-        cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
     },
+    cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
 use cosmian_logger::{debug, trace, warn};
 
@@ -64,7 +59,7 @@ pub(crate) async fn wrap_and_cache(
     let Some(wrapping_key_id) = object
         .attributes_mut()
         .ok()
-        .and_then(Attributes::remove_wrapping_key_id)
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
         .or_else(|| kms.params.key_wrapping_key.clone())
     else {
         // no wrapping key provided
@@ -123,14 +118,9 @@ pub(crate) async fn wrap_and_cache(
     // store the unwrapped object in the unwrapped cache
     kms.database
         .unwrapped_cache()
-        .insert(
-            unique_identifier.to_string(),
-            Ok(CachedUnwrappedObject::new(
-                object.fingerprint()?,
-                unwrapped_object,
-            )),
-        )
-        .await;
+        .insert(unique_identifier.to_string(), object, unwrapped_object)
+        .await?;
+
     Ok(())
 }
 
@@ -165,7 +155,7 @@ pub(crate) async fn wrap_object(
             "...wrapping the key block with key uid: {wrapping_key_uid} using an encryption \
              oracle, user: {user}"
         );
-        wrap_using_encryption_oracle(
+        wrap_using_crypto_oracle(
             object,
             key_wrapping_specification,
             kms,
@@ -222,7 +212,7 @@ async fn wrap_using_kms(
             let attributes = wrapping_key.attributes();
             let pk_id = attributes.get_link(LinkType::PublicKeyLink);
             let pk_id = pk_id.map_or_else(
-                || wrapping_key_uid.to_owned() + "_pk",
+                || wrapping_key_uid.to_owned() + SYSTEM_TAG_PUBLIC_KEY,
                 |pk_id| pk_id.to_string(),
             );
             // fetch the private key
@@ -313,8 +303,8 @@ async fn wrap_using_kms(
     Ok(())
 }
 
-/// Wrap a key with a wrapping key using an encryption oracle
-async fn wrap_using_encryption_oracle(
+/// Wrap a key with a wrapping key using a crypto oracle
+async fn wrap_using_crypto_oracle(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
@@ -346,14 +336,12 @@ async fn wrap_using_encryption_oracle(
     // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
 
-    // encrypt the key using the encryption oracle
-    let lock = kms.encryption_oracles.read().await;
-    let encryption_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "Encrypt: unknown encryption oracle prefix: {prefix}"
-        ))
+    // encrypt the key using the crypto oracle
+    let lock = kms.crypto_oracles.read().await;
+    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let encrypted_content = encryption_oracle
+    let encrypted_content = crypto_oracle
         .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
 

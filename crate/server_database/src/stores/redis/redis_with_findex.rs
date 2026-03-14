@@ -461,10 +461,11 @@ impl ObjectsStore for RedisWithFindex {
         state: Option<State>,
         user: &str,
         user_must_be_owner: bool,
+        vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
-                let tags = attributes.get_tags();
+                let tags = attributes.get_tags(vendor_id);
                 trace!("find: tags: {tags:?}");
                 let mut keywords = tags
                     .iter()
