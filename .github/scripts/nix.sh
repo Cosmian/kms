@@ -361,6 +361,15 @@ docker_command() {
   # Map variant to attribute (docker is always static-linked)
   ATTR="docker-image-$DOCKER_VARIANT"
 
+  # Docker images are Linux containers built via Nix; they require Linux-only
+  # packages (busybox, glibc, proot) and cannot be built natively on macOS.
+  if [ "$(uname)" = "Darwin" ]; then
+    echo "Error: Docker image builds require a Linux builder." >&2
+    echo "       The Nix Docker derivation uses Linux-only packages (busybox, glibc)." >&2
+    echo "       Use a Linux CI runner or a remote Nix builder to build Docker images." >&2
+    exit 1
+  fi
+
   # Extract version from Cargo.toml
   VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
 
