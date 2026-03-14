@@ -94,6 +94,7 @@ export const OPAQUE_ROUTES: Route[] = [
 export const ATTRIBUTES_ROUTES: Route[] = [
     { name: "get", path: "/ui/attributes/get" },
     { name: "set", path: "/ui/attributes/set" },
+    { name: "modify", path: "/ui/attributes/modify" },
     { name: "delete", path: "/ui/attributes/delete" },
 ];
 

@@ -9,11 +9,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
         DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
         GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, MAC, MACResponse, PKCS11, PKCS11Response, Query, QueryResponse,
-        RNGRetrieve, RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair,
-        ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse,
-        SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
-        SignatureVerifyResponse, Validate, ValidateResponse,
+        LocateResponse, MAC, MACResponse, ModifyAttribute, ModifyAttributeResponse, PKCS11,
+        PKCS11Response, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
+        RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
+        RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
+        SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
     },
 };
 
@@ -628,6 +628,20 @@ impl KMS {
         let _enter = span.enter();
 
         Box::pin(operations::rekey(self, request, user)).await
+    }
+
+    /// This operation requests the server to modify a single attribute on an existing Managed Object.
+    /// Per KMIP spec §3.22, modifying `ActivationDate` on a Pre-Active object to a date in the past
+    /// or the present triggers an automatic transition to the Active state.
+    pub(crate) async fn modify_attribute(
+        &self,
+        request: ModifyAttribute,
+        user: &str,
+    ) -> KResult<ModifyAttributeResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "modify_attribute");
+        let _enter = span.enter();
+
+        Box::pin(operations::modify_attribute(self, request, user)).await
     }
 
     /// This operation requests the server to either add or modify an attribute. The request contains the Unique Identifier of the Managed Object to which the attribute pertains, along with the attribute and value. If the object did not have any instances of the attribute, one is created. If the object had exactly one instance, then it is modified. If it has more than one instance an error is raised. Read-Only attributes SHALL NOT be added or modified using this operation.
