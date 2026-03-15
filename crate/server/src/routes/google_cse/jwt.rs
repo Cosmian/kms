@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use cosmian_logger::{debug, trace};
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 
 use super::operations::Role;
 use crate::{
@@ -157,7 +157,17 @@ pub(super) fn decode_jwt_authorization_token(
     let decoding_key = DecodingKey::from_jwk(jwk)
         .map_err(|e| KmsError::Unauthorized(format!("Failed to build decoding key: {e}")))?;
 
-    let mut validation = Validation::new(header.alg);
+    // Enforce a server-side allowlist of acceptable algorithms rather than trusting header.alg
+    let allowed_alg = Algorithm::RS256;
+    if header.alg != allowed_alg {
+        return Err(KmsError::Unauthorized(format!(
+            "Unsupported JWT signing algorithm: {:?}",
+            header.alg
+        )));
+    }
+
+    let mut validation = Validation::new(allowed_alg);
+    // Allow tokens to omit some standard claims (e.g., iat, nbf), but handle exp explicitly.
     validation.required_spec_claims.clear();
     validation.set_issuer(&[&jwt_config.jwt_issuer_uri]);
 
@@ -169,6 +179,15 @@ pub(super) fn decode_jwt_authorization_token(
     #[cfg(any(test, feature = "insecure"))]
     {
         validation.validate_exp = false;
+    }
+
+    // Keep `exp` required whenever expiration validation is enabled.
+    if validation.validate_exp {
+        validation
+            .required_spec_claims
+            .insert("exp".to_owned());
+    } else {
+        validation.required_spec_claims.remove("exp");
     }
 
     let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
