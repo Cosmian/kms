@@ -132,7 +132,7 @@ The server extracts the username from the token's `email` claim.
 
 #### Supported Signing Algorithms
 
-The KMS server automatically detects the signing algorithm from the JWT header (`alg` claim) and validates accordingly. All algorithms provided by the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) library are supported:
+The KMS server automatically detects the signing algorithm from the JWT header (`alg` claim) and validates accordingly. The following signing algorithms from the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) library are supported; tokens using the `none` algorithm (for example, `Algorithm::None` / `alg: "none"`) are explicitly rejected:
 
 | Category | Algorithms |
 |----------|-----------|
