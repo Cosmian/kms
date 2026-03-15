@@ -298,7 +298,7 @@ pub(crate) async fn callback(
         let valid = match decode::<Value>(id_token_str, &decoding_key, &validation) {
             Ok(v) => v.claims,
             Err(e) => {
-                return HttpResponse::InternalServerError()
+                return HttpResponse::Unauthorized()
                     .json(serde_json::json!({ "error": format!("Token validation failed: {e}") }));
             }
         };
