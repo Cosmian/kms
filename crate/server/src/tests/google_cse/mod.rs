@@ -17,10 +17,10 @@ use std::{
 
 use actix_http::{Request, body::MessageBody};
 use actix_web::dev::{Service, ServiceResponse};
-use alcoholic_jwt::JWKS;
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
+use jsonwebtoken::jwk::JwkSet;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
@@ -863,7 +863,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
     assert!(!jwt_token.is_empty(), "JWT should not be empty");
 
     // Retrieve JWKS inner exposed
-    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs")
+    let jwks: JwkSet = test_utils::get_json_with_uri(&app, "/google_cse/certs")
         .await
         .expect("Failed to fetch JWKS from server");
 
@@ -954,7 +954,7 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
         .expect("Failed to create JWT");
 
     // Retrieve JWKS inner exposed
-    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
+    let jwks: JwkSet = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
 
     // Prepare JWKS Manager
     let mut jwks_map = HashMap::new();
@@ -1041,7 +1041,7 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
         .expect("Failed to create JWT");
 
     // Retrieve JWKS inner exposed
-    let jwks: JWKS = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
+    let jwks: JwkSet = test_utils::get_json_with_uri(&app, "/google_cse/certs").await?;
 
     // Prepare JWKS Manager
     let mut jwks_map = HashMap::new();

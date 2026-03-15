@@ -130,6 +130,20 @@ Authorization: Bearer <JWT_TOKEN>
 
 The server extracts the username from the token's `email` claim.
 
+#### Supported Signing Algorithms
+
+The KMS server automatically detects the signing algorithm from the JWT header (`alg` claim) and validates accordingly. All algorithms provided by the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) library are supported:
+
+| Category | Algorithms |
+|----------|-----------|
+| HMAC (symmetric) | HS256, HS384, HS512 |
+| RSA PKCS#1 | RS256, RS384, RS512 |
+| RSA-PSS | PS256, PS384, PS512 |
+| ECDSA | ES256, ES384 |
+| EdDSA | EdDSA (Ed25519) |
+
+The algorithm is picked up from the token's `alg` header — no server-side configuration is required. The signing key must be published in the JWKS endpoint and matched by its `kid` claim.
+
 #### PKCE Support
 
 The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
