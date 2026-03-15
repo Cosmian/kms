@@ -32,6 +32,15 @@ to the test matrix so regressions are caught automatically:
 - **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
   instead of `ActivationDate`; symmetric keys are created Active by default so the previous
   `ActivationDate` test was never reachable on an Active object
+- **Name attribute stored as VendorExtension instead of standard KMIP attribute**: Setting the `Name`
+  attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
+  as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
+  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746)):
+    - New `--name` flag added to `ckms attributes set`, `modify`, and `delete`
+    - `build_selected_attribute` WASM helper extended with a `"name"` case
+    - `parse_selected_attributes` now returns `Name` entries under the `Tag::Name` key
+    - UI: `AttributeSet`, `AttributeModify`, and `AttributeDelete` forms include a **Name** option
+    - Playwright E2E tests cover the full Name attribute lifecycle (set → get → modify → delete)
 
 ## [5.17.0] - 2026-03-13
 
