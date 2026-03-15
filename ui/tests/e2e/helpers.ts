@@ -99,8 +99,12 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
     const classCandidates = dropdown.locator(`.ant-select-item-option`, { hasText: optionText });
     const roleCandidates = dropdown.getByRole("option", { name: optionText, exact: true });
+    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
     const deadline = Date.now() + 10_000;
     let clicked = false;
+    // Alternate bottom / top scrolls so all items are rendered by the virtual
+    // list across two positions (covers lists of any length).
+    let scrolledToBottom = false;
 
     while (Date.now() < deadline && !clicked) {
         // Prefer AntD's visible option container (most reliable click target).
@@ -136,6 +140,16 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         }
 
         if (!clicked) {
+            // Toggle virtual-list scroll position so all items are rendered.
+            if (await listHolder.count() > 0) {
+                if (!scrolledToBottom) {
+                    await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+                    scrolledToBottom = true;
+                } else {
+                    await listHolder.evaluate((el) => { el.scrollTop = 0; });
+                    scrolledToBottom = false;
+                }
+            }
             await page.waitForTimeout(100);
         }
     }
@@ -170,17 +184,16 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
     // Wait for the dropdown to open before trying to scroll the virtual list.
     await dropdown.first().waitFor({ state: "visible", timeout: 10_000 });
-    // Scroll the rc-virtual-list holder to the bottom so AntD renders all items
-    // (important for long option lists that use virtual scrolling).
-    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
-    if (await listHolder.count() > 0) {
-        await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    }
+
     // Use a regex anchored to start/end so "Active" does not accidentally match "PreActive".
     const escapedText = optionText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const candidates = dropdown.locator(".ant-select-item-option", { hasText: new RegExp(`^\\s*${escapedText}\\s*$`) });
+    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
     const deadline = Date.now() + 10_000;
     let clicked = false;
+    // Alternate between scrolling to the bottom and back to the top so that
+    // all items are rendered by the virtual list across two scroll positions.
+    let scrolledToBottom = false;
 
     while (Date.now() < deadline && !clicked) {
         if ((await candidates.count()) > 0) {
@@ -194,6 +207,17 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
             }
             clicked = true;
             break;
+        }
+
+        // Toggle between bottom / top to cover all items in the virtual list.
+        if (await listHolder.count() > 0) {
+            if (!scrolledToBottom) {
+                await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+                scrolledToBottom = true;
+            } else {
+                await listHolder.evaluate((el) => { el.scrollTop = 0; });
+                scrolledToBottom = false;
+            }
         }
         await page.waitForTimeout(100);
     }

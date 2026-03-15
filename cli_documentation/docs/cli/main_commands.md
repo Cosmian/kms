@@ -271,6 +271,8 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
 
+`--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
+
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
 `--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
@@ -317,6 +319,8 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 `--parent-id <PARENT_ID>` The link to the corresponding parent id if any
 
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
+
+`--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
 
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
@@ -367,6 +371,8 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 `--parent-id <PARENT_ID>` The link to the corresponding parent id if any
 
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
+
+`--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
 
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 

@@ -405,6 +405,9 @@ pub(crate) async fn delete_attribute(
                     Tag::LinkType => {
                         attributes.link = None;
                     }
+                    Tag::Name => {
+                        attributes.name = None;
+                    }
                     Tag::VendorExtension => {
                         attributes.vendor_attributes = None;
                     }
