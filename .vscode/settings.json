@@ -108,9 +108,5 @@
   "sqltools.useNodeRuntime": true,
   "rust-analyzer.cargo.features": [
     "non-fips"
-  ],
-  "chat.tools.terminal.autoApprove": {
-    "cargo check": true,
-    "cargo test": true
-  }
+  ]
 }
