@@ -139,6 +139,7 @@ nav:
       - Attributes:
           - Get: kmip/_get_attributes.md
           - Set: kmip/_set_attributes.md
+          - Modify: kmip/_modify_attribute.md
           - Delete: kmip/_delete_attributes.md
       - Certify: kmip/_certify.md
       - Create: kmip/_create.md

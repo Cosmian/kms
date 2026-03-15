@@ -1,7 +1,18 @@
+use cosmian_kmip::time_normalize;
 use cosmian_kms_client::{
+    KmsClient,
+    kmip_0::kmip_types::{CryptographicUsageMask, State},
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
-        kmip_types::{Tag, VendorAttribute},
+        kmip_attributes::{Attribute, Attributes},
+        kmip_objects::ObjectType,
+        kmip_operations::{
+            Create, CreateResponse, GetAttributes, GetAttributesResponse, ModifyAttribute,
+            SetAttribute,
+        },
+        kmip_types::{
+            CryptographicAlgorithm, Name, NameType, Tag, UniqueIdentifier, VendorAttribute,
+        },
     },
     reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
 };
@@ -12,8 +23,8 @@ use test_kms_server::{TestsContext, start_default_test_kms_server};
 use crate::{
     actions::kms::{
         attributes::{
-            CLinkType, DeleteAttributesAction, GetAttributesAction, ModifyAttributesAction,
-            SetAttributesAction, SetOrDeleteAttributes, VendorAttributeCli,
+            CCryptographicAlgorithm, CLinkType, DeleteAttributesAction, GetAttributesAction,
+            ModifyAttributesAction, SetAttributesAction, SetOrDeleteAttributes, VendorAttributeCli,
         },
         symmetric::keys::create_key::CreateKeyAction,
     },
@@ -54,57 +65,38 @@ async fn get_attribute_value(
 }
 
 /// Test that `ModifyAttribute` successfully updates an existing attribute value.
+///
+/// The `uid` key must be an **Active** symmetric key.
 async fn check_modify_attributes(uid: &str, ctx: &TestsContext) -> KmsCliResult<()> {
-    // ── 1. Set initial attributes with SetAttribute ──────────────────────────
-    let initial_attrs = SetOrDeleteAttributes {
-        id: Some(uid.to_owned()),
-        activation_date: Some(5),
-        cryptographic_length: Some(128),
-        key_usage: Some(vec![KeyUsage::Encrypt]),
-        vendor_attributes: Some(VendorAttributeCli {
-            vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
-            attribute_name: Some("my_custom_attr".to_owned()),
-            attribute_value: Some("AABBCCDD".to_owned()),
-        }),
-        ..SetOrDeleteAttributes::default()
-    };
+    let client = ctx.get_owner_client();
+
+    // ── 1. Set initial attributes ────────────────────────────────────────────
     SetAttributesAction {
-        requested_attributes: initial_attrs.clone(),
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.to_owned()),
+            cryptographic_length: Some(128),
+            cryptographic_algorithm: Some(CCryptographicAlgorithm::AES),
+            key_usage: Some(vec![KeyUsage::Encrypt]),
+            vendor_attributes: Some(VendorAttributeCli {
+                vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
+                attribute_name: Some("my_custom_attr".to_owned()),
+                attribute_value: Some("AABBCCDD".to_owned()),
+            }),
+            ..SetOrDeleteAttributes::default()
+        },
     }
-    .process(ctx.get_owner_client())
+    .process(client.clone())
     .await?;
 
-    // ── 2. Modify activation_date ────────────────────────────────────────────
-    let modify_date = SetOrDeleteAttributes {
-        id: Some(uid.to_owned()),
-        activation_date: Some(100),
-        ..SetOrDeleteAttributes::default()
-    };
+    // ── 2. Modify cryptographic_length ───────────────────────────────────────
     ModifyAttributesAction {
-        requested_attributes: modify_date.clone(),
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.to_owned()),
+            cryptographic_length: Some(256),
+            ..SetOrDeleteAttributes::default()
+        },
     }
-    .process(ctx.get_owner_client())
-    .await?;
-
-    let date_val = get_attribute_value(ctx, uid, Tag::ActivationDate).await?;
-    assert!(
-        date_val.is_some(),
-        "ActivationDate attribute should be present after modify"
-    );
-    let date: i64 = serde_json::from_value(date_val.unwrap())?;
-    assert_eq!(date, 100, "ActivationDate should be 100 after modify");
-    trace!("ActivationDate modified successfully to 100");
-
-    // ── 3. Modify cryptographic_length ───────────────────────────────────────
-    let modify_length = SetOrDeleteAttributes {
-        id: Some(uid.to_owned()),
-        cryptographic_length: Some(256),
-        ..SetOrDeleteAttributes::default()
-    };
-    ModifyAttributesAction {
-        requested_attributes: modify_length,
-    }
-    .process(ctx.get_owner_client())
+    .process(client.clone())
     .await?;
 
     let len_val = get_attribute_value(ctx, uid, Tag::CryptographicLength).await?;
@@ -119,20 +111,70 @@ async fn check_modify_attributes(uid: &str, ctx: &TestsContext) -> KmsCliResult<
     );
     trace!("CryptographicLength modified successfully to 256");
 
-    // ── 4. Modify vendor_attributes ──────────────────────────────────────────
-    let modify_vendor = SetOrDeleteAttributes {
-        id: Some(uid.to_owned()),
-        vendor_attributes: Some(VendorAttributeCli {
-            vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
-            attribute_name: Some("my_custom_attr".to_owned()),
-            attribute_value: Some("EEFF0011".to_owned()),
-        }),
-        ..SetOrDeleteAttributes::default()
-    };
+    // ── 3. Modify cryptographic_algorithm ───────────────────────────────────
     ModifyAttributesAction {
-        requested_attributes: modify_vendor,
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.to_owned()),
+            cryptographic_algorithm: Some(CCryptographicAlgorithm::Chacha20),
+            ..SetOrDeleteAttributes::default()
+        },
     }
-    .process(ctx.get_owner_client())
+    .process(client.clone())
+    .await?;
+
+    let algo_val = get_attribute_value(ctx, uid, Tag::CryptographicAlgorithm).await?;
+    assert!(
+        algo_val.is_some(),
+        "CryptographicAlgorithm should be present after modify"
+    );
+    let algo: CryptographicAlgorithm = serde_json::from_value(algo_val.unwrap())?;
+    assert_eq!(
+        algo,
+        CryptographicAlgorithm::ChaCha20,
+        "CryptographicAlgorithm should be ChaCha20 after modify"
+    );
+    trace!("CryptographicAlgorithm modified successfully to ChaCha20");
+
+    // ── 4. Modify cryptographic_usage_mask (key_usage) ──────────────────────
+    ModifyAttributesAction {
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.to_owned()),
+            key_usage: Some(vec![KeyUsage::Encrypt, KeyUsage::Decrypt]),
+            ..SetOrDeleteAttributes::default()
+        },
+    }
+    .process(client.clone())
+    .await?;
+
+    let mask_val = get_attribute_value(ctx, uid, Tag::CryptographicUsageMask).await?;
+    assert!(
+        mask_val.is_some(),
+        "CryptographicUsageMask should be present after modify"
+    );
+    let mask: CryptographicUsageMask = serde_json::from_value(mask_val.unwrap())?;
+    assert!(
+        mask.contains(CryptographicUsageMask::Encrypt),
+        "CryptographicUsageMask should include Encrypt"
+    );
+    assert!(
+        mask.contains(CryptographicUsageMask::Decrypt),
+        "CryptographicUsageMask should include Decrypt"
+    );
+    trace!("CryptographicUsageMask modified successfully to Encrypt|Decrypt");
+
+    // ── 5. Modify vendor_attributes ──────────────────────────────────────────
+    ModifyAttributesAction {
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.to_owned()),
+            vendor_attributes: Some(VendorAttributeCli {
+                vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
+                attribute_name: Some("my_custom_attr".to_owned()),
+                attribute_value: Some("EEFF0011".to_owned()),
+            }),
+            ..SetOrDeleteAttributes::default()
+        },
+    }
+    .process(client.clone())
     .await?;
 
     let vendor_val = get_attribute_value(ctx, uid, Tag::VendorExtension).await?;
@@ -144,13 +186,60 @@ async fn check_modify_attributes(uid: &str, ctx: &TestsContext) -> KmsCliResult<
     assert!(!vas.is_empty(), "VendorExtension list should not be empty");
     trace!("VendorAttribute modified successfully");
 
-    // ── 5. Clean up ──────────────────────────────────────────────────────────
+    // ── 6. Set then modify the Name attribute (via direct KMIP API) ──────────
+    let uid_ref = UniqueIdentifier::TextString(uid.to_owned());
+    client
+        .set_attribute(SetAttribute {
+            unique_identifier: Some(uid_ref.clone()),
+            new_attribute: Attribute::Name(Name {
+                name_value: "initial-name".to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            }),
+        })
+        .await?;
+
+    client
+        .modify_attribute(ModifyAttribute {
+            unique_identifier: Some(uid_ref.clone()),
+            new_attribute: Attribute::Name(Name {
+                name_value: "modified-name".to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            }),
+        })
+        .await?;
+
+    let GetAttributesResponse { attributes, .. } = client
+        .get_attributes(GetAttributes {
+            unique_identifier: Some(uid_ref.clone()),
+            attribute_reference: None,
+        })
+        .await?;
+    let names = attributes.name.unwrap_or_default();
+    assert!(
+        names.iter().any(|n| n.name_value == "modified-name"),
+        "Name should contain 'modified-name' after modify, got: {names:?}"
+    );
+    trace!("Name attribute modified successfully to 'modified-name'");
+
+    // ── 7. Read-only attribute: State modification MUST be rejected ──────────
+    let result = client
+        .modify_attribute(ModifyAttribute {
+            unique_identifier: Some(uid_ref.clone()),
+            new_attribute: Attribute::State(State::Active),
+        })
+        .await;
+    assert!(
+        result.is_err(),
+        "ModifyAttribute(State) should be rejected as read-only"
+    );
+    trace!("State attribute correctly rejected as read-only");
+
+    // ── 8. Clean up set attributes ───────────────────────────────────────────
     DeleteAttributesAction {
         requested_attributes: SetOrDeleteAttributes {
             id: Some(uid.to_owned()),
-            activation_date: Some(0), // any value — only key matters for deletion
             cryptographic_length: Some(0),
-            key_usage: Some(vec![KeyUsage::Encrypt]),
+            key_usage: Some(vec![KeyUsage::Encrypt, KeyUsage::Decrypt]),
             vendor_attributes: Some(VendorAttributeCli {
                 vendor_identification: Some(VENDOR_ID_COSMIAN.to_owned()),
                 attribute_name: Some("my_custom_attr".to_owned()),
@@ -160,8 +249,78 @@ async fn check_modify_attributes(uid: &str, ctx: &TestsContext) -> KmsCliResult<
         },
         attribute_tags: None,
     }
-    .process(ctx.get_owner_client())
+    .process(client.clone())
     .await?;
+
+    Ok(())
+}
+
+/// Creates a Pre-Active symmetric key with a future `activation_date`.
+async fn create_preactive_symmetric_key(client: &KmsClient) -> KmsCliResult<String> {
+    let future_activation = time_normalize()? + time::Duration::hours(2);
+    let response: CreateResponse = client
+        .create(Create {
+            object_type: ObjectType::SymmetricKey,
+            attributes: Attributes {
+                activation_date: Some(future_activation),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(256),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                ),
+                object_type: Some(ObjectType::SymmetricKey),
+                ..Default::default()
+            },
+            protection_storage_masks: None,
+        })
+        .await?;
+    Ok(response.unique_identifier.to_string())
+}
+
+/// Test that `activation_date` can be modified on a Pre-Active key.
+///
+/// `ActivationDate` can only be modified when the object is in the Pre-Active
+/// state (KMIP spec §3.22). Modifying it to a past timestamp transitions the
+/// object to Active.
+async fn check_modify_activation_date(ctx: &TestsContext) -> KmsCliResult<()> {
+    let client = ctx.get_owner_client();
+    let uid = create_preactive_symmetric_key(&client).await?;
+
+    // Set the initial activation_date to 2 hours in the future.
+    let initial_ts = (time_normalize()? + time::Duration::hours(2)).unix_timestamp();
+    SetAttributesAction {
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.clone()),
+            activation_date: Some(initial_ts),
+            ..SetOrDeleteAttributes::default()
+        },
+    }
+    .process(client.clone())
+    .await?;
+
+    // Modify to 3 hours in the future.
+    let new_ts = (time_normalize()? + time::Duration::hours(3)).unix_timestamp();
+    ModifyAttributesAction {
+        requested_attributes: SetOrDeleteAttributes {
+            id: Some(uid.clone()),
+            activation_date: Some(new_ts),
+            ..SetOrDeleteAttributes::default()
+        },
+    }
+    .process(client.clone())
+    .await?;
+
+    let date_val = get_attribute_value(ctx, &uid, Tag::ActivationDate).await?;
+    assert!(
+        date_val.is_some(),
+        "ActivationDate should be present after modify on Pre-Active key"
+    );
+    let stored_ts: i64 = serde_json::from_value(date_val.unwrap())?;
+    assert_eq!(
+        stored_ts, new_ts,
+        "ActivationDate should equal new_ts after modify"
+    );
+    trace!("ActivationDate modified successfully on Pre-Active key");
 
     Ok(())
 }
@@ -171,7 +330,6 @@ async fn check_modify_attributes(uid: &str, ctx: &TestsContext) -> KmsCliResult<
 /// # Errors
 ///
 /// Returns an error if the KMS server cannot be started or if any attribute operation fails.
-#[ignore = "Too much verbosity"]
 #[tokio::test]
 async fn test_modify_attribute() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -181,6 +339,7 @@ async fn test_modify_attribute() -> KmsCliResult<()> {
         .await?;
 
     check_modify_attributes(uid.as_str().unwrap(), ctx).await?;
+    check_modify_activation_date(ctx).await?;
 
     Ok(())
 }
