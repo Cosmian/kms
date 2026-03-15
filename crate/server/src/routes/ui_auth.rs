@@ -254,13 +254,13 @@ pub(crate) async fn callback(
         let header = match decode_header(id_token_str) {
             Ok(header) => header,
             Err(e) => {
-                return HttpResponse::InternalServerError().json(
+                return HttpResponse::Unauthorized().json(
                     serde_json::json!({ "error": format!("Failed to decode token header: {e}") }),
                 );
             }
         };
         let Some(kid) = header.kid else {
-            return HttpResponse::InternalServerError()
+            return HttpResponse::Unauthorized()
                 .json(serde_json::json!({ "error": "No kid in id_token" }));
         };
         let Some(jwk) = jwks
@@ -268,14 +268,14 @@ pub(crate) async fn callback(
             .iter()
             .find(|jwk| jwk.common.key_id.as_deref() == Some(kid.as_str()))
         else {
-            return HttpResponse::InternalServerError()
+            return HttpResponse::Unauthorized()
                 .json(serde_json::json!({ "error": "Key not found in JWKS" }));
         };
 
         let decoding_key = match DecodingKey::from_jwk(jwk) {
             Ok(key) => key,
             Err(e) => {
-                return HttpResponse::InternalServerError().json(
+                return HttpResponse::Unauthorized().json(
                     serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }),
                 );
             }
