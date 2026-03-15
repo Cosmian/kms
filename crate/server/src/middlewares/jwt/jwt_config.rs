@@ -172,7 +172,11 @@ impl JwtConfig {
             validation.validate_exp = true;
             validation.required_spec_claims.clear();
             if validate_subject {
-                validation.set_required_spec_claims(&["sub"]);
+                // Require both subject and expiration in production
+                validation.set_required_spec_claims(&["sub", "exp"]);
+            } else {
+                // At minimum, always require expiration
+                validation.set_required_spec_claims(&["exp"]);
             }
             if let Some(jwt_audience) = &self.jwt_audience {
                 validation.set_audience(jwt_audience.as_slice());
