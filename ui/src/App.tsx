@@ -30,6 +30,8 @@ import ECSignForm from "./ECSign";
 import ECVerifyForm from "./ECVerify";
 import KeyExportForm from "./KeysExport";
 import KeyImportForm from "./KeysImport";
+import MacComputeForm from "./MacCompute";
+import MacVerifyForm from "./MacVerify";
 import LocateForm from "./Locate";
 import LoginPage from "./LoginPage";
 import MainLayout from "./MainLayout";
@@ -178,6 +180,10 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                             <Route path="decrypt" element={<ECDecryptForm/>}/>
                             <Route path="sign" element={<ECSignForm/>}/>
                             <Route path="verify" element={<ECVerifyForm/>}/>
+                        </Route>
+                        <Route path="mac">
+                            <Route path="compute" element={<MacComputeForm/>}/>
+                            <Route path="verify" element={<MacVerifyForm/>}/>
                         </Route>
                         <Route path="cc">
                             <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm/>}/>
