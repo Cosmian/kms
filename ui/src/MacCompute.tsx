@@ -127,7 +127,7 @@ const MacComputeForm: React.FC = () => {
                             ]}
                             help="Data to authenticate, as a hexadecimal string"
                         >
-                            <Input.TextArea rows={4} placeholder="e.g. 0011223344556677889900" />
+                            <Input.TextArea rows={4} placeholder="e.g. 0011223344556677" />
                         </Form.Item>
                     </Card>
 
