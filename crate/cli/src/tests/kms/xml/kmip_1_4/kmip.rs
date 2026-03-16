@@ -1,8 +1,4 @@
-use crate::tests::kms::xml::runner::{
-    run_single_xml_vector_on_client as run_single_xml_vector_on_client_generic,
-    run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic,
-};
-use cosmian_kms_client::KmsClient;
+use crate::tests::kms::xml::runner::run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic;
 use serial_test::serial;
 
 /// Run a single XML vector using the shared default test server (single sqlite path).
