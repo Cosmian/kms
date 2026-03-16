@@ -27,6 +27,7 @@ use crate::{
 // to avoid collisions with other test suites and ONCE servers.
 const PORT: u16 = 12000;
 // Use a far, disjoint range for TLS tests to avoid port collisions when tests run in parallel
+#[cfg(not(target_os = "windows"))]
 const TLS_PORT: u16 = 13000;
 
 // Use a fixed workspace directory so all scenarios share the same DB

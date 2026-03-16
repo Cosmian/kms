@@ -79,6 +79,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
 gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
@@ -108,6 +109,7 @@ qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
 yLT7mm6+hAwMp3y0u6oBTA==
 -----END PRIVATE KEY-----";
 
+#[cfg(not(windows))]
 const RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
 eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
@@ -210,6 +212,7 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 async fn test_openssl_cli_compat_inner(
     ctx: &TestsContext,
     tmp_path: &Path,
