@@ -12,17 +12,6 @@
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 
-use base64::Engine;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
-    create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
-};
-use cosmian_kms_client::{ExportObjectParams, export_object};
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
-use cosmian_logger::log_init;
-use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
-use test_kms_server::start_default_test_kms_server;
-use uuid::Uuid;
-
 use crate::actions::kms::{
     aws::byok::{
         export_key_material::ExportByokAction, import_kek::ImportKekAction,
@@ -38,12 +27,20 @@ use crate::tests::kms::shared::openssl_utils::{
     generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap, rsa_aes_key_wrap_sha256_unwrap,
     rsaes_oaep_sha1_unwrap, rsaes_oaep_sha256_unwrap,
 };
+use base64::Engine;
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+    create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
+};
+use cosmian_kms_client::{ExportObjectParams, export_object};
+use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
+use cosmian_logger::log_init;
+use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
+use test_kms_server::start_default_test_kms_server;
+use uuid::Uuid;
 
 // Test constants from AWS KMS GetParametersForImport response
 const TEST_KEY_ARN: &str =
     "arn:aws:kms:eu-west-3:447182645454:key/e8518bca-e1d0-4519-a915-d80da8e8f38a";
-
-const TEST_PUBLIC_KEY_BASE64: &str = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEApujv1m1gfctmaIaWD4ns9b5MWrr2JwYJYo82Ri3AoQZkOq0BQKkBazO61Scn/+buRE57x5tYTfUTZdnwUe4OuGgTRmH/2SPbcILbpulLP31YnqEP5IxLnn7Z9NR6VODn0QiUyv/uaHE/uBD7mt1+KHKEOBn+rL53/ht3yrboGgqxKj84FITNPaiOZ7yTccB0yCqvlKWYpcrIPeTBdGlpXni10GyBxRqGfkmKuX9/rxwDlBbzdAXn9nHOmhhZlzBUHDzidXZvYrfWEqxfnYAuTbb0Dwj/7eTiFUKseV7NXU/KpAyIG3OghDjNF7PnKT7Zlf7CvSYE+9DOqadBzjQjbOu10lLdoo2nWfCtkvE5XrZkqJHHk+9DUBnkQX3I6MdCWlfTp8QWHiwbo8rFLC4ZSLCB/QqhTh8XnHwdVkmrDKhpYQH6m1pJcsG4sIICDwIkdMSkw/CHOk+bl76TIsVqCu/7QyvFLtsvIDG3Ia0qwshYpUuIoKxXfgwUuZiwSN2RAgMBAAE=";
 
 // Generate the key material locally, then import it to the kms using ImportSecretDataOrKeyAction
 // The key material of this test will be a symmetric encryption key (32 bytes)
@@ -87,7 +84,6 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
     // We now have all necessary elements to start the test
     // Step 1: Import the Kek
     let import_action = ImportKekAction {
-        // TODO: check why the compiler complains abt an optional fields (the kek id)
         kek_base64: Some(public_key_base64),
         kek_file: None,
         key_arn: Some(TEST_KEY_ARN.to_owned()),

@@ -35,7 +35,7 @@ pub struct ExportByokAction {
     pub(crate) kek_id: String,
 
     /// The file path containing the import token previously generated when importing the KEK.
-    /// This file isn't red and neither used by the KMS, it's simply for providing copy-paste ready output for
+    /// This file isn't read and neither used by the KMS, it's simply for providing copy-paste ready output for
     /// aws cli users upon a successful key material wrapping
     #[clap(required = false)]
     pub(crate) token_file_path: Option<PathBuf>,
@@ -136,7 +136,7 @@ impl ExportByokAction {
         if let Some(file_path) = &self.output_file_path {
             fs::write(file_path, wrapped_key)?;
 
-            // Print all formatting and instructions to stderr to not interfere with pipes
+            // Print all formatting and instructions to stderr to not interfere with pipes. THIS IS NOT A MISTAKE, THIS WAS INTENTIONAL, and editing the lines below might break all the bash automated byok scripts, so be mindful of that if ever you will change this code.
             eprint!("The encrypted key material was successfully written to ");
             print!("{}", file_path.display());
             eprintln!(

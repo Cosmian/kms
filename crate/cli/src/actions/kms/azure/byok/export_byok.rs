@@ -71,7 +71,7 @@ impl ExportByokAction {
         // Export the key wrapped with the KEK
         // export the object
         let export_params = ExportObjectParams {
-            unwrap: true,
+            unwrap: false, // `wrapping_key_id` is ignored if `unwrap` is true
             wrapping_key_id: Some(&self.kek_id),
             allow_revoked: false,
             key_format_type: None,
@@ -103,7 +103,7 @@ impl ExportByokAction {
                 "alg": "dir",
                 "enc": "CKM_RSA_AES_KEY_WRAP"
             },
-            "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key), // TODO: check the docs, why use URL_SAFE_NO_PAD here instead of standard one
+            "ciphertext": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(wrapped_key),
             "generator": "Cosmian_KMS;v5"
         });
         // write byok file

@@ -4,7 +4,6 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-// TODO: update to match cosmian ai-client eslint config
 export default tseslint.config(
     { ignores: ["dist", "src/wasm/**"] },
     {
