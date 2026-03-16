@@ -282,6 +282,7 @@ mod tests {
         };
 
         let toml_string = r#"
+vendor_identification = "cosmian"
 default_username = "[default username]"
 force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
