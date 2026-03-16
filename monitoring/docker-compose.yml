@@ -35,6 +35,7 @@ services:
         - wget
         - --spider
         - -q
+        - --no-check-certificate
         - https://localhost:9998/health
       interval: 10s
       timeout: 5s
