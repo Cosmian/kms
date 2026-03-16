@@ -1,5 +1,4 @@
 // no std imports needed at top-level
-#![allow(dead_code)] // a lot of Mac-OS CI issues 
 #[cfg(not(feature = "non-fips"))]
 use crate::actions::kms::elliptic_curves::keys::create_key_pair::CreateKeyPairAction;
 #[cfg(not(feature = "non-fips"))]

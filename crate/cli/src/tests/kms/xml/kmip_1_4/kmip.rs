@@ -1,4 +1,8 @@
-use crate::tests::kms::xml::runner::run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic;
+use crate::tests::kms::xml::runner::{
+    run_single_xml_vector_on_client as run_single_xml_vector_on_client_generic,
+    run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic,
+};
+use cosmian_kms_client::KmsClient;
 use serial_test::serial;
 
 /// Run a single XML vector using the shared default test server (single sqlite path).
@@ -7,13 +11,13 @@ pub(crate) async fn run_single_xml_vector(test_name: &str, path: &str) {
     run_single_xml_vector_with_server_generic(test_name, path).await;
 }
 
-// pub(crate) async fn run_single_xml_vector_on_client(
-//     test_name: &str,
-//     client: &KmsClient,
-//     path: &str,
-// ) {
-//     run_single_xml_vector_on_client_generic(test_name, client, path).await;
-// }
+pub(crate) async fn run_single_xml_vector_on_client(
+    test_name: &str,
+    client: &KmsClient,
+    path: &str,
+) {
+    run_single_xml_vector_on_client_generic(test_name, client, path).await;
+}
 
 macro_rules! xml_test {
     ($name:ident, $($file:expr),+ $(,)?) => {
