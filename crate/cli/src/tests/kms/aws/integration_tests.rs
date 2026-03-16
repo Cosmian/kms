@@ -60,9 +60,8 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
             .public_key_to_der()
             .expect("Failed to export public key to DER"),
     );
-
-    let temp_dir = std::env::temp_dir();
-
+    let tmp_dir = tempfile::TempDir::new()?;
+    let temp_dir = tmp_dir.path();
     // Generate a random symmetric key to be wrapped (simulating the key material to be imported)
     let cosmian_key_id = "test-symmetric-key";
     let mut cosmian_key_bytes = [0_u8; 32];
@@ -116,8 +115,6 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
         unwrapped_key_bytes, cosmian_key_bytes,
         "Unwrapped key should match the original key material"
     );
-
-    std::fs::remove_file(&cosmian_key_file)?;
     Ok(())
 }
 
@@ -134,9 +131,8 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
     // Generate a local RSA keypair for wrapping  (simulating AWS KMS GetParametersForImport).
     let (aws_private_key_mock, aws_public_key_mock) =
         generate_rsa_keypair().expect("Failed to generate RSA keypair");
-
-    let temp_dir = std::env::temp_dir();
-
+    let tmp_dir = tempfile::TempDir::new()?;
+    let temp_dir = tmp_dir.path();
     // Write the public key to a file (DER format) to import it later.
     let kek_file_path = temp_dir.join(format!("kek_test_{}.der", uuid::Uuid::new_v4()));
     std::fs::write(
@@ -206,10 +202,6 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
         cosmian_key_bytes.to_vec(),
         "Unwrapped key should match the original key material"
     );
-
-    // Cleanup temp files
-    std::fs::remove_file(&kek_file_path)?;
-
     Ok(())
 }
 
@@ -223,9 +215,8 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     let (aws_private_key_mock, aws_public_key_mock) =
         generate_rsa_keypair().expect("Failed to generate RSA keypair");
-
-    let temp_dir = std::env::temp_dir();
-
+    let tmp_dir = tempfile::TempDir::new()?;
+    let temp_dir = tmp_dir.path();
     // Write the public key to a file (DER format) to import it later
     let kek_file_path = temp_dir.join(format!("kek_test_{}.der", Uuid::new_v4()));
     std::fs::write(
@@ -303,11 +294,6 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
         cosmian_key_bytes.to_vec(),
         "Unwrapped key should match the original key material"
     );
-
-    // Cleanup temp files
-    std::fs::remove_file(&kek_file_path)?;
-    std::fs::remove_file(&output_file_path)?;
-
     Ok(())
 }
 
@@ -327,9 +313,8 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
             .public_key_to_der()
             .expect("Failed to export public key to DER"),
     );
-
-    let temp_dir = std::env::temp_dir();
-
+    let tmp_dir = tempfile::TempDir::new()?;
+    let temp_dir = tmp_dir.path();
     // Generate an ECC keypair in the KMS (the key material to wrap will be the private key)
     let create_keypair_action = CreateEccKeyPairAction {
         sensitive: false,
@@ -374,8 +359,5 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
 
     // Extract the ECC key (and check it's valid)
     let _ec_key = pkey.ec_key().expect("Key should be ECC");
-
-    std::fs::remove_file(&output_file_path)?;
-
     Ok(())
 }
