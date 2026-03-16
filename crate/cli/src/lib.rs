@@ -20,6 +20,7 @@ pub mod reexport {
     clippy::large_stack_frames,
     clippy::ignore_without_reason,
     clippy::unwrap_in_result,
-    clippy::as_conversions
+    clippy::as_conversions,
+    dead_code
 )]
 mod tests;
