@@ -59,15 +59,6 @@ pub(crate) fn prepare_expected_response(
     substitute_locate_response_from_actual(expected, actual);
 }
 
-/// Substitute placeholders in actual server response with real UIDs
-pub(crate) fn substitute_placeholders_in_response(
-    test_name: &str,
-    resp: &mut ResponseMessage,
-    uid_map: &HashMap<usize, String>,
-) {
-    substitute_placeholders_in_expected_response(test_name, resp, uid_map);
-}
-
 /// Capture real UIDs from responses and store them in the placeholder map for future use
 pub(crate) fn capture_real_uids_from_response(
     test_name: &str,

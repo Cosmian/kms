@@ -11,14 +11,6 @@ pub(crate) async fn run_single_xml_vector(test_name: &str, path: &str) {
     run_single_xml_vector_with_server_generic(test_name, path).await;
 }
 
-pub(crate) async fn run_single_xml_vector_on_client(
-    test_name: &str,
-    client: &KmsClient,
-    path: &str,
-) {
-    run_single_xml_vector_on_client_generic(test_name, client, path).await;
-}
-
 macro_rules! xml_test {
     ($name:ident, $($file:expr),+ $(,)?) => {
         #[tokio::test]
