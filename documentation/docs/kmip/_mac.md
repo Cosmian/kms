@@ -17,9 +17,11 @@ When a stream or by-parts operation is requested:
 
 The Cosmian KMS server supports the following MAC algorithms:
 
-- HMAC-SHA256
-- HMAC-SHA384
-- HMAC-SHA512
+- HMAC-SHA-1 (NIST SP 800-131A Rev. 2 — Acceptable)
+- HMAC-SHA-224 (NIST SP 800-131A Rev. 2 — Acceptable)
+- HMAC-SHA-256
+- HMAC-SHA-384
+- HMAC-SHA-512
 
 For the complete list of supported MAC algorithms, please check the [algorithms page](../algorithms.md).
 

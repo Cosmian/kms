@@ -124,6 +124,12 @@ export const LOCATE_ROUTES: Route[] = [
     { name: "locate", path: "/ui/locate" },
 ];
 
+// ── MAC routes ───────────────────────────────────────────────────────────────
+export const MAC_ROUTES: Route[] = [
+    { name: "compute", path: "/ui/mac/compute" },
+    { name: "verify", path: "/ui/mac/verify" },
+];
+
 /**
  * All application routes, grouped by section.
  *
@@ -142,4 +148,5 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Azure", routes: AZURE_ROUTES },
     { section: "Google CSE", routes: GOOGLE_CSE_ROUTES },
     { section: "Locate", routes: LOCATE_ROUTES },
+    { section: "MAC", routes: MAC_ROUTES },
 ];

@@ -14,6 +14,8 @@ use crate::{actions::kms::console, error::result::KmsCliResult};
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CHashingAlgorithm {
+    SHA1,
+    SHA224,
     SHA256,
     SHA384,
     SHA512,
@@ -26,6 +28,8 @@ pub enum CHashingAlgorithm {
 impl Display for CHashingAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::SHA1 => write!(f, "sha1"),
+            Self::SHA224 => write!(f, "sha224"),
             Self::SHA256 => write!(f, "sha256"),
             Self::SHA384 => write!(f, "sha384"),
             Self::SHA512 => write!(f, "sha512"),
@@ -40,6 +44,8 @@ impl Display for CHashingAlgorithm {
 impl From<CHashingAlgorithm> for HashingAlgorithm {
     fn from(algo: CHashingAlgorithm) -> Self {
         match algo {
+            CHashingAlgorithm::SHA1 => Self::SHA1,
+            CHashingAlgorithm::SHA224 => Self::SHA224,
             CHashingAlgorithm::SHA256 => Self::SHA256,
             CHashingAlgorithm::SHA384 => Self::SHA384,
             CHashingAlgorithm::SHA512 => Self::SHA512,

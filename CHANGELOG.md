@@ -6,6 +6,26 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+#### HMAC-SHA-1 and HMAC-SHA-224 Support
+
+NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
+**Acceptable** algorithms. The KMS server previously blocked them via the
+algorithm policy layer. They are now fully supported:
+
+- Server `algorithm_policy.rs`: removed `HMACSHA1` / `HMACSHA224` from the
+  deny-list; added them to the allowed-list alongside `HMACSHA256/384/512`;
+  introduced `validate_hashing_algorithm_for_mac` (permits SHA-1/SHA-224 in
+  HMAC context) and `validate_cryptographic_parameters_for_mac` used by both
+  `MAC` and `MACVerify` policy paths
+- Server `mac.rs`: `compute_hmac` now handles `HashingAlgorithm::SHA1` and
+  `HashingAlgorithm::SHA224` via OpenSSL `Md::sha1()` / `Md::sha224()`
+- CLI `mac.rs`: `CHashingAlgorithm` enum extended with `SHA1` and `SHA224`
+  variants (`--algorithm sha1` / `--algorithm sha224`)
+- UI: new **MAC → Compute** and **MAC → Verify** menu entries with SHA-1 listed
+  first in the algorithm selector to highlight the newly enabled support
+
+Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
+
 #### Synology DSM NAS Volume Encryption Integration
 
 Cosmian KMS is now validated against Synology DSM 7.x KMIP-based volume

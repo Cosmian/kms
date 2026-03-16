@@ -85,6 +85,15 @@ const baseMenu: MenuItem[] = [
     },
     // Covercrypt section appended below
     {
+        key: "mac",
+        label: "MAC",
+        collapsedlabel: "MAC",
+        children: [
+            { key: "mac/compute", label: "Compute" },
+            { key: "mac/verify", label: "Verify" },
+        ],
+    },
+    {
         key: "sd",
         label: "Secret Data",
         collapsedlabel: "SD",
