@@ -21,6 +21,8 @@ use crate::{
 
 fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
+        HashingAlgorithm::SHA1 => Md::sha1(),
+        HashingAlgorithm::SHA224 => Md::sha224(),
         HashingAlgorithm::SHA256 => Md::sha256(),
         HashingAlgorithm::SHA384 => Md::sha384(),
         HashingAlgorithm::SHA512 => Md::sha512(),

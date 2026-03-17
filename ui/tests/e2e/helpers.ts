@@ -99,8 +99,12 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
     const classCandidates = dropdown.locator(`.ant-select-item-option`, { hasText: optionText });
     const roleCandidates = dropdown.getByRole("option", { name: optionText, exact: true });
+    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
     const deadline = Date.now() + 10_000;
     let clicked = false;
+    // Alternate bottom / top scrolls so all items are rendered by the virtual
+    // list across two positions (covers lists of any length).
+    let scrolledToBottom = false;
 
     while (Date.now() < deadline && !clicked) {
         // Prefer AntD's visible option container (most reliable click target).
@@ -136,6 +140,16 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         }
 
         if (!clicked) {
+            // Toggle virtual-list scroll position so all items are rendered.
+            if (await listHolder.count() > 0) {
+                if (!scrolledToBottom) {
+                    await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+                    scrolledToBottom = true;
+                } else {
+                    await listHolder.evaluate((el) => { el.scrollTop = 0; });
+                    scrolledToBottom = false;
+                }
+            }
             await page.waitForTimeout(100);
         }
     }
@@ -170,17 +184,16 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
     // Wait for the dropdown to open before trying to scroll the virtual list.
     await dropdown.first().waitFor({ state: "visible", timeout: 10_000 });
-    // Scroll the rc-virtual-list holder to the bottom so AntD renders all items
-    // (important for long option lists that use virtual scrolling).
-    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
-    if (await listHolder.count() > 0) {
-        await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    }
+
     // Use a regex anchored to start/end so "Active" does not accidentally match "PreActive".
     const escapedText = optionText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const candidates = dropdown.locator(".ant-select-item-option", { hasText: new RegExp(`^\\s*${escapedText}\\s*$`) });
+    const listHolder = dropdown.locator(".rc-virtual-list-holder").first();
     const deadline = Date.now() + 10_000;
     let clicked = false;
+    // Alternate between scrolling to the bottom and back to the top so that
+    // all items are rendered by the virtual list across two scroll positions.
+    let scrolledToBottom = false;
 
     while (Date.now() < deadline && !clicked) {
         if ((await candidates.count()) > 0) {
@@ -194,6 +207,17 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
             }
             clicked = true;
             break;
+        }
+
+        // Toggle between bottom / top to cover all items in the virtual list.
+        if (await listHolder.count() > 0) {
+            if (!scrolledToBottom) {
+                await listHolder.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+                scrolledToBottom = true;
+            } else {
+                await listHolder.evaluate((el) => { el.scrollTop = 0; });
+                scrolledToBottom = false;
+            }
         }
         await page.waitForTimeout(100);
     }
@@ -309,4 +333,58 @@ export function writeTempFile(name: string, content: string | Buffer): string {
     const filePath = path.join(tmpDir, name);
     fs.writeFileSync(filePath, content);
     return filePath;
+}
+
+/**
+ * KMS API base URL used by helpers that bypass the UI to create test fixtures.
+ * Defaults to the local development KMS port; override via PLAYWRIGHT_KMS_URL env var.
+ */
+const KMS_API_URL =
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.PLAYWRIGHT_KMS_URL ?? "http://127.0.0.1:9998";
+
+/**
+ * Create an HMAC key via direct KMIP API call (bypasses the UI since there is
+ * no dedicated "create HMAC key" UI page).
+ *
+ * @param _page  Playwright Page object (unused but kept for API consistency with other create helpers).
+ * @param algorithm  KMIP CryptographicAlgorithm string, e.g. "HMACSHA256" (default) or "HMACSHA1".
+ * @returns The UUID of the newly created key.
+ */
+export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Promise<string> {
+    const request = {
+        tag: "Create",
+        type: "Structure",
+        value: [
+            { tag: "ObjectType", type: "Enumeration", value: "SymmetricKey" },
+            {
+                tag: "Attributes",
+                type: "Structure",
+                value: [
+                    { tag: "CryptographicAlgorithm", type: "Enumeration", value: algorithm },
+                    { tag: "CryptographicLength", type: "Integer", value: 256 },
+                    // MACGenerate (0x80=128) | MACVerify (0x100=256) = 384
+                    { tag: "CryptographicUsageMask", type: "Integer", value: 384 },
+                ],
+            },
+        ],
+    };
+    const response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`createHmacKey: KMS request failed with status ${response.status}: ${body}`);
+    }
+    const json = (await response.json()) as {
+        tag?: string;
+        value?: Array<{ tag: string; value: unknown }>;
+    };
+    const idItem = json.value?.find((item) => item.tag === "UniqueIdentifier");
+    if (!idItem || typeof idItem.value !== "string") {
+        throw new Error(`createHmacKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
+    }
+    return idItem.value;
 }

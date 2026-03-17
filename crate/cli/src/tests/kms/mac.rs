@@ -38,3 +38,61 @@ pub(super) async fn test_mac() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+pub(super) async fn test_mac_sha1() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let mac_key_id = CreateKeyAction {
+        algorithm: SymmetricAlgorithm::Sha3,
+        number_of_bits: Some(256),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    let data = "00".repeat(64);
+
+    MacAction {
+        mac_key_id: mac_key_id.to_string(),
+        hashing_algorithm: CHashingAlgorithm::SHA1,
+        data: Some(data),
+        correlation_value: None,
+        init_indicator: false,
+        final_indicator: false,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+pub(super) async fn test_mac_sha224() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let mac_key_id = CreateKeyAction {
+        algorithm: SymmetricAlgorithm::Sha3,
+        number_of_bits: Some(256),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    let data = "00".repeat(64);
+
+    MacAction {
+        mac_key_id: mac_key_id.to_string(),
+        hashing_algorithm: CHashingAlgorithm::SHA224,
+        data: Some(data),
+        correlation_value: None,
+        init_indicator: false,
+        final_indicator: false,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    Ok(())
+}
