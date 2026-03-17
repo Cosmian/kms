@@ -94,6 +94,22 @@ to the test matrix so regressions are caught automatically:
   setup, DSM configuration, and automated CI testing
 - `README.md` updated with Synology DSM in the disk encryption compatibility table
 
+#### KMIP 1.0 XML Non-Regression Test Vectors
+
+All 84 official OASIS KMIP 1.0 XML conformance test vectors are now parsed and
+validated as part of the test suite:
+
+- `mandatory/` – 57 files (19 unique test cases × 3 minor-version variants):
+  SKLC-M-1..3 (symmetric key lifecycle), SKFF-M-1..12 (symmetric key
+  foundry/factory), AKLC-M-1..3 (asymmetric key lifecycle), OMOS-M-1
+  (opaque managed object store)
+- `optional/` – 27 files (9 unique test cases × 3 minor-version variants):
+  SKLC-O-1, SKFF-O-1..6, AKLC-O-1, OMOS-O-1
+
+As a side effect, the XML deserializer now correctly maps the `SKIPJACK`
+enumeration token (`0x0000_0018`) used by `SKFF-O-1..3`, fixing a
+previously-unknown parse error for those optional vectors.
+
 #### Microsoft SQL Server External Key Management (EKM)
 
 - Microsoft SQL Server EKM is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
@@ -102,6 +118,37 @@ to the test matrix so regressions are caught automatically:
 
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
+- **`OperationPolicyName` round-trip preservation (issue #796)**: KMIP 1.x clients (e.g. Synology
+  DSM 7.2.2) include the `OperationPolicyName` attribute in Register/Create requests per the KMIP
+  1.0 spec section 3.18. This attribute was deprecated in KMIP 1.3 and removed in KMIP 2.0+. The
+  server now emits a `WARN` log entry (useful for tracing legacy clients in server logs) and
+  preserves the value internally as a vendor attribute (`KMIP1 / __Operation Policy Name__`) so
+  that a subsequent `GetAttributes` request for `"Operation Policy Name"` from the same KMIP 1.x
+  client returns the expected value. Additionally, the server correctly ignores `OperationPolicyName`
+  when sent via `AddAttribute` to avoid creating a duplicate entry on top of the one already stored
+  during Create/Register.
+  Fixes ([#796](https://github.com/Cosmian/kms/issues/796))
+
+- **KMIP 1.x → 2.1 attribute conversion fixes**: Several KMIP 1.x attributes were incorrectly
+  lost or corrupted during the KMIP 1.x → 2.1 internal conversion:
+    - `X509CertificateIdentifier`, `X509CertificateIssuer`, `X509CertificateSubject`, `Digest`,
+    and `Pkcs12FriendlyName` all exist in KMIP 2.1 but were being dropped with a `WARN` in the
+    bulk conversion path (Create/Register), and mapped to a garbage `Comment` attribute in the
+    single-attribute path (AddAttribute/SetAttribute). They are now correctly mapped to their
+    KMIP 2.1 equivalents in both paths.
+    - `CertificateIdentifier`, `CertificateIssuer`, and `CertificateSubject` (the non-X509 variants
+    removed in KMIP 2.0+) are now preserved as `VendorAttribute(KMIP1, ...)` in both paths
+    instead of being silently dropped, and are decoded back to their KMIP 1.4 types when a KMIP
+    1.x client retrieves them via `GetAttributes`.
+    - `StorageStatusMask` in the single-attribute path no longer corrupts the `Comment` attribute
+    slot; it is preserved as a `VendorAttribute` with a `WARN`.
+
+- **`TransparentECPrivateKey`/`TransparentECPublicKey` → KMIP 1.4 conversion**: The
+  `TryFrom<kmip_2_1::KeyFormatType> for kmip_1_4::KeyFormatType` conversion previously returned
+  an error for these key format types even though KMIP 1.4 defines them with the same numeric
+  values (0x14/0x15). They are now correctly converted, enabling KMIP 1.4 clients to retrieve
+  EC keys whose format was stored internally by the server using the KMIP 2.1 canonical type.
+
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology

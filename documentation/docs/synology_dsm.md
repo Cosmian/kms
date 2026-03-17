@@ -26,18 +26,27 @@ operations on every volume creation and every subsequent volume mount:
 | Step | KMIP Operation | Purpose |
 |------|---------------|---------|
 | 1 | `DiscoverVersions` | Negotiate KMIP protocol version |
-| 2 | `Query` | Enumerate server capabilities |
-| 3 | `Create` | Create an AES-256 symmetric key (state: *PreActive*) |
-| 4 | `Activate` | Transition the key to *Active* state |
-| 5 | `GetAttributes` | Verify key attributes (algorithm, length, state) |
-| 6 | `ModifyAttribute` | Set `ActivationDate` on the key |
-| 7 | `Get` | Retrieve key material to mount the encrypted volume |
-| 8 | `Locate` | Find the key by name after a NAS reboot |
+| 2 | `Query` | Enumerate server capabilities (6 query functions) |
+| 3 | `Locate` | Check whether the volume key already exists |
+| 4 | `Register` | Register a `SecretData` object (opaque 32-byte key material, KMIP 1.x `OperationPolicyName="default"` attribute included) |
+| 5 | `Activate` | Transition the key from *PreActive* to *Active* state |
+| 6 | `ModifyAttribute` | Rename the key to the volume UUID |
+| 7 | `GetAttributes` | Verify key attributes (state, object type) |
+| 8 | `Get` | Retrieve key material to mount the encrypted volume |
+| 9 | `Locate` | Find the key by name after a NAS reboot |
+| 10 | `Revoke` | Revoke the key during volume deletion or key rotation |
+| 11 | `Destroy` | Delete the key from the KMS |
 
-!!! note "ModifyAttribute compatibility"
-    Step 6 (`ModifyAttribute`) is the operation that was fixed in Cosmian KMS to
-    ensure full Synology DSM compatibility (see
-    [CHANGELOG](../../CHANGELOG.md)).
+!!! note "Compatibility fixes"
+    Two fixes were required for full Synology DSM 7.2.2 compatibility:
+
+    - **`OperationPolicyName` (issue #796)**: DSM includes this KMIP 1.x attribute
+      (deprecated in 1.3, removed in 2.0) in every `Register` request. The server
+      now silently ignores it instead of emitting a confusing `WARN` log entry.
+    - **`ModifyAttribute` (issue #760)**: DSM calls `ModifyAttribute` immediately after
+      `Register` to rename the key to the volume UUID. This operation was not fully
+      implemented and caused DSM to report "cannot create keys". It is now fully
+      supported.
 
 ---
 
@@ -237,6 +246,14 @@ The CI job:
 - Check that the client certificate presented on reconnect is the same one used
   at creation time (or that both have access rights granted in the KMS access
   policy).
+
+### `OperationPolicyName` warning in server logs
+
+Older DSM versions (using the KMIP 1.0 protocol) include an `OperationPolicyName`
+attribute in their Register/Create requests.  This attribute was deprecated in
+KMIP 1.3 and removed in KMIP 2.0+.  Cosmian KMS ≥ 5.18 silently ignores it
+(issue [#796](https://github.com/Cosmian/kms/issues/796)).  Earlier versions log
+a harmless `WARN` entry; the key operation still succeeds.
 
 ---
 

@@ -115,6 +115,17 @@ pub(crate) async fn add_attribute(
             }
             attributes.set_link(link.link_type, link.linked_object_identifier);
         }
+        // OperationPolicyName was deprecated in KMIP 1.3 and removed in KMIP 2.0+.
+        // KMIP 1.x clients (e.g. Synology DSM) may call AddAttribute with this attribute;
+        // the KMIP 1.4 → 2.1 conversion encodes it as VendorAttribute(KMIP1, __Operation Policy
+        // Name__) so it arrives here. Silently ignore it — AddAttribute must not store a second
+        // copy on top of the one already set during Create/Register.
+        Attribute::VendorAttribute(ref vendor_attribute)
+            if vendor_attribute.vendor_identification == "KMIP1"
+                && vendor_attribute.attribute_name == "__Operation Policy Name__" =>
+        {
+            trace!("Ignoring deprecated OperationPolicyName attribute (KMIP 1.3+, removed in 2.0)");
+        }
         Attribute::VendorAttribute(vendor_attribute) => {
             trace!("Vendor Attribute: {}", vendor_attribute);
             // Vendor attributes can be updated

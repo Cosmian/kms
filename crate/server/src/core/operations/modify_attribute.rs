@@ -437,6 +437,9 @@ pub(crate) async fn modify_attribute(
     let tags = kms.database.retrieve_tags(owm.id()).await?;
 
     // Write modified attributes back into the embedded key-block attributes for key objects.
+    // For objects whose key value is a raw ByteString (e.g. opaque SecretData), the key
+    // block has no Structure variant and cannot store embedded attributes.  In that case we
+    // skip the embedding — the attributes are persisted independently via update_object below.
     match owm.object().object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
@@ -444,8 +447,9 @@ pub(crate) async fn modify_attribute(
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
+            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+                *object_attributes = attributes.clone();
+            }
         }
         _ => {}
     }

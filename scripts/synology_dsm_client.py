@@ -237,9 +237,10 @@ def op_register_secret_data(proxy: KMIPProxy, volume_uuid: str, verbose: bool):
         key_mat = KeyMaterial(value=raw_bytes)
         key_val = KeyValue(key_material=key_mat)
         key_block = KeyBlock(key_format_type=key_format_type, key_value=key_val)
+        # DSM TTLV trace shows SecretDataType=Password (0x1), not Seed
         secret = KmipSecretData(
             secret_data_type=KmipSecretData.SecretDataType(
-                value=enums.SecretDataType.SEED
+                value=enums.SecretDataType.PASSWORD
             ),
             key_block=key_block,
         )
@@ -254,8 +255,9 @@ def op_register_secret_data(proxy: KMIPProxy, volume_uuid: str, verbose: bool):
         name_attr = factory.create_attribute(enums.AttributeType.NAME, hash_name)
         attrs = [usage_attr, name_attr]
 
-        # DSM includes OperationPolicyName="default" (KMIP 1.x attribute).
-        # The KMS logs a WARN for this legacy attribute but handles it correctly.
+        # DSM includes OperationPolicyName="default" (KMIP 1.x attribute,
+        # deprecated in 1.3, removed in 2.0).  The KMS silently ignores it
+        # (issue #796 — previously emitted a confusing WARN log entry).
         try:
             policy_attr = factory.create_attribute(
                 enums.AttributeType.OPERATION_POLICY_NAME, 'default'
