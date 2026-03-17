@@ -24,7 +24,7 @@ use tokio::sync::{
 use crate::{DbError, error::DbResult};
 
 /// Type of the data kept in the cache. It contains the unwrapped object and the
-/// fingerprint of the wrapped object it originates from. The fingerpint has two
+/// fingerprint of the wrapped object it originates from. The fingerprint has two
 /// functionalities:
 ///
 /// 1. it allows detecting when the wrapped object is modified DB-side and to
@@ -178,7 +178,7 @@ impl UnwrappedCache {
             .map_err(KmipError::from)
             .map_err(DbError::from)
             .map(|bytes| {
-                // SAFETY: the fingerprint is 64-bit strong, but uses a trully
+                // SAFETY: the fingerprint is 64-bit strong, but uses a truly
                 // random secret seed per instance thus making the fingerprint
                 // unguessable which prevents attackers from leveraging
                 // pre-computation to create targeted collisions leading to

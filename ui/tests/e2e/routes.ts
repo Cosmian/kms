@@ -94,6 +94,7 @@ export const OPAQUE_ROUTES: Route[] = [
 export const ATTRIBUTES_ROUTES: Route[] = [
     { name: "get", path: "/ui/attributes/get" },
     { name: "set", path: "/ui/attributes/set" },
+    { name: "modify", path: "/ui/attributes/modify" },
     { name: "delete", path: "/ui/attributes/delete" },
 ];
 
@@ -115,13 +116,9 @@ export const AZURE_ROUTES: Route[] = [
 
 // ── Standalone page routes ───────────────────────────────────────────────────
 // Google CSE is an info page that shows a heading but has no submit button.
-export const GOOGLE_CSE_ROUTES: Route[] = [
-    { name: "Google CSE", path: "/ui/google-cse", locator: "h1" },
-];
+export const GOOGLE_CSE_ROUTES: Route[] = [{ name: "Google CSE", path: "/ui/google-cse", locator: "h1" }];
 
-export const LOCATE_ROUTES: Route[] = [
-    { name: "locate", path: "/ui/locate" },
-];
+export const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
 
 /**
  * All application routes, grouped by section.

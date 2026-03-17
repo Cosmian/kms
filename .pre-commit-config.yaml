@@ -89,6 +89,7 @@ repos:
       - id: check-xml
         exclude: crate/server/resources/production.drawio.svg
       - id: check-yaml
+        exclude: monitoring
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
@@ -170,7 +171,8 @@ repos:
       - id: renew-ckms-markdown
         name: renew ckms markdown docs
         description: |
-          Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md.
+          Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md
+          and cli_documentation/docs/usage.md.
         entry: bash .github/scripts/renew_ckms_markdown.sh
         language: system
         types: [rust]

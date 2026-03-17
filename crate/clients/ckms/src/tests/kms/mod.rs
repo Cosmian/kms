@@ -1,5 +1,6 @@
 #[cfg(feature = "non-fips")]
 mod access;
+mod attributes;
 #[cfg(not(target_os = "windows"))]
 #[cfg(feature = "non-fips")]
 mod auth_tests;

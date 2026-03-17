@@ -1,3 +1,4 @@
+---
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -54,7 +55,7 @@ connectors:
     exemplars:
       enabled: true
     metrics_flush_interval: 15s
-    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
 
 exporters:
   prometheusremotewrite:

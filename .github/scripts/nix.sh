@@ -33,7 +33,7 @@ usage() {
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
-      pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
+      pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux only)
@@ -79,7 +79,7 @@ usage() {
     $0 test percona
     $0 test mariadb
     $0 --variant non-fips test redis
-    $0 --variant non-fips test pykmip     # PyKMIP client tests
+    $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -512,7 +512,7 @@ test_command() {
   if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
-  # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
+  # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi

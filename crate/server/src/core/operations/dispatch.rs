@@ -15,8 +15,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
-            get_attribute_list::get_attribute_list, mac::mac_verify,
-            modify_attribute::modify_attribute, query::query as query_op,
+            get_attribute_list::get_attribute_list, mac::mac_verify, query::query as query_op,
         },
     },
     error::KmsError,
@@ -184,7 +183,7 @@ async fn dispatch_inner(
         }
         "ModifyAttribute" => {
             let req = from_ttlv::<ModifyAttribute>(ttlv)?;
-            let resp = modify_attribute(kms, req, user).await?;
+            let resp = kms.modify_attribute(req, user).await?;
             Operation::ModifyAttributeResponse(resp)
         }
         "ReKey" => {

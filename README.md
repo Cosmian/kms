@@ -20,6 +20,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
 - support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
+- [Synology DSM](./documentation/docs/synology_dsm.md) NAS volume encryption via KMIP
 - [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
 - a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
 - [MongoDB](./documentation/docs/mongodb.md)
@@ -196,6 +197,7 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/vcenter.md))                                         | ✅      |
 | VeraCrypt              | Virtual disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)) | ✅      |
 | LUKS                   | Linux disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/))        | ✅      |
+| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/synology_dsm.md))                         | ✅      |
 | Snowflake              | UDF-based column encryption ([docs](./documentation/docs/snowflake/index.md))                        | ✅      |
 | Big Data / Python UDFs | Bulk encrypt/decrypt ([docs](./documentation/docs/python_udf/index.md))                              | ✅      |
 | HashCorp Vault        | Key transit / secrets engine via KMIP                                                                | 🚧      |

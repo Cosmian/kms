@@ -7,6 +7,7 @@ import AccessObtainedList from "./AccessObtained";
 import AccessRevokeForm from "./AccessRevoke";
 import AttributeDeleteForm from "./AttributeDelete";
 import AttributeGetForm from "./AttributeGet";
+import AttributeModifyForm from "./AttributeModify";
 import AttributeSetForm from "./AttributeSet";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ExportAzureBYOKForm from "./AzureExportByok";
@@ -222,6 +223,7 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                         <Route path="attributes">
                             <Route path="get" element={<AttributeGetForm/>}/>
                             <Route path="set" element={<AttributeSetForm/>}/>
+                            <Route path="modify" element={<AttributeModifyForm/>}/>
                             <Route path="delete" element={<AttributeDeleteForm/>}/>
                         </Route>
                         <Route path="azure">

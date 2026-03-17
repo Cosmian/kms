@@ -42,7 +42,7 @@ Possible values:  `"true", "false"`
 
 **`access-rights`** [[1]](#1-ckms-access-rights)  Manage the users' access rights to the cryptographic objects
 
-**`attributes`** [[2]](#2-ckms-attributes)  Get/Set/Delete the KMIP object attributes
+**`attributes`** [[2]](#2-ckms-attributes)  Get/Set/Delete/Modify the KMIP object attributes
 
 **`azure`** [[3]](#3-ckms-azure)  Support for Azure specific interactions
 
@@ -188,7 +188,7 @@ List the access rights obtained by the calling user
 
 ## 2 ckms attributes
 
-Get/Set/Delete the KMIP object attributes
+Get/Set/Delete/Modify the KMIP object attributes
 
 ### Usage
 `ckms attributes <subcommand>`
@@ -200,6 +200,8 @@ Get/Set/Delete the KMIP object attributes
 **`set`** [[2.2]](#22-ckms-attributes-set)  Set the KMIP object attributes.
 
 **`delete`** [[2.3]](#23-ckms-attributes-delete)  Delete the KMIP object attributes.
+
+**`modify`** [[2.4]](#24-ckms-attributes-modify)  Modify existing KMIP object attributes.
 
 ---
 
@@ -324,6 +326,53 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--attribute <ATTRIBUTE>` The attributes or tags to retrieve.
 To specify multiple attributes, use the option multiple times.
+
+
+
+---
+
+## 2.4 ckms attributes modify
+
+Modify existing KMIP object attributes.
+
+### Usage
+`ckms attributes modify [options]`
+### Arguments
+`--id [-i] <ID>` The unique identifier of the cryptographic object. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
+
+`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
+
+Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
+
+`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
+
+`--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--public-key-id <PUBLIC_KEY_ID>` The link to the corresponding public key id if any
+
+`--private-key-id <PRIVATE_KEY_ID>` The link to the corresponding private key id if any
+
+`--certificate-id <CERTIFICATE_ID>` The link to the corresponding certificate id if any
+
+`--p12-id <PKCS12_CERTIFICATE_ID>` The link to the corresponding PKCS12 certificate id if any
+
+`--p12-pwd <PKCS12_PASSWORD_CERTIFICATE>` The link to the corresponding PKCS12 password certificate if any
+
+`--parent-id <PARENT_ID>` The link to the corresponding parent id if any
+
+`--child-id <CHILD_ID>` The link to the corresponding child id if any
+
+`--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
+
+`--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
+
+`--attribute-value <ATTRIBUTE_VALUE>` The attribute value (in hex format)
 
 
 

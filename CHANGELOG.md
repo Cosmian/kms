@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.18.0] - 2026-04-XX
+
+### 🚀 Features
+
+#### Synology DSM NAS Volume Encryption Integration
+
+Cosmian KMS is now validated against Synology DSM 7.x KMIP-based volume
+encryption.  A Python simulation client (`scripts/synology_dsm_client.py`)
+replays the exact KMIP operation sequence performed by DSM when it configures
+an external KMS server, and a corresponding CI job (`synology_dsm`) is added
+to the test matrix so regressions are caught automatically:
+
+- Simulates all 10 DSM KMIP steps: `DiscoverVersions → Query → Create (AES-256)
+  → Activate → GetAttributes → ModifyAttribute → Get → Locate → Revoke → Destroy`
+- New documentation page `documentation/docs/synology_dsm.md` covering server
+  setup, DSM configuration, and automated CI testing
+- `README.md` updated with Synology DSM in the disk encryption compatibility table
+
+### 🐛 Bug Fixes
+
+- **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
+  and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
+  now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
+  DSM ([#760](https://github.com/Cosmian/kms/issues/760))
+- **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
+  (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
+  `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
+- **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
+  instead of `ActivationDate`; symmetric keys are created Active by default so the previous
+  `ActivationDate` test was never reachable on an Active object
+
 ## [5.17.0] - 2026-03-13
 
 ### 🚀 Features

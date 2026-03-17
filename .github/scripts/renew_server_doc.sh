@@ -56,8 +56,9 @@ with open(target_path, "w") as f:
 
 print(f"Regenerated {target_path} from `--print-default-config`")
 
+toml_out = new_toml.rstrip('\n') + '\n'
 for path in (pkg_toml_path, kms_template_path):
     with open(path, "w") as f:
-        f.write(new_toml)
+        f.write(toml_out)
     print(f"Updated {path}")
 PYEOF

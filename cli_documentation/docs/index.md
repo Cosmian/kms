@@ -26,15 +26,13 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
     See below for installation instructions.
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
-<!-- To test locally, test with path `installation.md` -->
-{!../cli_documentation/docs/installation.md!}
+{!installation.md!}
 
 ## Configuration
 
-To communicate with the KMS, the clients `cosmian` expect the same configuration file. Please read the [configuration](./configuration.md) section.
+To communicate with the KMS, the clients `ckms` expect the same configuration file. Please read the [configuration](./configuration.md) section.
 
 ## Usage
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
-<!-- To test locally, test with path `usage.md` -->
-{!../cli_documentation/docs/usage.md!}
+{!usage.md!}

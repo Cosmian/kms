@@ -17,6 +17,7 @@ rustc-ice*.txt
 node_modules/
 # this directory may contain sqlite data when the KMS is launched locally
 **/*cosmian-kms*
+**/*__pycache__*
 run.sh
 .aider/
 .cache

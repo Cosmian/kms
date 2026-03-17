@@ -37,9 +37,10 @@ use cosmian_kms_client_utils::{
                 CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
                 DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-                GetAttributesResponse, ImportResponse, LocateResponse, Query, QueryResponse,
-                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                GetAttributesResponse, ImportResponse, LocateResponse, ModifyAttribute,
+                ModifyAttributeResponse, Query, QueryResponse, RevokeResponse, SetAttribute,
+                SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
+                Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
@@ -582,7 +583,9 @@ pub fn create_rsa_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
+    let private_key_id = private_key_id
+        .filter(|s| !s.is_empty())
+        .map(UniqueIdentifier::TextString);
     let request: CreateKeyPair = create_rsa_key_pair_request(
         vendor_id,
         private_key_id,
@@ -608,7 +611,9 @@ pub fn create_ec_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id.map(UniqueIdentifier::TextString);
+    let private_key_id = private_key_id
+        .filter(|s| !s.is_empty())
+        .map(UniqueIdentifier::TextString);
     let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
         .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
         .into();
@@ -672,7 +677,9 @@ pub fn create_sym_key_ttlv_request(
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
-        let key_id = key_id.map(UniqueIdentifier::TextString);
+        let key_id = key_id
+            .filter(|s| !s.is_empty())
+            .map(UniqueIdentifier::TextString);
         let request = symmetric_key_create_request(
             vendor_id,
             key_id,
@@ -724,7 +731,9 @@ pub fn create_secret_data_ttlv_request(
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
-        let secret_id = secret_id.map(UniqueIdentifier::TextString);
+        let secret_id = secret_id
+            .filter(|s| !s.is_empty())
+            .map(UniqueIdentifier::TextString);
         let request = secret_data_create_request(
             vendor_id,
             secret_id,
@@ -1818,6 +1827,28 @@ pub fn set_attribute_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_set_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<SetAttributeResponse>(response)
+}
+
+#[wasm_bindgen]
+pub fn modify_attribute_ttlv_request(
+    unique_identifier: String,
+    attribute_name: &str,
+    attribute_value: String,
+) -> Result<JsValue, JsValue> {
+    let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
+    let attribute = build_selected_attribute(attribute_name, attribute_value)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    let request = ModifyAttribute {
+        unique_identifier: Some(unique_identifier),
+        new_attribute: attribute,
+    };
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn parse_modify_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<ModifyAttributeResponse>(response)
 }
 
 #[wasm_bindgen]

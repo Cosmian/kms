@@ -2,10 +2,11 @@
  * Attributes flow E2E tests.
  *
  * Covers:
- *   • navigate to get / set / delete attribute pages (heading check)
+ *   • navigate to get / set / delete / modify attribute pages (heading check)
  *   • get attributes of a freshly created symmetric key
  *   • set an attribute (child_id link) on the key
  *   • delete that attribute from the key
+ *   • set an attribute then modify it with the new Modify page
  */
 import { expect, test } from "@playwright/test";
 import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse } from "./helpers";
@@ -18,6 +19,11 @@ test.describe("Object attributes", () => {
 
     test("navigate to attributes set page", async ({ page }) => {
         await gotoAndWait(page, "/ui/attributes/set");
+        await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
+    });
+
+    test("navigate to attributes modify page", async ({ page }) => {
+        await gotoAndWait(page, "/ui/attributes/modify");
         await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
     });
 
@@ -54,5 +60,27 @@ test.describe("Object attributes", () => {
         await selectOptionById(page, "#attribute_name", "Child ID link");
         const deleteText = await submitAndWaitForResponse(page);
         expect(deleteText).toMatch(/has been deleted for/i);
+    });
+
+    test("set then modify a child_id attribute on a key", async ({ page }) => {
+        const keyId = await createSymKey(page);
+        const initialId = "00000000-0000-0000-0000-000000000002";
+        const modifiedId = "00000000-0000-0000-0000-000000000003";
+
+        // Set initial attribute ────────────────────────────────────────────────
+        await gotoAndWait(page, "/ui/attributes/set");
+        await page.fill('input[placeholder="Enter object ID"]', keyId);
+        await selectOptionById(page, "#attribute_name", "Child ID link");
+        await page.fill('input[placeholder="Enter ID value"]', initialId);
+        const setText = await submitAndWaitForResponse(page);
+        expect(setText).toMatch(/Attribute has been set for/i);
+
+        // Modify attribute to a new value ──────────────────────────────────────
+        await gotoAndWait(page, "/ui/attributes/modify");
+        await page.fill('input[placeholder="Enter object ID"]', keyId);
+        await selectOptionById(page, "#attribute_name", "Child ID link");
+        await page.fill('input[placeholder="Enter ID value"]', modifiedId);
+        const modifyText = await submitAndWaitForResponse(page);
+        expect(modifyText).toMatch(/Attribute has been modified for/i);
     });
 });

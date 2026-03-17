@@ -12,7 +12,7 @@ pub(crate) struct RequestMetadata {
     /// This is the ARN of the principal that invoked KMS Decrypt (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
     /// the service principal ending in amazonaws.com, such as ec2.amazonaws.com or
-    /// “AWS Internal”. This field is REQUIRED.
+    /// "AWS Internal". This field is REQUIRED.
     pub awsPrincipalArn: String,
     /// This field is OPTIONAL. It is present if and only if the KMS API request was made using
     /// a VPC endpoint.
