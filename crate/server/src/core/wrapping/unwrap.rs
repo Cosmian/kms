@@ -180,7 +180,7 @@ async fn unwrap_using_crypto_oracle(
     // Determine the private key if a public key is passed
     let unwrapping_key_uid = unwrapping_key_uid
         .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
-        .map_or_else(|| unwrapping_key_uid.to_owned(), ToString::to_string);
+        .map_or_else(|| unwrapping_key_uid.to_owned(), str::to_owned);
 
     // Permission checks on HSM keys are not performed during unwrapping.
     // The HSM itself manages access control for key operations.

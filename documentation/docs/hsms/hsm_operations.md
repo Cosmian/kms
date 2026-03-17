@@ -21,6 +21,12 @@ is stored in the `LABEL` field of the key object in the HSM.
     Cosmian KMS will return an error when that label is referenced. Always verify that no existing object already
     uses a label before creating a new key with `pkcs11-tool --list-objects`.
 
+!!! info CKA_ID is automatically set by Cosmian KMS
+    Cosmian KMS sets both `CKA_LABEL` and `CKA_ID` (to the same bytes as the label) on every key it creates in
+    the HSM.  This conforms to PKCS#11 v2.40 and prevents spurious warnings from tools such as
+    `pkcs11-tool --list-objects`.  Keys provisioned externally (via `pkcs11-tool` or the HSM vendor software)
+    should also have `CKA_ID` set to match the label bytes if they are intended to be used with Cosmian KMS.
+
 Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
 ## Creating a KMS key wrapped by an HSM key
@@ -33,6 +39,11 @@ To create a KMS key wrapped by an HSM key, the `--wrapping-key-id` argument must
 identifier of the HSM key.
 
 The user creating the key must be the HSM admin (see above) or have been granted the `Encrypt` operation on the HSM key.
+
+!!! note Server-level `key_encryption_key` is accessible to all users
+    When the server is configured with a `key_encryption_key` (see [Automatically using the server configuration](#automatically-using-the-server-configuration)),
+    that KEK is a shared server resource and can be used as a wrapping key by **any authenticated user**, not just
+    the HSM admin.  This allows non-admin users to create their own KMS keys wrapped by the server KEK.
 
 For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key
 `hsm::4::my_rsa_key_pk`:
@@ -129,6 +140,25 @@ To decrypt a large file with the KEK `my_sym_key` client side, the following com
 > ckms sym decrypt --key-id my_sym_key_2 --data-encryption-algorithm aes-gcm \
   --key-encryption-algorithm rfc5649 --output-file /tmp/large.recovered.bin /tmp/large.enc
 The decrypted file is available at "/tmp/large.recovered.bin"
+```
+
+### Unwrapping a KMS-wrapped key from a file
+
+If a KMS key was exported in wrapped KMIP JSON TTLV format (for example, via `ckms sym keys export` without `--unwrap`),
+it can later be unwrapped using `ckms sym keys unwrap`.
+
+When the unwrapping key is an HSM key (identified by the `hsm::` prefix), the KMS performs the unwrap
+**server-side** using its crypto oracle: the wrapped file is imported to the KMS with `key_wrap_type=NotWrapped`,
+the server decrypts it using the HSM key, and the result is exported back to the output file.
+This is transparent to the caller and works even when the HSM key is marked `sensitive` (non-extractable).
+
+```shell
+# Export a wrapped DEK to disk
+ckms sym keys export --key-id my_sym_key /tmp/my_sym_key_wrapped.json
+
+# Unwrap it using the HSM KEK — the KMS handles the decryption server-side
+ckms sym keys unwrap --unwrap-key-id hsm::4::master_kek \
+  /tmp/my_sym_key_wrapped.json /tmp/my_sym_key_unwrapped.json
 ```
 
 ## The Unwrapped Objects Cache

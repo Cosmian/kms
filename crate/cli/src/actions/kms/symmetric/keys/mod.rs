@@ -50,7 +50,7 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Unwrap(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::Revoke(action) => {
                 action.run(kms_rest_client).await?;

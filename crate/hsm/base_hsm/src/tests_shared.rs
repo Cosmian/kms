@@ -186,6 +186,13 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     info!("Generated exportable AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
+    // Issue #745: assert CKA_ID is set and matches the key label bytes
+    let cka_id = session.get_object_id(key_handle)?;
+    assert_eq!(
+        cka_id.as_deref(),
+        Some(key_id.as_bytes()),
+        "CKA_ID must be set to the key id bytes (issue #745)"
+    );
     // try export if allowed
     if let Ok(Some(key)) = session.export_key(key_handle) {
         let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
@@ -204,6 +211,13 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     info!("Generated sensitive AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
+    // Issue #745: assert CKA_ID is set for sensitive keys too
+    let cka_id = session.get_object_id(key_handle)?;
+    assert_eq!(
+        cka_id.as_deref(),
+        Some(key_id.as_bytes()),
+        "CKA_ID must be set to the key id bytes for sensitive keys (issue #745)"
+    );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
     Ok(())
@@ -225,6 +239,19 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     // exportability differs per HSM; verify handles and metadata
     assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
     assert_eq!(pk_handle, session.get_object_handle(pk_id.as_bytes())?);
+    // Issue #745: assert CKA_ID is set for both key pair components
+    let sk_cka_id = session.get_object_id(sk_handle)?;
+    assert_eq!(
+        sk_cka_id.as_deref(),
+        Some(sk_id.as_bytes()),
+        "Private key CKA_ID must be set to the key id bytes (issue #745)"
+    );
+    let pk_cka_id = session.get_object_id(pk_handle)?;
+    assert_eq!(
+        pk_cka_id.as_deref(),
+        Some(pk_id.as_bytes()),
+        "Public key CKA_ID must be set to the key id bytes (issue #745)"
+    );
     // public key should be exportable
     let key = session
         .export_key(pk_handle)?

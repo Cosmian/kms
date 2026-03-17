@@ -143,6 +143,9 @@ pkgs.mkShell {
       [
         softhsmDrv
         pkgs.wget
+        # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
+        # have CKA_ID set and do not trigger pkcs11-tool warnings (#745)
+        pkgs.opensc
       ]
       # Utimaco HSM simulator is only available on x86_64-linux
       ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]

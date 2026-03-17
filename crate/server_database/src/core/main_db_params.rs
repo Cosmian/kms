@@ -48,7 +48,7 @@ impl Display for MainDbParams {
             Self::Mysql(url, _) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
             Self::RedisFindex(url, _) => {
-                write!(f, "redis-findex: {}, master key: [****]", redact_url(url),)
+                write!(f, "redis-findex: {}, master key: [****]", redact_url(url))
             }
         }
     }

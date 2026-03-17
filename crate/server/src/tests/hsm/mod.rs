@@ -45,6 +45,7 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
+mod issues;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
@@ -76,6 +77,13 @@ async fn test_hsm_all() {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
     }
+
+    info!("HSM: non_admin_kek_wrapping (issue #761)");
+    Box::pin(issues::test_non_admin_kek_wrapping())
+        .await
+        .unwrap();
+    info!("HSM: server_side_unwrap (issue #762)");
+    Box::pin(issues::test_server_side_unwrap()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {

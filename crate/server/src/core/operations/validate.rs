@@ -85,7 +85,7 @@ pub(crate) async fn validate_operation(
         (None, Some(certificates)) => Ok::<_, KmsError>((certificates.clone(), certificates.len())),
         (Some(mut unique_identifiers), None) => {
             let set: HashSet<_> = unique_identifiers.drain(..).collect(); // dedup
-            unique_identifiers.extend(set.into_iter());
+            unique_identifiers.extend(set);
             Ok((
                 Box::pin(certificates_by_uid(unique_identifiers.clone(), kms, user)).await?,
                 unique_identifiers.len(),
@@ -93,7 +93,7 @@ pub(crate) async fn validate_operation(
         }
         (Some(mut unique_identifiers), Some(certificates)) => {
             let set: HashSet<_> = unique_identifiers.drain(..).collect(); // dedup
-            unique_identifiers.extend(set.into_iter());
+            unique_identifiers.extend(set);
             Ok((
                 [
                     certificates.clone(),

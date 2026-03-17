@@ -42,7 +42,7 @@ impl EllipticCurveCommands {
     /// Returns an error if the query execution on the KMS server fails.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Keys(command) => command.process(kms_rest_client).await?,
+            Self::Keys(command) => Box::pin(command.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             #[cfg(feature = "non-fips")]

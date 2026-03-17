@@ -25,6 +25,8 @@ pub mod tests_shared;
 // If sensitive is true, the key is not exportable
 // Proteccio does not allow setting the ID attribute for secret keys so we use the LABEL
 // so we do the same with other HSMs
+// CKA_ID is set to the same bytes as CKA_LABEL to provide a unique identifier
+// per PKCS#11 v2 and avoid warnings with pkcs11-tool --list-objects
 #[macro_export]
 macro_rules! aes_key_template {
     ($id:expr, $size:expr, $sensitive:expr) => {
@@ -73,6 +75,11 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_LABEL,
+                pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ID,
                 pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
                 ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
             },

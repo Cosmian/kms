@@ -125,6 +125,19 @@ in this repository under `crate/clients/ckms/`:
 
 ### 🐛 Bug Fixes
 
+- **HSM**: KMS-created HSM keys now have `CKA_ID` set to the key-id bytes in addition to
+  `CKA_LABEL`, conforming to PKCS#11 v2.40 and eliminating spurious warnings from
+  `pkcs11-tool --list-objects` ([#745](https://github.com/Cosmian/kms/issues/745))
+- **HSM**: HSM key lookup (`get_object_handle`) now searches by `CKA_ID` first (primary
+  path for KMS-created keys) and falls back to `CKA_LABEL` for externally provisioned keys
+  that may not have `CKA_ID` set; `get_object_id` follows the same order
+- **HSM**: Non-admin users can now create KMS keys wrapped by the server-level
+  `key_encryption_key`; the ownership check is skipped for this shared server resource
+  ([#761](https://github.com/Cosmian/kms/issues/761))
+- **HSM/CLI**: `ckms sym keys unwrap -i hsm::<slot>::<label>` no longer fails with
+  "This key is sensitive and cannot be exported from the HSM"; the unwrap is now performed
+  server-side through the KMS crypto oracle so the HSM key material is never exported
+  ([#762](https://github.com/Cosmian/kms/issues/762))
 - **Signing key**: Fix corrupted GPG public key (`cosmian-kms-public.asc`) that caused CRC
   errors on import with GnuPG ([#785](https://github.com/Cosmian/kms/issues/785))
 - **CI**: Fix GCP CMEK FIPS test timeout — strip `LD_PRELOAD`/`LD_LIBRARY_PATH` from `curl`
@@ -163,6 +176,15 @@ in this repository under `crate/clients/ckms/`:
 
 - Add End-to-End (E2E) tests on UI (in browser-tests) (#736)
 - Re-enable hsm Proteccio tests (#781)
+- **HSM**: New `tests::hsm::issues` server test module covering issue regressions:
+  `test_non_admin_kek_wrapping` (#761) and `test_server_side_unwrap` (#762)
+- **HSM/CLI**: `test_unwrap_with_hsm_key` CLI test for server-side unwrapping of
+  HSM-wrapped KMIP JSON TTLV files (#762)
+- **HSM**: `generate_aes_key` and `generate_rsa_keypair` shared PKCS#11 tests now assert
+  that `CKA_ID` is set on every created HSM key (#745)
+- **HSM**: `test_pkcs11tool_no_warnings` bash-level integration test in
+  `test_hsm_utimaco.sh` — starts a real KMS server, creates AES and RSA keys via `ckms`,
+  then verifies `pkcs11-tool --list-objects` reports no warnings (#745)
 
 ### 🔒 Security
 
@@ -178,6 +200,8 @@ in this repository under `crate/clients/ckms/`:
 - New Azure EKM guide (`documentation/docs/azure/ekm/ekm.md`)
 - New AWS XKS guide (`documentation/docs/aws/xks.md`)
 - HSM operations: added `pkcs11-tool` key creation examples and label uniqueness constraint warning
+- HSM operations: document `CKA_ID` requirement, non-admin `key_encryption_key` access, and
+  server-side unwrapping of HSM-wrapped KMIP files via `ckms sym keys unwrap`
 - UI branding: `loginCardColor` field reference and blank theme usage
 - README: new `🔗 Integrations` section covering cloud providers (AWS/Azure/GCP), databases, and HSMs
 - Add HAProxy+KeepAlived example
