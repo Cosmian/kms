@@ -1,4 +1,4 @@
-use std::vec;
+use std::{path::PathBuf, vec};
 
 use ckms::{
     config::ClientConfig,
@@ -47,8 +47,8 @@ pub(crate) struct KmsObject {
     pub other_tags: Vec<String>,
 }
 
-pub(crate) fn get_kms_client() -> Pkcs11Result<KmsClient> {
-    let config = ClientConfig::load(None)?;
+pub(crate) fn get_kms_client_with_path(conf_path: Option<PathBuf>) -> Pkcs11Result<KmsClient> {
+    let config = ClientConfig::load(conf_path)?;
     Ok(KmsClient::new_with_config(config.kms_config)?)
 }
 
@@ -76,6 +76,58 @@ pub(crate) fn get_kms_objects(
         tags,
         key_format_type,
     ))
+}
+
+/// Locate and export only `SecretData` objects with the given tags.
+/// This is stricter than `get_kms_objects` because it adds an `ObjectType=SecretData`
+/// filter to the Locate request, preventing false matches with `SymmetricKey` objects that
+/// happen to carry the same tag (e.g. old TDE master keys tagged with `_sd`).
+pub(crate) fn get_kms_secret_data_objects(
+    kms_rest_client: &KmsClient,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    tokio::runtime::Runtime::new()?
+        .block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
+}
+
+async fn get_kms_secret_data_objects_async(
+    kms_rest_client: &KmsClient,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let key_ids =
+        locate_objects_of_type(kms_rest_client, tags, Some(ObjectType::SecretData)).await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}",
+            tags
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::Raw),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_secret_data_objects_async: found {} SecretData objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        let other_tags = attributes
+            .get_tags(VENDOR_ID_COSMIAN)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
+            .collect::<Vec<String>>();
+        results.push(KmsObject {
+            remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
 }
 
 pub(crate) async fn get_kms_objects_async(
@@ -161,8 +213,19 @@ pub(crate) async fn get_kms_object_async(
 }
 
 async fn locate_objects(kms_rest_client: &KmsClient, tags: &[String]) -> Pkcs11Result<Vec<String>> {
+    locate_objects_of_type(kms_rest_client, tags, None).await
+}
+
+/// Locate KMS objects by tags, optionally filtering by `ObjectType`.
+/// This avoids returning objects of wrong type when multiple object types share the same tag.
+async fn locate_objects_of_type(
+    kms_rest_client: &KmsClient,
+    tags: &[String],
+    object_type: Option<ObjectType>,
+) -> Pkcs11Result<Vec<String>> {
     let mut attributes = Attributes::default();
     attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
+    attributes.object_type = object_type;
 
     let locate = Locate {
         attributes,
@@ -177,7 +240,7 @@ async fn locate_objects(kms_rest_client: &KmsClient, tags: &[String]) -> Pkcs11R
         .map(std::string::ToString::to_string)
         .filter(|id| !id.is_empty())
         .collect();
-    debug!("Located objects: tags: {tags:?} => {uniques_identifiers:?}");
+    debug!("Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}");
     Ok(uniques_identifiers)
 }
 

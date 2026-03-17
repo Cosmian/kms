@@ -121,6 +121,7 @@ debug = 0           # No debug info (timestamps/paths)
 [profile.dev]
 strip = "debuginfo"
 incremental = false
+panic = "abort"     # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]

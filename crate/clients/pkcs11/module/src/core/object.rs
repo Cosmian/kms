@@ -122,14 +122,27 @@ impl Object {
                 }
             },
             Self::SymmetricKey(sym_key) => match type_ {
+                AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
                 AttributeType::Class => Some(Attribute::Class(CKO_SECRET_KEY)),
+                AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
+                AttributeType::Encrypt => Some(Attribute::Encrypt(true)),
+                // Oracle TDE requires CKA_EXTRACTABLE=FALSE for master keys
+                AttributeType::Extractable => Some(Attribute::Extractable(false)),
                 AttributeType::Id => Some(Attribute::Id(sym_key.remote_id().into_bytes())),
                 AttributeType::KeyType => {
                     Some(Attribute::KeyType(sym_key.algorithm().to_ck_key_type()))
                 }
                 AttributeType::Label => Some(Attribute::Label("Symmetric Key".to_owned())),
+                AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
+                AttributeType::Private => Some(Attribute::Private(false)),
+                // Oracle TDE requires CKA_SENSITIVE=TRUE for master keys
+                AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
                 AttributeType::Token => Some(Attribute::Token(true)),
+                // Oracle TDE requires CKA_UNWRAP=TRUE to verify master key usability
+                AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
                 AttributeType::Value => Some(Attribute::Value(sym_key.raw_bytes()?.to_vec())),
+                // Oracle TDE requires CKA_WRAP=TRUE to verify master key usability
+                AttributeType::Wrap => Some(Attribute::Wrap(true)),
                 _ => {
                     error!("symmetric_key: type_ unimplemented: {type_:?}");
                     None
@@ -280,7 +293,9 @@ impl Object {
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
                 AttributeType::Private => Some(Attribute::Private(true)),
-                AttributeType::Label => Some(Attribute::Label("Data Object".to_owned())),
+                // Return the actual object ID as label so callers (e.g. Oracle TDE) can
+                // match ORACLE.SECURITY.KM.ENCRYPTION.* labels during C_FindObjects filtering.
+                AttributeType::Label => Some(Attribute::Label(data.remote_id())),
                 _ => {
                     error!("Data object: type_ unimplemented: {type_:?}");
                     None
