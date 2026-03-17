@@ -1,11 +1,8 @@
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use crate::error::result::KmsCliResultHelper;
 use crate::{
     actions::kms::{
         shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
-    cli_bail,
     error::result::KmsCliResult,
 };
 use base64::Engine;
@@ -13,16 +10,17 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
 };
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use cosmian_logger::warn;
 use cosmian_logger::{debug, info, log_init};
 use openssl::pkey::PKey;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 use tempfile::TempDir;
-use test_kms_server::{TestsContext, start_default_test_kms_server};
+use test_kms_server::start_default_test_kms_server;
+
+#[cfg(not(windows))]
+use {
+    crate::cli_bail, crate::error::result::KmsCliResultHelper, cosmian_logger::warn,
+    std::path::Path, test_kms_server::TestsContext,
+};
 
 #[tokio::test]
 pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
@@ -120,7 +118,7 @@ JExzskB4cOnHPAdR5xnp+X3DMKRDuCNYEGUg0YqNu9fJ40yHoFLNclfO1pcYbnZD
 FQIDAQAB
 -----END PUBLIC KEY-----";
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(not(windows))]
 #[tokio::test]
 async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
