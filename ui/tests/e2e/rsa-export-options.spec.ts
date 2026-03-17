@@ -37,7 +37,7 @@ async function exportRsaKey(
         wrappingAlgorithm?: string;
         unwrap?: boolean;
         allowRevoked?: boolean;
-    }
+    },
 ): Promise<{ text: string }> {
     await gotoAndWait(page, "/ui/rsa/keys/export");
     await page.fill('input[placeholder="Enter key ID"]', keyId);

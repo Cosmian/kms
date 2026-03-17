@@ -92,12 +92,7 @@ const MacVerifyForm: React.FC = () => {
                 <p>Both the data and the MAC value must be provided as hexadecimal strings.</p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-                initialValues={{ algorithm: "SHA256" }}
-            >
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>

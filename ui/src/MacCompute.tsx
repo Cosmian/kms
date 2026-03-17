@@ -83,15 +83,12 @@ const MacComputeForm: React.FC = () => {
 
             <div className="mb-8 space-y-2">
                 <p>Compute a Message Authentication Code (MAC / HMAC) over data using a MAC key.</p>
-                <p>The data must be provided as a hexadecimal string (e.g. <code>0011223344556677</code>).</p>
+                <p>
+                    The data must be provided as a hexadecimal string (e.g. <code>0011223344556677</code>).
+                </p>
             </div>
 
-            <Form
-                form={form}
-                onFinish={onFinish}
-                layout="vertical"
-                initialValues={{ algorithm: "SHA256" }}
-            >
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>

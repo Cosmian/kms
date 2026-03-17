@@ -14,14 +14,7 @@
  */
 import { expect, test } from "@playwright/test";
 import * as fs from "fs";
-import {
-    createSymKey,
-    gotoAndWait,
-    submitAndWaitForDownload,
-    submitAndWaitForResponse,
-    uploadFile,
-    writeTempFile,
-} from "./helpers";
+import { createSymKey, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse, uploadFile, writeTempFile } from "./helpers";
 
 const PLAINTEXT = "Hello Cosmian KMS – Symmetric E2E roundtrip test!";
 

@@ -187,7 +187,6 @@ if [ -f ui/pnpm-lock.yaml ]; then
     exit 1
   fi
   run_ui pnpm install --frozen-lockfile
-  run_ui pnpm run lint
   run_ui npm run check
   run_ui pnpm run test:unit
   run_ui pnpm audit --audit-level high

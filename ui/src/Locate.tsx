@@ -820,7 +820,6 @@ const LocateForm: React.FC = () => {
                                             ],
                                             // OpaqueObject among probably others are not keys and have no KeyFormatType so N/A is a catch-all handled separately
                                             onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
-                                                if (value === "N/A") return !record.attributes?.ObjectType;
                                                 return record.attributes?.ObjectType === value;
                                             },
                                             render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
