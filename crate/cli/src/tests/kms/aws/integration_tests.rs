@@ -8,7 +8,7 @@
 //! | `aws_byok_with_rsa_aes_key_wrap_sha256`| `RSA_AES_KEY_WRAP_SHA_256`| ECC (private key)  | KMS (generated)    | Base64     | File (bin)  |
 //! | `aws_byok_with_rsaes_oaep_sha256`      | `RSAES_OAEP_SHA_256`      | AES-256            | Test file (imported) | Base64     | Base64      |
 //! | `aws_byok_with_rsaes_oaep_sha1`        | `RSAES_OAEP_SHA_1`        | HMAC               | KMS (generated)    | File (DER) | Base64      |
-//! | `aws_byok_with_rsa_aes_key_wrap_sha1`  | `RSA_AES_KEY_WRA_SHA_1`   | RSA (private key)  | KMS (generated)    | File (DER) | File (bin)  |
+//! | `aws_byok_with_rsa_aes_key_wrap_sha1`  | `RSA_AES_KEY_WRAP_SHA_1`   | RSA (private key)  | KMS (generated)    | File (DER) | File (bin)  |
 //!
 //! [AWS KMS Docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-encrypt-key-material.html)
 

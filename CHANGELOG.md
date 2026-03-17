@@ -42,7 +42,7 @@ Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
 #### Synology DSM NAS Volume Encryption Integration
 
 Cosmian KMS is now validated against Synology DSM 7.x KMIP-based volume
-encryption.  A Python simulation client (`scripts/synology_dsm_client.py`)
+encryption. A Python simulation client (`scripts/synology_dsm_client.py`)
 replays the exact KMIP operation sequence performed by DSM when it configures
 an external KMS server, and a corresponding CI job (`synology_dsm`) is added
 to the test matrix so regressions are caught automatically:
@@ -55,6 +55,7 @@ to the test matrix so regressions are caught automatically:
 
 ### 🐛 Bug Fixes
 
+- **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology

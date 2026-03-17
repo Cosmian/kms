@@ -216,7 +216,7 @@ aws kms import-key-material \
 
 Receiving this response means that the key material has been successfully imported into AWS KMS.
 
-## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
+## Creating an RSA key and importing it using the AWS CLI and the Cosmian CLI
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 

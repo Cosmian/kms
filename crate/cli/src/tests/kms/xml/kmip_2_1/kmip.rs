@@ -1,7 +1,5 @@
-use crate::tests::kms::xml::runner::{
-    run_single_xml_vector_on_client as run_single_xml_vector_on_client_generic,
-    run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic,
-};
+use crate::tests::kms::xml::runner::run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic;
+#[cfg(all(not(windows), not(target_os = "macos")))]
 use cosmian_kms_client::KmsClient;
 use serial_test::serial;
 
@@ -13,12 +11,13 @@ pub(crate) async fn run_single_xml_vector(test_name: &str, path: &str) {
 
 // Run a single XML vector using an existing client. Useful to chain multiple vectors
 // against the same KMS instance (e.g., TL-M-1 -> TL-M-2 -> TL-M-3 sequence).
-#[cfg(all(not(windows), not(target_os = "macos")))]
+#[cfg(all(not(windows), not(target_os = "macos")))] // This is only run on the Linux CI
 pub(crate) async fn run_single_xml_vector_on_client(
     test_name: &str,
     client: &KmsClient,
     path: &str,
 ) {
+    use crate::tests::kms::xml::runner::run_single_xml_vector_on_client as run_single_xml_vector_on_client_generic;
     run_single_xml_vector_on_client_generic(test_name, client, path).await;
 }
 
