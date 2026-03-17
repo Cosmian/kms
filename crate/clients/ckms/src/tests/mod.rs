@@ -7,12 +7,16 @@
 #![allow(clippy::assertions_on_result_states)]
 #![allow(clippy::panic_in_result_fn)]
 
-use std::{env, path::Path};
+use std::{env, path::Path, sync::Mutex};
 
 use cosmian_config_utils::ConfigUtils;
 use test_kms_server::TestsContext;
 
 use crate::config::ClientConfig;
+
+/// Protects the check-then-write sequence in `save_kms_cli_config` from TOCTOU
+/// races when multiple test threads call it concurrently for the same server port.
+static SAVE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
 mod ensure_binary;
 pub(crate) mod kms;
@@ -52,6 +56,10 @@ pub(crate) fn ckms_command() -> std::process::Command {
 pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
     // Ensure binary is built before any test that uses it
     ensure_ckms_binary();
+
+    // Serialize the check-then-write to prevent TOCTOU races when multiple
+    // test threads concurrently call this function for the same server port.
+    let _guard = SAVE_CONFIG_LOCK.lock().expect("SAVE_CONFIG_LOCK poisoned");
 
     let owner_file_path = env::temp_dir()
         .join(format!("owner_{}.toml", kms_ctx.server_port))
