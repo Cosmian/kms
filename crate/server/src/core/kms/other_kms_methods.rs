@@ -103,6 +103,11 @@ impl KMS {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::ChaCha20
             | CryptographicAlgorithm::ChaCha20Poly1305
+            | CryptographicAlgorithm::HMACSHA1
+            | CryptographicAlgorithm::HMACSHA224
+            | CryptographicAlgorithm::HMACSHA256
+            | CryptographicAlgorithm::HMACSHA384
+            | CryptographicAlgorithm::HMACSHA512
             | CryptographicAlgorithm::SHA3224
             | CryptographicAlgorithm::SHA3256
             | CryptographicAlgorithm::SHA3384

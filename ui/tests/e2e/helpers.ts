@@ -334,3 +334,57 @@ export function writeTempFile(name: string, content: string | Buffer): string {
     fs.writeFileSync(filePath, content);
     return filePath;
 }
+
+/**
+ * KMS API base URL used by helpers that bypass the UI to create test fixtures.
+ * Defaults to the local development KMS port; override via PLAYWRIGHT_KMS_URL env var.
+ */
+const KMS_API_URL =
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.PLAYWRIGHT_KMS_URL ?? "http://127.0.0.1:9998";
+
+/**
+ * Create an HMAC key via direct KMIP API call (bypasses the UI since there is
+ * no dedicated "create HMAC key" UI page).
+ *
+ * @param _page  Playwright Page object (unused but kept for API consistency with other create helpers).
+ * @param algorithm  KMIP CryptographicAlgorithm string, e.g. "HMACSHA256" (default) or "HMACSHA1".
+ * @returns The UUID of the newly created key.
+ */
+export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Promise<string> {
+    const request = {
+        tag: "Create",
+        type: "Structure",
+        value: [
+            { tag: "ObjectType", type: "Enumeration", value: "SymmetricKey" },
+            {
+                tag: "Attributes",
+                type: "Structure",
+                value: [
+                    { tag: "CryptographicAlgorithm", type: "Enumeration", value: algorithm },
+                    { tag: "CryptographicLength", type: "Integer", value: 256 },
+                    // MACGenerate (0x80=128) | MACVerify (0x100=256) = 384
+                    { tag: "CryptographicUsageMask", type: "Integer", value: 384 },
+                ],
+            },
+        ],
+    };
+    const response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`createHmacKey: KMS request failed with status ${response.status}: ${body}`);
+    }
+    const json = (await response.json()) as {
+        tag?: string;
+        value?: Array<{ tag: string; value: unknown }>;
+    };
+    const idItem = json.value?.find((item) => item.tag === "UniqueIdentifier");
+    if (!idItem || typeof idItem.value !== "string") {
+        throw new Error(`createHmacKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
+    }
+    return idItem.value;
+}
