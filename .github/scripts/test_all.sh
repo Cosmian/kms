@@ -76,7 +76,7 @@ else
 fi
 
 # 6) HSM (Linux only)
-if [ -f /etc/lsb-release ]; then
+if [ -f /etc/lsb-release ] || [ -f /etc/os-release ]; then
   # Running both SoftHSM2 and Utimaco wrappers (the wrapper script already sequences them)
   # Note: hsm scripts adjust LD_LIBRARY_PATH and vendor env, and may require simulator setup
   run_step "HSM (SoftHSM2 + Utimaco)" "$SCRIPT_DIR/test_hsm.sh"

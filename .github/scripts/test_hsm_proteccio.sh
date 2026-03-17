@@ -21,7 +21,7 @@ if [[ -z "${PROTECCIO_PASSWORD-}" || -z "${PROTECCIO_SLOT-}" ]]; then
   exit 0
 fi
 
-[ ! -f /etc/lsb-release ] && {
+[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
   echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
   exit 1
 }
