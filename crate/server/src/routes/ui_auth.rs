@@ -127,9 +127,11 @@ pub(crate) async fn callback(
         return HttpResponse::BadRequest().body("Invalid query parameters");
     };
 
-    // Retrieve stored values
-    let stored_pkce_verifier = match session.get::<String>("pkce_verifier") {
-        Ok(Some(v)) => Some(v),
+    // Retrieve stored values.
+    // PKCE is mandatory for the UI login flow: the login_flow handler always generates
+    // and stores a verifier, so Ok(None) here means the session was lost or tampered.
+    let pkce_verifier = match session.get::<String>("pkce_verifier") {
+        Ok(Some(v)) => v,
         Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -194,8 +196,11 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError().body("Missing token_endpoint");
     };
 
-    if let Some(verifier) = stored_pkce_verifier {
-        // Exchange code for tokens
+    // pkce_verifier is always present here (the Ok(None) arm returned BadRequest above).
+    // Use a plain binding to make it explicit that PKCE is unconditionally required.
+    let verifier = pkce_verifier;
+    {
+        // Exchange code for tokens (grant_type=authorization_code, client_secret_post method)
         let mut form: Vec<(String, String)> = vec![
             ("grant_type".to_owned(), "authorization_code".to_owned()),
             ("code".to_owned(), auth_code.clone()),

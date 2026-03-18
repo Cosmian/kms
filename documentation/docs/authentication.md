@@ -146,18 +146,12 @@ The algorithm is picked up from the token's `alg` header — no server-side conf
 
 #### PKCE Support
 
-The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
+The KMS supports PKCE (Proof Key for Code Exchange) in two complementary ways:
 
-This is particularly useful for:
+- **CLI / API clients** (`ckms` and direct API usage): PKCE is used to obtain JWT tokens from the IDP. The client secret is **optional** — PKCE provides the security guarantee instead.
+- **KMS Web UI**: PKCE is **mandatory**. The browser login flow always sends `code_challenge_method=S256`. The IDP application must be configured accordingly (see the [PKCE Authentication](pkce_authentication.md) guide for per-provider instructions).
 
-- Mobile applications
-- Single-page applications
-- Desktop applications
-- Any client that cannot securely store a client secret
-
-When using PKCE, client secrets become optional in the OAuth2 configuration. The authorization server validates the code verifier against the previously provided code challenge, ensuring secure authentication without exposing client secrets.
-
-For detailed information about implementing PKCE authentication with the KMS, see the [PKCE Authentication](pkce_authentication.md) guide.
+For detailed information including required IDP settings, provider-specific examples, and troubleshooting, see the [PKCE Authentication](pkce_authentication.md) guide.
 
 #### Multiple Identity Providers
 
