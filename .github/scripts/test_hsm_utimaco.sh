@@ -210,25 +210,7 @@ test_pkcs11tool_no_warnings() {
   # correct behaviour – any HTTP response means the server is accepting
   # connections, so do NOT use `curl -f` (it would treat 4xx as failure).
   local probe_url="http://127.0.0.1:${kms_port}/kmip/2_1"
-  local i
-  for i in $(seq 1 60); do
-    if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
-        -X POST -H "Content-Type: application/json" -d '{}' "$probe_url" 2>/dev/null \
-        | grep -Eq '^[0-9]{3}$'; then
-      break
-    fi
-    sleep 1
-    if ! ps -p "$kms_pid" >/dev/null 2>&1; then
-      echo "ERROR: KMS server process exited early; log:" >&2
-      cat "$tmp_dir/kms.log" >&2
-      exit 1
-    fi
-    if [ "$i" -eq 60 ]; then
-      echo "ERROR: KMS server did not start in 60 s; log:" >&2
-      cat "$tmp_dir/kms.log" >&2
-      exit 1
-    fi
-  done
+  kms_wait_ready "$probe_url" "$kms_pid" "$tmp_dir/kms.log" 60
 
   local base_args=(--url "http://127.0.0.1:${kms_port}")
 
@@ -269,16 +251,10 @@ test_pkcs11tool_no_warnings() {
   echo "$pkcs11_output"
   echo "-----------------------------------------"
 
-  # Fail if any warnings are reported that are NOT the expected
-  # "CKR_ATTRIBUTE_SENSITIVE" message (pkcs11-tool always emits that when
-  # reading sensitive-attribute keys, and it is harmless).
-  local warnings
-  warnings=$(echo "$pkcs11_output" | grep -i "[Ww]arning" | grep -v "CKR_ATTRIBUTE_SENSITIVE" || true)
-  if [ -n "$warnings" ]; then
-    echo "FAIL: pkcs11-tool reported unexpected warnings for KMS-created HSM keys:" >&2
-    echo "$warnings" >&2
-    exit 1
-  fi
+  # Fail if any unexpected CKR_ATTRIBUTE_* warnings appear.
+  # Keys are created with --sensitive, so CKR_ATTRIBUTE_SENSITIVE on VALUE is expected
+  # and harmless; all other attribute errors indicate a malformed key template.
+  pkcs11_check_warnings "$pkcs11_output" "CKR_ATTRIBUTE_SENSITIVE" || exit 1
 
   echo "OK: no pkcs11-tool warnings on KMS-created HSM keys."
 
