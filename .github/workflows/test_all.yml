@@ -28,7 +28,7 @@ jobs:
           - pykmip
           - wasm
           - aws_xks
-          - azure_ekm
+          # - azure_ekm # Azure EKM tests are currently disabled due to billing issues
           - ui
           - gcp_cmek
         features: [fips, non-fips]
