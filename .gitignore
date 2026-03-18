@@ -12,6 +12,7 @@ data/keys
 **/data/shared
 crate/cli/*.sqlite
 .DS_Store
+._*
 .idea/
 rustc-ice*.txt
 node_modules/
