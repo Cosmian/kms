@@ -17,14 +17,15 @@ In the latter case, the public key (or the associated private key for unwrapping
 
 The supported key-wrapping algorithms are:
 
-| Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                     |
-| -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).               |
-| CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3               |
-| CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
-| CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
-| Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-256) AES 256 GCM otherwise.        |
+| Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                                                                     |
+| -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AES-KW               | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping without padding as defined in [RFC3394](https://tools.ietf.org/html/rfc3394).                                                            |
+| AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).                                                               |
+| CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3                                                               |
+| CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                                                         |
+| CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.                                                             |
+| Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).                                                 |
+| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve: P-256 uses SHAKE128 + AES-128-GCM; P-384 and P-521 use SHAKE256 + AES-256-GCM. |
 
 Any encryption scheme below can be used for key-wrapping as well.
 
@@ -49,7 +50,7 @@ The supported encryption algorithms are:
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
-| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
+| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve: P-256 uses SHAKE128 + AES-128-GCM; P-384 and P-521 use SHAKE256 + AES-256-GCM.                 |
 
 ## Algorithms Details
 
@@ -65,7 +66,7 @@ with a unique fingerprint.
 AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf). In
 Cosmian KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of
 operation ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag
-with and key sizes of 128 or 256 bits.
+with and key sizes of 128, 192 or 256 bits.
 
 ### ChaCha20-Poly1305
 
@@ -222,18 +223,31 @@ The `Sign` operation is used to perform digital signature operations on provided
 - Signing raw data (the operation will hash the data using the specified or default hash algorithm)
 - Signing pre-hashed data (digested data) for cases where the client has already computed the hash
 
-| Algorithm  | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
-| ---------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                          | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
-| ECDSA      | P-256, P-384, P-521, X25519, X448 | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA      | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+| Algorithm  | Signature Key Type           | FIPS mode                                               | Description                                                                                                               |
+| ---------- | ---------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096 | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
+| ECDSA      | P-256, P-384, P-521          | **Restricted** to curves P-256, P-384 and P-521.        | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| ECDSA      | secp256k1                    | No                                                      | ECDSA on the secp256k1 curve (RFC 6979 deterministic). Non-FIPS only.                                                     |
+| EdDSA      | Ed25519, Ed448               | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 ### Digital Signature Operations
 
 - `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
-- `ECDSA` performs digital signatures on elliptic
-  curves `P-256`, `P-384`, `P-521`, `X25519` and `X448`.
+- `ECDSA` performs digital signatures on elliptic curves `P-256`, `P-384`, `P-521` (FIPS), and `secp256k1` (non-FIPS only).
+  Note: `X25519` and `X448` are Diffie-Hellman exchange curves and are **not** used for ECDSA signatures.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
+
+## Key derivation (KMIP DeriveKey)
+
+The KMS exposes the KMIP `DeriveKey` operation, which derives a new symmetric key or secret data
+from an existing key material. Two methods are supported:
+
+| Method | Hash algorithms          | FIPS mode | Notes                                                             |
+| ------ | ------------------------ | --------- | ----------------------------------------------------------------- |
+| PBKDF2 | SHA-{1,224,256,384,512}  | Yes       | Default: SHA-256, 600 000 iterations (OWASP). Salt is mandatory.  |
+| HKDF   | SHA-{1,224,256,384,512}  | Yes       | Default: SHA-256. Salt is optional; info (context) is optional.   |
+
+Both derivation methods are implemented via OpenSSL.
 
 ## Password-based key derivation
 
@@ -254,11 +268,21 @@ which follows FIPS recommendations as well. An additional random 128-bit salt is
 
 ## Hash functions
 
-The Cosmian server supports the following FIPS compliant hashing algorithms:
+The Cosmian server supports the following hashing algorithms:
 
+FIPS 180-4 (SHA-2 family):
+
+- SHA-224
 - SHA-256
 - SHA-384
 - SHA-512
+
+NIST FIPS 202 (SHA-3 family):
+
+- SHA3-224
+- SHA3-256
+- SHA3-384
+- SHA3-512
 
 ## References
 

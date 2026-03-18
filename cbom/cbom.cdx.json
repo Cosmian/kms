@@ -1,0 +1,2980 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:59e33d2c-8e36-4e96-a617-53b4437d8747",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-03-17T08:42:20Z",
+    "tools": [
+      {
+        "type": "application",
+        "name": "generate_cbom.py",
+        "version": "1.0",
+        "description": "Cosmian KMS CBOM generator — combines cargo metadata with source scanning"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "kms-server",
+      "name": "cosmian-kms",
+      "version": "5.17.0",
+      "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/Cosmian/kms"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "lib-aes-gcm-siv",
+      "name": "aes-gcm-siv (RustCrypto)",
+      "version": "0.11.1",
+      "purl": "pkg:cargo/aes-gcm-siv@0.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-argon2",
+      "name": "argon2 (RustCrypto)",
+      "version": "0.5.3",
+      "purl": "pkg:cargo/argon2@0.5.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-chacha20poly1305",
+      "name": "chacha20poly1305 (RustCrypto)",
+      "version": "0.10.1",
+      "purl": "pkg:cargo/chacha20poly1305@0.10.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-cosmian_cover_crypt",
+      "name": "cosmian_cover_crypt (Cosmian ABE + hybrid KEM)",
+      "version": "16.0.0",
+      "purl": "pkg:cargo/cosmian_cover_crypt@16.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-cosmian_crypto_core",
+      "name": "cosmian_crypto_core (Cosmian KEM combiner + traits)",
+      "version": "11.0.0",
+      "purl": "pkg:cargo/cosmian_crypto_core@11.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-cosmian_openssl_provider",
+      "name": "cosmian_openssl_provider (P-256 KEM via OpenSSL)",
+      "version": "1.0.0",
+      "purl": "pkg:cargo/cosmian_openssl_provider@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-cosmian_rust_curve25519_provider",
+      "name": "cosmian_rust_curve25519_provider (X25519 / R25519 KEM)",
+      "version": "1.0.0",
+      "purl": "pkg:cargo/cosmian_rust_curve25519_provider@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-k256",
+      "name": "k256 (RustCrypto / secp256k1)",
+      "version": "0.13.4",
+      "purl": "pkg:cargo/k256@0.13.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-ml-kem",
+      "name": "ml-kem (RustCrypto / FIPS 203)",
+      "version": "0.2.1",
+      "purl": "pkg:cargo/ml-kem@0.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-openssl",
+      "name": "openssl (Rust bindings to OpenSSL FIPS provider)",
+      "version": "0.10.75",
+      "purl": "pkg:cargo/openssl@0.10.75"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-sha1",
+      "name": "sha1 (RustCrypto)",
+      "version": "0.10.6",
+      "purl": "pkg:cargo/sha1@0.10.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-sha2",
+      "name": "sha2 (RustCrypto)",
+      "version": "0.10.9",
+      "purl": "pkg:cargo/sha2@0.10.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib-sha3",
+      "name": "sha3 (RustCrypto)",
+      "version": "0.10.8",
+      "purl": "pkg:cargo/sha3@0.10.8"
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-gcm",
+      "name": "AES-128-GCM",
+      "description": "DEM in ECIES P-256; KMIP Encrypt/Decrypt; CoverCrypt data encapsulation",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "gcm",
+          "parameterSetIdentifier": "128"
+        },
+        "oid": "2.16.840.1.101.3.4.1.6"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-192-gcm",
+      "name": "AES-192-GCM",
+      "description": "KMIP Encrypt/Decrypt (192-bit symmetric keys)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "gcm",
+          "parameterSetIdentifier": "192"
+        },
+        "oid": "2.16.840.1.101.3.4.1.26"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-256-gcm",
+      "name": "AES-256-GCM",
+      "description": "DEM in ECIES P-384/P-521; KMIP Encrypt/Decrypt; CoverCrypt data encapsulation",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "gcm",
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "2.16.840.1.101.3.4.1.46"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-cbc",
+      "name": "AES-128-CBC",
+      "description": "KMIP Encrypt/Decrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "cbc",
+          "parameterSetIdentifier": "128"
+        },
+        "oid": "2.16.840.1.101.3.4.1.2"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-192-cbc",
+      "name": "AES-192-CBC",
+      "description": "KMIP Encrypt/Decrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "cbc",
+          "parameterSetIdentifier": "192"
+        },
+        "oid": "2.16.840.1.101.3.4.1.22"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-256-cbc",
+      "name": "AES-256-CBC",
+      "description": "KMIP Encrypt/Decrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "cbc",
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "2.16.840.1.101.3.4.1.42"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-ecb",
+      "name": "AES-128-ECB",
+      "description": "KMIP Encrypt/Decrypt (not recommended for new data-at-rest encryption)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "ecb",
+          "parameterSetIdentifier": "128"
+        },
+        "oid": "2.16.840.1.101.3.4.1.1"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-192-ecb",
+      "name": "AES-192-ECB",
+      "description": "KMIP Encrypt/Decrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "ecb",
+          "parameterSetIdentifier": "192"
+        },
+        "oid": "2.16.840.1.101.3.4.1.21"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-256-ecb",
+      "name": "AES-256-ECB",
+      "description": "KMIP Encrypt/Decrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "ecb",
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "2.16.840.1.101.3.4.1.41"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-xts",
+      "name": "AES-128-XTS",
+      "description": "KMIP Encrypt/Decrypt (storage / disk encryption)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "xts",
+          "parameterSetIdentifier": "128"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-256-xts",
+      "name": "AES-256-XTS",
+      "description": "KMIP Encrypt/Decrypt (storage / disk encryption)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "xts",
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-gcm-siv",
+      "name": "AES-128-GCM-SIV",
+      "description": "KMIP Encrypt/Decrypt; nonce-misuse-resistant AEAD (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "gcm",
+          "parameterSetIdentifier": "128"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-256-gcm-siv",
+      "name": "AES-256-GCM-SIV",
+      "description": "KMIP Encrypt/Decrypt; nonce-misuse-resistant AEAD (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "gcm",
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-chacha20-poly1305",
+      "name": "ChaCha20-Poly1305",
+      "description": "KMIP Encrypt/Decrypt (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-kw",
+      "name": "AES-KW",
+      "description": "KMIP Import/Export key wrapping without padding (RFC 3394 / NIST SP 800-38F)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "kw"
+        },
+        "oid": "2.16.840.1.101.3.4.1.5"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-kwp",
+      "name": "AES-KWP",
+      "description": "KMIP Import/Export key wrapping with padding (RFC 5649); used inside CKM_RSA_AES_KEY_WRAP",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "block-cipher",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "mode": "kwp"
+        },
+        "oid": "2.16.840.1.101.3.4.1.8"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsa-oaep",
+      "name": "RSA-OAEP",
+      "description": "KMIP key wrapping (CKM_RSA_PKCS_OAEP); RSA key sizes 2048 / 3072 / 4096 bits",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "oaep"
+        },
+        "oid": "1.2.840.113549.1.1.7"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ckm-rsa-aes-key-wrap",
+      "name": "CKM_RSA_AES_KEY_WRAP",
+      "description": "PKCS#11-compatible hybrid key wrapping: RSA-OAEP wraps a per-session AES key; AES-KWP wraps the target key",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "oaep"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsa-pkcs1v15",
+      "name": "RSA-PKCS1-v1.5",
+      "description": "KMIP key wrapping (CKM_RSA_PKCS) — deprecated; removed from FIPS 140-3 approved list",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "pkcs1v15"
+        },
+        "oid": "1.2.840.113549.1.1.1"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecies-p256",
+      "name": "ECIES-P256",
+      "description": "Hybrid encrypt/wrap with P-256: ECDH + SHAKE-128 (KDF+IV) + AES-128-GCM; non-FIPS only",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecies-p384",
+      "name": "ECIES-P384",
+      "description": "Hybrid encrypt/wrap with P-384: ECDH + SHAKE-256 (KDF+IV) + AES-256-GCM; non-FIPS only",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "384"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecies-p521",
+      "name": "ECIES-P521",
+      "description": "Hybrid encrypt/wrap with P-521: ECDH + SHAKE-256 (KDF+IV) + AES-256-GCM; non-FIPS only",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 260,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "521"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecies-salsa",
+      "name": "ECIES-X25519-XSalsa20-Poly1305",
+      "description": "Salsa Sealed Box: libsodium-compatible (X25519 ECDH + XSalsa20-Poly1305); non-FIPS only",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt",
+            "wrap",
+            "unwrap"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-kem-p256",
+      "name": "P256-KEM",
+      "description": "Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-kem-r25519",
+      "name": "R25519-KEM",
+      "description": "Pre-quantum KEM over Ristretto255/X25519: GenericKEM<32, R25519, SHA-256>; non-FIPS",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-kem-512",
+      "name": "ML-KEM-512",
+      "description": "Post-quantum KEM (NIST FIPS 203 Level 1); used in CoverCrypt hybrid KEM",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "800"
+        },
+        "oid": "1.3.6.1.4.1.22554.5.6.1"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-kem-768",
+      "name": "ML-KEM-768",
+      "description": "Post-quantum KEM (NIST FIPS 203 Level 3); used in CoverCrypt hybrid KEM",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "1184"
+        },
+        "oid": "1.3.6.1.4.1.22554.5.6.2"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-p256-mlkem512",
+      "name": "P256+ML-KEM-512 Hybrid KEM",
+      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-p256-mlkem768",
+      "name": "P256+ML-KEM-768 Hybrid KEM",
+      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-r25519-mlkem512",
+      "name": "R25519+ML-KEM-512 Hybrid KEM",
+      "description": "Hybrid KEM: R25519-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; non-FIPS",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-r25519-mlkem768",
+      "name": "R25519+ML-KEM-768 Hybrid KEM",
+      "description": "Hybrid KEM: R25519-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; non-FIPS",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-kem-combiner",
+      "name": "KEM Combiner (SHA-256)",
+      "description": "Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "combiner",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsassa-pss-2048",
+      "name": "RSASSA-PSS-2048",
+      "description": "KMIP Sign/Verify — RSA-2048 with PSS padding (FIPS 186-5)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "pss",
+          "parameterSetIdentifier": "2048"
+        },
+        "oid": "1.2.840.113549.1.1.10"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsassa-pss-3072",
+      "name": "RSASSA-PSS-3072",
+      "description": "KMIP Sign/Verify — RSA-3072 with PSS padding (FIPS 186-5)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "pss",
+          "parameterSetIdentifier": "3072"
+        },
+        "oid": "1.2.840.113549.1.1.10"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsassa-pss-4096",
+      "name": "RSASSA-PSS-4096",
+      "description": "KMIP Sign/Verify — RSA-4096 with PSS padding (FIPS 186-5)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 140,
+          "nistQuantumSecurityLevel": 0,
+          "padding": "pss",
+          "parameterSetIdentifier": "4096"
+        },
+        "oid": "1.2.840.113549.1.1.10"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdsa-p256",
+      "name": "ECDSA-P256",
+      "description": "KMIP Sign/Verify — NIST P-256 (FIPS 186-5 / SP 800-186)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "1.2.840.10045.4.3.2"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdsa-p384",
+      "name": "ECDSA-P384",
+      "description": "KMIP Sign/Verify — NIST P-384 (FIPS 186-5 / SP 800-186)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "384"
+        },
+        "oid": "1.2.840.10045.4.3.3"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdsa-p521",
+      "name": "ECDSA-P521",
+      "description": "KMIP Sign/Verify — NIST P-521 (FIPS 186-5 / SP 800-186)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 260,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "521"
+        },
+        "oid": "1.2.840.10045.4.3.4"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdsa-secp256k1",
+      "name": "ECDSA-secp256k1",
+      "description": "KMIP Sign/Verify — secp256k1 with RFC 6979 deterministic signing; non-FIPS only",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-eddsa-ed25519",
+      "name": "EdDSA-Ed25519",
+      "description": "KMIP Sign/Verify — Ed25519 (FIPS 186-5)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "1.3.101.112"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-eddsa-ed448",
+      "name": "EdDSA-Ed448",
+      "description": "KMIP Sign/Verify — Ed448 (FIPS 186-5)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 224,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "448"
+        },
+        "oid": "1.3.101.113"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdh-p256",
+      "name": "ECDH-P256",
+      "description": "ECDH key agreement step inside ECIES P-256",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "generate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "1.2.840.10045.3.1.7"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdh-p384",
+      "name": "ECDH-P384",
+      "description": "ECDH key agreement step inside ECIES P-384",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "generate"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "384"
+        },
+        "oid": "1.3.132.0.34"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdh-p521",
+      "name": "ECDH-P521",
+      "description": "ECDH key agreement step inside ECIES P-521",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "generate"
+          ],
+          "classicalSecurityLevel": 260,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "521"
+        },
+        "oid": "1.3.132.0.35"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-x25519",
+      "name": "X25519",
+      "description": "ECDH key agreement inside ECIES Salsa Sealed Box; X25519 KMIP key type",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "generate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        },
+        "oid": "1.3.101.110"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-pbkdf2-sha256",
+      "name": "PBKDF2-HMAC-SHA-256",
+      "description": "KMIP DeriveKey (PBKDF2 method, default hash, default 600 000 iterations)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.2.840.113549.1.5.12"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-pbkdf2-sha384",
+      "name": "PBKDF2-HMAC-SHA-384",
+      "description": "KMIP DeriveKey (PBKDF2 method)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.2.840.113549.1.5.12"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-pbkdf2-sha512",
+      "name": "PBKDF2-HMAC-SHA-512",
+      "description": "KMIP DeriveKey (PBKDF2 method); password-based key derivation in FIPS mode (210 000 iterations, random 128-bit salt)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.2.840.113549.1.5.12"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hkdf-sha256",
+      "name": "HKDF-SHA-256",
+      "description": "KMIP DeriveKey (HKDF method, default hash)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hkdf-sha384",
+      "name": "HKDF-SHA-384",
+      "description": "KMIP DeriveKey (HKDF method)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hkdf-sha512",
+      "name": "HKDF-SHA-512",
+      "description": "KMIP DeriveKey (HKDF method)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-argon2id",
+      "name": "Argon2id",
+      "description": "Password-based key derivation in non-FIPS mode (random 128-bit salt; computationally hard)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "keyderive"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.3.6.1.4.1.40885.1.1.2"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha-1",
+      "name": "SHA-1",
+      "description": "Accepted only as optional hash argument for PBKDF2 and HKDF; not used by default",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 80,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.3.14.3.2.26"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "restricted"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha-224",
+      "name": "SHA-224",
+      "description": "Supported hash for RSASSA-PSS, PBKDF2, HKDF, RSA-OAEP",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.4"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha-256",
+      "name": "SHA-256",
+      "description": "Default hash in RSASSA-PSS, PBKDF2, HKDF, RSA-OAEP; KEM combiner KDF",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.1"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha-384",
+      "name": "SHA-384",
+      "description": "Supported hash for RSASSA-PSS, PBKDF2, HKDF, RSA-OAEP",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.2"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha-512",
+      "name": "SHA-512",
+      "description": "Supported hash for RSASSA-PSS, PBKDF2, HKDF, RSA-OAEP; FIPS-mode password derivation",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.3"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha3-224",
+      "name": "SHA3-224",
+      "description": "Supported hash for RSA-OAEP and general KMIP hash operations",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.7"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha3-256",
+      "name": "SHA3-256",
+      "description": "Supported hash for RSA-OAEP and general KMIP hash operations",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.8"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha3-384",
+      "name": "SHA3-384",
+      "description": "Supported hash for RSA-OAEP and general KMIP hash operations",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.9"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha3-512",
+      "name": "SHA3-512",
+      "description": "Supported hash for RSA-OAEP and general KMIP hash operations",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [
+            "fips140-3"
+          ],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "2.16.840.1.101.3.4.2.10"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-shake-128",
+      "name": "SHAKE-128",
+      "description": "KDF + IV derivation in ECIES P-256 (non-FIPS context; NIST FIPS 202)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "xof",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 0
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-shake-256",
+      "name": "SHAKE-256",
+      "description": "KDF + IV derivation in ECIES P-384 / P-521 (non-FIPS context; NIST FIPS 202)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "xof",
+          "executionEnvironment": "software",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "digest"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "kms-server",
+      "dependsOn": [
+        "lib-aes-gcm-siv",
+        "lib-argon2",
+        "lib-chacha20poly1305",
+        "lib-cosmian_cover_crypt",
+        "lib-cosmian_crypto_core",
+        "lib-cosmian_openssl_provider",
+        "lib-cosmian_rust_curve25519_provider",
+        "lib-k256",
+        "lib-ml-kem",
+        "lib-openssl",
+        "lib-sha1",
+        "lib-sha2",
+        "lib-sha3",
+        "algo-aes-128-gcm",
+        "algo-aes-192-gcm",
+        "algo-aes-256-gcm",
+        "algo-aes-128-cbc",
+        "algo-aes-192-cbc",
+        "algo-aes-256-cbc",
+        "algo-aes-128-ecb",
+        "algo-aes-192-ecb",
+        "algo-aes-256-ecb",
+        "algo-aes-128-xts",
+        "algo-aes-256-xts",
+        "algo-aes-128-gcm-siv",
+        "algo-aes-256-gcm-siv",
+        "algo-chacha20-poly1305",
+        "algo-aes-kw",
+        "algo-aes-kwp",
+        "algo-rsa-oaep",
+        "algo-ckm-rsa-aes-key-wrap",
+        "algo-rsa-pkcs1v15",
+        "algo-ecies-p256",
+        "algo-ecies-p384",
+        "algo-ecies-p521",
+        "algo-ecies-salsa",
+        "algo-kem-p256",
+        "algo-kem-r25519",
+        "algo-ml-kem-512",
+        "algo-ml-kem-768",
+        "algo-hybrid-kem-p256-mlkem512",
+        "algo-hybrid-kem-p256-mlkem768",
+        "algo-hybrid-kem-r25519-mlkem512",
+        "algo-hybrid-kem-r25519-mlkem768",
+        "algo-kem-combiner",
+        "algo-rsassa-pss-2048",
+        "algo-rsassa-pss-3072",
+        "algo-rsassa-pss-4096",
+        "algo-ecdsa-p256",
+        "algo-ecdsa-p384",
+        "algo-ecdsa-p521",
+        "algo-ecdsa-secp256k1",
+        "algo-eddsa-ed25519",
+        "algo-eddsa-ed448",
+        "algo-ecdh-p256",
+        "algo-ecdh-p384",
+        "algo-ecdh-p521",
+        "algo-x25519",
+        "algo-pbkdf2-sha256",
+        "algo-pbkdf2-sha384",
+        "algo-pbkdf2-sha512",
+        "algo-hkdf-sha256",
+        "algo-hkdf-sha384",
+        "algo-hkdf-sha512",
+        "algo-argon2id",
+        "algo-sha-1",
+        "algo-sha-224",
+        "algo-sha-256",
+        "algo-sha-384",
+        "algo-sha-512",
+        "algo-sha3-224",
+        "algo-sha3-256",
+        "algo-sha3-384",
+        "algo-sha3-512",
+        "algo-shake-128",
+        "algo-shake-256"
+      ]
+    },
+    {
+      "ref": "algo-aes-128-gcm",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-192-gcm",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-256-gcm",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-128-cbc",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-192-cbc",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-256-cbc",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-128-ecb",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-192-ecb",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-256-ecb",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-128-xts",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-256-xts",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-128-gcm-siv",
+      "dependsOn": [
+        "lib-aes-gcm-siv"
+      ]
+    },
+    {
+      "ref": "algo-aes-256-gcm-siv",
+      "dependsOn": [
+        "lib-aes-gcm-siv"
+      ]
+    },
+    {
+      "ref": "algo-chacha20-poly1305",
+      "dependsOn": [
+        "lib-chacha20poly1305"
+      ]
+    },
+    {
+      "ref": "algo-aes-kw",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-aes-kwp",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-rsa-oaep",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ckm-rsa-aes-key-wrap",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-rsa-pkcs1v15",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecies-p256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecies-p384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecies-p521",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecies-salsa",
+      "dependsOn": [
+        "lib-cosmian_rust_curve25519_provider"
+      ]
+    },
+    {
+      "ref": "algo-kem-p256",
+      "dependsOn": [
+        "lib-cosmian_openssl_provider"
+      ]
+    },
+    {
+      "ref": "algo-kem-r25519",
+      "dependsOn": [
+        "lib-cosmian_rust_curve25519_provider"
+      ]
+    },
+    {
+      "ref": "algo-ml-kem-512",
+      "dependsOn": [
+        "lib-ml-kem"
+      ]
+    },
+    {
+      "ref": "algo-ml-kem-768",
+      "dependsOn": [
+        "lib-ml-kem"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-p256-mlkem512",
+      "dependsOn": [
+        "lib-cosmian_cover_crypt"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-p256-mlkem768",
+      "dependsOn": [
+        "lib-cosmian_cover_crypt"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-r25519-mlkem512",
+      "dependsOn": [
+        "lib-cosmian_cover_crypt"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-r25519-mlkem768",
+      "dependsOn": [
+        "lib-cosmian_cover_crypt"
+      ]
+    },
+    {
+      "ref": "algo-kem-combiner",
+      "dependsOn": [
+        "lib-cosmian_crypto_core"
+      ]
+    },
+    {
+      "ref": "algo-rsassa-pss-2048",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-rsassa-pss-3072",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-rsassa-pss-4096",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdsa-p256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdsa-p384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdsa-p521",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdsa-secp256k1",
+      "dependsOn": [
+        "lib-k256"
+      ]
+    },
+    {
+      "ref": "algo-eddsa-ed25519",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-eddsa-ed448",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdh-p256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdh-p384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ecdh-p521",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-x25519",
+      "dependsOn": [
+        "lib-cosmian_rust_curve25519_provider"
+      ]
+    },
+    {
+      "ref": "algo-pbkdf2-sha256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-pbkdf2-sha384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-pbkdf2-sha512",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-hkdf-sha256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-hkdf-sha384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-hkdf-sha512",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-argon2id",
+      "dependsOn": [
+        "lib-argon2"
+      ]
+    },
+    {
+      "ref": "algo-sha-1",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha1"
+      ]
+    },
+    {
+      "ref": "algo-sha-224",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-sha-256",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha2"
+      ]
+    },
+    {
+      "ref": "algo-sha-384",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-sha-512",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-sha3-224",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha3"
+      ]
+    },
+    {
+      "ref": "algo-sha3-256",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha3"
+      ]
+    },
+    {
+      "ref": "algo-sha3-384",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha3"
+      ]
+    },
+    {
+      "ref": "algo-sha3-512",
+      "dependsOn": [
+        "lib-openssl",
+        "lib-sha3"
+      ]
+    },
+    {
+      "ref": "algo-shake-128",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-shake-256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    }
+  ]
+}
