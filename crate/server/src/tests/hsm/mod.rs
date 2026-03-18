@@ -281,7 +281,11 @@ async fn delete_all_keys(owner: &str, kms: &Arc<KMS>) -> KResult<()> {
         let Some(key_string) = found_key.as_str() else {
             continue;
         };
-        delete_key(key_string, owner, kms).await?;
+        // HSM slot state persists across test runs: keys may have been created by a
+        // different owner UUID in a previous run.
+        if let Err(e) = delete_key(key_string, owner, kms).await {
+            debug!("Could not delete key {key_string} (may belong to a different owner): {e}");
+        }
     }
     Ok(())
 }
