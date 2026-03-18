@@ -261,7 +261,7 @@ mod tests {
             info: false,
             hsm: cosmian_kms_server::config::HsmConfig {
                 hsm_model: String::new(),
-                hsm_admin: String::new(),
+                hsm_admin: vec![],
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
@@ -287,7 +287,7 @@ force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
-hsm_admin = ""
+hsm_admin = []
 hsm_slot = []
 hsm_password = []
 key_encryption_key = "key wrapping key"

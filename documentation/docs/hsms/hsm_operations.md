@@ -29,6 +29,36 @@ is stored in the `LABEL` field of the key object in the HSM.
 
 Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
+## HSM admin
+
+The KMS server maintains a list of **HSM admin** users that are allowed to create and destroy
+objects directly in the HSM. This is configured with the `hsm_admin` key in `kms.toml`:
+
+```toml
+# One or more KMS usernames with HSM admin privileges
+hsm_admin = ["alice@example.com", "bob@example.com"]
+
+# Wildcard: any authenticated user becomes an HSM admin
+hsm_admin = ["*"]
+```
+
+From the command line, pass one `--hsm-admin` flag per username (or a single comma-separated value):
+
+```shell
+# Two explicit admins
+cosmian_kms --hsm-admin alice@example.com --hsm-admin bob@example.com ...
+
+# Or via environment variable
+KMS_HSM_ADMIN=alice@example.com,bob@example.com cosmian_kms ...
+```
+
+!!! note Authorization of HSM keys is still managed by the KMS
+    Although key material is stored in the HSM, the KMS continues to enforce the standard
+    ownership and access-rights model for all other operations (`Encrypt`, `Decrypt`, `Get`, etc.).
+    An HSM admin can therefore `grant` these operations to ordinary users, who can then use the
+    HSM key without themselves being HSM admins.
+    See [HSM keys and authorization](../authorization.md#hsm-keys-and-authorization) for details.
+
 ## Creating a KMS key wrapped by an HSM key
 
 KMS Keys can be created wrapped by an HSM key, either manually or automatically.
@@ -184,7 +214,7 @@ Some KMIP operations can be performed directly via the KMS server API on the HSM
 
 Create a new key in the HSM. The key unique must be provided on the request and must follow the
 `hsm::<slot_number>::<key_identifier>` format described above.
-Only the user identified by the `hsm-admin` configuration flag can create keys in the HSM.
+Only HSM admin users can create keys directly in the HSM (see [HSM admin](#hsm-admin) above).
 
 RSA and AES keys are supported.
 
@@ -299,8 +329,7 @@ key_encryption_key = "hsm::1::master_kek"
 Unlike KMS keys, HSM keys must not be revoked before being destroyed. The `Destroy` operation will remove the
 key from the HSM.
 
-Only the user identified by the `hsm-admin` configuration flag or a user granted the `Destroy` operation (by the
-HSM admin) can destroy keys in the HSM.
+Only HSM admin users, or a user granted the `Destroy` operation by an HSM admin, can destroy keys in the HSM.
 
 To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
 
@@ -321,8 +350,7 @@ Successfully destroyed the object.
 ### Get - Export
 
 The `Get` and `Export` operations are used to retrieve the key material from the HSM.
-Only the user identified by the `hsm-admin` configuration flag or a user granted the `Get` operation (by the HSM
-admin) can retrieve keys from the HSM.
+Only HSM admin users, or a user granted the `Get` operation by an HSM admin, can retrieve keys from the HSM.
 
 Private or symmetric keys marked as `sensitive` cannot be retrieved from the HSM.
 The public key of a key pair can always be retrieved.
@@ -354,8 +382,8 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 
 ### Encrypt
 
-Symmetric keys and public keys can be used to encrypt data. Only the user identified by the `hsm-admin`
-configuration flag or a user granted the `Encrypt` operation (by the HSM admin) can encrypt data with keys stored in the HSM.
+Symmetric keys and public keys can be used to encrypt data. Only HSM admin users, or a user granted the `Encrypt`
+operation by an HSM admin, can encrypt data with keys stored in the HSM.
 
 For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely
 used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
@@ -383,8 +411,8 @@ The encrypted file is available at "/tmp/secret.enc"
 
 ### Decrypt
 
-Symmetric keys and private keys can be used to decrypt data. Only the user identified by the `--hsm-admin` argument or a
-A user granted the `Decrypt` operation (by the HSM admin) can decrypt data with keys stored in the HSM.
+Symmetric keys and private keys can be used to decrypt data. Only HSM admin users, or a user granted the `Decrypt`
+operation by an HSM admin, can decrypt data with keys stored in the HSM.
 
 For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely
 used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.

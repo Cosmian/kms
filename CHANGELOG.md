@@ -6,23 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+#### HSM multi-admin support with wildcard
+
+`hsm_admin` is now a list of KMS usernames with HSM admin privileges. Use `["*"]` to grant all
+authenticated users access to all HSM operations. TOML: `hsm_admin = ["alice", "bob"]`;
+CLI: `--hsm-admin alice --hsm-admin bob`; env: `KMS_HSM_ADMIN=alice,bob`.
+
 #### HMAC-SHA-1 and HMAC-SHA-224 Support
 
 NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
 **Acceptable** algorithms. The KMS server previously blocked them via the
-algorithm policy layer. They are now fully supported:
-
-- Server `algorithm_policy.rs`: removed `HMACSHA1` / `HMACSHA224` from the
-  deny-list; added them to the allowed-list alongside `HMACSHA256/384/512`;
-  introduced `validate_hashing_algorithm_for_mac` (permits SHA-1/SHA-224 in
-  HMAC context) and `validate_cryptographic_parameters_for_mac` used by both
-  `MAC` and `MACVerify` policy paths
-- Server `mac.rs`: `compute_hmac` now handles `HashingAlgorithm::SHA1` and
-  `HashingAlgorithm::SHA224` via OpenSSL `Md::sha1()` / `Md::sha224()`
-- CLI `mac.rs`: `CHashingAlgorithm` enum extended with `SHA1` and `SHA224`
-  variants (`--algorithm sha1` / `--algorithm sha224`)
-- UI: new **MAC → Compute** and **MAC → Verify** menu entries with SHA-1 listed
-  first in the algorithm selector to highlight the newly enabled support
+algorithm policy layer. They are now fully supported.
 
 Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
 
@@ -46,21 +40,10 @@ to the test matrix so regressions are caught automatically:
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
   DSM ([#760](https://github.com/Cosmian/kms/issues/760))
-- **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
-  (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
-  `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
-- **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
-  instead of `ActivationDate`; symmetric keys are created Active by default so the previous
-  `ActivationDate` test was never reachable on an Active object
 - **Name attribute stored as VendorExtension instead of standard KMIP attribute**: Setting the `Name`
   attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
   as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
-  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746)):
-    - New `--name` flag added to `ckms attributes set`, `modify`, and `delete`
-    - `build_selected_attribute` WASM helper extended with a `"name"` case
-    - `parse_selected_attributes` now returns `Name` entries under the `Tag::Name` key
-    - UI: `AttributeSet`, `AttributeModify`, and `AttributeDelete` forms include a **Name** option
-    - Playwright E2E tests cover the full Name attribute lifecycle (set → get → modify → delete)
+  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746))
 
 ## [5.17.0] - 2026-03-13
 

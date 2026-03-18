@@ -94,13 +94,13 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
     if unwrapped_model == "default" {
         // For backwards compatible with existing tests.
         clap_config.hsm.hsm_model = "utimaco".to_owned();
-        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_admin = vec![owner.to_owned()];
         clap_config.hsm.hsm_slot = vec![0];
         clap_config.hsm.hsm_password = vec!["12345678".to_owned()];
     } else {
         let user_password = get_hsm_password()?;
         let slot = get_hsm_slot_id()?;
-        clap_config.hsm.hsm_admin = owner.to_owned();
+        clap_config.hsm.hsm_admin = vec![owner.to_owned()];
         clap_config.hsm.hsm_slot = vec![slot];
         clap_config.hsm.hsm_password = vec![user_password];
         if unwrapped_model == "utimaco" {
