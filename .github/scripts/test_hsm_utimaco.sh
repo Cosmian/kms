@@ -253,12 +253,12 @@ test_pkcs11tool_no_warnings() {
   kms_pid=""
 
   # List all objects in the Utimaco slot and capture both stdout and stderr
-  # NOTE: do NOT include NIX_OPENSSL_OUT/lib here — pkcs11-tool (opensc) is linked
-  # against OpenSSL 3.2+ and the FIPS NIX_OPENSSL_OUT is 3.1.2, which causes:
-  #   pkcs11-tool: .../libcrypto.so.3: version `OPENSSL_3.2.0' not found
+  # NOTE: pass ONLY UTIMACO_LIB_DIR — do NOT inherit the shell LD_LIBRARY_PATH which
+  # already contains NIX_OPENSSL_OUT/lib (openssl-3.1.2 in FIPS mode). pkcs11-tool
+  # (opensc) requires OPENSSL_3.2.0 symbols and finds its OpenSSL via Nix RPATH.
   local pkcs11_output
   pkcs11_output=$(
-    env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${LD_LIBRARY_PATH:-}" \
+    env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool \
       --module "$UTIMACO_PKCS11_LIB" \
       --login --pin "$HSM_USER_PASSWORD" \
@@ -283,16 +283,16 @@ test_pkcs11tool_no_warnings() {
   echo "OK: no pkcs11-tool warnings on KMS-created HSM keys."
 
   # Clean up: remove the test keys from the HSM using pkcs11-tool
-  # (same LD_LIBRARY_PATH rule: no NIX_OPENSSL_OUT/lib for pkcs11-tool)
-  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${LD_LIBRARY_PATH:-}" \
+  # (same rule: only UTIMACO_LIB_DIR, no inherited LD_LIBRARY_PATH)
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
       --slot "$slot" --delete-object --type secrkey \
       --label "$aes_label" 2>/dev/null || true
-  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${LD_LIBRARY_PATH:-}" \
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
       --slot "$slot" --delete-object --type privkey \
       --label "$rsa_label" 2>/dev/null || true
-  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${LD_LIBRARY_PATH:-}" \
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
       --slot "$slot" --delete-object --type pubkey \
       --label "${rsa_label}_pk" 2>/dev/null || true
