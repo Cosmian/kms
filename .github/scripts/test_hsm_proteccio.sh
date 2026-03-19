@@ -114,10 +114,12 @@ test_pkcs11tool_no_warnings() {
   local rsa_uid="hsm::${HSM_SLOT_ID_VALUE}::${rsa_label}"
 
   # Start KMS server (HTTP, no TLS, SQLite, Proteccio HSM).
-  # Strip Nix OpenSSL environment so libnethsm.so uses the system OpenSSL
-  # rather than the Nix FIPS override (which may be a different version and
-  # cause CKR_FUNCTION_FAILED = 6 on C_Initialize).
-  env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  # Strip LD_LIBRARY_PATH so libnethsm.so resolves its libssl dependency from
+  # system paths rather than the Nix overrides (Nix OpenSSL 3.1.2 causes
+  # CKR_FUNCTION_FAILED = 6 on C_Initialize for Proteccio).
+  # Keep OPENSSL_CONF/OPENSSL_MODULES so cosmian_kms can locate its own
+  # OpenSSL providers (e.g. legacy.so) via the Nix store paths set in the shell.
+  env -u LD_PRELOAD -u LD_LIBRARY_PATH \
     PATH="$PATH" \
     "$kms_bin" \
       --database-type sqlite \
