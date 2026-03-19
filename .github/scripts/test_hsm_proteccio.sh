@@ -114,11 +114,10 @@ test_pkcs11tool_no_warnings() {
   local rsa_uid="hsm::${HSM_SLOT_ID_VALUE}::${rsa_label}"
 
   # Start KMS server (HTTP, no TLS, SQLite, Proteccio HSM).
-  # Keep OPENSSL_CONF/OPENSSL_MODULES from the Nix shell so the binary can find
-  # its OpenSSL providers (legacy.so etc.).  Only strip LD_PRELOAD.
-  # /lib/libnethsm.so is on the system library path and does not require changes to
-  # LD_LIBRARY_PATH.
-  env -u LD_PRELOAD \
+  # Strip Nix OpenSSL environment so libnethsm.so uses the system OpenSSL
+  # rather than the Nix FIPS override (which may be a different version and
+  # cause CKR_FUNCTION_FAILED = 6 on C_Initialize).
+  env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     PATH="$PATH" \
     "$kms_bin" \
       --database-type sqlite \

@@ -167,11 +167,13 @@ test_pkcs11tool_no_warnings() {
   wait "$kms_pid" 2>/dev/null || true
   kms_pid=""
 
-  # Run pkcs11-tool --list-objects; SoftHSM2 implements all PKCS#11 attributes
-  # so no CKR_ATTRIBUTE_* warnings should appear.
+  # Run pkcs11-tool without Nix OpenSSL overrides: pkcs11-tool (system opensc)
+  # is linked against the system OpenSSL (≥3.2) while FIPS mode injects
+  # LD_LIBRARY_PATH pointing at OpenSSL 3.1.2, causing a symbol-version error.
   local pkcs11_output pkcs11_rc=0
   set +x
   pkcs11_output=$(
+    env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     pkcs11-tool \
       --module "$SOFTHSM2_PKCS11_LIB_PATH" \
@@ -198,13 +200,16 @@ test_pkcs11tool_no_warnings() {
 
   # Clean up test keys from SoftHSM2
   set +x
-  SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
+  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type secrkey --label "$aes_label" 2>/dev/null || true
-  SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
+  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type privkey --label "$rsa_label" 2>/dev/null || true
-  SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
+  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type pubkey --label "${rsa_label}_pk" 2>/dev/null || true
   set -x
