@@ -87,7 +87,7 @@ num-bigint-dig = { workspace = true, features = [
     "zeroize",
 ] }
 openssl = { workspace = true }
-openssl-sys = "0.9"
+openssl-sys = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }

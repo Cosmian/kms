@@ -142,17 +142,33 @@ actix-session = { version = "0.8" }
 actix-server = { version = "2.5", default-features = false }
 actix-tls = "3.4"
 actix-web = { version = "4.12", default-features = false }
+aes-gcm-siv = "0.11.1"
+aes-kw = "0.3.0-rc.1"
+alcoholic_jwt = "4091"
+argon2 = "0.5"
+assert_cmd = "2.0"
 async-recursion = "1.1"
 async-trait = "0.1"
 base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
+console_error_panic_hook = "0.1"
 cosmian_config_utils = "0.3.1"
+cosmian_cover_crypt = "16.0.0"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
     "ser",
 ] }
+cosmian_findex = "8.0.2"
 cosmian_logger = "0.5"
+cosmian_sse_memories = "8.0.2"
+criterion = { version = "0.5", features = [
+    "html_reports",
+    "async_tokio",
+], default-features = false }
+csv = "1.3"
+ctor = "0.2"
+deadpool-postgres = "0.14"
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = [
     "editor",
@@ -163,44 +179,76 @@ dialoguer = { version = "0.11", default-features = false, features = [
 ] }
 dotenvy = "0.15"
 futures = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
 hex = { version = "0.4", default-features = false }
 http = "1.4"
+js-sys = "0.3"
 jsonwebtoken = "10.3"
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
 log = { version = "0.4", default-features = false }
 lru = "0.16"
+mysql_async = { version = "0.36", features = ["native-tls-tls"] }
 native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
+oauth2 = { version = "5.0", features = ["reqwest"], default-features = false }
 openssl = { version = "0.10", default-features = false }
+openssl-sys = "0.9"
 opentelemetry = "0.27"
 opentelemetry-otlp = { version = "0.27", features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { version = "0.27", features = ["metrics", "rt-tokio"] }
 pem = "3.0"
 pkcs11-sys = "0.2"
+p256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.13", features = ["ecdsa"] }
+postgres-openssl = "0.5"
+predicates = "3.1"
+quick-xml = { version = "0.31", features = ["serialize"] }
+quote = "1.0"
 rand = "0.9"
+rawsql = "0.1"
+redis = { version = "0.32", features = [
+    "aio",
+    "ahash",
+    "script",
+    "connection-manager",
+    "tokio-comp",
+] }
+regex = "1"
 reqwest = { version = "0.12", default-features = false }
+rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
+rust-ini = "0.21"
 scratchstack-aws-signature = "=0.10" # Must stay 0.10 for now (Feb 2026)
 serde = "1.0"
+serde-wasm-bindgen = "0.6.5"
 serde_json = "1.0"
+serial_test = "3.0"
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }
 strum = { version = "0.27", default-features = false }
 strum_macros = { version = "0.27", default-features = false }
+syn = { version = "2.0", features = ["full"] }
 thiserror = "2.0"
 time = "0.3"
 tiny-keccak = "2.0"
 tempfile = "3.19"
 tokio = { version = "1.44", default-features = false }
+tokio-postgres = { version = "0.7", features = [
+    "with-uuid-1",
+    "with-serde_json-1",
+] }
+tokio-rusqlite = "0.7"
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false }
 url = "2.5"
 uuid = "=1.11.1"
+wasm-bindgen = "0.2.108"
+wasm-bindgen-test = "0.3"
 x509-cert = { version = "0.2", default-features = false }
 x509-parser = "0.17"
 zeroize = { version = "1.8", default-features = false }

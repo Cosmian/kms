@@ -1,19 +1,16 @@
-use std::{net::TcpListener, path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use base64::Engine;
 use cosmian_config_utils::ConfigUtils;
 use cosmian_kms_cli::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::{
-        read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
-    },
+    reexport::cosmian_kms_client::read_object_from_json_ttlv_file,
 };
 use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
-    AuthenticationOptions, ClientAuthOptions, MainDBConfig, ServerJwtAuth as JwtAuth,
-    ServerTlsMode as TlsMode, build_server_params, start_test_server_with_options,
+    load_client_config, load_server_config, start_temp_test_kms_server, with_server_port,
 };
 use tokio::fs;
 
@@ -114,58 +111,32 @@ fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, Stri
     Ok((api_token_id, api_token))
 }
 
-// Pick a free local port to avoid collisions with other tests
-fn pick_free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("Failed to bind to an ephemeral port")
-        .local_addr()
-        .expect("Failed to read local_addr")
-        .port()
-}
-
 #[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     log_init(None);
 
-    // Determine a base port and clean up its associated workspace directory
-    let base_port = pick_free_port();
-    let _e = fs::remove_dir_all(PathBuf::from(format!(
-        "/tmp/kms_test_workspace_{base_port}"
-    )))
-    .await;
+    // All auth-test servers share one SQLite database so that API-token keys
+    // created by the first (no-auth) server are visible to all subsequent ones.
+    // Using the process ID avoids conflicts when multiple test binaries run in parallel.
+    let shared_sqlite = PathBuf::from(format!("/tmp/kms_auth_test_sqlite_{}", std::process::id()));
+    let _unused = fs::remove_dir_all(&shared_sqlite).await;
+    let with_db =
+        |mut config: test_kms_server::reexport::cosmian_kms_server::config::ClapConfig| {
+            config.db.sqlite_path = shared_sqlite.clone();
+            config
+        };
 
-    // plaintext no auth
+    let https_jwt_config = "test_auth_https_jwt";
+    let https_client_ca_config = "test_auth_https_client_ca";
+    let https_config = "test_auth_https";
+
+    // plaintext no auth — first server starts with a fresh DB
     info!("==> Testing server with no auth");
-    let port = base_port;
-    let ctx = start_test_server_with_options(
-        MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
+    let mut config = with_db(load_server_config("test_auth_plain")?);
+    config.db.clear_database = true;
+    let ctx =
+        start_temp_test_kms_server(config, load_client_config("test_auth_plain_owner")?).await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
 
     run_owned_cli_command(&owner_client_conf_path);
@@ -173,35 +144,11 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     let (api_token_id, api_token) = create_api_token(&owner_client_conf_path)?;
     ctx.stop_server().await?;
 
-    let default_db_config = MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-        clear_database: false,
-        ..MainDBConfig::default()
-    };
-
     // plaintext JWT token auth
     info!("==> Testing server with JWT token over HTTP");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config("test_auth_plain_jwt")?),
+        load_client_config("test_auth_plain_jwt_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -210,26 +157,9 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // tls token auth
     info!("==> Testing server with JWT token auth over HTTPS");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config(https_jwt_config)?),
+        load_client_config("test_auth_https_jwt_cert_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -238,23 +168,9 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // Client Certificate authentication
     info!("==> Testing server with Client Certificate auth");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config(https_client_ca_config)?),
+        load_client_config("test_auth_https_client_ca_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -265,28 +181,9 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!(
         "==> Testing server with both Client Certificates and JWT auth - User sends JWT token only"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                // Suppress client certificate to ensure JWT-only auth path
-                client_cert: test_kms_server::ClientCertPolicy::Suppress,
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config(https_jwt_config)?),
+        load_client_config("test_auth_https_jwt_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -295,93 +192,34 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // SCENARIO 2: Both Client Certificates and API token authentication enabled, user presents API token only
     info!(
-        "==> Testing server with both Client Certificates and API token auth -User sends API \
+        "==> Testing server with both Client Certificates and API token auth - User sends API \
          token only"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig {
-                    access_token: Some(api_token.clone()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
+    let mut config = with_db(load_server_config(https_client_ca_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
+    let mut client_s2 = load_client_config("test_auth_https_client_ca_owner")?;
+    client_s2.http_config.access_token = Some(api_token.clone());
+    let ctx = start_temp_test_kms_server(config, client_s2).await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
     // SCENARIO 3: Both JWT and API token authentication enabled, user presents API token only
     info!("==> Testing server with both JWT and API token auth - User sends the API token only");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                // Suppress JWT to ensure API token only
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                http: HttpClientConfig {
-                    access_token: Some(api_token.clone()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
+    let mut config = with_db(load_server_config(https_jwt_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
+    let mut client_s3 = load_client_config("test_auth_https_owner")?;
+    client_s3.http_config.access_token = Some(api_token.clone());
+    let ctx = start_temp_test_kms_server(config, client_s3).await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
     // SCENARIO 4: JWT authentication enabled, no token provided (failure case)
     info!("==> Testing server with JWT auth - User does not send the token (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config("test_auth_plain_jwt")?),
+        with_server_port(load_client_config("test_auth_plain_owner")?, 12002),
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -390,26 +228,9 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // SCENARIO 5: Client Certificate authentication enabled, no certificate provided (failure case)
     info!("==> Testing server with Client Certificate auth - missing certificate (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                client_cert: test_kms_server::ClientCertPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config(https_client_ca_config)?),
+        with_server_port(load_client_config("test_auth_https_owner")?, 12004),
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -418,85 +239,19 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // SCENARIO 6: API token authentication enabled, no token provided (failure case)
     info!("==> Testing server with API token auth - missing token (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig {
-                    access_token: None, // missing token -> should fail
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsNoClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
-    run_owned_cli_command_expect_failure(&owner_client_conf_path);
-    ctx.stop_server().await?;
-
-    // SCENARIO 7: JWT authentication enabled, but no JWT token presented (failure case)
-    info!("===> Testing server with JWT auth - but no JWT token sent (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
+    let mut config = with_db(load_server_config(https_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
+    let ctx =
+        start_temp_test_kms_server(config, load_client_config("test_auth_https_owner")?).await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
     // Bad API token auth but JWT auth used at first
     info!("==> Testing server with bad API token auth but JWT auth used at first");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config("test_auth_plain_jwt")?),
+        load_client_config("test_auth_plain_jwt_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -505,23 +260,11 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 
     // Bad API token auth, but cert auth used at first
     info!("==> Testing server with bad API token auth but cert auth used at first");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?),
-        },
-        None,
-        None,
+    let mut config = with_db(load_server_config(https_client_ca_config)?);
+    config.http.api_token_id = Some("my_bad_token_id".to_owned());
+    let ctx = start_temp_test_kms_server(
+        config,
+        load_client_config("test_auth_https_client_ca_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -533,31 +276,11 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         "==> Testing server with bad API token and good JWT token auth but still cert auth used \
          at first"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config,
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?),
-        },
-        None,
-        None,
+    let mut config = with_db(load_server_config(https_jwt_config)?);
+    config.http.api_token_id = Some("my_bad_token_id".to_owned());
+    let ctx = start_temp_test_kms_server(
+        config,
+        load_client_config("test_auth_https_jwt_cert_owner")?,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
@@ -565,10 +288,7 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     ctx.stop_server().await?;
 
     // delete the temp db dir
-    let _e = fs::remove_dir_all(PathBuf::from(format!(
-        "/tmp/kms_test_workspace_{base_port}"
-    )))
-    .await;
+    let _e = fs::remove_dir_all(&shared_sqlite).await;
 
     Ok(())
 }

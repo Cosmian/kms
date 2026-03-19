@@ -11,8 +11,7 @@ use cosmian_kms_cli::reexport::cosmian_kmip::kmip_2_1::{
     requests::symmetric_key_create_request,
 };
 use test_kms_server::{
-    AuthenticationOptions, BuildServerParamsOptions, MainDBConfig, build_server_params_full,
-    start_test_server_with_options,
+    load_client_config, load_server_config, start_temp_test_kms_server, with_server_port,
 };
 
 use crate::error::result::CosmianResult;
@@ -26,31 +25,22 @@ const TEST_PORT: u16 = 9998 + 6;
 /// than the default `"cosmian"` one.
 #[tokio::test]
 pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
-    // 1. Build server params with a custom vendor_identification.
-    //    `BuildServerParamsOptions` has no `vendor_identification` field, so we
-    //    mutate the returned `ServerParams` directly.
-    let mut server_params = build_server_params_full(BuildServerParamsOptions {
-        db_config: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        port: TEST_PORT,
-        ..Default::default()
-    })?;
-    server_params.vendor_identification = TEST_VENDOR_ID.to_owned();
+    // 1. Load the default server config for the dedicated port and inject the
+    //    custom vendor_identification before starting.
+    let mut config = load_server_config("test_default")?;
+    // test_default.toml uses a hard-coded port 9998; override it explicitly.
+    config.http.port = TEST_PORT;
+    config.db.clear_database = true;
+    // Use unique paths to avoid conflicting with the ONCE singleton server.
+    config.db.sqlite_path = std::path::PathBuf::from("/tmp/kms_test_vendor_id");
+    config.workspace.root_data_path =
+        std::path::PathBuf::from(format!("/tmp/kms_test_workspace_vendor_id_{TEST_PORT}"));
+    config.vendor_identification = TEST_VENDOR_ID.to_owned();
 
-    // 2. Start the test KMS server.  The `db_config` first argument is ignored
-    //    when `AuthenticationOptions.server_params` is `Some`.
-    let mut ctx = start_test_server_with_options(
-        MainDBConfig::default(),
-        TEST_PORT,
-        AuthenticationOptions {
-            server_params: Some(server_params),
-            ..Default::default()
-        },
-        None,
-        None,
+    // 2. Start the test KMS server.
+    let mut ctx = start_temp_test_kms_server(
+        config,
+        with_server_port(load_client_config("test_auth_plain_owner")?, TEST_PORT),
     )
     .await?;
 

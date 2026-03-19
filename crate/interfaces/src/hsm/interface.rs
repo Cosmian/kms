@@ -167,7 +167,7 @@ pub trait HSM: Send + Sync {
     /// HSM and may vary depending on the slot and device configuration.
     ///
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
     ///
     /// # Returns
     /// * `InterfaceResult<Vec<CryptoAlgorithm>>` - the supported algorithms
@@ -181,8 +181,8 @@ pub trait HSM: Send + Sync {
     ///
     /// The key will not be exportable from the HSM if the sensitive flag is set to true.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `id` - the ID of the key
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `id` - byte-array label assigned to the key (stored as PKCS#11 `CKA_LABEL`)
     /// * `algorithm` - the key algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key should be exportable
@@ -203,9 +203,9 @@ pub trait HSM: Send + Sync {
     ///
     /// The key pair will not be exportable from the HSM if the sensitive flag is set to true.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `sk_id` - the ID of the private key
-    /// * `pk_id` - the ID of the public key
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `sk_id` - byte-array label assigned to the private key (stored as PKCS#11 `CKA_LABEL`)
+    /// * `pk_id` - byte-array label assigned to the public key (stored as PKCS#11 `CKA_LABEL`)
     /// * `algorithm` - the key pair algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key pair should be exportable
@@ -225,24 +225,24 @@ pub trait HSM: Send + Sync {
     ///
     /// To be exportable, the object must have been created with the sensitive flag set to false.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `object_id` - the ID of the object to export
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `object_id` - byte-array label of the object to export (as assigned at creation time)
     /// # Returns
     /// * `PluginResult<Option<HsmObject>>` - the exported object
     async fn export(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<Option<HsmObject>>;
 
     /// Delete an object from the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `object_id` - the ID of the object to delete
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `object_id` - byte-array label of the object to remove (as assigned at creation time)
     /// # Returns
     /// * `PluginResult<()>` - the result of the operation
     async fn delete(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<()>;
 
     /// Find objects in the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `object_filter` - the filter to apply to the objects
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `object_filter` - criteria for matching objects (by type, label pattern, or both)
     /// # Returns
     /// * `PluginResult<Vec<HsmId>>` - the IDs of the objects found
     async fn find(
@@ -253,10 +253,10 @@ pub trait HSM: Send + Sync {
 
     /// Encrypt data using the given key in the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `key_id` - the ID of the key to use for encryption
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `key_id` - byte-array label of the key to use (as assigned at creation time)
     /// * `algorithm` - the encryption algorithm to use
-    /// * `data` - the data to encrypt
+    /// * `data` - plaintext bytes to encrypt; maximum size depends on the algorithm and key type
     /// # Returns
     /// * `PluginResult<Vec<u8>>` - the encrypted data
     async fn encrypt(
@@ -269,10 +269,10 @@ pub trait HSM: Send + Sync {
 
     /// Decrypt data using the given key in the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `key_id` - the ID of the key to use for decryption
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `key_id` - byte-array label of the key to use (as assigned at creation time)
     /// * `algorithm` - the encryption algorithm to use
-    /// * `data` - the data to decrypt
+    /// * `data` - ciphertext bytes as produced by `encrypt()`
     /// # Returns
     /// * `PluginResult<Vec<u8>>` - the decrypted data
     async fn decrypt(
@@ -286,8 +286,8 @@ pub trait HSM: Send + Sync {
     /// Get the type of the key.
     /// This should be a single call to the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `key_id` - the ID of the key
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `key_id` - byte-array label of the key (as assigned at creation time)
     /// # Returns
     /// * `PluginResult<Option<KeyType>>` - the type of the key
     async fn get_key_type(&self, slot_id: usize, key_id: &[u8])
@@ -296,8 +296,8 @@ pub trait HSM: Send + Sync {
     /// Get the metadata of the key.
     /// This will be two to three calls to the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `key_id` - the ID of the key
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `key_id` - byte-array label of the key (as assigned at creation time)
     /// # Returns
     /// * `PluginResult<Option<KeyMetadata>>` - the metadata of the key
     async fn get_key_metadata(
@@ -308,10 +308,10 @@ pub trait HSM: Send + Sync {
 
     /// Sign data using the given private key in the HSM.
     /// # Arguments
-    /// * `slot_id` - the slot ID of the HSM
-    /// * `key_id` - the ID of the private key to use for signing
+    /// * `slot_id` - index into the HSM's slot list; obtain valid values from `get_available_slot_list()`
+    /// * `key_id` - byte-array label of the private key to use (as assigned at creation time)
     /// * `algorithm` - the signing algorithm to use
-    /// * `data` - the data to sign
+    /// * `data` - raw bytes to sign (pre-digesting is algorithm-dependent)
     /// # Returns
     /// * `InterfaceResult<Vec<u8>>` - the signature bytes
     async fn sign(

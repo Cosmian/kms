@@ -27,9 +27,14 @@ cosmian_crypto_core = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.17.0" }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["std"] }
-oauth2 = { version = "5.0", features = ["reqwest"], default-features = false }
+oauth2 = { workspace = true }
 pem = { workspace = true }
-reqwest = { workspace = true, features = ["json", "native-tls", "socks", "http2"] }
+reqwest = { workspace = true, features = [
+  "json",
+  "native-tls",
+  "socks",
+  "http2",
+] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -39,4 +44,9 @@ url = { workspace = true }
 
 [dev-dependencies]
 toml = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = [
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "time",
+] }

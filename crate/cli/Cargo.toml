@@ -50,7 +50,7 @@ cosmian_logger = { workspace = true }
 cosmian_crypto_core = { workspace = true, default-features = false }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
-jsonwebtoken = "10.3"
+jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
 num-format = { workspace = true }
 pem = { workspace = true }
@@ -68,9 +68,9 @@ zeroize = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = { workspace = true }
 openssl = { workspace = true }
-serial_test = "3.0"
-tempfile = "3.19"
+serial_test = { workspace = true }
+tempfile = { workspace = true }
 test_kms_server = { path = "../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }

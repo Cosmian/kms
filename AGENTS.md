@@ -155,6 +155,10 @@ echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
 
 Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
+## Documentation
+
+All features and configuration options are documented in `documentation/` via MkDocs. The documentation table of contents is in `documentation/docs/` and the MkDocs config is in `documentation/mkdocs.yml`.
+
 ## GitHub issues and pull requests
 
 Read issues and PRs using `gh` without a pager:

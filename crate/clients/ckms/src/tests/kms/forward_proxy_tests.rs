@@ -19,7 +19,9 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use test_kms_server::{AuthenticationOptions, MainDBConfig, start_test_server_with_options};
+use test_kms_server::{
+    load_client_config, load_server_config, start_temp_test_kms_server, with_server_port,
+};
 
 const PROXY_URL: &str = "http://localhost:8888";
 const PROXY_USER: &str = "myuser";
@@ -38,16 +40,13 @@ const PROXY_PASSWORD: &str = "mypwd";
 #[ignore = "requires a Squid proxy on localhost:8888 (myuser/mypwd) and KMS_URL set to a non-loopback address"]
 #[tokio::test]
 pub(crate) async fn test_server_version_using_forward_proxy() {
-    let ctx = start_test_server_with_options(
-        MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        9998,
-        AuthenticationOptions::new(),
-        None,
-        None,
+    let config = load_server_config("test_default").expect("Failed to load test KMS server config");
+    let ctx = start_temp_test_kms_server(
+        config,
+        with_server_port(
+            load_client_config("test_auth_plain_owner").expect("Failed to load client config"),
+            9998,
+        ),
     )
     .await
     .expect("Failed to start test KMS server");

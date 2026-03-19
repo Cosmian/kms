@@ -4819,9 +4819,9 @@ dependencies = [
  "cosmian_kms_server",
  "cosmian_logger",
  "criterion",
- "serde_json",
  "time",
  "tokio",
+ "toml 0.9.8",
  "zeroize",
 ]
 
