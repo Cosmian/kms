@@ -88,7 +88,7 @@ pub(crate) async fn wrap_and_cache(
     let encoding = if object
         .key_block()
         .map_err(|e| {
-            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}",))
+            KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}"))
         })?
         .key_bytes()
         .is_ok()
@@ -312,11 +312,19 @@ async fn wrap_using_crypto_oracle(
     wrapping_key_uid: &str,
     prefix: &str,
 ) -> KResult<()> {
+    // The server-configured key_encryption_key is a shared server resource accessible
+    // to all users, so skip the ownership check for it (issue #761).
+    let is_server_kek = kms
+        .params
+        .key_wrapping_key
+        .as_deref()
+        .is_some_and(|kek| kek == wrapping_key_uid);
     // check permissions
-    if !kms
-        .database
-        .is_object_owned_by(wrapping_key_uid, user)
-        .await?
+    if !is_server_kek
+        && !kms
+            .database
+            .is_object_owned_by(wrapping_key_uid, user)
+            .await?
     {
         let ops = kms
             .database

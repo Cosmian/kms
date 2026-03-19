@@ -108,6 +108,27 @@ However, when the KMS server is configured with a list of privileged users, obje
     objects to **all** users. When a permission is granted to `*`, every authenticated user benefits from that permission
     on the targeted object. Individual per-user grants are merged with the wildcard grants when evaluating access.
 
+## HSM keys and authorization
+
+Keys stored in an HSM are physically located in the HSM hardware, not in the KMS database.
+However, their **authorization model is identical to that of regular KMS keys**: ownership and
+access rights are still tracked by the KMS, and all the rules described on this page apply.
+
+| Aspect                        | KMS keys                 | HSM keys                          |
+| ----------------------------- | ------------------------ | --------------------------------- |
+| Key material stored in        | KMS database (encrypted) | HSM hardware                      |
+| Authorizations managed by     | KMS                      | KMS (same ownership + ACL model)  |
+| Owner                         | Creating user            | HSM admin at creation time        |
+| `grant` / `revoke` supported  | Yes                      | Yes — same REST API               |
+| `Get` super-privilege applies | Yes                      | Yes                               |
+
+The one HSM-specific restriction is **creation and destruction**: only users listed in the server's
+`hsm_admin` configuration (or granted the `Create` / `Destroy` operation by an HSM admin) may create
+or destroy objects directly in the HSM. All other operations (`Encrypt`, `Decrypt`, `Get`, etc.) follow
+the standard KMS access rights model and can be delegated to any authenticated user via `grant`.
+
+See the [HSM operations](hsms/hsm_operations.md) page for details on HSM admin configuration.
+
 ## Authentication vs. authorization
 
 It is important to distinguish authentication from authorization:

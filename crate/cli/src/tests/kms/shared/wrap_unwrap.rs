@@ -42,19 +42,19 @@ pub(crate) async fn test_password_wrap_import() -> KmsCliResult<()> {
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)
     };
-    password_wrap_import_test(ctx, "cc", &private_key_id).await?;
+    Box::pin(password_wrap_import_test(ctx, "cc", &private_key_id)).await?;
 
     // EC
     let (private_key_id, _public_key_id) = CreateEcKeyPairAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    password_wrap_import_test(ctx, "ec", &private_key_id).await?;
+    Box::pin(password_wrap_import_test(ctx, "ec", &private_key_id)).await?;
 
     // sym
     let key_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
-    password_wrap_import_test(ctx, "sym", &key_id).await?;
+    Box::pin(password_wrap_import_test(ctx, "sym", &key_id)).await?;
 
     Ok(())
 }
@@ -106,12 +106,14 @@ pub(crate) async fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        UnwrapSecretDataOrKeyAction {
-            key_file_in: key_file.clone(),
-            unwrap_key_b64: Some(b64_wrapping_key),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
+        Box::pin(
+            UnwrapSecretDataOrKeyAction {
+                key_file_in: key_file.clone(),
+                unwrap_key_b64: Some(b64_wrapping_key),
+                ..Default::default()
+            }
+            .run(ctx.get_owner_client()),
+        )
         .await?;
         let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
@@ -152,12 +154,14 @@ pub(crate) async fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        UnwrapSecretDataOrKeyAction {
-            key_file_in: key_file.clone(),
-            unwrap_key_b64: Some(key_b64),
-            ..Default::default()
-        }
-        .run(ctx.get_owner_client())
+        Box::pin(
+            UnwrapSecretDataOrKeyAction {
+                key_file_in: key_file.clone(),
+                unwrap_key_b64: Some(key_b64),
+                ..Default::default()
+            }
+            .run(ctx.get_owner_client()),
+        )
         .await?;
         let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());

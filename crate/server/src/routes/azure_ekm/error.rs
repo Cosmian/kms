@@ -94,7 +94,7 @@ impl AzureEkmErrorReply {
     pub(crate) fn key_not_found(key_name: &str) -> Self {
         Self {
             code: "KeyNotFound".to_owned(),
-            message: format!("Key '{key_name}' not found",),
+            message: format!("Key '{key_name}' not found"),
         }
     }
 

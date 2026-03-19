@@ -26,17 +26,32 @@ use crate::{
 
 pub struct HsmStore {
     hsm: Arc<dyn HSM + Send + Sync>,
-    hsm_admin: String,
+    hsm_admin: Vec<String>,
     vendor_id: String,
 }
 
 impl HsmStore {
-    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &str, vendor_id: &str) -> Self {
+    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &[String], vendor_id: &str) -> Self {
         Self {
             hsm,
             hsm_admin: hsm_admin.to_owned(),
             vendor_id: vendor_id.to_owned(),
         }
+    }
+
+    /// Returns `true` if `user` is an HSM admin.
+    /// Wildcard `"*"` grants access to every user.
+    fn is_admin(&self, user: &str) -> bool {
+        self.hsm_admin.iter().any(|a| a == "*" || a == user)
+    }
+
+    /// Returns the name to use as the owner of HSM objects.
+    /// Picks the first non-wildcard admin, falling back to `"admin"`.
+    fn owner_name(&self) -> &str {
+        self.hsm_admin
+            .iter()
+            .find(|a| a.as_str() != "*")
+            .map_or("admin", String::as_str)
     }
 }
 
@@ -54,7 +69,7 @@ impl ObjectsStore for HsmStore {
         attributes: &Attributes,
         _tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
-        if owner != self.hsm_admin {
+        if !self.is_admin(owner) {
             return Err(InterfaceError::InvalidRequest(
                 "Only the HSM Admin can create HSM objects".to_owned(),
             ));
@@ -107,12 +122,8 @@ impl ObjectsStore for HsmStore {
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
                 // Convert the HSM object into an ObjectWithMetadata
-                let owm = to_object_with_metadata(
-                    &hsm_object,
-                    uid,
-                    self.hsm_admin.as_str(),
-                    &self.vendor_id,
-                )?;
+                let owm =
+                    to_object_with_metadata(&hsm_object, uid, self.owner_name(), &self.vendor_id)?;
                 Some(owm)
             } else {
                 None
@@ -158,7 +169,7 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
-            if user != self.hsm_admin {
+            if !self.is_admin(user) {
                 return Err(InterfaceError::InvalidRequest(
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
                 ));
@@ -189,11 +200,9 @@ impl ObjectsStore for HsmStore {
     }
 
     async fn is_object_owned_by(&self, _uid: &str, owner: &str) -> InterfaceResult<bool> {
-        debug!(
-            "Is {owner}, the owner of {_uid}? {}",
-            owner == self.hsm_admin
-        );
-        Ok(owner == self.hsm_admin)
+        let is_admin = self.is_admin(owner);
+        debug!("Is {owner} an HSM admin? {}", is_admin);
+        Ok(is_admin)
     }
 
     async fn list_uids_for_tags(
@@ -214,10 +223,10 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
-        if user_must_be_owner && user != self.hsm_admin {
+        if user_must_be_owner && !self.is_admin(user) {
             warn!(
-                "User '{}' is not the HSM admin '{}' but 'user_must_be_owner'",
-                user, self.hsm_admin
+                "User '{}' is not an HSM admin but 'user_must_be_owner' was requested",
+                user
             );
             return Ok(uids);
         }

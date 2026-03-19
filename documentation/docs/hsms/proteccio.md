@@ -1,5 +1,4 @@
-Cosmian KMS natively integrates with
-the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
+Cosmian KMS natively integrates with the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
 
 ### Proteccio library setup
 
@@ -9,6 +8,47 @@ The KMS expects:
 
 - the Proteccio `nethsm` library to be installed in `/lib/libnethsm.so`
 - and the Proteccio configuration files in `/etc/proteccio`.
+
+#### `/etc/proteccio` configuration files
+
+The Proteccio client library reads its configuration from `/etc/proteccio`. The directory must contain the
+following files:
+
+| File | Description |
+|---|---|
+| `proteccio.rc` or `proteccio.ini` | Main INI configuration file (see below) |
+| `proteccio.crt` | Server TLS certificate (PEM) used to authenticate the HSM appliance |
+| `proteccio_client.key` | Client TLS private key (PEM) for mutual TLS authentication |
+| `proteccio_client.crt` | Client TLS certificate (PEM) for mutual TLS authentication |
+| `secchannel_hsm.pem` | HSM secure-channel public key (EC, PEM) |
+| `secchl_clt_privkey.pem` | Client secure-channel private key (PEM) |
+| `secchl_clt_pubkey.pem` | Client secure-channel public key (PEM) |
+
+The `proteccio.rc` / `proteccio.ini` file contains two sections:
+
+```ini
+[PROTECCIO]
+IPaddr=<HSM_IP_ADDRESS>   ; IP address of the Proteccio appliance
+SSL=1                     ; Enable TLS (1) or plain TCP (0)
+SrvCert=proteccio.crt     ; Server certificate filename (relative to /etc/proteccio)
+SEC_CHANNEL=1             ; Enable encrypted secure channel (1) or not (0)
+SecChlSrvKey=secchannel_hsm.pem  ; HSM secure-channel public key filename
+
+[CLIENT]
+Mode=0                    ; 0 = synchronous
+LoggingLevel=7            ; Verbosity (0–7, 7 = most verbose)
+LogFile=proteccio_log_file.log   ; Path to the library log file
+ClntKey=proteccio_client.key     ; Client TLS private key filename
+ClntCert=proteccio_client.crt    ; Client TLS certificate filename
+SecChlClntPrivKey=secchl_clt_privkey.pem  ; Client secure-channel private key
+SecChlClntPubKey=secchl_clt_pubkey.pem    ; Client secure-channel public key
+```
+
+> **_NOTE:_** All filenames in the configuration file are relative to `/etc/proteccio` unless an
+> absolute path is given.
+
+A secondary status log (`HSM_Status.log`) is written to `/etc/proteccio` by the `nethsmstatus`
+monitoring daemon and records HSM availability events. It is not read by the KMS.
 
 Please run the `nethsmstatus` tool to check the status of the HSM before proceeding with the
 rest of the installation.

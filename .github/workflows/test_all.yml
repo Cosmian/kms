@@ -136,7 +136,7 @@ jobs:
         exclude:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
-            features: non-fips
+            features: fips
 
     steps:
       - name: Nix installation

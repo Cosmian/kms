@@ -9,9 +9,9 @@
 use encrypt_decrypt::test_aes_gcm;
 use revoke_destroy::test_revoke_symmetric_key;
 use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
-use wrap_with_hsm_key::test_wrap_with_aes_gcm;
 #[cfg(feature = "non-fips")]
 use wrap_with_hsm_key::{test_unwrap_on_export, test_wrap_with_rsa_oaep};
+use wrap_with_hsm_key::{test_unwrap_with_hsm_key, test_wrap_with_aes_gcm};
 
 use crate::error::result::KmsCliResult;
 #[cfg(feature = "non-fips")]
@@ -27,6 +27,7 @@ async fn test_all_hsm_cli() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server_with_utimaco_hsm().await;
     test_aes_gcm(ctx).await?;
     test_wrap_with_aes_gcm(ctx).await?;
+    Box::pin(test_unwrap_with_hsm_key(ctx)).await?;
     test_revoke_symmetric_key(ctx).await?;
     #[cfg(feature = "non-fips")]
     test_rsa_pkcs_oaep(ctx).await?;

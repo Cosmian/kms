@@ -6,23 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+#### HSM multi-admin support with wildcard
+
+`hsm_admin` is now a list of KMS usernames with HSM admin privileges. Use `["*"]` to grant all
+authenticated users access to all HSM operations. TOML: `hsm_admin = ["alice", "bob"]`;
+CLI: `--hsm-admin alice --hsm-admin bob`; env: `KMS_HSM_ADMIN=alice,bob`.
+
 #### HMAC-SHA-1 and HMAC-SHA-224 Support
 
 NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
 **Acceptable** algorithms. The KMS server previously blocked them via the
-algorithm policy layer. They are now fully supported:
-
-- Server `algorithm_policy.rs`: removed `HMACSHA1` / `HMACSHA224` from the
-  deny-list; added them to the allowed-list alongside `HMACSHA256/384/512`;
-  introduced `validate_hashing_algorithm_for_mac` (permits SHA-1/SHA-224 in
-  HMAC context) and `validate_cryptographic_parameters_for_mac` used by both
-  `MAC` and `MACVerify` policy paths
-- Server `mac.rs`: `compute_hmac` now handles `HashingAlgorithm::SHA1` and
-  `HashingAlgorithm::SHA224` via OpenSSL `Md::sha1()` / `Md::sha224()`
-- CLI `mac.rs`: `CHashingAlgorithm` enum extended with `SHA1` and `SHA224`
-  variants (`--algorithm sha1` / `--algorithm sha224`)
-- UI: new **MAC → Compute** and **MAC → Verify** menu entries with SHA-1 listed
-  first in the algorithm selector to highlight the newly enabled support
+algorithm policy layer. They are now fully supported.
 
 Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
 
@@ -46,21 +40,23 @@ to the test matrix so regressions are caught automatically:
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
   DSM ([#760](https://github.com/Cosmian/kms/issues/760))
-- **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
-  (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
-  `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
-- **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
-  instead of `ActivationDate`; symmetric keys are created Active by default so the previous
-  `ActivationDate` test was never reachable on an Active object
 - **Name attribute stored as VendorExtension instead of standard KMIP attribute**: Setting the `Name`
   attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
   as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
-  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746)):
-    - New `--name` flag added to `ckms attributes set`, `modify`, and `delete`
-    - `build_selected_attribute` WASM helper extended with a `"name"` case
-    - `parse_selected_attributes` now returns `Name` entries under the `Tag::Name` key
-    - UI: `AttributeSet`, `AttributeModify`, and `AttributeDelete` forms include a **Name** option
-    - Playwright E2E tests cover the full Name attribute lifecycle (set → get → modify → delete)
+  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746))
+- **HSM: CKA_ID missing on HSM-created keys**: Keys generated via the HSM PKCS#11 path were stored
+  without a `CKA_ID`, making them invisible to some PKCS#11 tools. The KMS now sets `CKA_ID` at
+  key creation time for all HSM backends (Proteccio, Utimaco, SoftHSM2).
+- **HSM**: HSM key lookup (`get_object_handle`) now searches by `CKA_ID` first (primary
+  path for KMS-created keys) and falls back to `CKA_LABEL` for externally provisioned keys
+  that may not have `CKA_ID` set; `get_object_id` follows the same order
+- **HSM**: Non-admin users can now create KMS keys wrapped by the server-level
+  `key_encryption_key`; the ownership check is skipped for this shared server resource
+  ([#761](https://github.com/Cosmian/kms/issues/761))
+- **HSM/CLI**: `ckms sym keys unwrap -i hsm::<slot>::<label>` no longer fails with
+  "This key is sensitive and cannot be exported from the HSM"; the unwrap is now performed
+  server-side through the KMS crypto oracle so the HSM key material is never exported
+  ([#762](https://github.com/Cosmian/kms/issues/762))
 
 ## [5.17.0] - 2026-03-13
 

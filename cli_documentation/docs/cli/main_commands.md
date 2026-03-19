@@ -1376,7 +1376,7 @@ Derive a new key from an existing key
 
 `--digest-algorithm [-d] <DIGEST_ALGORITHM>` Digest algorithm for derivation
 
-Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"SHA256"`]
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"SHA256"`]
 
 `--algorithm [-a] <ALGORITHM>` The algorithm
 
@@ -2121,7 +2121,7 @@ Hash arbitrary data.
 ### Arguments
 `--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
 
-Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
 `--data [-d] <DATA>` The data to be hashed in hexadecimal format
 
@@ -2165,7 +2165,7 @@ Compute a MAC over data with a MAC key
 
 `--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
 
-Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
 `--data [-d] <DATA>` The data to be hashed in hexadecimal format. The data to be hashed in hexadecimal format
 
@@ -2194,7 +2194,7 @@ Verify a MAC over data with a MAC key
 
 `--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
 
-Possible values:  `"sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
 `--data [-d] <DATA>` The data to verify in hexadecimal format
 

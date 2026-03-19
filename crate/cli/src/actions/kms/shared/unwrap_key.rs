@@ -4,13 +4,19 @@ use base64::{Engine as _, engine::general_purpose};
 use clap::Parser;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
-    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
+    cosmian_kmip::kmip_2_1::{kmip_objects::Object, kmip_types::CryptographicAlgorithm},
     export_object,
-    kmip_2_1::{kmip_attributes::Attributes, requests::create_symmetric_key_kmip_object},
+    kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_operations::Destroy,
+        kmip_types::UniqueIdentifier,
+        requests::{create_symmetric_key_kmip_object, import_object_request},
+    },
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use cosmian_logger::trace;
+use uuid::Uuid;
 
 use crate::{
     actions::kms::console,
@@ -104,6 +110,17 @@ impl UnwrapSecretDataOrKeyAction {
                 },
             )?
         } else if let Some(key_id) = &self.unwrap_key_id {
+            // When the unwrapping key is stored in an HSM (sensitive, non-exportable),
+            // we cannot export it for local unwrapping. Instead, import the wrapped
+            // object to the KMS server with key_wrap_type=NotWrapped so the server uses
+            // its HSM crypto oracle for server-side unwrapping, then export the result
+            // (issue #762).
+            if key_id.contains("::") {
+                trace!("unwrap using server-side HSM crypto oracle for key: {key_id}");
+                return self
+                    .unwrap_via_server(kms_rest_client, object, key_id)
+                    .await;
+            }
             trace!("unwrap using the KMS server with the unique identifier of the unwrapping key");
             export_object(&kms_rest_client, key_id, ExportObjectParams::default())
                 .await?
@@ -134,6 +151,82 @@ impl UnwrapSecretDataOrKeyAction {
         );
         console::Stdout::new(&stdout).write()?;
 
+        Ok(())
+    }
+
+    /// Unwrap a key stored in a local KMIP JSON TTLV file by delegating the
+    /// cryptographic operation to the KMS server.  This path is used when the
+    /// unwrapping key resides in an HSM and cannot be exported (sensitive).
+    ///
+    /// The wrapped object is temporarily imported into the KMS with
+    /// `key_wrap_type = NotWrapped` so the server can decrypt it using its
+    /// crypto oracle, then the plaintext key is exported back and written to
+    /// the output file.  The temporary KMS object is deleted afterwards.
+    async fn unwrap_via_server(
+        &self,
+        kms_rest_client: KmsClient,
+        object: Object,
+        _unwrap_key_id: &str,
+    ) -> KmsCliResult<()> {
+        let vendor_id = kms_rest_client.config.vendor_id.as_str();
+        let tmp_id = Uuid::new_v4().to_string();
+
+        // Import the wrapped object asking the server to unwrap it immediately.
+        let import_request = import_object_request(
+            vendor_id,
+            Some(tmp_id.clone()),
+            object,
+            None,
+            true, // unwrap = true → key_wrap_type = NotWrapped
+            true, // replace_existing
+            std::iter::empty::<String>(),
+        )?;
+        kms_rest_client.import(import_request).await.with_context(
+            || "server-side unwrap: failed to import the wrapped key to the KMS server",
+        )?;
+
+        // Export the now-unwrapped object back.
+        // Use `unwrap: true` to retrieve the plaintext: the server may have re-wrapped the
+        // key for secure storage (when a server-level key_encryption_key is configured), and
+        // the unwrapped cache is populated by wrap_and_cache.  Requesting NotWrapped on export
+        // causes the server to serve the plaintext from the cache (issue #762).
+        let (_, unwrapped_object, _) = export_object(
+            &kms_rest_client,
+            &tmp_id,
+            ExportObjectParams {
+                unwrap: true,
+                ..ExportObjectParams::default()
+            },
+        )
+        .await
+        .with_context(|| "server-side unwrap: failed to export the unwrapped key")?;
+
+        // Clean up the temporary key from the server.
+        let destroy_request = Destroy {
+            unique_identifier: Some(UniqueIdentifier::TextString(tmp_id.clone())),
+            remove: true,
+            cascade: true,
+        };
+        kms_rest_client
+            .destroy(destroy_request)
+            .await
+            .with_context(|| "server-side unwrap: failed to destroy temporary KMS key")?;
+
+        let object_type = unwrapped_object.object_type();
+        let output_file = self
+            .key_file_out
+            .as_ref()
+            .unwrap_or(&self.key_file_in)
+            .clone();
+        write_kmip_object_to_file(&unwrapped_object, &output_file)?;
+
+        let stdout = format!(
+            "The key of type {:?} in file {} was unwrapped via the KMS server in file: {}",
+            object_type,
+            self.key_file_in.display(),
+            &output_file.display()
+        );
+        console::Stdout::new(&stdout).write()?;
         Ok(())
     }
 }

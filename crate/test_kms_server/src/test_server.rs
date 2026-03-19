@@ -313,7 +313,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 jwt: JwtAuth::Disabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -360,7 +360,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
                 jwt: JwtAuth::Enabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -443,7 +443,7 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
         jwt: JwtAuth::Enabled,
         hsm: Some(HsmConfig {
             hsm_model: "utimaco".to_owned(),
-            hsm_admin: "owner.client@acme.com".to_owned(),
+            hsm_admin: vec!["owner.client@acme.com".to_owned()],
             hsm_slot: vec![0],
             hsm_password: vec!["12345678".to_owned()],
         }),

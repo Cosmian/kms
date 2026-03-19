@@ -60,10 +60,21 @@ pub struct HsmConfig {
     )]
     pub hsm_model: String,
 
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM, destroy them, and potentially export them.
-    #[clap(long, env = "KMS_HSM_ADMIN", default_value = HSM_ADMIN_DEFAULT)]
-    pub hsm_admin: String,
+    /// List of KMS usernames that are granted HSM admin privileges.
+    /// HSM admins can create, destroy, and potentially export objects on the HSM.
+    /// Use `"*"` as the only entry to grant all authenticated users admin access.
+    /// Repeat the option or use a comma-separated list to specify multiple admins:
+    ///   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
+    ///   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        env = "KMS_HSM_ADMIN",
+        value_delimiter = ',',
+        num_args = 1..,
+        default_value = HSM_ADMIN_DEFAULT
+    )]
+    pub hsm_admin: Vec<String>,
 
     /// HSM slot number. The slots used must be listed.
     /// Repeat this option to specify multiple slots

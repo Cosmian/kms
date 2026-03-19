@@ -40,11 +40,16 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
         .as_str()
         .to_owned();
 
-    let hsm_admin: String = Input::with_theme(&theme)
-        .with_prompt("HSM admin username")
+    let hsm_admin_input: String = Input::with_theme(&theme)
+        .with_prompt("HSM admin usernames (comma-separated; use * to allow all users)")
         .default("admin".to_owned())
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+    let hsm_admin: Vec<String> = hsm_admin_input
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let mut hsm_slot: Vec<usize> = Vec::new();
     let mut hsm_password: Vec<String> = Vec::new();
