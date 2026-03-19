@@ -169,7 +169,7 @@ test_pkcs11tool_no_warnings() {
 
   # Run pkcs11-tool --list-objects; SoftHSM2 implements all PKCS#11 attributes
   # so no CKR_ATTRIBUTE_* warnings should appear.
-  local pkcs11_output
+  local pkcs11_output pkcs11_rc=0
   set +x
   pkcs11_output=$(
     SOFTHSM2_CONF="$SOFTHSM2_CONF" \
@@ -178,8 +178,11 @@ test_pkcs11tool_no_warnings() {
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$SOFTHSM2_HSM_SLOT_ID" \
       --list-objects 2>&1
-  )
+  ) || pkcs11_rc=$?
   set -x
+  if [ "$pkcs11_rc" -ne 0 ]; then
+    echo "WARNING: pkcs11-tool exited with code $pkcs11_rc" >&2
+  fi
   echo "--- pkcs11-tool --list-objects output ---"
   echo "$pkcs11_output"
   echo "-----------------------------------------"

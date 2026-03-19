@@ -159,14 +159,16 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
     }
 
     // Ensure the selection actually changed before returning.
-    await page.waitForFunction(
-        ({ testId, expected }) => {
-            const root = document.querySelector(`[data-testid="${testId}"]`);
-            const item = root?.querySelector(".ant-select-selection-item");
-            return (item?.textContent ?? "").trim() === expected;
-        },
-        { testId: selectTestId, expected: optionText }
-    );
+    // Use Playwright's built-in assertion retry rather than a raw
+    // waitForFunction: rc-select 14.x renders data-testid on BOTH the outer
+    // div.ant-select container and the inner <input type="search"> (via
+    // pickAttrs → Input.js attrs spread), so a raw document.querySelector
+    // would return the outer div in standard DOM order – but Playwright's
+    // CSS descendant selector reliably narrows the scope and the toHaveText
+    // assertion retries automatically, making this robust in slow CI.
+    await expect(
+        page.locator(`[data-testid="${selectTestId}"] .ant-select-selection-item`)
+    ).toHaveText(optionText, { exact: true, timeout: 30_000 });
 }
 
 /**

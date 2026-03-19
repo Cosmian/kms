@@ -238,7 +238,7 @@ test_pkcs11tool_no_warnings() {
   # NOTE: pass ONLY UTIMACO_LIB_DIR — do NOT inherit the shell LD_LIBRARY_PATH which
   # already contains NIX_OPENSSL_OUT/lib (openssl-3.1.2 in FIPS mode). pkcs11-tool
   # (opensc) requires OPENSSL_3.2.0 symbols and finds its OpenSSL via Nix RPATH.
-  local pkcs11_output
+  local pkcs11_output pkcs11_rc=0
   pkcs11_output=$(
     env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool \
@@ -246,7 +246,10 @@ test_pkcs11tool_no_warnings() {
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$slot" \
       --list-objects 2>&1
-  )
+  ) || pkcs11_rc=$?
+  if [ "$pkcs11_rc" -ne 0 ]; then
+    echo "WARNING: pkcs11-tool exited with code $pkcs11_rc" >&2
+  fi
   echo "--- pkcs11-tool --list-objects output ---"
   echo "$pkcs11_output"
   echo "-----------------------------------------"

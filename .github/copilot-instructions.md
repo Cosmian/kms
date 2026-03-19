@@ -82,7 +82,7 @@ Expected response is a KMIP validation error, confirming the server is alive.
 
 ## Update CHANGELOG.md
 
-When making changes, update `CHANGELOG.md` with a brief description of the change and its impact (1 short compact line). This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
+For each changes, compare the current git-branch with the upstream branch and summarize it on `CHANGELOG.md` on 1 line. This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
 
 ## Repository layout (high level)
 

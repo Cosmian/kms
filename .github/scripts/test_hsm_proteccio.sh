@@ -158,7 +158,7 @@ test_pkcs11tool_no_warnings() {
 
   # Run pkcs11-tool --list-objects without any Nix OpenSSL override so it uses
   # system libraries (pkcs11-tool from the OS is linked against the system OpenSSL)
-  local pkcs11_output
+  local pkcs11_output pkcs11_rc=0
   set +x
   pkcs11_output=$(
     env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
@@ -167,8 +167,11 @@ test_pkcs11tool_no_warnings() {
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$HSM_SLOT_ID_VALUE" \
       --list-objects 2>&1
-  )
+  ) || pkcs11_rc=$?
   set -x
+  if [ "$pkcs11_rc" -ne 0 ]; then
+    echo "WARNING: pkcs11-tool exited with code $pkcs11_rc" >&2
+  fi
   echo "--- pkcs11-tool --list-objects output ---"
   echo "$pkcs11_output"
   echo "-----------------------------------------"
