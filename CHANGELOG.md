@@ -44,6 +44,13 @@ to the test matrix so regressions are caught automatically:
   attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
   as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
   `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746))
+- **HSM: CKA_ID missing on HSM-created keys**: Keys generated via the HSM PKCS#11 path were stored
+  without a `CKA_ID`, making them invisible to some PKCS#11 tools. The KMS now sets `CKA_ID` at
+  key creation time for all HSM backends (Proteccio, Utimaco, SoftHSM2).
+- **HSM: spurious `CKA_VERIFY_RECOVER` warning from pkcs11-tool**: `pkcs11-tool --list-objects`
+  emitted `CKR_ATTRIBUTE_TYPE_INVALID` for `CKA_VERIFY_RECOVER` on RSA public keys. The KMS now
+  calls `C_SetAttributeValue(CKA_VERIFY_RECOVER=false)` after key generation (best-effort, silently
+  ignored by HSMs that do not implement the attribute).
 
 ## [5.17.0] - 2026-03-13
 
