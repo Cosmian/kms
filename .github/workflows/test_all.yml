@@ -28,7 +28,7 @@ jobs:
           - pykmip
           - wasm
           - aws_xks
-          # - azure_ekm # Azure EKM tests are currently disabled due to billing issues
+          - azure_ekm
           - ui
           - gcp_cmek
         features: [fips, non-fips]
@@ -136,7 +136,7 @@ jobs:
         exclude:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
-            features: non-fips
+            features: fips
 
     steps:
       - name: Nix installation
