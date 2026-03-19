@@ -113,14 +113,55 @@ test_pkcs11tool_no_warnings() {
   local aes_uid="hsm::${HSM_SLOT_ID_VALUE}::${aes_label}"
   local rsa_uid="hsm::${HSM_SLOT_ID_VALUE}::${rsa_label}"
 
-  # Start KMS server (HTTP, no TLS, SQLite, Proteccio HSM).
-  # Strip LD_LIBRARY_PATH so libnethsm.so resolves its libssl dependency from
-  # system paths rather than the Nix overrides (Nix OpenSSL 3.1.2 causes
-  # CKR_FUNCTION_FAILED = 6 on C_Initialize for Proteccio).
-  # Keep OPENSSL_CONF/OPENSSL_MODULES so cosmian_kms can locate its own
-  # OpenSSL providers (e.g. legacy.so) via the Nix store paths set in the shell.
+  # The KMS server environment has two conflicting constraints:
+  #
+  # 1. LD_LIBRARY_PATH must be stripped: the Nix FIPS shell prepends OpenSSL 3.1.2
+  #    to LD_LIBRARY_PATH.  libnethsm.so has OpenSSL statically embedded (CRYPTOGAMS
+  #    assembly), reads OPENSSL_CONF/OPENSSL_MODULES itself, and the Nix FIPS module
+  #    is binary-incompatible with libnethsm's embedded OpenSSL → C_Initialize = 6.
+  #
+  # 2. cosmian_kms (FIPS build) calls Provider::load("fips") at startup, which
+  #    requires [fips_sect] config data (the HMAC integrity hash from fipsmodule.cnf).
+  #    Stripping OPENSSL_CONF makes cosmian_kms fall back to its compiled-in
+  #    OPENSSLDIR (/usr/local/cosmian/lib/ssl/) which does not exist on CI runners.
+  #
+  # Solution: write a custom openssl.cnf that:
+  #   a. Includes [fips_sect] + .include fipsmodule.cnf  →  Provider::load("fips") works
+  #   b. Sets activate = 0 for fips                       →  libnethsm's embedded OpenSSL
+  #                                                           will NOT auto-load the FIPS
+  #                                                           module (avoids binary incompat)
+  #   c. Sets activate = 1 for default                    →  non-FIPS operations still work
+  local kms_openssl_cnf="$tmp_dir/kms-openssl.cnf"
+  local fipsmodule_cnf
+  fipsmodule_cnf="$(dirname "${OPENSSL_CONF:-/dev/null}")/fipsmodule.cnf"
+  if [ -f "$fipsmodule_cnf" ]; then
+    # FIPS env: provide [fips_sect] config data but do not auto-activate FIPS
+    cat > "$kms_openssl_cnf" <<OPENSSL_CNF
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+fips = fips_sect
+default = default_sect
+
+[fips_sect]
+activate = 0
+.include $fipsmodule_cnf
+
+[default_sect]
+activate = 1
+OPENSSL_CNF
+  else
+    # Non-FIPS / no fipsmodule.cnf: just load the built-in default provider
+    printf '[openssl_conf]\nopenssl_conf = openssl_init\n\n[openssl_init]\nproviders = provider_sect\n\n[provider_sect]\ndefault = default_sect\n\n[default_sect]\nactivate = 1\n' \
+      > "$kms_openssl_cnf"
+  fi
+
   env -u LD_PRELOAD -u LD_LIBRARY_PATH \
     PATH="$PATH" \
+    OPENSSL_CONF="$kms_openssl_cnf" \
     "$kms_bin" \
       --database-type sqlite \
       --sqlite-path "$sqlite_path" \
