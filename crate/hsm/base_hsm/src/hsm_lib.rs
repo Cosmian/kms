@@ -7,8 +7,8 @@ use pkcs11_sys::{
     CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
-    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_SetAttributeValue, CK_C_Sign,
-    CK_C_SignInit, CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK,
+    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_Sign, CK_C_SignInit,
+    CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK,
 };
 
 use crate::{HResult, hsm_call};
@@ -97,7 +97,6 @@ pub struct HsmLib {
 
     pub(crate) C_SignInit: CK_C_SignInit,
     pub(crate) C_Sign: CK_C_Sign,
-    pub(crate) C_SetAttributeValue: CK_C_SetAttributeValue,
 }
 
 impl HsmLib {
@@ -139,7 +138,6 @@ impl HsmLib {
                 C_UnwrapKey: Some(*library.get(b"C_UnwrapKey")?),
                 C_SignInit: Some(*library.get(b"C_SignInit")?),
                 C_Sign: Some(*library.get(b"C_Sign")?),
-                C_SetAttributeValue: Some(*library.get(b"C_SetAttributeValue")?),
                 // we need to keep the library alive
                 _library: library,
             };

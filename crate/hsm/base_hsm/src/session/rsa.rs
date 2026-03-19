@@ -4,10 +4,9 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
     CK_OBJECT_HANDLE, CK_RSA_PKCS_OAEP_PARAMS, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_DECRYPT,
     CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS_BITS, CKA_PRIVATE,
-    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY,
-    CKA_VERIFY_RECOVER, CKA_WRAP, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA,
-    CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY,
-    CKZ_DATA_SPECIFIED,
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP,
+    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKK_AES, CKK_RSA, CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP,
+    CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKZ_DATA_SPECIFIED,
 };
 
 use crate::{HResult, hsm_call, session::Session};
@@ -206,36 +205,6 @@ impl Session {
             &raw mut pub_key_handle,
             &raw mut priv_key_handle
         );
-
-        // Best-effort: set CKA_VERIFY_RECOVER=CK_FALSE on the public key.
-        // Including this attribute in the C_GenerateKeyPair template causes a
-        // SIGSEGV on some HSMs (e.g. Proteccio), but setting it afterwards via
-        // C_SetAttributeValue is safe and works on HSMs that support the
-        // attribute (e.g. SoftHSM2).  HSMs that do not implement the attribute
-        // (e.g. Proteccio) return CKR_ATTRIBUTE_TYPE_INVALID, which we ignore.
-        // Without this call, pkcs11-tool reports CKR_ATTRIBUTE_TYPE_INVALID
-        // when listing objects on HSMs that support but do not auto-set it.
-        let mut vr_val: CK_BBOOL = CK_FALSE;
-        let mut vr_attr = [CK_ATTRIBUTE {
-            type_: CKA_VERIFY_RECOVER,
-            pValue: std::ptr::from_mut(&mut vr_val).cast::<std::ffi::c_void>(),
-            ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
-        }];
-        {
-            let hsm_lib_ref = &self.hsm();
-            #[expect(unsafe_code)]
-            if let Some(func) = hsm_lib_ref.C_SetAttributeValue {
-                unsafe {
-                    // Return value intentionally ignored: best-effort only.
-                    let _ = func(
-                        self.session_handle(),
-                        pub_key_handle,
-                        vr_attr.as_mut_ptr(),
-                        CK_ULONG::try_from(vr_attr.len())?,
-                    );
-                }
-            }
-        }
 
         self.object_handles_cache()
             .insert(sk_id.to_vec(), priv_key_handle)?;
