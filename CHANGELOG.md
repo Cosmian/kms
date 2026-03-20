@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [5.18.0] - 2026-04-XX
 
 ### 🚀 Features
+
 #### HSM multi-admin support with wildcard
 
 `hsm_admin` is now a list of KMS usernames with HSM admin privileges. Use `["*"]` to grant all

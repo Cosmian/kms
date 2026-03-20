@@ -248,42 +248,9 @@ const LocateForm: React.FC = () => {
                         values.certificateId
                     );
                     if (!hasOtherCriteria) {
-                        // Enrich state-only results so Type and Key Format Type are available
-                        const enriched = await Promise.all(
-                            ownedFiltered.map(async (o) => {
-                                const uid = o.id;
-                                try {
-                                    const getReq = wasm.get_attributes_ttlv_request(uid);
-                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                    if (getRespStr) {
-                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                                            "object_type",
-                                            "state",
-                                            "tags",
-                                            "user_tags",
-                                            "cryptographic_algorithm",
-                                            "cryptographic_length",
-                                            "key_format_type",
-                                            "public_key_id",
-                                            "private_key_id",
-                                            "certificate_id",
-                                        ]);
-                                        const m = extractMeta(parsed);
-                                        return {
-                                            object_id: uid,
-                                            attributes: { ObjectType: m["object_type"] as string | undefined },
-                                            state: o.state || stateEnumToName(m["state"]),
-                                            meta: m,
-                                        } as LocatedRow;
-                                    }
-                                } catch (e) {
-                                    console.error(`Error fetching Get for ${uid}:`, e);
-                                }
-                                return { object_id: uid, state: o.state } as LocatedRow;
-                            })
-                        );
-                        setObjects(enriched);
-                        setRes(`${enriched.length} Object(s) located.`);
+                        const rows = ownedFiltered.map((o) => ({ object_id: o.id, state: o.state } as LocatedRow));
+                        setObjects(rows);
+                        setRes(`${rows.length} Object(s) located.`);
                         return;
                     }
                     // Get server-side filtered IDs (tags/algorithm/etc.)
@@ -365,72 +332,64 @@ const LocateForm: React.FC = () => {
                     meta: undefined,
                 }));
 
-                    setObjects(mapped);
+                setObjects(mapped);
+                setRes(`${mapped.length} Object(s) located.`);
 
-                    // Enrich each object with Type and State using KMIP Get
+                const hasOtherCriteria = Boolean(
+                    (values.tags && values.tags.length) ||
+                    values.cryptographicAlgorithm ||
+                    values.cryptographicLength != null ||
+                    values.keyFormatType ||
+                    values.objectType ||
+                    values.publicKeyId ||
+                    values.privateKeyId ||
+                    values.certificateId
+                );
+                if (!hasOtherCriteria && !stateVal) {
+                    return;
+                }
+
+                // Enrich each object with Type and State using KMIP Get.
+                try {
+                    const enriched = await enrichUids(mapped.map((r) => r.object_id), idToken, serverUrl);
+
+                    // Try to supplement state from non-TTLV owned list when available
                     try {
-                        const enriched = await enrichUids(mapped.map((r) => r.object_id), idToken, serverUrl);
-
-                        // If no additional criteria and state is 'All', display enriched results directly
-                        const hasOtherCriteria = Boolean(
-                            (values.tags && values.tags.length) ||
-                            values.cryptographicAlgorithm ||
-                            values.cryptographicLength != null ||
-                            values.keyFormatType ||
-                            values.objectType ||
-                            values.publicKeyId ||
-                            values.privateKeyId ||
-                            values.certificateId
-                        );
-                        if (!hasOtherCriteria && !stateVal) {
-                            // Merge state labels from owned list for display, without filtering
-                            const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
-                            setObjects(merged);
-                            setRes(`${merged.length} Object(s) located.`);
-                            return;
+                        let merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                        if (stateVal) {
+                            const target = normalizeState(stateVal);
+                            merged = merged.filter((r) => normalizeState(r.state) === target);
                         }
-                        // Try to supplement state from non-TTLV owned list when available
-                        try {
-                            let merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
-                            // State filter if requested
-                            if (stateVal) {
-                                const target = normalizeState(stateVal);
-                                merged = merged.filter((r) => normalizeState(r.state) === target);
-                            }
-                            // Enforce KFT filter if provided
-                            if (keyFormatType) {
-                                const targetKft = kftNorm(keyFormatType);
-                                merged = merged.filter((r) => {
-                                    const v = r.meta?.["key_format_type"] as string | undefined;
-                                    return v ? kftNorm(v) === targetKft : false;
-                                });
-                            }
-                            // Do not re-filter by tags/criteria; Locate already applied them
-
-                            setObjects(merged);
-                            setRes(`${merged.length} Object(s) located.`);
-                        } catch {
-                            // If owned endpoint not available, keep KMIP-only enrichment
-                            let filtered = enriched;
-                            if (stateVal) {
-                                const target = normalizeState(stateVal);
-                                filtered = filtered.filter((r) => normalizeState(r.state) === target);
-                            }
-                            if (keyFormatType) {
-                                const targetKft = kftNorm(keyFormatType);
-                                filtered = filtered.filter((r) => {
-                                    const v = r.meta?.["key_format_type"] as string | undefined;
-                                    return v ? kftNorm(v) === targetKft : false;
-                                });
-                            }
-                            // Do not re-filter by tags/criteria; Locate already applied them
-
-                            setObjects(filtered);
-                            setRes(`${filtered.length} Object(s) located.`);
+                        if (keyFormatType) {
+                            const targetKft = kftNorm(keyFormatType);
+                            merged = merged.filter((r) => {
+                                const v = r.meta?.["key_format_type"] as string | undefined;
+                                return v ? kftNorm(v) === targetKft : false;
+                            });
                         }
+
+                        setObjects(merged);
+                        setRes(`${merged.length} Object(s) located.`);
                     } catch {
-                        /* ignore */
+                        let filtered = enriched;
+                        if (stateVal) {
+                            const target = normalizeState(stateVal);
+                            filtered = filtered.filter((r) => normalizeState(r.state) === target);
+                        }
+                        if (keyFormatType) {
+                            const targetKft = kftNorm(keyFormatType);
+                            filtered = filtered.filter((r) => {
+                                const v = r.meta?.["key_format_type"] as string | undefined;
+                                return v ? kftNorm(v) === targetKft : false;
+                            });
+                        }
+
+                        setObjects(filtered);
+                        setRes(`${filtered.length} Object(s) located.`);
                     }
+                } catch {
+                    /* ignore */
+                }
                 } else {
                     // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
                     const noCriteria = !((values.tags && values.tags.length) || values.cryptographicAlgorithm || values.cryptographicLength != null || values.keyFormatType || values.objectType || values.publicKeyId || values.privateKeyId || values.certificateId || stateVal);

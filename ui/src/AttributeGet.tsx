@@ -75,7 +75,7 @@ interface AttributeGetFormData {
 
 const AttributeGetForm: React.FC = () => {
     const [form] = Form.useForm<AttributeGetFormData>();
-    const [res, setRes] = useState<Map<string, unknown> | string>(new Map());
+    const [res, setRes] = useState<Map<string, unknown> | string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
     const { idToken, serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
