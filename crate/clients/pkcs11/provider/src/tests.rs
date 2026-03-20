@@ -43,9 +43,14 @@ fn save_pkcs11_client_config() -> String {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     let ctx = rt.block_on(async { start_default_test_kms_server().await });
 
-    // Persist a client config that points explicitly to loopback to avoid 0.0.0.0 on Windows
+    // Include PID to avoid cross-process file conflicts when cargo runs multiple
+    // test binaries concurrently (cargo test --workspace --lib).
     let owner_file_path = std::env::temp_dir()
-        .join(format!("owner_{}.toml", ctx.server_port))
+        .join(format!(
+            "owner_{}_{}.toml",
+            ctx.server_port,
+            std::process::id()
+        ))
         .to_string_lossy()
         .into_owned();
     if !std::path::Path::new(&owner_file_path).exists() {
