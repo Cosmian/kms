@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+#### Oracle TDE HSM integration on Windows
+
+- New PowerShell scripts `test_oracle_tde.ps1` and `set_hsm.ps1` install `cosmian_pkcs11.dll`
+  and run a full end-to-end Oracle TDE test on a native Windows Oracle installation (no Docker)
+- Workarounds for two Oracle 26ai Windows bugs: DLL placed at `C:\opt\oracle\extapi\64\pkcs11\`
+  (drive-relative Linux path) and TDE parameters injected via plain PFILE to bypass the
+  `ALTER SYSTEM SET pkcs11_library_location` validator that rejects Windows paths
+
 #### HSM multi-admin support with wildcard
 
 `hsm_admin` is now a list of KMS usernames with HSM admin privileges. Use `["*"]` to grant all

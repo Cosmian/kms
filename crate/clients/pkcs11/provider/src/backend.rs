@@ -25,9 +25,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     kms_object::{
-        get_kms_object, get_kms_object_attributes, get_kms_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, locate_kms_objects,
+        get_kms_object, get_kms_object_attributes, get_kms_objects, get_kms_secret_data_objects,
+        key_algorithm_from_attributes, kms_decrypt, kms_destroy_object, kms_encrypt,
+        kms_import_object, kms_import_symmetric_key, kms_revoke_object, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -280,12 +280,13 @@ impl Backend for CliBackend {
 
     fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects: entering");
-        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
-        let kms_objects = get_kms_objects(
+        // Use the _sd system tag AND ObjectType::SecretData filter to find ONLY real SecretData
+        // objects. Without the type filter, Locate would also return SymmetricKeys that happen
+        // to carry the _sd tag (e.g. old TDE master key objects from prior sessions), which
+        // would cause batch_export_objects to fail if those objects cannot be exported as Raw.
+        let kms_objects = get_kms_secret_data_objects(
             &self.kms_rest_client,
-            &[disk_encryption_tag, SYSTEM_TAG_SECRET_DATA.to_owned()],
-            Some(KeyFormatType::Raw),
+            &[SYSTEM_TAG_SECRET_DATA.to_owned()],
         )?;
         trace!("find_all_data_objects: found {} objects", kms_objects.len());
 

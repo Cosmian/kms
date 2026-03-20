@@ -212,7 +212,7 @@ cryptoki_fn!(
             let args = unsafe { *(pInitArgs as CK_C_INITIALIZE_ARGS_PTR) };
             if !args.pReserved.is_null() {
                 return Err(ModuleError::BadArguments(
-                    "C_Initialize: pReserved is null".to_owned(),
+                    "C_Initialize: pReserved is not null".to_owned(),
                 ));
             }
         }
@@ -443,15 +443,13 @@ cryptoki_fn!(
         if flags & CKF_SERIAL_SESSION == 0 {
             return Err(ModuleError::SessionParallelNotSupported);
         }
+        let handle = sessions::create(flags);
+        // phSession may be in a packed Oracle struct (misaligned) — use write_unaligned
+        // to avoid Rust's debug-mode alignment panic in write_volatile/write.
         unsafe {
-            *phSession = sessions::create(flags);
+            core::ptr::write_unaligned(phSession, handle);
         }
-        info!(
-            "C_OpenSession: slot: {:?}, flags: {:?}, session: {}",
-            slotID,
-            flags,
-            unsafe { *phSession }
-        );
+        info!("C_OpenSession: slot={slotID:?} flags={flags:?} session handle written",);
         Ok(())
     }
 );
@@ -721,8 +719,9 @@ cryptoki_fn!(
                     "C_FindObjects: session: {:?}, no more objects to return",
                     hSession
                 );
+                // pulObjectCount may be in a packed Oracle struct — use write_unaligned.
                 unsafe {
-                    *pulObjectCount = 0;
+                    core::ptr::write_unaligned(pulObjectCount, 0);
                 }
                 return Ok(());
             }
@@ -740,10 +739,14 @@ cryptoki_fn!(
                 handles.len(),
                 handles
             );
-            let output = unsafe { slice::from_raw_parts_mut(phObject, max_objects) };
-            output.copy_from_slice(handles.as_slice());
+            // phObject / pulObjectCount may be in packed Oracle structs — use write_unaligned.
+            for (i, &handle) in handles.iter().enumerate() {
+                unsafe {
+                    core::ptr::write_unaligned(phObject.add(i), handle);
+                }
+            }
             unsafe {
-                *pulObjectCount = max_objects as CK_ULONG;
+                core::ptr::write_unaligned(pulObjectCount, max_objects as CK_ULONG);
             }
             Ok(())
         })
@@ -1263,9 +1266,11 @@ cryptoki_fn!(
         sessions::session(hSession, |_session| -> ModuleResult<()> {
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
 
+            let key_handle = Session::generate_key(mechanism, &attributes)?;
+            // phKey may be in a packed Oracle struct — use write_unaligned.
             unsafe {
-                *phKey = Session::generate_key(mechanism, &attributes)?;
-            };
+                core::ptr::write_unaligned(phKey, key_handle);
+            }
 
             Ok(())
         })
