@@ -55,8 +55,10 @@ const Sidebar: React.FC = () => {
                 // Check if item is an Import item
                 const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
 
+                const isProduction = import.meta.env.MODE === 'production';
+
                 // Handle disabled state based on access rights
-                if (isCreateItem || isImportItem) {
+                if (isProduction && (isCreateItem || isImportItem)) {
                     newItem.disabled = !hasCreateAccess;
                 }
 
