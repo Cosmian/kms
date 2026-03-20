@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 authenticated users access to all HSM operations. TOML: `hsm_admin = ["alice", "bob"]`;
 CLI: `--hsm-admin alice --hsm-admin bob`; env: `KMS_HSM_ADMIN=alice,bob`.
 
+#### Migration to `jsonwebtoken` crate for JWT validation
+
+JWT validation: complete migration from `alcoholic_jwt` to `jsonwebtoken` in server middleware,
+adding support for multiple algorithms (RS256, ES256, ...).
+Update the documentation, Google CSE routes, and OIDC UI auth flow; updated Google CSE tests accordingly.
+
 #### HMAC-SHA-1 and HMAC-SHA-224 Support
 
 NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
@@ -204,7 +210,7 @@ in this repository under `crate/clients/ckms/`:
     - Removed `${toString ../.}` from RUSTFLAGS `-C remap-path-prefix` — it embedded the machine-specific workspace path into the derivation, causing cross-machine hash divergence.
     - Added `-C strip=symbols` and `-C symbol-mangling-version=v0` to strip residual host-path artefacts from symbol tables.
     - Scrub the Nix-store path from OpenSSL's `buildinf.h` at build time so the OpenSSL derivation hash is identical across machines.
-- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05) — eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
+- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05). Eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
 - Non-FIPS Docker image now ships OpenSSL 3.6.0 provider modules (`legacy.so`, `openssl.cnf`) and sets `OPENSSL_CONF`/`OPENSSL_MODULES` environment variables, matching the FIPS image layout.
 - macOS packaging fixes in `nix/scripts/package_dmg.sh` and related CI scripts.
 - *(deps)* Bump keccak in the cargo group across 1 directory ([#728](https://github.com/Cosmian/kms/pull/728))

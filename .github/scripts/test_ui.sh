@@ -168,9 +168,9 @@ for i in $(seq 1 60); do
 done
 
 # ── 6. Run Playwright E2E tests ───────────────────────────────────────────────
-echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-1}) …"
+echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-10}) …"
 TEST_EXIT=0
-(cd "${UI_DIR}" && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-1}" pnpm run test:e2e) || TEST_EXIT=$?
+(cd "${UI_DIR}" && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}" pnpm run test:e2e) || TEST_EXIT=$?
 
 # ── 7. Report server errors ──────────────────────────────────────────────────
 SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null || true)

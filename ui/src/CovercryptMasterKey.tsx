@@ -111,10 +111,6 @@ const CovercryptMasterKeyForm: React.FC = () => {
                         <div className="p-4 rounded-lg space-y-4">
                             <h3 className="text-m font-bold mb-4">Specification Configuration (required)</h3>
 
-                            <Form.Item name="specification" style={{ display: "none" }}>
-                                <Input />
-                            </Form.Item>
-
                             <Form.Item>
                                 <Select
                                     value={specificationType}
@@ -151,15 +147,14 @@ const CovercryptMasterKeyForm: React.FC = () => {
 
                             {specificationType === "json-text" && (
                                 <Form.Item
-                                    name="specificationText"
+                                    name="specification"
                                     rules={[
                                         { required: true, message: "Please enter specification JSON" },
                                         {
                                             validator: async (_, value) => {
                                                 if (value) {
                                                     try {
-                                                        JSON.parse(value); // Ensure it's valid JSON
-                                                        form.setFieldValue("specification", value);
+                                                        JSON.parse(value);
                                                     } catch (e) {
                                                         throw new Error(`Invalid JSON format: ${e}`);
                                                     }
