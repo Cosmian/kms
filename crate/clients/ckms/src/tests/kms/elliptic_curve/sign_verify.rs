@@ -1,6 +1,5 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
-use assert_cmd::prelude::*;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -8,11 +7,7 @@ use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::{elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs},
 };
 
 /// Sign a file using EC keys via CLI
@@ -23,7 +18,7 @@ fn ec_sign(
     output_file: Option<&str>,
     digested: bool,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["sign", input_file, "--key-id", key_id];
@@ -56,7 +51,7 @@ fn ec_sign_verify(
     key_id: &str,
     digested: bool,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["sign-verify", data_file, signature_file, "--key-id", key_id];
@@ -80,7 +75,7 @@ fn ec_sign_verify(
 #[tokio::test]
 async fn ecdsa_digested_sign_verify_cli() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

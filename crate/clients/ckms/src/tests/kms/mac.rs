@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::{
     actions::kms::{
         mac::{CHashingAlgorithm, MacAction},
@@ -15,18 +12,14 @@ use super::utils::extract_uids::extract_uid;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs},
 };
 
 const SUB_COMMAND: &str = "mac";
 
 /// Create a symmetric key via the CLI
 pub(crate) fn create_mac(cli_conf_path: &str, action: MacAction) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["--mac-key-id".to_owned(), action.mac_key_id];
@@ -68,7 +61,7 @@ pub(crate) fn create_mac(cli_conf_path: &str, action: MacAction) -> CosmianResul
 pub(crate) async fn test_mac() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let mac_key_id = create_symmetric_key(
         &owner_client_conf_path,

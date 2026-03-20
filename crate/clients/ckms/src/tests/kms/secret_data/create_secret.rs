@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::{
     actions::kms::{
         secret_data::create_secret::CreateSecretDataAction,
@@ -14,13 +11,9 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            symmetric::create_key::create_symmetric_key,
-            utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        symmetric::create_key::create_symmetric_key,
+        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
     },
 };
 
@@ -28,7 +21,7 @@ pub(crate) fn create_secret_data(
     cli_conf_path: &str,
     action: &CreateSecretDataAction,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["secret-data", "create"];
@@ -73,7 +66,7 @@ pub(crate) fn create_secret_data(
 pub(crate) async fn test_secret_data() -> CosmianResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     create_secret_data(
         &owner_client_conf_path,
         &CreateSecretDataAction {
@@ -97,7 +90,7 @@ pub(crate) async fn test_secret_data() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_secret_data_with_wrapping() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // First create a symmetric key for wrapping
     let wrapping_key_id = create_symmetric_key(

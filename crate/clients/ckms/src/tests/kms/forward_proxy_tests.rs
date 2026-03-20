@@ -16,8 +16,6 @@
 
 #![allow(deprecated)]
 
-use std::process::Command;
-
 use assert_cmd::prelude::*;
 use test_kms_server::{
     load_client_config, load_server_config, start_temp_test_kms_server, with_server_port,
@@ -40,11 +38,11 @@ const PROXY_PASSWORD: &str = "mypwd";
 #[ignore = "requires a Squid proxy on localhost:8888 (myuser/mypwd) and KMS_URL set to a non-loopback address"]
 #[tokio::test]
 pub(crate) async fn test_server_version_using_forward_proxy() {
-    let config = load_server_config("test_default").expect("Failed to load test KMS server config");
+    let config = load_server_config("test/default").expect("Failed to load test KMS server config");
     let ctx = start_temp_test_kms_server(
         config,
         with_server_port(
-            load_client_config("test_auth_plain_owner").expect("Failed to load client config"),
+            load_client_config("test/auth_plain_owner").expect("Failed to load client config"),
             9998,
         ),
     )
@@ -56,8 +54,7 @@ pub(crate) async fn test_server_version_using_forward_proxy() {
     let kms_url = std::env::var("KMS_URL")
         .unwrap_or_else(|_| format!("http://127.0.0.1:{}", ctx.server_port));
 
-    Command::cargo_bin("ckms")
-        .expect("ckms binary not found")
+    crate::tests::ckms_command()
         .env("KMS_DEFAULT_URL", &kms_url)
         .env("CLI_PROXY_URL", PROXY_URL)
         .env("CLI_PROXY_BASIC_AUTH_USERNAME", PROXY_USER)

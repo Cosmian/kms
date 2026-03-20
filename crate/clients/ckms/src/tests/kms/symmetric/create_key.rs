@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use base64::{Engine as _, engine::general_purpose};
 use clap::ValueEnum;
 use cosmian_kms_cli::{
@@ -19,11 +16,7 @@ use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::utils::{extract_uids::extract_uid, recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::utils::{extract_uids::extract_uid, recover_cmd_logs},
 };
 
 /// Create a symmetric key via the CLI
@@ -31,7 +24,7 @@ pub(crate) fn create_symmetric_key(
     cli_conf_path: &str,
     action: CreateKeyAction,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["keys".to_owned(), "create".to_owned()];
@@ -89,7 +82,7 @@ pub(crate) fn create_symmetric_key(
 #[tokio::test]
 async fn test_create_symmetric_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0_u8; 32];
@@ -215,7 +208,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_create_wrapped_symmetric_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let wrapping_key_id =
         create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;

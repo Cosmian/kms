@@ -32,14 +32,11 @@ use test_kms_server::start_default_test_kms_server;
 use super::ExportKeyParams;
 use crate::{
     error::result::CosmianResult,
-    tests::{
-        kms::{
-            cover_crypt::master_key_pair::create_cc_master_key_pair,
-            elliptic_curve,
-            shared::{ImportKeyParams, export::export_key, import::import_key},
-            symmetric::create_key::create_symmetric_key,
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        cover_crypt::master_key_pair::create_cc_master_key_pair,
+        elliptic_curve,
+        shared::{ImportKeyParams, export::export_key, import::import_key},
+        symmetric::create_key::create_symmetric_key,
     },
 };
 
@@ -50,7 +47,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Generate a symmetric wrapping key
     let wrap_key_path = tmp_path.join("wrap.key");
@@ -132,7 +129,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";

@@ -1,0 +1,52 @@
+{
+  "name": "Cosmian KMS — NixOS Dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "dev",
+  "updateRemoteUserUID": true,
+  "remoteEnv": {
+    "WITH_HSM": "1",
+    "SOFTHSM2_CONF": "/home/dev/.config/softhsm2/softhsm2.conf",
+    "RUST_LOG": "cosmian_kms_server=info",
+    "RUSTUP_HOME": "/opt/rust/rustup",
+    "CARGO_HOME": "/opt/rust/cargo",
+    "OPENSSL_DIR": "/opt/openssl/fips",
+    "OPENSSL_LIB_DIR": "/opt/openssl/fips/lib",
+    "OPENSSL_INCLUDE_DIR": "/opt/openssl/fips/include",
+    "OPENSSL_STATIC": "1",
+    "OPENSSL_NO_VENDOR": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "usernamehw.errorlens",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.check.extraArgs": [
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/usr/bin/zsh"
+          }
+        }
+      }
+    }
+  },
+  "postCreateCommand": "softhsm2-util --init-token --slot 0 --label kms-test --pin 12345678 --so-pin 12345678 || true"
+}

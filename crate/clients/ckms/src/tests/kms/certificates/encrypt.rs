@@ -1,6 +1,5 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::reexport::cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::{
@@ -18,14 +17,10 @@ use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            certificates::import::{ImportCertificateInput, import_certificate},
-            shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
-            utils::recover_cmd_logs,
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        certificates::import::{ImportCertificateInput, import_certificate},
+        shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
+        utils::recover_cmd_logs,
     },
 };
 
@@ -38,7 +33,7 @@ pub(crate) fn encrypt(
     authentication_data: Option<&str>,
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["encrypt", "--certificate-id", certificate_id, input_file];
@@ -73,7 +68,7 @@ pub(crate) fn decrypt(
     authentication_data: Option<&str>,
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["decrypt", "--key-id", private_key_id, input_file];
@@ -109,10 +104,10 @@ async fn test_certificate_import_encrypt(
     tags: &[&str],
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
-    use crate::tests::{kms::shared::ImportKeyParams, save_kms_cli_config};
+    use crate::tests::kms::shared::ImportKeyParams;
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -217,7 +212,7 @@ async fn import_encrypt_decrypt(
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

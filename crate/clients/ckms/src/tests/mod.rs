@@ -7,17 +7,6 @@
 #![allow(clippy::assertions_on_result_states)]
 #![allow(clippy::panic_in_result_fn)]
 
-use std::{env, path::Path, sync::Mutex};
-
-use cosmian_config_utils::ConfigUtils;
-use test_kms_server::TestsContext;
-
-use crate::config::ClientConfig;
-
-/// Protects the check-then-write sequence in `save_kms_cli_config` from TOCTOU
-/// races when multiple test threads call it concurrently for the same server port.
-static SAVE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
-
 mod ensure_binary;
 pub(crate) mod kms;
 
@@ -41,82 +30,37 @@ fn ensure_binary_built() {
 
 pub(crate) const PROG_NAME: &str = "ckms";
 
+fn ckms_binary_path() -> std::path::PathBuf {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
+        .expect("Failed to find workspace root");
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+
+    workspace_root
+        .join("target")
+        .join(profile)
+        .join(format!("{PROG_NAME}{}", std::env::consts::EXE_SUFFIX))
+}
+
 /// Create a Command for the ckms binary, ensuring it's built first
-/// Use this instead of `Command::cargo_bin()` directly in tests
+/// Use this instead of `Command::cargo_bin()` directly in tests.
 #[allow(dead_code)]
 pub(crate) fn ckms_command() -> std::process::Command {
-    use assert_cmd::cargo::CommandCargoExt;
-
     // Access the lazy lock to ensure binary is built
     *ENSURE_BINARY_ON_LOAD;
 
-    std::process::Command::cargo_bin(PROG_NAME).expect("Failed to find ckms binary")
-}
-
-pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
-    // Ensure binary is built before any test that uses it
-    ensure_ckms_binary();
-
-    // Serialize writes within this process to prevent TOCTOU races when
-    // multiple test threads concurrently call this function for the same port.
-    // The process ID is embedded in the filename to prevent cross-process
-    // conflicts when `cargo test --workspace --lib` runs multiple test binaries
-    // concurrently (e.g., ckms + cosmian_kms_cli both using port 9999).
-    let _guard = SAVE_CONFIG_LOCK.lock().expect("SAVE_CONFIG_LOCK poisoned");
-    let pid = std::process::id();
-
-    let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    if !Path::new(&owner_file_path).exists() {
-        let conf = ClientConfig {
-            kms_config: kms_ctx.owner_client_config.clone(),
-        };
-        conf.to_toml(&owner_file_path)
-            .expect("Failed to save owner test config");
-    }
-
-    let user_file_path = env::temp_dir()
-        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    if !Path::new(&user_file_path).exists() {
-        let conf = ClientConfig {
-            kms_config: kms_ctx.user_client_config.clone(),
-        };
-        conf.to_toml(&user_file_path)
-            .expect("Failed to save user test config");
-    }
-
-    (owner_file_path, user_file_path)
-}
-
-#[allow(dead_code)]
-pub(crate) fn force_save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
-    // Ensure binary is built before any test that uses it
-    ensure_ckms_binary();
-    let pid = std::process::id();
-
-    let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    let conf = ClientConfig {
-        kms_config: kms_ctx.owner_client_config.clone(),
-    };
-    conf.to_toml(&owner_file_path)
-        .expect("Failed to save owner test config");
-
-    let user_file_path = env::temp_dir()
-        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    let conf = ClientConfig {
-        kms_config: kms_ctx.user_client_config.clone(),
-    };
-    conf.to_toml(&user_file_path)
-        .expect("Failed to save user test config");
-
-    (owner_file_path, user_file_path)
+    let binary_path = ckms_binary_path();
+    assert!(
+        binary_path.exists(),
+        "Failed to find ckms binary at {}",
+        binary_path.display()
+    );
+    std::process::Command::new(binary_path)
 }

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_cli::reexport::cosmian_kms_client::read_bytes_from_file;
@@ -10,11 +10,7 @@ use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::{elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs},
 };
 
 /// Encrypts a file using the given public key and access policy.
@@ -23,8 +19,8 @@ pub(crate) fn encrypt(
     input_files: &[&str],
     public_key_id: &str,
     output_file: Option<&str>,
-) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+) {
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["encrypt"];
@@ -41,7 +37,6 @@ pub(crate) fn encrypt(
     cmd.assert().success().stdout(predicate::str::contains(
         "The encrypted file is available at",
     ));
-    Ok(())
 }
 
 /// Decrypt a file using the given private key
@@ -51,7 +46,7 @@ pub(crate) fn decrypt(
     private_key_id: &str,
     output_file: Option<&str>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["decrypt", input_file, "--key-id", private_key_id];
@@ -72,7 +67,7 @@ pub(crate) fn decrypt(
 #[tokio::test]
 async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -93,7 +88,7 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         &public_key_id,
         Some(output_file.to_str().unwrap()),
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -114,7 +109,7 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -135,7 +130,7 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(

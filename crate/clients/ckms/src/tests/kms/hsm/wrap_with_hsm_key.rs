@@ -17,11 +17,8 @@ use crate::tests::kms::{
 };
 use crate::{
     error::result::CosmianResult,
-    tests::{
-        kms::symmetric::{
-            create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test,
-        },
-        save_kms_cli_config,
+    tests::kms::symmetric::{
+        create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test,
     },
 };
 use test_kms_server::TestsContext;
@@ -29,7 +26,7 @@ use test_kms_server::TestsContext;
 pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
@@ -77,7 +74,7 @@ pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
 pub(crate) fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(None);
     // log_init(Some("debug"));
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
@@ -124,7 +121,7 @@ pub(crate) fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> CosmianResult<()> {
 pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("debug"));
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,

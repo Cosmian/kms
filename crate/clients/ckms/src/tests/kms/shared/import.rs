@@ -1,8 +1,6 @@
 #[cfg(feature = "non-fips")]
 use std::path::PathBuf;
-use std::process::Command;
 
-use assert_cmd::prelude::*;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli::reexport::cosmian_kms_client::{
     kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
@@ -25,10 +23,7 @@ use crate::tests::kms::{
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
-    },
+    tests::kms::utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
 };
 
 #[derive(Default, Debug)]
@@ -50,7 +45,7 @@ pub(crate) struct ImportKeyParams {
 }
 
 pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, params.cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -129,10 +124,8 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
 pub(crate) async fn test_import_cover_crypt() -> CosmianResult<()> {
     use tempfile::TempDir;
 
-    use crate::tests::save_kms_cli_config;
-
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a new master key pair
     let (_master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -190,13 +183,11 @@ pub(crate) async fn test_generate_export_import() -> CosmianResult<()> {
         reexport::cosmian_kms_client::kmip_2_1::kmip_types::CryptographicAlgorithm,
     };
 
-    use crate::tests::save_kms_cli_config;
-
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

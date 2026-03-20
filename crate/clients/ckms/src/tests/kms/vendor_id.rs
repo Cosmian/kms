@@ -27,8 +27,8 @@ const TEST_PORT: u16 = 9998 + 6;
 pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
     // 1. Load the default server config for the dedicated port and inject the
     //    custom vendor_identification before starting.
-    let mut config = load_server_config("test_default")?;
-    // test_default.toml uses a hard-coded port 9998; override it explicitly.
+    let mut config = load_server_config("test/default")?;
+    // test/default.toml uses a hard-coded port 9998; override it explicitly.
     config.http.port = TEST_PORT;
     config.db.clear_database = true;
     // Use unique paths to avoid conflicting with the ONCE singleton server.
@@ -40,7 +40,7 @@ pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
     // 2. Start the test KMS server.
     let mut ctx = start_temp_test_kms_server(
         config,
-        with_server_port(load_client_config("test_auth_plain_owner")?, TEST_PORT),
+        with_server_port(load_client_config("test/auth_plain_owner")?, TEST_PORT),
     )
     .await?;
 

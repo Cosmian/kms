@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use assert_cmd::prelude::*;
 use base64::Engine;
@@ -18,13 +18,10 @@ use super::utils::recover_cmd_logs;
 use crate::{
     config::{CKMS_CONF_ENV, ClientConfig},
     error::result::CosmianResult,
-    tests::{
-        PROG_NAME, force_save_kms_cli_config,
-        kms::{
-            access::SUB_COMMAND,
-            shared::{ExportKeyParams, export_key},
-            symmetric::create_key::create_symmetric_key,
-        },
+    tests::kms::{
+        access::SUB_COMMAND,
+        shared::{ExportKeyParams, export_key},
+        symmetric::create_key::create_symmetric_key,
     },
 };
 
@@ -48,7 +45,7 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
@@ -77,7 +74,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
@@ -127,17 +124,17 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
             config
         };
 
-    let https_jwt_config = "test_auth_https_jwt";
-    let https_client_ca_config = "test_auth_https_client_ca";
-    let https_config = "test_auth_https";
+    let https_jwt_config = "test/auth_https_jwt";
+    let https_client_ca_config = "test/auth_https_client_ca";
+    let https_config = "test/auth_https";
 
     // plaintext no auth — first server starts with a fresh DB
     info!("==> Testing server with no auth");
-    let mut config = with_db(load_server_config("test_auth_plain")?);
+    let mut config = with_db(load_server_config("test/auth_plain")?);
     config.db.clear_database = true;
     let ctx =
-        start_temp_test_kms_server(config, load_client_config("test_auth_plain_owner")?).await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+        start_temp_test_kms_server(config, load_client_config("test/auth_plain_owner")?).await?;
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     run_owned_cli_command(&owner_client_conf_path);
     // Create an API auth token with admin rights for later
@@ -147,11 +144,11 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     // plaintext JWT token auth
     info!("==> Testing server with JWT token over HTTP");
     let ctx = start_temp_test_kms_server(
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        load_client_config("test_auth_plain_jwt_owner")?,
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -159,10 +156,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!("==> Testing server with JWT token auth over HTTPS");
     let ctx = start_temp_test_kms_server(
         with_db(load_server_config(https_jwt_config)?),
-        load_client_config("test_auth_https_jwt_cert_owner")?,
+        load_client_config("test/auth_https_jwt_cert_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -170,10 +167,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!("==> Testing server with Client Certificate auth");
     let ctx = start_temp_test_kms_server(
         with_db(load_server_config(https_client_ca_config)?),
-        load_client_config("test_auth_https_client_ca_owner")?,
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -183,10 +180,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     );
     let ctx = start_temp_test_kms_server(
         with_db(load_server_config(https_jwt_config)?),
-        load_client_config("test_auth_https_jwt_owner")?,
+        load_client_config("test/auth_https_jwt_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -197,10 +194,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     );
     let mut config = with_db(load_server_config(https_client_ca_config)?);
     config.http.api_token_id = Some(api_token_id.clone());
-    let mut client_s2 = load_client_config("test_auth_https_client_ca_owner")?;
+    let mut client_s2 = load_client_config("test/auth_https_client_ca_owner")?;
     client_s2.http_config.access_token = Some(api_token.clone());
     let ctx = start_temp_test_kms_server(config, client_s2).await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -208,21 +205,21 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!("==> Testing server with both JWT and API token auth - User sends the API token only");
     let mut config = with_db(load_server_config(https_jwt_config)?);
     config.http.api_token_id = Some(api_token_id.clone());
-    let mut client_s3 = load_client_config("test_auth_https_owner")?;
+    let mut client_s3 = load_client_config("test/auth_https_owner")?;
     client_s3.http_config.access_token = Some(api_token.clone());
     let ctx = start_temp_test_kms_server(config, client_s3).await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
     // SCENARIO 4: JWT authentication enabled, no token provided (failure case)
     info!("==> Testing server with JWT auth - User does not send the token (should fail)");
     let ctx = start_temp_test_kms_server(
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        with_server_port(load_client_config("test_auth_plain_owner")?, 12002),
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        with_server_port(load_client_config("test/auth_plain_owner")?, 12002),
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -230,10 +227,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     info!("==> Testing server with Client Certificate auth - missing certificate (should fail)");
     let ctx = start_temp_test_kms_server(
         with_db(load_server_config(https_client_ca_config)?),
-        with_server_port(load_client_config("test_auth_https_owner")?, 12004),
+        with_server_port(load_client_config("test/auth_https_owner")?, 12004),
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -242,19 +239,19 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     let mut config = with_db(load_server_config(https_config)?);
     config.http.api_token_id = Some(api_token_id.clone());
     let ctx =
-        start_temp_test_kms_server(config, load_client_config("test_auth_https_owner")?).await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+        start_temp_test_kms_server(config, load_client_config("test/auth_https_owner")?).await?;
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
     // Bad API token auth but JWT auth used at first
     info!("==> Testing server with bad API token auth but JWT auth used at first");
     let ctx = start_temp_test_kms_server(
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        load_client_config("test_auth_plain_jwt_owner")?,
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -264,10 +261,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     config.http.api_token_id = Some("my_bad_token_id".to_owned());
     let ctx = start_temp_test_kms_server(
         config,
-        load_client_config("test_auth_https_client_ca_owner")?,
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
@@ -280,10 +277,10 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     config.http.api_token_id = Some("my_bad_token_id".to_owned());
     let ctx = start_temp_test_kms_server(
         config,
-        load_client_config("test_auth_https_jwt_cert_owner")?,
+        load_client_config("test/auth_https_jwt_cert_owner")?,
     )
     .await?;
-    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 

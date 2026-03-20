@@ -1,9 +1,5 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::path::{Path, PathBuf};
 
-use assert_cmd::prelude::CommandCargoExt;
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_cli::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction,
@@ -26,16 +22,12 @@ use super::ExportKeyParams;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            cover_crypt::master_key_pair::create_cc_master_key_pair,
-            elliptic_curve::create_key_pair::create_ec_key_pair,
-            shared::export::export_key,
-            symmetric::create_key::create_symmetric_key,
-            utils::{extract_uids::extract_wrapping_key, recover_cmd_logs},
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        cover_crypt::master_key_pair::create_cc_master_key_pair,
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        shared::export::export_key,
+        symmetric::create_key::create_symmetric_key,
+        utils::{extract_uids::extract_wrapping_key, recover_cmd_logs},
     },
 };
 
@@ -50,7 +42,7 @@ pub(crate) fn wrap(
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -102,7 +94,7 @@ pub(crate) fn unwrap(
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -142,7 +134,7 @@ pub(crate) fn unwrap(
 pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

@@ -10,17 +10,14 @@ use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     error::result::CosmianResult,
-    tests::{
-        kms::shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
-        save_kms_cli_config,
-    },
+    tests::kms::shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
 };
 
 #[tokio::test]
 async fn test_import_export_encodings() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     test_pems(
         &owner_client_conf_path,

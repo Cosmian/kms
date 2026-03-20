@@ -90,16 +90,16 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
             config
         };
 
-    let https_jwt_config = "test_auth_https_jwt";
-    let https_client_ca_config = "test_auth_https_client_ca";
-    let https_config = "test_auth_https";
+    let https_jwt_config = "test/auth_https_jwt";
+    let https_client_ca_config = "test/auth_https_client_ca";
+    let https_config = "test/auth_https";
 
     // plaintext no auth — first server starts with a fresh DB
     info!("==> Testing server with no auth");
-    let mut config = with_db(load_server_config("test_auth_plain")?);
+    let mut config = with_db(load_server_config("test/auth_plain")?);
     config.db.clear_database = true;
     let ctx =
-        start_temp_test_kms_server(config, load_client_config("test_auth_plain_owner")?).await?;
+        start_temp_test_kms_server(config, load_client_config("test/auth_plain_owner")?).await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
     let (api_token_id, api_token) = create_api_token(&ctx).await?;
     ctx.stop_server().await?;
@@ -107,8 +107,8 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // plaintext JWT token auth
     run_auth_scenario(
         "Testing server with JWT token over HTTP",
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        load_client_config("test_auth_plain_jwt_owner")?,
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
@@ -117,7 +117,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     run_auth_scenario(
         "Testing server with JWT token auth over HTTPS",
         with_db(load_server_config(https_jwt_config)?),
-        load_client_config("test_auth_https_jwt_cert_owner")?,
+        load_client_config("test/auth_https_jwt_cert_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
@@ -126,7 +126,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     info!("==> Testing server with Client Certificate auth");
     let ctx = start_temp_test_kms_server(
         with_db(load_server_config(https_client_ca_config)?),
-        load_client_config("test_auth_https_client_ca_owner")?,
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
@@ -136,7 +136,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     run_auth_scenario(
         "Testing server with both Client Certificates and JWT auth - User sends JWT token only",
         with_db(load_server_config(https_jwt_config)?),
-        load_client_config("test_auth_https_jwt_owner")?,
+        load_client_config("test/auth_https_jwt_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
@@ -144,7 +144,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // SCENARIO 2: Both Client Certificates and API token — user presents API token only
     let mut config = with_db(load_server_config(https_client_ca_config)?);
     config.http.api_token_id = Some(api_token_id.clone());
-    let mut client_s2 = load_client_config("test_auth_https_client_ca_owner")?;
+    let mut client_s2 = load_client_config("test/auth_https_client_ca_owner")?;
     client_s2.http_config.access_token = Some(api_token.clone());
     run_auth_scenario(
         "Testing server with both Client Certificates and API token auth - API token only",
@@ -157,7 +157,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // SCENARIO 3: Both JWT and API token — user presents API token only
     let mut config = with_db(load_server_config(https_config)?);
     config.http.api_token_id = Some(api_token_id.clone());
-    let mut client_s3 = load_client_config("test_auth_https_owner")?;
+    let mut client_s3 = load_client_config("test/auth_https_owner")?;
     client_s3.http_config.access_token = Some(api_token.clone());
     run_auth_scenario(
         "Testing server with both JWT and API token auth - User sends the API token only",
@@ -171,8 +171,8 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     // Plain owner client (no JWT) connects to the JWT server — should be rejected.
     run_auth_scenario(
         "Testing server with JWT auth - User does not send the token (should fail)",
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        with_server_port(load_client_config("test_auth_plain_owner")?, 12002),
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        with_server_port(load_client_config("test/auth_plain_owner")?, 12002),
         ScenarioOutcome::ShouldFail,
     )
     .await?;
@@ -182,7 +182,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     run_auth_scenario(
         "Testing server with Client Certificate auth - missing certificate (should fail)",
         with_db(load_server_config(https_client_ca_config)?),
-        with_server_port(load_client_config("test_auth_https_owner")?, 12004),
+        with_server_port(load_client_config("test/auth_https_owner")?, 12004),
         ScenarioOutcome::ShouldFail,
     )
     .await?;
@@ -193,15 +193,15 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     run_auth_scenario(
         "Testing server with API token auth - missing token (should fail)",
         config,
-        load_client_config("test_auth_https_owner")?,
+        load_client_config("test/auth_https_owner")?,
         ScenarioOutcome::ShouldFail,
     )
     .await?;
 
     // Bad API token auth but JWT auth used at first (should succeed)
     let ctx = start_temp_test_kms_server(
-        with_db(load_server_config("test_auth_plain_jwt")?),
-        load_client_config("test_auth_plain_jwt_owner")?,
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
@@ -212,7 +212,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     config.http.api_token_id = Some("my_bad_token_id".to_owned());
     let ctx = start_temp_test_kms_server(
         config,
-        load_client_config("test_auth_https_client_ca_owner")?,
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
@@ -223,7 +223,7 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
     config.http.api_token_id = Some("my_bad_token_id".to_owned());
     let ctx = start_temp_test_kms_server(
         config,
-        load_client_config("test_auth_https_jwt_cert_owner")?,
+        load_client_config("test/auth_https_jwt_cert_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
@@ -250,8 +250,8 @@ async fn test_tls_options() -> KmsCliResult<()> {
     //   rustls on non-fips builds). Some expectations differ on macOS:
     //   gated with cfg!(target_os = "macos") below.
 
-    let https_config_name = "test_auth_https";
-    let https_client_ca_config_name = "test_auth_https_client_ca";
+    let https_config_name = "test/auth_https";
+    let https_client_ca_config_name = "test/auth_https_client_ca";
 
     // (description, config_name, server_cipher, client_cipher, should_succeed)
     #[allow(clippy::type_complexity)]
@@ -332,11 +332,11 @@ async fn test_tls_options() -> KmsCliResult<()> {
         config.tls.tls_cipher_suites = server_cipher.map(str::to_owned);
         let mut client_config = if config_name == https_client_ca_config_name {
             with_server_port(
-                load_client_config("test_auth_https_client_ca_owner")?,
+                load_client_config("test/auth_https_client_ca_owner")?,
                 tls_port,
             )
         } else {
-            with_server_port(load_client_config("test_auth_https_owner")?, tls_port)
+            with_server_port(load_client_config("test/auth_https_owner")?, tls_port)
         };
         client_config.http_config.cipher_suites = client_cipher.map(str::to_owned);
 

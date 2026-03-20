@@ -1,19 +1,12 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::utils::{
-            extract_uids::{extract_private_key, extract_public_key},
-            recover_cmd_logs,
-        },
-        save_kms_cli_config,
+    tests::kms::utils::{
+        extract_uids::{extract_private_key, extract_public_key},
+        recover_cmd_logs,
     },
 };
 
@@ -23,7 +16,7 @@ pub(crate) fn create_ec_key_pair(
     tags: &[&str],
     sensitive: bool,
 ) -> CosmianResult<(String, String)> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["keys", "create", "--curve", curve];
@@ -64,7 +57,7 @@ pub(crate) fn create_ec_key_pair(
 pub(crate) async fn test_create_key_pair() -> CosmianResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     create_ec_key_pair(
         &owner_client_conf_path,

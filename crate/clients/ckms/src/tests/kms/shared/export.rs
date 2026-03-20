@@ -1,8 +1,6 @@
 #[cfg(feature = "non-fips")]
 use std::path::Path;
-use std::process::Command;
 
-use assert_cmd::prelude::*;
 use clap::ValueEnum;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli::reexport::cosmian_kms_client::{
@@ -35,11 +33,7 @@ use crate::tests::kms::cover_crypt::{
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs},
 };
 #[cfg(feature = "non-fips")]
 use crate::{
@@ -109,7 +103,7 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CosmianResult<()> {
         args.push(name);
     }
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, params.cli_conf_path);
     // Ensure sufficient stack for the child process on Windows
     cmd.env("RUST_MIN_STACK", "16777216");
@@ -131,7 +125,7 @@ pub(crate) async fn test_export_sym() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
@@ -194,7 +188,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
@@ -221,7 +215,7 @@ pub(crate) async fn test_export_wrapped() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a symmetric key
     let (private_key_id, _public_key_id) =
@@ -385,7 +379,7 @@ pub(crate) async fn test_export_covercrypt() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -434,7 +428,7 @@ pub(crate) async fn test_export_error_cover_crypt() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // key does not exist
     export_key(ExportKeyParams {
@@ -481,7 +475,7 @@ pub(crate) async fn test_export_x25519() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -611,7 +605,7 @@ pub(crate) async fn test_sensitive_sym() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a symmetric key
     let key_id = create_symmetric_key(
@@ -645,7 +639,7 @@ pub(crate) async fn test_sensitive_ec_key() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate an ec key pair
     let (private_key_id, public_key_id) =
@@ -686,7 +680,7 @@ pub(crate) async fn test_sensitive_rsa_key() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate an ec key pair
     let (private_key_id, public_key_id) = create_rsa_key_pair(
@@ -732,7 +726,7 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

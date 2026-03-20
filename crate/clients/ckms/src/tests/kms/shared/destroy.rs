@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_cli::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction,
     reexport::cosmian_kms_client::{
@@ -23,14 +20,10 @@ use crate::{
     cli_bail,
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            shared::{ExportKeyParams, export::export_key, revoke::revoke},
-            symmetric::create_key::create_symmetric_key,
-            utils::recover_cmd_logs,
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        shared::{ExportKeyParams, export::export_key, revoke::revoke},
+        symmetric::create_key::create_symmetric_key,
+        utils::recover_cmd_logs,
     },
 };
 
@@ -47,7 +40,7 @@ pub(crate) fn destroy(
     if remove {
         args.push("--remove".to_owned());
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg(sub_command).args(args);
@@ -108,7 +101,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str, _remove: bool) -> Cosmian
 async fn test_destroy_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // syn
     let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
@@ -128,7 +121,7 @@ async fn test_destroy_symmetric_key() -> CosmianResult<()> {
 async fn test_destroy_and_remove_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // syn
     let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
@@ -149,7 +142,7 @@ async fn test_destroy_and_remove_symmetric_key() -> CosmianResult<()> {
 async fn test_destroy_ec_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // destroy via private key
     {
@@ -212,7 +205,7 @@ async fn test_destroy_ec_key() -> CosmianResult<()> {
 async fn test_destroy_and_remove_ec_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // destroy via private key
     {
@@ -275,7 +268,7 @@ async fn test_destroy_and_remove_ec_key() -> CosmianResult<()> {
 async fn test_destroy_cover_crypt() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // check revocation of all keys when the private key is destroyed
     {
