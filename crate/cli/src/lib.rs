@@ -7,6 +7,7 @@ pub mod reexport {
     pub use cosmian_kms_crypto;
 }
 
+// Clippy lints that are allowed in tests
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -18,7 +19,7 @@ pub mod reexport {
     clippy::str_to_string,
     clippy::large_stack_frames,
     clippy::ignore_without_reason,
-    dead_code,
-    clippy::unwrap_in_result
+    clippy::unwrap_in_result,
+    clippy::as_conversions
 )]
 mod tests;

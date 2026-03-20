@@ -171,6 +171,15 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "aws",
+        label: "AWS",
+        collapsedlabel: "AWS",
+        children: [
+            { key: "aws/import-kek", label: "Import KEK" },
+            { key: "aws/export-key-material", label: "Export key material" },
+        ],
+    },
+    {
         key: "google-cse",
         label: "Google CSE",
         collapsedlabel: "CSE",

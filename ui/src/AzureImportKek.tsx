@@ -6,6 +6,7 @@ import { FormUpload } from "./FormUpload";
 import { azureKekKeyUsage, azureKekTags } from "./azureKek";
 import { sendKmipRequest } from "./utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "./wasm/pkg";
+import ExternalLink from "./components/ExternalLink";
 
 interface ImportAzureKekFormData {
     kekFile: Uint8Array;
@@ -74,14 +75,9 @@ const ImportAzureKekForm: React.FC = () => {
                 <p>The KEK should be exported from Azure in PKCS#8 PEM format.</p>
                 <p className="text-sm text-gray-600">
                     See:{" "}
-                    <a
-                        href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                    >
+                    <ExternalLink href="https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification#generate-kek">
                         Azure BYOK Specification - Generate KEK
-                    </a>
+                    </ExternalLink>
                 </p>
             </div>
 

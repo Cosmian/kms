@@ -75,8 +75,9 @@ nav:
   - Integrations:
       - API Endpoints: api.md
       - AWS:
-          - ECS Fargate: aws_fargate.md
-          - External Key Store (XKS): ./aws/xks.md
+          - ECS Fargate: aws/fargate.md
+          - External Key Store (XKS): aws/xks.md
+          - BYOK (Bring Your Own Key): aws/byok.md
       - Azure:
           - BYOK (Bring Your Own Key): azure/byok/byok.md
           - EKM (External Key Management): azure/ekm/ekm.md

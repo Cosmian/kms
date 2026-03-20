@@ -52,6 +52,8 @@ import SymmetricEncryptForm from "./SymmetricEncrypt";
 import { useBranding } from "./useBranding";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils";
 import init, * as wasmModule from "./wasm/pkg";
+import ImportAwsKekForm from "./AwsImportKek";
+import AwsExportKeyMaterialForm from "./AwsExportKeyMaterial";
 
 type AppContentProps = {
     isDarkMode: boolean;
@@ -235,6 +237,10 @@ const AppContent: React.FC<AppContentProps> = ({isDarkMode, setIsDarkMode}) => {
                         <Route path="azure">
                             <Route path="import-kek" element={<ImportAzureKekForm/>}/>
                             <Route path="export-byok" element={<ExportAzureBYOKForm/>}/>
+                        </Route>
+                        <Route path="aws">
+                            <Route path="import-kek" element={<ImportAwsKekForm />} />
+                            <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
                         <Route path="google-cse" element={<CseInfo/>}/>
                     </Route>

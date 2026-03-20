@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { getNoTTLVRequest, sendKmipRequest } from "./utils";
 import { export_ttlv_request } from "./wasm/pkg/cosmian_kms_client_wasm";
+import ExternalLink from "./components/ExternalLink";
 
 interface CseStatus {
     server_type: string;
@@ -95,14 +96,9 @@ const CseInfo: React.FC = () => {
                                 </p>
                                 <p>
                                     <strong>KACLS URL:</strong>{" "}
-                                    <a
-                                        href={cseStatus.kacls_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:text-blue-800"
-                                    >
+                                    <ExternalLink href={cseStatus.kacls_url} className="text-blue-600 hover:text-blue-800">
                                         {cseStatus.kacls_url}
-                                    </a>
+                                    </ExternalLink>
                                 </p>
                             </div>
                         </div>

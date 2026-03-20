@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+#### Support of AWS Bring Your Own Key (BYOK)
+
+- Introduce 2 CLI actions for AWS BYOK
+- Add scripts that automate the AWS BYOK flow, available to download with the documentation
+
 #### Oracle TDE HSM integration on Windows
 
 - New PowerShell scripts `test_oracle_tde.ps1` and `set_hsm.ps1` install `cosmian_pkcs11.dll`
@@ -37,7 +42,7 @@ Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
 #### Synology DSM NAS Volume Encryption Integration
 
 Cosmian KMS is now validated against Synology DSM 7.x KMIP-based volume
-encryption.  A Python simulation client (`scripts/synology_dsm_client.py`)
+encryption. A Python simulation client (`scripts/synology_dsm_client.py`)
 replays the exact KMIP operation sequence performed by DSM when it configures
 an external KMS server, and a corresponding CI job (`synology_dsm`) is added
 to the test matrix so regressions are caught automatically:
@@ -50,6 +55,7 @@ to the test matrix so regressions are caught automatically:
 
 ### 🐛 Bug Fixes
 
+- **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
@@ -71,6 +77,15 @@ to the test matrix so regressions are caught automatically:
   "This key is sensitive and cannot be exported from the HSM"; the unwrap is now performed
   server-side through the KMS crypto oracle so the HSM key material is never exported
   ([#762](https://github.com/Cosmian/kms/issues/762))
+- Fix AWS BYOK silent when exporting a previously wrapped key.
+
+### 🧪 Testing
+
+- Create integration tests for AWS KMS BYOK using OpenSSL to unwrap locally and mock the AWS infrastructure
+
+### 📚 Documentation
+
+- Documentation for AWS BYOK on docs.cosmian
 
 ## [5.17.0] - 2026-03-13
 
