@@ -25,6 +25,17 @@ const PROXY_URL: &str = "http://localhost:8888";
 const PROXY_USER: &str = "myuser";
 const PROXY_PASSWORD: &str = "mypwd";
 
+fn with_runtime_port(url: &str, port: u16) -> String {
+    if let Some(colon_pos) = url.rfind(':') {
+        let after = &url[colon_pos + 1..];
+        if after.bytes().all(|b| b.is_ascii_digit()) {
+            let base = &url[..colon_pos];
+            return format!("{base}:{port}");
+        }
+    }
+    url.to_owned()
+}
+
 /// Verify that `ckms server-version` succeeds when the connection to the KMS
 /// server is routed through an authenticated forward HTTP proxy.
 ///
@@ -51,8 +62,10 @@ pub(crate) async fn test_server_version_using_forward_proxy() {
 
     // In CI, KMS_URL is set to the machine's non-loopback IP so that Squid
     // forwards the connection (Squid skips proxying 127.0.0.1).
-    let kms_url = std::env::var("KMS_URL")
-        .unwrap_or_else(|_| format!("http://127.0.0.1:{}", ctx.server_port));
+    let kms_url = std::env::var("KMS_URL").map_or_else(
+        |_| format!("http://127.0.0.1:{}", ctx.server_port),
+        |url| with_runtime_port(&url, ctx.server_port),
+    );
 
     crate::tests::ckms_command()
         .env("KMS_DEFAULT_URL", &kms_url)

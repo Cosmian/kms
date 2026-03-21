@@ -190,5 +190,11 @@ RUN mkdir -p /usr/bin \
   # operations, so it is safe to hand off ownership here.
   && chown -R 1000:1000 /nix
 
+# Validate the HSM SoftHSM2 test workflow during image build.
+WORKDIR /tmp/kms-src
+COPY . /tmp/kms-src
+RUN WITH_HSM=1 bash .github/scripts/nix.sh --variant non-fips test hsm softhsm2
+RUN rm -rf /tmp/kms-src
+
 ENV WITH_HSM=1
 ENV SOFTHSM2_CONF=/home/dev/.config/softhsm2/softhsm2.conf
