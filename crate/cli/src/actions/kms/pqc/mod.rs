@@ -23,7 +23,7 @@ pub enum PqcCommands {
 impl PqcCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Keys(action) => action.process(kms_rest_client).await?,
+            Self::Keys(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
             Self::Sign(action) => action.run(kms_rest_client).await?,

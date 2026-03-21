@@ -1,4 +1,16 @@
 // no std imports needed at top-level
+use cosmian_kms_client::{
+    KmsClient,
+    kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
+    reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
+};
+use cosmian_logger::{log_init, trace};
+use serial_test::serial;
+use tempfile::TempDir;
+#[cfg(not(feature = "non-fips"))]
+use test_kms_server::start_default_test_kms_server_with_privileged_users;
+use test_kms_server::{init_test_logging, start_default_test_kms_server_with_cert_auth};
+
 #[cfg(not(feature = "non-fips"))]
 use crate::actions::kms::elliptic_curves::keys::create_key_pair::CreateKeyPairAction;
 #[cfg(not(feature = "non-fips"))]
@@ -17,17 +29,6 @@ use crate::{
     error::result::KmsCliResult,
     tests::kms::symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
 };
-use cosmian_kms_client::{
-    KmsClient,
-    kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
-    reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
-};
-use cosmian_logger::{log_init, trace};
-use serial_test::serial;
-use tempfile::TempDir;
-#[cfg(not(feature = "non-fips"))]
-use test_kms_server::start_default_test_kms_server_with_privileged_users;
-use test_kms_server::{init_test_logging, start_default_test_kms_server_with_cert_auth};
 
 /// Generates a symmetric key
 async fn gen_key(kms_client: &KmsClient) -> KmsCliResult<UniqueIdentifier> {

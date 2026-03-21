@@ -1,7 +1,8 @@
 #![allow(dead_code)] // some CI machines don't run these tests and hence might have unused code warnings
-use crate::tests::kms::xml::runner::run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic;
 use cosmian_kms_client::KmsClient;
 use serial_test::serial;
+
+use crate::tests::kms::xml::runner::run_single_xml_vector_with_server as run_single_xml_vector_with_server_generic;
 
 /// Run a single XML vector using the shared default test server (single sqlite path).
 /// `test_name` is used to namespace UID placeholder keys to avoid cross-test collisions.
