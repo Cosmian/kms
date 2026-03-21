@@ -8,9 +8,6 @@ on:
         required: true
         type: string
 
-env:
-  OPENSSL_DIR: /usr/local/openssl
-
 jobs:
   forward-proxy:
     runs-on: ubuntu-24.04
