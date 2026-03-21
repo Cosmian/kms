@@ -1,7 +1,9 @@
+/// <reference types="node" />
+
 import { Download, expect, Page } from "@playwright/test";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,7 +118,6 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         // Alternate bottom / top scrolls so all items are rendered by the virtual
         // list across two positions (covers lists of any length).
         let scrolledToBottom = false;
-    let scrollAttempt = 0;
 
         while (Date.now() < deadline && !clicked) {
             // Prefer AntD's visible option container (most reliable click target).
@@ -167,7 +168,7 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         // option was selected (virtual-list re-render race), close the dropdown
         // and retry the entire selection from the top of the outer loop.
         try {
-            await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 2_000 });
+            await expect(selectionItem).toHaveText(exactTextRe, { timeout: 2_000 });
             return; // Correct option confirmed – done.
         } catch {
             // Wrong option selected; close any open dropdown and retry.
@@ -177,7 +178,7 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
     }
 
     // Final check after all retries – surface a meaningful assertion error.
-    await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 5_000 });
+    await expect(selectionItem).toHaveText(exactTextRe, { timeout: 5_000 });
 }
 
 /**
@@ -249,7 +250,7 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
         // Verify the selection took effect. If the wrong option was selected
         // (virtual-list race), close the dropdown and retry.
         try {
-            await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 2_000 });
+            await expect(selectionItem).toHaveText(exactTextRe, { timeout: 2_000 });
             return;
         } catch {
             await page.keyboard.press("Escape");
@@ -257,7 +258,7 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
         }
     }
 
-    await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 5_000 });
+    await expect(selectionItem).toHaveText(exactTextRe, { timeout: 5_000 });
 }
 
 /**
