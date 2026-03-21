@@ -1,3 +1,10 @@
+use std::fs;
+
+use base64::Engine;
+use cosmian_kms_client::{ExportObjectParams, export_object};
+use tempfile::TempDir;
+use test_kms_server::start_default_test_kms_server;
+
 use crate::{
     actions::kms::{
         azure::byok::{ExportByokAction, ImportKekAction},
@@ -6,11 +13,6 @@ use crate::{
     error::{KmsCliError, result::KmsCliResult},
     tests::kms::shared::openssl_utils::{generate_rsa_keypair, rsa_aes_key_wrap_sha1_unwrap},
 };
-use base64::Engine;
-use cosmian_kms_client::{ExportObjectParams, export_object};
-use std::fs;
-use tempfile::TempDir;
-use test_kms_server::start_default_test_kms_server;
 
 #[tokio::test]
 async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {

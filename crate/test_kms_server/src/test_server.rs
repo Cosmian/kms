@@ -44,32 +44,6 @@ pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
-const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
-
-fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
-    if TcpListener::bind(("127.0.0.1", preferred_port)).is_ok() {
-        return Ok(preferred_port);
-    }
-
-    let fallback = TcpListener::bind(("127.0.0.1", 0)).map_err(|error| {
-        KmsClientError::UnexpectedError(format!(
-            "failed to allocate a fallback localhost port for test KMS server: {error}"
-        ))
-    })?;
-    let port = fallback
-        .local_addr()
-        .map_err(|error| {
-            KmsClientError::UnexpectedError(format!(
-                "failed to read fallback localhost port for test KMS server: {error}"
-            ))
-        })?
-        .port();
-    info!(
-        "Preferred test KMS port {preferred_port} is already in use; falling back to port {port}"
-    );
-    Ok(port)
-}
-
 #[inline]
 fn root_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -300,6 +274,51 @@ fn default_server_config_name() -> &'static str {
     }
 }
 
+/// Override the `[db]` section of a loaded [`ClapConfig`] when the `KMS_TEST_DB`
+/// environment variable is set to a non-SQLite backend.
+///
+/// This ensures that **all** test-server flavours (cert-auth, non-revocable, HSM,
+/// privileged-users, …) honour `KMS_TEST_DB`, not just the default server.
+fn apply_kms_test_db_override(config: &mut ClapConfig) {
+    let db_type = match env::var_os("KMS_TEST_DB")
+        .as_deref()
+        .and_then(|v| v.to_str())
+    {
+        Some(v) => v.to_owned(),
+        None => return,
+    };
+    match db_type.as_str() {
+        "postgresql" => {
+            let url = option_env!("KMS_POSTGRES_URL")
+                .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+                .to_owned();
+            config.db.database_type = Some("postgresql".to_owned());
+            config.db.database_url = Some(url);
+            config.db.clear_database = false;
+        }
+        "mysql" => {
+            let url = option_env!("KMS_MYSQL_URL")
+                .unwrap_or("mysql://kms:kms@localhost:3306/kms")
+                .to_owned();
+            config.db.database_type = Some("mysql".to_owned());
+            config.db.database_url = Some(url);
+            config.db.clear_database = false;
+        }
+        #[cfg(feature = "non-fips")]
+        "redis-findex" => {
+            let url = env::var("REDIS_HOST").map_or_else(
+                |_| "redis://localhost:6379".to_owned(),
+                |host| format!("redis://{host}:6379"),
+            );
+            config.db.database_type = Some("redis-findex".to_owned());
+            config.db.database_url = Some(url);
+            config.db.clear_database = true;
+            config.db.redis_master_password = Some("password".to_owned());
+        }
+        _ => {} // keep whatever the TOML file had (SQLite)
+    }
+}
+
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication
 /// # Panics
@@ -357,7 +376,8 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let config = load_server_config("test/cert_auth")?;
+            let mut config = load_server_config("test/cert_auth")?;
+            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
                     "Failed to build ServerParams from cert-auth config: {e}"
@@ -383,6 +403,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
         .get_or_try_init(|| async move {
             let mut config = load_server_config("test/non_revocable")?;
             config.non_revocable_key_id = non_revocable_key_id;
+            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
                     "Failed to build ServerParams from test/non_revocable.toml: {e}"
@@ -403,7 +424,8 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     trace!("Starting test server with Utimaco HSM");
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            let config = load_server_config("test/hsm")?;
+            let mut config = load_server_config("test/hsm")?;
+            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
                     "Failed to build ServerParams from test/hsm.toml: {e}"
@@ -516,7 +538,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     Ok((workspace_dir, kek_id.to_owned()))
 }
 
-async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsClientError> {
+async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError> {
     let (workspace_dir, kek_id) = create_kek_in_db().await?;
     trace!(
         "Key encryption key created: {kek_id} in workspace {}",
@@ -552,8 +574,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_KEK
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
-            let server_params = create_server_params_with_kek(port).await.unwrap();
+            let server_params = create_server_params_with_kek().await.unwrap();
 
             start_from_server_params(server_params, Some("test/kek")).await
         })
@@ -575,6 +596,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         .get_or_try_init(|| async move {
             let mut config = load_server_config("test/privileged_users")?;
             config.privileged_users = Some(privileged_users);
+            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
                     "Failed to build ServerParams from privileged-users config: {e}"

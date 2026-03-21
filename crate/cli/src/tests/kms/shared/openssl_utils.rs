@@ -2,12 +2,14 @@
 //! for testing purposes. Using OpenSSL avoids using vendor-specific SDKs in tests
 //! and keeps the tests independent from KMS key generation/export actions.
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
-use openssl::cipher::{Cipher, CipherRef};
-use openssl::cipher_ctx::CipherCtx;
-use openssl::encrypt::Decrypter;
-use openssl::hash::MessageDigest;
-use openssl::pkey::{PKey, Private, Public};
-use openssl::rsa::{Padding, Rsa};
+use openssl::{
+    cipher::{Cipher, CipherRef},
+    cipher_ctx::CipherCtx,
+    encrypt::Decrypter,
+    hash::MessageDigest,
+    pkey::{PKey, Private, Public},
+    rsa::{Padding, Rsa},
+};
 use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
 
 use crate::error::{KmsCliError, result::KmsCliResult};

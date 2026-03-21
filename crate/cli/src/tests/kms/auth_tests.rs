@@ -1,7 +1,8 @@
+use std::path::PathBuf;
+
 use base64::Engine;
 use cosmian_kms_client::{KmsClientConfig, read_object_from_json_ttlv_file};
 use cosmian_logger::{error, info, trace};
-use std::path::PathBuf;
 use tempfile::TempDir;
 use test_kms_server::{
     TestsContext, init_test_logging, load_client_config, load_server_config,
