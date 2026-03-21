@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [5.x.x] - 2026-03-x
+
+- Microsoft SQL Server External Key Management (EKM) is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
+
+### 🚀 Features
+
 ## [5.18.0] - 2026-04-XX
 
 ### 🚀 Features

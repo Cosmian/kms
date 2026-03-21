@@ -11,13 +11,15 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 The **Cosmian KMS** presents some unique features, such as:
 
-- large-scale encryption and decryption of data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- large-scale encryption, decryption of data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
+- support for signature at scale, including the Bitcoin curve secp256k1 (non-FIPS mode)
 - the ability to confidentially run in a public cloud, or any zero-trust environment, using Cosmian VM. See our cloud-ready confidential KMS on the [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
 - support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
 - out-of-the-box support of [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
 - out-of-the-box support of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
 - out-of-the-box support of [AWS External Key Store (XKS) v2](./documentation/docs/aws/xks.md) — Cosmian KMS acts as an XKS proxy; key material never enters AWS
 - out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
+- out-of-the-box support of [Microsoft SQL Server External (EKM)](./documentation/docs/ms_sql_server.md) — Cosmian KMS acts as a SQL Server EKM provider backend over mutual TLS
 - support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
 - [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
 - [Synology DSM](./documentation/docs/synology_dsm.md) NAS volume encryption via KMIP
@@ -106,7 +108,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Application‑level encryption at scale (files, objects, datasets) with centralized key lifecycle.
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
-- Enterprise integrations: Google Workspace CSE, Microsoft DKE, AWS XKS v2, and Azure EKM.
+- Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
 - PKI operations: issue, sign, validate, and automate certificate lifecycles.
 
@@ -641,10 +643,11 @@ Prerequisites (manual):
 1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
 2. Install OpenSSL 3.6.0 with vcpkg:
 
+In this project root directory, run:
+
 ```powershell
 vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64
-vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+$env:OPENSSL_DIR=(Get-Item .).FullName+"\vcpkg_installed\vcpkg\pkgs\openssl_x64-windows-static"
 ```
 
 For FIPS builds (to build fips.dll):

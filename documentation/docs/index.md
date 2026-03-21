@@ -44,6 +44,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [Oracle Database TDE](../kms_clients/pkcs11/oracle/tde.md),
     - [MongoDB](./mongodb.md),
     - [Mysql Enterprise](./mysql.md)
+    - [Microsoft SQL Server External (EKM)](./ms_sql_server.md)
     - [PostgreSQL](./percona.md)
     - and more
 - **Big Data encryption**:
