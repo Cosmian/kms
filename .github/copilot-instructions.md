@@ -1,179 +1,347 @@
-# Cosmian KMS — AI Agent Guide
+# Cosmian KMS — AI Agent Instructions
 
-Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust.
-It implements KMIP 2.1 over HTTP/TLS and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
+> **Purpose of this file**: This is the single source of truth for any AI agent
+> (Copilot, Cursor, Cline, etc.) working on the Cosmian KMS codebase. It
+> explains project structure, build commands, CI workflows, coding conventions,
+> and troubleshooting steps so the agent can act autonomously and correctly.
 
-## Build & Test cheatsheet
+Cosmian KMS is a high-performance, open-source **FIPS 140-3** compliant Key
+Management System written in **Rust**. It implements **KMIP 2.1** over HTTP/TLS
+and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
+
+---
+
+## 1. Build & test cheatsheet
 
 ```bash
-# Build (FIPS mode is the default)
-cargo build
-cargo build --features non-fips   # non-FIPS: extra algorithms, legacy provider, PQC
+# ── Build ────────────────────────────────────────────────────────────────
+cargo build                          # FIPS mode (default)
+cargo build --features non-fips      # non-FIPS: extra algorithms, PQC, Covercrypt
 
-# Test
-cargo test-fips                    # alias: test --lib --workspace
-cargo test-non-fips                # alias: test --lib --workspace --features non-fips
-cargo test -p cosmian_kms_server   # single package
+# ── Test (cargo aliases defined in .cargo/config.toml) ───────────────────
+cargo test-fips                      # test --lib --workspace
+cargo test-non-fips                  # test --lib --workspace --features non-fips
+cargo test -p cosmian_kms_server     # single crate
 cargo test -p cosmian_kms_cli
 
-# Lint
-cargo clippy-all                   # alias: clippy --workspace --all-targets --all-features -- -D warnings
-cargo format                       # alias: fmt --all -- --check
+# ── Lint ─────────────────────────────────────────────────────────────────
+cargo clippy-all                     # clippy --workspace --all-targets --all-features -- -D warnings
+cargo format                         # fmt --all -- --check
 
-# Run
+# ── Run locally ──────────────────────────────────────────────────────────
 cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
 
-# Probe (expect a KMIP validation error, not a 404)
+# ── Smoke-test (expect 422, not 404) ────────────────────────────────────
 curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1
 ```
 
-DB test environment variables (start backends with `docker compose up -d`):
+### Cargo aliases (`.cargo/config.toml`)
 
-- `KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms`
-- `KMS_MYSQL_URL=mysql://kms:kms@localhost:3306/kms`
-- `KMS_SQLITE_PATH=data/shared`
+| Alias | Expands to |
+|---|---|
+| `format` | `fmt --all -- --check` |
+| `build-all` | `build --workspace --all-targets --all-features --bins` |
+| `test-fips` | `test --lib --workspace` |
+| `test-non-fips` | `test --lib --workspace --features non-fips` |
+| `clippy-all` | `clippy --workspace --all-targets --all-features -- -D warnings` |
 
-Notes:
+### Database test environment
 
-- MySQL tests are currently disabled in CI
-- Redis-findex tests are skipped in FIPS mode
+Start backends with `docker compose up -d`, then set:
 
-## Workspace layout
+| Variable | Value |
+|---|---|
+| `KMS_POSTGRES_URL` | `postgresql://kms:kms@127.0.0.1:5432/kms` |
+| `KMS_MYSQL_URL` | `mysql://kms:kms@localhost:3306/kms` |
+| `KMS_SQLITE_PATH` | `data/shared` |
+
+> MySQL tests are currently disabled in CI.
+> Redis-findex tests are skipped in FIPS mode.
+
+---
+
+## 2. Workspace layout
 
 ```text
 crate/
-  access/           cosmian_kms_access        — access-control utilities
+  access/           cosmian_kms_access         — access-control utilities
   cli/              cosmian_kms_cli            — CLI client binary
   clients/
-    ckms/           ckms                       — CLI command tree
+    ckms/           ckms                       — CLI command tree (subcommands live here)
     pkcs11/                                    — PKCS#11 client
   client_utils/     cosmian_kms_client_utils   — shared client helpers
-  crypto/           cosmian_kms_crypto         — crypto primitives, build.rs (builds OpenSSL 3.6.0)
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
   hsm/              HSM PKCS#11 loaders (softhsm2, utimaco, proteccio, crypt2pay, smartcardhsm)
   interfaces/       cosmian_kms_interfaces     — Database/HSM traits
-  kmip/             cosmian_kmip               — KMIP 0 & 2.1 protocol types
-  kmip-derive/      kmip-derive                — proc-macros for KMIP
+  kmip/             cosmian_kmip               — KMIP 2.1 protocol types
+  kmip-derive/      kmip-derive                — proc-macros for KMIP serialisation
   kms_client/       cosmian_kms_client         — HTTP client library
   server/           cosmian_kms_server         — server binary + lib (main codebase)
   server_database/  cosmian_kms_server_database — DB backends (SQLite, PostgreSQL, Redis-findex)
   test_kms_server/  test_kms_server            — in-process test server helper
-  wasm/             cosmian_kms_client_wasm    — WASM client
+  wasm/             cosmian_kms_client_wasm    — WASM client for the web UI
 
-.github/            CI workflows and scripts
+.github/            CI workflows (.github/workflows/) and helper scripts (.github/scripts/)
 documentation/      MkDocs documentation source
-nix/                Nix build expressions and expected hashes
+nix/                Nix build expressions and expected vendor hashes
 pkg/                deb/rpm service files and configs
 resources/          Server config templates
-test_data/          Test fixtures
-ui/                 Web UI (FIPS flavour)
-ui_non_fips/        Web UI (non-FIPS flavour)
+test_data/          Test fixtures (submodule)
+ui/                 Web UI source (React + Vite + Playwright E2E tests)
+ui_non_fips/        Pre-built non-FIPS web UI bundle (committed)
 ```
 
-## KMIP request flow
+---
+
+## 3. KMIP request flow
 
 ```text
 HTTP client
-  |
-  v
-crate/server/src/routes/kmip.rs               — Actix-web handler, deserializes TTLV
-  |
-  v
-crate/server/src/core/operations/dispatch.rs  — matches TTLV tag -> operation function
-  |
-  v
+  │
+  ▼
+crate/server/src/routes/kmip.rs               — Actix-web handler, deserialises TTLV
+  │
+  ▼
+crate/server/src/core/operations/dispatch.rs  — matches TTLV tag → operation function
+  │
+  ▼
 crate/server/src/core/operations/<op>.rs      — one file per KMIP operation (41 total)
-  |
-  v
+  │
+  ▼
 crate/server/src/core/kms/mod.rs              — KMS struct (params, database, crypto_oracles, HSM)
-  |
-  +-- crate/server_database/                  — object & permission stores
-  +-- crate/crypto/                           — cryptographic primitives
+  │
+  ├── crate/server_database/                  — object & permission stores
+  └── crate/crypto/                           — cryptographic primitives
 ```
 
-Enterprise routes also handled:
+Enterprise routes:
 
 - `crate/server/src/routes/aws_xks/`   — AWS XKS
 - `crate/server/src/routes/azure_ekm/` — Azure EKM
 - `crate/server/src/routes/google_cse/` — Google CSE
 - `crate/server/src/routes/ms_dke/`    — Microsoft DKE
 
-## Key file map
+---
 
-| Intent | File |
+## 4. Key file map
+
+When you need to change something, start here:
+
+| Intent | File(s) |
 |---|---|
 | Add/change a KMIP operation | `crate/server/src/core/operations/<operation>.rs` |
-| KMIP operation dispatcher   | `crate/server/src/core/operations/dispatch.rs` |
-| KMS struct definition       | `crate/server/src/core/kms/mod.rs` |
-| Server config & CLI flags   | `crate/server/src/config/` |
-| Server startup sequence     | `crate/server/src/start_kms_server.rs` |
-| OpenSSL provider init       | `crate/server/src/openssl_providers.rs` |
-| HTTP routes                 | `crate/server/src/routes/` |
+| KMIP operation dispatcher | `crate/server/src/core/operations/dispatch.rs` |
+| KMS struct definition | `crate/server/src/core/kms/mod.rs` |
+| Server config & CLI flags | `crate/server/src/config/` |
+| Server startup | `crate/server/src/start_kms_server.rs` |
+| OpenSSL provider init | `crate/server/src/openssl_providers.rs` |
+| HTTP routes | `crate/server/src/routes/` |
 | Middlewares (auth, logging) | `crate/server/src/middlewares/` |
-| KMIP protocol types         | `crate/kmip/src/` |
-| Crypto primitives           | `crate/crypto/src/` |
-| OpenSSL build script        | `crate/crypto/build.rs` |
-| DB backend implementations  | `crate/server_database/src/` |
-| CLI commands                | `crate/clients/ckms/src/` |
+| KMIP protocol types | `crate/kmip/src/` |
+| Crypto primitives | `crate/crypto/src/` |
+| OpenSSL build script | `crate/crypto/build.rs` |
+| DB backend implementations | `crate/server_database/src/` |
+| CLI commands | `crate/clients/ckms/src/` |
+| WASM bindings | `crate/wasm/src/` |
+| Web UI source | `ui/src/` |
+| E2E tests (Playwright) | `ui/tests/e2e/` |
+| E2E test helpers | `ui/tests/e2e/helpers.ts` |
 
-## Feature flags
+---
+
+## 5. Feature flags
 
 | Flag | Default | Effect |
 |---|---|---|
 | *(none / fips)* | **on** | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider |
-| `non-fips`      | off     | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
+| `non-fips` | off | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
 
 Use `--features non-fips` to enable all non-approved algorithms.
 
-## OpenSSL handling
+---
 
-**There is no external OpenSSL prerequisite.** OpenSSL 3.6.0 is downloaded, SHA256-verified, and
-built from source by `crate/crypto/build.rs` into `target/` on first build. Subsequent builds use
-the cache. You do not need to install OpenSSL manually.
+## 6. OpenSSL handling
 
-At runtime, `crate/server/src/openssl_providers.rs` initializes the correct OpenSSL provider:
+**No external OpenSSL needed.** OpenSSL 3.6.0 is downloaded, SHA-256-verified,
+and built from source by `crate/crypto/build.rs` into `target/` on first build.
+Subsequent builds use the cached artefact.
 
-- FIPS mode: loads the FIPS provider once via `OnceLock`.
-- non-FIPS mode: loads the legacy provider on top of the default provider.
+At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:
 
-The helper `apply_openssl_dir_env_if_needed()` sets `OPENSSL_MODULES` and `OPENSSL_CONF` in the
-process environment before any `Provider::try_load()` call — critical so OpenSSL can locate
-`legacy.so` and `fips.so` from the build tree.
+- **FIPS**: loads the FIPS provider once via `OnceLock`.
+- **non-FIPS**: loads the legacy provider on top of the default provider.
 
-## Nix packaging
+`apply_openssl_dir_env_if_needed()` sets `OPENSSL_MODULES` and `OPENSSL_CONF` in
+the process environment **before** any `Provider::try_load()` call — critical so
+OpenSSL can locate `legacy.so` / `fips.so` from the build tree.
 
-Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-hashes/`.
-After updating the package version or `Cargo.lock`, regenerate the vendor hashes:
+---
 
-```bash
-# Fake-hash trick: put a wrong hash to get the correct hash from the error output
-echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
-  > nix/expected-hashes/server.vendor.dynamic.sha256
+## 7. CI overview
 
-# Trigger the build — it will fail and print the correct hash to copy back
-.github/scripts/nix.sh --variant non-fips --link dynamic 2>&1 | grep "got:"
-```
+### Entry point
 
-Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
-
-## GitHub issues and pull requests
-
-Read issues and PRs using `gh` without a pager:
+All CI runs go through **Nix** via a single script:
 
 ```bash
-gh issue view <number> --repo Cosmian/kms
-gh pr view <number> --repo Cosmian/kms
+bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] COMMAND [args]
 ```
 
-## Coding rules
+### Test types (`nix.sh test <type>`)
 
-- Keep functions under 100 lines; refactor larger ones.
-- Rust imports must always be at the top of each file.
-- Do not ignore or skip errors in tests or package builds — investigate and fix.
-- Update `CHANGELOG.md` for every user-visible change (follow the existing entry format).
+| Type | FIPS? | Script | Notes |
+|---|---|---|---|
+| `sqlite` | yes | `test_sqlite.sh` | Default DB backend |
+| `psql` | yes | `test_psql.sh` | Requires PostgreSQL |
+| `mysql` | yes | `test_mysql.sh` | Disabled in CI |
+| `percona` | yes | `test_percona.sh` | Percona XtraDB |
+| `mariadb` | yes | `test_maria.sh` | MariaDB |
+| `wasm` | yes | `test_wasm.sh` | WASM package build + tests |
+| `google_cse` | yes | `test_google_cse.sh` | Requires OAuth creds |
+| `gcp_cmek` | yes | `test_gcp_cmek.sh` | GCP CMEK wrapping |
+| `otel_export` | yes | `test_otel_export.sh` | OpenTelemetry metrics |
+| `hsm [backend]` | yes | `test_hsm_*.sh` | softhsm2 / utimaco / proteccio / all |
+| `redis` | **no** | `test_redis.sh` | Redis-findex (non-FIPS only) |
+| `pykmip` | **no** | `test_pykmip.sh` | PyKMIP + Synology DSM |
+| `aws_xks` | **no** | `aws_xks_test.sh` | AWS XKS |
+| `azure_ekm` | **no** | `azure_ekm_test.sh` | Azure EKM |
+| `ui` | **no** | `test_ui.sh` | Playwright E2E (see §8) |
 
-## Debugging
+### Package types (`nix.sh package [type]`)
 
-Run the server with maximum logging when investigating issues:
+`deb`, `rpm`, `dmg` — or omit the type to build all packages for the current platform.
+
+### Docker (`nix.sh docker`)
+
+```bash
+bash .github/scripts/nix.sh docker --variant non-fips --load --test
+```
+
+### Workflow files
+
+| Workflow | Purpose |
+|---|---|
+| `main.yml` → `main_base.yml` | Push/PR trigger; runs clippy, cargo-deny, cargo-test, test_all, docs |
+| `test_all.yml` | Nix-based test matrix: 15 types × 2 variants + HSM matrix |
+| `packaging.yml` | Multi-platform packaging (Linux/ARM/macOS), GPG-signed |
+| `packaging-docker.yml` | Docker image builds (fips + non-fips) |
+| `test_windows.yml` | Windows-only build + test |
+| `build_windows.yml` | Windows server + UI builder |
+
+---
+
+## 8. Web UI & Playwright E2E tests
+
+**Stack**: React 19 + Vite 7 + Ant Design 5 + Tailwind CSS 4 + Playwright + pnpm
+
+### Running UI tests
+
+```bash
+# Full end-to-end (builds WASM, UI, starts KMS + Vite, runs Playwright):
+bash .github/scripts/nix.sh --variant non-fips test ui
+
+# Alternative: manually from ui/ after building WASM + UI:
+cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
+```
+
+### E2E test flow (`test_ui.sh`)
+
+1. Build WASM: `wasm-pack build --target web --features non-fips`
+2. Copy `crate/wasm/pkg/` → `ui/src/wasm/pkg/`
+3. Install deps: `pnpm install --frozen-lockfile`
+4. Build UI: `VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build` (runs `tsc -b && vite build`)
+5. Install Playwright browser: `pnpm exec playwright install chromium`
+6. Start KMS server on port 9998 (SQLite, non-fips features)
+7. Start Vite preview on port 5173
+8. Run Playwright: `PLAYWRIGHT_WORKERS=10 pnpm run test:e2e`
+9. Parse KMS server logs for ERROR/WARN and report
+
+### Key UI test files
+
+- `ui/playwright.config.ts` — Playwright config (workers, retries, base URL)
+- `ui/tests/e2e/helpers.ts` — shared test helpers (navigation, form submission, Ant Design select interactions)
+- `ui/tests/e2e/*.spec.ts` — test specs grouped by feature
+- `ui/tsconfig.node.json` — TypeScript config for Playwright / Vite config files
+- `ui/tsconfig.app.json` — TypeScript config for the React app (`noUnusedLocals: true`, `strict: true`)
+
+### UI test conventions
+
+- Use `data-testid` attributes to locate elements (e.g. `[data-testid="submit-btn"]`).
+- Ant Design `<Select>` portals render in `document.body`; use the helpers in `helpers.ts` to interact with them.
+- Use regex-based assertions (not `{ exact: true }`) with `toHaveText()` — Playwright's `toHaveText` does not support an `exact` option.
+- E2E timeouts are generous (60 s for responses) because CI runs 10 parallel workers against one KMS server.
+
+---
+
+## 9. GitHub CLI — reading issues, PRs, and CI failures
+
+**Always use `GH_PAGER=cat`** to prevent `gh` from spawning an interactive pager
+(which hangs in non-interactive terminal sessions):
+
+```bash
+# View an issue
+GH_PAGER=cat gh issue view <number> --repo Cosmian/kms
+
+# View a pull request (description, status checks, review state)
+GH_PAGER=cat gh pr view <number> --repo Cosmian/kms
+
+# View PR diff
+GH_PAGER=cat gh pr diff <number> --repo Cosmian/kms
+
+# List recent PR checks / CI status
+GH_PAGER=cat gh pr checks <number> --repo Cosmian/kms
+
+# View a specific CI run's logs (find run ID from `gh pr checks` output)
+GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
+
+# List recent workflow runs
+GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
+
+# Read CI failure logs for a specific job
+GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
+```
+
+### Investigating a CI failure — step by step
+
+1. **Get the failing checks**: `GH_PAGER=cat gh pr checks <pr-number> --repo Cosmian/kms`
+2. **Find the failed run ID** from the output (look for ✗ / fail status).
+3. **Read failed logs**: `GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed`
+4. **Identify the root cause** in the log output (compiler error, test assertion, timeout, etc.).
+5. **Reproduce locally** using the matching `nix.sh` command, e.g.:
+   `bash .github/scripts/nix.sh --variant non-fips test sqlite`
+6. **Fix, commit, push** — CI will re-run automatically on the PR.
+
+---
+
+## 10. Coding rules
+
+- **Function length**: keep functions under 100 lines; extract helpers for longer ones.
+- **Imports**: Rust `use` statements go at the top of each file, never inline.
+- **Error handling**: never ignore or skip errors in tests or builds — investigate and fix.
+- **CHANGELOG**: update `CHANGELOG.md` for every user-visible change. Add a single-line entry
+  in the top section (the next-release block). Follow the formatting and style of existing entries.
+- **Commit scope**: make minimal, focused changes. Don't refactor surrounding code or add
+  unrelated improvements alongside a bug fix.
+- **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`,
+  `noUnusedParameters: true`. Fix all type errors before committing UI changes.
+
+---
+
+## 11. Updating CHANGELOG.md
+
+For each change, compare the current git branch with the upstream branch and add
+a **one-line summary** in `CHANGELOG.md` in the top section (next release). Use
+the formatting style of existing entries. Example:
+
+```markdown
+- **UI E2E**: Fix Playwright select helpers to use regex assertions for exact label matching.
+```
+
+---
+
+## 12. Debugging
+
+### Server logging
 
 ```bash
 RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" \
@@ -181,10 +349,6 @@ RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" \
 ```
 
 Add the failing crate to `RUST_LOG` if the problem originates elsewhere.
-
-## Update CHANGELOG.md
-
-For each changes, compare the current git-branch with the upstream branch and summarize it on `CHANGELOG.md` on 1 line in the top section of the file (next release). This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
 
 ### Docker
 
@@ -194,12 +358,33 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 # Web UI at http://localhost:9998/ui
 ```
 
-## Common issues
+---
 
-- **Usage mask errors**: the key does not have the required usage mask (e.g. `Encrypt`, `Sign`).
-  Check the `CryptographicUsageMask` attribute on the object.
-- **`legacy.so` / `fips.so` not found**: `OPENSSL_MODULES` is not pointing at the built OpenSSL
-  modules directory. `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` should fix this
-  automatically; check that it is called before any `Provider::try_load()`.
-- **Stale Nix vendor hashes**: after updating `Cargo.lock` or bumping the package version,
-  regenerate all four hash files using the fake-hash trick above.
+## 13. Nix packaging
+
+Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-hashes/`.
+After updating the package version or `Cargo.lock`, regenerate the vendor hashes:
+
+```bash
+# Fake-hash trick: put a wrong hash to get the correct hash from the error output
+echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
+  > nix/expected-hashes/server.vendor.dynamic.sha256
+
+# Trigger the build — it will fail and print the correct hash; copy it back
+.github/scripts/nix.sh --variant non-fips --link dynamic 2>&1 | grep "got:"
+```
+
+Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
+
+---
+
+## 14. Common issues
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Usage mask errors (`Encrypt`, `Sign` denied) | Key missing required `CryptographicUsageMask` | Check the object's attributes |
+| `legacy.so` / `fips.so` not found | `OPENSSL_MODULES` not set | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
+| Stale Nix vendor hashes | `Cargo.lock` or version changed | Regenerate all four hash files (see §13) |
+| `gh` command hangs | Interactive pager opened | Use `GH_PAGER=cat gh ...` |
+| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)` |
+| TypeScript unused-variable error in UI tests | `noUnusedLocals: true` in tsconfig | Remove the variable or prefix with `_` |
