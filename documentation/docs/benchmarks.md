@@ -1,6 +1,6 @@
 # Benchmarks
 
-> Generated on 2026-03-23 18:57:34 UTC
+> Generated on 2026-03-25 05:40:19 UTC
 >
 > KMS server version: "5.17.0 (OpenSSL 3.6.0 1 Oct 2025-non-FIPS)"
 
@@ -56,51 +56,51 @@ Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspa
 
 ## Benchmark Results
 
-### AES GCM - plaintext of 64 bytes
+### batch/aes-gcm
 
 AES-GCM batch — encrypt/decrypt N items in a single BulkData call.
 
 | | `128-bit key decrypt` | `128-bit key encrypt` | `256-bit key decrypt` | `256-bit key encrypt` |
 | :--- | :--- | :--- | :--- | :--- |
-| **`1 request`** | `85.24 µs` | `257.29 µs` | `243.89 µs` | `357.29 µs` |
-| **`10 requests`** | `267.28 µs` | `414.48 µs` | `406.68 µs` | `402.65 µs` |
-| **`50 requests`** | `1.07 ms` | `1.30 ms` | `2.01 ms` | `1.16 ms` |
-| **`100 requests`** | `1.82 ms` | `47.04 ms` | `1.39 ms` | `48.90 ms` |
-| **`500 requests`** | `66.19 ms` | `9.11 ms` | `65.18 ms` | `8.48 ms` |
-| **`1000 requests`** | `16.65 ms` | `22.74 ms` | `20.21 ms` | `22.98 ms` |
+| **`1 request`** | `143.97 µs` | `151.78 µs` | `108.49 µs` | `236.68 µs` |
+| **`10 requests`** | `206.00 µs` | `393.19 µs` | `471.80 µs` | `387.14 µs` |
+| **`50 requests`** | `843.74 µs` | `835.15 µs` | `1.20 ms` | `732.20 µs` |
+| **`100 requests`** | `1.45 ms` | `47.85 ms` | `1.41 ms` | `48.49 ms` |
+| **`500 requests`** | `65.30 ms` | `7.90 ms` | `63.11 ms` | `8.38 ms` |
+| **`1000 requests`** | `20.88 ms` | `18.18 ms` | `14.85 ms` | `22.59 ms` |
 
-### RSA AES KEY WRAP - plaintext of 32 bytes
+### batch/rsa-aes-kwp
 
 RSA AES Key Wrap batch — encrypt/decrypt N items in a single KMIP message.
 
 | | `2048-bit key decrypt` | `2048-bit key encrypt` | `3072-bit key decrypt` | `3072-bit key encrypt` | `4096-bit key decrypt` | `4096-bit key encrypt` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`1 request`** | `24.57 ms` | `265.83 µs` | `76.93 ms` | `333.53 µs` | `168.57 ms` | `677.65 µs` |
-| **`10 requests`** | `244.06 ms` | `1.99 ms` | `764.71 ms` | `2.45 ms` | `1.81 s` | `3.01 ms` |
-| **`50 requests`** | `1.28 s` | `73.10 ms` | `3.93 s` | `80.55 ms` | `8.82 s` | `80.10 ms` |
-| **`100 requests`** | `2.56 s` | `13.59 ms` | `7.69 s` | `24.16 ms` | `17.63 s` | `27.76 ms` |
+| **`1 request`** | `25.69 ms` | `210.57 µs` | `74.43 ms` | `260.46 µs` | `166.31 ms` | `389.34 µs` |
+| **`10 requests`** | `243.20 ms` | `2.15 ms` | `760.88 ms` | `2.27 ms` | `1.68 s` | `3.78 ms` |
+| **`50 requests`** | `1.28 s` | `68.64 ms` | `3.77 s` | `73.99 ms` | `8.61 s` | `81.74 ms` |
+| **`100 requests`** | `2.47 s` | `17.68 ms` | `7.51 s` | `22.05 ms` | `17.10 s` | `27.98 ms` |
 
-### RSA OAEP - plaintext of 32 bytes
+### batch/rsa-oaep
 
 RSA-OAEP batch — encrypt/decrypt N items in a single KMIP message.
 
 | | `2048-bit key decrypt` | `2048-bit key encrypt` | `3072-bit key decrypt` | `3072-bit key encrypt` | `4096-bit key decrypt` | `4096-bit key encrypt` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`1 request`** | `32.88 ms` | `400.07 µs` | `72.26 ms` | `365.45 µs` | `174.50 ms` | `480.87 µs` |
-| **`10 requests`** | `262.89 ms` | `2.32 ms` | `742.85 ms` | `3.47 ms` | `1.74 s` | `2.16 ms` |
-| **`50 requests`** | `1.34 s` | `73.99 ms` | `3.89 s` | `76.85 ms` | `8.84 s` | `82.41 ms` |
-| **`100 requests`** | `2.53 s` | `20.20 ms` | `7.73 s` | `22.54 ms` | `17.63 s` | `30.88 ms` |
+| **`1 request`** | `28.19 ms` | `282.88 µs` | `74.13 ms` | `372.08 µs` | `181.00 ms` | `403.51 µs` |
+| **`10 requests`** | `251.05 ms` | `1.74 ms` | `745.54 ms` | `2.36 ms` | `1.75 s` | `3.98 ms` |
+| **`50 requests`** | `1.23 s` | `71.60 ms` | `3.80 s` | `70.20 ms` | `8.67 s` | `77.78 ms` |
+| **`100 requests`** | `2.49 s` | `12.78 ms` | `7.72 s` | `18.68 ms` | `17.25 s` | `33.98 ms` |
 
-### RSA PKCSv1.5 - plaintext of 32 bytes
+### batch/rsa-pkcs1v15
 
 RSA PKCS#1 v1.5 batch — encrypt/decrypt N items in a single KMIP message.
 
 | | `2048-bit key decrypt` | `2048-bit key encrypt` | `3072-bit key decrypt` | `3072-bit key encrypt` | `4096-bit key decrypt` | `4096-bit key encrypt` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`1 request`** | `28.99 ms` | `509.96 µs` | `76.01 ms` | `476.44 µs` | `167.64 ms` | `404.74 µs` |
-| **`10 requests`** | `236.34 ms` | `3.43 ms` | `744.50 ms` | `4.87 ms` | `1.76 s` | `2.13 ms` |
-| **`50 requests`** | `1.28 s` | `76.41 ms` | `3.91 s` | `83.48 ms` | `8.86 s` | `80.82 ms` |
-| **`100 requests`** | `2.55 s` | `15.31 ms` | `7.67 s` | `22.21 ms` | `17.66 s` | `36.46 ms` |
+| **`1 request`** | `23.94 ms` | `290.50 µs` | `79.74 ms` | `372.99 µs` | `168.60 ms` | `337.05 µs` |
+| **`10 requests`** | `247.09 ms` | `3.14 ms` | `731.67 ms` | `1.84 ms` | `1.76 s` | `2.55 ms` |
+| **`50 requests`** | `1.23 s` | `74.71 ms` | `3.81 s` | `73.37 ms` | `8.51 s` | `78.65 ms` |
+| **`100 requests`** | `2.44 s` | `14.97 ms` | `7.46 s` | `17.87 ms` | `17.06 s` | `24.75 ms` |
 
 ### encrypt/aes-gcm
 
@@ -108,9 +108,9 @@ AES-GCM encrypt and decrypt (128/192/256-bit keys, 64-byte plaintext).
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`128`** | `316.46 µs` | `448.98 µs` |
-| **`192`** | `357.50 µs` | `179.18 µs` |
-| **`256`** | `104.18 µs` | `239.36 µs` |
+| **`128`** | `276.58 µs` | `176.77 µs` |
+| **`192`** | `157.69 µs` | `181.21 µs` |
+| **`256`** | `141.43 µs` | `184.87 µs` |
 
 ### encrypt/aes-gcm-siv
 
@@ -118,8 +118,8 @@ AES-GCM-SIV encrypt and decrypt (128/256-bit keys, 64-byte plaintext). Non-FIPS.
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`128`** | `260.31 µs` | `281.04 µs` |
-| **`256`** | `469.66 µs` | `168.06 µs` |
+| **`128`** | `128.15 µs` | `271.99 µs` |
+| **`256`** | `82.68 µs` | `190.86 µs` |
 
 ### encrypt/aes-xts
 
@@ -127,8 +127,8 @@ AES-XTS encrypt and decrypt (128/256-bit AES, 64-byte plaintext).
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`128`** | `215.99 µs` | `413.67 µs` |
-| **`256`** | `89.34 µs` | `504.55 µs` |
+| **`128`** | `137.13 µs` | `124.04 µs` |
+| **`256`** | `155.57 µs` | `456.42 µs` |
 
 ### encrypt/chacha20-poly1305
 
@@ -136,7 +136,7 @@ ChaCha20-Poly1305 encrypt and decrypt (256-bit key, 64-byte plaintext). Non-FIPS
 
 | | `decrypt/256` | `encrypt/256` |
 | :--- | :--- | :--- |
-| | `258.43 µs` | `233.36 µs` |
+| | `134.67 µs` | `188.13 µs` |
 
 ### encrypt/covercrypt
 
@@ -144,7 +144,7 @@ Covercrypt attribute-based encrypt and decrypt. Non-FIPS.
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| | `12.59 ms` | `5.62 ms` |
+| | `12.43 ms` | `6.22 ms` |
 
 ### encrypt/ecies
 
@@ -152,17 +152,17 @@ ECIES encrypt and decrypt on NIST curves (P-256/P-384/P-521). Non-FIPS.
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`P-256`** | `258.30 µs` | `299.97 µs` |
-| **`P-384`** | `1.49 ms` | `1.29 ms` |
-| **`P-521`** | `3.27 ms` | `3.20 ms` |
+| **`P-256`** | `174.72 µs` | `568.71 µs` |
+| **`P-384`** | `1.26 ms` | `1.66 ms` |
+| **`P-521`** | `2.28 ms` | `2.36 ms` |
 
 ### encrypt/rsa-aes-kwp
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`2048`** | `24.55 ms` | `259.01 µs` |
-| **`3072`** | `72.11 ms` | `426.76 µs` |
-| **`4096`** | `163.13 ms` | `727.94 µs` |
+| **`2048`** | `23.53 ms` | `198.50 µs` |
+| **`3072`** | `72.21 ms` | `198.93 µs` |
+| **`4096`** | `167.72 ms` | `370.66 µs` |
 
 ### encrypt/rsa-oaep
 
@@ -170,9 +170,9 @@ RSA-OAEP encrypt and decrypt (2048/3072/4096-bit keys, 32-byte plaintext).
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`2048`** | `27.45 ms` | `309.05 µs` |
-| **`3072`** | `77.45 ms` | `549.79 µs` |
-| **`4096`** | `171.33 ms` | `339.46 µs` |
+| **`2048`** | `23.90 ms` | `330.58 µs` |
+| **`3072`** | `77.18 ms` | `204.67 µs` |
+| **`4096`** | `177.63 ms` | `332.06 µs` |
 
 ### encrypt/rsa-pkcs1v15
 
@@ -180,9 +180,9 @@ RSA PKCS#1 v1.5 encrypt and decrypt (2048/3072/4096-bit keys, 32-byte plaintext)
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| **`2048`** | `24.57 ms` | `322.13 µs` |
-| **`3072`** | `77.15 ms` | `233.58 µs` |
-| **`4096`** | `174.30 ms` | `337.52 µs` |
+| **`2048`** | `24.51 ms` | `235.78 µs` |
+| **`3072`** | `73.21 ms` | `280.02 µs` |
+| **`4096`** | `176.65 ms` | `334.39 µs` |
 
 ### encrypt/salsa-sealed-box
 
@@ -190,7 +190,7 @@ Salsa Sealed Box (X25519) encrypt and decrypt. Non-FIPS.
 
 | | `decrypt` | `encrypt` |
 | :--- | :--- | :--- |
-| | `444.47 µs` | `466.29 µs` |
+| | `336.13 µs` | `177.76 µs` |
 
 ### kem/configurable
 
@@ -198,12 +198,12 @@ Configurable KEM encapsulate and decapsulate (ML-KEM, hybrid variants). Non-FIPS
 
 | | `decapsulate` | `encapsulate` |
 | :--- | :--- | :--- |
-| **`ML-KEM-512`** | `516.00 µs` | `452.63 µs` |
-| **`ML-KEM-512/P-256`** | `282.01 µs` | `763.11 µs` |
-| **`ML-KEM-512/X25519`** | `773.10 µs` | `3.96 ms` |
-| **`ML-KEM-768`** | `611.97 µs` | `455.69 µs` |
-| **`ML-KEM-768/P-256`** | `419.89 µs` | `510.23 µs` |
-| **`ML-KEM-768/X25519`** | `460.42 µs` | `3.76 ms` |
+| **`ML-KEM-512`** | `271.02 µs` | `343.14 µs` |
+| **`ML-KEM-512/P-256`** | `197.68 µs` | `608.94 µs` |
+| **`ML-KEM-512/X25519`** | `265.81 µs` | `3.03 ms` |
+| **`ML-KEM-768`** | `265.78 µs` | `461.26 µs` |
+| **`ML-KEM-768/P-256`** | `417.15 µs` | `489.57 µs` |
+| **`ML-KEM-768/X25519`** | `834.20 µs` | `3.78 ms` |
 
 ### key-creation/covercrypt
 
@@ -211,7 +211,7 @@ Covercrypt master key pair generation. Non-FIPS.
 
 | | `master-keypair` |
 | :--- | :--- |
-| | `33.39 ms` |
+| | `23.96 ms` |
 
 ### key-creation/ec
 
@@ -219,7 +219,7 @@ Elliptic curve key pair generation (NIST and non-FIPS curves).
 
 | | `ed25519` | `ed448` | `p256` | `p384` | `p521` | `secp256k1` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| | `11.55 ms` | `12.68 ms` | `12.15 ms` | `14.18 ms` | `13.86 ms` | `12.65 ms` |
+| | `3.31 ms` | `3.87 ms` | `2.39 ms` | `4.84 ms` | `5.84 ms` | `4.19 ms` |
 
 ### key-creation/kem
 
@@ -227,7 +227,7 @@ Configurable KEM key pair generation (ML-KEM, hybrid variants). Non-FIPS.
 
 | | `ML-KEM-512` | `ML-KEM-512/P-256` | `ML-KEM-512/X25519` | `ML-KEM-768` | `ML-KEM-768/P-256` | `ML-KEM-768/X25519` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| | `9.38 ms` | `10.82 ms` | `16.48 ms` | `10.78 ms` | `10.10 ms` | `15.66 ms` |
+| | `3.49 ms` | `2.88 ms` | `4.52 ms` | `3.50 ms` | `3.52 ms` | `3.56 ms` |
 
 ### key-creation/rsa
 
@@ -235,7 +235,7 @@ RSA key pair generation (2048/3072/4096-bit).
 
 | | `rsa-2048` | `rsa-3072` | `rsa-4096` |
 | :--- | :--- | :--- | :--- |
-| | `37.96 ms` | `130.34 ms` | `217.64 ms` |
+| | `31.71 ms` | `131.86 ms` | `206.22 ms` |
 
 ### key-creation/symmetric
 
@@ -243,7 +243,7 @@ AES (and ChaCha20 in non-FIPS) symmetric key creation.
 
 | | `aes-128` | `aes-192` | `aes-256` | `chacha20-256` |
 | :--- | :--- | :--- | :--- | :--- |
-| | `11.55 ms` | `11.42 ms` | `11.43 ms` | `11.01 ms` |
+| | `2.80 ms` | `2.81 ms` | `2.73 ms` | `2.62 ms` |
 
 ### sign-verify/ecdsa-p256
 
@@ -251,7 +251,7 @@ ECDSA sign and verify on NIST curves.
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `1.16 ms` | `344.64 µs` |
+| | `473.13 µs` | `216.50 µs` |
 
 ### sign-verify/ecdsa-p384
 
@@ -259,7 +259,7 @@ ECDSA sign and verify on NIST curves.
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `1.86 ms` | `780.59 µs` |
+| | `1.42 ms` | `885.36 µs` |
 
 ### sign-verify/ecdsa-p521
 
@@ -267,7 +267,7 @@ ECDSA sign and verify on NIST curves.
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `3.35 ms` | `1.58 ms` |
+| | `3.65 ms` | `1.77 ms` |
 
 ### sign-verify/ecdsa-secp256k1
 
@@ -275,7 +275,7 @@ Non-FIPS EC signature operations (secp256k1, Ed25519, Ed448).
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `652.89 µs` | `475.25 µs` |
+| | `700.76 µs` | `351.49 µs` |
 
 ### sign-verify/eddsa-ed25519
 
@@ -283,7 +283,7 @@ Non-FIPS EC signature operations (secp256k1, Ed25519, Ed448).
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `474.66 µs` | `258.25 µs` |
+| | `178.29 µs` | `233.12 µs` |
 
 ### sign-verify/eddsa-ed448
 
@@ -291,7 +291,7 @@ Non-FIPS EC signature operations (secp256k1, Ed25519, Ed448).
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| | `497.99 µs` | `506.43 µs` |
+| | `398.40 µs` | `233.27 µs` |
 
 ### sign-verify/rsa-pss
 
@@ -299,6 +299,6 @@ RSA-PSS sign and verify (SHA-256, 2048/3072/4096-bit).
 
 | | `sign` | `verify` |
 | :--- | :--- | :--- |
-| **`2048`** | `23.29 ms` | `293.69 µs` |
-| **`3072`** | `70.68 ms` | `245.01 µs` |
-| **`4096`** | `161.95 ms` | `265.60 µs` |
+| **`2048`** | `24.53 ms` | `290.78 µs` |
+| **`3072`** | `79.01 ms` | `258.87 µs` |
+| **`4096`** | `179.21 ms` | `339.39 µs` |

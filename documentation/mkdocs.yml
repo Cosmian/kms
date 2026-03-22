@@ -126,6 +126,7 @@ nav:
           - KMIP algorithm policy: kmip_policy.md
           - Benchmarks:
               - Standard algorithms: benchmarks.md
+              - Load tests: benchmarks_load_tests.md
               - DKE and Google CSE: google_dke_benchmarks.md
       - Zeroization: zeroization.md
   - KMIP Support:
