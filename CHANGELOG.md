@@ -101,6 +101,7 @@ to the test matrix so regressions are caught automatically:
 ### 🧪 Testing
 
 - Create integration tests for AWS KMS BYOK using OpenSSL to unwrap locally and mock the AWS infrastructure
+- Fix missing `REPO_ROOT` in `azure_ekm_test.sh` causing unbound variable error
 
 ### 📚 Documentation
 
