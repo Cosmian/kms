@@ -27,8 +27,8 @@ const TEST_PORT: u16 = 9998 + 6;
 pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
     // 1. Load the default server config for the dedicated port and inject the
     //    custom vendor_identification before starting.
-    let mut config = load_server_config("test/default")?;
-    // test/default.toml uses a hard-coded port 9998; override it explicitly.
+    let mut config = load_server_config("test/sqlite")?;
+    // test/sqlite.toml uses a hard-coded port 9998; override it explicitly.
     config.http.port = TEST_PORT;
     config.db.clear_database = true;
     // Use unique paths to avoid conflicting with the ONCE singleton server.

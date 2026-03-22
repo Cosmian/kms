@@ -258,64 +258,37 @@ fn remap_test_server_ports_if_needed(
     Ok(changed)
 }
 
-/// Return the name of the TOML server config that matches the `KMS_TEST_DB` env var.
+/// Build the TOML config name for a test-server flavour, honouring `KMS_TEST_DB`.
 ///
-/// Defaults to `"test/default"` (`SQLite`) when the variable is absent or unrecognised.
-fn default_server_config_name() -> &'static str {
-    match env::var_os("KMS_TEST_DB")
+/// Each server type has per-DB TOML variants in `test_data/configs/server/test/`.
+/// The DB backend is fully defined by the chosen TOML file — no runtime override.
+///
+/// For the default/sqlite server (`base = "sqlite"`):
+///   `KMS_TEST_DB` unset/sqlite → `"test/sqlite"`
+///   `KMS_TEST_DB=postgresql`   → `"test/postgres"`
+///   `KMS_TEST_DB=mysql`        → `"test/mysql"`
+///   `KMS_TEST_DB=redis-findex` → `"test/redis_findex"`
+///
+/// For other server types (e.g. `base = "cert_auth"`):
+///   `KMS_TEST_DB` unset/sqlite → `"test/cert_auth"`
+///   `KMS_TEST_DB=postgresql`   → `"test/cert_auth_postgres"`
+///   `KMS_TEST_DB=mysql`        → `"test/cert_auth_mysql"`
+///   `KMS_TEST_DB=redis-findex` → `"test/cert_auth_redis_findex"`
+fn server_config_name(base: &str) -> String {
+    let db = match env::var_os("KMS_TEST_DB")
         .as_deref()
         .and_then(|v| v.to_str())
     {
-        Some("postgresql") => "test/postgres",
-        Some("mysql") => "test/mysql",
+        Some("postgresql") => Some("postgres"),
+        Some("mysql") => Some("mysql"),
         #[cfg(feature = "non-fips")]
-        Some("redis-findex") => "test/redis_findex",
-        _ => "test/default",
-    }
-}
-
-/// Override the `[db]` section of a loaded [`ClapConfig`] when the `KMS_TEST_DB`
-/// environment variable is set to a non-SQLite backend.
-///
-/// This ensures that **all** test-server flavours (cert-auth, non-revocable, HSM,
-/// privileged-users, …) honour `KMS_TEST_DB`, not just the default server.
-fn apply_kms_test_db_override(config: &mut ClapConfig) {
-    let db_type = match env::var_os("KMS_TEST_DB")
-        .as_deref()
-        .and_then(|v| v.to_str())
-    {
-        Some(v) => v.to_owned(),
-        None => return,
+        Some("redis-findex") => Some("redis_findex"),
+        _ => None,
     };
-    match db_type.as_str() {
-        "postgresql" => {
-            let url = option_env!("KMS_POSTGRES_URL")
-                .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
-                .to_owned();
-            config.db.database_type = Some("postgresql".to_owned());
-            config.db.database_url = Some(url);
-            config.db.clear_database = false;
-        }
-        "mysql" => {
-            let url = option_env!("KMS_MYSQL_URL")
-                .unwrap_or("mysql://kms:kms@localhost:3306/kms")
-                .to_owned();
-            config.db.database_type = Some("mysql".to_owned());
-            config.db.database_url = Some(url);
-            config.db.clear_database = false;
-        }
-        #[cfg(feature = "non-fips")]
-        "redis-findex" => {
-            let url = env::var("REDIS_HOST").map_or_else(
-                |_| "redis://localhost:6379".to_owned(),
-                |host| format!("redis://{host}:6379"),
-            );
-            config.db.database_type = Some("redis-findex".to_owned());
-            config.db.database_url = Some(url);
-            config.db.clear_database = true;
-            config.db.redis_master_password = Some("password".to_owned());
-        }
-        _ => {} // keep whatever the TOML file had (SQLite)
+    match db {
+        Some(db) if base == "sqlite" => format!("test/{db}"),
+        Some(db) => format!("test/{base}_{db}"),
+        None => format!("test/{base}"),
     }
 }
 
@@ -339,8 +312,8 @@ pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static T
 }
 
 /// Start the default test KMS server (plain HTTP, port 9998, no authentication).
-/// Configuration is loaded from `test_data/configs/server/<db-specific>.toml`.
-/// The config name is resolved via `KMS_TEST_DB` env var (defaults to `SQLite`).
+/// The DB backend is determined by the `KMS_TEST_DB` env var which selects the
+/// matching TOML file from `test_data/configs/server/test/` (defaults to `SQLite`).
 /// If the `KMS_USE_KEK` environment variable is set, a KEK-protected server is
 /// started instead using `test/kek`-based client/server fixtures.
 ///
@@ -354,13 +327,14 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
             let server_params = create_server_params_with_kek().await.unwrap();
             start_from_server_params(server_params, Some("test/kek")).await
         } else {
-            let config = load_server_config(default_server_config_name())?;
+            let config_name = server_config_name("sqlite");
+            let config = load_server_config(&config_name)?;
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
-                    "Failed to build ServerParams from default config: {e}"
+                    "Failed to build ServerParams from {config_name}: {e}"
                 ))
             })?;
-            start_from_server_params(server_params, Some("test/default")).await
+            start_from_server_params(server_params, Some("test/sqlite")).await
         }
     })
     .await
@@ -372,15 +346,16 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 
 /// Start the mutual-TLS test server (port 9999, no JWT).
 /// Loads `test/cert_auth.toml` (PEM, works in both FIPS and non-FIPS mode).
+/// DB backend is selected via `KMS_TEST_DB` (e.g. `test/cert_auth_postgres.toml`).
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let mut config = load_server_config("test/cert_auth")?;
-            apply_kms_test_db_override(&mut config);
+            let config_name = server_config_name("cert_auth");
+            let config = load_server_config(&config_name)?;
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
-                    "Failed to build ServerParams from cert-auth config: {e}"
+                    "Failed to build ServerParams from {config_name}: {e}"
                 ))
             })?;
             start_from_server_params(server_params, Some("test/cert_auth")).await
@@ -393,7 +368,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
 }
 
 /// Start the non-revocable key test server (plain HTTP, port 10000).
-/// Configuration is loaded from `test_data/configs/server/test/non_revocable.toml`.
+/// DB backend is selected via `KMS_TEST_DB` (e.g. `test/non_revocable_postgres.toml`).
 /// The `non_revocable_key_id` list is injected at runtime after loading the config.
 pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
@@ -401,12 +376,12 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
-            let mut config = load_server_config("test/non_revocable")?;
+            let config_name = server_config_name("non_revocable");
+            let mut config = load_server_config(&config_name)?;
             config.non_revocable_key_id = non_revocable_key_id;
-            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
-                    "Failed to build ServerParams from test/non_revocable.toml: {e}"
+                    "Failed to build ServerParams from {config_name}: {e}"
                 ))
             })?;
             start_from_server_params(server_params, Some("test/non_revocable")).await
@@ -419,16 +394,16 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
 }
 
 /// Start the Utimaco HSM test server (plain HTTP, port 10001).
-/// Configuration is loaded from `test_data/configs/server/test/hsm.toml`.
+/// DB backend is selected via `KMS_TEST_DB` (e.g. `test/hsm_postgres.toml`).
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM");
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            let mut config = load_server_config("test/hsm")?;
-            apply_kms_test_db_override(&mut config);
+            let config_name = server_config_name("hsm");
+            let config = load_server_config(&config_name)?;
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
-                    "Failed to build ServerParams from test/hsm.toml: {e}"
+                    "Failed to build ServerParams from {config_name}: {e}"
                 ))
             })?;
             start_from_server_params(server_params, Some("test/hsm")).await
@@ -586,7 +561,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 }
 
 /// Start the privileged-users test server (TLS+JWT, port 10003).
-/// Loads `test/privileged_users.toml` (PEM, works in both FIPS and non-FIPS mode).
+/// DB backend is selected via `KMS_TEST_DB` (e.g. `test/privileged_users_postgres.toml`).
 /// The `privileged_users` list is injected at runtime after loading the config.
 pub async fn start_default_test_kms_server_with_privileged_users(
     privileged_users: Vec<String>,
@@ -594,12 +569,12 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let mut config = load_server_config("test/privileged_users")?;
+            let config_name = server_config_name("privileged_users");
+            let mut config = load_server_config(&config_name)?;
             config.privileged_users = Some(privileged_users);
-            apply_kms_test_db_override(&mut config);
             let server_params = ServerParams::try_from(config).map_err(|e| {
                 KmsClientError::Default(format!(
-                    "Failed to build ServerParams from privileged-users config: {e}"
+                    "Failed to build ServerParams from {config_name}: {e}"
                 ))
             })?;
             start_from_server_params(server_params, Some("test/privileged_users")).await
@@ -824,7 +799,7 @@ fn write_temp_client_conf(
 
 /// Common finalization once the server parameters are fully constructed.
 ///
-/// `config_name` is the base name of the server config (e.g. `"test/default"`, `"test/cert_auth"`)
+/// `config_name` is the base name of the server config (e.g. `"test/sqlite"`, `"test/cert_auth"`)
 /// used to derive owner/user client config file names (`<name>_owner.toml`, `<name>_user.toml`).
 /// When `None`, the names are inferred via [`client_config_names`] and a temp file is written.
 async fn start_from_server_params(
@@ -879,7 +854,7 @@ async fn start_from_server_params(
 #[allow(clippy::unwrap_in_result)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
-    let mut config = load_server_config("test/default")?;
+    let mut config = load_server_config("test/sqlite")?;
     config.http.port = 9990;
     let owner_client_config = with_server_port(load_client_config("test/auth_plain_owner")?, 9990);
     let context = start_temp_test_kms_server(config, owner_client_config).await?;

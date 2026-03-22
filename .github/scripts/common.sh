@@ -284,7 +284,8 @@ _run_workspace_tests() {
   local db="$1"
   # Ensure cargo is available when running outside Nix
   require_cmd cargo "Cargo is required to run the Rust test workspace. Install Rust (rustup) and retry."
-  # Export the selector understood by the test harness
+  # Export the selector understood by the test harness.
+  # DB URLs are hardcoded in per-DB TOML configs under test_data/configs/server/test/.
   case "$db" in
   sqlite | postgresql | mysql | redis-findex)
     export KMS_TEST_DB="$db"
@@ -295,22 +296,6 @@ _run_workspace_tests() {
   *)
     echo "Unknown DB '$db'" >&2
     return 1
-    ;;
-  esac
-
-  # Provide sensible defaults matching repo docs when applicable
-  case "$KMS_TEST_DB" in
-  sqlite)
-    : "${KMS_SQLITE_PATH:=data/shared}"
-    export KMS_SQLITE_PATH
-    ;;
-  postgresql)
-    : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:5432/kms}"
-    export KMS_POSTGRES_URL
-    ;;
-  mysql)
-    : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
-    export KMS_MYSQL_URL
     ;;
   esac
 

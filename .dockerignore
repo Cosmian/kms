@@ -1,0 +1,21 @@
+.git
+.github/copilot-instructions.md
+.github/workflows/
+.vscode/
+.idea/
+
+# Build outputs and local artifacts
+target/
+result*/
+cosmian-kms/sqlite-data/
+mutants.out.old/
+
+# Large/generated data
+sbom/
+
+# Node/Python caches
+**/node_modules/
+.venv/
+
+# OS/editor files
+.DS_Store

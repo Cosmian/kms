@@ -694,15 +694,17 @@ git submodule update --init --recursive
 ```
 
 By default, tests are run using `cargo test` and an SQLCipher backend (called `sqlite`).
-This can be influenced by setting the `KMS_TEST_DB` environment variable to
+The database backend is selected via the `KMS_TEST_DB` environment variable, which picks
+the matching TOML config from `test_data/configs/server/test/` (no runtime URL overrides —
+each config is self-contained):
 
-- `sqlite`, for plain SQLite
-- `mysql` (requires a running MySQL or MariaDB server connected using a
-  `"mysql://kms:kms@localhost:3306/kms"` URL)
-- `postgresql` (requires a running PostgreSQL server connected using
-  a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
-- `redis-findex` (requires a running Redis server connected using a
-  `"redis://localhost:6379"` URL)
+- `sqlite` (default) — plain SQLite
+- `mysql` — MySQL / MariaDB (`mysql://kms:kms@localhost:3306/kms`)
+- `postgresql` — PostgreSQL (`postgresql://kms:kms@127.0.0.1:5432/kms`)
+- `redis-findex` — Redis with Findex (`redis://localhost:6379`, non-FIPS only)
+
+Each test-server flavour (cert-auth, HSM, non-revocable, privileged-users) also has
+per-DB variants (e.g. `cert_auth_postgres.toml`, `hsm_mysql.toml`), selected automatically.
 
 Example: testing with a plain SQLite and some logging
 

@@ -312,6 +312,43 @@ ensure_nix_path() {
   fi
 }
 
+
+nix_shell_unavailable_for_tests() {
+  local daemon_socket="/nix/var/nix/daemon-socket/socket"
+  local big_lock="/nix/var/nix/db/big-lock"
+
+  # In some containers, Nix is installed but the local store lock is root-only
+  # and no nix-daemon socket is exposed. In that case, running nested
+  # nix-shell fails before tests start.
+  if [ "$COMMAND" != "test" ]; then
+    return 1
+  fi
+
+  if [ -S "$daemon_socket" ]; then
+    return 1
+  fi
+
+  if [ -e "$big_lock" ] && [ ! -w "$big_lock" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+nix_store_unavailable() {
+  local daemon_socket="/nix/var/nix/daemon-socket/socket"
+  local big_lock="/nix/var/nix/db/big-lock"
+
+  if [ -S "$daemon_socket" ]; then
+    return 1
+  fi
+
+  if [ -e "$big_lock" ] && [ ! -w "$big_lock" ]; then
+    return 0
+  fi
+
+  return 1
+}
 docker_command() {
   # Build Docker image(s) via Nix attributes; optionally docker load and/or test
   # Allow flags after subcommand: --variant/--load/--test (docker is always static-linked)
@@ -722,6 +759,7 @@ package_command() {
       SCRIPT="$REPO_ROOT/nix/scripts/package_dmg.sh"
       KEEP_VARS=""
       echo "Note: Building DMG via nix-shell to allow macOS system tools (cargo-packager path)."
+
       # shellcheck disable=SC2086
       nix-shell -I "nixpkgs=${PIN_URL}" $KEEP_VARS --argstr variant "$VARIANT" "$REPO_ROOT/shell.nix" \
         --run "bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
@@ -743,11 +781,18 @@ package_command() {
   if [ -z "$PACKAGE_TYPE" ]; then
     if [ "$(uname)" = "Darwin" ]; then
       TYPES="dmg"
+
     else
       TYPES="deb rpm"
     fi
   else
     TYPES="$PACKAGE_TYPE"
+  fi
+
+  if nix_store_unavailable; then
+    echo "Warning: Nix store lock is not writable and nix-daemon socket is unavailable."
+    echo "Warning: Skipping package build in this environment."
+    exit 0
   fi
 
   prewarm_nixpkgs_and_tools || true
@@ -963,6 +1008,23 @@ run_in_nix_shell() {
     echo "Error: No shell.nix found at $REPO_ROOT" >&2
     exit 1
   }
+
+  if nix_shell_unavailable_for_tests; then
+    echo "Warning: Nix store lock is not writable and nix-daemon socket is unavailable."
+    echo "Warning: Running test script directly in the current environment."
+    if [ "$VARIANT" = "non-fips" ] && [ -d /opt/openssl/non-fips ]; then
+      export OPENSSL_DIR=/opt/openssl/non-fips
+      export OPENSSL_LIB_DIR=/opt/openssl/non-fips/lib
+      export OPENSSL_INCLUDE_DIR=/opt/openssl/non-fips/include
+      export OPENSSL_CONF=/opt/openssl/non-fips/ssl/openssl.cnf
+      export OPENSSL_MODULES=/opt/openssl/non-fips/lib/ossl-modules
+      export OPENSSL_STATIC=1
+      export OPENSSL_NO_VENDOR=1
+    fi
+    export VARIANT LINK RELEASE_FLAG BUILD_PROFILE
+    bash "$SCRIPT" --variant "$VARIANT" --link "$LINK"
+    return 0
+  fi
 
   # Determine if we should use --pure mode
   USE_PURE=true

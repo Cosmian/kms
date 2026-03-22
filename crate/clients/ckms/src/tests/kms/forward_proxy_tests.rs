@@ -49,7 +49,7 @@ fn with_runtime_port(url: &str, port: u16) -> String {
 #[ignore = "requires a Squid proxy on localhost:8888 (myuser/mypwd) and KMS_URL set to a non-loopback address"]
 #[tokio::test]
 pub(crate) async fn test_server_version_using_forward_proxy() {
-    let config = load_server_config("test/default").expect("Failed to load test KMS server config");
+    let config = load_server_config("test/sqlite").expect("Failed to load test KMS server config");
     let ctx = start_temp_test_kms_server(
         config,
         with_server_port(
