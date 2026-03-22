@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::actions::kms::{
     google::key_pairs::create::CreateKeyPairsAction, symmetric::keys::create_key::CreateKeyAction,
 };
@@ -10,13 +9,9 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            certificates::certify::import_root_and_intermediate,
-            utils::{extract_uids::extract_certificate_id, recover_cmd_logs},
-        },
-        save_kms_cli_config,
+    tests::kms::{
+        certificates::certify::import_root_and_intermediate,
+        utils::{extract_uids::extract_certificate_id, recover_cmd_logs},
     },
 };
 
@@ -74,7 +69,7 @@ fn create_keypairs(
     // Finish with user id
     args.push(action.user_id);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("google").arg("key-pairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -99,7 +94,7 @@ fn create_keypairs(
 async fn cli_create_google_key_pair() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create the Google CSE key
     let cse_key_id = CreateKeyAction::default()

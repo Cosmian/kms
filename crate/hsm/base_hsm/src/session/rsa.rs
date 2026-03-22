@@ -32,8 +32,8 @@ impl Session {
     /// If exportable is set to `false`, the `sensitive` flag is set to true,
     /// and the private key will not be exportable.
     /// # Arguments
-    /// * `sk_id` - The ID of the private key
-    /// * `pk_id` - The ID of the public key
+    /// * `sk_id` - raw bytes stored as the PKCS#11 `CKA_ID` attribute of the private key
+    /// * `pk_id` - raw bytes stored as the PKCS#11 `CKA_ID` attribute of the public key
     /// * `key_size` - The size of the RSA key
     /// * `label` - The label of the keys
     /// * `sensitive` - If the private key is sensitive

@@ -602,7 +602,11 @@ impl PermissionsStore for SqlitePool {
                         let perms_raw: String = r.get(3)?;
                         let perms: HashSet<KmipOperation> = serde_json::from_str(&perms_raw)
                             .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                        ids.insert(id, (owner, state, perms));
+                        // Merge permissions: an object may appear twice when both a direct
+                        // grant and a wildcard '*' grant exist.
+                        ids.entry(id)
+                            .and_modify(|(_, _, existing)| existing.extend(perms.iter().copied()))
+                            .or_insert((owner, state, perms));
                     }
                     Ok(ids)
                 },

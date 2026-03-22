@@ -126,7 +126,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Wait for the port to be ready
-if _wait_for_port 127.0.0.1 "$KMS_PORT" 20 && _wait_for_port 127.0.0.1 "$KMIP_PORT" 20; then
+if _wait_for_port 127.0.0.1 "$KMS_PORT" 90 && _wait_for_port 127.0.0.1 "$KMIP_PORT" 120; then
   echo "KMS is up on ports $KMS_PORT (HTTP) and $KMIP_PORT (KMIP). Running PyKMIP tests…"
 else
   echo "Error: KMS did not start on required ports in time." >&2

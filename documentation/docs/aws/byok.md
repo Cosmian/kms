@@ -32,7 +32,6 @@ Supported wrapping algorithms:
 
 ⚠️ **WARNING:** Invalid combinations of wrapping algorithms, key material types may lead to errors. Ensure that your selected key material type is supported by the chosen wrapping algorithm and that the wrapping key spec is compatible with both.
 
-
 ## Prerequisites
 
 - An active AWS account
@@ -41,7 +40,7 @@ Supported wrapping algorithms:
 - Either: [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
-## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI :
+## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
 
 ### 1. Create a KMS key with `EXTERNAL` origin
 
@@ -94,7 +93,8 @@ If successful, the output should look like :
 ```
 
 **Response:**
-```
+
+```text
 The symmetric key was successfully generated.
         Unique identifier: symmetric_key_test1
 ```
@@ -115,6 +115,7 @@ aws kms get-parameters-for-import \
 ```
 
 **Response:**
+
 ```json
 {
     "KeyId": "arn:aws:kms:eu-west-3:447182645454:key/350e35ef-ac51-4dbb-82a4-9bc50b0ea42b",
@@ -150,7 +151,6 @@ Feel free to change the key id to whatever you want, we will call the kek `aws_k
 
 #### Alternative : importing the kek as file
 
-
 ```bash
 ./cosmian kms aws byok import \
     --kek-file kek.bin \
@@ -160,7 +160,8 @@ Feel free to change the key id to whatever you want, we will call the kek `aws_k
 ```
 
 **Response:**
-```
+
+```text
 The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully imported with id: aws_kek_1.
         Unique identifier: aws_kek_1
         Tags:
@@ -168,7 +169,6 @@ The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully
                 - wrapping_algorithm:RsaesOaepSha256
                 - key_arn:arn:aws:kms:eu-west-3:447182645454:key/350e35ef-ac51-4dbb-82a4-9bc50b0ea42b
 ```
-
 
 ### 5. Export the wrapped key material from Cosmian KMS
 
@@ -183,7 +183,8 @@ The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully
 ```
 
 **Response:**
-```
+
+```text
 The encrypted key material was successfully written to 512 for key symmetric_key_test1.
 
 To import into AWS KMS using the API, run:
@@ -207,6 +208,7 @@ aws kms import-key-material \
 ```
 
 **Response:**
+
 ```json
 {
     "KeyId": "arn:aws:kms:eu-west-3:447182645454:key/350e35ef-ac51-4dbb-82a4-9bc50b0ea42b",
@@ -222,7 +224,7 @@ For this example, we will create an 2048 bits RSA key material, wrapped using a 
 
 First, Sign in to the AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms) and complete the necessary steps to [create a KMS key with external key material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-create-cmk.html). Be mindful to provide the correct [key spec](https://docs.aws.amazon.com/kms/latest/developerguide/symm-asymm-choose-key-spec.html) - otherwise the console will expect a symmetric key by default. For this example, we will use `RSA_2048`.
 
-The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an RSA_AES_KEY_WRAP_SHA_* wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Choosing `RSAES_OAEP_SHA_256` will work for this example.
+The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an `RSA_AES_KEY_WRAP_SHA_*` wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Choosing `RSAES_OAEP_SHA_256` will work for this example.
 
 Once this is done, create your key on the cosmian KMS like follow, we call it `rsa_key_material` :
 
@@ -260,6 +262,7 @@ The following scripts are available for download:
 Each script requires the `cosmian` CLI to be available either in your PATH, the current directory, or specified via the `COSMIAN_KMS_CLI` environment variable. Also, ensure the `aws` CLI is available in your PATH, authenticated, and configured.
 
 Example usage:
+
 ```bash
 # Make the script executable
 chmod +x run_rsa_byok.sh

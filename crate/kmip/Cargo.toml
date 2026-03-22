@@ -42,8 +42,8 @@ num-traits = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true, features = ["zeroize_derive", "std", "serde"] }
-quick-xml = { version = "0.31", features = ["serialize"] }
-regex = { version = "1" }
+quick-xml = { workspace = true, features = ["serialize"] }
+regex = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
@@ -57,7 +57,7 @@ time = { workspace = true, features = [
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-js-sys = "0.3"
+js-sys = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini", "sha3"]

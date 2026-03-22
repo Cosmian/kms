@@ -62,6 +62,17 @@ to the test matrix so regressions are caught automatically:
 
 ### 🐛 Bug Fixes
 
+- **Access rights**: `list_accesses_rights_obtained` (HTTP `GET /access/obtained`) now correctly
+  includes objects whose access was granted via the wildcard user `*` (all-users grants). Previously
+  only direct per-user grants were returned. Affects SQLite, PostgreSQL, and MySQL backends.
+- **Tests (Windows)**: CLI integration tests on Windows no longer fail with `WSAECONNRESET`
+  (error 10054) or `SEC_E_DECRYPT_FAILURE` (-2146893008) when many test subprocesses connect to
+  the in-process TLS test server simultaneously; subprocess concurrency is now limited to 2 and
+  both transient connection resets and TLS handshake failures are retried with exponential backoff.
+- **CI (azure_ekm)**: Azure EKM mTLS test no longer times out waiting for the KMS server to start;
+  the script now runs the pre-built binary directly instead of `cargo run`, avoiding a spurious
+  recompilation that previously caused the 30-second startup wait to expire.
+- **Tests**: Stabilize CLI integration tests by using the explicitly built `ckms` binary, dynamic server ports, and matching `test_data/configs/{client,server}/test` fixture names.
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
@@ -90,6 +101,7 @@ to the test matrix so regressions are caught automatically:
 ### 🧪 Testing
 
 - Create integration tests for AWS KMS BYOK using OpenSSL to unwrap locally and mock the AWS infrastructure
+- Fix missing `REPO_ROOT` in `azure_ekm_test.sh` causing unbound variable error
 
 ### 📚 Documentation
 

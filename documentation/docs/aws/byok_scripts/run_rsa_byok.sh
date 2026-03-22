@@ -52,8 +52,8 @@ echo "  -> Created AWS KMS Key ARN: $KEY_ARN"
 
 echo "[2/7] Creating Cosmian KMS RSA-${KEY_SIZE} private key material..."
 COSMIAN_KEY_ID=$($COSMIAN_KMS_CLI kms rsa keys create \
-    --size_in_bits "$KEY_SIZE" \
-    | grep -oP '(?<=Private key unique identifier: )\S+')
+    --size_in_bits "$KEY_SIZE" |
+    grep -oP '(?<=Private key unique identifier: )\S+')
 if [ -z "$COSMIAN_KEY_ID" ]; then
     echo "Error: could not extract Cosmian private key ID from output"
     exit 1
@@ -65,26 +65,26 @@ echo "[3/7] Getting AWS Import Parameters..."
 aws kms get-parameters-for-import \
     --key-id "$KEY_ARN" \
     --wrapping-algorithm $WRAPPING_ALGO \
-    --wrapping-key-spec $WRAPPING_KEY_SPEC > "$WORK_DIR/step3_params.json"
+    --wrapping-key-spec $WRAPPING_KEY_SPEC >"$WORK_DIR/step3_params.json"
 echo "  -> Saved wrapping parameters"
 
 echo "[4/7] Decoding Import Token and KEK..."
-jq -r '.ImportToken' "$WORK_DIR/step3_params.json" | base64 -d > "$WORK_DIR/token.bin"
-jq -r '.PublicKey'    "$WORK_DIR/step3_params.json" | base64 -d > "$WORK_DIR/kek.bin"
+jq -r '.ImportToken' "$WORK_DIR/step3_params.json" | base64 -d >"$WORK_DIR/token.bin"
+jq -r '.PublicKey' "$WORK_DIR/step3_params.json" | base64 -d >"$WORK_DIR/kek.bin"
 echo "  -> Decoded token and KEK"
 
 echo "[5/7] Importing AWS KEK into Cosmian KMS..."
 COSMIAN_KEK_ID=$($COSMIAN_KMS_CLI kms aws byok import \
     --kek-file "$WORK_DIR/kek.bin" \
     --wrapping-algorithm $WRAPPING_ALGO \
-    --key-arn "$KEY_ARN" \
-    | grep -oP '(?<=Unique identifier: )\S+')
+    --key-arn "$KEY_ARN" |
+    grep -oP '(?<=Unique identifier: )\S+')
 echo "  -> Imported KEK with ID: $COSMIAN_KEK_ID"
 
 echo "[6/7] Exporting (wrapping) RSA key material from Cosmian KMS..."
 $COSMIAN_KMS_CLI kms aws byok export \
-    $COSMIAN_KEY_ID \
-    $COSMIAN_KEK_ID \
+    "$COSMIAN_KEY_ID" \
+    "$COSMIAN_KEK_ID" \
     "$WORK_DIR/token.bin" \
     "$WORK_DIR/EncryptedKeyMaterial.bin" >/dev/null
 echo "  -> Generated encrypted key material"

@@ -28,17 +28,14 @@ harness = false
 [dependencies]
 actix-server = { workspace = true }
 cosmian_kms_client = { path = "../kms_client", version = "5.17.0" }
+toml = { workspace = true }
 cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], version = "5.17.0" }
 cosmian_logger = { workspace = true }
-serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = [
-  "html_reports",
-  "async_tokio",
-], default-features = false }
+criterion = { workspace = true }
 zeroize = { workspace = true }

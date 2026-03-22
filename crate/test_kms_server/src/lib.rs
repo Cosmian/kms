@@ -1,17 +1,15 @@
 pub use cosmian_kms_server::{
-    config::{DEFAULT_SQLITE_PATH, HsmConfig, MainDBConfig},
+    config::{HsmConfig, MainDBConfig},
     openssl_providers::init_openssl_providers_for_tests,
 };
 pub use test_server::{
-    ApiTokenPolicy, AuthenticationOptions, BuildServerParamsOptions, ClientAuthOptions,
-    ClientCertPolicy, JwtAuth as ServerJwtAuth, JwtPolicy, TestsContext, TlsMode as ServerTlsMode,
-    build_server_params, build_server_params_full, start_default_test_kms_server,
+    TestsContext, load_client_config, load_server_config, start_default_test_kms_server,
     start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_non_revocable_key_ids,
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_utimaco_and_kek,
-    start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
-    start_test_server_with_options,
+    start_default_test_kms_server_with_utimaco_hsm, start_temp_test_kms_server,
+    start_test_kms_server_with_config, with_server_port,
 };
 
 mod test_server;

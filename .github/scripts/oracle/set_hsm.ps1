@@ -1,4 +1,5 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
+
 <#
 .SYNOPSIS
     Installs cosmian_pkcs11.dll into a Windows Oracle Database and

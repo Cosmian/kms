@@ -180,34 +180,13 @@ gh pr view <number> --repo Cosmian/kms
 Run the server with maximum logging when investigating issues:
 
 ```bash
-curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:9998/kmip/2_1
+RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" \
+  cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
 ```
 
-Expected response is a KMIP validation error, confirming the server is alive.
+Add the failing crate to `RUST_LOG` if the problem originates elsewhere.
 
-## Update CHANGELOG.md
-
-For each changes, compare the current git-branch with the upstream branch and summarize it on `CHANGELOG.md` on 1 line in the top section of the file (next release). This helps maintain a clear history of changes for users and contributors. Take example from last entries of `CHANGELOG.md` for formatting and style.
-
-## Repository layout (high level)
-
-```text
-.github/                # CI workflows and scripts
-crate/                  # Rust workspace crates (server, cli, crypto, …)
-pkg/                    # Packaging metadata (deb/rpm service files, configs)
-documentation/          # Documentation and guides
-resources/              # Configuration files and resources
-test_data/              # Test fixtures and data
-ui/                     # Web UI source
-```
-
-## Tips
-
-- Format/lints: run `cargo fmt --check` and `cargo clippy` to check code style
-- Use `cargo build` for optimized builds
-- Run `cargo test` frequently to ensure changes don't break functionality
-
-### Docker
+## Docker
 
 ```bash
 docker pull ghcr.io/cosmian/kms:latest
@@ -224,8 +203,3 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
   automatically; check that it is called before any `Provider::try_load()`.
 - **Stale Nix vendor hashes**: after updating `Cargo.lock` or bumping the package version,
   regenerate all four hash files using the fake-hash trick above.
-
-### Known Patterns — Do Not Flag
-
-- Do not flag SeedableRng as an unused import when there is `let mut rng = CsRng::from_entropy();` in the same file. SeedableRng must be in scope for CsRng::from_entropy() to compile — it is the trait that provides the from_entropy() method.
-- In crate/cli/src/actions/kms/aws/byok/export_key_material.rs, the intentional mixing of print! and eprintln!/eprint! is by design and must not be changed.

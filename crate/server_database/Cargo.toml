@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.17.0"
+version.workspace = true
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
@@ -33,31 +33,22 @@ async-trait = { workspace = true }
 cosmian_kmip = { path = "../kmip", version = "5.17.0" }
 cosmian_kms_crypto = { path = "../crypto", version = "5.17.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.17.0" }
-cosmian_findex = { version = "8.0.2", optional = true }
+cosmian_findex = { workspace = true, optional = true }
 cosmian_logger = { workspace = true }
-cosmian_sse_memories = { version = "8.0.2", optional = true }
+cosmian_sse_memories = { workspace = true, optional = true }
 lru = { workspace = true }
 num_cpus = { workspace = true }
-rawsql = "0.1"
-redis = { version = "0.32", features = [
-  "aio",
-  "ahash",
-  "script",
-  "connection-manager",
-  "tokio-comp",
-], optional = true }
+rawsql = { workspace = true }
+redis = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
-tokio-postgres = { version = "0.7", features = [
-  "with-uuid-1",
-  "with-serde_json-1",
-] }
-postgres-openssl = "0.5"
-deadpool-postgres = "0.14"
-mysql_async = { version = "0.36", features = ["native-tls-tls"] }
-openssl = "0.10"
-tokio-rusqlite = "0.7"
-rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
+tokio-postgres = { workspace = true }
+postgres-openssl = { workspace = true }
+deadpool-postgres = { workspace = true }
+mysql_async = { workspace = true }
+openssl = { workspace = true }
+tokio-rusqlite = { workspace = true }
+rusqlite = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 url = { workspace = true }

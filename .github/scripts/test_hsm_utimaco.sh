@@ -25,8 +25,8 @@ echo "========================================="
 echo "Running Utimaco HSM tests"
 echo "========================================="
 
-[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
-  echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
+[ "$(uname)" != "Linux" ] && {
+  echo "Error: HSM tests are only supported on Linux" >&2
   exit 1
 }
 

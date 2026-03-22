@@ -14,10 +14,15 @@ echo "========================================="
 echo "Running SoftHSM2 HSM tests"
 echo "========================================="
 
-[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
-  echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
+[ "$(uname)" != "Linux" ] && {
+  echo "Error: HSM tests are only supported on Linux" >&2
   exit 1
 }
+
+if [ "$(uname -m)" != "x86_64" ]; then
+  echo "Skipping SoftHSM2 HSM tests: backend support currently requires Linux x86_64."
+  exit 0
+fi
 
 export HSM_USER_PASSWORD="12345678"
 
@@ -42,9 +47,20 @@ fi
 SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR/libsofthsm2.so}"
 INIT_OUT=$(softhsm2-util --init-token --free --label "my_token_1" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD" 2>&1 | tee /dev/stderr)
 
-SOFTHSM2_HSM_SLOT_ID=$(echo "$INIT_OUT" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
+SOFTHSM2_HSM_SLOT_ID=$(echo "$INIT_OUT" | sed -n 's/.*reassigned to slot \([0-9][0-9]*\).*/\1/p' | head -n 1)
 if [ -z "${SOFTHSM2_HSM_SLOT_ID:-}" ]; then
-  SOFTHSM2_HSM_SLOT_ID=$(softhsm2-util --show-slots | awk 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && $0 ~ /my_token_1/ {print sid; exit}')
+  current_slot=""
+  while IFS= read -r line; do
+    case "$line" in
+    Slot\ *)
+      current_slot=$(echo "$line" | sed -n 's/^Slot \([0-9][0-9]*\).*/\1/p' | head -n 1)
+      ;;
+    *Token\ label*my_token_1*)
+      SOFTHSM2_HSM_SLOT_ID="$current_slot"
+      break
+      ;;
+    esac
+  done < <(softhsm2-util --show-slots)
 fi
 [ -n "${SOFTHSM2_HSM_SLOT_ID:-}" ] || {
   echo "Error: Could not determine SoftHSM2 slot id" >&2

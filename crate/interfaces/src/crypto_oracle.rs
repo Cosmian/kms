@@ -177,8 +177,8 @@ pub struct EncryptedContent {
 pub trait CryptoOracle: Send + Sync {
     /// Encrypt data
     /// # Arguments
-    /// * `uid` - the ID of the key to use for encryption.
-    /// * `data` - the data to encrypt.
+    /// * `uid` - KMIP unique identifier of the key object to use for encryption.
+    /// * `data` - plaintext bytes; maximum size depends on the wrapping algorithm.
     /// * `cryptographic_algorithm` - the cryptographic algorithm to use for encryption.
     /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated encryption.
     /// # Returns
@@ -193,8 +193,8 @@ pub trait CryptoOracle: Send + Sync {
 
     /// Decrypt data
     /// # Arguments
-    /// * `uid` - the ID of the key to use for decryption.
-    /// * `data` - the data to decrypt.
+    /// * `uid` - KMIP unique identifier of the key object to use for decryption.
+    /// * `data` - ciphertext bytes previously produced by `encrypt()`.
     /// * `cryptographic_algorithm` - the cryptographic algorithm to use for decryption.
     /// * `authenticated_encryption_additional_data` - the additional data to use for authenticated decryption.
     /// # Returns
@@ -210,7 +210,7 @@ pub trait CryptoOracle: Send + Sync {
     /// Get the key type
     /// On HSMs, this should be a single call to the HSM.
     /// # Arguments
-    /// * `uid` - the ID of the key
+    /// * `uid` - KMIP unique identifier of the key object in the KMS
     /// # Returns
     /// * `KeyType` - the type of the key
     async fn get_key_type(&self, uid: &str) -> InterfaceResult<Option<KeyType>>;
@@ -218,7 +218,7 @@ pub trait CryptoOracle: Send + Sync {
     /// Get the metadata of a key
     /// On HSMs, this should be a double call to the HSM.
     /// # Arguments
-    /// * `uid` - the ID of the key
+    /// * `uid` - KMIP unique identifier of the key object in the KMS
     /// # Returns
     /// * `KeyMetadata` - the metadata of the key
     async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>>;

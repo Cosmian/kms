@@ -1,19 +1,14 @@
-use std::{path::Path, process::Command};
+use std::path::Path;
 
-use assert_cmd::prelude::*;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::utils::{
-            extract_uids::{extract_private_key, extract_public_key},
-            recover_cmd_logs,
-        },
-        save_kms_cli_config,
+    tests::kms::utils::{
+        extract_uids::{extract_private_key, extract_public_key},
+        recover_cmd_logs,
     },
 };
 
@@ -25,7 +20,7 @@ pub(crate) fn create_kem_key_pair(
     kem_algorithm: &str,
     tags: &[&str],
 ) -> CosmianResult<(String, String)> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["key-gen", "--kem", kem_algorithm];
@@ -60,7 +55,7 @@ pub(crate) fn encaps(
     public_key_id: &str,
     output_file: &Path,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let output_file_str = output_file.to_str().unwrap();
@@ -85,7 +80,7 @@ pub(crate) fn decaps(
     input_file: &Path,
     output_file: &Path,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let input_file_str = input_file.to_str().unwrap();
@@ -140,7 +135,7 @@ fn test_kem(cli_conf_path: &str, name: &str, kem_algorithm: &str) -> CosmianResu
 #[tokio::test]
 pub(crate) async fn test_create_configurable_kem_key_pair() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     test_kem(&owner_client_conf_path, "ML-KEM512 KEM", "ml-kem-512")?;
     test_kem(&owner_client_conf_path, "ML-KEM768 KEM", "ml-kem-768")?;

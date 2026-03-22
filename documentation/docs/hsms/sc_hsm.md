@@ -57,7 +57,7 @@ When using the [TOML configuration file](../server_configuration_file.md#toml-co
 
 ```toml
 hsm_model = "smartcardhsm"
-hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
+hsm_admin = ["<HSM_ADMIN_USERNAME>"] # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["648219", "648219"] for slots 0 and 4
 ```

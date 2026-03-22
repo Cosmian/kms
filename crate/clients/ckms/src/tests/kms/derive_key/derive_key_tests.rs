@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use clap::ValueEnum;
 use cosmian_kms_cli::{
     actions::kms::{
@@ -27,18 +24,14 @@ use super::super::utils::extract_uids::extract_uid;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{secret_data::create_secret::create_secret_data, utils::recover_cmd_logs},
-        save_kms_cli_config,
-    },
+    tests::kms::{secret_data::create_secret::create_secret_data, utils::recover_cmd_logs},
 };
 
 const SUB_COMMAND: &str = "derive-key";
 
 /// Run `ckms derive-key` via the CLI and return the derived key unique identifier
 pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     // Build CLI args from the action
@@ -143,7 +136,7 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -182,7 +175,7 @@ pub(crate) async fn test_derive_symmetric_key_hkdf() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -220,7 +213,7 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -263,7 +256,7 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create a secret data for derivation
     let secret_data_id = create_secret_data(
@@ -303,7 +296,7 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -350,7 +343,7 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Test deriving from a password (UTF-8 string)
     let derived_key_id = derive_key(
@@ -381,7 +374,7 @@ pub(crate) async fn test_derive_key_from_unicode_password() -> CosmianResult<()>
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // Test deriving from a Unicode password (UTF-8 string with special characters)
     let derived_key_id = derive_key(

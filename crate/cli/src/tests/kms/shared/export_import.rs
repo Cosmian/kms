@@ -1,10 +1,5 @@
-use crate::{
-    actions::kms::{
-        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
-        symmetric::keys::create_key::CreateKeyAction,
-    },
-    error::result::KmsCliResult,
-};
+use std::{fs, path::PathBuf};
+
 use base64::Engine;
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
@@ -12,14 +7,20 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
 };
 use cosmian_logger::{debug, info, log_init};
 use openssl::pkey::PKey;
-use std::{fs, path::PathBuf};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
-
 #[cfg(not(windows))]
 use {
     crate::cli_bail, crate::error::result::KmsCliResultHelper, cosmian_logger::warn,
     std::path::Path, test_kms_server::TestsContext,
+};
+
+use crate::{
+    actions::kms::{
+        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
+        symmetric::keys::create_key::CreateKeyAction,
+    },
+    error::result::KmsCliResult,
 };
 
 #[tokio::test]

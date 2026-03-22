@@ -23,6 +23,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NON_FIPS");
     println!("cargo:rerun-if-changed=build.rs");
+    // Re-run if the devcontainer pre-built paths appear or disappear.
+    println!("cargo:rerun-if-changed=/opt/openssl/fips/lib/libcrypto.a");
+    println!("cargo:rerun-if-changed=/opt/openssl/non-fips/lib/libcrypto.a");
 
     // Skip OpenSSL build on Windows
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -32,6 +35,33 @@ fn main() {
     }
 
     let fips_mode = env::var("CARGO_FEATURE_NON_FIPS").is_err();
+
+    // ── Devcontainer: pre-built OpenSSL at /opt/openssl/{fips,non-fips} ───
+    // When running inside the devcontainer, crate/crypto/build.rs would
+    // otherwise download and compile OpenSSL (~5 min) on every first build.
+    // Instead, the Dockerfile pre-builds both variants at image-build time.
+    // If the matching pre-built static lib is present, skip the download and
+    // delegate all linking to the openssl-sys crate (which reads OPENSSL_DIR
+    // from the environment, set via devcontainer.json remoteEnv).
+    let devcontainer_dir = if fips_mode {
+        PathBuf::from("/opt/openssl/fips")
+    } else {
+        PathBuf::from("/opt/openssl/non-fips")
+    };
+    if devcontainer_dir.join("lib/libcrypto.a").exists()
+        && devcontainer_dir.join("ssl/openssl.cnf").exists()
+    {
+        if fips_mode {
+            normalize_provider_layout(&devcontainer_dir);
+            integrate_assets_into_main(&devcontainer_dir, None);
+            patch_fipsmodule_include(&devcontainer_dir);
+        }
+        println!(
+            "cargo:warning=Devcontainer: using pre-built OpenSSL at {}",
+            devcontainer_dir.display()
+        );
+        return;
+    }
 
     // Resolve workspace root: crate/crypto -> crate -> repo root
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

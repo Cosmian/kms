@@ -1,16 +1,11 @@
-use std::process::Command;
-
 use assert_cmd::prelude::*;
-use test_kms_server::start_default_test_kms_server;
 use serde::Deserialize;
+use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     config::CKMS_CONF_ENV,
     error::CosmianError,
-    tests::{
-        PROG_NAME,
-        kms::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs},
-    },
+    tests::kms::{google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs},
 };
 
 #[derive(Deserialize)]
@@ -53,17 +48,14 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
-    cmd
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
         return serde_json::from_str::<ListKeyPairsResponse>(output)
-            .map_err(|e| CosmianError::Default(format!("{e}")))
+            .map_err(|e| CosmianError::Default(format!("{e}")));
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -80,17 +72,14 @@ fn get_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
-    cmd
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
         return serde_json::from_str::<KeyPairs>(output)
-            .map_err(|e| CosmianError::Default(format!("{e}")))
+            .map_err(|e| CosmianError::Default(format!("{e}")));
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -107,15 +96,12 @@ fn disable_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
-    cmd
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(())
+        return Ok(());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -132,15 +118,12 @@ fn enable_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
-    cmd
-        .arg("google")
-        .arg("keypairs")
-        .args(args);
+    cmd.arg("google").arg("keypairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        return Ok(())
+        return Ok(());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),

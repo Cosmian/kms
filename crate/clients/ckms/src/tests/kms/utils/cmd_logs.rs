@@ -3,7 +3,7 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-/// Recover output logs from a command call `cmd` and re-inject it into stdio
+/// Recover output logs from a command call `cmd` and re-inject it into stdio.
 pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
     let output = cmd
         .stdout(Stdio::piped())

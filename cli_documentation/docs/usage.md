@@ -13,6 +13,7 @@ Commands:
   access-rights      Manage the users' access rights to the cryptographic objects
   attributes         Get/Set/Delete/Modify the KMIP object attributes
   azure              Support for Azure specific interactions
+  aws                Support for AWS specific interactions
   cc                 Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
   kem                Manage Configurable KEM keys. Encrypt and decrypt data
   certificates       Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data

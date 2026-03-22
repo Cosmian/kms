@@ -1,17 +1,12 @@
-use base64::Engine;
-use cosmian_kms_client::{
-    read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
-};
-use cosmian_logger::{error, info, trace};
 use std::path::PathBuf;
+
+use base64::Engine;
+use cosmian_kms_client::{KmsClientConfig, read_object_from_json_ttlv_file};
+use cosmian_logger::{error, info, trace};
 use tempfile::TempDir;
-#[cfg(not(target_os = "windows"))]
-use test_kms_server::build_server_params;
 use test_kms_server::{
-    ApiTokenPolicy, AuthenticationOptions, ClientAuthOptions, ClientCertPolicy, JwtPolicy,
-    MainDBConfig, ServerJwtAuth as JwtAuth, ServerTlsMode as TlsMode, TestsContext,
-    build_server_params_full, init_test_logging,
-    reexport::cosmian_kms_server::config::ServerParams, start_test_server_with_options,
+    TestsContext, init_test_logging, load_client_config, load_server_config,
+    start_temp_test_kms_server, with_server_port,
 };
 use tokio::fs;
 
@@ -23,117 +18,6 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-// Base port for this test's HTTP scenarios; use a high, disjoint range
-// to avoid collisions with other test suites and ONCE servers.
-const PORT: u16 = 12000;
-// Use a far, disjoint range for TLS tests to avoid port collisions when tests run in parallel
-#[cfg(not(target_os = "windows"))]
-const TLS_PORT: u16 = 13000;
-
-// Use a fixed workspace directory so all scenarios share the same DB
-fn shared_workspace_dir() -> PathBuf {
-    PathBuf::from("./cosmian-kms")
-}
-
-fn make_server_params(
-    db_config: MainDBConfig,
-    port: u16,
-    tls: TlsMode,
-    jwt: JwtAuth,
-    server_tls_cipher_suites: Option<String>,
-    api_token_id: Option<String>,
-) -> KmsCliResult<ServerParams> {
-    Ok(build_server_params_full(
-        test_kms_server::BuildServerParamsOptions {
-            workspace_dir: Some(shared_workspace_dir()),
-            db_config,
-            port,
-            tls,
-            jwt,
-            server_tls_cipher_suites,
-            api_token_id,
-            ..Default::default()
-        },
-    )?)
-}
-
-fn client_http_with_cert() -> HttpClientConfig {
-    #[cfg(feature = "non-fips")]
-    {
-        HttpClientConfig {
-            ssl_client_pkcs12_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
-                    .to_string(),
-            ),
-            ssl_client_pkcs12_password: Some("password".to_string()),
-            ..Default::default()
-        }
-    }
-    #[cfg(not(feature = "non-fips"))]
-    {
-        HttpClientConfig {
-            ssl_client_pem_cert_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt"
-                    .to_string(),
-            ),
-            ssl_client_pem_key_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.key"
-                    .to_string(),
-            ),
-            ..Default::default()
-        }
-    }
-}
-
-fn client_http_with_token(token: Option<String>) -> HttpClientConfig {
-    HttpClientConfig {
-        access_token: token,
-        ..Default::default()
-    }
-}
-
-fn client_http_with_cert_and_token(token: String) -> HttpClientConfig {
-    #[cfg(feature = "non-fips")]
-    {
-        HttpClientConfig {
-            ssl_client_pkcs12_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
-                    .to_string(),
-            ),
-            ssl_client_pkcs12_password: Some("password".to_string()),
-            access_token: Some(token),
-            ..Default::default()
-        }
-    }
-    #[cfg(not(feature = "non-fips"))]
-    {
-        HttpClientConfig {
-            ssl_client_pem_cert_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt"
-                    .to_string(),
-            ),
-            ssl_client_pem_key_path: Some(
-                "../../test_data/certificates/client_server/owner/owner.client.acme.com.key"
-                    .to_string(),
-            ),
-            access_token: Some(token),
-            ..Default::default()
-        }
-    }
-}
-
-#[inline]
-fn auth_opts(http: HttpClientConfig, sp: ServerParams) -> AuthenticationOptions {
-    AuthenticationOptions {
-        client: ClientAuthOptions {
-            http,
-            // Use defaults for policies
-            ..Default::default()
-        },
-        server_params: Some(sp),
-    }
-}
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ScenarioOutcome {
     ShouldSucceed,
@@ -142,13 +26,12 @@ enum ScenarioOutcome {
 
 async fn run_auth_scenario(
     description: &str,
-    db_config: &MainDBConfig,
-    port: u16,
-    auth: AuthenticationOptions,
+    config: test_kms_server::reexport::cosmian_kms_server::config::ClapConfig,
+    owner_client_config: KmsClientConfig,
     expect: ScenarioOutcome,
 ) -> KmsCliResult<()> {
     info!("==> {description}");
-    let ctx = start_test_server_with_options(db_config.clone(), port, auth, None, None).await?;
+    let ctx = start_temp_test_kms_server(config, owner_client_config).await?;
     let list_result = ListOwnedObjects.run(ctx.get_owner_client()).await;
     match expect {
         ScenarioOutcome::ShouldSucceed => {
@@ -166,14 +49,11 @@ async fn run_auth_scenario(
 }
 
 async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> {
-    // Create and export an API token
     let api_token_id = CreateKeyAction::default()
         .run(ctx.get_owner_client())
         .await?;
     trace!("Symmetric key created of unique identifier: {api_token_id}");
 
-    // Export as default (JsonTTLV with Raw Key Format Type)
-    // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     ExportSecretDataOrKeyAction {
@@ -195,525 +75,161 @@ async fn create_api_token(ctx: &TestsContext) -> KmsCliResult<(String, String)> 
 
 #[tokio::test]
 pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
-    // Ensure logging is initialized once across the whole test process
     init_test_logging();
 
-    // delete the temp db dir holding `sqlite-data-auth-tests/kms.db`
     let _e = fs::remove_dir_all(PathBuf::from("./cosmian-kms")).await;
 
-    // Use a fresh TCP port for each server start to avoid TIME_WAIT port reuse
-    // and potential races when starting/stopping servers rapidly.
-    let mut port_counter = PORT;
-    let mut next_port = || {
-        port_counter += 1;
-        port_counter
-    };
+    // All auth-test servers share one SQLite database so that API-token keys
+    // created by the first (no-auth) server are visible to all subsequent ones.
+    // Using the process ID avoids conflicts when multiple test binaries run in parallel.
+    let shared_sqlite = PathBuf::from(format!("/tmp/kms_auth_test_sqlite_{}", std::process::id()));
+    let _unused = fs::remove_dir_all(&shared_sqlite).await;
+    // Closure: override sqlite_path on any server config to use the shared DB.
+    let with_db =
+        |mut config: test_kms_server::reexport::cosmian_kms_server::config::ClapConfig| {
+            config.db.sqlite_path = shared_sqlite.clone();
+            config
+        };
 
-    // plaintext no auth
+    let https_jwt_config = "test/auth_https_jwt";
+    let https_client_ca_config = "test/auth_https_client_ca";
+    let https_config = "test/auth_https";
+
+    // plaintext no auth — first server starts with a fresh DB
     info!("==> Testing server with no auth");
-    let p0 = next_port();
-    let ctx = start_test_server_with_options(
-        MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        p0,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                p0,
-                TlsMode::PlainHttp,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-
+    let mut config = with_db(load_server_config("test/auth_plain")?);
+    config.db.clear_database = true;
+    let ctx =
+        start_temp_test_kms_server(config, load_client_config("test/auth_plain_owner")?).await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
-
-    // Create an API auth token with admin rights for later
     let (api_token_id, api_token) = create_api_token(&ctx).await?;
     ctx.stop_server().await?;
 
-    let default_db_config = MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-        clear_database: false,
-        ..MainDBConfig::default()
-    };
-
     // plaintext JWT token auth
-    let p1 = next_port();
     run_auth_scenario(
         "Testing server with JWT token over HTTP",
-        &default_db_config,
-        p1,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p1,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
 
-    // tls token auth
-    let p2 = next_port();
+    // tls JWT token auth
     run_auth_scenario(
         "Testing server with JWT token auth over HTTPS",
-        &default_db_config,
-        p2,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p2,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
+        with_db(load_server_config(https_jwt_config)?),
+        load_client_config("test/auth_https_jwt_cert_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
 
     // Client Certificate authentication
     info!("==> Testing server with Client Certificate auth");
-    let p3 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p3,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: client_http_with_cert(),
-                // client cert auto-injection now happens unless policy suppresses it
-                client_cert: ClientCertPolicy::Send,
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: {
-                let sp1 = make_server_params(
-                    default_db_config.clone(),
-                    p3,
-                    TlsMode::HttpsWithClientCa,
-                    JwtAuth::Disabled,
-                    None,
-                    None,
-                )?;
-                Some(sp1)
-            },
-        },
-        None,
-        None,
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config(https_client_ca_config)?),
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
     ctx.stop_server().await?;
 
-    // SCENARIO 1: Both Client Certificates and JWT authentication enabled, user presents JWT token only
-    info!(
-        "==> Testing server with both Client Certificates and JWT auth - User sends JWT token only"
-    );
-    let p4 = next_port();
+    // SCENARIO 1: Both Client Certificates and JWT — user presents JWT token only
     run_auth_scenario(
         "Testing server with both Client Certificates and JWT auth - User sends JWT token only",
-        &default_db_config,
-        p4,
-        auth_opts(
-            HttpClientConfig::default(),
-            make_server_params(
-                default_db_config.clone(),
-                p4,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?,
-        ),
+        with_db(load_server_config(https_jwt_config)?),
+        load_client_config("test/auth_https_jwt_owner")?,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
 
-    // SCENARIO 2: Both Client Certificates and API token authentication enabled, user presents API token only
-    info!(
-        "==> Testing server with both Client Certificates and API token auth -User sends API \
-         token only"
-    );
-    let p5 = next_port();
+    // SCENARIO 2: Both Client Certificates and API token — user presents API token only
+    let mut config = with_db(load_server_config(https_client_ca_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
+    let mut client_s2 = load_client_config("test/auth_https_client_ca_owner")?;
+    client_s2.http_config.access_token = Some(api_token.clone());
     run_auth_scenario(
-        "Testing server with both Client Certificates and API token auth -User sends API token \
-         only",
-        &default_db_config,
-        p5,
-        auth_opts(
-            client_http_with_token(Some(api_token.clone())),
-            make_server_params(
-                default_db_config.clone(),
-                p5,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?,
-        ),
+        "Testing server with both Client Certificates and API token auth - API token only",
+        config,
+        client_s2,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
 
-    // SCENARIO 3: Both JWT and API token authentication enabled, user presents API token only
-    info!("==> Testing server with both JWT and API token auth - User sends the API token only");
-    let p6 = next_port();
+    // SCENARIO 3: Both JWT and API token — user presents API token only
+    let mut config = with_db(load_server_config(https_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
+    let mut client_s3 = load_client_config("test/auth_https_owner")?;
+    client_s3.http_config.access_token = Some(api_token.clone());
     run_auth_scenario(
         "Testing server with both JWT and API token auth - User sends the API token only",
-        &default_db_config,
-        p6,
-        auth_opts(
-            client_http_with_token(Some(api_token.clone())),
-            make_server_params(
-                default_db_config.clone(),
-                p6,
-                TlsMode::HttpsNoClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some(api_token_id.clone()),
-            )?,
-        ),
+        config,
+        client_s3,
         ScenarioOutcome::ShouldSucceed,
     )
     .await?;
 
     // SCENARIO 4: JWT authentication enabled, no token provided (failure case)
-    info!("==> Testing server with JWT auth - User does not send the token (should fail)");
-    let p7 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p7,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p7,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
-    ctx.stop_server().await?;
-    let p8 = next_port();
+    // Plain owner client (no JWT) connects to the JWT server — should be rejected.
     run_auth_scenario(
         "Testing server with JWT auth - User does not send the token (should fail)",
-        &default_db_config,
-        p8,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p8,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        with_server_port(load_client_config("test/auth_plain_owner")?, 12002),
         ScenarioOutcome::ShouldFail,
     )
     .await?;
 
     // SCENARIO 5: Client Certificate authentication enabled, no certificate provided (failure case)
-    info!("==> Testing server with Client Certificate auth - missing certificate (should fail)");
-    let p9 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p9,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                client_cert: ClientCertPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p9,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
-    ctx.stop_server().await?;
-    let p10 = next_port();
+    // HTTPS client without cert connects to the cert-required server — should be rejected.
     run_auth_scenario(
         "Testing server with Client Certificate auth - missing certificate (should fail)",
-        &default_db_config,
-        p10,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                client_cert: ClientCertPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p10,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
+        with_db(load_server_config(https_client_ca_config)?),
+        with_server_port(load_client_config("test/auth_https_owner")?, 12004),
         ScenarioOutcome::ShouldFail,
     )
     .await?;
 
     // SCENARIO 6: API token authentication enabled, no token provided (failure case)
-    info!("==> Testing server with API token auth - missing token (should fail)");
-    let p11 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p11,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                api_token: ApiTokenPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p11,
-                TlsMode::HttpsNoClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
-    ctx.stop_server().await?;
-    let p12 = next_port();
+    let mut config = with_db(load_server_config(https_config)?);
+    config.http.api_token_id = Some(api_token_id.clone());
     run_auth_scenario(
         "Testing server with API token auth - missing token (should fail)",
-        &default_db_config,
-        p12,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                api_token: ApiTokenPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p12,
-                TlsMode::HttpsNoClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
-        },
+        config,
+        load_client_config("test/auth_https_owner")?,
         ScenarioOutcome::ShouldFail,
     )
     .await?;
 
-    // SCENARIO 7: JWT authentication enabled, but no JWT token presented (failure case)
-    info!("===> Testing server with JWT auth - but no JWT token sent (should fail)");
-    let p13 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p13,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p13,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
-    )
-    .await?;
-    ListOwnedObjects
-        .run(ctx.get_owner_client())
-        .await
-        .unwrap_err();
-    ctx.stop_server().await?;
-    let p14 = next_port();
-    run_auth_scenario(
-        "Testing server with JWT auth - but no JWT token sent (should fail)",
-        &default_db_config,
-        p14,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p14,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        ScenarioOutcome::ShouldFail,
-    )
-    .await?;
-
-    // Bad API token auth but JWT auth used at first
-    info!("==> Testing server with bad API token auth but JWT auth used at first");
-    let p15 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p15,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(make_server_params(
-                default_db_config.clone(),
-                p15,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    // Bad API token auth but JWT auth used at first (should succeed)
+    let ctx = start_temp_test_kms_server(
+        with_db(load_server_config("test/auth_plain_jwt")?),
+        load_client_config("test/auth_plain_jwt_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
     ctx.stop_server().await?;
 
-    // Bad API token auth, but cert auth used at first
-    info!("==> Testing server with bad API token auth but cert auth used at first");
-    let p16 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        p16,
-        auth_opts(
-            client_http_with_cert_and_token("my_bad_token".to_owned()),
-            make_server_params(
-                default_db_config.clone(),
-                p16,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?,
-        ),
-        None,
-        None,
+    // Bad API token auth, but cert auth used at first (should succeed)
+    let mut config = with_db(load_server_config(https_client_ca_config)?);
+    config.http.api_token_id = Some("my_bad_token_id".to_owned());
+    let ctx = start_temp_test_kms_server(
+        config,
+        load_client_config("test/auth_https_client_ca_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
     ctx.stop_server().await?;
 
-    // Bad API token and good JWT token auth but still cert auth used at first
-    info!(
-        "==> Testing server with bad API token and good JWT token auth but still cert auth used \
-         at first"
-    );
-    let p17 = next_port();
-    let ctx = start_test_server_with_options(
-        default_db_config,
-        p17,
-        auth_opts(
-            client_http_with_cert_and_token("my_bad_token".to_owned()),
-            make_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                p17,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?,
-        ),
-        None,
-        None,
+    // Bad API token and good JWT token auth but cert auth still used (should succeed)
+    let mut config = with_db(load_server_config(https_jwt_config)?);
+    config.http.api_token_id = Some("my_bad_token_id".to_owned());
+    let ctx = start_temp_test_kms_server(
+        config,
+        load_client_config("test/auth_https_jwt_cert_owner")?,
     )
     .await?;
     ListOwnedObjects.run(ctx.get_owner_client()).await?;
     ctx.stop_server().await?;
 
-    // delete the temp db dir
     let _e = fs::remove_dir_all(PathBuf::from("./cosmian-kms")).await;
     Ok(())
 }
@@ -723,364 +239,109 @@ pub(super) async fn test_kms_all_authentications() -> KmsCliResult<()> {
 async fn test_tls_options() -> KmsCliResult<()> {
     init_test_logging();
 
-    let default_db_config = MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-        clear_database: true,
-        ..MainDBConfig::default()
-    };
+    let _e = fs::remove_dir_all(PathBuf::from("./sqlite-data-auth-tests")).await;
 
     // TLS configuration tests
     //
     // Platform note:
     // - The KMS server side in tests always terminates TLS via OpenSSL
     //   (FIPS in default builds, legacy in non-fips), with provider/runtime
-    //   settings injected by `test_kms_server` at test time (OPENSSL_CONF,
-    //   OPENSSL_MODULES).
-    // - The HTTP client stack used by the CLI tests varies by features and
-    //   platform (native-tls bridging to the system's Security.framework on
-    //   macOS, or rustls on non-fips builds). TLS 1.3 cipher selection and
-    //   mixed-version negotiation semantics differ across these backends.
-    //
-    // As a result, some TLS expectations legitimately differ on macOS versus
-    // Linux: we gate those with `#[cfg(target_os = "macos")]` below. These
-    // differences stem from the client TLS backend behavior rather than the
-    // server using an incorrect OpenSSL flavor.
-    #[cfg(feature = "non-fips")]
-    let test_cases = vec![
+    //   settings injected by `test_kms_server`.
+    // - The HTTP client stack varies by platform/feature (native-tls on macOS,
+    //   rustls on non-fips builds). Some expectations differ on macOS:
+    //   gated with cfg!(target_os = "macos") below.
+
+    let https_config_name = "test/auth_https";
+    let https_client_ca_config_name = "test/auth_https_client_ca";
+
+    // (description, config_name, server_cipher, client_cipher, should_succeed)
+    #[allow(clippy::type_complexity)]
+    let test_cases: Vec<(&str, &str, Option<&str>, Option<&str>, bool)> = vec![
         (
             "Testing server and client with no option for TLS",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    None,
-                    None,
-                )?,
-            ),
-            true, // should succeed
-        ),
-        (
-            "Testing server and client with same cipher suite - old TLS 1.2 cipher that client \
-             (rustls) doesn't recognize, so client falls back to safe defaults which succeed",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 1,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            true, // should succeed due to fallback to defaults
-        ),
-        (
-            "Testing server in TLS 1.3 but client in TLS 1.2",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 2,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    None,
-                )?,
-            ),
-            #[cfg(target_os = "macos")]
-            false, // macOS native-tls may refuse TLS1.2->TLS1.3 negotiation
-            #[cfg(not(target_os = "macos"))]
-            true, // Other platforms typically negotiate successfully
-        ),
-        (
-            "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 3,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            // On macOS, native-tls can still enforce TLS 1.2 and fail
-            #[cfg(target_os = "macos")]
-            false,
-            #[cfg(not(target_os = "macos"))]
+            https_config_name,
+            None,
+            None,
             true,
         ),
         (
-            "Testing server with invalid cipher suite",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 4,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    Some("INVALID_CIPHER_SUITE".to_string()),
-                    None,
-                )?,
-            ),
-            false, // should fail
-        ),
-        (
-            "Testing server and client with TLS 1.3 - same cipher suite",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 5,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            #[cfg(target_os = "macos")]
-            false, // macOS/OpenSSL may reject TLS1.3 ciphers via SSL_CTX_set_cipher_list
-            #[cfg(not(target_os = "macos"))]
-            true, // should succeed elsewhere
-        ),
-        (
-            "Testing server with tls 1.3 client - tls 1.2/1.3 server",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 6,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        None,
-                        None,
-                    )?,
-                )
-            },
-            true, // should succeed
-        ),
-        (
-            "Testing with client that owns a valid certificate issued from a known CA",
-            auth_opts(
-                client_http_with_cert(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 7,
-                    TlsMode::HttpsWithClientCa,
-                    JwtAuth::Disabled,
-                    None,
-                    None,
-                )?,
-            ),
-            true, // should succeed
-        ),
-    ];
-
-    // In FIPS mode, skip tests that rely on certificates from different CA chains
-    // that aren't part of the FIPS test certificate setup (another_p12, gmail_cse with HttpsWithClientCa)
-    #[cfg(not(feature = "non-fips"))]
-    let test_cases = vec![
-        (
-            "Testing server and client with no option for TLS",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    None,
-                    None,
-                )?,
-            ),
-            true, // should succeed
-        ),
-        (
-            "Testing server and client with same cipher suite - old TLS 1.2 cipher that client \
-             (native-tls) uses, should succeed",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 1,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("ECDHE-RSA-AES256-GCM-SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            true, // should succeed
+            "Testing server and client with same cipher suite - old TLS 1.2 cipher",
+            https_config_name,
+            Some("ECDHE-RSA-AES256-GCM-SHA384"),
+            Some("ECDHE-RSA-AES256-GCM-SHA384"),
+            true,
         ),
         (
             "Testing server in TLS 1.3 but client in TLS 1.2",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 2,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    None,
-                )?,
-            ),
-            #[cfg(target_os = "macos")]
-            false, // macOS native-tls may reject TLS1.2->TLS1.3
-            #[cfg(not(target_os = "macos"))]
-            true, // OpenSSL negotiation succeeds elsewhere
+            https_config_name,
+            Some("TLS_AES_256_GCM_SHA384"),
+            None,
+            cfg!(not(target_os = "macos")),
         ),
         (
             "Testing server in TLS 1.3 but client in TLS 1.2 - manually set for client",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 3,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            #[cfg(target_os = "macos")]
-            false,
-            #[cfg(not(target_os = "macos"))]
-            true, // OpenSSL negotiation is flexible
+            https_config_name,
+            Some("TLS_AES_256_GCM_SHA384"),
+            Some("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"),
+            cfg!(not(target_os = "macos")),
         ),
         (
             "Testing server with invalid cipher suite",
-            auth_opts(
-                HttpClientConfig::default(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 4,
-                    TlsMode::HttpsNoClientCa,
-                    JwtAuth::Disabled,
-                    Some("INVALID_CIPHER_SUITE".to_string()),
-                    None,
-                )?,
-            ),
-            false, // should fail
+            https_config_name,
+            Some("INVALID_CIPHER_SUITE"),
+            None,
+            false,
         ),
         (
             "Testing server and client with TLS 1.3 - same cipher suite",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 5,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        Some("TLS_AES_256_GCM_SHA384".to_string()),
-                        None,
-                    )?,
-                )
-            },
-            #[cfg(target_os = "macos")]
-            false, // OpenSSL on macOS rejects TLS1.3 cipher via SSL_CTX_set_cipher_list
-            #[cfg(not(target_os = "macos"))]
-            true, // should succeed elsewhere
+            https_config_name,
+            Some("TLS_AES_256_GCM_SHA384"),
+            Some("TLS_AES_256_GCM_SHA384"),
+            cfg!(not(target_os = "macos")),
         ),
         (
             "Testing server with tls 1.3 client - tls 1.2/1.3 server",
-            {
-                let client_http = HttpClientConfig {
-                    cipher_suites: Some("TLS_AES_256_GCM_SHA384".to_string()),
-                    ..Default::default()
-                };
-                auth_opts(
-                    client_http,
-                    build_server_params(
-                        default_db_config.clone(),
-                        TLS_PORT + 6,
-                        TlsMode::HttpsNoClientCa,
-                        JwtAuth::Disabled,
-                        None,
-                        None,
-                    )?,
-                )
-            },
-            true, // should succeed
+            https_config_name,
+            None,
+            Some("TLS_AES_256_GCM_SHA384"),
+            true,
         ),
         (
             "Testing with client that owns a valid certificate issued from a known CA",
-            auth_opts(
-                client_http_with_cert(),
-                build_server_params(
-                    default_db_config.clone(),
-                    TLS_PORT + 7,
-                    TlsMode::HttpsWithClientCa,
-                    JwtAuth::Disabled,
-                    None,
-                    None,
-                )?,
-            ),
-            true, // should succeed
+            https_client_ca_config_name,
+            None,
+            None,
+            true,
         ),
     ];
 
-    for (index, (description, auth_options, should_succeed)) in test_cases.into_iter().enumerate() {
-        let port = TLS_PORT + u16::try_from(index)?;
+    for (index, (description, config_name, server_cipher, client_cipher, should_succeed)) in
+        test_cases.into_iter().enumerate()
+    {
+        // Each test case gets a unique port (13000..+N) to avoid conflicts when
+        // a failed-case server hasn't fully released the socket yet.
+        const TLS_TEST_BASE_PORT: u16 = 13000;
         info!("==> {description}");
         info!(
             "[test_tls_options] case index={} expect_success={}",
             index, should_succeed
         );
-        let result = start_test_server_with_options(
-            default_db_config.clone(),
-            port,
-            auth_options,
-            None,
-            None,
-        )
-        .await;
 
+        let tls_port = TLS_TEST_BASE_PORT + u16::try_from(index)?;
+        let mut config = load_server_config(config_name)?;
+        config.http.port = tls_port;
+        config.tls.tls_cipher_suites = server_cipher.map(str::to_owned);
+        let mut client_config = if config_name == https_client_ca_config_name {
+            with_server_port(
+                load_client_config("test/auth_https_client_ca_owner")?,
+                tls_port,
+            )
+        } else {
+            with_server_port(load_client_config("test/auth_https_owner")?, tls_port)
+        };
+        client_config.http_config.cipher_suites = client_cipher.map(str::to_owned);
+
+        let result = start_temp_test_kms_server(config, client_config).await;
         if should_succeed {
             let ctx = result?;
             ListOwnedObjects.run(ctx.get_owner_client()).await?;

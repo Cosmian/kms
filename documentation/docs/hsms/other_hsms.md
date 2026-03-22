@@ -25,7 +25,7 @@ setting these parameters:
 
 ```toml
 hsm_model = "other"
-hsm_admin = "<HSM_ADMIN_USERNAME>" # defaults to "admin"
+hsm_admin = ["<HSM_ADMIN_USERNAME>"] # defaults to "admin"
 hsm_slot = [0, 0, ] # example [0,4] for slots 0 and 4
 hsm_password = ["<password>", "<password>", ] # example ["000000", "444444"] for slots 0 and 4
 ```

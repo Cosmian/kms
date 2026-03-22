@@ -1,4 +1,5 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
+
 <#
 .SYNOPSIS
     Orchestrates a native Windows Oracle TDE HSM integration test using

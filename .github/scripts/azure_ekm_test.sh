@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
 source "$SCRIPT_DIR/common.sh"
 
 init_build_env "$@"
@@ -73,10 +74,8 @@ EOF
 # shellcheck disable=SC2068
 cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
-# shellcheck disable=SC2068
-cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
-    --config "${KMS_CONF_PATH}" \
-    &
+KMS_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/cosmian_kms"
+"$KMS_BIN" --config "${KMS_CONF_PATH}" &
 KMS_PID=$!
 
 if ! _wait_for_port localhost "${KMS_PORT}" 60; then

@@ -143,10 +143,10 @@ pkgs.mkShell {
       [
         softhsmDrv
         pkgs.wget
-        # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
-        # have CKA_ID set and do not trigger pkcs11-tool warnings (#745)
-        pkgs.opensc
       ]
+      # pkcs11-tool (OpenSC) requires PC/SC headers (winscard.h) which are
+      # unavailable in the Nix macOS sandbox; only include it on Linux.
+      ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.opensc ]
       # Utimaco HSM simulator is only available on x86_64-linux
       ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]
       # psmimic is only available on Linux; macOS has killall built-in

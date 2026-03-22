@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::actions::kms::{hash::HashAction, mac::CHashingAlgorithm};
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
@@ -9,14 +6,14 @@ use super::utils::extract_uids::extract_uid;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, kms::utils::recover_cmd_logs, save_kms_cli_config},
+    tests::kms::utils::recover_cmd_logs,
 };
 
 const SUB_COMMAND: &str = "hash";
 
 /// Create a symmetric key via the CLI
 pub(crate) fn create_hash(cli_conf_path: &str, action: HashAction) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -56,7 +53,7 @@ pub(crate) fn create_hash(cli_conf_path: &str, action: HashAction) -> CosmianRes
 pub(crate) async fn test_hash() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     create_hash(
         &owner_client_conf_path,

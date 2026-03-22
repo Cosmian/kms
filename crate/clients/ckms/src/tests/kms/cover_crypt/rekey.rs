@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli::{
     actions::kms::symmetric::keys::create_key::CreateKeyAction,
     reexport::{
@@ -25,20 +24,16 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        kms::{
-            cover_crypt::{
-                SUB_COMMAND,
-                encrypt_decrypt::{decrypt, encrypt},
-                master_key_pair::create_cc_master_key_pair,
-                user_decryption_keys::create_user_decryption_key,
-            },
-            shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
-            symmetric::create_key::create_symmetric_key,
-            utils::recover_cmd_logs,
+    tests::kms::{
+        cover_crypt::{
+            SUB_COMMAND,
+            encrypt_decrypt::{decrypt, encrypt},
+            master_key_pair::create_cc_master_key_pair,
+            user_decryption_keys::create_user_decryption_key,
         },
-        save_kms_cli_config,
+        shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
+        symmetric::create_key::create_symmetric_key,
+        utils::recover_cmd_logs,
     },
 };
 
@@ -47,7 +42,7 @@ pub(crate) fn rekey(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -72,7 +67,7 @@ pub(crate) fn prune(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = crate::tests::ckms_command();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -95,7 +90,7 @@ pub(crate) fn prune(
 #[tokio::test]
 async fn test_rekey_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // generate a new master key pair
     let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -221,7 +216,7 @@ fn test_cc() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_enc_dec_rekey() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -290,7 +285,7 @@ async fn test_enc_dec_rekey() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_rekey_prune() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = ctx.owner_conf_path.clone();
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

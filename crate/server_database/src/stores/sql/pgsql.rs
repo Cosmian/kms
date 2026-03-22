@@ -840,7 +840,15 @@ impl PermissionsStore for PgPool {
             let perms_val: Value = row.get(3);
             let perms: HashSet<KmipOperation> =
                 serde_json::from_value(perms_val).map_err(|e| InterfaceError::Db(e.to_string()))?;
-            map.insert(id, (owner, state, perms));
+            // Merge permissions: an object may appear twice when both a direct
+            // grant and a wildcard '*' grant exist.
+            map.entry(id)
+                .and_modify(
+                    |(_, _, existing): &mut (String, State, HashSet<KmipOperation>)| {
+                        existing.extend(perms.iter().copied());
+                    },
+                )
+                .or_insert((owner, state, perms));
         }
         Ok(map)
     }
