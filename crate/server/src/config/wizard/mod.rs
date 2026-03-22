@@ -140,6 +140,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         logging,
         proxy,
         workspace: advanced.workspace,
+        vendor_identification: advanced.vendor_identification,
         key_encryption_key: advanced.key_encryption_key,
         default_unwrap_type: advanced.default_unwrap_type,
         privileged_users: advanced.privileged_users,
