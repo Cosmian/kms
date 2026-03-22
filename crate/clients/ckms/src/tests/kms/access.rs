@@ -8,6 +8,7 @@ use cosmian_kms_cli::{
     reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_logger::{log_init, trace};
+use serial_test::serial;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server_with_privileged_users;
@@ -171,6 +172,7 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> CosmianResult<String> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant() -> CosmianResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -312,6 +314,7 @@ pub(crate) async fn test_ownership_and_grant() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let owner_client_conf_path = ctx.owner_conf_path.clone();
@@ -355,6 +358,7 @@ pub(crate) async fn test_grant_error() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_revoke_access() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // the client conf will use the owner cert
@@ -447,6 +451,7 @@ pub(crate) async fn test_revoke_access() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let owner_client_conf_path = ctx.owner_conf_path.clone();
@@ -474,6 +479,7 @@ pub(crate) async fn test_list_access_rights() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_access_rights_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let user_client_conf_path = ctx.user_conf_path.clone();
@@ -483,6 +489,7 @@ pub(crate) async fn test_list_access_rights_error() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_list_owned_objects() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -523,6 +530,7 @@ pub(crate) async fn test_list_owned_objects() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_access_right_obtained() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -560,6 +568,7 @@ pub(crate) async fn test_access_right_obtained() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CosmianResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -682,6 +691,7 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CosmianResult<()
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_access_right_obtained_using_wildcard() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let owner_client_conf_path = ctx.owner_conf_path.clone();
@@ -723,6 +733,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> CosmianResult
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_multiple_operations() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let owner_client_conf_path = ctx.owner_conf_path.clone();
@@ -766,6 +777,7 @@ pub(crate) async fn test_grant_multiple_operations() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_grant_with_without_object_uid() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let owner_client_conf_path = ctx.owner_conf_path.clone();
@@ -795,6 +807,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> CosmianResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_privileged_users() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_privileged_users(vec![
         "owner.client@acme.com".to_owned(),

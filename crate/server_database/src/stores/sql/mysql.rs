@@ -942,8 +942,13 @@ pub(super) async fn list_user_granted_access_rights_(
 ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
     debug!("Owner = {}", user);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
+    // MySQL uses positional '?' parameters; pass user twice: once for the userid
+    // filter and once for the owner exclusion.
     let rows: Vec<mysql_async::Row> = conn
-        .exec(get_mysql_query!("select-objects-access-obtained"), (user,))
+        .exec(
+            get_mysql_query!("select-objects-access-obtained"),
+            (user, user),
+        )
         .await
         .map_err(DbError::from)?;
     let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
@@ -967,7 +972,11 @@ pub(super) async fn list_user_granted_access_rights_(
         let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
             DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
         })?;
-        ids.insert(uid, (owner, state, ops));
+        // Merge permissions: an object may appear twice when both a direct
+        // grant and a wildcard '*' grant exist.
+        ids.entry(uid)
+            .and_modify(|(_, _, existing)| existing.extend(ops.iter().copied()))
+            .or_insert((owner, state, ops));
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)

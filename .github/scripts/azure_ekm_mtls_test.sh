@@ -64,13 +64,12 @@ azure_ekm_ekm_product = "Cosmian KMS"
 azure_ekm_disable_client_auth = false
 EOF
 
-cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
-    --config "${KMS_CONF_PATH}" \
-    &
+KMS_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/cosmian_kms"
+"$KMS_BIN" --config "${KMS_CONF_PATH}" &
 KMS_PID=$!
 
-echo "Waiting for KMS port ${KMS_PORT} to be open (up to 30s)..."
-if ! _wait_for_port localhost "${KMS_PORT}" 30; then
+echo "Waiting for KMS port ${KMS_PORT} to be open (up to 60s)..."
+if ! _wait_for_port localhost "${KMS_PORT}" 60; then
     echo "ERROR: KMS server (mTLS) failed to start or bind to port ${KMS_PORT}"
     exit 1
 fi

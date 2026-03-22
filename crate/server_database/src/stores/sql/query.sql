@@ -109,7 +109,8 @@ SELECT objects.id, objects.owner, objects.state, read_access.permissions
         FROM objects
         INNER JOIN read_access
         ON objects.id = read_access.id
-        WHERE read_access.userid=$1;
+        WHERE (read_access.userid=$1 OR read_access.userid='*')
+          AND objects.owner!=$1;
 
 -- name: insert-tags
 INSERT INTO tags (id, tag) VALUES ($1, $2);

@@ -61,6 +61,7 @@ assert_cmd = { workspace = true }
 openssl = { workspace = true }
 predicates = { workspace = true }
 regex = { workspace = true }
+serial_test = { workspace = true }
 tempfile = { workspace = true }
 test_kms_server = { path = "../../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }

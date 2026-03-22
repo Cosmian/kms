@@ -7,6 +7,7 @@ use cosmian_kms_cli::{
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
+use serial_test::serial;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 
 #[cfg(feature = "non-fips")]
@@ -71,6 +72,7 @@ pub(crate) fn locate(
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_locate_cover_crypt() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
 
@@ -218,6 +220,7 @@ pub(crate) async fn test_locate_cover_crypt() -> CosmianResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // init the test server
@@ -308,6 +311,7 @@ pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
 }
 
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
@@ -383,6 +387,7 @@ pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
+#[serial]
 pub(crate) async fn test_locate_grant() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
