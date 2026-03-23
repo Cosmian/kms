@@ -120,6 +120,41 @@ openssl pkcs12 -export \
 
 ## Advanced TLS Configuration
 
+### TLS Protocol Versions
+
+By default, the KMS server accepts both **TLS 1.2 and TLS 1.3** connections.
+Internally it uses the OpenSSL `mozilla_intermediate_v5` profile, which sets TLS 1.2 as
+the minimum protocol version and TLS 1.3 as the maximum.
+
+The active protocol version range is automatically derived from the cipher suites you configure
+(see [TLS Cipher Suites Selection](#tls-cipher-suites-selection) below):
+
+| `--tls-cipher-suites` value | minimum TLS version | maximum TLS version |
+|---|---|---|
+| *(not set — default)* | TLS 1.2 | TLS 1.3 |
+| Only TLS 1.3 suites | TLS 1.3 | TLS 1.3 |
+| Only TLS 1.2 suites | TLS 1.2 | TLS 1.3 |
+| Mixed TLS 1.2 + TLS 1.3 suites | TLS 1.2 | TLS 1.3 |
+
+**Enforce TLS 1.3 only** — specify at least one TLS 1.3 cipher suite and no TLS 1.2 suites:
+
+```bash
+--tls-cipher-suites "TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256"
+```
+
+**Keep TLS 1.2 compatibility** — either leave `--tls-cipher-suites` unset (default), or include
+at least one TLS 1.2 cipher suite:
+
+```bash
+--tls-cipher-suites "TLS_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+```
+
+!!!warning "TLS 1.2 security considerations"
+    TLS 1.2 is still considered secure when used with AEAD cipher suites (GCM/ChaCha20),
+    but TLS 1.3 is preferred. Avoid enabling TLS 1.2 unless required for legacy client compatibility.
+
+---
+
 ### TLS Cipher Suites Selection
 
 The KMS server supports custom TLS cipher suite configuration to meet specific security requirements.
