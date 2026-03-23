@@ -2,16 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
-
-## [5.x.x] - 2026-03-x
-
-- Microsoft SQL Server External Key Management (EKM) is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
-
-### 🚀 Features
-
 ## [5.18.0] - 2026-04-XX
 
 ### 🚀 Features
+
+#### PQC UI Enhancements & Hash Operation
+
+- **PQC pages generalized**: Encapsulate/Decapsulate pages now show "PQC KEM" (covering ML-KEM
+  and Hybrid KEM: X25519MLKEM768, X448MLKEM1024); Sign/Verify pages now show "PQC Signature"
+  (covering ML-DSA and SLH-DSA). Key creation descriptions updated to list all four PQC families.
+- **Hash operation page**: new "Hash" page under the Symmetric menu computes server-side
+  cryptographic hashes (SHA-256, SHA-384, SHA-512, SHA3-224, SHA3-256, SHA3-384, SHA3-512)
+  via the KMIP Hash operation. Supports file upload or text input.
+- **WASM hash bindings**: `hash_ttlv_request()`, `parse_hash_ttlv_response()`, and
+  `get_hash_algorithms()` added to the WASM module.
+- **E2E tests**: Playwright roundtrip tests added for Hybrid KEM (X25519MLKEM768
+  encapsulate/decapsulate) and SLH-DSA (SLH-DSA-SHA2-128s sign/verify).
+
+#### Post-Quantum Cryptography (ML-KEM + ML-DSA)
+
+Full support for NIST post-quantum algorithms via OpenSSL 3.x default provider
+(non-FIPS builds only):
+
+- **ML-KEM** (Key Encapsulation Mechanism): ML-KEM-512, ML-KEM-768, ML-KEM-1024 — key pair
+  creation, encapsulation, and decapsulation via KMIP Encrypt/Decrypt operations
+- **ML-DSA** (Digital Signature Algorithm): ML-DSA-44, ML-DSA-65, ML-DSA-87 — key pair
+  creation, signing, and verification via KMIP Sign/SignatureVerify operations
+- New KMIP enumeration values for all six PQC algorithms
+- Server dispatch for PQC key creation, encrypt/decrypt (KEM), and sign/verify
+- CLI actions: `ckms pqc keys create`, `ckms pqc encapsulate`, `ckms pqc decapsulate`,
+  `ckms pqc sign`, `ckms pqc verify`
+- WASM bindings: `create_pqc_key_pair_ttlv_request()`, `get_pqc_algorithms()`
+- Web UI pages: PQC key creation, ML-KEM encapsulate/decapsulate, ML-DSA sign/verify
+- Playwright E2E tests for all PQC UI flows
+- CLI integration tests for ML-KEM and ML-DSA roundtrips
+
+#### Configurable Hybrid KEM merged into PQC
+
+- Merged the standalone `ckms kem` subcommand into `ckms pqc` — the four hybridized KEM
+  algorithms (ml-kem-512-p256, ml-kem-768-p256, ml-kem-512-curve25519, ml-kem-768-curve25519)
+  are now created, encapsulated, and decapsulated through the standard PQC workflow
+- Auto-detection in encapsulate response handles both PQC and ConfigurableKEM response formats
+- WASM bindings updated with the 4 hybrid algorithms
+- UI branding supports `hiddenPqcAlgorithms` to hide specific algorithms from the PQC dropdown
+- CLI and ckms integration tests added for configurable hybrid KEM roundtrips
 
 #### Support of AWS Bring Your Own Key (BYOK)
 
@@ -59,6 +93,10 @@ to the test matrix so regressions are caught automatically:
 - New documentation page `documentation/docs/synology_dsm.md` covering server
   setup, DSM configuration, and automated CI testing
 - `README.md` updated with Synology DSM in the disk encryption compatibility table
+
+#### Microsoft SQL Server External Key Management (EKM)
+
+- Microsoft SQL Server EKM is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
 
 ### 🐛 Bug Fixes
 

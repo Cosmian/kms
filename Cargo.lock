@@ -1219,6 +1219,7 @@ dependencies = [
  "k256",
  "num-bigint-dig",
  "openssl",
+ "openssl-sys",
  "p256",
  "rust-ini",
  "serde",

@@ -4,6 +4,7 @@ use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
     attributes_utils::{build_selected_attribute, parse_selected_attributes_flatten},
     certificate_utils::{Algorithm, build_certify_request},
+    configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
     },
@@ -37,10 +38,10 @@ use cosmian_kms_client_utils::{
                 CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
                 DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
                 DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-                GetAttributesResponse, ImportResponse, LocateResponse, ModifyAttribute,
-                ModifyAttributeResponse, Query, QueryResponse, RevokeResponse, SetAttribute,
-                SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
-                Validate, ValidateResponse,
+                GetAttributesResponse, Hash, HashResponse, ImportResponse, LocateResponse,
+                ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, RevokeResponse,
+                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+                SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
@@ -48,11 +49,12 @@ use cosmian_kms_client_utils::{
                 Tag, UniqueIdentifier,
             },
             requests::{
-                build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
-                create_secret_data_kmip_object, create_symmetric_key_kmip_object, decrypt_request,
-                encrypt_request, get_ec_private_key_request, get_ec_public_key_request,
-                get_rsa_private_key_request, get_rsa_public_key_request, import_object_request,
-                secret_data_create_request, symmetric_key_create_request,
+                build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
+                create_rsa_key_pair_request, create_secret_data_kmip_object,
+                create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
+                get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
+                get_rsa_public_key_request, import_object_request, secret_data_create_request,
+                symmetric_key_create_request,
             },
         },
         ttlv::{TTLV, from_ttlv, to_ttlv},
@@ -294,6 +296,31 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
     if sym.iter().any(|o| o.value.eq_ignore_ascii_case("chacha20")) {
         variants.push(CryptographicAlgorithm::ChaCha20);
         variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
+    }
+
+    // PQC algorithms (non-fips only — uses OpenSSL 3.6+ default provider)
+    #[cfg(feature = "non-fips")]
+    {
+        variants.push(CryptographicAlgorithm::MLKEM_512);
+        variants.push(CryptographicAlgorithm::MLKEM_768);
+        variants.push(CryptographicAlgorithm::MLKEM_1024);
+        variants.push(CryptographicAlgorithm::MLDSA_44);
+        variants.push(CryptographicAlgorithm::MLDSA_65);
+        variants.push(CryptographicAlgorithm::MLDSA_87);
+        variants.push(CryptographicAlgorithm::X25519MLKEM768);
+        variants.push(CryptographicAlgorithm::X448MLKEM1024);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_192s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_192f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_256s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHA2_256f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_128s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_128f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_192s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_192f);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256s);
+        variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256f);
     }
 
     let algorithms: Vec<AlgoOption> = variants
@@ -633,6 +660,186 @@ pub fn create_ec_key_pair_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_create_keypair_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<CreateKeyPairResponse>(response)
+}
+
+/// Create a PQC (ML-KEM or ML-DSA) key pair TTLV request.
+///
+/// `algorithm` must be one of: `ml-kem-512`, `ml-kem-768`, `ml-kem-1024`,
+/// `ml-dsa-44`, `ml-dsa-65`, `ml-dsa-87`.
+#[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_pqc_key_pair_ttlv_request(
+    tags: Vec<String>,
+    algorithm: &str,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let crypto_algorithm = match algorithm {
+        "ml-kem-512" => CryptographicAlgorithm::MLKEM_512,
+        "ml-kem-768" => CryptographicAlgorithm::MLKEM_768,
+        "ml-kem-1024" => CryptographicAlgorithm::MLKEM_1024,
+        "ml-dsa-44" => CryptographicAlgorithm::MLDSA_44,
+        "ml-dsa-65" => CryptographicAlgorithm::MLDSA_65,
+        "ml-dsa-87" => CryptographicAlgorithm::MLDSA_87,
+        "x25519-ml-kem-768" => CryptographicAlgorithm::X25519MLKEM768,
+        "x448-ml-kem-1024" => CryptographicAlgorithm::X448MLKEM1024,
+        "slh-dsa-sha2-128s" => CryptographicAlgorithm::SLHDSA_SHA2_128s,
+        "slh-dsa-sha2-128f" => CryptographicAlgorithm::SLHDSA_SHA2_128f,
+        "slh-dsa-sha2-192s" => CryptographicAlgorithm::SLHDSA_SHA2_192s,
+        "slh-dsa-sha2-192f" => CryptographicAlgorithm::SLHDSA_SHA2_192f,
+        "slh-dsa-sha2-256s" => CryptographicAlgorithm::SLHDSA_SHA2_256s,
+        "slh-dsa-sha2-256f" => CryptographicAlgorithm::SLHDSA_SHA2_256f,
+        "slh-dsa-shake-128s" => CryptographicAlgorithm::SLHDSA_SHAKE_128s,
+        "slh-dsa-shake-128f" => CryptographicAlgorithm::SLHDSA_SHAKE_128f,
+        "slh-dsa-shake-192s" => CryptographicAlgorithm::SLHDSA_SHAKE_192s,
+        "slh-dsa-shake-192f" => CryptographicAlgorithm::SLHDSA_SHAKE_192f,
+        "slh-dsa-shake-256s" => CryptographicAlgorithm::SLHDSA_SHAKE_256s,
+        "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+        "ml-kem-512-p256"
+        | "ml-kem-768-p256"
+        | "ml-kem-512-curve25519"
+        | "ml-kem-768-curve25519" => {
+            // ConfigurableKEM hybrid algorithms use a different key creation path
+            let kem_algorithm = match algorithm {
+                "ml-kem-512-p256" => KemAlgorithm::MlKem512P256,
+                "ml-kem-768-p256" => KemAlgorithm::MlKem768P256,
+                "ml-kem-512-curve25519" => KemAlgorithm::MlKem512Curve25519,
+                _ => KemAlgorithm::MlKem768Curve25519,
+            };
+            let request: CreateKeyPair = build_create_configurable_kem_keypair_request(
+                &vendor_id,
+                None,
+                &tags,
+                kem_algorithm,
+                sensitive,
+                None,
+            )
+            .map_err(|e| JsValue::from_str(&format!("Hybrid KEM key pair creation failed: {e}")))?;
+            let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+            return serde_wasm_bindgen::to_value(&objects)
+                .map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+        _ => {
+            return Err(JsValue::from_str(&format!(
+                "Invalid PQC algorithm: {algorithm}. \
+                 Use one of: ml-kem-512, ml-kem-768, ml-kem-1024, ml-dsa-44, ml-dsa-65, ml-dsa-87, \
+                 x25519-ml-kem-768, x448-ml-kem-1024, \
+                 slh-dsa-sha2-128s, slh-dsa-sha2-128f, slh-dsa-sha2-192s, slh-dsa-sha2-192f, \
+                 slh-dsa-sha2-256s, slh-dsa-sha2-256f, slh-dsa-shake-128s, slh-dsa-shake-128f, \
+                 slh-dsa-shake-192s, slh-dsa-shake-192f, slh-dsa-shake-256s, slh-dsa-shake-256f, \
+                 ml-kem-512-p256, ml-kem-768-p256, ml-kem-512-curve25519, ml-kem-768-curve25519"
+            )));
+        }
+    };
+    let request: CreateKeyPair =
+        create_pqc_key_pair_request(&vendor_id, &tags, crypto_algorithm, sensitive)
+            .map_err(|e| JsValue::from_str(&format!("PQC key pair creation failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of PQC algorithms available.
+#[wasm_bindgen]
+pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
+    let algorithms: Vec<AlgoOption> = vec![
+        AlgoOption {
+            value: "ml-kem-512".to_owned(),
+            label: "ML-KEM-512".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768".to_owned(),
+            label: "ML-KEM-768".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-1024".to_owned(),
+            label: "ML-KEM-1024".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-44".to_owned(),
+            label: "ML-DSA-44".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-65".to_owned(),
+            label: "ML-DSA-65".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-dsa-87".to_owned(),
+            label: "ML-DSA-87".to_owned(),
+        },
+        AlgoOption {
+            value: "x25519-ml-kem-768".to_owned(),
+            label: "X25519MLKEM768".to_owned(),
+        },
+        AlgoOption {
+            value: "x448-ml-kem-1024".to_owned(),
+            label: "X448MLKEM1024".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128s".to_owned(),
+            label: "SLH-DSA-SHA2-128s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128f".to_owned(),
+            label: "SLH-DSA-SHA2-128f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192s".to_owned(),
+            label: "SLH-DSA-SHA2-192s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192f".to_owned(),
+            label: "SLH-DSA-SHA2-192f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256s".to_owned(),
+            label: "SLH-DSA-SHA2-256s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256f".to_owned(),
+            label: "SLH-DSA-SHA2-256f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128s".to_owned(),
+            label: "SLH-DSA-SHAKE-128s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128f".to_owned(),
+            label: "SLH-DSA-SHAKE-128f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192s".to_owned(),
+            label: "SLH-DSA-SHAKE-192s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192f".to_owned(),
+            label: "SLH-DSA-SHAKE-192f".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256s".to_owned(),
+            label: "SLH-DSA-SHAKE-256s".to_owned(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256f".to_owned(),
+            label: "SLH-DSA-SHAKE-256f".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-p256".to_owned(),
+            label: "ML-KEM-512/P-256".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-p256".to_owned(),
+            label: "ML-KEM-768/P-256".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-curve25519".to_owned(),
+            label: "ML-KEM-512/Curve25519".to_owned(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-curve25519".to_owned(),
+            label: "ML-KEM-768/Curve25519".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
 }
 
 #[wasm_bindgen]
@@ -1892,4 +2099,82 @@ pub fn delete_attribute_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_delete_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<DeleteAttributeResponse>(response)
+}
+
+/// Returns the list of hash algorithms supported by the server.
+#[wasm_bindgen]
+pub fn get_hash_algorithms() -> Result<JsValue, JsValue> {
+    let algorithms: Vec<AlgoOption> = vec![
+        AlgoOption {
+            value: "SHA256".to_owned(),
+            label: "SHA-256".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA384".to_owned(),
+            label: "SHA-384".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA512".to_owned(),
+            label: "SHA-512".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3224".to_owned(),
+            label: "SHA3-224".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3256".to_owned(),
+            label: "SHA3-256".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3384".to_owned(),
+            label: "SHA3-384".to_owned(),
+        },
+        AlgoOption {
+            value: "SHA3512".to_owned(),
+            label: "SHA3-512".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Build a KMIP Hash TTLV request.
+///
+/// `hashing_algorithm` must be one of: `SHA256`, `SHA384`, `SHA512`,
+/// `SHA3224`, `SHA3256`, `SHA3384`, `SHA3512`.
+#[wasm_bindgen]
+pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue, JsValue> {
+    use kmip_0::kmip_types::HashingAlgorithm;
+
+    let algorithm = match hashing_algorithm {
+        "SHA256" => HashingAlgorithm::SHA256,
+        "SHA384" => HashingAlgorithm::SHA384,
+        "SHA512" => HashingAlgorithm::SHA512,
+        "SHA3224" => HashingAlgorithm::SHA3224,
+        "SHA3256" => HashingAlgorithm::SHA3256,
+        "SHA3384" => HashingAlgorithm::SHA3384,
+        "SHA3512" => HashingAlgorithm::SHA3512,
+        _ => {
+            return Err(JsValue::from(format!(
+                "Unsupported hashing algorithm: {hashing_algorithm}"
+            )));
+        }
+    };
+    let request = Hash {
+        cryptographic_parameters: CryptographicParameters {
+            hashing_algorithm: Some(algorithm),
+            ..CryptographicParameters::default()
+        },
+        data: Some(data.to_vec()),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Parse a KMIP Hash response and return the hash bytes.
+#[wasm_bindgen]
+pub fn parse_hash_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<HashResponse>(response)
 }

@@ -9,6 +9,9 @@
   "backgroundImageUrl": "/ui/themes/cosmian/login_page_background_image.png",
   "loginCardColor": "rgba(126, 34, 206, 0.3)",
   "menuTheme": "light",
+  "enableCovercrypt": true,
+  "pqcLabel": "PQC",
+  "hiddenPqcAlgorithms": ["ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"],
   "tokens": {
     "light": {
       "colorPrimary": "#e34319",

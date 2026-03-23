@@ -9,8 +9,7 @@
 
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr};
 
-use cosmian_logger::error;
-use cosmian_logger::reexport::tracing::Level;
+use cosmian_logger::{error, reexport::tracing::Level};
 use cosmian_pkcs11_module::{pkcs11::FUNC_LIST, traits::register_backend};
 use pkcs11_sys::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_FUNCTION_FAILED, CKR_OK};
 
@@ -33,8 +32,7 @@ mod pkcs11_symmetric_key;
 /// Returns `None` only if every approach fails.
 #[cfg(windows)]
 fn dll_directory() -> Option<PathBuf> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt};
 
     unsafe extern "system" {
         fn GetModuleHandleExW(dw_flags: u32, lp_module_name: *const u16, phm: *mut usize) -> i32;

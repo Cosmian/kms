@@ -28,7 +28,7 @@ const WRAPPING_ALGORITHMS: { label: string; value: WrappingAlgorithm }[] = [
     { label: "RSA AES Key Wrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
 
 const exportFileExtension = {
     "json-ttlv": "json",

@@ -1,9 +1,9 @@
 import { Layout, Menu, MenuProps, Tooltip } from "antd";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
 import { useBranding } from "./useBranding";
-import { MenuItem, menuItems } from "./menuItems.tsx";
+import { MenuItem, getMenuItems } from "./menuItems.tsx";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
 const { Sider } = Layout;
@@ -17,34 +17,14 @@ const Sidebar: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
+    const branding = useBranding();
+    const menuItems = useMemo(() => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel }), [branding.enableCovercrypt, branding.pqcLabel]);
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
-    const branding = useBranding();
     const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
 
-    const fetchCreatePermission = useCallback(async () => {
-        try {
-            const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
-            processMenuItems(response.has_create_permission);
-        } catch {
-            processMenuItems(false);
-        }
-    }, [idToken, serverUrl]);
-
-    useEffect(() => {
-        (async () => {
-            try {
-                const method = await fetchAuthMethod(serverUrl);
-                setAuthMethod(method);
-            } catch {
-                /* ignore */
-            }
-        })();
-        fetchCreatePermission();
-    }, [fetchCreatePermission, idToken, serverUrl]);
-
     // Process menu items to disable "Create" and "Import" options based on access rights
-    const processMenuItems = (hasCreateAccess: boolean) => {
+    const processMenuItems = useCallback((hasCreateAccess: boolean) => {
         const processItems = (items: MenuItem[]): MenuItem[] => {
             return items.map((item) => {
                 const newItem = { ...item };
@@ -70,7 +50,28 @@ const Sidebar: React.FC = () => {
         };
 
         setProcessedMenuItems(processItems(menuItems));
-    };
+    }, [menuItems]);
+
+    const fetchCreatePermission = useCallback(async () => {
+        try {
+            const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
+            processMenuItems(response.has_create_permission);
+        } catch {
+            processMenuItems(false);
+        }
+    }, [idToken, serverUrl, processMenuItems]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const method = await fetchAuthMethod(serverUrl);
+                setAuthMethod(method);
+            } catch {
+                /* ignore */
+            }
+        })();
+        fetchCreatePermission();
+    }, [fetchCreatePermission, idToken, serverUrl]);
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};

@@ -244,3 +244,45 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..CreateKeyPair::default()
     })
 }
+
+/// Build a `CreateKeyPair` request for a post-quantum algorithm (ML-KEM or ML-DSA).
+pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
+    tags: T,
+    algorithm: CryptographicAlgorithm,
+    sensitive: bool,
+) -> Result<CreateKeyPair, KmipError> {
+    let mut common_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
+    common_attributes.set_tags(vendor_id, tags)?;
+
+    let private_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PrivateKey),
+        sensitive: sensitive.then_some(true),
+        activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
+
+    let public_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        object_type: Some(ObjectType::PublicKey),
+        activation_date: Some(time_normalize()?),
+        ..Attributes::default()
+    };
+
+    Ok(CreateKeyPair {
+        common_attributes: Some(common_attributes),
+        private_key_attributes: Some(private_key_attributes),
+        public_key_attributes: Some(public_key_attributes),
+        ..CreateKeyPair::default()
+    })
+}

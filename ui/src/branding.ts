@@ -19,6 +19,18 @@ export type Branding = {
 
     menuTheme?: MenuTheme;
 
+    /** Whether the Covercrypt section is visible in the UI.
+     *  Defaults to `true` when omitted from branding.json. */
+    enableCovercrypt?: boolean;
+
+    /** Display label for the Post-Quantum section in the sidebar menu.
+     *  Defaults to `"PQC"` when omitted. */
+    pqcLabel?: string;
+
+    /** Algorithm values to hide from the PQC key creation dropdown.
+     *  The values must match the `value` field returned by `get_pqc_algorithms()`. */
+    hiddenPqcAlgorithms?: string[];
+
     tokens?: {
         light?: ThemeConfig["token"];
         dark?: ThemeConfig["token"];
@@ -39,6 +51,8 @@ const DEFAULT_BRANDING: Branding = {
     loginCardColor: "rgba(126,34,206,0.3)",
 
     menuTheme: "light",
+
+    enableCovercrypt: true,
 
     tokens: {
         light: {

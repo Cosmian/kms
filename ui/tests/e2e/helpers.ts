@@ -1,7 +1,9 @@
+/// <reference types="node" />
+
 import { Download, expect, Page } from "@playwright/test";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,7 +168,7 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
         // option was selected (virtual-list re-render race), close the dropdown
         // and retry the entire selection from the top of the outer loop.
         try {
-            await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 2_000 });
+            await expect(selectionItem).toHaveText(exactTextRe, { timeout: 2_000 });
             return; // Correct option confirmed – done.
         } catch {
             // Wrong option selected; close any open dropdown and retry.
@@ -176,7 +178,7 @@ export async function selectOption(page: Page, selectTestId: string, optionText:
     }
 
     // Final check after all retries – surface a meaningful assertion error.
-    await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 5_000 });
+    await expect(selectionItem).toHaveText(exactTextRe, { timeout: 5_000 });
 }
 
 /**
@@ -248,7 +250,7 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
         // Verify the selection took effect. If the wrong option was selected
         // (virtual-list race), close the dropdown and retry.
         try {
-            await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 2_000 });
+            await expect(selectionItem).toHaveText(exactTextRe, { timeout: 2_000 });
             return;
         } catch {
             await page.keyboard.press("Escape");
@@ -256,7 +258,7 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
         }
     }
 
-    await expect(selectionItem).toHaveText(optionText, { exact: true, timeout: 5_000 });
+    await expect(selectionItem).toHaveText(exactTextRe, { timeout: 5_000 });
 }
 
 /**
@@ -322,6 +324,23 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
 export async function createEcKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {
     await gotoAndWait(page, "/ui/ec/keys/create");
     await selectOption(page, "ec-curve-select", "NIST P-256");
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/Key pair has been created/i);
+    const privKeyId = extractUuidAfterLabel(text, "Private key Id");
+    const pubKeyId = extractUuidAfterLabel(text, "Public key Id");
+    expect(privKeyId).not.toBeNull();
+    expect(pubKeyId).not.toBeNull();
+    return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
+}
+
+/**
+ * Create a fresh PQC key pair and return both key IDs.
+ *
+ * @param algorithm Visible label in the algorithm dropdown, e.g. "ML-KEM-512".
+ */
+export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{ privKeyId: string; pubKeyId: string }> {
+    await gotoAndWait(page, "/ui/pqc/keys/create");
+    await selectOption(page, "pqc-algorithm-select", algorithm);
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/Key pair has been created/i);
     const privKeyId = extractUuidAfterLabel(text, "Private key Id");

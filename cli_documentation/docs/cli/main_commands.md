@@ -50,7 +50,7 @@ Possible values:  `"true", "false"`
 
 **`cc`** [[5]](#5-ckms-cc)  Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
 
-**`kem`** [[6]](#6-ckms-kem)  Manage Configurable KEM keys. Encrypt and decrypt data
+**`pqc`** [[6]](#6-ckms-pqc)  Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
 
 **`certificates`** [[7]](#7-ckms-certificates)  Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
@@ -1000,88 +1000,339 @@ Decrypt a file using Covercrypt
 
 ---
 
-## 6 ckms kem
+## 6 ckms pqc
 
-Manage Configurable KEM keys. Encrypt and decrypt data
+Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
 
 ### Usage
-`ckms kem <subcommand>`
+`ckms pqc <subcommand>`
 
 ### Subcommands
 
-**`key-gen`** [[6.1]](#61-ckms-kem-key-gen)  Create a new Configurable-KEM keypair and return the key IDs.
+**`keys`** [[6.1]](#61-ckms-pqc-keys)  Manage post-quantum keys (ML-KEM, ML-DSA)
 
-**`encrypt`** [[6.2]](#62-ckms-kem-encrypt)  Encapsulate a new symmetric key
+**`encrypt`** [[6.2]](#62-ckms-pqc-encrypt)  Encapsulate using a PQC public key (ML-KEM-512/768/1024, X25519MLKEM768, X448MLKEM1024)
 
-**`decrypt`** [[6.3]](#63-ckms-kem-decrypt)  Open a Configurable-KEM encapsulation
+**`decrypt`** [[6.3]](#63-ckms-pqc-decrypt)  Decapsulate a KEM ciphertext using a private key (ML-KEM or Hybrid KEM)
+
+**`sign`** [[6.4]](#64-ckms-pqc-sign)  Sign data using a PQC private key (ML-DSA-44/65/87 or SLH-DSA).
+
+**`sign-verify`** [[6.5]](#65-ckms-pqc-sign-verify)  Verify a PQC signature (ML-DSA or SLH-DSA) for a given data file.
 
 ---
 
-## 6.1 ckms kem key-gen
+## 6.1 ckms pqc keys
 
-Create a new Configurable-KEM keypair and return the key IDs.
+Manage post-quantum keys (ML-KEM, ML-DSA)
 
 ### Usage
-`ckms kem key-gen [options]`
-### Arguments
-`--access-structure [-s] <ACCESS_STRUCTURE>` The JSON access structure specifications file to use to generate the keys. See the inline doc of the `create-master-key-pair` command for details
+`ckms pqc keys <subcommand>`
 
-`--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+### Subcommands
+
+**`create`** [[6.1.1]](#611-ckms-pqc-keys-create)  Create a new post-quantum key pair (ML-KEM or ML-DSA).
+
+**`export`** [[6.1.2]](#612-ckms-pqc-keys-export)  Export a key or secret data from the KMS
+
+**`import`** [[6.1.3]](#613-ckms-pqc-keys-import)  Import a secret data or a key in the KMS.
+
+**`wrap`** [[6.1.4]](#614-ckms-pqc-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+
+**`unwrap`** [[6.1.5]](#615-ckms-pqc-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+
+**`revoke`** [[6.1.6]](#616-ckms-pqc-keys-revoke)  Revoke a PQC public or private key
+
+**`destroy`** [[6.1.7]](#617-ckms-pqc-keys-destroy)  Destroy a PQC public or private key
+
+---
+
+## 6.1.1 ckms pqc keys create
+
+Create a new post-quantum key pair (ML-KEM or ML-DSA).
+
+### Usage
+`ckms pqc keys create [options]`
+### Arguments
+`--algorithm [-a] <ALGORITHM>` The PQC algorithm to use
+
+Possible values:  `"ml-kem-512", "ml-kem-768", "ml-kem-1024", "ml-dsa-44", "ml-dsa-65", "ml-dsa-87", "x25519-ml-kem-768", "x448-ml-kem-1024", "slh-dsa-sha2-128s", "slh-dsa-sha2-128f", "slh-dsa-sha2-192s", "slh-dsa-sha2-192f", "slh-dsa-sha2-256s", "slh-dsa-sha2-256f", "slh-dsa-shake-128s", "slh-dsa-shake-128f", "slh-dsa-shake-192s", "slh-dsa-shake-192f", "slh-dsa-shake-256s", "slh-dsa-shake-256f", "ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"`
+
+`--tag [-t] <TAG>` Tag to associate with the key pair. To specify multiple tags, use the option multiple times
 
 `--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
-`--kem [-k] <KEM_ALGORITHM>` The KEM algorithm to use for key pair generation
 
-Possible values:  `"ml-kem-512", "ml-kem-768", "p256", "curve25519", "ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519", "cover-crypt"`
 
-`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap the keypair with.
+---
+
+## 6.1.2 ckms pqc keys export
+
+Export a key or secret data from the KMS
+
+### Usage
+`ckms pqc keys export [options] <KEY_FILE>
+`
+### Arguments
+` <KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key or secret data unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key or secret data id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <EXPORT_FORMAT>` The format of the key
+
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
+      - secret data
+
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate (a.k.a. Key Encryption Key - KEK) to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrapping-algorithm [-m] <WRAPPING_ALGORITHM>` Wrapping algorithm to use when exporting the key
+The possible wrapping algorithms are
+
+ - using a symmetric KEK:
+    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `aes-gcm`
+ - using an RSA KEK:
+    - `rsa-oaep` (default - CKM-RSA-OAEP)
+    - `rsa-aes-key-wrap` (CKM-RSA-AES-KEY-WRP)
+    - `rsa-pkcs-v15` (CKM-RSA v1.5)
+
+Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
+
+
+
+---
+
+## 6.1.3 ckms pqc keys import
+
+Import a secret data or a key in the KMS.
+
+### Usage
+`ckms pqc keys import [options] <KEY_FILE>
+ [KEY_ID]
+`
+### Arguments
+` <KEY_FILE>` The file holding the key or secret data to import
+
+` <KEY_ID>` The unique ID of the key; a random UUID is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key ID, if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key ID, if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate ID, if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same ID
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+`--key-usage <KEY_USAGE>` The cryptographic operations the key is allowed to perform
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap this imported key with.
 If the wrapping key is:
 
-- a symmetric key, AES-GCM will be used
-- a RSA key, RSA-OAEP will be used
-- a EC key, ECIES will be used (salsa20poly1305 for X25519)
+- A symmetric key, AES-GCM will be used,
+- An RSA key, RSA-OAEP with SHA-256 will be used,
+- An EC key, ECIES will be used (salsa20poly1305 for X25519),
 
 
 
 ---
 
-## 6.2 ckms kem encrypt
+## 6.1.4 ckms pqc keys wrap
 
-Encapsulate a new symmetric key
+Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ### Usage
-`ckms kem encrypt [options] [ENCRYPTION_POLICY]
+`ckms pqc keys wrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
 `
 ### Arguments
-`--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
 
-`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified, the input file is overwritten
 
-` <ENCRYPTION_POLICY>` The encryption policy to use. Example: "`department::marketing` && `level::confidential`"
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key. This password will be derived into an AES-256 symmetric key. For security reasons, a fresh salt is internally generated by `cosmian` and handled, and this final AES symmetric key will be displayed only once
 
-`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path for the encapsulation
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The ID of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
 
 
 
 ---
 
-## 6.3 ckms kem decrypt
+## 6.1.5 ckms pqc keys unwrap
 
-Open a Configurable-KEM encapsulation
+Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ### Usage
-`ckms kem decrypt [options] <FILE>
+`ckms pqc keys unwrap [options] <KEY_FILE_IN>
+ [KEY_FILE_OUT]
 `
 ### Arguments
-` <FILE>` The encapsulation file to decrypt
+` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
 
-`--key-id [-k] <KEY_ID>` The user key unique identifier If not specified, tags should be specified
+` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
-`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
 
-`--output-file [-o] <OUTPUT_FILE>` The decrypted output file path
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of an unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` An unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+
+
+---
+
+## 6.1.6 ckms pqc keys revoke
+
+Revoke a PQC public or private key
+
+### Usage
+`ckms pqc keys revoke [options] <REVOCATION_REASON>
+`
+### Arguments
+` <REVOCATION_REASON>` The reason for the revocation
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
+
+
+
+---
+
+## 6.1.7 ckms pqc keys destroy
+
+Destroy a PQC public or private key
+
+### Usage
+`ckms pqc keys destroy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to destroy
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
+
+`--remove <REMOVE>` Remove the key from the database entirely
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+
+---
+
+## 6.2 ckms pqc encrypt
+
+Encapsulate using a PQC public key (ML-KEM-512/768/1024, X25519MLKEM768, X448MLKEM1024)
+
+### Usage
+`ckms pqc encrypt [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The public key unique identifier
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
+
+`--output-file [-o] <OUTPUT_FILE>` The output file path for the encapsulation (ciphertext)
+
+
+
+---
+
+## 6.3 ckms pqc decrypt
+
+Decapsulate a KEM ciphertext using a private key (ML-KEM or Hybrid KEM)
+
+### Usage
+`ckms pqc decrypt [options] <FILE>
+`
+### Arguments
+` <FILE>` The encapsulation file to decapsulate
+
+`--key-id [-k] <KEY_ID>` The private key unique identifier
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
+
+`--output-file [-o] <OUTPUT_FILE>` The output file path for the shared secret
+
+
+
+---
+
+## 6.4 ckms pqc sign
+
+Sign data using a PQC private key (ML-DSA-44/65/87 or SLH-DSA).
+
+### Usage
+`ckms pqc sign [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to sign
+
+`--key-id [-k] <KEY_ID>` The private key unique identifier
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
+
+`--output-file [-o] <OUTPUT_FILE>` The signature output file path
+
+
+
+---
+
+## 6.5 ckms pqc sign-verify
+
+Verify a PQC signature (ML-DSA or SLH-DSA) for a given data file.
+
+### Usage
+`ckms pqc sign-verify [options] <FILE>
+ <SIGNATURE_FILE>
+`
+### Arguments
+` <FILE>` The data that was signed
+
+` <SIGNATURE_FILE>` The signature file
+
+`--key-id [-k] <KEY_ID>` The public key unique identifier
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified
 
 
 

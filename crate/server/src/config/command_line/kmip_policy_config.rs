@@ -240,6 +240,10 @@ impl KmipAllowlistsConfig {
             CryptographicAlgorithm::MLKEM_512,
             CryptographicAlgorithm::MLKEM_768,
             CryptographicAlgorithm::MLKEM_1024,
+            // ML-DSA (post-quantum lattice-based signature) variants.
+            CryptographicAlgorithm::MLDSA_44,
+            CryptographicAlgorithm::MLDSA_65,
+            CryptographicAlgorithm::MLDSA_87,
         ];
 
         #[cfg(not(feature = "non-fips"))]

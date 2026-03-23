@@ -39,6 +39,7 @@ sbom.*
 resources/cli.zip
 .claude
 ui/test-results
+._*
 
 # On windows, ignore the vcpkg installed OpenSSL directory
 vcpkg_installed/

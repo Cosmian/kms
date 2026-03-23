@@ -49,6 +49,7 @@ num-bigint-dig = { workspace = true, features = [
     "zeroize",
 ] }
 openssl = { workspace = true }
+openssl-sys = "0.9"
 rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
