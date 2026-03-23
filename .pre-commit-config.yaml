@@ -23,6 +23,7 @@ repos:
       - id: markdownlint-fix
         args:
           [
+            --config=.github/.markdownlint.yaml,
             --disable=MD013,
             --disable=MD033,
             --disable=MD041,
@@ -328,5 +329,5 @@ repos:
     rev: v3.13.7
     hooks:
       - id: markdown-link-check
-        args: [-q, --config, .markdown-link-check.json]
+        args: [-q, --config, ./.markdown-link-check.json]
         exclude: .github/copilot-instructions.md
