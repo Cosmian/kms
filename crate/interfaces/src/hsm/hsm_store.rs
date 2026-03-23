@@ -16,12 +16,13 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
     AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, as_hsm_uid,
+    InterfaceError, InterfaceResult, KeyMaterial, KeyType, ObjectWithMetadata, ObjectsStore,
+    as_hsm_uid, crypto_oracle::KeyMetadata,
 };
 
 pub struct HsmStore {
@@ -223,12 +224,13 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
+        // HSM keys are visible to all authenticated users for listing.
+        // Only mutating operations (create/delete) require HSM admin.
         if user_must_be_owner && !self.is_admin(user) {
-            warn!(
-                "User '{}' is not an HSM admin but 'user_must_be_owner' was requested",
+            debug!(
+                "User '{}' is not an HSM admin; returning HSM keys as read-only listing",
                 user
             );
-            return Ok(uids);
         }
         let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
             debug!("No researched_attributes provided. Defaulting to empty filter attributes");
@@ -244,7 +246,7 @@ impl ObjectsStore for HsmStore {
         let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
             Ok(object_filter) => object_filter,
             Err(e) => {
-                warn!("{e}");
+                debug!("HSM find: incompatible filter, skipping HSM search: {e}");
                 return Ok(uids);
             }
         };
@@ -273,7 +275,7 @@ impl ObjectsStore for HsmStore {
                     .await
                     .unwrap_or_default();
                 if let Some(expected_key_size) = key_size_filter {
-                    if let Some(meta) = object_meta {
+                    if let Some(ref meta) = object_meta {
                         if meta.key_length_in_bits != expected_key_size {
                             continue;
                         }
@@ -295,12 +297,58 @@ impl ObjectsStore for HsmStore {
                         continue;
                     }
                 }
-                uids.push((uid, State::Active, Attributes::default()));
+                // Populate basic attributes from HSM metadata so callers
+                // (Locate, /access/owned) can display key info without a
+                // separate GetAttributes round-trip.
+                let attrs = build_find_attributes(&object_meta, &object_filter);
+                uids.push((uid, State::Active, attrs));
             }
         }
 
         Ok(uids)
     }
+}
+
+fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
+    let mut attrs = Attributes::default();
+    if let Some(m) = meta {
+        attrs.cryptographic_length = Some(i32::try_from(m.key_length_in_bits).unwrap_or_default());
+        match m.key_type {
+            KeyType::AesKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
+                attrs.object_type = Some(ObjectType::SymmetricKey);
+            }
+            KeyType::RsaPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+            }
+            KeyType::RsaPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PublicKey);
+            }
+        }
+    } else {
+        // No metadata available — infer from the filter
+        match filter {
+            HsmObjectFilter::AesKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
+                attrs.object_type = Some(ObjectType::SymmetricKey);
+            }
+            HsmObjectFilter::RsaKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+            }
+            HsmObjectFilter::RsaPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+            }
+            HsmObjectFilter::RsaPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PublicKey);
+            }
+            HsmObjectFilter::Any => {}
+        }
+    }
+    attrs
 }
 
 fn check_basic_compatibility(

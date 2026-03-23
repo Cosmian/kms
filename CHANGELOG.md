@@ -189,6 +189,14 @@ previously-unknown parse error for those optional vectors.
   ([#762](https://github.com/Cosmian/kms/issues/762))
 - Fix AWS BYOK silent when exporting a previously wrapped key.
 
+#### Fix Locate for mixed HSM + software key environments
+
+- **Server**: `HsmStore.find()` now returns HSM keys to all authenticated users for read-only listing (previously required HSM admin), and populates basic attributes (algorithm, length, object type) from HSM metadata so Locate and `/access/owned` display key info without a separate `GetAttributes` round-trip.
+- **UI**: Locate page now correctly merges HSM keys (`hsm::` prefix) into results even when they are absent from `/access/owned`; HSM keys default to "Active" state during enrichment.
+- **UI Locate**: Fix "State: Unknown" shown for all objects when clicking "Search Objects" with no filters — state is now resolved from `/access/owned` (software keys) and defaults to "Active" for HSM keys without invoking per-object `GetAttributes`.
+- **UI E2E**: New `locate-hsm.spec.ts` Playwright tests validate Locate with mocked HSM keys alongside real software keys.
+- **UI E2E**: New `locate-hsm-real.spec.ts` Playwright integration tests run against a real SoftHSM2 KMS; `test_ui_hsm.sh` and `nix.sh test ui-hsm` wire up the full stack (WASM build → KMS server → SoftHSM2 token → pre-created keys → Vite preview → Playwright) on both Linux and macOS.
+
 ### 🧪 Testing
 
 - Create integration tests for AWS KMS BYOK using OpenSSL to unwrap locally and mock the AWS infrastructure

@@ -36,8 +36,10 @@ usage() {
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
-      hsm [backend]          Run HSM tests (Linux only)
+      hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
+      ui                     Run UI E2E tests with Playwright (non-FIPS only)
+      ui-hsm                 Run UI E2E tests with a real SoftHSM2 KMS (non-FIPS only)
     package [type]
                        Build package(s) via Nix
       deb              Build Debian package
@@ -84,6 +86,8 @@ usage() {
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
     $0 test hsm proteccio       # Proteccio only
+    $0 --variant non-fips test ui           # UI E2E tests (Playwright)
+    $0 --variant non-fips test ui-hsm       # UI E2E tests with real SoftHSM2
     $0 package                              # Build all packages for this OS
     $0 package deb                          # FIPS variant
     $0 --variant non-fips package deb       # non-FIPS variant
@@ -471,6 +475,9 @@ test_command() {
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
     ;;
+  ui-hsm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_ui_hsm.sh"
+    ;;
   hsm)
     # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
     HSM_BACKEND="${1:-all}"
@@ -499,17 +506,17 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui, ui-hsm" >&2
     usage
     ;;
   esac
 
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
-  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "ui-hsm" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_HSM=1
   fi
   # For WASM/UI tests, ensure shell.nix includes Node.js + wasm-pack (+ pnpm).
-  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "ui-hsm" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
   # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
@@ -517,7 +524,7 @@ test_command() {
     export WITH_PYTHON=1
   fi
   # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "ui-hsm" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
     export WITH_CURL=1
   fi
 

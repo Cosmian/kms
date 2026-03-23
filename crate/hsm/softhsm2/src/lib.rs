@@ -2,8 +2,19 @@
 
 use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 
-/// Path to the `SoftHSM2` `PKCS#11` shared library
+/// Path to the `SoftHSM2` `PKCS#11` shared library.
+/// Overridable at runtime via the `SOFTHSM2_PKCS11_LIB` environment variable.
+#[cfg(target_os = "linux")]
 pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/lib/softhsm/libsofthsm2.so";
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const SOFTHSM2_PKCS11_LIB: &str = "/opt/homebrew/lib/softhsm/libsofthsm2.so";
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub const SOFTHSM2_PKCS11_LIB: &str = "libsofthsm2.so";
 
 #[cfg(test)]
 // Allow test-specific lint patterns for C library integration

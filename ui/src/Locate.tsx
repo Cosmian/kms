@@ -146,18 +146,21 @@ const LocateForm: React.FC = () => {
                             "certificate_id",
                         ]);
                         const m = extractMeta(parsed);
+                        // HSM keys are always Active; use that as default when state is missing
+                        const isHsm = uid.startsWith("hsm::");
                         return {
                             object_id: uid,
                             attributes: { ObjectType: m["object_type"] as string | undefined },
-                            state: stateEnumToName(m["state"]),
+                            state: stateEnumToName(m["state"]) || (isHsm ? "Active" : undefined),
                             meta: m,
                         } as LocatedRow;
                     }
                 } catch (e) {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
-                return { object_id: uid } as LocatedRow;
-            }),
+                // Fallback: HSM keys default to Active
+                return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : undefined } as LocatedRow;
+            })
         );
         return rows;
     };
@@ -241,7 +244,9 @@ const LocateForm: React.FC = () => {
 
             // no-op helpers pruned: Locate handles tags & other criteria server-side
 
-            // State-specific search: intersect Locate results with owned-by-state list
+            // State-specific search: intersect Locate results with owned-by-state list,
+            // but always include HSM keys (hsm:: prefix) from KMIP Locate since
+            // /access/owned may not list them on older servers.
             if (stateVal) {
                 try {
                     const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
@@ -262,6 +267,13 @@ const LocateForm: React.FC = () => {
                         values.privateKeyId ||
                         values.certificateId,
                     );
+
+                    // Always run KMIP Locate to capture HSM keys that may not appear in /access/owned
+                    const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
+                    // HSM keys from Locate are always Active; include them even if not in owned set
+                    const hsmLocatedIds = locatedIds.filter((id) => id.startsWith("hsm::"));
+                    const ownedIds = new Set(ownedFiltered.map((o) => o.id));
+
                     if (!hasOtherCriteria) {
                         // Enrich state-only results so Type and Key Format Type are available
                         const enriched = await Promise.all(
@@ -297,14 +309,24 @@ const LocateForm: React.FC = () => {
                                 return { object_id: uid, state: o.state } as LocatedRow;
                             }),
                         );
+                        // Merge owned-by-state entries with HSM keys from Locate
+                        // (HSM keys are always Active, so they match if target is Active)
+                        const isActiveTarget = target === normalizeState("Active");
+                        const rows: LocatedRow[] = ownedFiltered.map((o) => ({ object_id: o.id, state: o.state } as LocatedRow));
+                        if (isActiveTarget) {
+                            for (const hsmId of hsmLocatedIds) {
+                                if (!ownedIds.has(hsmId)) {
+                                    enriched.push({ object_id: hsmId, state: "Active" } as LocatedRow);
+                                }
+                            }
+                        }
                         setObjects(enriched);
                         setRes(`${enriched.length} Object(s) located.`);
                         return;
                     }
-                    // Get server-side filtered IDs (tags/algorithm/etc.)
-                    const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
-                    const ownedIds = new Set(ownedFiltered.map((o) => o.id));
-                    let intersection = locatedIds.filter((id) => ownedIds.has(id));
+
+                    // Intersect Locate results with owned set, but keep HSM keys that Locate found
+                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
 
                     // Fallback: if KFT provided but intersection is empty, drop KFT server-side and filter locally
                     if (keyFormatType && intersection.length === 0) {
@@ -317,7 +339,7 @@ const LocateForm: React.FC = () => {
                                 idToken,
                                 serverUrl,
                             );
-                            intersection = fbIds.filter((id) => ownedIds.has(id));
+                            intersection = fbIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
                         } catch (e) {
                             console.warn("State+KFT fallback Locate without KFT failed:", e);
                         }
@@ -353,8 +375,8 @@ const LocateForm: React.FC = () => {
                             } catch (e) {
                                 console.error(`Error fetching Get for ${uid}:`, e);
                             }
-                            return { object_id: uid, state: stateVal } as LocatedRow;
-                        }),
+                            return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : stateVal } as LocatedRow;
+                        })
                     );
                     // Enforce KFT filter client-side if provided
                     if (keyFormatType) {
@@ -406,7 +428,21 @@ const LocateForm: React.FC = () => {
                         const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
                         setObjects(merged);
                         setRes(`${merged.length} Object(s) located.`);
-                        return;
+                        // Populate state without per-object GetAttributes: one /access/owned call
+                    // covers software keys; HSM keys (hsm:: prefix) default to Active.
+                    try {
+                        const supplemented = await supplementStateFromOwned(mapped, idToken, serverUrl);
+                        setObjects(supplemented.map((row) => ({
+                            ...row,
+                            state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
+                        })));
+                    } catch {
+                        setObjects(mapped.map((row) => ({
+                            ...row,
+                            state: row.object_id.startsWith("hsm::") ? "Active" : undefined,
+                        })));
+                    }
+                    return;
                     }
                     // Try to supplement state from non-TTLV owned list when available
                     try {
