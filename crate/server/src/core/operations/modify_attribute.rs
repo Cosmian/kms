@@ -466,5 +466,6 @@ pub(crate) async fn modify_attribute(
 
     Ok(ModifyAttributeResponse {
         unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
+        echoed_attribute: None,
     })
 }

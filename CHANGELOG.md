@@ -118,6 +118,15 @@ previously-unknown parse error for those optional vectors.
 
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
+- **Synology DSM simulation (PyKMIP): fix `ModifyAttribute` step after issue #820 server fix**:
+  `KMIPProxy.send_request_payload()` returns the response *payload* object on success (not a batch
+  item), so the returned object has no `result_status` field. Calling `_check_result()` on it
+  always returned `False`, causing spurious cleanup (Destroy) even when the server returned
+  `SUCCESS`. Fix: drop the `_check_result` call — `send_request_payload` raises
+  `OperationFailure` on server errors; reaching the success path without an exception is sufficient.
+  Also fixed `test_pykmip.sh` `set -e` preventing simulation output from being visible when the
+  script fails. Fixes CI failure for `Test on pykmip - non-fips`.
+
 - **`OperationPolicyName` round-trip preservation (issue #796)**: KMIP 1.x clients (e.g. Synology
   DSM 7.2.2) include the `OperationPolicyName` attribute in Register/Create requests per the KMIP
   1.0 spec section 3.18. This attribute was deprecated in KMIP 1.3 and removed in KMIP 2.0+. The

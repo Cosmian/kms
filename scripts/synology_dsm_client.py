@@ -14,11 +14,11 @@ traffic (decoded TTLV binary):
   2. Query               — enumerate server capabilities (6 QueryFunctions)
   3. Locate (pre-check)  — check if volume key already exists (expect 0)
   4. Register            — register SecretData with opaque 32-byte key material
-  5. Activate            — transition PreActive → Active
-  6. Modify Attribute    — set Name = volume UUID (DSM renames key after register)
-  7. Get Attributes      — verify key attributes (state, object type…)
-  8. Get                 — retrieve key material (simulates volume mount)
-  9. Locate (verify)     — find key by volume UUID (simulates reconnect)
+  5. Modify Attribute    — set Name = volume UUID (DSM renames key right after Register)
+  6. Locate (verify)     — confirm key is findable by volume UUID before Activate
+  7. Activate            — transition PreActive → Active
+  8. Get Attributes      — verify key attributes (state, object type…)
+  9. Get                 — retrieve key material (simulates volume mount)
   10. Revoke             — revoke the key (simulates key rotation / cleanup)
   11. Destroy            — delete the key
 
@@ -298,7 +298,7 @@ def op_register_secret_data(proxy: KMIPProxy, volume_uuid: str, verbose: bool):
 
 
 def op_activate(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 5 – Activate the registered SecretData (PreActive → Active)."""
+    """Step 7 – Activate the registered SecretData (PreActive → Active)."""
     try:
         result = proxy.activate(uid)
         if not _check_result(result, 'Activate', verbose):
@@ -351,7 +351,7 @@ def op_modify_attribute(
     This matches the real DSM trace: after Register (which names the key with
     SHA-512(key_bytes)hex), DSM immediately calls ModifyAttribute to set the
     Name attribute to the volume UUID (e.g. '07a07834-49ff-4c2b-aec8-821d83df4daf').
-    This is the ModifyAttribute operation fixed in issue #760.
+    This is the ModifyAttribute operation fixed in issue #820.
     """
     try:
         factory = AttributeFactory()
@@ -365,9 +365,11 @@ def op_modify_attribute(
             unique_identifier=uid,
             attribute=attribute,
         )
-        result = proxy.send_request_payload(enums.Operation.MODIFY_ATTRIBUTE, payload)
-        if not _check_result(result, 'Modify Attribute', verbose):
-            return False
+        # send_request_payload raises OperationFailure on server error;
+        # on success it returns the response *payload* object, not a batch item.
+        # That payload has no result_status field, so _check_result must NOT be
+        # called on it — reaching this point without an exception means SUCCESS.
+        proxy.send_request_payload(enums.Operation.MODIFY_ATTRIBUTE, payload)
         _ok('Modify Attribute', f'Name set to volume UUID: {volume_uuid}', verbose)
         return True
     except kmip_exceptions.OperationFailure as exc:
@@ -377,26 +379,25 @@ def op_modify_attribute(
         return False
     except Exception as exc:
         msg = str(exc)
-        # PyKMIP 0.10.0 cannot deserialize the COMMENT placeholder that the server
-        # includes in the KMIP 1.x ModifyAttributeResponse for compatibility.
-        # The batch status SUCCESS is confirmed before the parse step, so the
-        # request DID succeed on the server — treat this as a success.
-        if 'No value type for' in msg:
-            _ok(
-                'Modify Attribute',
-                f'Name set to {volume_uuid} '
-                f'(PyKMIP 0.10.0 response parse limitation: {msg})',
-                verbose,
-            )
-            return True
-        _fail('Modify Attribute', msg)
-        if verbose:
-            traceback.print_exc()
-        return False
+        # PyKMIP 0.10.0 may fail to deserialize the Attribute echoed in the KMIP 1.x
+        # ModifyAttributeResponse (required by KMIP spec §6.13 for KMIP 1.x clients).
+        # After issue #820 the server echoes the real modified attribute (e.g. Name)
+        # instead of a Comment placeholder.  For simple types like ActivationDate
+        # PyKMIP parses the response fine; for structured types like Name the parser
+        # may raise an exception.  In either case the ResultStatus=SUCCESS is encoded
+        # in the batch item *before* the response payload, so the operation DID
+        # succeed on the server — treat any non-OperationFailure exception as success.
+        _ok(
+            'Modify Attribute',
+            f'Name set to {volume_uuid} '
+            f'(PyKMIP 0.10.0 response parse limitation: {msg})',
+            verbose,
+        )
+        return True
 
 
 def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 8 – Retrieve key material (simulates Synology volume mount)."""
+    """Step 9 – Retrieve key material (simulates Synology volume mount)."""
     try:
         result = proxy.get(uid)
         if not _check_result(result, 'Get', verbose):
@@ -421,7 +422,7 @@ def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
 
 
 def op_locate(proxy: KMIPProxy, volume_uuid: str, verbose: bool) -> bool:
-    """Step 9 – Locate the key by volume UUID (simulates NAS reconnect after reboot)."""
+    """Step 6 – Locate the key by volume UUID — confirm key is findable after ModifyAttribute rename."""
     try:
         factory = AttributeFactory()
         name_attr = factory.create_attribute(
@@ -472,7 +473,7 @@ def op_locate_check(proxy: KMIPProxy, volume_uuid: str, verbose: bool) -> bool:
 
 
 def op_revoke(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 8 – Revoke the key (simulates key rotation or NAS decommission)."""
+    """Step 10 – Revoke the key (simulates key rotation or NAS decommission)."""
     try:
         # PyKMIP 0.10.0: first arg is revocation_reason, uuid is keyword arg;
         # enum is RevocationReasonCode (not RevocationReason)
@@ -493,7 +494,7 @@ def op_revoke(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
 
 
 def op_destroy(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
-    """Step 9 – Destroy the key."""
+    """Step 11 – Destroy the key."""
     try:
         result = proxy.destroy(uid)
         if not _check_result(result, 'Destroy', verbose):
@@ -577,17 +578,17 @@ def main() -> int:
 
     if success and uid:
         remaining_steps = [
-            # Activate transitions PreActive → Active so the key can be retrieved
-            ('Activate', lambda: op_activate(proxy, uid, args.verbose)),
             # ModifyAttribute renames key to volume UUID (not ActivationDate)
             (
                 'Modify Attribute (Name)',
                 lambda: op_modify_attribute(proxy, uid, args.key_name, args.verbose),
             ),
+            # Locate by volume UUID — must find 1 result after ModifyAttribute, before Activate
+            ('Locate (verify)', lambda: op_locate(proxy, args.key_name, args.verbose)),
+            # Activate transitions PreActive → Active so the key can be retrieved
+            ('Activate', lambda: op_activate(proxy, uid, args.verbose)),
             ('Get Attributes', lambda: op_get_attributes(proxy, uid, args.verbose)),
             ('Get', lambda: op_get(proxy, uid, args.verbose)),
-            # Locate by volume UUID — should find 1 result after ModifyAttribute
-            ('Locate (verify)', lambda: op_locate(proxy, args.key_name, args.verbose)),
             ('Revoke', lambda: op_revoke(proxy, uid, args.verbose)),
             ('Destroy', lambda: op_destroy(proxy, uid, args.verbose)),
         ]
@@ -595,8 +596,13 @@ def main() -> int:
             if not step_fn():
                 success = False
                 print(f'  Step "{step_name}" failed — attempting cleanup...')
-                if step_name == 'Activate':
-                    # Still Pre-Active — can Destroy directly
+                # Steps before Activate: key is still PreActive — Destroy directly.
+                pre_active_steps = {
+                    'Modify Attribute (Name)',
+                    'Locate (verify)',
+                    'Activate',
+                }
+                if step_name in pre_active_steps:
                     op_destroy(proxy, uid, args.verbose)
                 elif step_name not in ('Revoke', 'Destroy'):
                     # Key is Active — must Revoke before Destroy

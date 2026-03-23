@@ -881,11 +881,14 @@ impl TryFrom<kmip_2_1::kmip_operations::ModifyAttributeResponse> for ModifyAttri
                 .unique_identifier
                 .map(|u| u.to_string())
                 .unwrap_or_default(),
-            // KMIP 2.1 doesn't echo the modified attribute in the response. Preserve 1.4 shape
-            // by returning a placeholder Comment attribute to avoid deep comparisons.
-            attribute: Attribute::Comment(
-                "KMIP 2 does not send the attribute value on the response".to_owned(),
-            ),
+            attribute: value
+                .echoed_attribute
+                .and_then(|a| Attribute::try_from(a).ok())
+                .unwrap_or_else(|| {
+                    Attribute::Comment(
+                        "KMIP 2 does not send the attribute value on the response".to_owned(),
+                    )
+                }),
         })
     }
 }

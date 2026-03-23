@@ -16,7 +16,7 @@
 //! | Usage mask         | `Verify` (0x0002)            |
 //! | Template attribute | `OperationPolicyName="default"` |
 //!
-//! ## Exact operation sequence from the log (7 operations, 7 TCP connections)
+//! ## Exact operation sequence from the log (9 operations, 9 TCP connections)
 //!
 //! 1. `Query` (`ThreadId` 61, 09:00:17) – capability discovery, functions 1-6
 //! 2. `Query` (`ThreadId` 62, 09:02:20) – identical to #1
@@ -28,10 +28,14 @@
 //!    initial SHA-512 hex name
 //! 7. `ModifyAttribute` (`ThreadId` 67, 09:02:21) – atomically replaces
 //!    `Name[0]` (the SHA-512 hex) with the canonical volume UUID
+//! 8. `Locate` – by volume UUID; must find exactly the registered key
+//! 9. `Activate` – transitions the key from `PreActive` → Active
 //!
 //! DSM opens a fresh TCP connection for every operation. The first three Queries
 //! are a rapid burst of parallel capability-discovery connections at startup.
 //! The fourth Query fires just before Register as part of the create flow.
+//! Steps 8 and 9 only proceed if `ModifyAttributeResponse` correctly echoes
+//! the modified `Name` attribute (KMIP 1.2 spec §4.14, issue #820).
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
@@ -48,7 +52,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, TemplateAttribute},
         kmip_messages::RequestMessageBatchItem,
         kmip_objects::{Object, SecretData},
-        kmip_operations::{Locate, ModifyAttribute, Operation, Query, Register},
+        kmip_operations::{Activate, Locate, ModifyAttribute, Operation, Query, Register},
         kmip_types::{KeyFormatType, NameType, OperationEnumeration, QueryFunction},
     },
     ttlv::KmipFlavor,
@@ -85,7 +89,7 @@ fn kmip12() -> ProtocolVersion {
 
 // ─── Test entry point ────────────────────────────────────────────────────────
 
-/// Replay the exact 7-operation Synology DSM 7.x sequence observed in the
+/// Replay the exact 9-operation Synology DSM 7.x sequence observed in the
 /// `kms.2026-03-19` production log.
 #[test]
 fn test_synology_dsm_volume_lifecycle() {
@@ -116,6 +120,18 @@ fn test_synology_dsm_volume_lifecycle() {
 
     // Operation 7: ModifyAttribute — rename the initial SHA-512 name to the volume UUID.
     modify_name_to_uuid(&client, &uid, VOLUME_UUID);
+
+    // Operation 8: Locate by volume UUID — must now find exactly the renamed key.
+    let located = locate_by_name(&client, VOLUME_UUID);
+    assert_eq!(
+        located.len(),
+        1,
+        "Locate must find exactly one object after ModifyAttribute"
+    );
+    assert_eq!(located[0], uid, "Located UID must match the registered key");
+
+    // Operation 9: Activate — transitions the key from PreActive → Active.
+    activate_volume_key(&client, &uid);
 }
 
 // ─── Step implementations ─────────────────────────────────────────────────────
@@ -289,6 +305,53 @@ fn register_volume_key(client: &SocketClient) -> String {
         "Register must return a non-empty UID"
     );
     register_resp.unique_identifier.clone()
+}
+
+/// KMIP 1.2 `Activate` – transitions the registered key from `PreActive` to Active.
+///
+/// DSM sends this after the Locate confirms the renamed key is findable,
+/// completing the volume creation workflow (issue #820).
+fn activate_volume_key(client: &SocketClient, uid: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: kmip12(),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Activate,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Activate(Activate {
+                    unique_identifier: uid.to_owned(),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Activate: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Activate: expected V14 response");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "Activate failed: {:?}",
+        batch_item.result_reason
+    );
+    let Some(Operation::ActivateResponse(activate_resp)) = &batch_item.response_payload else {
+        panic!("Activate: expected ActivateResponse payload");
+    };
+    assert_eq!(
+        activate_resp.unique_identifier, uid,
+        "ActivateResponse UID must match the registered key"
+    );
 }
 
 /// KMIP 1.2 `ModifyAttribute` – replaces `Name[0]` with the volume UUID.

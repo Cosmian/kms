@@ -40,7 +40,9 @@ impl ModifyAttributesAction {
         attribute: Attribute,
     ) -> KmsCliResult<()> {
         let uid = UniqueIdentifier::TextString(id.to_owned());
-        let ModifyAttributeResponse { unique_identifier } = kms_rest_client
+        let ModifyAttributeResponse {
+            unique_identifier, ..
+        } = kms_rest_client
             .modify_attribute(ModifyAttribute {
                 unique_identifier: Some(uid.clone()),
                 new_attribute: attribute.clone(),
