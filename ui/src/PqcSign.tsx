@@ -35,12 +35,7 @@ const PqcSignForm: React.FC = () => {
                 throw Error("Missing key identifier");
             }
             // ML-DSA sign: no crypto parameters needed, not digested
-            const request = await wasmClient.sign_ttlv_request(
-                id,
-                values.inputFile,
-                undefined,
-                false,
-            );
+            const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, false);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await wasmClient.parse_sign_ttlv_response(result_str);
@@ -116,7 +111,13 @@ const PqcSignForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Sign File
                         </Button>
                     </Form.Item>

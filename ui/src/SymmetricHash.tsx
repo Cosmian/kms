@@ -116,7 +116,10 @@ const SymmetricHashForm: React.FC = () => {
                                 <Form.Item name="fileName" style={{ display: "none" }}>
                                     <Input />
                                 </Form.Item>
-                                <Form.Item name="inputFile" rules={[{ required: inputMode === "file", message: "Please select a file to hash" }]}>
+                                <Form.Item
+                                    name="inputFile"
+                                    rules={[{ required: inputMode === "file", message: "Please select a file to hash" }]}
+                                >
                                     <FormUploadDragger
                                         beforeUpload={(file) => {
                                             form.setFieldValue("fileName", file.name);
@@ -160,7 +163,13 @@ const SymmetricHashForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Compute Hash
                         </Button>
                     </Form.Item>

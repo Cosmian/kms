@@ -68,8 +68,13 @@ const PqcEncapsulateForm: React.FC = () => {
 
             <div className="mb-8 space-y-2">
                 <p>Encapsulate a shared secret using a PQC KEM public key (ML-KEM or Hybrid KEM).</p>
-                <p>This produces a <strong>shared secret</strong> and a <strong>ciphertext</strong> (encapsulation).</p>
-                <p>The ciphertext should be sent to the decapsulating party, who can recover the same shared secret using the corresponding private key.</p>
+                <p>
+                    This produces a <strong>shared secret</strong> and a <strong>ciphertext</strong> (encapsulation).
+                </p>
+                <p>
+                    The ciphertext should be sent to the decapsulating party, who can recover the same shared secret using the corresponding
+                    private key.
+                </p>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical">
@@ -85,7 +90,13 @@ const PqcEncapsulateForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Encapsulate
                         </Button>
                     </Form.Item>

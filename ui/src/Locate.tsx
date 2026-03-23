@@ -552,32 +552,8 @@ const LocateForm: React.FC = () => {
                             setRes(`${filtered.length} Object(s) located.`);
                             return;
                         }
-                        if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
-                            merged = merged.filter((r) => {
-                                const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
-                            });
-                        }
-
-                        setObjects(merged);
-                        setRes(`${merged.length} Object(s) located.`);
-                    } catch {
-                        let filtered = enriched;
-                        if (stateVal) {
-                            const target = normalizeState(stateVal);
-                            filtered = filtered.filter((r) => normalizeState(r.state) === target);
-                        }
-                        if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
-                            filtered = filtered.filter((r) => {
-                                const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
-                            });
-                        }
-
-                        setObjects(filtered);
-                        setRes(`${filtered.length} Object(s) located.`);
+                    } catch (e) {
+                        console.error("Fallback Locate without KFT failed:", e);
                     }
                 }
                 // Still nothing: show explicit 0 objects

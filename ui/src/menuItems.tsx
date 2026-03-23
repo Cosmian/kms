@@ -35,9 +35,9 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/destroy", label: "Destroy" },
                 ],
             },
-            {key: "sym/encrypt", label: "Encrypt"},
-            {key: "sym/decrypt", label: "Decrypt"},
-            {key: "sym/hash", label: "Hash"},
+            { key: "sym/encrypt", label: "Encrypt" },
+            { key: "sym/decrypt", label: "Decrypt" },
+            { key: "sym/hash", label: "Hash" },
         ],
     },
     {
@@ -94,17 +94,17 @@ const baseMenu: MenuItem[] = [
                 key: "pqc/keys",
                 label: "Keys",
                 children: [
-                    {key: "pqc/keys/create", label: "Create"},
-                    {key: "pqc/keys/export", label: "Export"},
-                    {key: "pqc/keys/import", label: "Import"},
-                    {key: "pqc/keys/revoke", label: "Revoke"},
-                    {key: "pqc/keys/destroy", label: "Destroy"},
+                    { key: "pqc/keys/create", label: "Create" },
+                    { key: "pqc/keys/export", label: "Export" },
+                    { key: "pqc/keys/import", label: "Import" },
+                    { key: "pqc/keys/revoke", label: "Revoke" },
+                    { key: "pqc/keys/destroy", label: "Destroy" },
                 ],
             },
-            {key: "pqc/encapsulate", label: "Encapsulate"},
-            {key: "pqc/decapsulate", label: "Decapsulate"},
-            {key: "pqc/sign", label: "Sign"},
-            {key: "pqc/verify", label: "Verify"},
+            { key: "pqc/encapsulate", label: "Encapsulate" },
+            { key: "pqc/decapsulate", label: "Decapsulate" },
+            { key: "pqc/sign", label: "Sign" },
+            { key: "pqc/verify", label: "Verify" },
         ],
     },
     {
@@ -234,8 +234,6 @@ const covercryptSection: MenuItem = {
 export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: string }): MenuItem[] {
     const enableCc = options?.enableCovercrypt ?? true;
     const pqcLabel = options?.pqcLabel ?? "PQC";
-    const menu = baseMenu.map((item) =>
-        item.key === "pqc" ? { ...item, label: pqcLabel } : item
-    );
+    const menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
     return enableCc ? [...menu, covercryptSection] : menu;
 }

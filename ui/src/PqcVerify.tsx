@@ -46,13 +46,7 @@ const PqcVerifyForm: React.FC = () => {
                 throw Error("Empty signature file");
             }
             // ML-DSA verify: no crypto parameters needed, not digested
-            const request = wasmClient.signature_verify_ttlv_request(
-                id,
-                dataBuf!,
-                sigBuf,
-                undefined,
-                false,
-            );
+            const request = wasmClient.signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, false);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await wasmClient.parse_signature_verify_ttlv_response(result_str);
@@ -144,7 +138,13 @@ const PqcVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Verify Signature
                         </Button>
                     </Form.Item>

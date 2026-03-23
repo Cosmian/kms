@@ -1,25 +1,26 @@
 {
-  "title": "Cosmian KMS",
-  "faviconUrl": "/ui/themes/cosmian/cropped-favicon-cosmian-32x32.png",
-  "logoAlt": "Key Management System",
-  "logoLightUrl": "/ui/themes/cosmian/Cosmian-Logo.svg",
-  "logoDarkUrl": "/ui/themes/cosmian/Cosmian-Logo-Dark.svg",
-  "loginTitle": "Cosmian KMS user interface",
-  "loginSubtitle": "",
-  "backgroundImageUrl": "/ui/themes/cosmian/login_page_background_image.png",
-  "loginCardColor": "rgba(126, 34, 206, 0.3)",
-  "menuTheme": "light",
-  "enableCovercrypt": true,
-  "pqcLabel": "PQC",
-  "hiddenPqcAlgorithms": ["ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"],
-  "tokens": {
-    "light": {
-      "colorPrimary": "#e34319",
-      "colorText": "#292f52"
-    },
-    "dark": {
-      "colorPrimary": "#9e6eff",
-      "colorText": "#e4dddd",
-      "colorBgBase": "#2a2d30"
+    "title": "Cosmian KMS",
+    "faviconUrl": "/ui/themes/cosmian/cropped-favicon-cosmian-32x32.png",
+    "logoAlt": "Key Management System",
+    "logoLightUrl": "/ui/themes/cosmian/Cosmian-Logo.svg",
+    "logoDarkUrl": "/ui/themes/cosmian/Cosmian-Logo-Dark.svg",
+    "loginTitle": "Cosmian KMS user interface",
+    "loginSubtitle": "",
+    "backgroundImageUrl": "/ui/themes/cosmian/login_page_background_image.png",
+    "loginCardColor": "rgba(126, 34, 206, 0.3)",
+    "menuTheme": "light",
+    "enableCovercrypt": true,
+    "pqcLabel": "PQC",
+    "hiddenPqcAlgorithms": ["ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"],
+    "tokens": {
+        "light": {
+            "colorPrimary": "#e34319",
+            "colorText": "#292f52"
+        },
+        "dark": {
+            "colorPrimary": "#9e6eff",
+            "colorText": "#e4dddd",
+            "colorBgBase": "#2a2d30"
+        }
     }
 }
