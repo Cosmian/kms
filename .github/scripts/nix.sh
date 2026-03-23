@@ -531,6 +531,10 @@ test_command() {
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
       shift
       ;;
+    crypt2pay)
+      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_crypt2pay.sh"
+      shift
+      ;;
     *)
       echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
       echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2

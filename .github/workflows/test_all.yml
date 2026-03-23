@@ -143,6 +143,7 @@ jobs:
           - utimaco
           - proteccio
           - softhsm2
+          - crypt2pay
         features: [fips, non-fips]
         exclude:
           # parallel connections on proteccio is not supported

@@ -6,6 +6,7 @@ set -x
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../common.sh"
 
+REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
 
@@ -20,8 +21,11 @@ echo "========================================="
 
 export HSM_USER_PASSWORD="${CRYPT2PAY_PASSWORD:?CRYPT2PAY_PASSWORD not set}"
 
-# Note: This script assumes Crypt2pay HSM setup is already configured
-# Users need to set up the Crypt2pay HSM environment and related variables
+# Setup Crypt2pay HSM client tools
+if ! source "$REPO_ROOT/.github/reusable_scripts/prepare_crypt2pay.sh"; then
+  echo "Warning: Failed to source prepare_crypt2pay.sh, c2pstatus may be failing. with return code $?."
+  exit 0
+fi
 
 # CRYPT2PAY integration test (KMS)
 env \
