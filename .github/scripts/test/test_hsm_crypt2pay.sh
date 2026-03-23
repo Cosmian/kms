@@ -2,6 +2,22 @@
 set -eo pipefail
 set -x
 
+#  OpenVPN setup
+if ! command -v openvpn >/dev/null 2>&1; then
+    echo "Installation d'OpenVPN..."
+    sudo apt-get update
+    sudo apt-get install -y openvpn
+fi
+
+sudo openvpn --config "$OVPN_CONF" --daemon
+
+sleep 10
+
+echo "IP :"
+curl -s https://ifconfig.me || echo "Impossible de récupérer l'IP publique"
+
+echo "VPN connecté ✅"
+
 # Crypt2pay-only tests (Linux only)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../common.sh"
