@@ -9,8 +9,8 @@
 #
 # OPTIONS (environment variables):
 #   KMS_BIN     Path to the KMS server binary  (default: target/release/cosmian_kms)
-#   KMS_CONF    Path to KMS server config      (default: test_data/configs/server/test/auth_plain.toml)
-#   CKMS_CONF   Path to ckms CLI config        (default: test_data/configs/client/test/auth_plain_owner.toml)
+#   KMS_CONF    Path to KMS server config      (default: test_data/configs/server/test/auth_https.toml)
+#   CKMS_CONF   Path to ckms CLI config        (default: test_data/configs/client/test/auth_https_owner.toml)
 #   EXTRA_ARGS  Extra arguments passed to ckms bench (default: "")
 #   CKMS_CARGO_ARGS Extra args passed to cargo run for ckms
 #                   (default: "--release --features non-fips")
@@ -21,8 +21,8 @@
 set -euo pipefail
 
 KMS_BIN="${KMS_BIN:-target/release/cosmian_kms}"
-KMS_CONF="${KMS_CONF:-test_data/configs/server/test/auth_plain.toml}"
-CKMS_CONF="${CKMS_CONF:-test_data/configs/client/test/auth_plain_owner.toml}"
+KMS_CONF="${KMS_CONF:-test_data/configs/server/test/auth_https.toml}"
+CKMS_CONF="${CKMS_CONF:-test_data/configs/client/test/auth_https_owner.toml}"
 BENCH_MODE="${BENCH_MODE:-all}"
 EXTRA_ARGS_STR="${EXTRA_ARGS:-}"
 read -r -a EXTRA_ARGS <<<"${EXTRA_ARGS_STR}"
@@ -78,11 +78,12 @@ echo "[1/3] Starting KMS server…"
 "${KMS_BIN}" --config "${KMS_CONF}" &
 KMS_PID=$!
 
-# Detect HTTP port from config
-KMS_PORT="$(grep -A2 '^\[http\]' "${KMS_CONF}" | grep -Po 'port\s*=\s*\K[0-9]+' | head -1 || echo 9998)"
+# Detect HTTP port from config (macOS-compatible: avoid grep -P)
+KMS_PORT="$(grep -A2 '^\[http\]' "${KMS_CONF}" | awk -F'=' '/port/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' || true)"
+KMS_PORT="${KMS_PORT:-9998}"
 
-# Detect if TLS is enabled (presence of tls_p12_file)
-if grep -q 'tls_p12_file' "${KMS_CONF}"; then
+# Detect if TLS is enabled (tls_p12_file for PKCS#12 configs, tls_cert_file for PEM configs)
+if grep -qE 'tls_p12_file|tls_cert_file' "${KMS_CONF}"; then
     KMS_SCHEME="https"
     CURL_EXTRA="-k"
 else

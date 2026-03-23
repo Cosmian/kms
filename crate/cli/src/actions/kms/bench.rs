@@ -21,6 +21,8 @@ use std::{
 
 use clap::{Parser, ValueEnum};
 #[cfg(feature = "non-fips")]
+use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
@@ -384,6 +386,24 @@ fn try_create_ec_kp_no_fips(
     })
 }
 
+#[cfg(feature = "non-fips")]
+fn try_create_pqc_kp(
+    rt: &Runtime,
+    client: &KmsClient,
+    algorithm: CryptographicAlgorithm,
+) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
+    rt.block_on(async {
+        let req =
+            create_pqc_key_pair_request(&client.config.vendor_id, ["bench"], algorithm, false)
+                .ok()?;
+        let resp = client.create_key_pair(req).await.ok()?;
+        Some((
+            resp.public_key_unique_identifier,
+            resp.private_key_unique_identifier,
+        ))
+    })
+}
+
 // =============================================================================
 // ENCRYPT BENCHMARKS
 // =============================================================================
@@ -437,6 +457,9 @@ fn bench_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
     #[cfg(feature = "non-fips")]
     bench_kem(c, client, rt);
+
+    #[cfg(feature = "non-fips")]
+    bench_pqc_kem(c, client, rt);
 }
 
 fn bench_encrypt_aes_gcm(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
@@ -904,6 +927,48 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
     group.finish();
 }
 
+#[cfg(feature = "non-fips")]
+fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
+    let algorithms: &[(&str, CryptographicAlgorithm)] = &[
+        ("ML-KEM-512", CryptographicAlgorithm::MLKEM_512),
+        ("ML-KEM-768", CryptographicAlgorithm::MLKEM_768),
+        ("ML-KEM-1024", CryptographicAlgorithm::MLKEM_1024),
+        ("X25519MLKEM768", CryptographicAlgorithm::X25519MLKEM768),
+        ("X448MLKEM1024", CryptographicAlgorithm::X448MLKEM1024),
+    ];
+
+    let mut group = c.benchmark_group("kem/pqc");
+    for &(label, algo) in algorithms {
+        let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
+            eprintln!("[bench] PQC KEM {label} not supported by server, skipping");
+            continue;
+        };
+
+        let pub_str = pub_id.to_string();
+        let enc_req =
+            encrypt_request(&pub_str, None, Vec::new(), None, None, None).expect("KEM request");
+
+        let Ok(enc_resp) = rt.block_on(client.encrypt(enc_req.clone())) else {
+            eprintln!("[bench] PQC KEM {label} encapsulate failed, skipping");
+            continue;
+        };
+
+        group.bench_function(BenchmarkId::new("encapsulate", label), |b| {
+            b.to_async(rt).iter(|| client.encrypt(enc_req.clone()));
+        });
+
+        // Standard PQC KEM: ciphertext is in i_v_counter_nonce
+        let ct = enc_resp
+            .i_v_counter_nonce
+            .unwrap_or_else(|| enc_resp.data.map_or_else(Vec::new, |z| z.to_vec()));
+        let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
+        group.bench_function(BenchmarkId::new("decapsulate", label), |b| {
+            b.to_async(rt).iter(|| client.decrypt(dec_req.clone()));
+        });
+    }
+    group.finish();
+}
+
 // =============================================================================
 // KEY CREATION BENCHMARKS
 // =============================================================================
@@ -1144,6 +1209,97 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         }
         group.finish();
     }
+
+    // ── PQC key pairs (non-FIPS) ────────────────────────────────────────
+    #[cfg(feature = "non-fips")]
+    {
+        let pqc_algos: &[(&str, CryptographicAlgorithm)] = &[
+            ("ML-KEM-512", CryptographicAlgorithm::MLKEM_512),
+            ("ML-KEM-768", CryptographicAlgorithm::MLKEM_768),
+            ("ML-KEM-1024", CryptographicAlgorithm::MLKEM_1024),
+            ("X25519MLKEM768", CryptographicAlgorithm::X25519MLKEM768),
+            ("X448MLKEM1024", CryptographicAlgorithm::X448MLKEM1024),
+            ("ML-DSA-44", CryptographicAlgorithm::MLDSA_44),
+            ("ML-DSA-65", CryptographicAlgorithm::MLDSA_65),
+            ("ML-DSA-87", CryptographicAlgorithm::MLDSA_87),
+            (
+                "SLH-DSA-SHA2-128s",
+                CryptographicAlgorithm::SLHDSA_SHA2_128s,
+            ),
+            (
+                "SLH-DSA-SHA2-128f",
+                CryptographicAlgorithm::SLHDSA_SHA2_128f,
+            ),
+            (
+                "SLH-DSA-SHA2-192s",
+                CryptographicAlgorithm::SLHDSA_SHA2_192s,
+            ),
+            (
+                "SLH-DSA-SHA2-192f",
+                CryptographicAlgorithm::SLHDSA_SHA2_192f,
+            ),
+            (
+                "SLH-DSA-SHA2-256s",
+                CryptographicAlgorithm::SLHDSA_SHA2_256s,
+            ),
+            (
+                "SLH-DSA-SHA2-256f",
+                CryptographicAlgorithm::SLHDSA_SHA2_256f,
+            ),
+            (
+                "SLH-DSA-SHAKE-128s",
+                CryptographicAlgorithm::SLHDSA_SHAKE_128s,
+            ),
+            (
+                "SLH-DSA-SHAKE-128f",
+                CryptographicAlgorithm::SLHDSA_SHAKE_128f,
+            ),
+            (
+                "SLH-DSA-SHAKE-192s",
+                CryptographicAlgorithm::SLHDSA_SHAKE_192s,
+            ),
+            (
+                "SLH-DSA-SHAKE-192f",
+                CryptographicAlgorithm::SLHDSA_SHAKE_192f,
+            ),
+            (
+                "SLH-DSA-SHAKE-256s",
+                CryptographicAlgorithm::SLHDSA_SHAKE_256s,
+            ),
+            (
+                "SLH-DSA-SHAKE-256f",
+                CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+            ),
+        ];
+
+        let mut group = c.benchmark_group("key-creation/pqc");
+        for &(label, algo) in pqc_algos {
+            let vid2 = vid.clone();
+            let result = rt.block_on(async {
+                let req = create_pqc_key_pair_request(&vid2, ["bench"], algo, false).ok()?;
+                client.create_key_pair(req).await.ok()
+            });
+            if result.is_some() {
+                let vid2 = vid.clone();
+                group.bench_function(label, |b| {
+                    b.to_async(rt).iter(|| {
+                        let vid2 = vid2.clone();
+                        async move {
+                            let req = create_pqc_key_pair_request(
+                                &vid2,
+                                Vec::<String>::new(),
+                                algo,
+                                false,
+                            )
+                            .unwrap();
+                            client.create_key_pair(req).await.unwrap();
+                        }
+                    });
+                });
+            }
+        }
+        group.finish();
+    }
 }
 
 // =============================================================================
@@ -1205,6 +1361,42 @@ fn bench_sign_verify(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
     // RSA-PSS
     bench_rsa_pss_sign(c, client, rt);
+
+    // PQC signature algorithms (non-FIPS)
+    #[cfg(feature = "non-fips")]
+    bench_pqc_sign(
+        c,
+        client,
+        rt,
+        "sign-verify/ml-dsa",
+        &[
+            ("44", CryptographicAlgorithm::MLDSA_44),
+            ("65", CryptographicAlgorithm::MLDSA_65),
+            ("87", CryptographicAlgorithm::MLDSA_87),
+        ],
+    );
+
+    #[cfg(feature = "non-fips")]
+    bench_pqc_sign(
+        c,
+        client,
+        rt,
+        "sign-verify/slh-dsa",
+        &[
+            ("SHA2-128s", CryptographicAlgorithm::SLHDSA_SHA2_128s),
+            ("SHA2-128f", CryptographicAlgorithm::SLHDSA_SHA2_128f),
+            ("SHA2-192s", CryptographicAlgorithm::SLHDSA_SHA2_192s),
+            ("SHA2-192f", CryptographicAlgorithm::SLHDSA_SHA2_192f),
+            ("SHA2-256s", CryptographicAlgorithm::SLHDSA_SHA2_256s),
+            ("SHA2-256f", CryptographicAlgorithm::SLHDSA_SHA2_256f),
+            ("SHAKE-128s", CryptographicAlgorithm::SLHDSA_SHAKE_128s),
+            ("SHAKE-128f", CryptographicAlgorithm::SLHDSA_SHAKE_128f),
+            ("SHAKE-192s", CryptographicAlgorithm::SLHDSA_SHAKE_192s),
+            ("SHAKE-192f", CryptographicAlgorithm::SLHDSA_SHAKE_192f),
+            ("SHAKE-256s", CryptographicAlgorithm::SLHDSA_SHAKE_256s),
+            ("SHAKE-256f", CryptographicAlgorithm::SLHDSA_SHAKE_256f),
+        ],
+    );
 }
 
 fn bench_ec_sign(
@@ -1292,6 +1484,54 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
             b.to_async(rt).iter(|| client.sign(sign_req.clone()));
         });
         group.bench_function(BenchmarkId::new("verify", bits), |b| {
+            b.to_async(rt)
+                .iter(|| client.signature_verify(verify_req.clone()));
+        });
+    }
+    group.finish();
+}
+
+#[cfg(feature = "non-fips")]
+fn bench_pqc_sign(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    group_name: &str,
+    algorithms: &[(&str, CryptographicAlgorithm)],
+) {
+    let message = Zeroizing::new(vec![0x42_u8; 32]);
+    let mut group = c.benchmark_group(group_name);
+
+    for &(label, algo) in algorithms {
+        let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
+            eprintln!("[bench] {label} not supported by server, skipping");
+            continue;
+        };
+
+        let sign_req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: None,
+            data: Some(message.clone()),
+            ..Default::default()
+        };
+        let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
+            eprintln!("[bench] {label} sign failed, skipping");
+            continue;
+        };
+        let sample_sig = sign_resp.signature_data.unwrap_or_default();
+
+        let verify_req = SignatureVerify {
+            unique_identifier: Some(pub_id),
+            cryptographic_parameters: None,
+            data: Some(message.to_vec()),
+            signature_data: Some(sample_sig),
+            ..Default::default()
+        };
+
+        group.bench_function(BenchmarkId::new("sign", label), |b| {
+            b.to_async(rt).iter(|| client.sign(sign_req.clone()));
+        });
+        group.bench_function(BenchmarkId::new("verify", label), |b| {
             b.to_async(rt)
                 .iter(|| client.signature_verify(verify_req.clone()));
         });
@@ -1813,6 +2053,9 @@ fn group_description(group_id: &str) -> Option<&'static str> {
         "kem/configurable" => Some(
             "Configurable KEM encapsulate and decapsulate (ML-KEM, hybrid variants). Non-FIPS.",
         ),
+        "kem/pqc" => Some(
+            "Standard PQC KEM encapsulate and decapsulate (ML-KEM, X25519MLKEM768, X448MLKEM1024). Non-FIPS.",
+        ),
         // Key creation
         "key-creation/symmetric" => Some("AES (and ChaCha20 in non-FIPS) symmetric key creation."),
         "key-creation/rsa" => Some("RSA key pair generation (2048/3072/4096-bit)."),
@@ -1820,6 +2063,9 @@ fn group_description(group_id: &str) -> Option<&'static str> {
         "key-creation/covercrypt" => Some("Covercrypt master key pair generation. Non-FIPS."),
         "key-creation/kem" => {
             Some("Configurable KEM key pair generation (ML-KEM, hybrid variants). Non-FIPS.")
+        }
+        "key-creation/pqc" => {
+            Some("PQC key pair generation (ML-KEM, ML-DSA, SLH-DSA, hybrid KEM). Non-FIPS.")
         }
         // Sign / verify
         "sign-verify/ecdsa-p256" | "sign-verify/ecdsa-p384" | "sign-verify/ecdsa-p521" => {
@@ -1829,6 +2075,10 @@ fn group_description(group_id: &str) -> Option<&'static str> {
             Some("Non-FIPS EC signature operations (secp256k1, Ed25519, Ed448).")
         }
         "sign-verify/rsa-pss" => Some("RSA-PSS sign and verify (SHA-256, 2048/3072/4096-bit)."),
+        "sign-verify/ml-dsa" => Some("ML-DSA sign and verify (ML-DSA-44/65/87). Non-FIPS."),
+        "sign-verify/slh-dsa" => Some(
+            "SLH-DSA (stateless hash-based) sign and verify (SHA2/SHAKE, 128/192/256). Non-FIPS.",
+        ),
         // Batch
         "AES GCM - plaintext of 64 bytes" => {
             Some("AES-GCM batch — encrypt/decrypt N items in a single BulkData call.")
@@ -1924,6 +2174,22 @@ fn render_group_table(group_id: &str, points: &[BenchPoint]) -> String {
             param_strs.push(p.value_str.clone());
         }
     }
+
+    // Sort parameters numerically when they have a leading number (e.g. "1 request", "50 requests")
+    param_strs.sort_by(|a, b| {
+        let num_a = a
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse::<u64>().ok());
+        let num_b = b
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse::<u64>().ok());
+        match (num_a, num_b) {
+            (Some(na), Some(nb)) => na.cmp(&nb),
+            _ => a.cmp(b),
+        }
+    });
 
     if param_strs.is_empty() {
         // Flat table: one column per function_id
