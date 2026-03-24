@@ -401,8 +401,7 @@ fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {
     // the response.  This is the invariant fixed by issue #820 — before that
     // fix the server returned a `Comment` placeholder instead of the actual
     // `Name` value, which caused the DSM client to fail Locate after Register.
-    let Some(Operation::ModifyAttributeResponse(modify_resp)) = &batch_item.response_payload
-    else {
+    let Some(Operation::ModifyAttributeResponse(modify_resp)) = &batch_item.response_payload else {
         panic!("ModifyAttribute: expected ModifyAttributeResponse payload");
     };
     assert_eq!(
