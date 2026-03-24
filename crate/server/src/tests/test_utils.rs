@@ -38,6 +38,24 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
+/// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
+/// environment variable that is set *before* the test helpers clear it, then assigns it
+/// to the server's `proxy_params` so that server-side outbound requests (e.g. CRL fetches)
+/// are routed through the configured corporate proxy.
+pub(crate) fn https_clap_config_with_external_proxy() -> ClapConfig {
+    // Capture proxy URL before disable_proxies_for_tests() removes it from the environment.
+    let proxy_url = std::env::var("HTTPS_PROXY")
+        .ok()
+        .or_else(|| std::env::var("https_proxy").ok())
+        .or_else(|| std::env::var("HTTP_PROXY").ok())
+        .or_else(|| std::env::var("http_proxy").ok());
+    let mut config = https_clap_config_opts(None);
+    if let Some(url) = proxy_url {
+        config.proxy.proxy_url = Some(url);
+    }
+    config
+}
+
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     // Ensure local test traffic bypasses any corporate proxy
     ensure_no_proxy_for_localhost();

@@ -312,12 +312,12 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     ensure_no_proxy_for_localhost();
     // If NO_PROXY is not sufficient for the HTTP stack, hard-disable proxies
     disable_proxies_for_tests();
-    ONCE.get_or_try_init(|| async move {
+    Box::pin(ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
         let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT)?;
         match use_kek {
             Some(_use_kek) => {
-                let server_params = create_server_params_with_kek(port).await.unwrap();
+                let server_params = Box::pin(create_server_params_with_kek(port)).await.unwrap();
                 start_from_server_params(server_params).await
             }
             None => {
@@ -331,7 +331,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
                 .await
             }
         }
-    })
+    }))
     .await
     .unwrap_or_else(|e| {
         error!("failed to start default test server: {e}");
@@ -551,7 +551,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
 }
 
 async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsClientError> {
-    let (workspace_dir, kek_id) = create_kek_in_db().await?;
+    let (workspace_dir, kek_id) = Box::pin(create_kek_in_db()).await?;
     trace!(
         "Key encryption key created: {kek_id} in workspace {}",
         workspace_dir.display()
@@ -598,18 +598,17 @@ async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsCli
 pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM and KEK");
     // Build ServerParams with HSM fields directly and start from them
-    ONCE_SERVER_WITH_KEK
-        .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
-            let server_params = create_server_params_with_kek(port).await.unwrap();
+    Box::pin(ONCE_SERVER_WITH_KEK.get_or_try_init(|| async move {
+        let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
+        let server_params = Box::pin(create_server_params_with_kek(port)).await.unwrap();
 
-            start_from_server_params(server_params).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with utimaco hsm: {e}");
-            std::process::abort();
-        })
+        start_from_server_params(server_params).await
+    }))
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start test server with utimaco hsm: {e}");
+        std::process::abort();
+    })
 }
 
 /// Privileged users
