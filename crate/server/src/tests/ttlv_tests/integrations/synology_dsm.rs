@@ -396,4 +396,25 @@ fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {
         "ModifyAttribute failed: {:?}",
         batch_item.result_reason
     );
+
+    // KMIP 1.2 spec §4.14: the server MUST echo the modified attribute in
+    // the response.  This is the invariant fixed by issue #820 — before that
+    // fix the server returned a `Comment` placeholder instead of the actual
+    // `Name` value, which caused the DSM client to fail Locate after Register.
+    let Some(Operation::ModifyAttributeResponse(modify_resp)) = &batch_item.response_payload
+    else {
+        panic!("ModifyAttribute: expected ModifyAttributeResponse payload");
+    };
+    assert_eq!(
+        modify_resp.unique_identifier, uid,
+        "ModifyAttributeResponse.unique_identifier must echo the request UID"
+    );
+    assert_eq!(
+        modify_resp.attribute,
+        Attribute::Name(Name {
+            name_value: new_name.to_owned(),
+            name_type: NameType::UninterpretedTextString,
+        }),
+        "ModifyAttributeResponse.attribute must echo the exact Name attribute that was set"
+    );
 }
