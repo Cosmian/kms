@@ -160,7 +160,7 @@ const LocateForm: React.FC = () => {
                 }
                 // Fallback: HSM keys default to Active
                 return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : undefined } as LocatedRow;
-            })
+            }),
         );
         return rows;
     };
@@ -312,7 +312,6 @@ const LocateForm: React.FC = () => {
                         // Merge owned-by-state entries with HSM keys from Locate
                         // (HSM keys are always Active, so they match if target is Active)
                         const isActiveTarget = target === normalizeState("Active");
-                        const rows: LocatedRow[] = ownedFiltered.map((o) => ({ object_id: o.id, state: o.state } as LocatedRow));
                         if (isActiveTarget) {
                             for (const hsmId of hsmLocatedIds) {
                                 if (!ownedIds.has(hsmId)) {
@@ -376,7 +375,7 @@ const LocateForm: React.FC = () => {
                                 console.error(`Error fetching Get for ${uid}:`, e);
                             }
                             return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : stateVal } as LocatedRow;
-                        })
+                        }),
                     );
                     // Enforce KFT filter client-side if provided
                     if (keyFormatType) {
@@ -429,20 +428,24 @@ const LocateForm: React.FC = () => {
                         setObjects(merged);
                         setRes(`${merged.length} Object(s) located.`);
                         // Populate state without per-object GetAttributes: one /access/owned call
-                    // covers software keys; HSM keys (hsm:: prefix) default to Active.
-                    try {
-                        const supplemented = await supplementStateFromOwned(mapped, idToken, serverUrl);
-                        setObjects(supplemented.map((row) => ({
-                            ...row,
-                            state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
-                        })));
-                    } catch {
-                        setObjects(mapped.map((row) => ({
-                            ...row,
-                            state: row.object_id.startsWith("hsm::") ? "Active" : undefined,
-                        })));
-                    }
-                    return;
+                        // covers software keys; HSM keys (hsm:: prefix) default to Active.
+                        try {
+                            const supplemented = await supplementStateFromOwned(mapped, idToken, serverUrl);
+                            setObjects(
+                                supplemented.map((row) => ({
+                                    ...row,
+                                    state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
+                                })),
+                            );
+                        } catch {
+                            setObjects(
+                                mapped.map((row) => ({
+                                    ...row,
+                                    state: row.object_id.startsWith("hsm::") ? "Active" : undefined,
+                                })),
+                            );
+                        }
+                        return;
                     }
                     // Try to supplement state from non-TTLV owned list when available
                     try {
