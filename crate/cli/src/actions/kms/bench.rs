@@ -11,7 +11,11 @@
     clippy::cast_possible_wrap
 )]
 
+// =============================================================================
+// COMPACT OUTPUT TRACKING
+// =============================================================================
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     fs,
     io::Write as _,
@@ -62,6 +66,22 @@ use zeroize::Zeroizing;
 
 use crate::error::{KmsCliError, result::KmsCliResult};
 
+thread_local! {
+    /// Benchmarks that were skipped (server does not support the algorithm).
+    /// Only KO events need explicit tracking; OKs are read from criterion output.
+    static BENCH_KO: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Record a benchmark name as skipped/unsupported (for compact output).
+fn bench_ko(name: impl Into<String>) {
+    BENCH_KO.with(|r| r.borrow_mut().push(name.into()));
+}
+
+/// Reset the KO accumulator before a new benchmark run.
+fn bench_ko_reset() {
+    BENCH_KO.with(|r| r.borrow_mut().clear());
+}
+
 // =============================================================================
 // CLI TYPES
 // =============================================================================
@@ -76,6 +96,22 @@ pub enum BenchFormat {
     Json,
     /// Generate markdown tables from criterion estimates (embedded criterion-table)
     Markdown,
+    /// One line per benchmark: name + OK/KO. Criterion output is suppressed.
+    /// Automatically selected when --sanity is used without an explicit --format.
+    Compact,
+}
+
+/// Benchmark speed / sampling mode.
+#[derive(Clone, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub enum BenchSpeed {
+    /// 100 samples, configurable measurement time (--time), 3 s warmup.
+    #[default]
+    Normal,
+    /// 10 samples, 1 s measurement, 0.5 s warmup.
+    Quick,
+    /// Smoke-test: 10 samples (criterion minimum), 1 ms measurement, 1 ms warmup.
+    /// Automatically selects --format compact when no explicit format is given.
+    Sanity,
 }
 
 /// Benchmark mode selection.
@@ -88,7 +124,7 @@ pub enum BenchMode {
     Encrypt,
     /// Key creation: symmetric, RSA, EC key pairs
     KeyCreation,
-    /// Sign/verify: ECDSA, `EdDSA` (non-FIPS), RSA-PSS
+    /// Sign/verify: ECDSA, `EdDSA` (non-FIPS), RSA-PSS, ML-DSA, SLH-DSA (non-FIPS)
     SignVerify,
     /// KMIP Message batch: AES `BulkData`, RSA KMIP Message
     Batch,
@@ -101,11 +137,11 @@ pub enum BenchMode {
 /// HTML reports are generated in `target/criterion/`.
 ///
 /// Examples:
-///   ckms bench                              # all modes, default config
-///   ckms bench --mode encrypt               # encrypt mode only
-///   ckms bench --sanity                      # smoke-test: 1 pass per bench, no warmup
-///   ckms bench --mode key-creation --quick   # quick run
-///   ckms bench --format json                 # also write JSON results
+///   ckms bench                                   # all modes, default config
+///   ckms bench --mode encrypt                    # encrypt mode only
+///   ckms bench --speed sanity                    # smoke-test: 1 pass per bench, compact output
+///   ckms bench --mode key-creation --speed quick # quick run
+///   ckms bench --format json                     # also write JSON results
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct BenchAction {
@@ -117,18 +153,14 @@ pub struct BenchAction {
     #[clap(long = "format", short = 'f', default_value = "text")]
     format: BenchFormat,
 
-    /// Quick benchmark: 10 samples, 1s measurement, 0.5s warmup
-    #[clap(long = "quick", default_value = "false")]
-    quick: bool,
-
-    /// Sanity/pre-flight check: 10 samples (criterion minimum), 1ms measurement, no warmup.
-    /// Exercises every operation once to verify the server handles all algorithms correctly.
-    #[clap(long = "sanity", default_value = "false")]
-    sanity: bool,
+    /// Benchmark speed mode: normal (default), quick, or sanity.
+    /// Sanity auto-selects --format compact when no explicit format is given.
+    #[clap(long = "speed", short = 's', default_value = "normal")]
+    speed: BenchSpeed,
 
     /// Maximum measurement time per benchmark in seconds (default: 10).
     /// Caps how long criterion spends on each benchmark function.
-    /// Ignored in --sanity and --quick modes.
+    /// Ignored in quick and sanity speed modes.
     #[clap(long = "time", short = 't', default_value = "10")]
     time: u64,
 
@@ -478,6 +510,7 @@ fn bench_encrypt_aes_gcm(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
         let Ok(enc_resp) = rt.block_on(client.encrypt(enc_req.clone())) else {
             eprintln!("[bench] AES-GCM-{bits} not supported by server, skipping");
+            bench_ko("encrypt/aes-gcm");
             continue;
         };
 
@@ -504,6 +537,7 @@ fn bench_encrypt_aes_gcm(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 fn bench_encrypt_chacha20(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
     let Some(key_id) = try_create_sym_key(rt, client, 256, CryptographicAlgorithm::ChaCha20) else {
         eprintln!("[bench] ChaCha20 not supported by server, skipping");
+        bench_ko("encrypt/chacha20-poly1305");
         return;
     };
 
@@ -562,6 +596,7 @@ fn bench_rsa_encrypt_family(
         .expect("encrypt request");
         if rt.block_on(client.encrypt(test_req)).is_err() {
             eprintln!("[bench] {label}-{bits} not supported by server, skipping");
+            bench_ko(format!("encrypt/{label}"));
             continue;
         }
 
@@ -615,6 +650,7 @@ fn bench_encrypt_aes_xts(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         // Test support before benchmarking
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] AES-XTS-{label} not supported by server, skipping");
+            bench_ko("encrypt/aes-xts");
             continue;
         }
 
@@ -656,6 +692,7 @@ fn bench_encrypt_aes_gcm_siv(c: &mut Criterion, client: &KmsClient, rt: &Runtime
 
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] AES-GCM-SIV-{bits} not supported by server, skipping");
+            bench_ko("encrypt/aes-gcm-siv");
             continue;
         }
 
@@ -692,6 +729,7 @@ fn bench_encrypt_ecies(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
     ] {
         let Some((pub_id, priv_id)) = try_create_ec_kp_no_fips(rt, client, curve) else {
             eprintln!("[bench] ECIES {label} not supported by server, skipping");
+            bench_ko("encrypt/ecies");
             continue;
         };
         let pub_str = pub_id.to_string();
@@ -701,6 +739,7 @@ fn bench_encrypt_ecies(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] ECIES {label} encrypt failed, skipping");
+            bench_ko("encrypt/ecies");
             continue;
         }
 
@@ -726,6 +765,7 @@ fn bench_encrypt_salsa(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         try_create_ec_kp_no_fips(rt, client, RecommendedCurve::CURVE25519)
     else {
         eprintln!("[bench] Salsa Sealed Box (X25519) not supported by server, skipping");
+        bench_ko("encrypt/salsa-sealed-box");
         return;
     };
     let pub_str = pub_id.to_string();
@@ -735,6 +775,7 @@ fn bench_encrypt_salsa(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
     if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
         eprintln!("[bench] Salsa Sealed Box encrypt failed, skipping");
+        bench_ko("encrypt/salsa-sealed-box");
         return;
     }
 
@@ -800,6 +841,7 @@ fn bench_encrypt_covercrypt(c: &mut Criterion, client: &KmsClient, rt: &Runtime)
         Ok(ids) => ids,
         Err(e) => {
             eprintln!("[bench] Covercrypt not supported by server: {e}, skipping");
+            bench_ko("encrypt/covercrypt");
             return;
         }
     };
@@ -822,6 +864,7 @@ fn bench_encrypt_covercrypt(c: &mut Criterion, client: &KmsClient, rt: &Runtime)
 
     if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
         eprintln!("[bench] Covercrypt encrypt failed, skipping");
+        bench_ko("encrypt/covercrypt");
         return;
     }
 
@@ -891,6 +934,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
             Ok(ids) => ids,
             Err(e) => {
                 eprintln!("[bench] KEM {label} not supported: {e}, skipping");
+                bench_ko("kem/configurable");
                 continue;
             }
         };
@@ -901,6 +945,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] KEM {label} encapsulate failed, skipping");
+            bench_ko("kem/configurable");
             continue;
         }
 
@@ -941,6 +986,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
     for &(label, algo) in algorithms {
         let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
             eprintln!("[bench] PQC KEM {label} not supported by server, skipping");
+            bench_ko("kem/pqc");
             continue;
         };
 
@@ -950,6 +996,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
 
         let Ok(enc_resp) = rt.block_on(client.encrypt(enc_req.clone())) else {
             eprintln!("[bench] PQC KEM {label} encapsulate failed, skipping");
+            bench_ko("kem/pqc");
             continue;
         };
 
@@ -1024,6 +1071,8 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
                     }
                 });
             });
+        } else {
+            bench_ko("key-creation/symmetric");
         }
         group.finish();
     }
@@ -1112,6 +1161,8 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
                         }
                     });
                 });
+            } else {
+                bench_ko("key-creation/ec");
             }
         }
         group.finish();
@@ -1156,6 +1207,8 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
                 });
             });
             group.finish();
+        } else {
+            bench_ko("key-creation/covercrypt");
         }
     }
 
@@ -1205,6 +1258,8 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
                         }
                     });
                 });
+            } else {
+                bench_ko("key-creation/kem");
             }
         }
         group.finish();
@@ -1296,6 +1351,8 @@ fn bench_key_creation(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
                         }
                     });
                 });
+            } else {
+                bench_ko("key-creation/pqc");
             }
         }
         group.finish();
@@ -1409,6 +1466,7 @@ fn bench_ec_sign(
 ) {
     let Some((pub_id, priv_id)) = try_create_ec_kp(rt, client, curve) else {
         eprintln!("[bench] {label} not supported by server, skipping");
+        bench_ko(format!("sign-verify/{label}"));
         return;
     };
 
@@ -1426,6 +1484,7 @@ fn bench_ec_sign(
     };
     let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
         eprintln!("[bench] {label} sign not supported by server, skipping");
+        bench_ko(format!("sign-verify/{label}"));
         return;
     };
     let sample_sig = sign_resp.signature_data.unwrap_or_default();
@@ -1468,6 +1527,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
             eprintln!("[bench] rsa-pss-{bits} sign not supported by server, skipping");
+            bench_ko("sign-verify/rsa-pss");
             continue;
         };
         let sample_sig = sign_resp.signature_data.unwrap_or_default();
@@ -1505,6 +1565,7 @@ fn bench_pqc_sign(
     for &(label, algo) in algorithms {
         let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
             eprintln!("[bench] {label} not supported by server, skipping");
+            bench_ko(group_name);
             continue;
         };
 
@@ -1516,6 +1577,7 @@ fn bench_pqc_sign(
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
             eprintln!("[bench] {label} sign failed, skipping");
+            bench_ko(group_name);
             continue;
         };
         let sample_sig = sign_resp.signature_data.unwrap_or_default();
@@ -1546,20 +1608,13 @@ fn bench_pqc_sign(
 fn bench_batch(c: &mut Criterion, client: &KmsClient, rt: &Runtime, sanity: bool) {
     bench_batch_aes_bulk(c, client, rt, sanity);
 
-    bench_batch_rsa_message(
-        c,
-        client,
-        rt,
-        "RSA OAEP - plaintext of 32 bytes",
-        &rsa_oaep_params(),
-        sanity,
-    );
+    bench_batch_rsa_message(c, client, rt, "batch/rsa-oaep", &rsa_oaep_params(), sanity);
 
     bench_batch_rsa_message(
         c,
         client,
         rt,
-        "RSA AES KEY WRAP - plaintext of 32 bytes",
+        "batch/rsa-aes-kwp",
         &rsa_kwp_params(),
         sanity,
     );
@@ -1569,14 +1624,14 @@ fn bench_batch(c: &mut Criterion, client: &KmsClient, rt: &Runtime, sanity: bool
         c,
         client,
         rt,
-        "RSA PKCSv1.5 - plaintext of 32 bytes",
+        "batch/rsa-pkcs1v15",
         &rsa_pkcs15_params(),
         sanity,
     );
 }
 
 fn bench_batch_aes_bulk(c: &mut Criterion, client: &KmsClient, rt: &Runtime, sanity: bool) {
-    let mut group = c.benchmark_group("AES GCM - plaintext of 64 bytes");
+    let mut group = c.benchmark_group("batch/aes-gcm");
     let params = aes_gcm_params();
 
     let batch_sizes: &[usize] = if sanity {
@@ -1667,6 +1722,7 @@ fn bench_batch_rsa_message(
         .expect("test encrypt request");
         if rt.block_on(client.encrypt(test_req)).is_err() {
             eprintln!("[bench] {group_name}-{bits} not supported by server, skipping");
+            bench_ko(group_name);
             continue;
         }
 
@@ -2080,16 +2136,16 @@ fn group_description(group_id: &str) -> Option<&'static str> {
             "SLH-DSA (stateless hash-based) sign and verify (SHA2/SHAKE, 128/192/256). Non-FIPS.",
         ),
         // Batch
-        "AES GCM - plaintext of 64 bytes" => {
+        "batch/aes-gcm" => {
             Some("AES-GCM batch — encrypt/decrypt N items in a single BulkData call.")
         }
-        "RSA PKCSv1.5 - plaintext of 32 bytes" => {
+        "batch/rsa-pkcs1v15" => {
             Some("RSA PKCS#1 v1.5 batch — encrypt/decrypt N items in a single KMIP message.")
         }
-        "RSA OAEP - plaintext of 32 bytes" => {
+        "batch/rsa-oaep" => {
             Some("RSA-OAEP batch — encrypt/decrypt N items in a single KMIP message.")
         }
-        "RSA AES KEY WRAP - plaintext of 32 bytes" => {
+        "batch/rsa-aes-kwp" => {
             Some("RSA AES Key Wrap batch — encrypt/decrypt N items in a single KMIP message.")
         }
         _ => None,
@@ -2272,6 +2328,83 @@ fn generate_markdown_output() -> KmsCliResult<()> {
     Ok(())
 }
 
+/// Return true if any `estimates.json` inside `dir` (recursively) was written
+/// at or after `since`. Used to distinguish current-run criterion data from
+/// stale data left by previous runs.
+fn group_updated_since(dir: &Path, since: std::time::SystemTime) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if group_updated_since(&path, since) {
+                return true;
+            }
+        } else if path.file_name().is_some_and(|n| n == "estimates.json")
+            && path
+                .metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t >= since)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCliResult<()> {
+    let home = criterion_home();
+    let mut results: BTreeMap<String, bool> = BTreeMap::new();
+
+    // ── OK: criterion groups updated during the current run ───────────────
+    // Filtering by mtime prevents stale data from previous runs (against a
+    // different server version) from producing false-positive OKs.
+    if home.exists() {
+        let points = collect_bench_points(&home)?;
+        for group_id in points.keys() {
+            // Criterion 0.6 stores group "a/b" as directory target/criterion/a_b/
+            // (slashes replaced by underscores, not nested directories).
+            let dir_name = group_id.replace('/', "_");
+            let group_dir = home.join(&dir_name);
+            if group_updated_since(&group_dir, run_start) {
+                results.insert(group_id.clone(), true);
+            }
+        }
+    }
+
+    // ── KO: groups that were fully skipped (inserted only if not already OK)
+    BENCH_KO.with(|r| {
+        for name in r.borrow().iter() {
+            results.entry(name.clone()).or_insert(false);
+        }
+    });
+
+    if results.is_empty() {
+        eprintln!("[bench] compact: no results collected");
+        return Ok(());
+    }
+
+    // ── Print aligned list ────────────────────────────────────────────────
+    let width = results.keys().map(String::len).max().unwrap_or(40) + 2;
+    for (name, ok) in &results {
+        let status = if *ok { "OK" } else { "KO" };
+        #[allow(clippy::print_stdout)]
+        {
+            println!("{name:<width$} {status}");
+        }
+    }
+
+    let total = results.len();
+    let ok_cnt = results.values().filter(|&&v| v).count();
+    eprintln!(
+        "[bench] compact summary: {ok_cnt}/{total} OK, {} KO",
+        total - ok_cnt
+    );
+
+    Ok(())
+}
+
 // =============================================================================
 // BENCH ACTION IMPLEMENTATION
 // =============================================================================
@@ -2286,8 +2419,7 @@ impl BenchAction {
         let config = kms_rest_client.config.clone();
         let mode = self.mode.clone();
         let format = self.format.clone();
-        let quick = self.quick;
-        let sanity = self.sanity;
+        let speed = self.speed.clone();
         let time = self.time;
         let save_baseline = self.save_baseline.clone();
         let load_baseline = self.load_baseline.clone();
@@ -2308,23 +2440,38 @@ impl BenchAction {
                 .map_err(|e| KmsCliError::Default(format!("Server unreachable: {e}")))?;
             eprintln!("[bench] Connected to KMS server version {version}");
 
-            let mut c = if sanity {
+            // Reset KO accumulator for this run
+            bench_ko_reset();
+
+            // Sanity speed implies compact unless the user explicitly chose another format
+            let effective_format = if speed == BenchSpeed::Sanity && format == BenchFormat::Text {
+                BenchFormat::Compact
+            } else {
+                format.clone()
+            };
+
+            // Snapshot time just before starting criterion so we can filter
+            // stale criterion data from previous runs in generate_compact_output.
+            let run_start = std::time::SystemTime::now();
+
+            let mut c = match speed {
+                BenchSpeed::Sanity =>
                 // Criterion enforces sample_size >= 10; set measurement and warmup to 1ms
                 // so each bench function runs as few iterations as possible.
-                Criterion::default()
-                    .sample_size(10)
-                    .measurement_time(Duration::from_millis(1))
-                    .warm_up_time(Duration::from_millis(1))
-            } else if quick {
-                Criterion::default()
+                {
+                    Criterion::default()
+                        .sample_size(10)
+                        .measurement_time(Duration::from_millis(1))
+                        .warm_up_time(Duration::from_millis(1))
+                }
+                BenchSpeed::Quick => Criterion::default()
                     .sample_size(10)
                     .measurement_time(Duration::from_secs(1))
-                    .warm_up_time(Duration::from_millis(500))
-            } else {
-                Criterion::default()
+                    .warm_up_time(Duration::from_millis(500)),
+                BenchSpeed::Normal => Criterion::default()
                     .sample_size(100)
                     .measurement_time(Duration::from_secs(time))
-                    .warm_up_time(Duration::from_secs(3))
+                    .warm_up_time(Duration::from_secs(3)),
             };
 
             if let Some(ref name) = save_baseline {
@@ -2335,29 +2482,66 @@ impl BenchAction {
                 c = c.retain_baseline(name.clone(), false);
             }
 
-            // When emitting JSON for criterion-table, redirect fd 1 (stdout) → fd 2 (stderr)
-            // so criterion's timing summaries don't pollute the JSON pipe.
-            // The redirect is restored after drop(c) before we emit our JSON.
-            let saved_stdout_fd = if format == BenchFormat::Json {
-                std::io::stdout().flush().ok();
-                // SAFETY: dup/dup2 are safe POSIX calls; we restore the fd after the run.
-                #[allow(unsafe_code)]
-                let saved = unsafe { libc::dup(1) };
-                #[allow(unsafe_code)]
-                unsafe {
-                    libc::dup2(2, 1)
-                };
-                if saved < 0 { None } else { Some(saved) }
-            } else {
-                None
-            };
+            // Suppress criterion's verbose output during the run.
+            //
+            // JSON:    fd1 (stdout) → fd2 (stderr)  so JSON isn't mixed with timing text.
+            // Compact: fd1 and fd2 both → /dev/null.  Criterion's timing summaries go to
+            //          stdout and its "Warming up / Warning" messages go to stderr; both
+            //          are noise when the compact report is the only desired output.
+            //          Order matters: redirect stderr FIRST, then stdout→stderr so that
+            //          the dup2(2,1) copies the already-nulled fd2.
+            //          Both fds are restored before generate_compact_output() runs.
+            //
+            // SAFETY: dup/dup2/open are safe POSIX calls; all fds are restored after drop(c).
+            std::io::stdout().flush().ok();
+            std::io::stderr().flush().ok();
 
+            let (saved_stdout_fd, saved_stderr_fd): (Option<i32>, Option<i32>) =
+                match effective_format {
+                    BenchFormat::Json => {
+                        #[allow(unsafe_code)]
+                        let s = unsafe { libc::dup(1) };
+                        #[allow(unsafe_code)]
+                        unsafe {
+                            libc::dup2(2, 1)
+                        };
+                        (if s < 0 { None } else { Some(s) }, None)
+                    }
+                    BenchFormat::Compact => {
+                        #[allow(unsafe_code)]
+                        let devnull = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY) };
+                        if devnull >= 0 {
+                            #[allow(unsafe_code)]
+                            let se = unsafe { libc::dup(2) };
+                            #[allow(unsafe_code)]
+                            unsafe {
+                                libc::dup2(devnull, 2)
+                            }; // stderr → /dev/null first
+                            #[allow(unsafe_code)]
+                            let so = unsafe { libc::dup(1) };
+                            #[allow(unsafe_code)]
+                            unsafe {
+                                libc::dup2(2, 1); // stdout → (already-null) fd2
+                                libc::close(devnull);
+                            }
+                            (
+                                if so < 0 { None } else { Some(so) },
+                                if se < 0 { None } else { Some(se) },
+                            )
+                        } else {
+                            (None, None)
+                        }
+                    }
+                    _ => (None, None),
+                };
+
+            let is_sanity = speed == BenchSpeed::Sanity;
             match mode {
                 BenchMode::All => {
                     bench_encrypt(&mut c, &client, &rt);
                     bench_key_creation(&mut c, &client, &rt);
                     bench_sign_verify(&mut c, &client, &rt);
-                    bench_batch(&mut c, &client, &rt, sanity);
+                    bench_batch(&mut c, &client, &rt, is_sanity);
                 }
                 BenchMode::Encrypt => {
                     bench_encrypt(&mut c, &client, &rt);
@@ -2368,13 +2552,22 @@ impl BenchAction {
                 BenchMode::SignVerify => {
                     bench_sign_verify(&mut c, &client, &rt);
                 }
-                BenchMode::Batch => bench_batch(&mut c, &client, &rt, sanity),
+                BenchMode::Batch => bench_batch(&mut c, &client, &rt, is_sanity),
             }
 
             // Drop criterion to finalize reports
             drop(c);
 
-            // Restore stdout fd before we emit JSON.
+            // Restore stderr (compact mode silenced criterion's warnings).
+            if let Some(saved) = saved_stderr_fd {
+                #[allow(unsafe_code)]
+                unsafe {
+                    libc::dup2(saved, 2);
+                    libc::close(saved);
+                }
+            }
+
+            // Restore stdout before we emit the report.
             if let Some(saved) = saved_stdout_fd {
                 #[allow(unsafe_code)]
                 unsafe {
@@ -2392,9 +2585,10 @@ impl BenchAction {
                 );
             }
 
-            match format {
+            match effective_format {
                 BenchFormat::Json => collect_json_output(version_label.as_deref())?,
                 BenchFormat::Markdown => generate_markdown_output()?,
+                BenchFormat::Compact => generate_compact_output(run_start)?,
                 BenchFormat::Text => {}
             }
 

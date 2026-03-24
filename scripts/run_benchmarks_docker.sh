@@ -43,7 +43,7 @@ fi
 IMAGE_REPO="${IMAGE_REPO:-ghcr.io/cosmian/kms}"
 HOST_PORT="${HOST_PORT:-9998}"
 BENCH_MODE="${BENCH_MODE:-all}"
-EXTRA_ARGS_STR="${EXTRA_ARGS:---quick}"
+EXTRA_ARGS_STR="${EXTRA_ARGS:---speed quick}"
 read -r -a EXTRA_ARGS <<<"${EXTRA_ARGS_STR}"
 OUT_DIR="${OUT_DIR:-documentation/docs/benchmarks/docker}"
 MAX_MINOR_PER_MAJOR="${MAX_MINOR_PER_MAJOR:-29}"

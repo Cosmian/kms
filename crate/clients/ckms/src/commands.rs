@@ -105,10 +105,10 @@ pub enum CliCommands {
     /// Handle KMS actions
     #[clap(flatten)]
     Kms(KmsActions),
-    /// Action to auto-generate doc in Markdown format
-    /// Run `cargo run --bin ckms -- markdown
-    /// documentation/docs/cli/main_commands.md`
-    #[clap(hide = true)]
+    /// Regenerate the CLI documentation in Markdown format.
+    ///
+    /// Writes a Markdown file documenting all subcommands and their options.
+    /// Example: `ckms markdown documentation/docs/cli/main_commands.md`
     Markdown(MarkdownAction),
     /// Configure the KMS CLI (create ckms.toml)
     Configure,
