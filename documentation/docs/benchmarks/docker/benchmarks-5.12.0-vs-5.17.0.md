@@ -6,7 +6,7 @@ Compare image:  `ghcr.io/cosmian/kms:5.17.0`
 Source command:
 
 ```bash
-cargo run -p ckms --release --features non-fips -- bench --mode all --format json --version-label v<VERSION>
+cargo run -p ckms --release --features non-fips -- bench --mode all --format json --quick --version-label v<VERSION>
 cat v5.12.0.json v5.17.0.json | criterion-table
 ```
 
@@ -49,326 +49,326 @@ cat v5.12.0.json v5.17.0.json | criterion-table
 
 |                                           | `v5.12.0`                 | `v5.17.0`                         |
 |:------------------------------------------|:--------------------------|:--------------------------------- |
-| **`128-bit key decrypt - 1 request`**     | `117.77 us` (✅ **1.00x**) | `102.59 us` (✅ **1.15x faster**)  |
-| **`128-bit key decrypt - 10 requests`**   | `327.04 us` (✅ **1.00x**) | `290.60 us` (✅ **1.13x faster**)  |
-| **`128-bit key decrypt - 100 requests`**  | `1.72 ms` (✅ **1.00x**)   | `1.55 ms` (✅ **1.11x faster**)    |
-| **`128-bit key decrypt - 1000 requests`** | `13.59 ms` (✅ **1.00x**)  | `14.29 ms` (✅ **1.05x slower**)   |
-| **`128-bit key decrypt - 50 requests`**   | `877.57 us` (✅ **1.00x**) | `842.19 us` (✅ **1.04x faster**)  |
-| **`128-bit key decrypt - 500 requests`**  | `6.75 ms` (✅ **1.00x**)   | `7.17 ms` (✅ **1.06x slower**)    |
-| **`128-bit key encrypt - 1 request`**     | `157.03 us` (✅ **1.00x**) | `162.96 us` (✅ **1.04x slower**)  |
-| **`128-bit key encrypt - 10 requests`**   | `346.37 us` (✅ **1.00x**) | `312.41 us` (✅ **1.11x faster**)  |
-| **`128-bit key encrypt - 100 requests`**  | `2.11 ms` (✅ **1.00x**)   | `1.73 ms` (✅ **1.22x faster**)    |
-| **`128-bit key encrypt - 1000 requests`** | `14.53 ms` (✅ **1.00x**)  | `15.35 ms` (✅ **1.06x slower**)   |
-| **`128-bit key encrypt - 50 requests`**   | `850.72 us` (✅ **1.00x**) | `925.77 us` (✅ **1.09x slower**)  |
-| **`128-bit key encrypt - 500 requests`**  | `8.99 ms` (✅ **1.00x**)   | `8.30 ms` (✅ **1.08x faster**)    |
-| **`256-bit key decrypt - 1 request`**     | `183.48 us` (✅ **1.00x**) | `165.00 us` (✅ **1.11x faster**)  |
-| **`256-bit key decrypt - 10 requests`**   | `291.95 us` (✅ **1.00x**) | `259.93 us` (✅ **1.12x faster**)  |
-| **`256-bit key decrypt - 100 requests`**  | `1.52 ms` (✅ **1.00x**)   | `1.49 ms` (✅ **1.02x faster**)    |
-| **`256-bit key decrypt - 1000 requests`** | `13.60 ms` (✅ **1.00x**)  | `13.48 ms` (✅ **1.01x faster**)   |
-| **`256-bit key decrypt - 50 requests`**   | `1.07 ms` (✅ **1.00x**)   | `881.52 us` (✅ **1.21x faster**)  |
-| **`256-bit key decrypt - 500 requests`**  | `6.87 ms` (✅ **1.00x**)   | `6.71 ms` (✅ **1.02x faster**)    |
-| **`256-bit key encrypt - 1 request`**     | `159.01 us` (✅ **1.00x**) | `177.83 us` (❌ *1.12x slower*)    |
-| **`256-bit key encrypt - 10 requests`**   | `269.49 us` (✅ **1.00x**) | `308.50 us` (❌ *1.14x slower*)    |
-| **`256-bit key encrypt - 100 requests`**  | `1.92 ms` (✅ **1.00x**)   | `1.73 ms` (✅ **1.11x faster**)    |
-| **`256-bit key encrypt - 1000 requests`** | `15.11 ms` (✅ **1.00x**)  | `16.02 ms` (✅ **1.06x slower**)   |
-| **`256-bit key encrypt - 50 requests`**   | `881.41 us` (✅ **1.00x**) | `977.15 us` (✅ **1.11x slower**)  |
-| **`256-bit key encrypt - 500 requests`**  | `7.21 ms` (✅ **1.00x**)   | `7.56 ms` (✅ **1.05x slower**)    |
+| **`128-bit key decrypt - 1 request`**     | `237.84 us` (✅ **1.00x**) | `104.19 us` (🚀 **2.28x faster**)  |
+| **`128-bit key decrypt - 10 requests`**   | `337.88 us` (✅ **1.00x**) | `231.07 us` (✅ **1.46x faster**)  |
+| **`128-bit key decrypt - 100 requests`**  | `2.77 ms` (✅ **1.00x**)   | `1.59 ms` (✅ **1.75x faster**)    |
+| **`128-bit key decrypt - 1000 requests`** | `11.98 ms` (✅ **1.00x**)  | `13.55 ms` (❌ *1.13x slower*)     |
+| **`128-bit key decrypt - 50 requests`**   | `945.00 us` (✅ **1.00x**) | `919.25 us` (✅ **1.03x faster**)  |
+| **`128-bit key decrypt - 500 requests`**  | `6.25 ms` (✅ **1.00x**)   | `11.13 ms` (❌ *1.78x slower*)     |
+| **`128-bit key encrypt - 1 request`**     | `163.07 us` (✅ **1.00x**) | `170.12 us` (✅ **1.04x slower**)  |
+| **`128-bit key encrypt - 10 requests`**   | `653.66 us` (✅ **1.00x**) | `509.72 us` (✅ **1.28x faster**)  |
+| **`128-bit key encrypt - 100 requests`**  | `1.58 ms` (✅ **1.00x**)   | `2.79 ms` (❌ *1.77x slower*)      |
+| **`128-bit key encrypt - 1000 requests`** | `13.89 ms` (✅ **1.00x**)  | `14.17 ms` (✅ **1.02x slower**)   |
+| **`128-bit key encrypt - 50 requests`**   | `765.39 us` (✅ **1.00x**) | `1.24 ms` (❌ *1.62x slower*)      |
+| **`128-bit key encrypt - 500 requests`**  | `9.59 ms` (✅ **1.00x**)   | `7.37 ms` (✅ **1.30x faster**)    |
+| **`256-bit key decrypt - 1 request`**     | `233.66 us` (✅ **1.00x**) | `222.90 us` (✅ **1.05x faster**)  |
+| **`256-bit key decrypt - 10 requests`**   | `258.56 us` (✅ **1.00x**) | `243.27 us` (✅ **1.06x faster**)  |
+| **`256-bit key decrypt - 100 requests`**  | `1.62 ms` (✅ **1.00x**)   | `1.79 ms` (✅ **1.10x slower**)    |
+| **`256-bit key decrypt - 1000 requests`** | `12.91 ms` (✅ **1.00x**)  | `13.94 ms` (✅ **1.08x slower**)   |
+| **`256-bit key decrypt - 50 requests`**   | `1.00 ms` (✅ **1.00x**)   | `1.23 ms` (❌ *1.23x slower*)      |
+| **`256-bit key decrypt - 500 requests`**  | `6.31 ms` (✅ **1.00x**)   | `7.16 ms` (❌ *1.13x slower*)      |
+| **`256-bit key encrypt - 1 request`**     | `323.92 us` (✅ **1.00x**) | `263.45 us` (✅ **1.23x faster**)  |
+| **`256-bit key encrypt - 10 requests`**   | `288.98 us` (✅ **1.00x**) | `465.21 us` (❌ *1.61x slower*)    |
+| **`256-bit key encrypt - 100 requests`**  | `2.48 ms` (✅ **1.00x**)   | `1.73 ms` (✅ **1.43x faster**)    |
+| **`256-bit key encrypt - 1000 requests`** | `14.57 ms` (✅ **1.00x**)  | `14.88 ms` (✅ **1.02x slower**)   |
+| **`256-bit key encrypt - 50 requests`**   | `1.07 ms` (✅ **1.00x**)   | `2.00 ms` (❌ *1.87x slower*)      |
+| **`256-bit key encrypt - 500 requests`**  | `9.83 ms` (✅ **1.00x**)   | `13.37 ms` (❌ *1.36x slower*)     |
 
 ### RSA AES KEY WRAP - plaintext of 32 bytes
 
 |                                           | `v5.12.0`                 | `v5.17.0`                         |
 |:------------------------------------------|:--------------------------|:--------------------------------- |
-| **`2048-bit key decrypt - 1 request`**    | `26.56 ms` (✅ **1.00x**)  | `29.62 ms` (❌ *1.12x slower*)     |
-| **`2048-bit key decrypt - 10 requests`**  | `244.12 ms` (✅ **1.00x**) | `236.38 ms` (✅ **1.03x faster**)  |
-| **`2048-bit key decrypt - 100 requests`** | `2.36 s` (✅ **1.00x**)    | `2.33 s` (✅ **1.01x faster**)     |
-| **`2048-bit key decrypt - 50 requests`**  | `1.22 s` (✅ **1.00x**)    | `1.17 s` (✅ **1.04x faster**)     |
-| **`2048-bit key encrypt - 1 request`**    | `225.52 us` (✅ **1.00x**) | `260.29 us` (❌ *1.15x slower*)    |
-| **`2048-bit key encrypt - 10 requests`**  | `1.55 ms` (✅ **1.00x**)   | `1.73 ms` (❌ *1.12x slower*)      |
-| **`2048-bit key encrypt - 100 requests`** | `11.81 ms` (✅ **1.00x**)  | `15.12 ms` (❌ *1.28x slower*)     |
-| **`2048-bit key encrypt - 50 requests`**  | `6.17 ms` (✅ **1.00x**)   | `8.60 ms` (❌ *1.39x slower*)      |
-| **`3072-bit key decrypt - 1 request`**    | `72.52 ms` (✅ **1.00x**)  | `77.13 ms` (✅ **1.06x slower**)   |
-| **`3072-bit key decrypt - 10 requests`**  | `720.80 ms` (✅ **1.00x**) | `723.03 ms` (✅ **1.00x slower**)  |
-| **`3072-bit key decrypt - 100 requests`** | `7.19 s` (✅ **1.00x**)    | `7.23 s` (✅ **1.01x slower**)     |
-| **`3072-bit key decrypt - 50 requests`**  | `3.60 s` (✅ **1.00x**)    | `3.61 s` (✅ **1.00x slower**)     |
-| **`3072-bit key encrypt - 1 request`**    | `278.06 us` (✅ **1.00x**) | `315.90 us` (❌ *1.14x slower*)    |
-| **`3072-bit key encrypt - 10 requests`**  | `1.94 ms` (✅ **1.00x**)   | `2.17 ms` (❌ *1.12x slower*)      |
-| **`3072-bit key encrypt - 100 requests`** | `15.09 ms` (✅ **1.00x**)  | `17.58 ms` (❌ *1.17x slower*)     |
-| **`3072-bit key encrypt - 50 requests`**  | `7.73 ms` (✅ **1.00x**)   | `11.76 ms` (❌ *1.52x slower*)     |
-| **`4096-bit key decrypt - 1 request`**    | `162.92 ms` (✅ **1.00x**) | `178.54 ms` (✅ **1.10x slower**)  |
-| **`4096-bit key decrypt - 10 requests`**  | `1.65 s` (✅ **1.00x**)    | `1.66 s` (✅ **1.01x slower**)     |
-| **`4096-bit key decrypt - 100 requests`** | `16.50 s` (✅ **1.00x**)   | `16.61 s` (✅ **1.01x slower**)    |
-| **`4096-bit key decrypt - 50 requests`**  | `8.27 s` (✅ **1.00x**)    | `8.27 s` (✅ **1.00x slower**)     |
-| **`4096-bit key encrypt - 1 request`**    | `337.79 us` (✅ **1.00x**) | `338.85 us` (✅ **1.00x slower**)  |
-| **`4096-bit key encrypt - 10 requests`**  | `2.76 ms` (✅ **1.00x**)   | `2.70 ms` (✅ **1.02x faster**)    |
-| **`4096-bit key encrypt - 100 requests`** | `18.63 ms` (✅ **1.00x**)  | `21.35 ms` (❌ *1.15x slower*)     |
-| **`4096-bit key encrypt - 50 requests`**  | `10.26 ms` (✅ **1.00x**)  | `13.82 ms` (❌ *1.35x slower*)     |
+| **`2048-bit key decrypt - 1 request`**    | `27.36 ms` (✅ **1.00x**)  | `24.97 ms` (✅ **1.10x faster**)   |
+| **`2048-bit key decrypt - 10 requests`**  | `244.49 ms` (✅ **1.00x**) | `243.41 ms` (✅ **1.00x faster**)  |
+| **`2048-bit key decrypt - 100 requests`** | `2.50 s` (✅ **1.00x**)    | `2.54 s` (✅ **1.02x slower**)     |
+| **`2048-bit key decrypt - 50 requests`**  | `1.26 s` (✅ **1.00x**)    | `1.26 s` (✅ **1.01x faster**)     |
+| **`2048-bit key encrypt - 1 request`**    | `330.66 us` (✅ **1.00x**) | `244.28 us` (✅ **1.35x faster**)  |
+| **`2048-bit key encrypt - 10 requests`**  | `2.14 ms` (✅ **1.00x**)   | `2.36 ms` (✅ **1.10x slower**)    |
+| **`2048-bit key encrypt - 100 requests`** | `12.10 ms` (✅ **1.00x**)  | `15.11 ms` (❌ *1.25x slower*)     |
+| **`2048-bit key encrypt - 50 requests`**  | `6.83 ms` (✅ **1.00x**)   | `14.09 ms` (❌ *2.06x slower*)     |
+| **`3072-bit key decrypt - 1 request`**    | `79.42 ms` (✅ **1.00x**)  | `77.56 ms` (✅ **1.02x faster**)   |
+| **`3072-bit key decrypt - 10 requests`**  | `766.84 ms` (✅ **1.00x**) | `755.13 ms` (✅ **1.02x faster**)  |
+| **`3072-bit key decrypt - 100 requests`** | `7.69 s` (✅ **1.00x**)    | `7.63 s` (✅ **1.01x faster**)     |
+| **`3072-bit key decrypt - 50 requests`**  | `3.90 s` (✅ **1.00x**)    | `3.86 s` (✅ **1.01x faster**)     |
+| **`3072-bit key encrypt - 1 request`**    | `322.22 us` (✅ **1.00x**) | `375.03 us` (❌ *1.16x slower*)    |
+| **`3072-bit key encrypt - 10 requests`**  | `1.68 ms` (✅ **1.00x**)   | `2.04 ms` (❌ *1.21x slower*)      |
+| **`3072-bit key encrypt - 100 requests`** | `15.43 ms` (✅ **1.00x**)  | `18.80 ms` (❌ *1.22x slower*)     |
+| **`3072-bit key encrypt - 50 requests`**  | `8.03 ms` (✅ **1.00x**)   | `9.22 ms` (❌ *1.15x slower*)      |
+| **`4096-bit key decrypt - 1 request`**    | `180.42 ms` (✅ **1.00x**) | `172.23 ms` (✅ **1.05x faster**)  |
+| **`4096-bit key decrypt - 10 requests`**  | `1.77 s` (✅ **1.00x**)    | `1.79 s` (✅ **1.01x slower**)     |
+| **`4096-bit key decrypt - 100 requests`** | `17.63 s` (✅ **1.00x**)   | `17.55 s` (✅ **1.00x faster**)    |
+| **`4096-bit key decrypt - 50 requests`**  | `8.77 s` (✅ **1.00x**)    | `8.78 s` (✅ **1.00x slower**)     |
+| **`4096-bit key encrypt - 1 request`**    | `367.03 us` (✅ **1.00x**) | `419.79 us` (❌ *1.14x slower*)    |
+| **`4096-bit key encrypt - 10 requests`**  | `3.01 ms` (✅ **1.00x**)   | `3.60 ms` (❌ *1.20x slower*)      |
+| **`4096-bit key encrypt - 100 requests`** | `20.50 ms` (✅ **1.00x**)  | `23.19 ms` (❌ *1.13x slower*)     |
+| **`4096-bit key encrypt - 50 requests`**  | `9.96 ms` (✅ **1.00x**)   | `15.45 ms` (❌ *1.55x slower*)     |
 
 ### RSA OAEP - plaintext of 32 bytes
 
 |                                           | `v5.12.0`                 | `v5.17.0`                         |
 |:------------------------------------------|:--------------------------|:--------------------------------- |
-| **`2048-bit key decrypt - 1 request`**    | `26.90 ms` (✅ **1.00x**)  | `25.73 ms` (✅ **1.05x faster**)   |
-| **`2048-bit key decrypt - 10 requests`**  | `247.97 ms` (✅ **1.00x**) | `235.79 ms` (✅ **1.05x faster**)  |
-| **`2048-bit key decrypt - 100 requests`** | `2.37 s` (✅ **1.00x**)    | `2.35 s` (✅ **1.01x faster**)     |
-| **`2048-bit key decrypt - 50 requests`**  | `1.21 s` (✅ **1.00x**)    | `1.18 s` (✅ **1.03x faster**)     |
-| **`2048-bit key encrypt - 1 request`**    | `260.57 us` (✅ **1.00x**) | `271.44 us` (✅ **1.04x slower**)  |
-| **`2048-bit key encrypt - 10 requests`**  | `1.68 ms` (✅ **1.00x**)   | `1.84 ms` (✅ **1.09x slower**)    |
-| **`2048-bit key encrypt - 100 requests`** | `11.82 ms` (✅ **1.00x**)  | `15.04 ms` (❌ *1.27x slower*)     |
-| **`2048-bit key encrypt - 50 requests`**  | `6.42 ms` (✅ **1.00x**)   | `8.54 ms` (❌ *1.33x slower*)      |
-| **`3072-bit key decrypt - 1 request`**    | `73.29 ms` (✅ **1.00x**)  | `71.75 ms` (✅ **1.02x faster**)   |
-| **`3072-bit key decrypt - 10 requests`**  | `726.11 ms` (✅ **1.00x**) | `724.14 ms` (✅ **1.00x faster**)  |
-| **`3072-bit key decrypt - 100 requests`** | `7.23 s` (✅ **1.00x**)    | `7.44 s` (✅ **1.03x slower**)     |
-| **`3072-bit key decrypt - 50 requests`**  | `3.62 s` (✅ **1.00x**)    | `3.61 s` (✅ **1.00x faster**)     |
-| **`3072-bit key encrypt - 1 request`**    | `296.00 us` (✅ **1.00x**) | `291.77 us` (✅ **1.01x faster**)  |
-| **`3072-bit key encrypt - 10 requests`**  | `2.03 ms` (✅ **1.00x**)   | `2.33 ms` (❌ *1.15x slower*)      |
-| **`3072-bit key encrypt - 100 requests`** | `15.25 ms` (✅ **1.00x**)  | `19.02 ms` (❌ *1.25x slower*)     |
-| **`3072-bit key encrypt - 50 requests`**  | `8.00 ms` (✅ **1.00x**)   | `10.83 ms` (❌ *1.35x slower*)     |
-| **`4096-bit key decrypt - 1 request`**    | `164.32 ms` (✅ **1.00x**) | `171.21 ms` (✅ **1.04x slower**)  |
-| **`4096-bit key decrypt - 10 requests`**  | `1.65 s` (✅ **1.00x**)    | `1.65 s` (✅ **1.00x slower**)     |
-| **`4096-bit key decrypt - 100 requests`** | `16.55 s` (✅ **1.00x**)   | `16.49 s` (✅ **1.00x faster**)    |
-| **`4096-bit key decrypt - 50 requests`**  | `8.29 s` (✅ **1.00x**)    | `8.26 s` (✅ **1.00x faster**)     |
-| **`4096-bit key encrypt - 1 request`**    | `330.56 us` (✅ **1.00x**) | `346.41 us` (✅ **1.05x slower**)  |
-| **`4096-bit key encrypt - 10 requests`**  | `2.86 ms` (✅ **1.00x**)   | `3.21 ms` (❌ *1.12x slower*)      |
-| **`4096-bit key encrypt - 100 requests`** | `18.80 ms` (✅ **1.00x**)  | `21.92 ms` (❌ *1.17x slower*)     |
-| **`4096-bit key encrypt - 50 requests`**  | `9.93 ms` (✅ **1.00x**)   | `15.65 ms` (❌ *1.58x slower*)     |
+| **`2048-bit key decrypt - 1 request`**    | `26.28 ms` (✅ **1.00x**)  | `27.26 ms` (✅ **1.04x slower**)   |
+| **`2048-bit key decrypt - 10 requests`**  | `256.86 ms` (✅ **1.00x**) | `244.45 ms` (✅ **1.05x faster**)  |
+| **`2048-bit key decrypt - 100 requests`** | `2.48 s` (✅ **1.00x**)    | `2.45 s` (✅ **1.01x faster**)     |
+| **`2048-bit key decrypt - 50 requests`**  | `1.26 s` (✅ **1.00x**)    | `1.28 s` (✅ **1.02x slower**)     |
+| **`2048-bit key encrypt - 1 request`**    | `280.01 us` (✅ **1.00x**) | `470.12 us` (❌ *1.68x slower*)    |
+| **`2048-bit key encrypt - 10 requests`**  | `1.40 ms` (✅ **1.00x**)   | `2.44 ms` (❌ *1.74x slower*)      |
+| **`2048-bit key encrypt - 100 requests`** | `11.97 ms` (✅ **1.00x**)  | `20.57 ms` (❌ *1.72x slower*)     |
+| **`2048-bit key encrypt - 50 requests`**  | `6.31 ms` (✅ **1.00x**)   | `14.12 ms` (❌ *2.24x slower*)     |
+| **`3072-bit key decrypt - 1 request`**    | `77.46 ms` (✅ **1.00x**)  | `79.39 ms` (✅ **1.02x slower**)   |
+| **`3072-bit key decrypt - 10 requests`**  | `791.01 ms` (✅ **1.00x**) | `774.99 ms` (✅ **1.02x faster**)  |
+| **`3072-bit key decrypt - 100 requests`** | `7.75 s` (✅ **1.00x**)    | `7.71 s` (✅ **1.01x faster**)     |
+| **`3072-bit key decrypt - 50 requests`**  | `3.82 s` (✅ **1.00x**)    | `3.83 s` (✅ **1.00x slower**)     |
+| **`3072-bit key encrypt - 1 request`**    | `347.70 us` (✅ **1.00x**) | `371.24 us` (✅ **1.07x slower**)  |
+| **`3072-bit key encrypt - 10 requests`**  | `3.32 ms` (✅ **1.00x**)   | `2.49 ms` (✅ **1.33x faster**)    |
+| **`3072-bit key encrypt - 100 requests`** | `15.73 ms` (✅ **1.00x**)  | `18.77 ms` (❌ *1.19x slower*)     |
+| **`3072-bit key encrypt - 50 requests`**  | `7.91 ms` (✅ **1.00x**)   | `12.99 ms` (❌ *1.64x slower*)     |
+| **`4096-bit key decrypt - 1 request`**    | `175.93 ms` (✅ **1.00x**) | `182.24 ms` (✅ **1.04x slower**)  |
+| **`4096-bit key decrypt - 10 requests`**  | `1.75 s` (✅ **1.00x**)    | `1.73 s` (✅ **1.01x faster**)     |
+| **`4096-bit key decrypt - 100 requests`** | `17.58 s` (✅ **1.00x**)   | `17.54 s` (✅ **1.00x faster**)    |
+| **`4096-bit key decrypt - 50 requests`**  | `8.84 s` (✅ **1.00x**)    | `8.83 s` (✅ **1.00x faster**)     |
+| **`4096-bit key encrypt - 1 request`**    | `383.80 us` (✅ **1.00x**) | `366.50 us` (✅ **1.05x faster**)  |
+| **`4096-bit key encrypt - 10 requests`**  | `2.84 ms` (✅ **1.00x**)   | `2.47 ms` (✅ **1.15x faster**)    |
+| **`4096-bit key encrypt - 100 requests`** | `19.53 ms` (✅ **1.00x**)  | `23.17 ms` (❌ *1.19x slower*)     |
+| **`4096-bit key encrypt - 50 requests`**  | `14.61 ms` (✅ **1.00x**)  | `13.28 ms` (✅ **1.10x faster**)   |
 
 ### RSA PKCSv1.5 - plaintext of 32 bytes
 
 |                                           | `v5.12.0`                 | `v5.17.0`                         |
 |:------------------------------------------|:--------------------------|:--------------------------------- |
-| **`2048-bit key decrypt - 1 request`**    | `26.89 ms` (✅ **1.00x**)  | `25.18 ms` (✅ **1.07x faster**)   |
-| **`2048-bit key decrypt - 10 requests`**  | `240.10 ms` (✅ **1.00x**) | `237.73 ms` (✅ **1.01x faster**)  |
-| **`2048-bit key decrypt - 100 requests`** | `2.35 s` (✅ **1.00x**)    | `2.35 s` (✅ **1.00x slower**)     |
-| **`2048-bit key decrypt - 50 requests`**  | `1.18 s` (✅ **1.00x**)    | `1.17 s` (✅ **1.01x faster**)     |
-| **`2048-bit key encrypt - 1 request`**    | `235.54 us` (✅ **1.00x**) | `295.43 us` (❌ *1.25x slower*)    |
-| **`2048-bit key encrypt - 10 requests`**  | `1.53 ms` (✅ **1.00x**)   | `1.71 ms` (❌ *1.12x slower*)      |
-| **`2048-bit key encrypt - 100 requests`** | `11.62 ms` (✅ **1.00x**)  | `14.65 ms` (❌ *1.26x slower*)     |
-| **`2048-bit key encrypt - 50 requests`**  | `6.08 ms` (✅ **1.00x**)   | `8.59 ms` (❌ *1.41x slower*)      |
-| **`3072-bit key decrypt - 1 request`**    | `72.51 ms` (✅ **1.00x**)  | `75.57 ms` (✅ **1.04x slower**)   |
-| **`3072-bit key decrypt - 10 requests`**  | `725.87 ms` (✅ **1.00x**) | `722.93 ms` (✅ **1.00x faster**)  |
-| **`3072-bit key decrypt - 100 requests`** | `7.22 s` (✅ **1.00x**)    | `7.19 s` (✅ **1.00x faster**)     |
-| **`3072-bit key decrypt - 50 requests`**  | `3.60 s` (✅ **1.00x**)    | `3.59 s` (✅ **1.00x faster**)     |
-| **`3072-bit key encrypt - 1 request`**    | `304.72 us` (✅ **1.00x**) | `315.80 us` (✅ **1.04x slower**)  |
-| **`3072-bit key encrypt - 10 requests`**  | `1.88 ms` (✅ **1.00x**)   | `2.14 ms` (❌ *1.14x slower*)      |
-| **`3072-bit key encrypt - 100 requests`** | `14.85 ms` (✅ **1.00x**)  | `17.68 ms` (❌ *1.19x slower*)     |
-| **`3072-bit key encrypt - 50 requests`**  | `7.60 ms` (✅ **1.00x**)   | `11.44 ms` (❌ *1.50x slower*)     |
-| **`4096-bit key decrypt - 1 request`**    | `164.19 ms` (✅ **1.00x**) | `170.04 ms` (✅ **1.04x slower**)  |
-| **`4096-bit key decrypt - 10 requests`**  | `1.65 s` (✅ **1.00x**)    | `1.65 s` (✅ **1.00x faster**)     |
-| **`4096-bit key decrypt - 100 requests`** | `16.49 s` (✅ **1.00x**)   | `16.55 s` (✅ **1.00x slower**)    |
-| **`4096-bit key decrypt - 50 requests`**  | `8.25 s` (✅ **1.00x**)    | `8.28 s` (✅ **1.00x slower**)     |
-| **`4096-bit key encrypt - 1 request`**    | `333.19 us` (✅ **1.00x**) | `355.54 us` (✅ **1.07x slower**)  |
-| **`4096-bit key encrypt - 10 requests`**  | `2.30 ms` (✅ **1.00x**)   | `2.67 ms` (❌ *1.16x slower*)      |
-| **`4096-bit key encrypt - 100 requests`** | `18.86 ms` (✅ **1.00x**)  | `21.71 ms` (❌ *1.15x slower*)     |
-| **`4096-bit key encrypt - 50 requests`**  | `9.30 ms` (✅ **1.00x**)   | `11.52 ms` (❌ *1.24x slower*)     |
+| **`2048-bit key decrypt - 1 request`**    | `27.61 ms` (✅ **1.00x**)  | `25.25 ms` (✅ **1.09x faster**)   |
+| **`2048-bit key decrypt - 10 requests`**  | `248.68 ms` (✅ **1.00x**) | `259.29 ms` (✅ **1.04x slower**)  |
+| **`2048-bit key decrypt - 100 requests`** | `2.53 s` (✅ **1.00x**)    | `2.49 s` (✅ **1.02x faster**)     |
+| **`2048-bit key decrypt - 50 requests`**  | `1.25 s` (✅ **1.00x**)    | `1.23 s` (✅ **1.02x faster**)     |
+| **`2048-bit key encrypt - 1 request`**    | `423.06 us` (✅ **1.00x**) | `269.40 us` (✅ **1.57x faster**)  |
+| **`2048-bit key encrypt - 10 requests`**  | `1.33 ms` (✅ **1.00x**)   | `2.14 ms` (❌ *1.60x slower*)      |
+| **`2048-bit key encrypt - 100 requests`** | `11.86 ms` (✅ **1.00x**)  | `16.37 ms` (❌ *1.38x slower*)     |
+| **`2048-bit key encrypt - 50 requests`**  | `8.65 ms` (✅ **1.00x**)   | `13.43 ms` (❌ *1.55x slower*)     |
+| **`3072-bit key decrypt - 1 request`**    | `75.23 ms` (✅ **1.00x**)  | `79.67 ms` (✅ **1.06x slower**)   |
+| **`3072-bit key decrypt - 10 requests`**  | `757.68 ms` (✅ **1.00x**) | `793.96 ms` (✅ **1.05x slower**)  |
+| **`3072-bit key decrypt - 100 requests`** | `7.72 s` (✅ **1.00x**)    | `7.67 s` (✅ **1.01x faster**)     |
+| **`3072-bit key decrypt - 50 requests`**  | `3.86 s` (✅ **1.00x**)    | `3.75 s` (✅ **1.03x faster**)     |
+| **`3072-bit key encrypt - 1 request`**    | `463.77 us` (✅ **1.00x**) | `368.34 us` (✅ **1.26x faster**)  |
+| **`3072-bit key encrypt - 10 requests`**  | `1.73 ms` (✅ **1.00x**)   | `2.87 ms` (❌ *1.66x slower*)      |
+| **`3072-bit key encrypt - 100 requests`** | `18.26 ms` (✅ **1.00x**)  | `22.71 ms` (❌ *1.24x slower*)     |
+| **`3072-bit key encrypt - 50 requests`**  | `7.80 ms` (✅ **1.00x**)   | `14.26 ms` (❌ *1.83x slower*)     |
+| **`4096-bit key decrypt - 1 request`**    | `178.66 ms` (✅ **1.00x**) | `176.11 ms` (✅ **1.01x faster**)  |
+| **`4096-bit key decrypt - 10 requests`**  | `1.79 s` (✅ **1.00x**)    | `1.74 s` (✅ **1.03x faster**)     |
+| **`4096-bit key decrypt - 100 requests`** | `17.59 s` (✅ **1.00x**)   | `17.62 s` (✅ **1.00x slower**)    |
+| **`4096-bit key decrypt - 50 requests`**  | `8.76 s` (✅ **1.00x**)    | `8.82 s` (✅ **1.01x slower**)     |
+| **`4096-bit key encrypt - 1 request`**    | `365.99 us` (✅ **1.00x**) | `304.12 us` (✅ **1.20x faster**)  |
+| **`4096-bit key encrypt - 10 requests`**  | `2.24 ms` (✅ **1.00x**)   | `2.31 ms` (✅ **1.03x slower**)    |
+| **`4096-bit key encrypt - 100 requests`** | `19.62 ms` (✅ **1.00x**)  | `22.48 ms` (❌ *1.15x slower*)     |
+| **`4096-bit key encrypt - 50 requests`**  | `10.52 ms` (✅ **1.00x**)  | `26.91 ms` (❌ *2.56x slower*)     |
 
 ### encrypt_aes-gcm-siv
 
 |                     | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 128`** | `138.13 us` (✅ **1.00x**) | `123.54 us` (✅ **1.12x faster**)  |
-| **`decrypt - 256`** | `145.36 us` (✅ **1.00x**) | `157.70 us` (✅ **1.08x slower**)  |
-| **`encrypt - 128`** | `158.52 us` (✅ **1.00x**) | `167.76 us` (✅ **1.06x slower**)  |
-| **`encrypt - 256`** | `117.78 us` (✅ **1.00x**) | `164.02 us` (❌ *1.39x slower*)    |
+| **`decrypt - 128`** | `262.21 us` (✅ **1.00x**) | `255.63 us` (✅ **1.03x faster**)  |
+| **`decrypt - 256`** | `113.58 us` (✅ **1.00x**) | `110.85 us` (✅ **1.02x faster**)  |
+| **`encrypt - 128`** | `179.83 us` (✅ **1.00x**) | `273.66 us` (❌ *1.52x slower*)    |
+| **`encrypt - 256`** | `365.10 us` (✅ **1.00x**) | `349.12 us` (✅ **1.05x faster**)  |
 
 ### encrypt_aes-gcm
 
 |                     | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 128`** | `166.27 us` (✅ **1.00x**) | `148.94 us` (✅ **1.12x faster**)  |
-| **`decrypt - 256`** | `140.17 us` (✅ **1.00x**) | `144.78 us` (✅ **1.03x slower**)  |
-| **`encrypt - 128`** | `164.74 us` (✅ **1.00x**) | `184.74 us` (❌ *1.12x slower*)    |
-| **`encrypt - 256`** | `174.34 us` (✅ **1.00x**) | `161.55 us` (✅ **1.08x faster**)  |
-| **`decrypt - 192`** | `N/A`                     | `125.63 us` (✅ **1.00x**)         |
-| **`encrypt - 192`** | `N/A`                     | `150.11 us` (✅ **1.00x**)         |
+| **`decrypt - 128`** | `359.98 us` (✅ **1.00x**) | `152.82 us` (🚀 **2.36x faster**)  |
+| **`decrypt - 256`** | `173.18 us` (✅ **1.00x**) | `133.42 us` (✅ **1.30x faster**)  |
+| **`encrypt - 128`** | `139.53 us` (✅ **1.00x**) | `436.51 us` (❌ *3.13x slower*)    |
+| **`encrypt - 256`** | `156.91 us` (✅ **1.00x**) | `259.87 us` (❌ *1.66x slower*)    |
+| **`decrypt - 192`** | `N/A`                     | `243.23 us` (✅ **1.00x**)         |
+| **`encrypt - 192`** | `N/A`                     | `163.38 us` (✅ **1.00x**)         |
 
 ### encrypt_aes-xts
 
 |                     | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 128`** | `167.89 us` (✅ **1.00x**) | `143.13 us` (✅ **1.17x faster**)  |
-| **`decrypt - 256`** | `147.60 us` (✅ **1.00x**) | `154.94 us` (✅ **1.05x slower**)  |
-| **`encrypt - 128`** | `152.85 us` (✅ **1.00x**) | `163.32 us` (✅ **1.07x slower**)  |
-| **`encrypt - 256`** | `164.50 us` (✅ **1.00x**) | `161.06 us` (✅ **1.02x faster**)  |
+| **`decrypt - 128`** | `227.99 us` (✅ **1.00x**) | `107.83 us` (🚀 **2.11x faster**)  |
+| **`decrypt - 256`** | `287.09 us` (✅ **1.00x**) | `174.91 us` (✅ **1.64x faster**)  |
+| **`encrypt - 128`** | `319.57 us` (✅ **1.00x**) | `155.85 us` (🚀 **2.05x faster**)  |
+| **`encrypt - 256`** | `209.30 us` (✅ **1.00x**) | `163.22 us` (✅ **1.28x faster**)  |
 
 ### encrypt_chacha20-poly1305
 
 |                   | `v5.12.0`                 | `v5.17.0`                         |
 |:------------------|:--------------------------|:--------------------------------- |
-| **`decrypt_256`** | `134.69 us` (✅ **1.00x**) | `134.33 us` (✅ **1.00x faster**)  |
-| **`encrypt_256`** | `128.87 us` (✅ **1.00x**) | `149.74 us` (❌ *1.16x slower*)    |
+| **`decrypt_256`** | `374.95 us` (✅ **1.00x**) | `258.18 us` (✅ **1.45x faster**)  |
+| **`encrypt_256`** | `163.19 us` (✅ **1.00x**) | `184.32 us` (❌ *1.13x slower*)    |
 
 ### encrypt_covercrypt
 
 |               | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------|:--------------------------|:--------------------------------- |
-| **`decrypt`** | `433.71 us` (✅ **1.00x**) | `12.51 ms` (❌ *28.84x slower*)    |
-| **`encrypt`** | `303.15 us` (✅ **1.00x**) | `5.52 ms` (❌ *18.21x slower*)     |
+| **`decrypt`** | `364.29 us` (✅ **1.00x**) | `12.47 ms` (❌ *34.22x slower*)    |
+| **`encrypt`** | `281.31 us` (✅ **1.00x**) | `9.94 ms` (❌ *35.32x slower*)     |
 
 ### encrypt_ecies
 
 |                       | `v5.12.0`                 | `v5.17.0`                         |
 |:----------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - P-256`** | `228.78 us` (✅ **1.00x**) | `231.80 us` (✅ **1.01x slower**)  |
-| **`decrypt - P-384`** | `1.75 ms` (✅ **1.00x**)   | `1.26 ms` (✅ **1.38x faster**)    |
-| **`decrypt - P-521`** | `3.85 ms` (✅ **1.00x**)   | `2.80 ms` (✅ **1.38x faster**)    |
-| **`encrypt - P-256`** | `308.08 us` (✅ **1.00x**) | `266.49 us` (✅ **1.16x faster**)  |
-| **`encrypt - P-384`** | `1.96 ms` (✅ **1.00x**)   | `1.26 ms` (✅ **1.56x faster**)    |
-| **`encrypt - P-521`** | `4.59 ms` (✅ **1.00x**)   | `3.01 ms` (✅ **1.52x faster**)    |
+| **`decrypt - P-256`** | `269.42 us` (✅ **1.00x**) | `224.43 us` (✅ **1.20x faster**)  |
+| **`decrypt - P-384`** | `2.14 ms` (✅ **1.00x**)   | `1.53 ms` (✅ **1.40x faster**)    |
+| **`decrypt - P-521`** | `4.12 ms` (✅ **1.00x**)   | `2.45 ms` (✅ **1.68x faster**)    |
+| **`encrypt - P-256`** | `322.39 us` (✅ **1.00x**) | `318.39 us` (✅ **1.01x faster**)  |
+| **`encrypt - P-384`** | `1.87 ms` (✅ **1.00x**)   | `1.65 ms` (✅ **1.14x faster**)    |
+| **`encrypt - P-521`** | `4.88 ms` (✅ **1.00x**)   | `2.98 ms` (✅ **1.64x faster**)    |
 
 ### encrypt_rsa-aes-kwp
 
 |                      | `v5.12.0`                 | `v5.17.0`                         |
 |:---------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 2048`** | `25.51 ms` (✅ **1.00x**)  | `24.80 ms` (✅ **1.03x faster**)   |
-| **`decrypt - 3072`** | `77.18 ms` (✅ **1.00x**)  | `72.68 ms` (✅ **1.06x faster**)   |
-| **`decrypt - 4096`** | `166.19 ms` (✅ **1.00x**) | `171.19 ms` (✅ **1.03x slower**)  |
-| **`encrypt - 2048`** | `174.69 us` (✅ **1.00x**) | `207.15 us` (❌ *1.19x slower*)    |
-| **`encrypt - 3072`** | `211.59 us` (✅ **1.00x**) | `251.04 us` (❌ *1.19x slower*)    |
-| **`encrypt - 4096`** | `243.57 us` (✅ **1.00x**) | `267.89 us` (✅ **1.10x slower**)  |
+| **`decrypt - 2048`** | `23.55 ms` (✅ **1.00x**)  | `26.86 ms` (❌ *1.14x slower*)     |
+| **`decrypt - 3072`** | `71.76 ms` (✅ **1.00x**)  | `77.13 ms` (✅ **1.07x slower**)   |
+| **`decrypt - 4096`** | `166.42 ms` (✅ **1.00x**) | `175.44 ms` (✅ **1.05x slower**)  |
+| **`encrypt - 2048`** | `246.32 us` (✅ **1.00x**) | `211.83 us` (✅ **1.16x faster**)  |
+| **`encrypt - 3072`** | `337.95 us` (✅ **1.00x**) | `265.34 us` (✅ **1.27x faster**)  |
+| **`encrypt - 4096`** | `485.68 us` (✅ **1.00x**) | `275.22 us` (✅ **1.76x faster**)  |
 
 ### encrypt_rsa-oaep
 
 |                      | `v5.12.0`                 | `v5.17.0`                         |
 |:---------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 2048`** | `25.17 ms` (✅ **1.00x**)  | `25.51 ms` (✅ **1.01x slower**)   |
-| **`decrypt - 3072`** | `74.88 ms` (✅ **1.00x**)  | `74.01 ms` (✅ **1.01x faster**)   |
-| **`decrypt - 4096`** | `173.86 ms` (✅ **1.00x**) | `165.83 ms` (✅ **1.05x faster**)  |
-| **`encrypt - 2048`** | `168.65 us` (✅ **1.00x**) | `223.06 us` (❌ *1.32x slower*)    |
-| **`encrypt - 3072`** | `220.99 us` (✅ **1.00x**) | `248.15 us` (❌ *1.12x slower*)    |
-| **`encrypt - 4096`** | `260.85 us` (✅ **1.00x**) | `306.48 us` (❌ *1.17x slower*)    |
+| **`decrypt - 2048`** | `24.24 ms` (✅ **1.00x**)  | `25.00 ms` (✅ **1.03x slower**)   |
+| **`decrypt - 3072`** | `72.72 ms` (✅ **1.00x**)  | `75.51 ms` (✅ **1.04x slower**)   |
+| **`decrypt - 4096`** | `163.72 ms` (✅ **1.00x**) | `163.10 ms` (✅ **1.00x faster**)  |
+| **`encrypt - 2048`** | `203.37 us` (✅ **1.00x**) | `270.93 us` (❌ *1.33x slower*)    |
+| **`encrypt - 3072`** | `227.66 us` (✅ **1.00x**) | `219.94 us` (✅ **1.04x faster**)  |
+| **`encrypt - 4096`** | `384.68 us` (✅ **1.00x**) | `521.02 us` (❌ *1.35x slower*)    |
 
 ### encrypt_rsa-pkcs1v15
 
 |                      | `v5.12.0`                 | `v5.17.0`                         |
 |:---------------------|:--------------------------|:--------------------------------- |
-| **`decrypt - 2048`** | `27.55 ms` (✅ **1.00x**)  | `24.27 ms` (✅ **1.14x faster**)   |
-| **`decrypt - 3072`** | `73.06 ms` (✅ **1.00x**)  | `74.81 ms` (✅ **1.02x slower**)   |
-| **`decrypt - 4096`** | `167.95 ms` (✅ **1.00x**) | `173.18 ms` (✅ **1.03x slower**)  |
-| **`encrypt - 2048`** | `193.42 us` (✅ **1.00x**) | `204.73 us` (✅ **1.06x slower**)  |
-| **`encrypt - 3072`** | `204.83 us` (✅ **1.00x**) | `248.86 us` (❌ *1.21x slower*)    |
-| **`encrypt - 4096`** | `287.72 us` (✅ **1.00x**) | `288.90 us` (✅ **1.00x slower**)  |
+| **`decrypt - 2048`** | `24.81 ms` (✅ **1.00x**)  | `24.95 ms` (✅ **1.01x slower**)   |
+| **`decrypt - 3072`** | `75.16 ms` (✅ **1.00x**)  | `80.77 ms` (✅ **1.07x slower**)   |
+| **`decrypt - 4096`** | `162.56 ms` (✅ **1.00x**) | `178.68 ms` (✅ **1.10x slower**)  |
+| **`encrypt - 2048`** | `146.42 us` (✅ **1.00x**) | `226.22 us` (❌ *1.55x slower*)    |
+| **`encrypt - 3072`** | `261.22 us` (✅ **1.00x**) | `333.87 us` (❌ *1.28x slower*)    |
+| **`encrypt - 4096`** | `226.60 us` (✅ **1.00x**) | `327.74 us` (❌ *1.45x slower*)    |
 
 ### encrypt_salsa-sealed-box
 
 |               | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------|:--------------------------|:--------------------------------- |
-| **`decrypt`** | `237.93 us` (✅ **1.00x**) | `229.12 us` (✅ **1.04x faster**)  |
-| **`encrypt`** | `193.87 us` (✅ **1.00x**) | `246.34 us` (❌ *1.27x slower*)    |
+| **`decrypt`** | `313.85 us` (✅ **1.00x**) | `219.48 us` (✅ **1.43x faster**)  |
+| **`encrypt`** | `211.91 us` (✅ **1.00x**) | `457.24 us` (❌ *2.16x slower*)    |
 
 ### key-creation_covercrypt
 
-|                      | `v5.12.0`                | `v5.17.0`                        |
-|:---------------------|:-------------------------|:-------------------------------- |
-| **`master-keypair`** | `13.91 ms` (✅ **1.00x**) | `30.79 ms` (❌ *2.21x slower*)    |
+|                      | `v5.12.0`               | `v5.17.0`                        |
+|:---------------------|:------------------------|:-------------------------------- |
+| **`master-keypair`** | `5.61 ms` (✅ **1.00x**) | `25.07 ms` (❌ *4.47x slower*)    |
 
 ### key-creation_ec
 
-|                 | `v5.12.0`                | `v5.17.0`                        |
-|:----------------|:-------------------------|:-------------------------------- |
-| **`ed25519`**   | `3.61 ms` (✅ **1.00x**)  | `6.47 ms` (❌ *1.79x slower*)     |
-| **`ed448`**     | `13.52 ms` (✅ **1.00x**) | `9.92 ms` (✅ **1.36x faster**)   |
-| **`p256`**      | `12.49 ms` (✅ **1.00x**) | `9.64 ms` (✅ **1.30x faster**)   |
-| **`p384`**      | `7.75 ms` (✅ **1.00x**)  | `12.33 ms` (❌ *1.59x slower*)    |
-| **`p521`**      | `5.85 ms` (✅ **1.00x**)  | `14.36 ms` (❌ *2.45x slower*)    |
-| **`secp256k1`** | `13.43 ms` (✅ **1.00x**) | `10.46 ms` (✅ **1.28x faster**)  |
+|                 | `v5.12.0`               | `v5.17.0`                       |
+|:----------------|:------------------------|:------------------------------- |
+| **`ed25519`**   | `3.24 ms` (✅ **1.00x**) | `3.37 ms` (✅ **1.04x slower**)  |
+| **`ed448`**     | `4.74 ms` (✅ **1.00x**) | `3.45 ms` (✅ **1.37x faster**)  |
+| **`p256`**      | `3.89 ms` (✅ **1.00x**) | `3.55 ms` (✅ **1.09x faster**)  |
+| **`p384`**      | `4.73 ms` (✅ **1.00x**) | `6.05 ms` (❌ *1.28x slower*)    |
+| **`p521`**      | `8.66 ms` (✅ **1.00x**) | `4.75 ms` (🚀 **1.82x faster**)  |
+| **`secp256k1`** | `4.65 ms` (✅ **1.00x**) | `3.86 ms` (✅ **1.20x faster**)  |
 
 ### key-creation_rsa
 
 |                | `v5.12.0`                 | `v5.17.0`                         |
 |:---------------|:--------------------------|:--------------------------------- |
-| **`rsa-2048`** | `45.06 ms` (✅ **1.00x**)  | `32.91 ms` (✅ **1.37x faster**)   |
-| **`rsa-3072`** | `128.90 ms` (✅ **1.00x**) | `104.26 ms` (✅ **1.24x faster**)  |
-| **`rsa-4096`** | `311.39 ms` (✅ **1.00x**) | `355.59 ms` (❌ *1.14x slower*)    |
+| **`rsa-2048`** | `36.85 ms` (✅ **1.00x**)  | `33.87 ms` (✅ **1.09x faster**)   |
+| **`rsa-3072`** | `156.37 ms` (✅ **1.00x**) | `100.71 ms` (✅ **1.55x faster**)  |
+| **`rsa-4096`** | `313.72 ms` (✅ **1.00x**) | `316.38 ms` (✅ **1.01x slower**)  |
 
 ### key-creation_symmetric
 
-|                    | `v5.12.0`                | `v5.17.0`                        |
-|:-------------------|:-------------------------|:-------------------------------- |
-| **`aes-128`**      | `3.05 ms` (✅ **1.00x**)  | `2.42 ms` (✅ **1.26x faster**)   |
-| **`aes-192`**      | `12.20 ms` (✅ **1.00x**) | `11.09 ms` (✅ **1.10x faster**)  |
-| **`aes-256`**      | `12.08 ms` (✅ **1.00x**) | `11.34 ms` (✅ **1.07x faster**)  |
-| **`chacha20-256`** | `11.77 ms` (✅ **1.00x**) | `8.78 ms` (✅ **1.34x faster**)   |
+|                    | `v5.12.0`               | `v5.17.0`                       |
+|:-------------------|:------------------------|:------------------------------- |
+| **`aes-128`**      | `9.44 ms` (✅ **1.00x**) | `2.85 ms` (🚀 **3.32x faster**)  |
+| **`aes-192`**      | `6.13 ms` (✅ **1.00x**) | `3.10 ms` (🚀 **1.98x faster**)  |
+| **`aes-256`**      | `3.30 ms` (✅ **1.00x**) | `3.02 ms` (✅ **1.09x faster**)  |
+| **`chacha20-256`** | `3.13 ms` (✅ **1.00x**) | `2.78 ms` (✅ **1.13x faster**)  |
 
 ### sign-verify_ecdsa-p256
 
 |              | `v5.12.0`                 | `v5.17.0`                         |
 |:-------------|:--------------------------|:--------------------------------- |
-| **`sign`**   | `213.36 us` (✅ **1.00x**) | `551.98 us` (❌ *2.59x slower*)    |
-| **`verify`** | `251.62 us` (✅ **1.00x**) | `222.51 us` (✅ **1.13x faster**)  |
+| **`sign`**   | `283.50 us` (✅ **1.00x**) | `570.31 us` (❌ *2.01x slower*)    |
+| **`verify`** | `353.40 us` (✅ **1.00x**) | `225.33 us` (✅ **1.57x faster**)  |
 
 ### sign-verify_ecdsa-p384
 
 |              | `v5.12.0`               | `v5.17.0`                         |
 |:-------------|:------------------------|:--------------------------------- |
-| **`sign`**   | `1.56 ms` (✅ **1.00x**) | `1.28 ms` (✅ **1.22x faster**)    |
-| **`verify`** | `1.12 ms` (✅ **1.00x**) | `662.75 us` (✅ **1.69x faster**)  |
+| **`sign`**   | `1.44 ms` (✅ **1.00x**) | `1.32 ms` (✅ **1.10x faster**)    |
+| **`verify`** | `1.33 ms` (✅ **1.00x**) | `583.35 us` (🚀 **2.28x faster**)  |
 
 ### sign-verify_ecdsa-p521
 
 |              | `v5.12.0`               | `v5.17.0`                       |
 |:-------------|:------------------------|:------------------------------- |
-| **`sign`**   | `3.33 ms` (✅ **1.00x**) | `3.32 ms` (✅ **1.00x faster**)  |
-| **`verify`** | `2.18 ms` (✅ **1.00x**) | `1.20 ms` (🚀 **1.81x faster**)  |
+| **`sign`**   | `3.33 ms` (✅ **1.00x**) | `2.26 ms` (✅ **1.47x faster**)  |
+| **`verify`** | `2.29 ms` (✅ **1.00x**) | `1.14 ms` (🚀 **2.01x faster**)  |
 
 ### sign-verify_ecdsa-secp256k1
 
 |              | `v5.12.0`                 | `v5.17.0`                         |
 |:-------------|:--------------------------|:--------------------------------- |
-| **`sign`**   | `730.43 us` (✅ **1.00x**) | `500.17 us` (✅ **1.46x faster**)  |
-| **`verify`** | `573.13 us` (✅ **1.00x**) | `402.03 us` (✅ **1.43x faster**)  |
+| **`sign`**   | `697.40 us` (✅ **1.00x**) | `459.61 us` (✅ **1.52x faster**)  |
+| **`verify`** | `773.25 us` (✅ **1.00x**) | `388.96 us` (🚀 **1.99x faster**)  |
 
 ### sign-verify_eddsa-ed25519
 
 |              | `v5.12.0`                 | `v5.17.0`                         |
 |:-------------|:--------------------------|:--------------------------------- |
-| **`sign`**   | `190.97 us` (✅ **1.00x**) | `185.64 us` (✅ **1.03x faster**)  |
-| **`verify`** | `205.45 us` (✅ **1.00x**) | `183.37 us` (✅ **1.12x faster**)  |
+| **`sign`**   | `339.06 us` (✅ **1.00x**) | `262.10 us` (✅ **1.29x faster**)  |
+| **`verify`** | `216.50 us` (✅ **1.00x**) | `217.25 us` (✅ **1.00x slower**)  |
 
 ### sign-verify_rsa-pss
 
 |                     | `v5.12.0`                 | `v5.17.0`                         |
 |:--------------------|:--------------------------|:--------------------------------- |
-| **`sign - 2048`**   | `25.75 ms` (✅ **1.00x**)  | `25.36 ms` (✅ **1.02x faster**)   |
-| **`sign - 3072`**   | `76.39 ms` (✅ **1.00x**)  | `72.14 ms` (✅ **1.06x faster**)   |
-| **`sign - 4096`**   | `174.01 ms` (✅ **1.00x**) | `163.82 ms` (✅ **1.06x faster**)  |
-| **`verify - 2048`** | `223.93 us` (✅ **1.00x**) | `159.96 us` (✅ **1.40x faster**)  |
-| **`verify - 3072`** | `283.05 us` (✅ **1.00x**) | `220.05 us` (✅ **1.29x faster**)  |
-| **`verify - 4096`** | `322.66 us` (✅ **1.00x**) | `269.58 us` (✅ **1.20x faster**)  |
+| **`sign - 2048`**   | `29.46 ms` (✅ **1.00x**)  | `26.61 ms` (✅ **1.11x faster**)   |
+| **`sign - 3072`**   | `77.33 ms` (✅ **1.00x**)  | `77.05 ms` (✅ **1.00x faster**)   |
+| **`sign - 4096`**   | `169.56 ms` (✅ **1.00x**) | `178.65 ms` (✅ **1.05x slower**)  |
+| **`verify - 2048`** | `390.03 us` (✅ **1.00x**) | `161.64 us` (🚀 **2.41x faster**)  |
+| **`verify - 3072`** | `532.39 us` (✅ **1.00x**) | `217.29 us` (🚀 **2.45x faster**)  |
+| **`verify - 4096`** | `647.66 us` (✅ **1.00x**) | `328.55 us` (🚀 **1.97x faster**)  |
 
 ### kem_configurable
 
 |                                       | `v5.17.0`                  |
 |:--------------------------------------|:-------------------------- |
-| **`decapsulate - ML-KEM-512`**        | `370.14 us` (✅ **1.00x**)  |
-| **`decapsulate - ML-KEM-512_P-256`**  | `312.37 us` (✅ **1.00x**)  |
-| **`decapsulate - ML-KEM-512_X25519`** | `345.11 us` (✅ **1.00x**)  |
-| **`decapsulate - ML-KEM-768`**        | `337.05 us` (✅ **1.00x**)  |
-| **`decapsulate - ML-KEM-768_P-256`**  | `413.00 us` (✅ **1.00x**)  |
-| **`decapsulate - ML-KEM-768_X25519`** | `372.03 us` (✅ **1.00x**)  |
-| **`encapsulate - ML-KEM-512`**        | `309.40 us` (✅ **1.00x**)  |
-| **`encapsulate - ML-KEM-512_P-256`**  | `488.09 us` (✅ **1.00x**)  |
-| **`encapsulate - ML-KEM-512_X25519`** | `3.76 ms` (✅ **1.00x**)    |
-| **`encapsulate - ML-KEM-768`**        | `433.29 us` (✅ **1.00x**)  |
-| **`encapsulate - ML-KEM-768_P-256`**  | `557.89 us` (✅ **1.00x**)  |
-| **`encapsulate - ML-KEM-768_X25519`** | `3.85 ms` (✅ **1.00x**)    |
+| **`decapsulate - ML-KEM-512`**        | `368.65 us` (✅ **1.00x**)  |
+| **`decapsulate - ML-KEM-512_P-256`**  | `756.29 us` (✅ **1.00x**)  |
+| **`decapsulate - ML-KEM-512_X25519`** | `250.12 us` (✅ **1.00x**)  |
+| **`decapsulate - ML-KEM-768`**        | `300.92 us` (✅ **1.00x**)  |
+| **`decapsulate - ML-KEM-768_P-256`**  | `733.30 us` (✅ **1.00x**)  |
+| **`decapsulate - ML-KEM-768_X25519`** | `319.67 us` (✅ **1.00x**)  |
+| **`encapsulate - ML-KEM-512`**        | `476.00 us` (✅ **1.00x**)  |
+| **`encapsulate - ML-KEM-512_P-256`**  | `617.99 us` (✅ **1.00x**)  |
+| **`encapsulate - ML-KEM-512_X25519`** | `3.63 ms` (✅ **1.00x**)    |
+| **`encapsulate - ML-KEM-768`**        | `449.25 us` (✅ **1.00x**)  |
+| **`encapsulate - ML-KEM-768_P-256`**  | `556.10 us` (✅ **1.00x**)  |
+| **`encapsulate - ML-KEM-768_X25519`** | `3.65 ms` (✅ **1.00x**)    |
 
 ### key-creation_kem
 
-|                         | `v5.17.0`                 |
-|:------------------------|:------------------------- |
-| **`ML-KEM-512`**        | `10.52 ms` (✅ **1.00x**)  |
-| **`ML-KEM-512_P-256`**  | `12.14 ms` (✅ **1.00x**)  |
-| **`ML-KEM-512_X25519`** | `17.10 ms` (✅ **1.00x**)  |
-| **`ML-KEM-768`**        | `10.09 ms` (✅ **1.00x**)  |
-| **`ML-KEM-768_P-256`**  | `11.56 ms` (✅ **1.00x**)  |
-| **`ML-KEM-768_X25519`** | `16.43 ms` (✅ **1.00x**)  |
+|                         | `v5.17.0`                |
+|:------------------------|:------------------------ |
+| **`ML-KEM-512`**        | `3.29 ms` (✅ **1.00x**)  |
+| **`ML-KEM-512_P-256`**  | `3.82 ms` (✅ **1.00x**)  |
+| **`ML-KEM-512_X25519`** | `6.21 ms` (✅ **1.00x**)  |
+| **`ML-KEM-768`**        | `4.16 ms` (✅ **1.00x**)  |
+| **`ML-KEM-768_P-256`**  | `4.07 ms` (✅ **1.00x**)  |
+| **`ML-KEM-768_X25519`** | `6.49 ms` (✅ **1.00x**)  |
 
 ### sign-verify_eddsa-ed448
 
 |              | `v5.17.0`                  |
 |:-------------|:-------------------------- |
-| **`sign`**   | `413.33 us` (✅ **1.00x**)  |
-| **`verify`** | `285.47 us` (✅ **1.00x**)  |
+| **`sign`**   | `455.30 us` (✅ **1.00x**)  |
+| **`verify`** | `323.50 us` (✅ **1.00x**)  |
 
 ---
 Made with [criterion-table](https://github.com/nu11ptr/criterion-table)
