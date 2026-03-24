@@ -78,7 +78,6 @@ try:
     from kmip.core.factories.attributes import AttributeFactory
     from kmip.core.messages.payloads.modify_attribute import (
         ModifyAttributeRequestPayload,
-        ModifyAttributeResponsePayload,
     )
 except ImportError as e:
     print(
