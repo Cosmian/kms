@@ -1,13 +1,16 @@
 //! Advanced / miscellaneous configuration step of the KMS configuration wizard.
 //!
-//! Covers: workspace paths, key management, Microsoft DKE, KMS public URL, KMIP
-//! policy, Google CSE, Azure EKM, AWS XKS, and UI settings.
+//! Covers: workspace paths, key management, vendor identification, Microsoft
+//! DKE, KMS public URL, KMIP policy, Google CSE, Azure EKM, AWS XKS, and UI
+//! settings.
 
 #![allow(unreachable_pub)]
 
 use std::path::PathBuf;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::VENDOR_ID_COSMIAN, kmip_objects::ObjectType,
+};
 use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
 use strum::IntoEnumIterator;
 
@@ -22,6 +25,7 @@ use crate::{
 
 pub struct AdvancedConfig {
     pub workspace: WorkspaceConfig,
+    pub vendor_identification: String,
     pub key_encryption_key: Option<String>,
     pub default_unwrap_type: Option<Vec<String>>,
     pub privileged_users: Option<Vec<String>>,
@@ -62,6 +66,16 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         root_data_path: PathBuf::from(root_data_path),
         tmp_path: PathBuf::from(tmp_path),
     };
+
+    // ── Vendor Identification ─────────────────────────────────────────────────
+    let vendor_identification: String = Input::with_theme(&theme)
+        .with_prompt(
+            "Vendor identification string (reported in KMIP QueryServerInformation; \
+             leave blank to use the default 'cosmian')",
+        )
+        .default(VENDOR_ID_COSMIAN.to_owned())
+        .interact_text()
+        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
     // ── Key Management ────────────────────────────────────────────────────────
     let kek: String = Input::with_theme(&theme)
@@ -201,6 +215,7 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
 
     Ok(AdvancedConfig {
         workspace,
+        vendor_identification,
         key_encryption_key,
         default_unwrap_type,
         privileged_users,

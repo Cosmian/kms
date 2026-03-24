@@ -32,7 +32,6 @@ pub enum KmsActions {
     Azure(AzureCommands),
     #[command(subcommand)]
     Aws(AwsCommands),
-    #[clap(hide = true)]
     Bench(BenchAction),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]

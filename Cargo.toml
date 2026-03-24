@@ -148,6 +148,10 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
+criterion = { version = "0.6", default-features = false, features = [
+    "html_reports",
+    "async_tokio",
+] }
 cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
     "ser",

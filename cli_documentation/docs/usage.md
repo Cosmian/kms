@@ -14,6 +14,7 @@ Commands:
   attributes         Get/Set/Delete/Modify the KMIP object attributes
   azure              Support for Azure specific interactions
   aws                Support for AWS specific interactions
+  bench              Run benchmarks using criterion for statistical analysis.
   cc                 Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
   pqc                Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
   certificates       Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
@@ -33,6 +34,7 @@ Commands:
   secret-data        Create, import, export and destroy secret data
   server-version     Print the version of the server
   sym                Manage symmetric keys. Encrypt and decrypt data
+  markdown           Regenerate the CLI documentation in Markdown format
   configure          Configure the KMS CLI (create ckms.toml)
   help               Print this message or the help of the given subcommand(s)
 
