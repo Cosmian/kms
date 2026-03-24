@@ -31,7 +31,7 @@
 "sign-verify/eddsa-ed448" = "EdDSA Ed448 sign and verify."
 "sign-verify/rsa-pss" = "RSA-PSS sign and verify with SHA-256 (2048, 3072, 4096-bit keys)."
 # Batch benchmarks
-"AES GCM - plaintext of 64 bytes" = "AES GCM parametrized — encrypt/decrypt N items in a single BulkData call."
-"RSA PKCSv1.5 - plaintext of 32 bytes" = "RSA PKCSv1.5 parametrized — encrypt/decrypt N items in a single KMIP Message."
-"RSA OAEP - plaintext of 32 bytes" = "RSA OAEP parametrized — encrypt/decrypt N items in a single KMIP Message."
-"RSA AES KEY WRAP - plaintext of 32 bytes" = "RSA AES KEY WRAP parametrized — encrypt/decrypt N items in a single KMIP Message."
+"batch/aes-gcm" = "AES-GCM batch — encrypt/decrypt N items in a single BulkData call."
+"batch/rsa-oaep" = "RSA-OAEP batch — encrypt/decrypt N items in a single KMIP message."
+"batch/rsa-aes-kwp" = "RSA AES Key Wrap batch — encrypt/decrypt N items in a single KMIP message."
+"batch/rsa-pkcs1v15" = "RSA PKCS#1 v1.5 batch — encrypt/decrypt N items in a single KMIP message."
