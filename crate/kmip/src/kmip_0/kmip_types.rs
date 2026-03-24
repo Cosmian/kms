@@ -121,6 +121,18 @@ pub struct Credential {
     pub credential_value: CredentialValue,
 }
 
+/// The Authentication structure wraps one or more Credential structures.
+///
+/// In KMIP 1.0 the Authentication structure SHALL contain exactly one Credential.
+/// In KMIP 1.4 and later, it MAY contain one or more Credentials.
+/// This wrapper struct ensures correct TTLV nesting:
+///   `Authentication { Credential { CredentialType, CredentialValue } }`
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Authentication {
+    pub credential: Vec<Credential>,
+}
+
 /// Credential Type Enumeration
 /// Only `UsernameAndPassword`, `Device`, and `Attestation` are supported in KMIP 1.x
 /// (this library does not enforce this)

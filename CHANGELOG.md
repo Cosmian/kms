@@ -140,7 +140,11 @@ Update any scripts or config files that reference the old `ssl_` prefix.
 
 ## [5.18.0] - 2026-03-25
 
-### 🚀 Features
+### � Bug Fixes
+
+- **KMIP binary**: Fix `Authentication` deserialization to correctly handle KMIP 1.0/1.4 clients (FortiOS 7.6.0 / FortiGate). The `Authentication` structure now wraps `Credential` as required by the spec (`Authentication { Credential { CredentialType, CredentialValue } }`), resolving the `missing field 'CredentialType'` error that prevented FortiGate devices from communicating with the KMS socket server.
+
+### �🚀 Features
 
 #### Post-Quantum Cryptography (ML-KEM + ML-DSA + SLH-DSA) ([#787](https://github.com/Cosmian/kms/pull/787))
 
