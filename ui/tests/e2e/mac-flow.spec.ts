@@ -9,13 +9,7 @@
  * the KMS KMIP endpoint directly via the `createHmacKey` test helper.
  */
 import { expect, test } from "@playwright/test";
-import {
-    createHmacKey,
-    gotoAndWait,
-    selectOption,
-    submitAndWaitForResponse,
-    UI_READY_TIMEOUT,
-} from "./helpers";
+import { createHmacKey, gotoAndWait, selectOption, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
 
 /** Fixed hex payload used across all tests (8 bytes). */
 const DATA_HEX = "0011223344556677";
@@ -97,10 +91,7 @@ test.describe("MAC compute → verify roundtrip", () => {
         await gotoAndWait(page, "/ui/mac/verify");
         await page.fill('input[placeholder="Enter key ID"]', keyId);
         // Default algorithm is SHA-256; fill data and MAC value.
-        await page.fill(
-            'textarea[placeholder="e.g. 0011223344556677889900"]',
-            DATA_HEX,
-        );
+        await page.fill('textarea[placeholder="e.g. 0011223344556677889900"]', DATA_HEX);
         await page.fill('textarea[placeholder="e.g. F91DDB96D12CF8FA..."]', macHex);
         const verifyText = await submitAndWaitForResponse(page);
 
@@ -127,10 +118,7 @@ test.describe("MAC compute → verify roundtrip", () => {
         await gotoAndWait(page, "/ui/mac/verify");
         await page.fill('input[placeholder="Enter key ID"]', keyId);
         await selectOption(page, "mac-verify-algorithm-select", "SHA-1");
-        await page.fill(
-            'textarea[placeholder="e.g. 0011223344556677889900"]',
-            DATA_HEX,
-        );
+        await page.fill('textarea[placeholder="e.g. 0011223344556677889900"]', DATA_HEX);
         await page.fill('textarea[placeholder="e.g. F91DDB96D12CF8FA..."]', macHex);
         const verifyText = await submitAndWaitForResponse(page);
 
@@ -144,10 +132,7 @@ test.describe("MAC compute → verify roundtrip", () => {
 
         await gotoAndWait(page, "/ui/mac/verify");
         await page.fill('input[placeholder="Enter key ID"]', keyId);
-        await page.fill(
-            'textarea[placeholder="e.g. 0011223344556677889900"]',
-            DATA_HEX,
-        );
+        await page.fill('textarea[placeholder="e.g. 0011223344556677889900"]', DATA_HEX);
         await page.fill('textarea[placeholder="e.g. F91DDB96D12CF8FA..."]', wrongMac);
         const verifyText = await submitAndWaitForResponse(page);
 

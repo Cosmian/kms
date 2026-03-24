@@ -16,14 +16,7 @@
  *   • error handling: non-existent object ID returns a response (no UI crash)
  */
 import { expect, test } from "@playwright/test";
-import {
-    UI_READY_TIMEOUT,
-    createSymKey,
-    gotoAndWait,
-    selectOption,
-    selectOptionById,
-    submitAndWaitForResponse,
-} from "./helpers";
+import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOption, selectOptionById, submitAndWaitForResponse } from "./helpers";
 
 test.describe("Object attributes", () => {
     // ── Navigation smoke tests ────────────────────────────────────────────────

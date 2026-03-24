@@ -13,9 +13,7 @@ test.describe("Azure BYOK", () => {
     for (const { name, path } of AZURE_ROUTES) {
         test(`navigate to Azure ${name} page`, async ({ page }) => {
             await gotoAndWait(page, path);
-            await expect(
-                page.locator('[data-testid="submit-btn"]'),
-            ).toBeVisible({ timeout: UI_READY_TIMEOUT });
+            await expect(page.locator('[data-testid="submit-btn"]')).toBeVisible({ timeout: UI_READY_TIMEOUT });
         });
     }
 });

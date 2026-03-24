@@ -9,7 +9,15 @@
  *   • navigate: import, encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { UI_READY_TIMEOUT, extractUuid, extractUuidAfterLabel, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import {
+    UI_READY_TIMEOUT,
+    extractUuid,
+    extractUuidAfterLabel,
+    gotoAndWait,
+    selectOption,
+    submitAndWaitForDownload,
+    submitAndWaitForResponse,
+} from "./helpers";
 
 /** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({

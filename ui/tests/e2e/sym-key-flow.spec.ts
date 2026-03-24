@@ -10,7 +10,14 @@
  *   • navigate: encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { UI_READY_TIMEOUT, createSymKey, gotoAndWait, selectOptionById, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import {
+    UI_READY_TIMEOUT,
+    createSymKey,
+    gotoAndWait,
+    selectOptionById,
+    submitAndWaitForDownload,
+    submitAndWaitForResponse,
+} from "./helpers";
 
 test.describe("Symmetric key", () => {
     test("create AES-256 key with default settings", async ({ page }) => {

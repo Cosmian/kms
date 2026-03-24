@@ -1,9 +1,17 @@
 import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
+import type { TableColumnsType } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "./utils";
 import * as wasm from "./wasm/pkg";
+
+export interface LocateObjectRow {
+    object_id: string;
+    state?: string;
+    attributes?: { ObjectType?: string };
+    meta?: { key_format_type?: string; [key: string]: unknown };
+}
 
 interface LocateFormData {
     tags?: string[];
@@ -28,10 +36,8 @@ const LocateForm: React.FC = () => {
     const [keyFormatTypes, setKeyFormatTypes] = useState<AlgoOption[]>([]);
     const [objectTypes, setObjectTypes] = useState<AlgoOption[]>([]);
     const [objectStates, setObjectStates] = useState<AlgoOption[]>([]);
-    type LocatedRow = { object_id: string; state?: string; attributes?: { ObjectType?: string }; meta?: Record<string, unknown> };
+    type LocatedRow = LocateObjectRow;
     const [objects, setObjects] = useState<LocatedRow[] | undefined>(undefined);
-    const [currentPage, setCurrentPage] = useState<number>(1);
-    const [pageSize, setPageSize] = useState<number>(10);
     const normalizeState = (s?: string) => (s || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
     const stateEnumToName = (v: unknown): string | undefined => {
         if (v == null) return undefined;
@@ -39,21 +45,29 @@ const LocateForm: React.FC = () => {
         const n = Number(s);
         if (!Number.isNaN(n)) {
             switch (n) {
-                case 1: return "Pre-Active";
-                case 2: return "Active";
-                case 3: return "Deactivated";
-                case 4: return "Compromised";
-                case 5: return "Destroyed";
-                case 6: return "Destroyed Compromised";
-                case 7: return "Archived";
-                default: return s;
+                case 1:
+                    return "Pre-Active";
+                case 2:
+                    return "Active";
+                case 3:
+                    return "Deactivated";
+                case 4:
+                    return "Compromised";
+                case 5:
+                    return "Destroyed";
+                case 6:
+                    return "Destroyed Compromised";
+                case 7:
+                    return "Archived";
+                default:
+                    return s;
             }
         }
         // If s already a textual state (possibly with hyphen), return as-is
         return s;
     };
     // Details modal removed; tags are shown inline
-    const {idToken, serverUrl} = useAuth();
+    const { idToken, serverUrl } = useAuth();
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
     const responseRef = useRef<HTMLDivElement>(null);
     const [detailsVisible, setDetailsVisible] = useState<boolean>(false);
@@ -63,7 +77,7 @@ const LocateForm: React.FC = () => {
 
     useEffect(() => {
         if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({behavior: "smooth"});
+            responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
 
@@ -77,30 +91,33 @@ const LocateForm: React.FC = () => {
             }
         })();
         try {
-            const algos = (wasm.get_crypto_algorithms() as unknown) as AlgoOption[];
+            const algos = wasm.get_crypto_algorithms() as unknown as AlgoOption[];
             if (Array.isArray(algos)) setCryptoAlgorithms(algos);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const kf = (wasm.get_key_format_types() as unknown) as AlgoOption[];
+            const kf = wasm.get_key_format_types() as unknown as AlgoOption[];
             if (Array.isArray(kf)) setKeyFormatTypes(kf);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const ot = (wasm.get_object_types() as unknown) as AlgoOption[];
+            const ot = wasm.get_object_types() as unknown as AlgoOption[];
             if (Array.isArray(ot)) setObjectTypes(ot);
         } catch {
             /* ignore if WASM not ready */
         }
         try {
-            const os = (wasm.get_object_states() as unknown) as AlgoOption[];
+            const os = wasm.get_object_states() as unknown as AlgoOption[];
             if (Array.isArray(os)) setObjectStates(os);
         } catch {
             /* ignore if WASM not ready */
         }
     }, [serverUrl]);
+
+    // normalization helpers
+    const normalizeKeyFormatType = (s: string) => s.toLowerCase().replace(/\s+|[-_]/g, "");
 
     // Utility: parse WASM/Get response into a plain record
     const extractMeta = (parsed: unknown): Record<string, unknown> => {
@@ -140,7 +157,7 @@ const LocateForm: React.FC = () => {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
                 return { object_id: uid } as LocatedRow;
-            })
+            }),
         );
         return rows;
     };
@@ -180,7 +197,7 @@ const LocateForm: React.FC = () => {
         keyFormatType: string | undefined,
         objectType: string | undefined,
         idToken: string | null,
-        serverUrl: string
+        serverUrl: string,
     ): Promise<string[]> => {
         const req = wasm.locate_ttlv_request(
             values.tags,
@@ -190,7 +207,7 @@ const LocateForm: React.FC = () => {
             objectType,
             values.publicKeyId,
             values.privateKeyId,
-            values.certificateId
+            values.certificateId,
         );
         const respStr = await sendKmipRequest(req, idToken, serverUrl);
         if (!respStr) return [];
@@ -210,7 +227,6 @@ const LocateForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
-        setCurrentPage(1);
         try {
             if (authMethod === "JWT" && !idToken) {
                 setRes("Authentication required: please log in to search.");
@@ -222,7 +238,6 @@ const LocateForm: React.FC = () => {
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
             const objectType = norm(values.objectType);
             const stateVal = norm(values.state);
-            const kftNorm = (s: string) => s.toLowerCase().replace(/\s+|[-_]/g, "");
 
             // no-op helpers pruned: Locate handles tags & other criteria server-side
 
@@ -245,12 +260,45 @@ const LocateForm: React.FC = () => {
                         objectType ||
                         values.publicKeyId ||
                         values.privateKeyId ||
-                        values.certificateId
+                        values.certificateId,
                     );
                     if (!hasOtherCriteria) {
-                        const rows = ownedFiltered.map((o) => ({ object_id: o.id, state: o.state } as LocatedRow));
-                        setObjects(rows);
-                        setRes(`${rows.length} Object(s) located.`);
+                        // Enrich state-only results so Type and Key Format Type are available
+                        const enriched = await Promise.all(
+                            ownedFiltered.map(async (o) => {
+                                const uid = o.id;
+                                try {
+                                    const getReq = wasm.get_attributes_ttlv_request(uid);
+                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                    if (getRespStr) {
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                                            "object_type",
+                                            "state",
+                                            "tags",
+                                            "user_tags",
+                                            "cryptographic_algorithm",
+                                            "cryptographic_length",
+                                            "key_format_type",
+                                            "public_key_id",
+                                            "private_key_id",
+                                            "certificate_id",
+                                        ]);
+                                        const m = extractMeta(parsed);
+                                        return {
+                                            object_id: uid,
+                                            attributes: { ObjectType: m["object_type"] as string | undefined },
+                                            state: o.state || stateEnumToName(m["state"]),
+                                            meta: m,
+                                        } as LocatedRow;
+                                    }
+                                } catch (e) {
+                                    console.error(`Error fetching Get for ${uid}:`, e);
+                                }
+                                return { object_id: uid, state: o.state } as LocatedRow;
+                            }),
+                        );
+                        setObjects(enriched);
+                        setRes(`${enriched.length} Object(s) located.`);
                         return;
                     }
                     // Get server-side filtered IDs (tags/algorithm/etc.)
@@ -267,7 +315,7 @@ const LocateForm: React.FC = () => {
                                 undefined,
                                 objectType,
                                 idToken,
-                                serverUrl
+                                serverUrl,
                             );
                             intersection = fbIds.filter((id) => ownedIds.has(id));
                         } catch (e) {
@@ -306,14 +354,14 @@ const LocateForm: React.FC = () => {
                                 console.error(`Error fetching Get for ${uid}:`, e);
                             }
                             return { object_id: uid, state: stateVal } as LocatedRow;
-                        })
+                        }),
                     );
                     // Enforce KFT filter client-side if provided
                     if (keyFormatType) {
-                        const target = kftNorm(keyFormatType);
+                        const target = normalizeKeyFormatType(keyFormatType);
                         enriched = enriched.filter((row) => {
                             const v = row.meta?.["key_format_type"] as string | undefined;
-                            return v ? kftNorm(v) === target : false;
+                            return v ? normalizeKeyFormatType(v) === target : false;
                         });
                     }
                     setObjects(enriched);
@@ -333,56 +381,68 @@ const LocateForm: React.FC = () => {
                 }));
 
                 setObjects(mapped);
-                setRes(`${mapped.length} Object(s) located.`);
 
-                const hasOtherCriteria = Boolean(
-                    (values.tags && values.tags.length) ||
-                    values.cryptographicAlgorithm ||
-                    values.cryptographicLength != null ||
-                    values.keyFormatType ||
-                    values.objectType ||
-                    values.publicKeyId ||
-                    values.privateKeyId ||
-                    values.certificateId
-                );
-                if (!hasOtherCriteria && !stateVal) {
-                    return;
-                }
-
-                // Enrich each object with Type and State using KMIP Get.
+                // Enrich each object with Type and State using KMIP Get
                 try {
-                    const enriched = await enrichUids(mapped.map((r) => r.object_id), idToken, serverUrl);
+                    const enriched = await enrichUids(
+                        mapped.map((r) => r.object_id),
+                        idToken,
+                        serverUrl,
+                    );
 
+                    // If no additional criteria and state is 'All', display enriched results directly
+                    const hasOtherCriteria = Boolean(
+                        (values.tags && values.tags.length) ||
+                        values.cryptographicAlgorithm ||
+                        values.cryptographicLength != null ||
+                        values.keyFormatType ||
+                        values.objectType ||
+                        values.publicKeyId ||
+                        values.privateKeyId ||
+                        values.certificateId,
+                    );
+                    if (!hasOtherCriteria && !stateVal) {
+                        // Merge state labels from owned list for display, without filtering
+                        const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                        setObjects(merged);
+                        setRes(`${merged.length} Object(s) located.`);
+                        return;
+                    }
                     // Try to supplement state from non-TTLV owned list when available
                     try {
                         let merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                        // State filter if requested
                         if (stateVal) {
                             const target = normalizeState(stateVal);
                             merged = merged.filter((r) => normalizeState(r.state) === target);
                         }
+                        // Enforce KFT filter if provided
                         if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
+                            const targetKft = normalizeKeyFormatType(keyFormatType);
                             merged = merged.filter((r) => {
                                 const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
+                                return v ? normalizeKeyFormatType(v) === targetKft : false;
                             });
                         }
+                        // Do not re-filter by tags/criteria; Locate already applied them
 
                         setObjects(merged);
                         setRes(`${merged.length} Object(s) located.`);
                     } catch {
+                        // If owned endpoint not available, keep KMIP-only enrichment
                         let filtered = enriched;
                         if (stateVal) {
                             const target = normalizeState(stateVal);
                             filtered = filtered.filter((r) => normalizeState(r.state) === target);
                         }
                         if (keyFormatType) {
-                            const targetKft = kftNorm(keyFormatType);
+                            const targetKft = normalizeKeyFormatType(keyFormatType);
                             filtered = filtered.filter((r) => {
                                 const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? kftNorm(v) === targetKft : false;
+                                return v ? normalizeKeyFormatType(v) === targetKft : false;
                             });
                         }
+                        // Do not re-filter by tags/criteria; Locate already applied them
 
                         setObjects(filtered);
                         setRes(`${filtered.length} Object(s) located.`);
@@ -390,108 +450,117 @@ const LocateForm: React.FC = () => {
                 } catch {
                     /* ignore */
                 }
-                } else {
-                    // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
-                    const noCriteria = !((values.tags && values.tags.length) || values.cryptographicAlgorithm || values.cryptographicLength != null || values.keyFormatType || values.objectType || values.publicKeyId || values.privateKeyId || values.certificateId || stateVal);
-                    if (noCriteria) {
-                        try {
-                            const merged = await ownedFallbackNoCriteria(idToken, serverUrl);
-                            setObjects(merged);
-                            setRes(`${merged.length} Object(s) located.`);
-                            return;
-                        } catch {
-                            /* owned fallback failed */
-                        }
+            } else {
+                // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
+                const noCriteria = !(
+                    (values.tags && values.tags.length) ||
+                    values.cryptographicAlgorithm ||
+                    values.cryptographicLength != null ||
+                    values.keyFormatType ||
+                    values.objectType ||
+                    values.publicKeyId ||
+                    values.privateKeyId ||
+                    values.certificateId ||
+                    stateVal
+                );
+                if (noCriteria) {
+                    try {
+                        const merged = await ownedFallbackNoCriteria(idToken, serverUrl);
+                        setObjects(merged);
+                        setRes(`${merged.length} Object(s) located.`);
+                        return;
+                    } catch {
+                        /* owned fallback failed */
                     }
-                    // No results returned by Locate: if Key Format Type filter is set, try fallback client-side filtering
-                    if (keyFormatType) {
-                        try {
-                            const fallbackReq = wasm.locate_ttlv_request(
-                                values.tags,
-                                cryptographicAlgorithm,
-                                values.cryptographicLength,
-                                undefined,
-                                objectType,
-                                values.publicKeyId,
-                                values.privateKeyId,
-                                values.certificateId
-                            );
-                            const fallbackStr = await sendKmipRequest(fallbackReq, idToken, serverUrl);
-                            if (fallbackStr) {
-                                const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
-                                const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
-                                const target = kftNorm(keyFormatType);
-                                const enriched = await Promise.all(
-                                    ids.map(async (uid: string) => {
-                                        try {
-                                            const getReq = wasm.get_attributes_ttlv_request(uid);
-                                            const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                            if (getRespStr) {
-                                                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                                                    "object_type",
-                                                    "state",
-                                                    "tags",
-                                                    "user_tags",
-                                                    "cryptographic_algorithm",
-                                                    "cryptographic_length",
-                                                    "key_format_type",
-                                                ]);
-                                                const m = extractMeta(parsed);
-                                                return {
-                                                    object_id: uid,
-                                                    attributes: { ObjectType: m["object_type"] as string | undefined },
-                                                    state: stateEnumToName(m["state"]),
-                                                    meta: m,
-                                                } as LocatedRow;
-                                            }
-                                        } catch (e) {
-                                            console.error(`Error fetching Get for ${uid}:`, e);
-                                        }
-                                        return { object_id: uid } as LocatedRow;
-                                    })
-                                );
-                                let filtered = enriched.filter((row) => {
-                                    const v = row.meta?.["key_format_type"] as string | undefined;
-                                    return v ? kftNorm(v) === target : false;
-                                });
-                                // Merge state from owned endpoint to avoid 'Unknown'
-                                try {
-                                    const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
-                                    const stateById = new Map<string, string>();
-                                    if (Array.isArray(owned)) {
-                                        (owned as Array<{ object_id: string; state?: unknown }>).
-                                            forEach((o) => {
-                                                if (o.object_id) {
-                                                    const s = stateEnumToName(o.state);
-                                                    if (s) stateById.set(o.object_id, s);
-                                                }
-                                            });
-                                    }
-                                    filtered = filtered.map((row) => ({
-                                        ...row,
-                                        state: row.state || stateEnumToName(stateById.get(row.object_id)),
-                                    }));
-                                } catch {
-                                    /* owned not available, keep as-is */
-                                }
-                                // Apply state filter if requested
-                                if (stateVal) {
-                                    const targetState = normalizeState(stateVal);
-                                    filtered = filtered.filter((r) => normalizeState(r.state) === targetState);
-                                }
-                                setObjects(filtered);
-                                setRes(`${filtered.length} Object(s) located.`);
-                                return;
-                            }
-                        } catch {
-                            /* ignore */
-                        }
-                    }
-                    // Still nothing: show explicit 0 objects
-                    setObjects([]);
-                    setRes("0 Object(s) located.");
                 }
-                // set by post-filtering to reflect visible rows
+                // No results returned by Locate: if Key Format Type filter is set, try fallback client-side filtering
+                if (keyFormatType) {
+                    try {
+                        const fallbackReq = wasm.locate_ttlv_request(
+                            values.tags,
+                            cryptographicAlgorithm,
+                            values.cryptographicLength,
+                            undefined,
+                            objectType,
+                            values.publicKeyId,
+                            values.privateKeyId,
+                            values.certificateId,
+                        );
+                        const fallbackStr = await sendKmipRequest(fallbackReq, idToken, serverUrl);
+                        if (fallbackStr) {
+                            const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
+                            const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
+                            const target = normalizeKeyFormatType(keyFormatType);
+                            const enriched = await Promise.all(
+                                ids.map(async (uid: string) => {
+                                    try {
+                                        const getReq = wasm.get_attributes_ttlv_request(uid);
+                                        const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                        if (getRespStr) {
+                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                                                "object_type",
+                                                "state",
+                                                "tags",
+                                                "user_tags",
+                                                "cryptographic_algorithm",
+                                                "cryptographic_length",
+                                                "key_format_type",
+                                            ]);
+                                            const m = extractMeta(parsed);
+                                            return {
+                                                object_id: uid,
+                                                attributes: { ObjectType: m["object_type"] as string | undefined },
+                                                state: stateEnumToName(m["state"]),
+                                                meta: m,
+                                            } as LocatedRow;
+                                        }
+                                    } catch (e) {
+                                        console.error(`Error fetching Get for ${uid}:`, e);
+                                    }
+                                    return { object_id: uid } as LocatedRow;
+                                }),
+                            );
+                            let filtered = enriched.filter((row) => {
+                                const v = row.meta?.["key_format_type"] as string | undefined;
+                                return v ? normalizeKeyFormatType(v) === target : false;
+                            });
+                            // Merge state from owned endpoint to avoid 'Unknown'
+                            try {
+                                const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                                const stateById = new Map<string, string>();
+                                if (Array.isArray(owned)) {
+                                    (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
+                                        if (o.object_id) {
+                                            const s = stateEnumToName(o.state);
+                                            if (s) stateById.set(o.object_id, s);
+                                        }
+                                    });
+                                }
+                                filtered = filtered.map((row) => ({
+                                    ...row,
+                                    state: row.state || stateEnumToName(stateById.get(row.object_id)),
+                                }));
+                            } catch {
+                                /* owned not available, keep as-is */
+                            }
+                            // Apply state filter if requested
+                            if (stateVal) {
+                                const targetState = normalizeState(stateVal);
+                                filtered = filtered.filter((r) => normalizeState(r.state) === targetState);
+                            }
+                            setObjects(filtered);
+                            setRes(`${filtered.length} Object(s) located.`);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error("Fallback Locate without KFT failed:", e);
+                    }
+                }
+                // Still nothing: show explicit 0 objects
+                setObjects([]);
+                setRes("0 Object(s) located.");
+            }
+            // set by post-filtering to reflect visible rows
         } catch (e) {
             const msg = String(e || "");
             if (msg.startsWith("401:") || msg.startsWith("403:")) {
@@ -580,12 +649,9 @@ const LocateForm: React.FC = () => {
             const getReq = wasm.get_attributes_ttlv_request(uid);
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
-                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                    "object_type",
-                    "state",
-                    "key_format_type",
-                ]);
-                const meta = parsed instanceof Map ? Object.fromEntries(parsed as Map<string, unknown>) : (parsed as Record<string, unknown>);
+                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ["object_type", "state", "key_format_type"]);
+                const meta =
+                    parsed instanceof Map ? Object.fromEntries(parsed as Map<string, unknown>) : (parsed as Record<string, unknown>);
                 setObjects((prev) => {
                     if (!prev) return prev;
                     return prev.map((row) =>
@@ -593,10 +659,12 @@ const LocateForm: React.FC = () => {
                             ? {
                                   ...row,
                                   attributes: { ObjectType: (meta["object_type"] as string | undefined) || row.attributes?.ObjectType },
-                                  state: (typeof meta["state"] === "string" ? meta["state"] as string : stateEnumToName(meta["state"])) || row.state,
-                                  meta: { ...(row.meta || {}), key_format_type: meta["key_format_type"] },
+                                  state:
+                                      (typeof meta["state"] === "string" ? (meta["state"] as string) : stateEnumToName(meta["state"])) ||
+                                      row.state,
+                                  meta: { ...(row.meta || {}), key_format_type: meta["key_format_type"] as string | undefined },
                               }
-                            : row
+                            : row,
                     );
                 });
             }
@@ -613,16 +681,14 @@ const LocateForm: React.FC = () => {
                 <p>Search for cryptographic objects in the KMS using various criteria.</p>
             </div>
 
-
-
             <Form form={form} onFinish={onFinish} layout="vertical">
-                <Space direction="vertical" size="middle" style={{display: "flex"}}>
+                <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">Basic Search Criteria</h3>
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
                                 <Form.Item name="tags" label="Tags" help="User tags or system tags to locate the object">
-                                    <Select mode="tags" placeholder="Enter tags" open={false}/>
+                                    <Select mode="tags" placeholder="Enter tags" open={false} suffixIcon={null} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
@@ -631,12 +697,12 @@ const LocateForm: React.FC = () => {
                                     label="Cryptographic Algorithm"
                                     help="Algorithm used by the cryptographic object"
                                 >
-                                    <Select options={[NO_FILTER, ...cryptoAlgorithms]} allowClear placeholder="Select algorithm"/>
+                                    <Select options={[NO_FILTER, ...cryptoAlgorithms]} allowClear placeholder="Select algorithm" />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
                                 <Form.Item name="cryptographicLength" label="Cryptographic Length" help="Key size in bits">
-                                    <Input type="number" placeholder="Enter length in bits" min={0}/>
+                                    <Input type="number" placeholder="Enter length in bits" min={0} />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={6}>
@@ -652,12 +718,12 @@ const LocateForm: React.FC = () => {
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={12} xl={12}>
                                 <Form.Item name="objectType" label="Object Type" help="Type of cryptographic object">
-                                    <Select options={[NO_FILTER, ...objectTypes]} allowClear placeholder="Select object type"/>
+                                    <Select options={[NO_FILTER, ...objectTypes]} allowClear placeholder="Select object type" />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={12} xl={12}>
                                 <Form.Item name="keyFormatType" label="Key Format Type" help="Format used to store the key">
-                                    <Select options={[NO_FILTER, ...keyFormatTypes]} allowClear placeholder="Select key format"/>
+                                    <Select options={[NO_FILTER, ...keyFormatTypes]} allowClear placeholder="Select key format" />
                                 </Form.Item>
                             </Col>
                         </Row>
@@ -667,29 +733,31 @@ const LocateForm: React.FC = () => {
                         <h3 className="text-m font-bold mb-4">Linked Objects</h3>
                         <Row gutter={[16, 16]}>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="publicKeyId" label="Public Key ID"
-                                           help="Find objects linked to this public key">
-                                    <Input placeholder="Enter public key ID"/>
+                                <Form.Item name="publicKeyId" label="Public Key ID" help="Find objects linked to this public key">
+                                    <Input placeholder="Enter public key ID" />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="privateKeyId" label="Private Key ID"
-                                           help="Find objects linked to this private key">
-                                    <Input placeholder="Enter private key ID"/>
+                                <Form.Item name="privateKeyId" label="Private Key ID" help="Find objects linked to this private key">
+                                    <Input placeholder="Enter private key ID" />
                                 </Form.Item>
                             </Col>
                             <Col xs={24} sm={12} md={12} lg={8} xl={8}>
-                                <Form.Item name="certificateId" label="Certificate ID"
-                                           help="Find objects linked to this certificate">
-                                    <Input placeholder="Enter certificate ID"/>
+                                <Form.Item name="certificateId" label="Certificate ID" help="Find objects linked to this certificate">
+                                    <Input placeholder="Enter certificate ID" />
                                 </Form.Item>
                             </Col>
                         </Row>
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading}
-                                className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Search Objects
                         </Button>
                     </Form.Item>
@@ -701,80 +769,106 @@ const LocateForm: React.FC = () => {
                         <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                             <div className="font-bold">{res}</div>
 
-                            {(() => {
-                                const data = objects || [];
-                                const start = (currentPage - 1) * pageSize;
-                                const end = start + pageSize;
-                                const pageData = data.slice(start, end);
-                                return (
-                                    <Table
-                                        dataSource={pageData}
-                                        rowKey="object_id"
-                                        pagination={{
-                                            current: currentPage,
-                                            pageSize,
-                                            total: data.length,
-                                            showSizeChanger: true,
-                                            pageSizeOptions: [10, 20, 50, 100],
-                                            onChange: (page: number, size?: number) => {
-                                                setCurrentPage(page);
-                                                if (size && size !== pageSize) {
-                                                    setPageSize(size);
-                                                    setCurrentPage(1);
-                                                }
+                            <Table<LocateObjectRow>
+                                dataSource={objects || []}
+                                rowKey="object_id"
+                                pagination={{
+                                    pageSize: 10,
+                                    showSizeChanger: true,
+                                    pageSizeOptions: [10, 20, 50, 100],
+                                }}
+                                className="border rounded"
+                                columns={
+                                    [
+                                        {
+                                            title: "Object UID",
+                                            dataIndex: "object_id",
+                                            key: "object_id",
+                                        },
+                                        {
+                                            title: "Type",
+                                            key: "attributes.ObjectType",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.attributes?.ObjectType ?? "").localeCompare(b.attributes?.ObjectType ?? ""),
+                                            filters: [
+                                                ...objectTypes.map((t) => ({ text: t.label, value: t.value })),
+                                                { text: "N/A", value: "N/A" },
+                                            ],
+                                            // OpaqueObject among probably others are not keys and have no KeyFormatType so N/A is a catch-all handled separately
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                return record.attributes?.ObjectType === value;
                                             },
-                                        }}
-                                        className="border rounded"
-                                        columns={[
-                                            {
-                                                title: "Object UID",
-                                                dataIndex: "object_id",
-                                                key: "object_id",
+                                            render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
+                                        },
+                                        {
+                                            title: "Key Format Type",
+                                            key: "key_format_type",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
+                                            filters: [
+                                                ...keyFormatTypes.map((k) => ({ text: k.label, value: k.value })),
+                                                { text: "N/A", value: "N/A" },
+                                            ],
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                const v = record.meta?.key_format_type as string | undefined;
+                                                if (value === "N/A") return !v;
+                                                return v ? normalizeKeyFormatType(v) === normalizeKeyFormatType(String(value)) : false;
                                             },
-                                            {
-                                                title: "Type",
-                                                key: "attributes.ObjectType",
-                                                render: (record: { attributes?: { ObjectType?: string } }) =>
-                                                    record.attributes?.ObjectType || "N/A",
+                                            render: (record: LocateObjectRow) => record.meta?.key_format_type || "N/A",
+                                        },
+                                        {
+                                            title: "State",
+                                            dataIndex: "state",
+                                            key: "state",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.state ?? "").localeCompare(b.state ?? ""),
+                                            filters: [
+                                                ...objectStates.map((s) => ({ text: s.label, value: s.value })),
+                                                { text: "Unknown", value: "Unknown" },
+                                            ],
+                                            onFilter: (value: React.Key | boolean, record: LocateObjectRow) => {
+                                                if (value === "Unknown") return !record.state;
+                                                return normalizeState(record.state) === normalizeState(String(value));
                                             },
-                                            {
-                                                title: "Key Format Type",
-                                                key: "key_format_type",
-                                                render: (record: { meta?: Record<string, unknown> }) =>
-                                                    (record.meta?.["key_format_type"] as string | undefined) || "N/A",
-                                            },
-                                            {
-                                                title: "State",
-                                                dataIndex: "state",
-                                                key: "state",
-                                                render: (state?: string) => (
-                                                    <Space size={4}>
-                                                        <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
-                                                    </Space>
-                                                ),
-                                            },
-                                            {
-                                                title: "Actions",
-                                                key: "actions",
-                                                render: (row: { object_id: string }) => (
-                                                    <Space size="small">
-                                                        <Button size="small" onClick={() => handleRevoke(row.object_id)} loading={actionLoadingId === row.object_id}>
-                                                            Revoke
-                                                        </Button>
-                                                        <Button danger size="small" onClick={() => handleDestroy(row.object_id)} loading={actionLoadingId === row.object_id}>
-                                                            Destroy
-                                                        </Button>
-                                                        <Button size="small" onClick={() => handleShowDetails(row.object_id)} loading={actionLoadingId === row.object_id}>
-                                                            Details
-                                                        </Button>
-                                                    </Space>
-                                                ),
-                                            },
-
-                                        ]}
-                                    />
-                                );
-                            })()}
+                                            render: (state?: string) => (
+                                                <Space size={4}>
+                                                    <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
+                                                </Space>
+                                            ),
+                                        },
+                                        {
+                                            title: "Actions",
+                                            key: "actions",
+                                            render: (row: LocateObjectRow) => (
+                                                <Space size="small">
+                                                    <Button
+                                                        size="small"
+                                                        onClick={() => handleRevoke(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Revoke
+                                                    </Button>
+                                                    <Button
+                                                        danger
+                                                        size="small"
+                                                        onClick={() => handleDestroy(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Destroy
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        onClick={() => handleShowDetails(row.object_id)}
+                                                        loading={actionLoadingId === row.object_id}
+                                                    >
+                                                        Details
+                                                    </Button>
+                                                </Space>
+                                            ),
+                                        },
+                                    ] as TableColumnsType<LocateObjectRow>
+                                }
+                            />
                         </Space>
                     </Card>
                 </div>
@@ -785,11 +879,7 @@ const LocateForm: React.FC = () => {
                 onCancel={() => setDetailsVisible(false)}
                 footer={<Button onClick={() => setDetailsVisible(false)}>Close</Button>}
             >
-                {detailsData && detailsData.size ? (
-                    <HashMapDisplay data={detailsData} />
-                ) : (
-                    <div>No attributes found.</div>
-                )}
+                {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>No attributes found.</div>}
             </Modal>
             {/* Details modal no longer used after replacing Actions with Tags */}
         </div>

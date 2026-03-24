@@ -9,7 +9,14 @@
  *   • navigate: import, encrypt, decrypt, sign, verify pages
  */
 import { expect, test } from "@playwright/test";
-import { UI_READY_TIMEOUT, extractAllUuids, extractUuidAfterLabel, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import {
+    UI_READY_TIMEOUT,
+    extractAllUuids,
+    extractUuidAfterLabel,
+    gotoAndWait,
+    submitAndWaitForDownload,
+    submitAndWaitForResponse,
+} from "./helpers";
 
 /** Create a fresh RSA key pair and return { privKeyId, pubKeyId }. */
 async function createRsaKeyPair(page: Parameters<typeof gotoAndWait>[0]) {

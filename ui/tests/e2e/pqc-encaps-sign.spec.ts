@@ -218,7 +218,7 @@ test.describe("Configurable Hybrid KEM key creation", () => {
                     enableCovercrypt: true,
                     menuTheme: "light",
                 }),
-            })
+            }),
         );
     });
 

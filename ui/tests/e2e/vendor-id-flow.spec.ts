@@ -74,9 +74,7 @@ test.describe("Vendor identification", () => {
 
         // ── 3. Select "Generate New Keypair" and fill the subject name ────────
         await page.getByText("4. Generate New Keypair").click();
-        const subjectInput = page.locator(
-            'input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]'
-        );
+        const subjectInput = page.locator('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]');
         await subjectInput.waitFor({ state: "visible", timeout: 10_000 });
         await subjectInput.fill("CN=test-vendor-e2e");
 
@@ -92,20 +90,20 @@ test.describe("Vendor identification", () => {
         });
         expect(
             certifyBodies.length,
-            `No "Certify" KMIP request was intercepted.\nAll captured tags: ${JSON.stringify(capturedBodies.map((b) => (b as TtlvNode).tag))}`
+            `No "Certify" KMIP request was intercepted.\nAll captured tags: ${JSON.stringify(capturedBodies.map((b) => (b as TtlvNode).tag))}`,
         ).toBeGreaterThan(0);
 
         const certifyBody = certifyBodies[0];
         const vendorIds = collectValuesByTag(certifyBody, "VendorIdentification");
         expect(
             vendorIds.length,
-            `The Certify request had no VendorIdentification field.\nRequest body:\n${JSON.stringify(certifyBody, null, 2)}`
+            `The Certify request had no VendorIdentification field.\nRequest body:\n${JSON.stringify(certifyBody, null, 2)}`,
         ).toBeGreaterThan(0);
 
         for (const vid of vendorIds) {
             expect(
                 vid,
-                `Certify request contained VendorIdentification "${vid}" — expected "test_vendor".\nRequest body:\n${JSON.stringify(certifyBody, null, 2)}`
+                `Certify request contained VendorIdentification "${vid}" — expected "test_vendor".\nRequest body:\n${JSON.stringify(certifyBody, null, 2)}`,
             ).toBe("test_vendor");
         }
 

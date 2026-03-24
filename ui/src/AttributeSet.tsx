@@ -58,7 +58,7 @@ const AttributeSetForm: React.FC = () => {
 
     useEffect(() => {
         try {
-            const opts = (get_crypto_algorithms() as unknown) as AlgoOption[];
+            const opts = get_crypto_algorithms() as unknown as AlgoOption[];
             if (Array.isArray(opts)) setCryptoAlgorithms(opts);
         } catch {
             // ignore; WASM not ready or not built yet
@@ -168,11 +168,7 @@ const AttributeSetForm: React.FC = () => {
 
             case "name":
                 return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Name"
-                        rules={[{ required: true, message: "Please enter name" }]}
-                    >
+                    <Form.Item name="attribute_value" label="Name" rules={[{ required: true, message: "Please enter name" }]}>
                         <Input placeholder="Enter object name" />
                     </Form.Item>
                 );
@@ -241,7 +237,11 @@ const AttributeSetForm: React.FC = () => {
                             rules={[{ required: true, message: "Please select an attribute name" }]}
                             help="Select the KMIP attribute you want to set"
                         >
-                            <Select data-testid="attribute-name-select" placeholder="Select attribute name" onChange={onAttributeNameChange}>
+                            <Select
+                                data-testid="attribute-name-select"
+                                placeholder="Select attribute name"
+                                onChange={onAttributeNameChange}
+                            >
                                 {ALLOWED_ATTRIBUTES.map((attr) => (
                                     <Option key={attr.value} value={attr.value}>
                                         {attr.label}
@@ -254,7 +254,13 @@ const AttributeSetForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Set Attribute
                         </Button>
                     </Form.Item>
@@ -262,7 +268,9 @@ const AttributeSetForm: React.FC = () => {
             </Form>
             {res && (
                 <Card>
-                    <div ref={responseRef} data-testid="response-output">{res}</div>
+                    <div ref={responseRef} data-testid="response-output">
+                        {res}
+                    </div>
                 </Card>
             )}
         </div>

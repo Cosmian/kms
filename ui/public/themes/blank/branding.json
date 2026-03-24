@@ -1,22 +1,22 @@
 {
-  "title": "Your Brand",
-  "faviconUrl": "/ui/themes/blank/favicon.svg",
-  "logoAlt": "Your Brand Key Management",
-  "logoLightUrl": "/ui/themes/blank/logo-light.svg",
-  "logoDarkUrl": "/ui/themes/blank/logo-dark.svg",
-  "loginTitle": "Your Brand KMS",
-  "loginSubtitle": "Key Management System",
-  "backgroundImageUrl": "/ui/themes/blank/login-bg.svg",
-  "loginCardColor": "rgba(30, 30, 40, 0.55)",
-  "menuTheme": "dark",
-  "tokens": {
-    "light": {
-      "colorPrimary": "#1677ff",
-      "colorText": "#111827"
-    },
-    "dark": {
-      "colorPrimary": "#1677ff",
-      "colorText": "#e5e7eb"
+    "title": "Your Brand",
+    "faviconUrl": "/ui/themes/blank/favicon.svg",
+    "logoAlt": "Your Brand Key Management",
+    "logoLightUrl": "/ui/themes/blank/logo-light.svg",
+    "logoDarkUrl": "/ui/themes/blank/logo-dark.svg",
+    "loginTitle": "Your Brand KMS",
+    "loginSubtitle": "Key Management System",
+    "backgroundImageUrl": "/ui/themes/blank/login-bg.svg",
+    "loginCardColor": "rgba(30, 30, 40, 0.55)",
+    "menuTheme": "dark",
+    "tokens": {
+        "light": {
+            "colorPrimary": "#1677ff",
+            "colorText": "#111827"
+        },
+        "dark": {
+            "colorPrimary": "#1677ff",
+            "colorText": "#e5e7eb"
+        }
     }
-  }
 }

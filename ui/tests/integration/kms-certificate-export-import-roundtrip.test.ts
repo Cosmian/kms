@@ -25,7 +25,7 @@ async function waitForKmsServer(): Promise<void> {
 
     throw new Error(
         `KMS server not reachable at ${KMS_URL} within 60s. ` +
-        `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(lastError)}`
+            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(lastError)}`,
     );
 }
 
@@ -103,7 +103,7 @@ describe.sequential("KMS certificate/export/import roundtrip", () => {
                 true,
                 importedTags,
                 undefined,
-                undefined
+                undefined,
             );
             const importStr = await sendKmipRequest(importReq, null, KMS_URL);
             const importResp = (await wasm.parse_import_ttlv_response(importStr)) as { UniqueIdentifier: string };

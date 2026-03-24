@@ -63,7 +63,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                 values.replaceExisting,
                 values.tags,
                 values.keyUsage,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
@@ -171,7 +171,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                             name="keyFile"
                             label={isDataLike ? "Data File" : "Key File"}
                             rules={[{ required: true, message: "Please upload a file" }]}
-                            help={isSecretData ? "Upload the secret data file to import" : isOpaqueObject ? "Upload the opaque object file to import" : "Upload the key file to import"}
+                            help={
+                                isSecretData
+                                    ? "Upload the secret data file to import"
+                                    : isOpaqueObject
+                                      ? "Upload the opaque object file to import"
+                                      : "Upload the key file to import"
+                            }
                         >
                             <FormUpload
                                 beforeUpload={(file) => {
@@ -205,7 +211,9 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                                 }}
                                 maxCount={1}
                             >
-                                <Button icon={<UploadOutlined />}>Upload {isSecretData ? "Secret Data File" : isOpaqueObject ? "Opaque Object File" : "Key File"}</Button>
+                                <Button icon={<UploadOutlined />}>
+                                    Upload {isSecretData ? "Secret Data File" : isOpaqueObject ? "Opaque Object File" : "Key File"}
+                                </Button>
                             </FormUpload>
                         </Form.Item>
 
@@ -271,7 +279,13 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Import {isDataLike ? "Data" : "Key"}
                         </Button>
                     </Form.Item>

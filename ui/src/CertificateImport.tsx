@@ -56,7 +56,7 @@ const CertificateImportForm: React.FC = () => {
                     values.pkcs12Password,
                     values.replaceExisting,
                     values.tags,
-                    values.keyUsage
+                    values.keyUsage,
                 );
                 const result_str = await sendKmipRequest(request, idToken, serverUrl);
                 if (result_str) {
@@ -212,7 +212,13 @@ const CertificateImportForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Import Certificate
                         </Button>
                     </Form.Item>

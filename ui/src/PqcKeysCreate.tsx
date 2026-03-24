@@ -55,16 +55,12 @@ const PqcKeysCreateForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const request = wasm.create_pqc_key_pair_ttlv_request(
-                values.tags,
-                values.algorithm,
-                values.sensitive,
-            );
+            const request = wasm.create_pqc_key_pair_ttlv_request(values.tags, values.algorithm, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
             }
         } catch (e) {
@@ -81,10 +77,22 @@ const PqcKeysCreateForm: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>Create a new Post-Quantum Cryptography key pair:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li><strong>ML-KEM</strong> (Key Encapsulation Mechanism): the public key is used to encapsulate a shared secret, and the private key to decapsulate it.</li>
-                    <li><strong>Hybrid KEM</strong> (X25519MLKEM768, X448MLKEM1024): combines a classical key exchange with ML-KEM for hybrid post-quantum key encapsulation.</li>
-                    <li><strong>ML-DSA</strong> (Digital Signature Algorithm): the private key is used to sign data, and the public key to verify the signature.</li>
-                    <li><strong>SLH-DSA</strong> (Stateless Hash-Based Signature): a hash-based signature scheme offering an alternative post-quantum signature approach.</li>
+                    <li>
+                        <strong>ML-KEM</strong> (Key Encapsulation Mechanism): the public key is used to encapsulate a shared secret, and
+                        the private key to decapsulate it.
+                    </li>
+                    <li>
+                        <strong>Hybrid KEM</strong> (X25519MLKEM768, X448MLKEM1024): combines a classical key exchange with ML-KEM for
+                        hybrid post-quantum key encapsulation.
+                    </li>
+                    <li>
+                        <strong>ML-DSA</strong> (Digital Signature Algorithm): the private key is used to sign data, and the public key to
+                        verify the signature.
+                    </li>
+                    <li>
+                        <strong>SLH-DSA</strong> (Stateless Hash-Based Signature): a hash-based signature scheme offering an alternative
+                        post-quantum signature approach.
+                    </li>
                 </ul>
                 <p>When creating a key pair with a specified tag, the tag is applied to both keys.</p>
             </div>
@@ -119,7 +127,13 @@ const PqcKeysCreateForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Create PQC Keypair
                         </Button>
                     </Form.Item>

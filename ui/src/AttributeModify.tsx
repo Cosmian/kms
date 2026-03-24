@@ -3,7 +3,11 @@ import moment from "moment";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { sendKmipRequest } from "./utils";
-import { get_crypto_algorithms, modify_attribute_ttlv_request, parse_modify_attribute_ttlv_response } from "./wasm/pkg/cosmian_kms_client_wasm";
+import {
+    get_crypto_algorithms,
+    modify_attribute_ttlv_request,
+    parse_modify_attribute_ttlv_response,
+} from "./wasm/pkg/cosmian_kms_client_wasm";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -58,7 +62,7 @@ const AttributeModifyForm: React.FC = () => {
 
     useEffect(() => {
         try {
-            const opts = (get_crypto_algorithms() as unknown) as AlgoOption[];
+            const opts = get_crypto_algorithms() as unknown as AlgoOption[];
             if (Array.isArray(opts)) setCryptoAlgorithms(opts);
         } catch {
             // ignore; WASM not ready or not built yet
@@ -167,11 +171,7 @@ const AttributeModifyForm: React.FC = () => {
 
             case "name":
                 return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Name"
-                        rules={[{ required: true, message: "Please enter name" }]}
-                    >
+                    <Form.Item name="attribute_value" label="Name" rules={[{ required: true, message: "Please enter name" }]}>
                         <Input placeholder="Enter object name" />
                     </Form.Item>
                 );
@@ -240,7 +240,11 @@ const AttributeModifyForm: React.FC = () => {
                             rules={[{ required: true, message: "Please select an attribute name" }]}
                             help="Select the KMIP attribute you want to modify"
                         >
-                            <Select data-testid="attribute-name-select" placeholder="Select attribute name" onChange={onAttributeNameChange}>
+                            <Select
+                                data-testid="attribute-name-select"
+                                placeholder="Select attribute name"
+                                onChange={onAttributeNameChange}
+                            >
                                 {ALLOWED_ATTRIBUTES.map((attr) => (
                                     <Option key={attr.value} value={attr.value}>
                                         {attr.label}
@@ -253,7 +257,13 @@ const AttributeModifyForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Modify Attribute
                         </Button>
                     </Form.Item>
@@ -261,7 +271,9 @@ const AttributeModifyForm: React.FC = () => {
             </Form>
             {res && (
                 <Card>
-                    <div ref={responseRef} data-testid="response-output">{res}</div>
+                    <div ref={responseRef} data-testid="response-output">
+                        {res}
+                    </div>
                 </Card>
             )}
         </div>
