@@ -199,8 +199,14 @@ fi
 # same ports (9998 and 5173) when it starts its own HSM-backed KMS server.
 if command -v softhsm2-util >/dev/null 2>&1; then
     echo "==> SoftHSM2 detected — stopping current servers before HSM test run …"
-    [ -n "${KMS_PID}"     ] && { kill "${KMS_PID}"     2>/dev/null || true; KMS_PID=""; }
-    [ -n "${PREVIEW_PID}" ] && { kill "${PREVIEW_PID}" 2>/dev/null || true; PREVIEW_PID=""; }
+    [ -n "${KMS_PID}" ] && {
+        kill "${KMS_PID}" 2>/dev/null || true
+        KMS_PID=""
+    }
+    [ -n "${PREVIEW_PID}" ] && {
+        kill "${PREVIEW_PID}" 2>/dev/null || true
+        PREVIEW_PID=""
+    }
     sleep 2
     echo "==> Running UI HSM E2E tests …"
     bash "${SCRIPT_DIR}/test_ui_hsm.sh"

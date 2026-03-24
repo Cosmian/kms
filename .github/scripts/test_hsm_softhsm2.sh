@@ -118,7 +118,10 @@ test_pkcs11tool_no_warnings() {
   local kms_pid=""
 
   _cleanup_pkcs11_test() {
-    [ -n "${kms_pid:-}" ] && { kill "$kms_pid" 2>/dev/null || true; wait "$kms_pid" 2>/dev/null || true; }
+    [ -n "${kms_pid:-}" ] && {
+      kill "$kms_pid" 2>/dev/null || true
+      wait "$kms_pid" 2>/dev/null || true
+    }
     rm -rf "${tmp_dir:-}"
   }
   trap _cleanup_pkcs11_test EXIT
@@ -141,14 +144,14 @@ test_pkcs11tool_no_warnings() {
     SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$kms_bin" \
-      --database-type sqlite \
-      --sqlite-path "$sqlite_path" \
-      --port "$kms_port" \
-      --hostname "127.0.0.1" \
-      --hsm-model softhsm2 \
-      --hsm-admin admin \
-      --hsm-slot "$SOFTHSM2_HSM_SLOT_ID" \
-      --hsm-password "$HSM_USER_PASSWORD" \
+    --database-type sqlite \
+    --sqlite-path "$sqlite_path" \
+    --port "$kms_port" \
+    --hostname "127.0.0.1" \
+    --hsm-model softhsm2 \
+    --hsm-admin admin \
+    --hsm-slot "$SOFTHSM2_HSM_SLOT_ID" \
+    --hsm-password "$HSM_USER_PASSWORD" \
     >"$tmp_dir/kms.log" 2>&1 &
   kms_pid=$!
 
@@ -160,14 +163,14 @@ test_pkcs11tool_no_warnings() {
   # No --sensitive flag: SoftHSM2 supports CKA_VALUE reads and we want clean output.
   env PATH="$PATH" SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$ckms_bin" "${base_args[@]}" sym keys create \
-      --algorithm aes \
-      --number-of-bits 256 \
-      "$aes_uid"
+    --algorithm aes \
+    --number-of-bits 256 \
+    "$aes_uid"
 
   env PATH="$PATH" SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$ckms_bin" "${base_args[@]}" rsa keys create \
-      --size_in_bits 2048 \
-      "$rsa_uid"
+    --size_in_bits 2048 \
+    "$rsa_uid"
 
   kill "$kms_pid" 2>/dev/null || true
   wait "$kms_pid" 2>/dev/null || true
@@ -180,8 +183,8 @@ test_pkcs11tool_no_warnings() {
   set +x
   pkcs11_output=$(
     env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
-    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
-    pkcs11-tool \
+      SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+      pkcs11-tool \
       --module "$SOFTHSM2_PKCS11_LIB_PATH" \
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$SOFTHSM2_HSM_SLOT_ID" \
