@@ -1,3 +1,5 @@
+mod kmip_1_0_xml_mandatory_test_vectors;
+mod kmip_1_0_xml_optional_test_vectors;
 mod kmip_1_4_empty_payloads;
 mod kmip_1_4_xml_mandatory_test_vectors;
 mod kmip_1_4_xml_optional_test_vectors;

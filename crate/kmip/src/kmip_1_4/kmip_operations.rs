@@ -621,6 +621,17 @@ impl From<GetAttributes> for kmip_2_1::kmip_operations::GetAttributes {
                                     attribute_name: v,
                                 },
                             )
+                        } else if v == "Operation Policy Name" {
+                            // OperationPolicyName was removed in KMIP 2.0 and has no standard
+                            // Tag in the 2.1 enum. It is stored internally as
+                            // VendorAttribute(KMIP1, __Operation Policy Name__); look it up
+                            // via a VendorAttributeReference so it can be returned correctly.
+                            kmip_2_1::kmip_types::AttributeReference::Vendor(
+                                kmip_2_1::kmip_types::VendorAttributeReference {
+                                    vendor_identification: "KMIP1".to_owned(),
+                                    attribute_name: "__Operation Policy Name__".to_owned(),
+                                },
+                            )
                         } else {
                             kmip_2_1::kmip_types::AttributeReference::Standard(
                                 kmip_2_1::kmip_types::Tag::from_str(&v.replace(' ', ""))
@@ -870,11 +881,14 @@ impl TryFrom<kmip_2_1::kmip_operations::ModifyAttributeResponse> for ModifyAttri
                 .unique_identifier
                 .map(|u| u.to_string())
                 .unwrap_or_default(),
-            // KMIP 2.1 doesn't echo the modified attribute in the response. Preserve 1.4 shape
-            // by returning a placeholder Comment attribute to avoid deep comparisons.
-            attribute: Attribute::Comment(
-                "KMIP 2 does not send the attribute value on the response".to_owned(),
-            ),
+            attribute: value
+                .echoed_attribute
+                .and_then(|a| Attribute::try_from(a).ok())
+                .unwrap_or_else(|| {
+                    Attribute::Comment(
+                        "KMIP 2 does not send the attribute value on the response".to_owned(),
+                    )
+                }),
         })
     }
 }

@@ -269,16 +269,21 @@ run_dsm_simulation() {
     local output=""
     local exit_code=0
 
+    # Temporarily disable set -e so a non-zero exit from the Python script
+    # does not abort the shell before we can echo the captured output.
+    set +e
     if command -v timeout >/dev/null 2>&1; then
         output=$(timeout 60 "${cmd_args[@]}" 2>&1)
         exit_code=$?
-        if [[ $exit_code -eq 124 ]]; then
-            print_error "Synology DSM simulation timed out after 60 seconds"
-            return 1
-        fi
     else
         output=$("${cmd_args[@]}" 2>&1)
         exit_code=$?
+    fi
+    set -e
+
+    if [[ $exit_code -eq 124 ]]; then
+        print_error "Synology DSM simulation timed out after 60 seconds"
+        return 1
     fi
 
     echo ""

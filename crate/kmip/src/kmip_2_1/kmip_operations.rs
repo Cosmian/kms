@@ -863,6 +863,10 @@ impl Display for ModifyAttribute {
 pub struct ModifyAttributeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+    /// Carries the modified attribute for KMIP 1.x response down-conversion only.
+    /// Skipped during serialization so it never appears on the KMIP 2.1 wire.
+    #[serde(skip)]
+    pub echoed_attribute: Option<Attribute>,
 }
 
 impl Display for ModifyAttributeResponse {
