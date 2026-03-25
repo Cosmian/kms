@@ -20,7 +20,7 @@ use std::{
     fs,
     io::Write as _,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use clap::{Parser, ValueEnum};
@@ -61,7 +61,7 @@ use cosmian_kms_client::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput};
 use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, task::JoinSet};
 use zeroize::Zeroizing;
 
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -99,6 +99,11 @@ pub enum BenchFormat {
     /// One line per benchmark: name + OK/KO. Criterion output is suppressed.
     /// Automatically selected when --sanity is used without an explicit --format.
     Compact,
+    /// Produce a unified HTML report with gnuplot SVG charts for load tests and
+    /// embedded criterion markdown tables for statistical benchmarks.
+    /// Requires `gnuplot` on PATH; falls back to a data table if not found.
+    /// Primarily useful with `--load`.
+    Html,
 }
 
 /// Benchmark speed / sampling mode.
@@ -137,11 +142,14 @@ pub enum BenchMode {
 /// HTML reports are generated in `target/criterion/`.
 ///
 /// Examples:
-///   ckms bench                                   # all modes, default config
-///   ckms bench --mode encrypt                    # encrypt mode only
-///   ckms bench --speed sanity                    # smoke-test: 1 pass per bench, compact output
-///   ckms bench --mode key-creation --speed quick # quick run
-///   ckms bench --format json                     # also write JSON results
+///   ckms bench                                        # all modes, default config
+///   ckms bench --mode encrypt                         # encrypt mode only
+///   ckms bench --speed sanity                         # smoke-test: compact output
+///   ckms bench --mode key-creation --speed quick      # quick run
+///   ckms bench --format json                          # also write JSON results
+///   ckms bench --load                                 # load test all ops, concurrency 1-32
+///   ckms bench --mode encrypt --load                  # load test encrypt only
+///   ckms bench --load --format html                   # gnuplot HTML report
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct BenchAction {
@@ -183,6 +191,18 @@ pub struct BenchAction {
     ///   cat v5.12.json v5.17.json | criterion-table > diff.md
     #[clap(long = "version-label")]
     version_label: Option<String>,
+
+    /// Run concurrent load tests instead of criterion statistical benchmarks.
+    /// Measures throughput (req/s) and latency percentiles (p50/p95/p99) at
+    /// increasing concurrency levels. Can be combined with --mode to focus on
+    /// specific operations. Use --format html to produce a gnuplot HTML report.
+    #[clap(long = "load", default_value = "false")]
+    load: bool,
+
+    /// Comma-separated concurrency levels for load testing.
+    /// Only used when --load is set.
+    #[clap(long = "load-concurrency", default_value = "1,2,4,8,16,32")]
+    load_concurrency: String,
 }
 
 // =============================================================================
@@ -2406,6 +2426,482 @@ fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCliResult<()>
 }
 
 // =============================================================================
+// LOAD TESTING
+// =============================================================================
+
+/// Throughput and latency percentiles for one operation at one concurrency level.
+#[derive(Debug, Serialize)]
+pub struct LoadResult {
+    /// Operation name (mirrors criterion group IDs where applicable).
+    pub operation: String,
+    /// Number of concurrent tasks that were sending requests simultaneously.
+    pub concurrency: usize,
+    /// Achieved throughput in requests per second.
+    pub throughput_rps: f64,
+    /// 50th-percentile (median) round-trip latency in milliseconds.
+    pub p50_ms: f64,
+    /// 95th-percentile round-trip latency in milliseconds.
+    pub p95_ms: f64,
+    /// 99th-percentile round-trip latency in milliseconds.
+    pub p99_ms: f64,
+    /// Total requests completed during the measurement window.
+    pub samples: usize,
+}
+
+/// A pre-built KMIP request that can be cheaply cloned and sent in tight loops.
+#[derive(Clone)]
+enum PreparedLoadOp {
+    /// AES-128-GCM encrypt of a 64-byte payload (FIPS-safe).
+    AesGcmEncrypt { req: Encrypt },
+    /// AES-256 symmetric key creation. The request is rebuilt per call so each
+    /// invocation allocates a distinct key object on the server.
+    AesSymCreate { vid: String },
+    /// ECDSA P-256 sign of a 32-byte message (FIPS-safe).
+    EcdsaP256Sign { req: Sign },
+    /// AES-128-GCM `BulkData` batch of 10 encrypts in a single Encrypt call.
+    AesGcmBatch10 { req: Encrypt },
+}
+
+impl PreparedLoadOp {
+    const fn name(&self) -> &'static str {
+        match self {
+            Self::AesGcmEncrypt { .. } => "encrypt/aes-gcm",
+            Self::AesSymCreate { .. } => "key-creation/aes-sym",
+            Self::EcdsaP256Sign { .. } => "sign-verify/ecdsa-p256",
+            Self::AesGcmBatch10 { .. } => "batch/aes-gcm-10",
+        }
+    }
+
+    /// Execute the operation once, returning `true` on success.
+    async fn execute(&self, client: &KmsClient) -> bool {
+        match self {
+            Self::AesSymCreate { vid } => {
+                let Ok(req) = symmetric_key_create_request(
+                    vid,
+                    None,
+                    256,
+                    CryptographicAlgorithm::AES,
+                    ["load"],
+                    false,
+                    None,
+                ) else {
+                    return false;
+                };
+                client.create(req).await.is_ok()
+            }
+            Self::EcdsaP256Sign { req } => client.sign(req.clone()).await.is_ok(),
+            Self::AesGcmEncrypt { req } | Self::AesGcmBatch10 { req } => {
+                client.encrypt(req.clone()).await.is_ok()
+            }
+        }
+    }
+}
+
+fn load_percentile(sorted: &[f64], p: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
+    let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
+    sorted[idx.min(sorted.len() - 1)]
+}
+
+fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| {
+            t.parse::<usize>()
+                .map_err(|e| KmsCliError::Default(format!("Invalid concurrency level '{t}': {e}")))
+        })
+        .collect()
+}
+
+/// Prepare one representative operation per applicable mode category.
+fn prepare_load_ops(rt: &Runtime, client: &KmsClient, mode: &BenchMode) -> Vec<PreparedLoadOp> {
+    let mut ops = Vec::new();
+    let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
+    let needs_key_create = matches!(mode, BenchMode::KeyCreation | BenchMode::All);
+    let needs_sign = matches!(mode, BenchMode::SignVerify | BenchMode::All);
+    let needs_batch = matches!(mode, BenchMode::Batch | BenchMode::All);
+
+    if needs_encrypt {
+        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        ops.push(PreparedLoadOp::AesGcmEncrypt {
+            req: Encrypt {
+                unique_identifier: Some(key_id),
+                cryptographic_parameters: Some(aes_gcm_params()),
+                data: Some(Zeroizing::new(vec![1_u8; 64])),
+                ..Default::default()
+            },
+        });
+    }
+
+    if needs_key_create {
+        ops.push(PreparedLoadOp::AesSymCreate {
+            vid: client.config.vendor_id.clone(),
+        });
+    }
+
+    if needs_sign {
+        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::P256) {
+            ops.push(PreparedLoadOp::EcdsaP256Sign {
+                req: Sign {
+                    unique_identifier: Some(priv_id),
+                    cryptographic_parameters: Some(CryptographicParameters {
+                        digital_signature_algorithm: Some(
+                            DigitalSignatureAlgorithm::ECDSAWithSHA256,
+                        ),
+                        ..Default::default()
+                    }),
+                    data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                    ..Default::default()
+                },
+            });
+        } else {
+            eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
+        }
+    }
+
+    if needs_batch {
+        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_str = key_id.to_string();
+        let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; 64]); 10])
+            .serialize()
+            .expect("BulkData serialize");
+        let req = encrypt_request(
+            &key_str,
+            None,
+            data.to_vec(),
+            None,
+            None,
+            Some(aes_gcm_params()),
+        )
+        .expect("batch encrypt request");
+        ops.push(PreparedLoadOp::AesGcmBatch10 { req });
+    }
+
+    ops
+}
+
+/// Spawn `concurrency` tasks each looping for `duration`, collect all per-call
+/// timings, and compute throughput + latency percentiles.
+async fn run_load_level(
+    client: KmsClient,
+    op: PreparedLoadOp,
+    concurrency: usize,
+    duration: Duration,
+) -> LoadResult {
+    let wall_start = Instant::now();
+    let mut set: JoinSet<Vec<f64>> = JoinSet::new();
+
+    for _ in 0..concurrency {
+        let client = client.clone();
+        let op = op.clone();
+        set.spawn(async move {
+            let mut timings = Vec::new();
+            let task_start = Instant::now();
+            while task_start.elapsed() < duration {
+                let t0 = Instant::now();
+                let _ = op.execute(&client).await;
+                timings.push(t0.elapsed().as_secs_f64() * 1_000.0); // ms
+            }
+            timings
+        });
+    }
+
+    let mut all_timings: Vec<f64> = Vec::new();
+    while let Some(Ok(timings)) = set.join_next().await {
+        all_timings.extend(timings);
+    }
+
+    let elapsed = wall_start.elapsed().as_secs_f64();
+    let samples = all_timings.len();
+    let throughput_rps = if elapsed > 0.0 {
+        #[allow(clippy::cast_precision_loss)]
+        let s = samples as f64;
+        s / elapsed
+    } else {
+        0.0
+    };
+    all_timings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    LoadResult {
+        operation: op.name().to_owned(),
+        concurrency,
+        throughput_rps,
+        p50_ms: load_percentile(&all_timings, 0.50),
+        p95_ms: load_percentile(&all_timings, 0.95),
+        p99_ms: load_percentile(&all_timings, 0.99),
+        samples,
+    }
+}
+
+/// Run each prepared operation across all concurrency levels sequentially.
+fn bench_load(
+    rt: &Runtime,
+    client: &KmsClient,
+    mode: &BenchMode,
+    concurrency_levels: &[usize],
+    duration: Duration,
+) -> Vec<LoadResult> {
+    let ops = prepare_load_ops(rt, client, mode);
+    if ops.is_empty() {
+        eprintln!("[load] No operations prepared for mode {mode:?}");
+        return Vec::new();
+    }
+
+    let mut results = Vec::new();
+    for op in ops {
+        eprintln!(
+            "[load] '{}' — sweep {:?} × {:.0}s",
+            op.name(),
+            concurrency_levels,
+            duration.as_secs_f64()
+        );
+        for &concurrency in concurrency_levels {
+            eprint!("[load]   concurrency={concurrency:>3} … ");
+            let result = rt.block_on(run_load_level(
+                client.clone(),
+                op.clone(),
+                concurrency,
+                duration,
+            ));
+            eprintln!(
+                "rps={:>8.1}  p50={:>6.1}ms  p95={:>6.1}ms  p99={:>6.1}ms  n={}",
+                result.throughput_rps, result.p50_ms, result.p95_ms, result.p99_ms, result.samples
+            );
+            results.push(result);
+        }
+    }
+    results
+}
+
+#[allow(clippy::print_stdout)]
+fn print_load_results(results: &[LoadResult]) {
+    if results.is_empty() {
+        return;
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    for r in results {
+        if !seen.contains(&r.operation.as_str()) {
+            seen.push(&r.operation);
+        }
+    }
+    for op in seen {
+        let op_rows: Vec<&LoadResult> = results.iter().filter(|r| r.operation == op).collect();
+        println!("\n── {op} ──");
+        println!(
+            "{:<14} {:>12}  {:>10} {:>10} {:>10}  {:>8}",
+            "Concurrency", "Throughput", "p50", "p95", "p99", "Samples"
+        );
+        println!("{}", "─".repeat(70));
+        for r in op_rows {
+            println!(
+                "{:<14} {:>10.1}/s  {:>8.1}ms {:>8.1}ms {:>8.1}ms  {:>8}",
+                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
+            );
+        }
+    }
+}
+
+/// Generate `target/criterion/benchmarks_load_tests.md` with per-operation
+/// markdown tables.
+fn generate_markdown_load_output(results: &[LoadResult]) -> KmsCliResult<()> {
+    if results.is_empty() {
+        return Ok(());
+    }
+    let home = criterion_home();
+    fs::create_dir_all(&home)
+        .map_err(|e| KmsCliError::Default(format!("Create criterion dir: {e}")))?;
+
+    let mut seen: Vec<&str> = Vec::new();
+    for r in results {
+        if !seen.contains(&r.operation.as_str()) {
+            seen.push(&r.operation);
+        }
+    }
+
+    let mut md = String::new();
+    for op in seen {
+        let op_rows: Vec<&LoadResult> = results.iter().filter(|r| r.operation == op).collect();
+        md.push_str(&format!("### {op}\n\n"));
+        md.push_str(
+            "| Concurrency | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Samples |\n",
+        );
+        md.push_str(
+            "|-------------|-------------------|----------|----------|----------|---------|\n",
+        );
+        for r in op_rows {
+            md.push_str(&format!(
+                "| {} | {:.1} | {:.1} | {:.1} | {:.1} | {} |\n",
+                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
+            ));
+        }
+        md.push('\n');
+    }
+
+    let md_path = home.join("benchmarks_load_tests.md");
+    fs::write(&md_path, &md)
+        .map_err(|e| KmsCliError::Default(format!("Write {}: {e}", md_path.display())))?;
+    eprintln!("[load] Markdown report → {}", md_path.display());
+    Ok(())
+}
+
+/// Generate `target/criterion/load-report/index.html` with gnuplot SVG charts.
+///
+/// If `gnuplot` is not on PATH, the HTML is still written but without charts.
+fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
+    let home = criterion_home();
+    let report_dir = home.join("load-report");
+    fs::create_dir_all(&report_dir)
+        .map_err(|e| KmsCliError::Default(format!("Create report dir: {e}")))?;
+
+    let mut ops: Vec<String> = Vec::new();
+    for r in results {
+        if !ops.contains(&r.operation) {
+            ops.push(r.operation.clone());
+        }
+    }
+
+    let gnuplot_ok = std::process::Command::new("gnuplot")
+        .arg("--version")
+        .output()
+        .is_ok();
+    if !gnuplot_ok {
+        eprintln!("[load] gnuplot not found — SVG charts will be omitted from HTML report");
+    }
+
+    let mut sections = String::new();
+    for op in &ops {
+        let safe = op.replace('/', "_").replace(' ', "-");
+        let op_rows: Vec<&LoadResult> = results.iter().filter(|r| &r.operation == op).collect();
+
+        // ── .dat file ────────────────────────────────────────────────────
+        let dat_name = format!("{safe}.dat");
+        let dat_path = report_dir.join(&dat_name);
+        let mut dat =
+            String::from("# concurrency  throughput_rps  p50_ms  p95_ms  p99_ms  samples\n");
+        for r in &op_rows {
+            dat.push_str(&format!(
+                "{:<14} {:<15.2} {:<8.2} {:<8.2} {:<8.2} {}\n",
+                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
+            ));
+        }
+        fs::write(&dat_path, &dat)
+            .map_err(|e| KmsCliError::Default(format!("Write {}: {e}", dat_path.display())))?;
+
+        // ── gnuplot charts ────────────────────────────────────────────────
+        let tp_svg = format!("{safe}-throughput.svg");
+        let lat_svg = format!("{safe}-latency.svg");
+        if gnuplot_ok {
+            let run_gnuplot = |script: &str, label: &str| {
+                let script_name = format!("{safe}-{label}.gnuplot");
+                let script_path = report_dir.join(&script_name);
+                if fs::write(&script_path, script).is_ok() {
+                    let status = std::process::Command::new("gnuplot")
+                        .arg(&script_name)
+                        .current_dir(&report_dir)
+                        .status();
+                    if status.map_or(true, |s| !s.success()) {
+                        eprintln!("[load] gnuplot {label} chart failed for {op}");
+                    }
+                }
+            };
+
+            run_gnuplot(
+                &format!(
+                    "set terminal svg size 800,400 enhanced font 'Helvetica,12'\n\
+                     set output '{tp_svg}'\n\
+                     set title 'Throughput — {op}'\n\
+                     set xlabel 'Concurrency'\n\
+                     set ylabel 'req/s'\n\
+                     set grid\nset key top left\n\
+                     plot '{dat_name}' using 1:2 with linespoints lw 2 pt 7 title 'throughput'\n"
+                ),
+                "throughput",
+            );
+
+            run_gnuplot(
+                &format!(
+                    "set terminal svg size 800,400 enhanced font 'Helvetica,12'\n\
+                     set output '{lat_svg}'\n\
+                     set title 'Latency — {op}'\n\
+                     set xlabel 'Concurrency'\n\
+                     set ylabel 'Latency (ms)'\n\
+                     set grid\nset key top left\n\
+                     plot '{dat_name}' using 1:3 with linespoints lw 2 pt 7 title 'p50', \\\n\
+                          '{dat_name}' using 1:4 with linespoints lw 2 pt 5 title 'p95', \\\n\
+                          '{dat_name}' using 1:5 with linespoints lw 2 pt 9 title 'p99'\n"
+                ),
+                "latency",
+            );
+        }
+
+        // ── HTML section ──────────────────────────────────────────────────
+        sections.push_str(&format!("<section>\n<h2>{op}</h2>\n"));
+        if gnuplot_ok {
+            sections.push_str(&format!(
+                "<div class=\"charts\">\
+                 <img src=\"{tp_svg}\" alt=\"Throughput\">\
+                 <img src=\"{lat_svg}\" alt=\"Latency\">\
+                 </div>\n"
+            ));
+        }
+        sections.push_str(
+            "<table>\n<tr><th>Concurrency</th><th>Throughput (req/s)</th>\
+             <th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>Samples</th></tr>\n",
+        );
+        for r in &op_rows {
+            sections.push_str(&format!(
+                "<tr><td>{}</td><td>{:.1}</td><td>{:.1}</td>\
+                 <td>{:.1}</td><td>{:.1}</td><td>{}</td></tr>\n",
+                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
+            ));
+        }
+        sections.push_str("</table>\n</section>\n");
+    }
+
+    let gnuplot_notice = if gnuplot_ok {
+        String::new()
+    } else {
+        String::from(
+            "<p class=\"warn\">⚠ <code>gnuplot</code> not found — charts were not generated. \
+             Install gnuplot and re-run <code>ckms bench --load --format html</code>.</p>\n",
+        )
+    };
+
+    let html = format!(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
+         <title>KMS Load Test Report</title>\n<style>\n\
+         body{{font-family:sans-serif;max-width:1400px;margin:0 auto;padding:1em 2em}}\n\
+         h1{{border-bottom:2px solid #333;padding-bottom:.3em}}\n\
+         h2{{border-bottom:1px solid #ccc;margin-top:2em;color:#222}}\n\
+         table{{border-collapse:collapse;margin:1em 0}}\n\
+         th,td{{border:1px solid #bbb;padding:.35em .75em}}\n\
+         th{{background:#f4f4f4;text-align:center;font-weight:600}}\n\
+         td{{text-align:right}}\n\
+         td:first-child{{text-align:center}}\n\
+         .charts{{display:flex;gap:1em;flex-wrap:wrap;margin:.5em 0}}\n\
+         .charts img{{max-width:49%;min-width:280px;border:1px solid #ddd}}\n\
+         pre{{background:#f8f8f8;padding:1em;overflow-x:auto;font-size:.85em}}\n\
+         .warn{{background:#fff3cd;border:1px solid #ffc107;padding:.5em 1em;border-radius:4px}}\n\
+         section{{margin-bottom:2em}}\n\
+         </style>\n</head>\n<body>\n\
+         <h1>KMS Load Test Report</h1>\n\
+         {gnuplot_notice}\
+         {sections}\
+         </body>\n</html>\n"
+    );
+
+    let html_path = report_dir.join("index.html");
+    fs::write(&html_path, &html)
+        .map_err(|e| KmsCliError::Default(format!("Write {}: {e}", html_path.display())))?;
+    eprintln!("[load] HTML report → {}", html_path.display());
+    Ok(())
+}
+
+// =============================================================================
 // BENCH ACTION IMPLEMENTATION
 // =============================================================================
 
@@ -2424,6 +2920,8 @@ impl BenchAction {
         let save_baseline = self.save_baseline.clone();
         let load_baseline = self.load_baseline.clone();
         let version_label = self.version_label.clone();
+        let load = self.load;
+        let load_concurrency = self.load_concurrency.clone();
 
         // Drop the existing client (bound to the current runtime)
         drop(kms_rest_client);
@@ -2449,6 +2947,21 @@ impl BenchAction {
             } else {
                 format.clone()
             };
+
+            // ── Load test mode (orthogonal concurrency sweep; skips criterion) ─────
+            if load {
+                let concurrency_levels = parse_concurrency_levels(&load_concurrency)?;
+                let duration = Duration::from_secs(time.max(1));
+                let results = bench_load(&rt, &client, &mode, &concurrency_levels, duration);
+                print_load_results(&results);
+                if effective_format == BenchFormat::Html {
+                    generate_html_output(&results)?;
+                }
+                if effective_format == BenchFormat::Markdown {
+                    generate_markdown_load_output(&results)?;
+                }
+                return Ok(());
+            }
 
             // Snapshot time just before starting criterion so we can filter
             // stale criterion data from previous runs in generate_compact_output.
@@ -2589,7 +3102,7 @@ impl BenchAction {
                 BenchFormat::Json => collect_json_output(version_label.as_deref())?,
                 BenchFormat::Markdown => generate_markdown_output()?,
                 BenchFormat::Compact => generate_compact_output(run_start)?,
-                BenchFormat::Text => {}
+                BenchFormat::Text | BenchFormat::Html => {}
             }
 
             Ok(())

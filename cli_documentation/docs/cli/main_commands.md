@@ -49,7 +49,7 @@ Possible values:  `"true", "false"`
 
 **`bench`** [[4]](#4-ckms-bench)  Run benchmarks using criterion for statistical analysis.
 
-**`bench`** [[5]](#5-ckms-bench)  Run a set of benches to check the server performance
+**`bench`** [[5]](#5-ckms-bench)  Run benchmarks using criterion for statistical analysis.
 
 **`cc`** [[6]](#6-ckms-cc)  Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
 
@@ -89,7 +89,7 @@ Possible values:  `"true", "false"`
 
 **`sym`** [[24]](#24-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
-**`markdown`** [[25]](#25-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
+**`markdown`** [[25]](#25-ckms-markdown)  Regenerate the CLI documentation in Markdown format
 
 **`configure`** [[26]](#26-ckms-configure)  Configure the KMS CLI (create ckms.toml)
 

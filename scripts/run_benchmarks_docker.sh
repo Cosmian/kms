@@ -468,7 +468,7 @@ EOF
 
   echo "[${version}] Using image ${IMAGE_REPO}:${resolved_tag}"
   rm -rf target/criterion
-  run_bench_version "${version}" "${resolved_tag}" --save-baseline "v${version}"
+  run_bench_version "${version}" "${resolved_tag}" --save-baseline "v${version}" || true
 done
 
 echo ""

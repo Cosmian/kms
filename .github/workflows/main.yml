@@ -1,5 +1,6 @@
 ---
 name: CI
+run-name: CI (${{ github.head_ref || github.ref_name }})
 
 on:
   push:

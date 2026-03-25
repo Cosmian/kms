@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- **CLI bench**: Added `--load` flag for concurrent load testing (throughput, p50/p95/p99 latency across configurable concurrency levels) and `--format html` for gnuplot SVG charts written to `target/criterion/load-report/index.html`.
+
 #### PQC UI Enhancements & Hash Operation
 
 - **PQC pages generalized**: Encapsulate/Decapsulate pages now show "PQC KEM" (covering ML-KEM
