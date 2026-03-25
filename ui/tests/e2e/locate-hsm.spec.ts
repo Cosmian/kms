@@ -6,22 +6,23 @@
  *   - HSM keys (hsm:: prefix) appear alongside software keys in real Locate results
  *   - HSM keys always show Active state; no Unknown state appears
  *   - State filtering includes HSM keys correctly
- *   - No-criteria Locate includes HSM keys with Active state
  *
  * The HSM tests target a real KMS server backed by SoftHSM2 and require:
- *   PLAYWRIGHT_KMS_HAS_HSM=true   set by test_ui_hsm.sh
- *   PLAYWRIGHT_HSM_TEST_TAG       tag used for pre-created keys (default "_pw_hsm_locate")
+ *   PLAYWRIGHT_KMS_HAS_HSM=true   set by test_ui.sh when softhsm2-util is available
  *   PLAYWRIGHT_HSM_KEY_COUNT      number of HSM keys created beforehand (default 2)
- *   PLAYWRIGHT_SW_KEY_COUNT       number of software keys created beforehand (default 2)
  *
- * The test_ui_hsm.sh script:
+ * Note: HSM keys do NOT support KMIP tags.  The HsmStore silently ignores tags
+ * on creation and returns an empty set from retrieve_tags.  Therefore all HSM
+ * tests use non-tag criteria (ObjectType, State) to Locate keys, and iterate
+ * through all table pages to surface HSM keys that may sort far down.
+ *
+ * The test_ui.sh script (when SoftHSM2 is present):
  *   1. Starts a fresh KMS server backed by SoftHSM2 on http://127.0.0.1:9998
- *   2. Pre-creates HSM_KEY_COUNT HSM AES-256 keys and SW_KEY_COUNT software AES-256 keys
- *      all tagged with PLAYWRIGHT_HSM_TEST_TAG
+ *   2. Pre-creates HSM_KEY_COUNT HSM AES-256 keys
  *   3. Starts a Vite preview server on http://127.0.0.1:5173
- *   4. Runs this spec
+ *   4. Runs all E2E specs (HSM tests gate on PLAYWRIGHT_KMS_HAS_HSM)
  */
-import { expect, Page, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
 
 type GlobalWithProcess = typeof globalThis & {
@@ -29,24 +30,50 @@ type GlobalWithProcess = typeof globalThis & {
 };
 const _env = (globalThis as GlobalWithProcess).process?.env ?? {};
 
-const TEST_TAG = _env.PLAYWRIGHT_HSM_TEST_TAG ?? "_pw_hsm_locate";
 const HSM_KEY_COUNT = parseInt(_env.PLAYWRIGHT_HSM_KEY_COUNT ?? "2", 10);
-const SW_KEY_COUNT = parseInt(_env.PLAYWRIGHT_SW_KEY_COUNT ?? "2", 10);
-const TOTAL_KEY_COUNT = HSM_KEY_COUNT + SW_KEY_COUNT;
 
 /**
- * Type a value into the Ant Design tags-mode Select for the "Tags" form field
- * and confirm the entry with Enter. The resulting pill must appear before returning.
+ * Walk every page of the Ant Design Table and count HSM / Unknown rows.
+ * Returns the number of hsm:: UIDs with Active state and the total entries
+ * showing "Unknown" state.
  */
-async function enterLocateTag(page: Page, tag: string): Promise<void> {
-    await page.locator('[id="tags"] .ant-select-selector').click();
-    await page.keyboard.type(tag);
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".ant-select-selection-item-content", { hasText: tag })).toBeVisible({ timeout: 5_000 });
+async function collectHsmKeysAcrossPages(page: Page): Promise<{ hsmActive: number; unknown: number }> {
+    let hsmActive = 0;
+    let unknown = 0;
+
+    const scanVisibleRows = async () => {
+        const rows = page.locator(".ant-table-tbody .ant-table-row");
+        const rowCount = await rows.count();
+        for (let i = 0; i < rowCount; i++) {
+            const row = rows.nth(i);
+            const uidText = (await row.locator("td").first().textContent()) ?? "";
+            const stateText = (await row.locator(".ant-tag").textContent()) ?? "";
+            if (uidText.startsWith("hsm::") && stateText === "Active") hsmActive++;
+            if (stateText === "Unknown") unknown++;
+        }
+    };
+
+    // Scan the first page
+    await scanVisibleRows();
+
+    // Click "Next Page" until no more pages remain (safety cap at 50)
+    let remaining = 50;
+    while (remaining-- > 0) {
+        const nextBtn = page.locator(".ant-pagination-next button:not([disabled])");
+        if (!(await nextBtn.count())) break;
+        await nextBtn.click();
+        await page.waitForTimeout(300);
+        await scanVisibleRows();
+    }
+
+    return { hsmActive, unknown };
 }
 
 test.describe("Locate – software keys only (no HSM)", () => {
     test("locate finds software keys and no hsm:: UIDs", async ({ page }) => {
+        if (_env.PLAYWRIGHT_KMS_HAS_HSM) {
+            test.skip(true, "HSM is configured; hsm:: UIDs are expected in results");
+        }
         await createSymKey(page);
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");
@@ -55,7 +82,6 @@ test.describe("Locate – software keys only (no HSM)", () => {
         const countMatch = text.match(/(\d+)\s*object/i);
         expect(countMatch).not.toBeNull();
         expect(Number.parseInt(countMatch![1], 10)).toBeGreaterThanOrEqual(1);
-        // The real server has no HSM configured, so no hsm:: UIDs should appear
         expect(text).not.toContain("hsm::");
     });
 
@@ -78,85 +104,45 @@ test.describe("Locate – mixed HSM + software keys (real SoftHSM2)", () => {
         }
     });
 
-    test("locate by tag finds all pre-created HSM and software keys", async ({ page }) => {
+    test("SymmetricKey Locate includes HSM keys with Active state", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
-        await enterLocateTag(page, TEST_TAG);
+        await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/object\(s\) located/i);
 
-        // Wait for asynchronous state enrichment to finish
         await page.waitForLoadState("networkidle");
-
-        const rows = page.locator(".ant-table-tbody .ant-table-row");
-        const count = await rows.count();
-        expect(count).toBeGreaterThanOrEqual(TOTAL_KEY_COUNT);
-    });
-
-    test("HSM keys show Active state and no key shows Unknown state", async ({ page }) => {
-        await gotoAndWait(page, "/ui/locate");
-        await enterLocateTag(page, TEST_TAG);
-        await submitAndWaitForResponse(page);
-
-        // Wait for enrichment (supplementStateFromOwned) to finish
-        await page.waitForLoadState("networkidle");
-
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
 
-        let hsmActiveCount = 0;
-        let unknownCount = 0;
-        const rowCount = await rows.count();
-        for (let i = 0; i < rowCount; i++) {
-            const row = rows.nth(i);
-            const uidText = (await row.locator("td").first().textContent()) ?? "";
-            const stateText = (await row.locator(".ant-tag").textContent()) ?? "";
-            if (uidText.startsWith("hsm::") && stateText === "Active") {
-                hsmActiveCount++;
-            }
-            if (stateText === "Unknown") {
-                unknownCount++;
-            }
-        }
-
-        expect(hsmActiveCount).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
-        expect(unknownCount).toBe(0);
+        const { hsmActive, unknown } = await collectHsmKeysAcrossPages(page);
+        expect(hsmActive).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
+        expect(unknown).toBe(0);
     });
 
-    test("Active state filter returns both HSM and software keys", async ({ page }) => {
+    test("Active state filter returns HSM keys", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
-        await enterLocateTag(page, TEST_TAG);
         await selectOptionById(page, "#state", "Active");
+        await selectOptionById(page, "#objectType", "SymmetricKey");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/object\(s\) located/i);
 
         await page.waitForLoadState("networkidle");
-
         const rows = page.locator(".ant-table-tbody .ant-table-row");
-        const count = await rows.count();
-        expect(count).toBeGreaterThanOrEqual(TOTAL_KEY_COUNT);
+        await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
+
+        const { hsmActive } = await collectHsmKeysAcrossPages(page);
+        expect(hsmActive).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
     });
 
     test("no-filter Locate includes HSM keys with Active state", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
         await submitAndWaitForResponse(page);
 
-        // The no-criteria path calls supplementStateFromOwned asynchronously;
-        // networkidle ensures the follow-up GET /access/owned round-trip is done.
         await page.waitForLoadState("networkidle");
-
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
 
-        let hsmActiveCount = 0;
-        const rowCount = await rows.count();
-        for (let i = 0; i < rowCount; i++) {
-            const row = rows.nth(i);
-            const uidText = (await row.locator("td").first().textContent()) ?? "";
-            const stateText = (await row.locator(".ant-tag").textContent()) ?? "";
-            if (uidText.startsWith("hsm::") && stateText === "Active") {
-                hsmActiveCount++;
-            }
-        }
-        expect(hsmActiveCount).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
+        const { hsmActive } = await collectHsmKeysAcrossPages(page);
+        expect(hsmActive).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
     });
 });
