@@ -6,27 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-#### PEM client certificate support in ckms CLI wizard
-
-The `ckms configure` wizard now exposes PEM client certificate authentication in addition to
-PKCS#12. Users can select "Client certificate (PEM)" or "Both (PEM cert + token)" and provide
-the certificate (`.crt`/`.pem`) and private key (`.key`/`.pem`) paths separately. The
-`ssl_client_pem_cert_path` and `ssl_client_pem_key_path` config fields were already supported by
-the HTTP client but were not reachable through the interactive wizard (fixes #804).
-
-#### PQC UI Enhancements & Hash Operation
-
-- **PQC pages generalized**: Encapsulate/Decapsulate pages now show "PQC KEM" (covering ML-KEM
-  and Hybrid KEM: X25519MLKEM768, X448MLKEM1024); Sign/Verify pages now show "PQC Signature"
-  (covering ML-DSA and SLH-DSA). Key creation descriptions updated to list all four PQC families.
-- **Hash operation page**: new "Hash" page under the Symmetric menu computes server-side
-  cryptographic hashes (SHA-256, SHA-384, SHA-512, SHA3-224, SHA3-256, SHA3-384, SHA3-512)
-  via the KMIP Hash operation. Supports file upload or text input.
-- **WASM hash bindings**: `hash_ttlv_request()`, `parse_hash_ttlv_response()`, and
-  `get_hash_algorithms()` added to the WASM module.
-- **E2E tests**: Playwright roundtrip tests added for Hybrid KEM (X25519MLKEM768
-  encapsulate/decapsulate) and SLH-DSA (SLH-DSA-SHA2-128s sign/verify).
-
 #### Post-Quantum Cryptography (ML-KEM + ML-DSA)
 
 Full support for NIST post-quantum algorithms via OpenSSL 3.x default provider
@@ -36,6 +15,9 @@ Full support for NIST post-quantum algorithms via OpenSSL 3.x default provider
   creation, encapsulation, and decapsulation via KMIP Encrypt/Decrypt operations
 - **ML-DSA** (Digital Signature Algorithm): ML-DSA-44, ML-DSA-65, ML-DSA-87 — key pair
   creation, signing, and verification via KMIP Sign/SignatureVerify operations
+- **SLH-DSA** (Supersingular Isogeny-based Hash-based DSA): SLH-DSA-SHA2-128s, SLH-DSA-SHA2-192s,
+  SLH-DSA-SHA2-256s — key pair creation, signing, and verification via KMIP Sign/SignatureVerify
+  operations
 - New KMIP enumeration values for all six PQC algorithms
 - Server dispatch for PQC key creation, encrypt/decrypt (KEM), and sign/verify
 - CLI actions: `ckms pqc keys create`, `ckms pqc encapsulate`, `ckms pqc decapsulate`,
@@ -102,38 +84,6 @@ to the test matrix so regressions are caught automatically:
   setup, DSM configuration, and automated CI testing
 - `README.md` updated with Synology DSM in the disk encryption compatibility table
 
-#### KMIP 1.0 XML Non-Regression Test Vectors
-
-All 84 official OASIS KMIP 1.0 XML conformance test vectors are now parsed and
-validated as part of the test suite:
-
-- `mandatory/` – 57 files (19 unique test cases × 3 minor-version variants):
-  SKLC-M-1..3 (symmetric key lifecycle), SKFF-M-1..12 (symmetric key
-  foundry/factory), AKLC-M-1..3 (asymmetric key lifecycle), OMOS-M-1
-  (opaque managed object store)
-- `optional/` – 27 files (9 unique test cases × 3 minor-version variants):
-  SKLC-O-1, SKFF-O-1..6, AKLC-O-1, OMOS-O-1
-
-As a side effect, the XML deserializer now correctly maps the `SKIPJACK`
-enumeration token (`0x0000_0018`) used by `SKFF-O-1..3`, fixing a
-previously-unknown parse error for those optional vectors.
-
-#### Microsoft SQL Server External Key Management (EKM)
-
-- Microsoft SQL Server EKM is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
-
-#### `ckms bench` concurrency sweep with time limits
-
-- `ckms bench`: added benchmarks for AES-XTS, AES-GCM-SIV, ECIES, Salsa Sealed Box, Covercrypt, and Configurable KEM (ML-KEM-512/768, hybrid variants); `run_benchmarks.sh` now injects `lscpu` output and KMS server version into `documentation/docs/benchmarks.md`
-- `ckms bench`: added `--format` option (`text`/`json`); JSON mode collects criterion estimates into `target/criterion/benchmarks.json`
-- `ckms bench`: criterion is now a regular dependency (not just dev-dependency)
-- `ckms bench`: fixed ChaCha20-Poly1305 benchmarks — changed from `[128, 256]` to `[256]` key sizes (ChaCha20 only supports 256-bit keys)
-
-### 🐛 Bug Fixes
-
-- **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` (fixes #821); both were incorrectly hidden with `#[clap(hide = true)]`.
-- **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
-- **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
 - **Synology DSM simulation (PyKMIP): fix `ModifyAttribute` step after issue #820 server fix**:
   `KMIPProxy.send_request_payload()` returns the response *payload* object on success (not a batch
   item), so the returned object has no `result_status` field. Calling `_check_result()` on it
@@ -178,6 +128,53 @@ previously-unknown parse error for those optional vectors.
   attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
   as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
   `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746))
+
+#### KMIP 1.0 XML Non-Regression Test Vectors
+
+All 84 official OASIS KMIP 1.0 XML conformance test vectors are now parsed and
+validated as part of the test suite:
+
+- `mandatory/` – 57 files (19 unique test cases × 3 minor-version variants):
+  SKLC-M-1..3 (symmetric key lifecycle), SKFF-M-1..12 (symmetric key
+  foundry/factory), AKLC-M-1..3 (asymmetric key lifecycle), OMOS-M-1
+  (opaque managed object store)
+- `optional/` – 27 files (9 unique test cases × 3 minor-version variants):
+  SKLC-O-1, SKFF-O-1..6, AKLC-O-1, OMOS-O-1
+
+As a side effect, the XML deserializer now correctly maps the `SKIPJACK`
+enumeration token (`0x0000_0018`) used by `SKFF-O-1..3`, fixing a
+previously-unknown parse error for those optional vectors.
+
+#### Microsoft SQL Server External Key Management (EKM)
+
+- Microsoft SQL Server EKM is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
+
+#### ckms new features
+
+##### `ckms bench` concurrency sweep with time limits
+
+- `ckms bench`: added benchmarks for AES-XTS, AES-GCM-SIV, ECIES, Salsa Sealed Box, Covercrypt, and Configurable KEM (ML-KEM-512/768, hybrid variants); `run_benchmarks.sh` now injects `lscpu` output and KMS server version into `documentation/docs/benchmarks.md`
+- `ckms bench`: added `--format` option (`text`/`json`); JSON mode collects criterion estimates into `target/criterion/benchmarks.json`
+- `ckms bench`: criterion is now a regular dependency (not just dev-dependency)
+- `ckms bench`: fixed ChaCha20-Poly1305 benchmarks — changed from `[128, 256]` to `[256]` key sizes (ChaCha20 only supports 256-bit keys)
+
+##### PEM client certificate support in ckms CLI wizard
+
+The `ckms configure` wizard now exposes PEM client certificate authentication in addition to
+PKCS#12. Users can select "Client certificate (PEM)" or "Both (PEM cert + token)" and provide
+the certificate (`.crt`/`.pem`) and private key (`.key`/`.pem`) paths separately. The
+`ssl_client_pem_cert_path` and `ssl_client_pem_key_path` config fields were already supported by
+the HTTP client but were not reachable through the interactive wizard (fixes #804).
+
+### 🐛 Bug Fixes
+
+- **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
+- Fix AWS BYOK silent when exporting a previously wrapped key.
+- **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` (fixes #821); both were incorrectly hidden with `#[clap(hide = true)]`.
+- **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
+
+#### HSM related fixes
+
 - **HSM: CKA_ID missing on HSM-created keys**: Keys generated via the HSM PKCS#11 path were stored
   without a `CKA_ID`, making them invisible to some PKCS#11 tools. The KMS now sets `CKA_ID` at
   key creation time for all HSM backends (Proteccio, Utimaco, SoftHSM2).
@@ -191,14 +188,16 @@ previously-unknown parse error for those optional vectors.
   "This key is sensitive and cannot be exported from the HSM"; the unwrap is now performed
   server-side through the KMS crypto oracle so the HSM key material is never exported
   ([#762](https://github.com/Cosmian/kms/issues/762))
-- Fix AWS BYOK silent when exporting a previously wrapped key.
+- Fix Locate for mixed HSM + software key environments
+    - **Server**: `HsmStore.find()` now returns HSM keys to all authenticated users for read-only listing (previously required HSM admin), and populates basic attributes (algorithm, length, object type) from HSM metadata so Locate and `/access/owned` display key info without a separate `GetAttributes` round-trip.
+    - **UI**: Locate page now correctly merges HSM keys (`hsm::` prefix) into results even when they are absent from `/access/owned`; HSM keys default to "Active" state during enrichment.
+    - **UI Locate**: Fix "State: Unknown" shown for all objects when clicking "Search Objects" with no filters — state is now resolved from `/access/owned` (software keys) and defaults to "Active" for HSM keys without invoking per-object `GetAttributes`.
+    - **UI E2E**: New `locate-hsm.spec.ts` Playwright integration tests run against a real SoftHSM2 KMS; `test_ui.sh` (via `nix.sh test ui`) wires up the full stack (WASM build → KMS server → SoftHSM2 token → pre-created keys → Vite preview → Playwright) on both Linux and macOS. `test_ui.sh` now requires `softhsm2-util` to be installed and errors out with a clear message if it is missing.
 
-#### Fix Locate for mixed HSM + software key environments
+### ⚙️ Build
 
-- **Server**: `HsmStore.find()` now returns HSM keys to all authenticated users for read-only listing (previously required HSM admin), and populates basic attributes (algorithm, length, object type) from HSM metadata so Locate and `/access/owned` display key info without a separate `GetAttributes` round-trip.
-- **UI**: Locate page now correctly merges HSM keys (`hsm::` prefix) into results even when they are absent from `/access/owned`; HSM keys default to "Active" state during enrichment.
-- **UI Locate**: Fix "State: Unknown" shown for all objects when clicking "Search Objects" with no filters — state is now resolved from `/access/owned` (software keys) and defaults to "Active" for HSM keys without invoking per-object `GetAttributes`.
-- **UI E2E**: New `locate-hsm.spec.ts` Playwright integration tests run against a real SoftHSM2 KMS; `test_ui.sh` (via `nix.sh test ui`) wires up the full stack (WASM build → KMS server → SoftHSM2 token → pre-created keys → Vite preview → Playwright) on both Linux and macOS. `test_ui.sh` now requires `softhsm2-util` to be installed and errors out with a clear message if it is missing.
+- *(deps)* Bump pnpm/action-setup from 4 to 5 (#800)
+- *(deps)* Bump rustls-webpki in the cargo group across 1 directory (#815)
 
 ### 🧪 Testing
 

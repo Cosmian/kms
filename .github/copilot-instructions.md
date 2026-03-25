@@ -264,6 +264,8 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 8. Run Playwright: `PLAYWRIGHT_WORKERS=10 pnpm run test:e2e`
 9. Parse KMS server logs for ERROR/WARN and report
 
+Update ui/tests/e2e/README.md according to ui/tests/e2e/ tests.
+
 ### Key UI test files
 
 - `ui/playwright.config.ts` — Playwright config (workers, retries, base URL)

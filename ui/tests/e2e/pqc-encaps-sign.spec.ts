@@ -17,9 +17,12 @@ import {
     writeTempFile,
 } from "./helpers";
 
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
+
 const PLAINTEXT = "Hello Cosmian KMS – PQC E2E roundtrip test!";
 
 test.describe("ML-KEM encapsulate → decapsulate roundtrip", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     test("encapsulate then decapsulate with ML-KEM-512", async ({ page }) => {
         const { privKeyId, pubKeyId } = await createPqcKeyPair(page, "ML-KEM-512");
 
@@ -67,6 +70,7 @@ test.describe("ML-KEM encapsulate → decapsulate roundtrip", () => {
 });
 
 test.describe("ML-DSA sign → verify roundtrip", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     test("sign then verify with correct ML-DSA-44 key returns Valid", async ({ page }) => {
         const { privKeyId, pubKeyId } = await createPqcKeyPair(page, "ML-DSA-44");
 
@@ -136,6 +140,7 @@ test.describe("ML-DSA sign → verify roundtrip", () => {
 });
 
 test.describe("Hybrid KEM encapsulate → decapsulate roundtrip", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     test("encapsulate then decapsulate with X25519MLKEM768", async ({ page }) => {
         const { privKeyId, pubKeyId } = await createPqcKeyPair(page, "X25519MLKEM768");
 
@@ -173,6 +178,7 @@ test.describe("Hybrid KEM encapsulate → decapsulate roundtrip", () => {
 });
 
 test.describe("SLH-DSA sign → verify roundtrip", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     test("sign then verify with SLH-DSA-SHA2-128s returns Valid", async ({ page }) => {
         const { privKeyId, pubKeyId } = await createPqcKeyPair(page, "SLH-DSA-SHA2-128s");
 
@@ -202,6 +208,7 @@ test.describe("SLH-DSA sign → verify roundtrip", () => {
 });
 
 test.describe("Configurable Hybrid KEM key creation", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     // The configurable hybrid algorithms are hidden by branding in the Cosmian
     // theme. Override branding.json to make them visible for E2E testing.
     // Note: encapsulate/decapsulate are CLI-only for these algorithms because

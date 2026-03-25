@@ -11,13 +11,9 @@
 # ============================================================================
 set -euo pipefail
 
-# ── FIPS guard ───────────────────────────────────────────────────────────────
-# UI tests are non-fips only; default to non-fips when caller doesn't specify.
+# ── VARIANT default ─────────────────────────────────────────────────────────
+# Default to non-fips when caller doesn't specify.
 : "${VARIANT:=non-fips}"
-if [ "${VARIANT:-}" = "fips" ]; then
-    echo "UI E2E tests are skipped in FIPS mode." >&2
-    exit 0
-fi
 
 # ── Paths & common helpers ───────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -96,7 +92,11 @@ fi
 echo "==> SoftHSM2 slot id: ${SOFTHSM2_HSM_SLOT_ID}"
 
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
-echo "==> Building WASM (non-fips, web target) …"
+if [ "${VARIANT}" = "non-fips" ]; then
+    echo "==> Building WASM (non-fips, web target) …"
+else
+    echo "==> Building WASM (fips, web target) …"
+fi
 (
     cd "${WASM_CRATE}"
     # Unset variables that inject macOS-specific flags into the wasm32 linker.
@@ -104,7 +104,11 @@ echo "==> Building WASM (non-fips, web target) …"
     # and contain -F<sdk>/System/Library/Frameworks which breaks wasm32 linking.
     unset SDKROOT MACOSX_DEPLOYMENT_TARGET RUSTFLAGS LDFLAGS \
         OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
-    wasm-pack build --target web --features non-fips
+    if [ "${VARIANT}" = "non-fips" ]; then
+        wasm-pack build --target web --features non-fips
+    else
+        wasm-pack build --target web
+    fi
 )
 
 PKG_SRC="${WASM_CRATE}/pkg"
@@ -265,6 +269,9 @@ PW_ENV=(
     PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
     PLAYWRIGHT_HSM_KEY_COUNT=2
 )
+if [ "${VARIANT}" = "fips" ]; then
+    PW_ENV+=(PLAYWRIGHT_FIPS_MODE=true)
+fi
 
 (cd "${UI_DIR}" && env "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
 

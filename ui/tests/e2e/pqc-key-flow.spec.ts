@@ -18,7 +18,10 @@ import {
     submitAndWaitForResponse,
 } from "./helpers";
 
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
+
 test.describe("PQC key pair", () => {
+    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
     test("create ML-KEM-512 key pair", async ({ page }) => {
         await gotoAndWait(page, "/ui/pqc/keys/create");
         await selectOption(page, "pqc-algorithm-select", "ML-KEM-512");

@@ -19,6 +19,8 @@ import {
     submitAndWaitForResponse,
 } from "./helpers";
 
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
+
 /** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({
     "Security Level::<": ["Protected", "Confidential", "Top Secret::+"],
@@ -43,6 +45,7 @@ async function createMasterKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
 }
 
 test.describe("Covercrypt", () => {
+    test.skip(FIPS_MODE, "Covercrypt is not available in FIPS mode");
     test("create master key pair via inline JSON specification", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/keys/create-master-key-pair");
 
