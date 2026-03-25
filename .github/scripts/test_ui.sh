@@ -175,30 +175,8 @@ if lsof -ti :5173 >/dev/null 2>&1; then
 fi
 
 KMS_LOG="${SQLITE_DIR}/kms-server.log"
-KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 
 echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
-cat >"${KMS_CONF_FILE}" <<HSMEOF
-default_username = "admin"
-vendor_identification = "test_vendor"
-hsm_model = "softhsm2"
-hsm_admin = ["admin"]
-hsm_slot = [${SOFTHSM2_HSM_SLOT_ID}]
-hsm_password = ["${HSM_USER_PASSWORD}"]
-
-[db]
-database_type = "sqlite"
-sqlite_path = "${SQLITE_DIR}"
-clear_database = true
-
-[http]
-hostname = "127.0.0.1"
-port = 9998
-
-[ui_config]
-ui_index_html_folder = "${UI_DIR}/dist"
-HSMEOF
-
 env \
     PATH="${PATH}" \
     LD_LIBRARY_PATH="${_LD}" \
@@ -207,7 +185,18 @@ env \
     SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
     RUST_LOG="cosmian_kms_server=info,cosmian_kms_server_database=info" \
     "${kms_bin}" \
-    --config "${KMS_CONF_FILE}" \
+    --default-username admin \
+    --vendor-identification test_vendor \
+    --database-type sqlite \
+    --sqlite-path "${SQLITE_DIR}" \
+    --clear-database \
+    --hostname "127.0.0.1" \
+    --port 9998 \
+    --hsm-model softhsm2 \
+    --hsm-admin admin \
+    --hsm-slot "${SOFTHSM2_HSM_SLOT_ID}" \
+    --hsm-password "${HSM_USER_PASSWORD}" \
+    --ui-index-html-folder "${UI_DIR}/dist" \
     >"${KMS_LOG}" 2>&1 &
 KMS_PID=$!
 

@@ -123,6 +123,7 @@ previously-unknown parse error for those optional vectors.
 
 ### 🐛 Bug Fixes
 
+- **CI**: Fix `test_ui.sh` KMS server crash on startup when SoftHSM2 HSM is configured — replace TOML config file with CLI flags, matching the proven approach from `test_hsm_softhsm2.sh`.
 - **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` (fixes #821); both were incorrectly hidden with `#[clap(hide = true)]`.
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
