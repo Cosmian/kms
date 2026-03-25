@@ -37,26 +37,32 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 ### Cargo aliases (`.cargo/config.toml`)
 
-| Alias           | Expands to                                                       |
-| --------------- | ---------------------------------------------------------------- |
-| `format`        | `fmt --all -- --check`                                           |
-| `build-all`     | `build --workspace --all-targets --all-features --bins`          |
-| `test-fips`     | `test --lib --workspace`                                         |
-| `test-non-fips` | `test --lib --workspace --features non-fips`                     |
-| `clippy-all`    | `clippy --workspace --all-targets --all-features -- -D warnings` |
+| Alias | Expands to |
+|---|---|
+| `format` | `fmt --all -- --check` |
+| `build-all` | `build --workspace --all-targets --all-features --bins` |
+| `test-fips` | `test --lib --workspace` |
+| `test-non-fips` | `test --lib --workspace --features non-fips` |
+| `clippy-all` | `clippy --workspace --all-targets --all-features -- -D warnings` |
 
 ### Database test environment
 
 Start backends with `docker compose up -d`, then set:
 
-| Variable           | Value                                     |
-| ------------------ | ----------------------------------------- |
+| Variable | Value |
+|---|---|
 | `KMS_POSTGRES_URL` | `postgresql://kms:kms@127.0.0.1:5432/kms` |
-| `KMS_MYSQL_URL`    | `mysql://kms:kms@localhost:3306/kms`      |
-| `KMS_SQLITE_PATH`  | `data/shared`                             |
+| `KMS_MYSQL_URL` | `mysql://kms:kms@localhost:3306/kms` |
+| `KMS_SQLITE_PATH` | `data/shared` |
 
 > MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
+
+### Pre-commit hooks
+
+Do not ever commit without fixing pre-commit hook errors. If the hooks are failing, investigate and fix the underlying issue instead of bypassing them. Do not use `git commit --no-verify` or similar options to skip hooks. The hooks are there to maintain code quality and consistency, and bypassing them can lead to issues in the codebase. Always address the root cause of any hook failures before committing your changes.
+
+Do not use either SKIP environment variable to bypass pre-commit hooks.
 
 ---
 
@@ -116,10 +122,12 @@ crate/server/src/core/kms/mod.rs              — KMS struct (params, database, 
 
 Enterprise routes:
 
-- `crate/server/src/routes/aws_xks/` — AWS XKS
+- `crate/server/src/routes/aws_xks/`   — AWS XKS
 - `crate/server/src/routes/azure_ekm/` — Azure EKM
 - `crate/server/src/routes/google_cse/` — Google CSE
-- `crate/server/src/routes/ms_dke/` — Microsoft DKE
+- `crate/server/src/routes/ms_dke/`    — Microsoft DKE
+
+You must always verify that changes related to KMIP protocol are compliant with KMIP specifications (HTML files found in crate/kmip/src)
 
 ---
 
@@ -127,34 +135,34 @@ Enterprise routes:
 
 When you need to change something, start here:
 
-| Intent                      | File(s)                                           |
-| --------------------------- | ------------------------------------------------- |
+| Intent | File(s) |
+|---|---|
 | Add/change a KMIP operation | `crate/server/src/core/operations/<operation>.rs` |
-| KMIP operation dispatcher   | `crate/server/src/core/operations/dispatch.rs`    |
-| KMS struct definition       | `crate/server/src/core/kms/mod.rs`                |
-| Server config & CLI flags   | `crate/server/src/config/`                        |
-| Server startup              | `crate/server/src/start_kms_server.rs`            |
-| OpenSSL provider init       | `crate/server/src/openssl_providers.rs`           |
-| HTTP routes                 | `crate/server/src/routes/`                        |
-| Middlewares (auth, logging) | `crate/server/src/middlewares/`                   |
-| KMIP protocol types         | `crate/kmip/src/`                                 |
-| Crypto primitives           | `crate/crypto/src/`                               |
-| OpenSSL build script        | `crate/crypto/build.rs`                           |
-| DB backend implementations  | `crate/server_database/src/`                      |
-| CLI commands                | `crate/clients/ckms/src/`                         |
-| WASM bindings               | `crate/wasm/src/`                                 |
-| Web UI source               | `ui/src/`                                         |
-| E2E tests (Playwright)      | `ui/tests/e2e/`                                   |
-| E2E test helpers            | `ui/tests/e2e/helpers.ts`                         |
+| KMIP operation dispatcher | `crate/server/src/core/operations/dispatch.rs` |
+| KMS struct definition | `crate/server/src/core/kms/mod.rs` |
+| Server config & CLI flags | `crate/server/src/config/` |
+| Server startup | `crate/server/src/start_kms_server.rs` |
+| OpenSSL provider init | `crate/server/src/openssl_providers.rs` |
+| HTTP routes | `crate/server/src/routes/` |
+| Middlewares (auth, logging) | `crate/server/src/middlewares/` |
+| KMIP protocol types | `crate/kmip/src/` |
+| Crypto primitives | `crate/crypto/src/` |
+| OpenSSL build script | `crate/crypto/build.rs` |
+| DB backend implementations | `crate/server_database/src/` |
+| CLI commands | `crate/clients/ckms/src/` |
+| WASM bindings | `crate/wasm/src/` |
+| Web UI source | `ui/src/` |
+| E2E tests (Playwright) | `ui/tests/e2e/` |
+| E2E test helpers | `ui/tests/e2e/helpers.ts` |
 
 ---
 
 ## 5. Feature flags
 
-| Flag            | Default | Effect                                                                     |
-| --------------- | ------- | -------------------------------------------------------------------------- |
-| _(none / fips)_ | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider        |
-| `non-fips`      | off     | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
+| Flag | Default | Effect |
+|---|---|---|
+| *(none / fips)* | **on** | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider |
+| `non-fips` | off | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
 
 Use `--features non-fips` to enable all non-approved algorithms.
 
@@ -189,23 +197,23 @@ bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] CO
 
 ### Test types (`nix.sh test <type>`)
 
-| Type            | FIPS?  | Script                | Notes                                |
-| --------------- | ------ | --------------------- | ------------------------------------ |
-| `sqlite`        | yes    | `test_sqlite.sh`      | Default DB backend                   |
-| `psql`          | yes    | `test_psql.sh`        | Requires PostgreSQL                  |
-| `mysql`         | yes    | `test_mysql.sh`       | Disabled in CI                       |
-| `percona`       | yes    | `test_percona.sh`     | Percona XtraDB                       |
-| `mariadb`       | yes    | `test_maria.sh`       | MariaDB                              |
-| `wasm`          | yes    | `test_wasm.sh`        | WASM package build + tests           |
-| `google_cse`    | yes    | `test_google_cse.sh`  | Requires OAuth creds                 |
-| `gcp_cmek`      | yes    | `test_gcp_cmek.sh`    | GCP CMEK wrapping                    |
-| `otel_export`   | yes    | `test_otel_export.sh` | OpenTelemetry metrics                |
-| `hsm [backend]` | yes    | `test_hsm_*.sh`       | softhsm2 / utimaco / proteccio / all |
-| `redis`         | **no** | `test_redis.sh`       | Redis-findex (non-FIPS only)         |
-| `pykmip`        | **no** | `test_pykmip.sh`      | PyKMIP + Synology DSM                |
-| `aws_xks`       | **no** | `aws_xks_test.sh`     | AWS XKS                              |
-| `azure_ekm`     | **no** | `azure_ekm_test.sh`   | Azure EKM                            |
-| `ui`            | **no** | `test_ui.sh`          | Playwright E2E (see §8)              |
+| Type | FIPS? | Script | Notes |
+|---|---|---|---|
+| `sqlite` | yes | `test_sqlite.sh` | Default DB backend |
+| `psql` | yes | `test_psql.sh` | Requires PostgreSQL |
+| `mysql` | yes | `test_mysql.sh` | Disabled in CI |
+| `percona` | yes | `test_percona.sh` | Percona XtraDB |
+| `mariadb` | yes | `test_maria.sh` | MariaDB |
+| `wasm` | yes | `test_wasm.sh` | WASM package build + tests |
+| `google_cse` | yes | `test_google_cse.sh` | Requires OAuth creds |
+| `gcp_cmek` | yes | `test_gcp_cmek.sh` | GCP CMEK wrapping |
+| `otel_export` | yes | `test_otel_export.sh` | OpenTelemetry metrics |
+| `hsm [backend]` | yes | `test_hsm_*.sh` | softhsm2 / utimaco / proteccio / all |
+| `redis` | **no** | `test_redis.sh` | Redis-findex (non-FIPS only) |
+| `pykmip` | **no** | `test_pykmip.sh` | PyKMIP + Synology DSM |
+| `aws_xks` | **no** | `aws_xks_test.sh` | AWS XKS |
+| `azure_ekm` | **no** | `azure_ekm_test.sh` | Azure EKM |
+| `ui` | **no** | `test_ui.sh` | Playwright E2E (see §8) |
 
 ### Package types (`nix.sh package [type]`)
 
@@ -219,14 +227,14 @@ bash .github/scripts/nix.sh docker --variant non-fips --load --test
 
 ### Workflow files
 
-| Workflow                     | Purpose                                                              |
-| ---------------------------- | -------------------------------------------------------------------- |
+| Workflow | Purpose |
+|---|---|
 | `main.yml` → `main_base.yml` | Push/PR trigger; runs clippy, cargo-deny, cargo-test, test_all, docs |
-| `test_all.yml`               | Nix-based test matrix: 15 types × 2 variants + HSM matrix            |
-| `packaging.yml`              | Multi-platform packaging (Linux/ARM/macOS), GPG-signed               |
-| `packaging-docker.yml`       | Docker image builds (fips + non-fips)                                |
-| `test_windows.yml`           | Windows-only build + test                                            |
-| `build_windows.yml`          | Windows server + UI builder                                          |
+| `test_all.yml` | Nix-based test matrix: 15 types × 2 variants + HSM matrix |
+| `packaging.yml` | Multi-platform packaging (Linux/ARM/macOS), GPG-signed |
+| `packaging-docker.yml` | Docker image builds (fips + non-fips) |
+| `test_windows.yml` | Windows-only build + test |
+| `build_windows.yml` | Windows server + UI builder |
 
 ---
 
@@ -380,11 +388,11 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
 ## 14. Common issues
 
-| Symptom                                         | Cause                                         | Fix                                                                                                          |
-| ----------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Usage mask errors (`Encrypt`, `Sign` denied)    | Key missing required `CryptographicUsageMask` | Check the object's attributes                                                                                |
-| `legacy.so` / `fips.so` not found               | `OPENSSL_MODULES` not set                     | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
-| Stale Nix vendor hashes                         | `Cargo.lock` or version changed               | Regenerate all four hash files (see §13)                                                                     |
-| `gh` command hangs                              | Interactive pager opened                      | Use `GH_PAGER=cat gh ...`                                                                                    |
-| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright              | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
-| TypeScript unused-variable error in UI tests    | `noUnusedLocals: true` in tsconfig            | Remove the variable or prefix with `_`                                                                       |
+| Symptom | Cause | Fix |
+|---|---|---|
+| Usage mask errors (`Encrypt`, `Sign` denied) | Key missing required `CryptographicUsageMask` | Check the object's attributes |
+| `legacy.so` / `fips.so` not found | `OPENSSL_MODULES` not set | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
+| Stale Nix vendor hashes | `Cargo.lock` or version changed | Regenerate all four hash files (see §13) |
+| `gh` command hangs | Interactive pager opened | Use `GH_PAGER=cat gh ...` |
+| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)` |
+| TypeScript unused-variable error in UI tests | `noUnusedLocals: true` in tsconfig | Remove the variable or prefix with `_` |

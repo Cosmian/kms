@@ -2,7 +2,7 @@
 set -euo pipefail
 set -x
 
-# SoftHSM2-only tests (Linux only)
+# SoftHSM2-only tests (Linux and macOS)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/common.sh"
 
@@ -14,10 +14,12 @@ echo "========================================="
 echo "Running SoftHSM2 HSM tests"
 echo "========================================="
 
-[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
-  echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
-  exit 1
-}
+# On macOS use DYLD_LIBRARY_PATH; on Linux use LD_LIBRARY_PATH
+if [ "$(uname)" = "Darwin" ]; then
+  _lib_path_var="DYLD_LIBRARY_PATH"
+else
+  _lib_path_var="LD_LIBRARY_PATH"
+fi
 
 export HSM_USER_PASSWORD="12345678"
 
@@ -54,6 +56,7 @@ fi
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -68,6 +71,7 @@ echo "SoftHSM2 KMS server tests completed successfully."
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -101,6 +105,7 @@ test_pkcs11tool_no_warnings() {
   fi
   env PATH="$PATH" \
     LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
     cargo build "${build_args[@]}"
 
   local cargo_target_dir
@@ -113,7 +118,10 @@ test_pkcs11tool_no_warnings() {
   local kms_pid=""
 
   _cleanup_pkcs11_test() {
-    [ -n "${kms_pid:-}" ] && { kill "$kms_pid" 2>/dev/null || true; wait "$kms_pid" 2>/dev/null || true; }
+    [ -n "${kms_pid:-}" ] && {
+      kill "$kms_pid" 2>/dev/null || true
+      wait "$kms_pid" 2>/dev/null || true
+    }
     rm -rf "${tmp_dir:-}"
   }
   trap _cleanup_pkcs11_test EXIT
@@ -132,17 +140,18 @@ test_pkcs11tool_no_warnings() {
   # SOFTHSM2_CONF to locate the token database.
   env PATH="$PATH" \
     LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
     SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$kms_bin" \
-      --database-type sqlite \
-      --sqlite-path "$sqlite_path" \
-      --port "$kms_port" \
-      --hostname "127.0.0.1" \
-      --hsm-model softhsm2 \
-      --hsm-admin admin \
-      --hsm-slot "$SOFTHSM2_HSM_SLOT_ID" \
-      --hsm-password "$HSM_USER_PASSWORD" \
+    --database-type sqlite \
+    --sqlite-path "$sqlite_path" \
+    --port "$kms_port" \
+    --hostname "127.0.0.1" \
+    --hsm-model softhsm2 \
+    --hsm-admin admin \
+    --hsm-slot "$SOFTHSM2_HSM_SLOT_ID" \
+    --hsm-password "$HSM_USER_PASSWORD" \
     >"$tmp_dir/kms.log" 2>&1 &
   kms_pid=$!
 
@@ -154,14 +163,14 @@ test_pkcs11tool_no_warnings() {
   # No --sensitive flag: SoftHSM2 supports CKA_VALUE reads and we want clean output.
   env PATH="$PATH" SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$ckms_bin" "${base_args[@]}" sym keys create \
-      --algorithm aes \
-      --number-of-bits 256 \
-      "$aes_uid"
+    --algorithm aes \
+    --number-of-bits 256 \
+    "$aes_uid"
 
   env PATH="$PATH" SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$ckms_bin" "${base_args[@]}" rsa keys create \
-      --size_in_bits 2048 \
-      "$rsa_uid"
+    --size_in_bits 2048 \
+    "$rsa_uid"
 
   kill "$kms_pid" 2>/dev/null || true
   wait "$kms_pid" 2>/dev/null || true
@@ -173,9 +182,9 @@ test_pkcs11tool_no_warnings() {
   local pkcs11_output pkcs11_rc=0
   set +x
   pkcs11_output=$(
-    env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
-    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
-    pkcs11-tool \
+    env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+      SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+      pkcs11-tool \
       --module "$SOFTHSM2_PKCS11_LIB_PATH" \
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$SOFTHSM2_HSM_SLOT_ID" \
@@ -200,15 +209,15 @@ test_pkcs11tool_no_warnings() {
 
   # Clean up test keys from SoftHSM2
   set +x
-  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type secrkey --label "$aes_label" 2>/dev/null || true
-  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type privkey --label "$rsa_label" 2>/dev/null || true
-  env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" pkcs11-tool --module "$SOFTHSM2_PKCS11_LIB_PATH" \
     --login --pin "$HSM_USER_PASSWORD" --slot "$SOFTHSM2_HSM_SLOT_ID" \
     --delete-object --type pubkey --label "${rsa_label}_pk" 2>/dev/null || true

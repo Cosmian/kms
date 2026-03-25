@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [5.18.0] - 2026-04-XX
 
+### Bug Fixes
+
+- **UI E2E**: Fix `test_ui.sh` KMS startup: use `--config` TOML (no `ui_index_html_folder`) to avoid macOS `/etc/cosmian/kms.toml` conflict and Linux CI actix-files crash; remove `PLAYWRIGHT_KMS_HAS_HSM` guard since SoftHSM2 is always required; replace `ps -p` with `kill -0` in `kms_wait_ready` to fix false dead-process detection in pure Nix shell on macOS (where `/bin` is not in PATH).
+
 ### 🚀 Features
 
 #### PQC UI Enhancements & Hash Operation
@@ -123,6 +127,7 @@ previously-unknown parse error for those optional vectors.
 
 ### 🐛 Bug Fixes
 
+- **CI**: Fix `test_ui.sh` KMS server crash on startup when SoftHSM2 HSM is configured — replace TOML config file with CLI flags, matching the proven approach from `test_hsm_softhsm2.sh`.
 - **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` (fixes #821); both were incorrectly hidden with `#[clap(hide = true)]`.
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
@@ -188,6 +193,13 @@ previously-unknown parse error for those optional vectors.
   server-side through the KMS crypto oracle so the HSM key material is never exported
   ([#762](https://github.com/Cosmian/kms/issues/762))
 - Fix AWS BYOK silent when exporting a previously wrapped key.
+
+#### Fix Locate for mixed HSM + software key environments
+
+- **Server**: `HsmStore.find()` now returns HSM keys to all authenticated users for read-only listing (previously required HSM admin), and populates basic attributes (algorithm, length, object type) from HSM metadata so Locate and `/access/owned` display key info without a separate `GetAttributes` round-trip.
+- **UI**: Locate page now correctly merges HSM keys (`hsm::` prefix) into results even when they are absent from `/access/owned`; HSM keys default to "Active" state during enrichment.
+- **UI Locate**: Fix "State: Unknown" shown for all objects when clicking "Search Objects" with no filters — state is now resolved from `/access/owned` (software keys) and defaults to "Active" for HSM keys without invoking per-object `GetAttributes`.
+- **UI E2E**: New `locate-hsm.spec.ts` Playwright integration tests run against a real SoftHSM2 KMS; `test_ui.sh` (via `nix.sh test ui`) wires up the full stack (WASM build → KMS server → SoftHSM2 token → pre-created keys → Vite preview → Playwright) on both Linux and macOS. `test_ui.sh` now requires `softhsm2-util` to be installed and errors out with a clear message if it is missing.
 
 ### 🧪 Testing
 

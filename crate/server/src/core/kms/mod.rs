@@ -13,15 +13,17 @@ use cosmian_kms_server_database::{
     },
 };
 use cosmian_logger::trace;
+// Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64 and macOS).
+#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -33,14 +35,14 @@ const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 // Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
 use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
 
 /// Macro to instantiate an HSM with support for environment variable override
 /// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 #[allow(unused_macros)]
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
@@ -208,9 +210,12 @@ impl KMS {
         let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
             None
         } else {
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            kms_bail!("Fatal: HSMs are only supported on Linux x86_64");
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            #[cfg(not(any(
+                all(target_os = "linux", target_arch = "x86_64"),
+                target_os = "macos"
+            )))]
+            kms_bail!("Fatal: HSMs are only supported on Linux x86_64 and macOS");
+            #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
             {
                 // Attempt reuse first (used by test harness to allow multiple servers sharing one physical HSM).
                 if let Some(existing) = GLOBAL_HSM.get() {
@@ -220,6 +225,7 @@ impl KMS {
                     KmsError::InvalidRequest("The HSM model is not specified".to_owned())
                 })?;
                 match hsm_model.as_str() {
+                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                     "crypt2pay" => instantiate_hsm_with_env!(
                         Crypt2pay,
                         "CRYPT2PAY_PKCS11_LIB",
@@ -227,6 +233,7 @@ impl KMS {
                         "Crypt2pay",
                         server_params.slot_passwords.clone()
                     ),
+                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                     "proteccio" => instantiate_hsm_with_env!(
                         Proteccio,
                         "PROTECCIO_PKCS11_LIB",
@@ -234,6 +241,7 @@ impl KMS {
                         "Proteccio",
                         server_params.slot_passwords.clone()
                     ),
+                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                     "utimaco" => instantiate_hsm_with_env!(
                         Utimaco,
                         "UTIMACO_PKCS11_LIB",
@@ -255,6 +263,7 @@ impl KMS {
                         "Smartcardhsm",
                         server_params.slot_passwords.clone()
                     ),
+                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                     "other" => instantiate_hsm_with_env!(
                         Softhsm2,
                         "OTHER_HSM_PKCS11_LIB",
