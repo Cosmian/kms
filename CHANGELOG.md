@@ -4,13 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [5.18.0] - 2026-04-XX
 
-### Bug Fixes
-
-- **UI E2E**: Fix `test_ui.sh` KMS startup: use `--config` TOML (no `ui_index_html_folder`) to avoid macOS `/etc/cosmian/kms.toml` conflict and Linux CI actix-files crash; remove `PLAYWRIGHT_KMS_HAS_HSM` guard since SoftHSM2 is always required; replace `ps -p` with `kill -0` in `kms_wait_ready` to fix false dead-process detection in pure Nix shell on macOS (where `/bin` is not in PATH).
-
 ### 🚀 Features
 
-- **CLI bench**: Added `--load` flag for concurrent load testing (throughput, p50/p95/p99 latency across configurable concurrency levels) and `--format html` for gnuplot SVG charts written to `target/criterion/load-report/index.html`.
+#### PEM client certificate support in ckms CLI wizard
+
+The `ckms configure` wizard now exposes PEM client certificate authentication in addition to
+PKCS#12. Users can select "Client certificate (PEM)" or "Both (PEM cert + token)" and provide
+the certificate (`.crt`/`.pem`) and private key (`.key`/`.pem`) paths separately. The
+`ssl_client_pem_cert_path` and `ssl_client_pem_key_path` config fields were already supported by
+the HTTP client but were not reachable through the interactive wizard (fixes #804).
 
 #### PQC UI Enhancements & Hash Operation
 
@@ -129,7 +131,6 @@ previously-unknown parse error for those optional vectors.
 
 ### 🐛 Bug Fixes
 
-- **CI**: Fix `test_ui.sh` KMS server crash on startup when SoftHSM2 HSM is configured — replace TOML config file with CLI flags, matching the proven approach from `test_hsm_softhsm2.sh`.
 - **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` (fixes #821); both were incorrectly hidden with `#[clap(hide = true)]`.
 - **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779))
 - **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
@@ -141,7 +142,6 @@ previously-unknown parse error for those optional vectors.
   `OperationFailure` on server errors; reaching the success path without an exception is sufficient.
   Also fixed `test_pykmip.sh` `set -e` preventing simulation output from being visible when the
   script fails. Fixes CI failure for `Test on pykmip - non-fips`.
-
 - **`OperationPolicyName` round-trip preservation (issue #796)**: KMIP 1.x clients (e.g. Synology
   DSM 7.2.2) include the `OperationPolicyName` attribute in Register/Create requests per the KMIP
   1.0 spec section 3.18. This attribute was deprecated in KMIP 1.3 and removed in KMIP 2.0+. The
@@ -152,7 +152,6 @@ previously-unknown parse error for those optional vectors.
   when sent via `AddAttribute` to avoid creating a duplicate entry on top of the one already stored
   during Create/Register.
   Fixes ([#796](https://github.com/Cosmian/kms/issues/796))
-
 - **KMIP 1.x → 2.1 attribute conversion fixes**: Several KMIP 1.x attributes were incorrectly
   lost or corrupted during the KMIP 1.x → 2.1 internal conversion:
     - `X509CertificateIdentifier`, `X509CertificateIssuer`, `X509CertificateSubject`, `Digest`,
@@ -166,13 +165,11 @@ previously-unknown parse error for those optional vectors.
     1.x client retrieves them via `GetAttributes`.
     - `StorageStatusMask` in the single-attribute path no longer corrupts the `Comment` attribute
     slot; it is preserved as a `VendorAttribute` with a `WARN`.
-
 - **`TransparentECPrivateKey`/`TransparentECPublicKey` → KMIP 1.4 conversion**: The
   `TryFrom<kmip_2_1::KeyFormatType> for kmip_1_4::KeyFormatType` conversion previously returned
   an error for these key format types even though KMIP 1.4 defines them with the same numeric
   values (0x14/0x15). They are now correctly converted, enabling KMIP 1.4 clients to retrieve
   EC keys whose format was stored internally by the server using the KMIP 2.1 canonical type.
-
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
