@@ -31,6 +31,7 @@ type GlobalWithProcess = typeof globalThis & {
 const _env = (globalThis as GlobalWithProcess).process?.env ?? {};
 
 const HSM_KEY_COUNT = parseInt(_env.PLAYWRIGHT_HSM_KEY_COUNT ?? "2", 10);
+const HSM_AVAILABLE = HSM_KEY_COUNT > 0;
 
 /**
  * Walk every page of the Ant Design Table and count HSM / Unknown rows.
@@ -83,6 +84,8 @@ test.describe("Locate – software keys alongside HSM keys", () => {
 });
 
 test.describe("Locate – HSM keys (real SoftHSM2)", () => {
+    test.skip(!HSM_AVAILABLE, "SoftHSM2 not available on this platform – skipping HSM tests");
+
     test("SymmetricKey Locate includes HSM keys with Active state", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");

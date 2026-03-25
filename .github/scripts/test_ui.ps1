@@ -219,12 +219,16 @@ try {
     Push-Location $UiDir
     $env:CI = "true"
     $env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:$PreviewPort"
+    # SoftHSM2 is not available on Windows; signal to the specs that no HSM
+    # keys are pre-created so the HSM-specific tests are skipped.
+    $env:PLAYWRIGHT_HSM_KEY_COUNT = "0"
     try {
         Invoke-Checked $pnpmCmd @("run", "test:e2e")
     }
     finally {
         Remove-Item Env:CI -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue
+        Remove-Item Env:PLAYWRIGHT_HSM_KEY_COUNT -ErrorAction SilentlyContinue
         Pop-Location
     }
 }
