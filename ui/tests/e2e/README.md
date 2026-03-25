@@ -5,16 +5,28 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 ## FIPS mode
 
 Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
-against a FIPS-mode KMS server.  Three spec files are automatically skipped in
+against a FIPS-mode KMS server. Three spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
-| Skipped spec | Reason |
-|---|---|
-| `covercrypt-flow` | Covercrypt is a non-FIPS algorithm |
-| `pqc-key-flow` | ML-KEM, ML-DSA, SLH-DSA are non-FIPS |
+| Skipped spec      | Reason                                            |
+| ----------------- | ------------------------------------------------- |
+| `covercrypt-flow` | Covercrypt is a non-FIPS algorithm                |
+| `pqc-key-flow`    | ML-KEM, ML-DSA, SLH-DSA are non-FIPS              |
 | `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
 
-All remaining specs (symmetric, RSA, EC/P-256, certificates, MAC, locate,
+In addition, specific individual tests inside otherwise-FIPS-compatible spec files
+are skipped because the underlying algorithm is not FIPS 140-3 approved:
+
+| Spec                 | Test                                             | Reason                                       |
+| -------------------- | ------------------------------------------------ | -------------------------------------------- |
+| `ec-encrypt-sign`    | ECIES encrypt then decrypt preserves plaintext   | ECIES KDF is not FIPS-approved               |
+| `ec-encrypt-sign`    | encrypt with wrong public key then decrypt fails | ECIES KDF is not FIPS-approved               |
+| `rsa-export-options` | wrap sym key with RSA PKCS v1.5                  | RSA PKCS1v15 encryption is not FIPS-approved |
+
+These skips are controlled by the `PLAYWRIGHT_FIPS_MODE=true` environment variable,
+which `test_ui.sh` injects automatically when run with `--variant fips`.
+
+All remaining specs (symmetric, RSA, EC/P-256 sign/verify, certificates, MAC, locate,
 attributes, access-rights, cloud integrations, …) run unchanged in FIPS mode.
 
 ## Symmetric Keys
@@ -165,8 +177,8 @@ graph LR
 ```
 
 Validates that HSM keys (created with the `hsm::` prefix) appear alongside
-software keys in Locate results.  HSM keys always show `Active` state and no
-`Unknown` state is present.  The `PLAYWRIGHT_HSM_KEY_COUNT` HSM keys
+software keys in Locate results. HSM keys always show `Active` state and no
+`Unknown` state is present. The `PLAYWRIGHT_HSM_KEY_COUNT` HSM keys
 pre-created by `test_ui.sh` are discovered through table pagination.
 The inner `Locate – HSM keys (real SoftHSM2)` suite is skipped automatically
 when `PLAYWRIGHT_HSM_KEY_COUNT` is 0 (SoftHSM2 not available).
@@ -184,7 +196,7 @@ graph LR
     D -->|Wrong MAC| F[invalid]
 ```
 
-Covers HMAC-SHA256 and HMAC-SHA1 (issue #786).  Tests include:
+Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 
 - Navigation smoke tests for the compute and verify pages
 - HMAC-SHA256 compute returning `MAC (hex): <hex>`
@@ -195,7 +207,7 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786).  Tests include:
 
 ## CoverCrypt
 
-*Skipped in FIPS mode.*
+_Skipped in FIPS mode._
 
 ### covercrypt-flow
 
@@ -209,7 +221,7 @@ graph LR
 
 ## Post-Quantum Cryptography (PQC)
 
-*Skipped in FIPS mode.*
+_Skipped in FIPS mode._
 
 ### pqc-key-flow
 

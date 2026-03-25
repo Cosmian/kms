@@ -25,6 +25,9 @@ const PLAINTEXT = "Hello Cosmian KMS – EC E2E roundtrip test!";
 
 test.describe("EC encrypt → decrypt roundtrip", () => {
     test("ECIES encrypt then decrypt preserves plaintext", async ({ page }) => {
+        // ECIES uses a non-FIPS-approved KDF; the FIPS OpenSSL provider
+        // returns an error for these operations.
+        test.skip(process.env.PLAYWRIGHT_FIPS_MODE === "true", "ECIES is not available in FIPS mode");
         const { privKeyId, pubKeyId } = await createEcKeyPair(page);
 
         // ── Encrypt with public key ─────────────────────────────────────
@@ -54,6 +57,9 @@ test.describe("EC encrypt → decrypt roundtrip", () => {
     });
 
     test("encrypt with wrong public key then decrypt fails", async ({ page }) => {
+        // ECIES uses a non-FIPS-approved KDF; the FIPS OpenSSL provider
+        // returns an error for these operations.
+        test.skip(process.env.PLAYWRIGHT_FIPS_MODE === "true", "ECIES is not available in FIPS mode");
         const { pubKeyId: pub1 } = await createEcKeyPair(page);
         const { privKeyId: priv2 } = await createEcKeyPair(page);
 

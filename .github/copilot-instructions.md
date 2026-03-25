@@ -339,13 +339,13 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 
 ## 11. Updating CHANGELOG.md
 
-For each change, compare the current git branch with the upstream branch and add
-a **one-line summary** in `CHANGELOG.md` in the top section (next release). Use
-the formatting style of existing entries. Example:
+For each change, add a **one-line summary** in `CHANGELOG.md` in the top section (next release), except if the change is already described in it. Use the formatting style of existing entries. Example:
 
 ```markdown
 - **UI E2E**: Fix Playwright select helpers to use regex assertions for exact label matching.
 ```
+
+In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
 
 ---
 

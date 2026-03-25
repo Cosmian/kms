@@ -204,7 +204,8 @@ run_bench_version() {
   docker run -d --rm \
     --name "${CONTAINER_NAME}" \
     -p "${HOST_PORT}:9998" \
-    "${image}" >/dev/null || {
+    "${image}" \
+    --database-type sqlite --sqlite-path /var/lib/cosmian-kms >/dev/null || {
     cat >"${out_file}" <<EOF
 # Benchmarks — KMS ${version} (Docker)
 
@@ -354,7 +355,8 @@ if [[ -n "${COMPARE_SPEC}" ]]; then
   docker run -d --rm \
     --name "${CONTAINER_NAME}" \
     -p "${HOST_PORT}:9998" \
-    "${IMAGE_REPO}:${baseline_tag}" >/dev/null
+    "${IMAGE_REPO}:${baseline_tag}" \
+    --database-type sqlite --sqlite-path /var/lib/cosmian-kms >/dev/null
   if ! wait_kms_ready "${IMAGE_REPO}:${baseline_tag}"; then
     echo "ERROR: baseline container did not become ready"
     exit 1
@@ -381,7 +383,8 @@ if [[ -n "${COMPARE_SPEC}" ]]; then
   docker run -d --rm \
     --name "${CONTAINER_NAME}" \
     -p "${HOST_PORT}:9998" \
-    "${IMAGE_REPO}:${compare_tag}" >/dev/null
+    "${IMAGE_REPO}:${compare_tag}" \
+    --database-type sqlite --sqlite-path /var/lib/cosmian-kms >/dev/null
   if ! wait_kms_ready "${IMAGE_REPO}:${compare_tag}"; then
     echo "ERROR: compare container did not become ready"
     rm -f "${json_baseline}"

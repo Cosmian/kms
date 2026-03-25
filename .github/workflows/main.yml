@@ -8,11 +8,11 @@ on:
       - develop
       - main
     tags:
-      - '**'
+      - "**"
   workflow_dispatch:
   pull_request:
   schedule:
-    - cron: 0 0 * * *   # Daily at midnight
+    - cron: 0 0 * * * # Daily at midnight
 
 jobs:
   main:
