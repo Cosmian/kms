@@ -197,13 +197,12 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
         http.ssl_client_pkcs12_path.is_some(),
         http.access_token.is_some(),
     ) {
-        (false, false, false) => 0,
         (false, false, true) => 1,
         (true, false, false) => 2,
         (false, true, false) => 3,
         (true, false, true) => 4,
         (false, true, true) => 5,
-        _ => 0,
+        _ => 0, // None, or ambiguous state (both PEM and PKCS#12 set)
     };
     let auth_methods = vec![
         "None",
