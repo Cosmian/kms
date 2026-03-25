@@ -2,13 +2,13 @@
  * Locate E2E tests for mixed HSM + software key scenarios.
  *
  * Covers:
- *   - Software-only keys appear when no HSM is configured (regression baseline)
- *   - HSM keys (hsm:: prefix) appear alongside software keys in real Locate results
+ *   - HSM keys (hsm:: prefix) appear alongside software keys in Locate results
  *   - HSM keys always show Active state; no Unknown state appears
  *   - State filtering includes HSM keys correctly
  *
- * The HSM tests target a real KMS server backed by SoftHSM2 and require:
- *   PLAYWRIGHT_KMS_HAS_HSM=true   set by test_ui.sh when softhsm2-util is available
+ * The tests require a KMS server backed by SoftHSM2 (always provided by
+ * test_ui.sh, which errors out if softhsm2-util is not installed) and:
+ *   PLAYWRIGHT_KMS_HAS_HSM=true   always set by test_ui.sh
  *   PLAYWRIGHT_HSM_KEY_COUNT      number of HSM keys created beforehand (default 2)
  *
  * Note: HSM keys do NOT support KMIP tags.  The HsmStore silently ignores tags
@@ -16,11 +16,12 @@
  * tests use non-tag criteria (ObjectType, State) to Locate keys, and iterate
  * through all table pages to surface HSM keys that may sort far down.
  *
- * The test_ui.sh script (when SoftHSM2 is present):
- *   1. Starts a fresh KMS server backed by SoftHSM2 on http://127.0.0.1:9998
- *   2. Pre-creates HSM_KEY_COUNT HSM AES-256 keys
- *   3. Starts a Vite preview server on http://127.0.0.1:5173
- *   4. Runs all E2E specs (HSM tests gate on PLAYWRIGHT_KMS_HAS_HSM)
+ * The test_ui.sh script:
+ *   1. Errors out if softhsm2-util is not installed
+ *   2. Starts a fresh KMS server backed by SoftHSM2 on http://127.0.0.1:9998
+ *   3. Pre-creates HSM_KEY_COUNT HSM AES-256 keys
+ *   4. Starts a Vite preview server on http://127.0.0.1:5173
+ *   5. Runs all E2E specs
  */
 import { expect, test, type Page } from "@playwright/test";
 import { createSymKey, gotoAndWait, selectOptionById, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
@@ -69,22 +70,7 @@ async function collectHsmKeysAcrossPages(page: Page): Promise<{ hsmActive: numbe
     return { hsmActive, unknown };
 }
 
-test.describe("Locate – software keys only (no HSM)", () => {
-    test("locate finds software keys and no hsm:: UIDs", async ({ page }) => {
-        if (_env.PLAYWRIGHT_KMS_HAS_HSM) {
-            test.skip(true, "HSM is configured; hsm:: UIDs are expected in results");
-        }
-        await createSymKey(page);
-        await gotoAndWait(page, "/ui/locate");
-        await selectOptionById(page, "#objectType", "SymmetricKey");
-        const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/object\(s\) located/i);
-        const countMatch = text.match(/(\d+)\s*object/i);
-        expect(countMatch).not.toBeNull();
-        expect(Number.parseInt(countMatch![1], 10)).toBeGreaterThanOrEqual(1);
-        expect(text).not.toContain("hsm::");
-    });
-
+test.describe("Locate – software keys alongside HSM keys", () => {
     test("locate with state Active finds software keys", async ({ page }) => {
         await createSymKey(page);
         await gotoAndWait(page, "/ui/locate");
@@ -97,13 +83,7 @@ test.describe("Locate – software keys only (no HSM)", () => {
     });
 });
 
-test.describe("Locate – mixed HSM + software keys (real SoftHSM2)", () => {
-    test.beforeEach(() => {
-        if (!_env.PLAYWRIGHT_KMS_HAS_HSM) {
-            test.skip(true, "PLAYWRIGHT_KMS_HAS_HSM not set; skipping real SoftHSM2 HSM tests");
-        }
-    });
-
+test.describe("Locate – HSM keys (real SoftHSM2)", () => {
     test("SymmetricKey Locate includes HSM keys with Active state", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
         await selectOptionById(page, "#objectType", "SymmetricKey");

@@ -42,7 +42,7 @@ ensure_pnpm() {
 }
 
 # ── SoftHSM2 detection ──────────────────────────────────────────────────────
-HAS_HSM=false
+# softhsm2-util is required; abort early with a clear message if not found.
 SOFTHSM2_LIB_DIR=""
 SOFTHSM2_PKCS11_LIB_PATH=""
 SOFTHSM2_HOME=""
@@ -50,54 +50,50 @@ SOFTHSM2_CONF=""
 SOFTHSM2_HSM_SLOT_ID=""
 HSM_USER_PASSWORD="12345678"
 
-if command -v softhsm2-util >/dev/null 2>&1; then
-    HAS_HSM=true
-
-    SOFTHSM2_BIN_PATH="$(command -v softhsm2-util)"
-    SOFTHSM2_PREFIX="$(dirname "$(dirname "${SOFTHSM2_BIN_PATH}")")"
-    if [ -d "${SOFTHSM2_PREFIX}/lib/softhsm" ]; then
-        SOFTHSM2_LIB_DIR="${SOFTHSM2_PREFIX}/lib/softhsm"
-    elif [ -d "${SOFTHSM2_PREFIX}/lib" ]; then
-        SOFTHSM2_LIB_DIR="${SOFTHSM2_PREFIX}/lib"
-    fi
-    SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}/libsofthsm2.so}"
+if ! command -v softhsm2-util >/dev/null 2>&1; then
+    echo "ERROR: softhsm2-util not found. Please install SoftHSM2 before running UI E2E tests." >&2
+    exit 1
 fi
 
+SOFTHSM2_BIN_PATH="$(command -v softhsm2-util)"
+SOFTHSM2_PREFIX="$(dirname "$(dirname "${SOFTHSM2_BIN_PATH}")")"
+if [ -d "${SOFTHSM2_PREFIX}/lib/softhsm" ]; then
+    SOFTHSM2_LIB_DIR="${SOFTHSM2_PREFIX}/lib/softhsm"
+elif [ -d "${SOFTHSM2_PREFIX}/lib" ]; then
+    SOFTHSM2_LIB_DIR="${SOFTHSM2_PREFIX}/lib"
+fi
+SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}/libsofthsm2.so}"
 # Library search paths (needed for cargo build and KMS binary at runtime).
 _LD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${LD_LIBRARY_PATH:-}"
 _DYLD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${DYLD_LIBRARY_PATH:-}"
 
-# ── SoftHSM2 token initialisation (only when available) ─────────────────────
-if [ "${HAS_HSM}" = true ]; then
-    echo "========================================="
-    echo "SoftHSM2 detected – initialising token"
-    echo "========================================="
+# ── SoftHSM2 token initialisation ───────────────────────────────────────────
+echo "========================================="
+echo "SoftHSM2 detected – initialising token"
+echo "========================================="
 
-    export SOFTHSM2_HOME="${REPO_ROOT}/.softhsm2-ui-test"
-    mkdir -p "${SOFTHSM2_HOME}/tokens"
-    export SOFTHSM2_CONF="${SOFTHSM2_HOME}/softhsm2.conf"
-    echo "directories.tokendir = ${SOFTHSM2_HOME}/tokens" >"${SOFTHSM2_CONF}"
+export SOFTHSM2_HOME="${REPO_ROOT}/.softhsm2-ui-test"
+mkdir -p "${SOFTHSM2_HOME}/tokens"
+export SOFTHSM2_CONF="${SOFTHSM2_HOME}/softhsm2.conf"
+echo "directories.tokendir = ${SOFTHSM2_HOME}/tokens" >"${SOFTHSM2_CONF}"
 
-    softhsm2-util --version
+softhsm2-util --version
 
-    INIT_OUT=$(softhsm2-util --init-token --free \
-        --label "ui_hsm_test_token" \
-        --so-pin "${HSM_USER_PASSWORD}" \
-        --pin "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+INIT_OUT=$(softhsm2-util --init-token --free \
+    --label "ui_hsm_test_token" \
+    --so-pin "${HSM_USER_PASSWORD}" \
+    --pin "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
 
-    SOFTHSM2_HSM_SLOT_ID=$(echo "${INIT_OUT}" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
-    if [ -z "${SOFTHSM2_HSM_SLOT_ID:-}" ]; then
-        SOFTHSM2_HSM_SLOT_ID=$(softhsm2-util --show-slots |
-            awk 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && $0 ~ /ui_hsm_test_token/ {print sid; exit}')
-    fi
-    [ -n "${SOFTHSM2_HSM_SLOT_ID:-}" ] || {
-        echo "Error: Could not determine SoftHSM2 slot id." >&2
-        exit 1
-    }
-    echo "==> SoftHSM2 slot id: ${SOFTHSM2_HSM_SLOT_ID}"
-else
-    echo "==> softhsm2-util not found; HSM tests will be skipped."
+SOFTHSM2_HSM_SLOT_ID=$(echo "${INIT_OUT}" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
+if [ -z "${SOFTHSM2_HSM_SLOT_ID:-}" ]; then
+    SOFTHSM2_HSM_SLOT_ID=$(softhsm2-util --show-slots |
+        awk 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && $0 ~ /ui_hsm_test_token/ {print sid; exit}')
 fi
+[ -n "${SOFTHSM2_HSM_SLOT_ID:-}" ] || {
+    echo "Error: Could not determine SoftHSM2 slot id." >&2
+    exit 1
+}
+echo "==> SoftHSM2 slot id: ${SOFTHSM2_HSM_SLOT_ID}"
 
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
 echo "==> Building WASM (non-fips, web target) …"
@@ -181,9 +177,8 @@ fi
 KMS_LOG="${SQLITE_DIR}/kms-server.log"
 KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 
-if [ "${HAS_HSM}" = true ]; then
-    echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
-    cat >"${KMS_CONF_FILE}" <<HSMEOF
+echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
+cat >"${KMS_CONF_FILE}" <<HSMEOF
 default_username = "admin"
 vendor_identification = "test_vendor"
 hsm_model = "softhsm2"
@@ -204,65 +199,38 @@ port = 9998
 ui_index_html_folder = "${UI_DIR}/dist"
 HSMEOF
 
-    env \
-        PATH="${PATH}" \
-        LD_LIBRARY_PATH="${_LD}" \
-        DYLD_LIBRARY_PATH="${_DYLD}" \
-        SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
-        SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-        RUST_LOG="cosmian_kms_server=info,cosmian_kms_server_database=info" \
-        "${kms_bin}" \
-        --config "${KMS_CONF_FILE}" \
-        >"${KMS_LOG}" 2>&1 &
-    KMS_PID=$!
-else
-    echo "==> Starting KMS server (non-fips, sqlite) …"
-    cat >"${KMS_CONF_FILE}" <<EOF
-default_username = "admin"
-vendor_identification = "test_vendor"
-
-[db]
-database_type = "sqlite"
-sqlite_path = "${SQLITE_DIR}"
-clear_database = true
-
-[http]
-hostname = "127.0.0.1"
-port = 9998
-
-[ui_config]
-ui_index_html_folder = "${UI_DIR}/dist"
-EOF
-
+env \
+    PATH="${PATH}" \
+    LD_LIBRARY_PATH="${_LD}" \
+    DYLD_LIBRARY_PATH="${_DYLD}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
     RUST_LOG="cosmian_kms_server=info,cosmian_kms_server_database=info" \
-        "${kms_bin}" \
-        --config "${KMS_CONF_FILE}" \
-        >"${KMS_LOG}" 2>&1 &
-    KMS_PID=$!
-fi
+    "${kms_bin}" \
+    --config "${KMS_CONF_FILE}" \
+    >"${KMS_LOG}" 2>&1 &
+KMS_PID=$!
 
 echo "==> Waiting for KMS to be ready …"
 kms_wait_ready "http://127.0.0.1:9998/kmip/2_1" "${KMS_PID}" "${KMS_LOG}" 300
 
-# ── 6. Pre-create test keys (HSM only) ──────────────────────────────────────
-if [ "${HAS_HSM}" = true ]; then
-    TS="$(date +%s)"
-    KMS_BASE_ARGS=(--url "http://127.0.0.1:9998")
+# ── 6. Pre-create test keys ─────────────────────────────────────────────────
+TS="$(date +%s)"
+KMS_BASE_ARGS=(--url "http://127.0.0.1:9998")
 
-    echo "==> Creating 2 HSM AES-256 keys (slot ${SOFTHSM2_HSM_SLOT_ID}) …"
-    # Note: HSM keys do not support tags (the HsmStore silently ignores them).
-    env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-        "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
-        --algorithm aes --number-of-bits 256 \
-        "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
+echo "==> Creating 2 HSM AES-256 keys (slot ${SOFTHSM2_HSM_SLOT_ID}) …"
+# Note: HSM keys do not support tags (the HsmStore silently ignores them).
+env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
+    --algorithm aes --number-of-bits 256 \
+    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
 
-    env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-        "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
-        --algorithm aes --number-of-bits 256 \
-        "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes2_${TS}"
+env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
+    --algorithm aes --number-of-bits 256 \
+    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes2_${TS}"
 
-    echo "==> HSM test keys created."
-fi
+echo "==> HSM test keys created."
 
 # ── 7. Start Vite preview server ────────────────────────────────────────────
 echo "==> Starting Vite preview server (port 5173) …"
@@ -291,13 +259,9 @@ PW_ENV=(
     CI=true
     PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173"
     PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
+    PLAYWRIGHT_KMS_HAS_HSM=true
+    PLAYWRIGHT_HSM_KEY_COUNT=2
 )
-if [ "${HAS_HSM}" = true ]; then
-    PW_ENV+=(
-        PLAYWRIGHT_KMS_HAS_HSM=true
-        PLAYWRIGHT_HSM_KEY_COUNT=2
-    )
-fi
 
 (cd "${UI_DIR}" && env "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
 
