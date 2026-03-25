@@ -442,7 +442,7 @@ kms_wait_ready() {
       return 0
     fi
     sleep 1
-    if ! ps -p "$kms_pid" >/dev/null 2>&1; then
+    if ! kill -0 "$kms_pid" 2>/dev/null; then
       echo "ERROR: KMS server process exited early; log:" >&2
       cat "$log_file" >&2
       exit 1

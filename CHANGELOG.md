@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [5.18.0] - 2026-04-XX
 
+### Bug Fixes
+
+- **UI E2E**: Fix `test_ui.sh` KMS startup: use `--config` TOML (no `ui_index_html_folder`) to avoid macOS `/etc/cosmian/kms.toml` conflict and Linux CI actix-files crash; remove `PLAYWRIGHT_KMS_HAS_HSM` guard since SoftHSM2 is always required; replace `ps -p` with `kill -0` in `kms_wait_ready` to fix false dead-process detection in pure Nix shell on macOS (where `/bin` is not in PATH).
+
 ### 🚀 Features
 
 #### PQC UI Enhancements & Hash Operation

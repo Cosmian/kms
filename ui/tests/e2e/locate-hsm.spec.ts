@@ -7,9 +7,8 @@
  *   - State filtering includes HSM keys correctly
  *
  * The tests require a KMS server backed by SoftHSM2 (always provided by
- * test_ui.sh, which errors out if softhsm2-util is not installed) and:
- *   PLAYWRIGHT_KMS_HAS_HSM=true   always set by test_ui.sh
- *   PLAYWRIGHT_HSM_KEY_COUNT      number of HSM keys created beforehand (default 2)
+ * test_ui.sh, which errors out if softhsm2-util is not installed).
+ * PLAYWRIGHT_HSM_KEY_COUNT sets the number of HSM keys created beforehand (default 2).
  *
  * Note: HSM keys do NOT support KMIP tags.  The HsmStore silently ignores tags
  * on creation and returns an empty set from retrieve_tags.  Therefore all HSM
