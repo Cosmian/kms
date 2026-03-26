@@ -56,10 +56,15 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.17.0/debian10-release.zip).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.18.0/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb).
 
-- Extract debian10-release.zip (debian 10 Buster is used for Glibc compatibility)
-- Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
+- Extract the package:
+
+    ```bash
+    dpkg-deb -x cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb extracted/
+    ```
+
+- Copy the PKCS#11 provider library from the `extracted/` directory to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
 - Copy the configuration of the PKCS#11 provider library to `/usr/local/okv/hsm/generic/ckms.toml`
 - Override the OKV generic HSM configuration files:
 
@@ -124,95 +129,264 @@ graph TD
 
 ### Direct HSM Configuration
 
+#### Linux
+
 1. **Install Cosmian PKCS#11 Library**
 
-   For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.17.0/debian10-release.zip).
+    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.18.0/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb).
 
-   ```bash
-   # Extract library from debian10-release.zip.
-   unzip debian10-release.zip
+    ```bash
+    # Extract library from Linux package.
+    dpkg-deb -x cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb extracted/
 
-   # Copy to Oracle's HSM directory
-   mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/
-   cp libcosmian_pkcs11.so /opt/oracle/extapi/64/hsm/Cosmian/
-   chown oracle:oinstall /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
-   ```
+    # Copy to Oracle's HSM directory
+    mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/
+    cp libcosmian_pkcs11.so /opt/oracle/extapi/64/hsm/Cosmian/
+    chown oracle:oinstall /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
+    ```
 
 2. **Configure Cosmian PKCS#11 Library**
 
-   Create the configuration file `/home/oracle/.cosmian/ckms.toml`:
+    Create the configuration file `/home/oracle/.cosmian/ckms.toml`:
 
-   ```toml
-   [http_config]
-   server_url = "http://kms:9998"
-   ```
+    ```toml
+    [http_config]
+    server_url = "http://kms:9998"
+    ```
 
-   Set proper ownership:
+    Set proper ownership:
 
-   ```bash
-   mkdir -p /home/oracle/.cosmian/
-   chown oracle:oinstall /home/oracle/.cosmian/ckms.toml
-   ```
+    ```bash
+    mkdir -p /home/oracle/.cosmian/
+    chown oracle:oinstall /home/oracle/.cosmian/ckms.toml
+    ```
 
 3. **Prepare Oracle Directory Structure**
 
-   ```bash
-   # Create keystore directories
-   mkdir -p /etc/ORACLE/KEYSTORES/FREE
-   chown -R oracle:oinstall /etc/ORACLE/KEYSTORES/FREE
+    ```bash
+    # Create keystore directories
+    mkdir -p /etc/ORACLE/KEYSTORES/FREE
+    chown -R oracle:oinstall /etc/ORACLE/KEYSTORES/FREE
 
-   # Setup logging
-   chown -R oracle:oinstall /var/log
-   ```
+    # Setup logging
+    chown -R oracle:oinstall /var/log
+    ```
 
 4. **Configure Oracle Database for PKCS#11**
 
-   Set up TDE to use the HSM via PKCS#11:
+    Set up TDE to use the HSM via PKCS#11:
 
-   ```sql
-   -- Set WALLET_ROOT to point to the PKCS#11 library
-   ALTER SYSTEM SET WALLET_ROOT='/opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so' SCOPE=SPFILE;
-   SHUTDOWN IMMEDIATE;
-   STARTUP;
+    ```sql
+    -- Set WALLET_ROOT to point to the PKCS#11 library
+    ALTER SYSTEM SET WALLET_ROOT='/opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so' SCOPE=SPFILE;
+    SHUTDOWN IMMEDIATE;
+    STARTUP;
 
-   -- Configure TDE to use HSM keystore
-   ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM' SCOPE=BOTH SID='*';
-   SHUTDOWN IMMEDIATE;
-   STARTUP;
-   ```
+    -- Configure TDE to use HSM keystore
+    ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM' SCOPE=BOTH SID='*';
+    SHUTDOWN IMMEDIATE;
+    STARTUP;
+    ```
 
 5. **Create and Configure HSM Keystore**
 
-   ```sql
-   -- Open the HSM keystore
-   ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass;
+    ```sql
+    -- Open the HSM keystore
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass;
 
-   -- Create TDE master key in HSM with backup
-   ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass WITH BACKUP;
-   ```
+    -- Create TDE master key in HSM with backup
+    ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass WITH BACKUP;
+    ```
 
 6. **Verify Configuration**
 
-   ```sql
-   -- Check keystore status
-   COLUMN WRL_PARAMETER FORMAT A50;
-   SET LINES 200;
-   SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V$ENCRYPTION_WALLET;
+    ```sql
+    -- Check keystore status
+    COLUMN WRL_PARAMETER FORMAT A50;
+    SET LINES 200;
+    SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V$ENCRYPTION_WALLET;
 
-   -- Verify keys are stored in HSM
-   COLUMN NAME FORMAT A40;
-   SET LINES 400;
-   SELECT KEY_ID, KEYSTORE_TYPE, CREATOR_DBNAME, ACTIVATION_TIME, KEY_USE, ORIGIN
-   FROM V$ENCRYPTION_KEYS;
-   ```
+    -- Verify keys are stored in HSM
+    COLUMN NAME FORMAT A40;
+    SET LINES 400;
+    SELECT KEY_ID, KEYSTORE_TYPE, CREATOR_DBNAME, ACTIVATION_TIME, KEY_USE, ORIGIN
+    FROM V$ENCRYPTION_KEYS;
+    ```
 
 7. **Optional: Create Test Encrypted Table**
 
-   ```sql
-   -- Create a table with encrypted columns to verify TDE is working
-   CREATE TABLE test_tde (something CHAR(32) ENCRYPT);
-   ```
+    ```sql
+    -- Create a table with encrypted columns to verify TDE is working
+    CREATE TABLE test_tde (something CHAR(32) ENCRYPT);
+    ```
+
+#### Windows
+
+Oracle 26ai Free for Windows has two unfixed HSM/PKCS#11 issues that require workarounds
+when configuring TDE directly (without Oracle Key Vault):
+
+1. **`skgdllDiscover` finds nothing on Windows.** The auto-discovery function only scans the
+   hard-coded Linux path `/opt/oracle/extapi/64/pkcs11/`. No equivalent Windows path is
+   scanned, so Oracle cannot locate any PKCS#11 DLL automatically.
+
+2. **`pkcs11_library_location` rejects Windows paths.** The `ALTER SYSTEM SET` validator checks
+   that the supplied path starts with `/opt/oracle/extapi/64/pkcs11/`. Any Windows path
+   (`C:\...`) is rejected with `ORA-46707` / `ORA-32017`.
+
+The steps below apply the required workarounds.
+
+1. **Install Cosmian PKCS#11 Library**
+
+    Download `cosmian_pkcs11.dll` from the [release packages](https://package.cosmian.com/kms/5.16.2/).
+
+    The DLL **must** be placed at the drive-relative Linux path so that Oracle's
+    `LoadLibrary` call resolves it. On Windows a path starting with `/` is treated as
+    drive-relative (`/opt/...` → `C:\opt\...` on a system where `C:` is the current drive).
+
+    ```powershell
+    # Create the required directory structure
+    New-Item -ItemType Directory -Force -Path 'C:\opt\oracle\extapi\64\pkcs11'
+
+    # Install the DLL (both locations are used by Oracle)
+    Copy-Item cosmian_pkcs11.dll 'C:\opt\oracle\extapi\64\pkcs11\cosmian_pkcs11.dll'
+
+    New-Item -ItemType Directory -Force -Path "$env:ORACLE_HOME\extapi\64\hsm\Cosmian"
+    Copy-Item cosmian_pkcs11.dll "$env:ORACLE_HOME\extapi\64\hsm\Cosmian\cosmian_pkcs11.dll"
+    ```
+
+2. **Configure Cosmian PKCS#11 Library**
+
+    Place `ckms.toml` alongside the DLL so it is found regardless of which Windows user
+    account Oracle's service runs under:
+
+    ```powershell
+    @'
+    [http_config]
+    server_url = "http://kms:9998"
+    '@ | Set-Content -Path 'C:\opt\oracle\extapi\64\pkcs11\ckms.toml' -Encoding UTF8
+    ```
+
+    > **Note:** The PKCS#11 library searches for `ckms.toml` in the following order:
+    > `CKMS_CONF` environment variable → directory containing the DLL →
+    > `%USERPROFILE%\.cosmian\ckms.toml`.
+
+3. **Prepare Oracle Wallet Directory**
+
+    ```powershell
+    # Create the wallet directory (adjust path to match your ORACLE_BASE)
+    New-Item -ItemType Directory -Force -Path 'C:\app\oracle\admin\FREE\wallet'
+    ```
+
+4. **Configure Oracle Database for PKCS#11**
+
+    Because `ALTER SYSTEM SET pkcs11_library_location` rejects Windows paths, set all three
+    TDE parameters via a plain PFILE and restart with `STARTUP PFILE=`:
+
+    ```sql
+    -- Step 1: capture current in-memory parameters to a text PFILE
+    CREATE PFILE='C:\app\oracle\dbhomeFree\database\initFREE_pkcs11.ora' FROM MEMORY;
+    SHUTDOWN IMMEDIATE;
+    ```
+
+    Edit the generated `initFREE_pkcs11.ora` with a text editor and add (or update) the
+    following three lines — using forward slashes throughout:
+
+    ```ini
+    *.wallet_root='C:/app/oracle/admin/FREE/wallet'
+    *.tde_configuration='KEYSTORE_CONFIGURATION=HSM'
+    *.pkcs11_library_location='/opt/oracle/extapi/64/pkcs11/cosmian_pkcs11.dll'
+    ```
+
+    Then restart and persist:
+
+    ```sql
+    -- Step 2: start the instance using the edited PFILE
+    STARTUP PFILE='C:\app\oracle\dbhomeFree\database\initFREE_pkcs11.ora';
+
+    -- Step 3: write the active configuration back to SPFILE
+    CREATE SPFILE FROM MEMORY;
+    ```
+
+5. **Create and Configure HSM Keystore**
+
+    ```sql
+    -- Open the HSM keystore (loads cosmian_pkcs11.dll)
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass;
+
+    -- Create TDE master key in HSM
+    ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass;
+    ```
+
+6. **Verify Configuration**
+
+    ```sql
+    -- Check keystore status
+    COLUMN WRL_PARAMETER FORMAT A50;
+    SET LINES 200;
+    SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V$ENCRYPTION_WALLET;
+
+    -- Verify keys are stored in HSM
+    SET LINES 400;
+    SELECT KEY_ID, KEYSTORE_TYPE, CREATOR_DBNAME, ACTIVATION_TIME, KEY_USE, ORIGIN
+    FROM V$ENCRYPTION_KEYS;
+    ```
+
+7. **Optional: Create Test Encrypted Table**
+
+    ```sql
+    CREATE TABLE test_tde (something CHAR(32) ENCRYPT);
+    ```
+
+**Troubleshooting:**
+
+- PKCS#11 log (service user): `C:\WINDOWS\ServiceProfiles\OracleService<SID>\.cosmian\cosmian-pkcs11.log`
+- PKCS#11 log (current user): `%USERPROFILE%\.cosmian\cosmian-pkcs11.log`
+- Oracle alert log: `%ORACLE_BASE%\diag\rdbms\free\<SID>\trace\alert_<SID>.log`
+- Oracle trace dir: `%ORACLE_BASE%\diag\rdbms\free\<SID>\trace\`
 
 ### HSM Identity and Authentication
 
-The `hsm_identity_pass` used in the SQL commands represents the PKCS#11 PIN that authenticates access to the HSM. This should be configured in your Cosmian KMS setup and corresponds to the authentication mechanism for accessing keys stored in the HSM.
+The `hsm_identity_pass` used in the SQL commands represents the PKCS#11 PIN that authenticates
+access to the HSM. This should be configured in your Cosmian KMS setup and corresponds to the
+authentication mechanism for accessing keys stored in the HSM.
+
+## Automated Testing
+
+Automated integration tests verify that `cosmian_pkcs11.dll` correctly provides TDE support for
+an Oracle Database installed directly on Windows (no Docker required for Oracle itself).
+
+### Windows (PowerShell)
+
+**Prerequisites:**
+
+- **Oracle Database 23ai/26ai Free** installed on Windows — [download here](https://www.oracle.com/database/free/get-started/)
+- `ORACLE_HOME` and `ORACLE_SID` environment variables set
+- `cosmian_pkcs11.dll` built: `cargo build --release -p cosmian_pkcs11 --features non-fips`
+- `cosmian_kms.exe` built: `cargo build --release -p cosmian_kms_server --features non-fips`
+  (or a KMS server already running at `http://localhost:9998`)
+- No administrator privileges required
+
+```powershell
+# Set Oracle environment (adjust paths for your installation)
+$env:ORACLE_HOME = 'C:\app\rndde\product\26ai\dbhomeFree'
+$env:ORACLE_SID  = 'FREE'
+
+# Optionally point to a pre-built KMS binary (defaults to target\release\cosmian_kms.exe)
+# $env:KMS_BINARY = 'C:\path\to\cosmian_kms.exe'
+
+# Run the full test
+& .\.github\scripts\oracle\test_oracle_tde.ps1
+```
+
+The orchestration script `test_oracle_tde.ps1`:
+
+1. Validates prerequisites (Oracle installation, services, DLL, sqlplus)
+2. Starts a KMS server process (`target\release\cosmian_kms.exe`) on port 9998 (or reuses an already-running KMS)
+3. Calls `set_hsm.ps1` which:
+     - Copies `cosmian_pkcs11.dll` to `C:\opt\oracle\extapi\64\pkcs11\` (see porting notes above)
+     - Writes `ckms.toml` to the Oracle service user's profile via Oracle's `UTL_FILE` package
+     - Configures `WALLET_ROOT`, `TDE_CONFIGURATION=KEYSTORE_CONFIGURATION=HSM`, and
+       `pkcs11_library_location` via a plain PFILE and `STARTUP PFILE=`
+     - Executes the TDE SQL configuration (HSM keystore open, master key creation)
+     - Verifies the keystore and encryption key status
+4. Stops the KMS server process

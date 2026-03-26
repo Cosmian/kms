@@ -1,5 +1,6 @@
 use std::{
     env,
+    net::TcpListener,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
     thread::{self, JoinHandle},
@@ -47,6 +48,30 @@ pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
+
+fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
+    if TcpListener::bind(("127.0.0.1", preferred_port)).is_ok() {
+        return Ok(preferred_port);
+    }
+
+    let fallback = TcpListener::bind(("127.0.0.1", 0)).map_err(|error| {
+        KmsClientError::UnexpectedError(format!(
+            "failed to allocate a fallback localhost port for test KMS server: {error}"
+        ))
+    })?;
+    let port = fallback
+        .local_addr()
+        .map_err(|error| {
+            KmsClientError::UnexpectedError(format!(
+                "failed to read fallback localhost port for test KMS server: {error}"
+            ))
+        })?
+        .port();
+    info!(
+        "Preferred test KMS port {preferred_port} is already in use; falling back to port {port}"
+    );
+    Ok(port)
+}
 
 // Small utilities to reduce repetition
 #[inline]
@@ -217,15 +242,16 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
+        let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT)?;
         match use_kek {
             Some(_use_kek) => {
-                let server_params = create_server_params_with_kek().await.unwrap();
+                let server_params = create_server_params_with_kek(port).await.unwrap();
                 start_from_server_params(server_params).await
             }
             None => {
                 start_test_server_with_options(
-                    get_db_config(DEFAULT_KMS_SERVER_PORT, None),
-                    DEFAULT_KMS_SERVER_PORT,
+                    get_db_config(port, None),
+                    port,
                     AuthenticationOptions::new(),
                     None,
                     None,
@@ -249,7 +275,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 1;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 1)?;
             let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
@@ -281,9 +307,10 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 2)?;
             start_test_server_with_options(
-                get_db_config(DEFAULT_KMS_SERVER_PORT + 2, None),
-                DEFAULT_KMS_SERVER_PORT + 2,
+                get_db_config(port, None),
+                port,
                 AuthenticationOptions::new(),
                 non_revocable_key_id,
                 None,
@@ -303,7 +330,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 3;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 3)?;
             let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
@@ -313,7 +340,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 jwt: JwtAuth::Disabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -360,7 +387,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
                 jwt: JwtAuth::Enabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -416,7 +443,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     Ok((workspace_dir, kek_id.to_owned()))
 }
 
-async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError> {
+async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsClientError> {
     let (workspace_dir, kek_id) = create_kek_in_db().await?;
     trace!(
         "Key encryption key created: {kek_id} in workspace {}",
@@ -428,7 +455,6 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
         "workspace_dir must exist and kek_id must be non-empty"
     );
 
-    let port = DEFAULT_KMS_SERVER_PORT + 4;
     let db_config = get_db_config(port, Some(&workspace_dir));
 
     let reuse_db_config = MainDBConfig {
@@ -443,7 +469,7 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
         jwt: JwtAuth::Enabled,
         hsm: Some(HsmConfig {
             hsm_model: "utimaco".to_owned(),
-            hsm_admin: "owner.client@acme.com".to_owned(),
+            hsm_admin: vec!["owner.client@acme.com".to_owned()],
             hsm_slot: vec![0],
             hsm_password: vec!["12345678".to_owned()],
         }),
@@ -467,7 +493,8 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_KEK
         .get_or_try_init(|| async move {
-            let server_params = create_server_params_with_kek().await.unwrap();
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
+            let server_params = create_server_params_with_kek(port).await.unwrap();
 
             start_from_server_params(server_params).await
         })
@@ -485,7 +512,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 5;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 5)?;
             let db_config = get_db_config(port, None);
 
             // Use Auth0 config for IdP-enabled server

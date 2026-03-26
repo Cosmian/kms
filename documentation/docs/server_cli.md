@@ -53,8 +53,13 @@ Options:
           [default: proteccio]
           [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
 
-      --hsm-admin <HSM_ADMIN>
-          The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them
+      --hsm-admin <HSM_ADMIN>...
+          List of KMS usernames that are granted HSM admin privileges.
+          HSM admins can create, destroy, and potentially export objects on the HSM.
+          Use `"*"` as the only entry to grant all authenticated users admin access.
+          Repeat the option or use a comma-separated list to specify multiple admins:
+            `--hsm-admin alice@example.com --hsm-admin bob@example.com`
+            or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
           
           [env: KMS_HSM_ADMIN=]
           [default: admin]
@@ -380,7 +385,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
           
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.17.0"]
+          [default: "Cosmian KMS v5.18.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory

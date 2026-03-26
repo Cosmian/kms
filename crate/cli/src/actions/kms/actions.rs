@@ -6,14 +6,14 @@ use cosmian_kmip::{
 use cosmian_kms_client::{KmsClient, KmsClientConfig};
 
 #[cfg(feature = "non-fips")]
-use super::configurable_kem::ConfigurableKemCommands;
-#[cfg(feature = "non-fips")]
 use super::cover_crypt::CovercryptCommands;
+#[cfg(feature = "non-fips")]
+use super::pqc::PqcCommands;
 use crate::{
     actions::kms::{
-        access::AccessAction, attributes::AttributesCommands, azure::AzureCommands,
-        bench::BenchAction, certificates::CertificatesCommands, console::Stdout,
-        derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
+        access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
+        azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
+        console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
         opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
         secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
@@ -30,14 +30,15 @@ pub enum KmsActions {
     Attributes(AttributesCommands),
     #[command(subcommand)]
     Azure(AzureCommands),
-    #[clap(hide = true)]
+    #[command(subcommand)]
+    Aws(AwsCommands),
     Bench(BenchAction),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Cc(CovercryptCommands),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
-    Kem(ConfigurableKemCommands),
+    Pqc(PqcCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
     DeriveKey(DeriveKeyAction),
@@ -81,12 +82,13 @@ impl KmsActions {
         match self {
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Aws(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Azure(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Bench(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
-            Self::Kem(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }

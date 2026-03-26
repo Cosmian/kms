@@ -2,6 +2,33 @@
 
 End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 
+## FIPS mode
+
+Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
+against a FIPS-mode KMS server. Three spec files are automatically skipped in
+FIPS mode because they exercise algorithms that are not NIST-approved:
+
+| Skipped spec      | Reason                                            |
+| ----------------- | ------------------------------------------------- |
+| `covercrypt-flow` | Covercrypt is a non-FIPS algorithm                |
+| `pqc-key-flow`    | ML-KEM, ML-DSA, SLH-DSA are non-FIPS              |
+| `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
+
+In addition, specific individual tests inside otherwise-FIPS-compatible spec files
+are skipped because the underlying algorithm is not FIPS 140-3 approved:
+
+| Spec                 | Test                                             | Reason                                       |
+| -------------------- | ------------------------------------------------ | -------------------------------------------- |
+| `ec-encrypt-sign`    | ECIES encrypt then decrypt preserves plaintext   | ECIES KDF is not FIPS-approved               |
+| `ec-encrypt-sign`    | encrypt with wrong public key then decrypt fails | ECIES KDF is not FIPS-approved               |
+| `rsa-export-options` | wrap sym key with RSA PKCS v1.5                  | RSA PKCS1v15 encryption is not FIPS-approved |
+
+These skips are controlled by the `PLAYWRIGHT_FIPS_MODE=true` environment variable,
+which `test_ui.sh` injects automatically when run with `--variant fips`.
+
+All remaining specs (symmetric, RSA, EC/P-256 sign/verify, certificates, MAC, locate,
+attributes, access-rights, cloud integrations, …) run unchanged in FIPS mode.
+
 ## Symmetric Keys
 
 ### sym-key-flow
@@ -92,7 +119,7 @@ graph LR
     F --> G{Valid?}
 ```
 
-Covers ECIES encryption and ECDSA signing on P-256/P-384/P-521 and Ed25519.
+Covers ECIES encryption and ECDSA signing on NIST P-256.
 
 ## Certificates
 
@@ -138,7 +165,49 @@ graph LR
     D --> E[Verify result counts]
 ```
 
+### locate-hsm
+
+```mermaid
+graph LR
+    A[Create HSM AES key] --> B[Create software AES key]
+    B --> C[Locate by ObjectType]
+    C --> D{Both appear?}
+    D -->|Yes| E[Pass]
+    D -->|No| F[Fail]
+```
+
+Validates that HSM keys (created with the `hsm::` prefix) appear alongside
+software keys in Locate results. HSM keys always show `Active` state and no
+`Unknown` state is present. The `PLAYWRIGHT_HSM_KEY_COUNT` HSM keys
+pre-created by `test_ui.sh` are discovered through table pagination.
+The inner `Locate – HSM keys (real SoftHSM2)` suite is skipped automatically
+when `PLAYWRIGHT_HSM_KEY_COUNT` is 0 (SoftHSM2 not available).
+
+## MAC
+
+### mac-flow
+
+```mermaid
+graph LR
+    A[Create HMAC key] --> B[Compute MAC]
+    B --> C[Verify MAC]
+    C --> D{Result}
+    D -->|Correct MAC| E[valid]
+    D -->|Wrong MAC| F[invalid]
+```
+
+Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
+
+- Navigation smoke tests for the compute and verify pages
+- HMAC-SHA256 compute returning `MAC (hex): <hex>`
+- HMAC-SHA1 compute
+- Error when key ID is missing
+- Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
+- Wrong MAC → `invalid`
+
 ## CoverCrypt
+
+_Skipped in FIPS mode._
 
 ### covercrypt-flow
 
@@ -149,6 +218,47 @@ graph LR
     C --> D[Revoke]
     D --> E[Destroy]
 ```
+
+## Post-Quantum Cryptography (PQC)
+
+_Skipped in FIPS mode._
+
+### pqc-key-flow
+
+```mermaid
+graph LR
+    A[Create ML-KEM-512 pair] --> B[Create ML-DSA-65 pair]
+    B --> C[Export private key JSON-TTLV]
+    C --> D[Revoke ML-KEM-768 key]
+    D --> E[Destroy]
+    A --> F[Navigate import/encap/decap/sign/verify pages]
+```
+
+Covers ML-KEM-512, ML-KEM-768 and ML-DSA-65 key-pair creation, export, revoke,
+destroy, and navigation to all PQC operation pages.
+
+### pqc-encaps-sign
+
+```mermaid
+graph LR
+    A[Create ML-KEM-512 pair] --> B[Encapsulate]
+    B --> C[Decapsulate]
+    C --> D{Shared secrets match?}
+    D -->|Yes| E[Pass]
+
+    F[Create ML-DSA pair] --> G[Sign]
+    G --> H[Verify]
+    H --> I{Valid / Invalid}
+```
+
+Covers:
+
+- ML-KEM-512 encapsulate → decapsulate roundtrip
+- Encapsulate without key ID → error
+- ML-DSA-44/65/87 sign → verify (correct key → `Valid`; wrong key → `invalid`; tampered data → `invalid`)
+- Hybrid KEM X25519MLKEM768 encapsulate → decapsulate
+- SLH-DSA-SHA2-128s sign → verify (signatures > 1 000 bytes)
+- Configurable hybrid KEMs (ML-KEM-512-P256, ML-KEM-768-P256, ML-KEM-512-Curve25519, ML-KEM-768-Curve25519) key creation with mocked `branding.json`
 
 ## Cloud Integrations
 
@@ -213,8 +323,20 @@ graph LR
 graph LR
     A[Create key] --> B[Get attributes]
     B --> C[Set attribute]
-    C --> D[Delete attribute]
+    C --> D[Modify attribute]
+    D --> E[Delete attribute]
 ```
+
+Covers:
+
+- Navigation to get/set/modify/delete attribute pages
+- `child_id` link: set+delete; set+modify
+- Name attribute (KMIP standard, issue #746): set; set → get (not hex); set → modify → delete
+- `cryptographic_length`: set → get → modify
+- `key_usage`: set → delete
+- `cryptographic_algorithm`: set
+- Multiple link attributes on one key
+- Non-existent object ID returns response (no crash)
 
 ### vendor-id-flow
 

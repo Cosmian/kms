@@ -169,9 +169,17 @@ impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
                 Ok(Self::CoverCryptPublicKey)
             }
             kmip_2_1::kmip_types::KeyFormatType::PKCS12 => Ok(Self::PKCS12),
-            kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey
-            | kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey
-            | kmip_2_1::kmip_types::KeyFormatType::PKCS10
+            // TransparentECPrivateKey (0x14) and TransparentECPublicKey (0x15) were introduced
+            // in KMIP 1.4 as the unified replacements for the deprecated per-algorithm variants
+            // (TransparentECDSA/ECDH/ECMQVPrivateKey/PublicKey). They share the same numeric
+            // values in KMIP 1.4 and KMIP 2.1, so the conversion is lossless.
+            kmip_2_1::kmip_types::KeyFormatType::TransparentECPrivateKey => {
+                Ok(Self::TransparentECPrivateKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::TransparentECPublicKey => {
+                Ok(Self::TransparentECPublicKey)
+            }
+            kmip_2_1::kmip_types::KeyFormatType::PKCS10
             | kmip_2_1::kmip_types::KeyFormatType::PKCS7
             | kmip_2_1::kmip_types::KeyFormatType::EnclaveECKeyPair
             | kmip_2_1::kmip_types::KeyFormatType::EnclaveECSharedKey => {

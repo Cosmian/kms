@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PYKMIP_SCRIPT="scripts/pykmip_client.py"
+DSM_SCRIPT="scripts/synology_dsm_client.py"
 PYKMIP_CONF="scripts/pykmip.conf"
 PYTHON_CMD="python"  # Will use python from venv after activation
 
@@ -194,7 +195,7 @@ run_operation() {
 run_all_operations() {
     local verbose=${1:-false}
 
-    operations=("activate" "create" "create_keypair" "decrypt" "destroy" "discover_versions" "encrypt" "get" "get_attributes" "locate" "mac" "query" "revoke")
+    operations=("activate" "create" "create_keypair" "decrypt" "destroy" "discover_versions" "encrypt" "get" "get_attribute_list" "get_attributes" "locate" "mac" "modify_attribute" "query" "revoke" "sign" "signature_verify")
     failed_operations=()
     successful_operations=()
 
@@ -244,6 +245,62 @@ run_all_operations() {
     fi
 }
 
+# Function to run the Synology DSM simulation (end-to-end integration test)
+run_dsm_simulation() {
+    local verbose=${1:-false}
+
+    print_status "Running Synology DSM KMIP end-to-end simulation..."
+
+    if [[ ! -f "$DSM_SCRIPT" ]]; then
+        print_error "Synology DSM script not found: $DSM_SCRIPT"
+        return 1
+    fi
+
+    local cmd_args=(
+        "$PYTHON_CMD"
+        "$DSM_SCRIPT"
+        "--configuration" "$PYKMIP_CONF"
+    )
+
+    if [[ "$verbose" == "true" ]]; then
+        cmd_args+=("--verbose")
+    fi
+
+    local output=""
+    local exit_code=0
+
+    # Temporarily disable set -e so a non-zero exit from the Python script
+    # does not abort the shell before we can echo the captured output.
+    set +e
+    if command -v timeout >/dev/null 2>&1; then
+        output=$(timeout 60 "${cmd_args[@]}" 2>&1)
+        exit_code=$?
+    else
+        output=$("${cmd_args[@]}" 2>&1)
+        exit_code=$?
+    fi
+    set -e
+
+    if [[ $exit_code -eq 124 ]]; then
+        print_error "Synology DSM simulation timed out after 60 seconds"
+        return 1
+    fi
+
+    echo ""
+    echo "=== SYNOLOGY DSM SIMULATION OUTPUT ==="
+    echo "$output"
+    echo "======================================="
+    echo ""
+
+    if [[ $exit_code -eq 0 ]] && echo "$output" | grep -q "ALL SYNOLOGY DSM SIMULATION STEPS PASSED"; then
+        print_success "Synology DSM simulation SUCCEEDED"
+        return 0
+    else
+        print_error "Synology DSM simulation FAILED"
+        return 1
+    fi
+}
+
 # Function to run Rust tests
 run_rust_tests() {
     print_status "Running Rust PyKMIP integration tests..."
@@ -266,24 +323,28 @@ show_usage() {
     echo "It automatically activates the virtual environment (.venv) before running tests."
     echo ""
     echo "Commands:"
-    echo "  check            Check prerequisites and connectivity"
-    echo "  activate         Run PyKMIP activate operation"
-    # echo "  certify          Run PyKMIP certify operation"
-    echo "  create           Run PyKMIP create operation"
-    echo "  create_keypair   Run PyKMIP create key pair operation"
-    echo "  decrypt          Run PyKMIP encrypt/decrypt test"
-    echo "  destroy          Run PyKMIP destroy operation"
-    echo "  discover_versions Run PyKMIP discover versions operation"
-    echo "  encrypt          Run PyKMIP encrypt operation"
-    echo "  get              Run PyKMIP get operation"
-    echo "  get_attributes   Run PyKMIP get attributes operation"
-    echo "  locate           Run PyKMIP locate operation"
-    echo "  mac              Run PyKMIP MAC operation"
-    echo "  query            Run PyKMIP query operation"
-    echo "  revoke           Run PyKMIP revoke operation"
-    echo "  all              Run all PyKMIP operations"
-    echo "  rust-test        Run Rust PyKMIP integration tests"
-    echo "  help             Show this help message"
+    echo "  check               Check prerequisites and connectivity"
+    echo "  activate            Run PyKMIP activate operation"
+    echo "  create              Run PyKMIP create operation"
+    echo "  create_keypair      Run PyKMIP create key pair operation"
+    echo "  decrypt             Run PyKMIP encrypt/decrypt test"
+    echo "  destroy             Run PyKMIP destroy operation"
+    echo "  discover_versions   Run PyKMIP discover versions operation"
+    echo "  encrypt             Run PyKMIP encrypt operation"
+    echo "  get                 Run PyKMIP get operation"
+    echo "  get_attribute_list  Run PyKMIP get attribute list operation"
+    echo "  get_attributes      Run PyKMIP get attributes operation"
+    echo "  locate              Run PyKMIP locate operation"
+    echo "  mac                 Run PyKMIP MAC operation"
+    echo "  modify_attribute    Run PyKMIP modify attribute operation (issue #760)"
+    echo "  query               Run PyKMIP query operation"
+    echo "  revoke              Run PyKMIP revoke operation"
+    echo "  sign                Run PyKMIP sign operation (RSA-SHA256)"
+    echo "  signature_verify    Run PyKMIP sign + signature verify (RSA-SHA256)"
+    echo "  dsm_simulation      Run Synology DSM end-to-end KMIP simulation"
+    echo "  all                 Run all PyKMIP operations + Synology DSM simulation"
+    echo "  rust-test           Run Rust PyKMIP integration tests"
+    echo "  help                Show this help message"
     echo ""
     echo "Options:"
     echo "  -v, --verbose   Enable verbose output"
@@ -294,7 +355,8 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  ./scripts/test_pykmip.sh all"
-    echo "  ./scripts/test_pykmip.sh query -v"
+    echo "  ./scripts/test_pykmip.sh modify_attribute -v"
+    echo "  ./scripts/test_pykmip.sh dsm_simulation"
     echo "  ./scripts/test_pykmip.sh check"
 }
 
@@ -314,7 +376,7 @@ main() {
                 show_usage
                 exit 0
                 ;;
-            all|activate|check|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|get_attributes|locate|mac|query|revoke|rust-test)
+            all|activate|check|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|get_attribute_list|get_attributes|locate|mac|modify_attribute|query|revoke|sign|signature_verify|dsm_simulation|rust-test)
                 command=$1
                 shift
                 ;;
@@ -330,13 +392,30 @@ main() {
         check)
             check_prerequisites
             ;;
-        activate|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|get_attributes|locate|mac|query|revoke)
+        activate|create|create_keypair|decrypt|destroy|discover_versions|encrypt|get|get_attribute_list|get_attributes|locate|mac|modify_attribute|query|revoke|sign|signature_verify)
             check_prerequisites
             run_operation "$command" "$verbose"
+            ;;
+        dsm_simulation)
+            check_prerequisites
+            run_dsm_simulation "$verbose"
             ;;
         all)
             check_prerequisites
             run_all_operations "$verbose"
+            failed_ops=$?
+            echo ""
+            echo "######################################"
+            echo "# TESTING: Synology DSM end-to-end simulation"
+            echo "######################################"
+            run_dsm_simulation "$verbose"
+            dsm_status=$?
+            if [[ $failed_ops -ne 0 ]] || [[ $dsm_status -ne 0 ]]; then
+                print_error "SOME TESTS FAILED"
+                exit 1
+            else
+                print_success "ALL TESTS PASSED (PyKMIP operations + Synology DSM simulation)"
+            fi
             ;;
         rust-test)
             check_prerequisites

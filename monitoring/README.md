@@ -23,7 +23,7 @@ Complete monitoring and observability stack for Cosmian KMS, with automatic coll
 
 The stack consists of 4 main services:
 
-```
+```text
 KMS (local or external) → OTel Collector → VictoriaMetrics → Grafana
 ```
 
@@ -36,7 +36,7 @@ KMS (local or external) → OTel Collector → VictoriaMetrics → Grafana
 
 ### Telemetry Pipeline
 
-```
+```text
 KMS (Traces + Metrics)
     ↓ OTLP (gRPC :4317 / HTTP :4318)
 OTel Collector
@@ -120,6 +120,7 @@ KMS_P12_PASSWORD=mySecureKMSPassword123
 - ✅ Automatic metering enabled
 
 **Required configuration:**
+
 ```env
 COMPOSE_PROFILES=kms-local
 KMS_MODE=local
@@ -131,6 +132,7 @@ KMS_MODE=local
 - ✅ Your external KMS must send traces/metrics to `:4317` (gRPC) or `:4318` (HTTP)
 
 **Required configuration:**
+
 ```env
 COMPOSE_PROFILES=
 KMS_MODE=external
@@ -248,6 +250,7 @@ curl http://localhost:3000
 ```
 
 **Solutions**:
+
 - Wait a few seconds on initial startup
 - Verify available disk space
 - Verify port 3000 is not in use by another service
@@ -268,6 +271,7 @@ docker compose logs otel-collector -n 50
 ```
 
 **Solutions**:
+
 - Verify that KMS is sending traces to `:4317` (gRPC) or `:4318` (HTTP)
 - Verify network connectivity between services
 - Wait a few minutes for initial data to arrive
@@ -288,6 +292,7 @@ docker compose logs kms -n 100
 ```
 
 **Solutions**:
+
 - Ensure `generate-demo-cert.sh` executed without errors
 - Verify the `.certs/` folder exists
 - Remove volumes and restart: `docker compose down -v && bash generate-demo-cert.sh && docker compose up -d`
@@ -307,6 +312,7 @@ curl -X POST http://localhost:4318/v1/metrics \
 ```
 
 **Solutions**:
+
 - Verify external KMS OTLP export configuration
 - Ensure KMS can reach the host on port 4317/4318
 - Check network firewalls and Docker network configurations
@@ -334,6 +340,7 @@ docker compose restart victoria-metrics
 ## Support
 
 For any questions or issues:
+
 1. Consult the [Troubleshooting](#troubleshooting) section above
 2. Check logs: `docker compose logs -f`
 3. Verify connectivity: `docker compose ps`

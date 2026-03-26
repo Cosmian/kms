@@ -332,7 +332,6 @@ bash .github/scripts/nix.sh update-hashes [RUN_ID]
 
 **What it updates (in nix/expected-hashes/):**
 
-- `ui.npm.sha256`
 - `ui.vendor.fips.sha256`
 - `ui.vendor.non-fips.sha256`
 - `server.vendor.static.sha256`, `server.vendor.dynamic.sha256`
@@ -668,7 +667,6 @@ flowchart TB
                              ▼
                     ┌─────────────────────────────┐
                     │ Update nix/expected-hashes/ │
-                    │  - ui.npm.sha256            │
                     │  - ui.vendor.*.sha256       │
                     │  - server.vendor.{static,dynamic}.sha256   │
                     │  - cli.vendor.linux.sha256  │
@@ -681,7 +679,7 @@ flowchart TB
     script["update_hashes.sh<br/>(requires gh CLI)"]
     gh["gh api<br/>· find workflow run<br/>· list failed jobs<br/>· download logs"]
     parse["Parse log lines:<br/>specified: sha256-...<br/>got: sha256-..."]
-    update["Update nix/expected-hashes/<br/>· ui.npm.sha256<br/>· ui.vendor.*.sha256<br/>· server.vendor.{static,dynamic}.sha256<br/>· cli.vendor.linux.sha256<br/>· cli.vendor.{fips,non-fips}.darwin.sha256"]
+    update["Update nix/expected-hashes/<br/>· ui.vendor.*.sha256<br/>· server.vendor.{static,dynamic}.sha256<br/>· cli.vendor.linux.sha256<br/>· cli.vendor.{fips,non-fips}.darwin.sha256"]
     cmd --> script --> gh --> parse --> update
 >>>>>>> Stashed changes
 ```

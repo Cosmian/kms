@@ -98,9 +98,9 @@ pub struct ServerParams {
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
 
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM.
-    pub hsm_admin: String,
+    /// List of KMS usernames that are granted HSM admin privileges.
+    /// Use `["*"]` to grant all authenticated users admin access.
+    pub hsm_admin: Vec<String>,
 
     /// The HSM model, if any
     pub hsm_model: Option<String>,

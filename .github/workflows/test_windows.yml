@@ -56,13 +56,13 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           targets: wasm32-unknown-unknown
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: latest
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Build static OpenSSL
         shell: pwsh

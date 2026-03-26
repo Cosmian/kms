@@ -57,6 +57,19 @@ export const EC_KEY_ROUTES: Route[] = [
     { name: "verify", path: "/ui/ec/verify" },
 ];
 
+// ── PQC Key routes ───────────────────────────────────────────────────────────
+export const PQC_KEY_ROUTES: Route[] = [
+    { name: "create", path: "/ui/pqc/keys/create" },
+    { name: "export", path: "/ui/pqc/keys/export" },
+    { name: "import", path: "/ui/pqc/keys/import" },
+    { name: "revoke", path: "/ui/pqc/keys/revoke" },
+    { name: "destroy", path: "/ui/pqc/keys/destroy" },
+    { name: "encapsulate", path: "/ui/pqc/encapsulate" },
+    { name: "decapsulate", path: "/ui/pqc/decapsulate" },
+    { name: "sign", path: "/ui/pqc/sign" },
+    { name: "verify", path: "/ui/pqc/verify" },
+];
+
 // ── Covercrypt Key routes ────────────────────────────────────────────────────
 export const CC_KEY_ROUTES: Route[] = [
     { name: "create master key pair", path: "/ui/cc/keys/create-master-key-pair" },
@@ -94,6 +107,7 @@ export const OPAQUE_ROUTES: Route[] = [
 export const ATTRIBUTES_ROUTES: Route[] = [
     { name: "get", path: "/ui/attributes/get" },
     { name: "set", path: "/ui/attributes/set" },
+    { name: "modify", path: "/ui/attributes/modify" },
     { name: "delete", path: "/ui/attributes/delete" },
 ];
 
@@ -115,12 +129,14 @@ export const AZURE_ROUTES: Route[] = [
 
 // ── Standalone page routes ───────────────────────────────────────────────────
 // Google CSE is an info page that shows a heading but has no submit button.
-export const GOOGLE_CSE_ROUTES: Route[] = [
-    { name: "Google CSE", path: "/ui/google-cse", locator: "h1" },
-];
+export const GOOGLE_CSE_ROUTES: Route[] = [{ name: "Google CSE", path: "/ui/google-cse", locator: "h1" }];
 
-export const LOCATE_ROUTES: Route[] = [
-    { name: "locate", path: "/ui/locate" },
+export const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
+
+// ── MAC routes ───────────────────────────────────────────────────────────────
+export const MAC_ROUTES: Route[] = [
+    { name: "compute", path: "/ui/mac/compute" },
+    { name: "verify", path: "/ui/mac/verify" },
 ];
 
 /**
@@ -133,6 +149,7 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Symmetric Keys", routes: SYM_KEY_ROUTES },
     { section: "RSA Keys", routes: RSA_KEY_ROUTES },
     { section: "EC Keys", routes: EC_KEY_ROUTES },
+    { section: "PQC Keys", routes: PQC_KEY_ROUTES },
     { section: "Covercrypt Keys", routes: CC_KEY_ROUTES },
     { section: "Certificates", routes: CERT_ROUTES },
     { section: "Opaque Objects", routes: OPAQUE_ROUTES },
@@ -141,4 +158,5 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Azure", routes: AZURE_ROUTES },
     { section: "Google CSE", routes: GOOGLE_CSE_ROUTES },
     { section: "Locate", routes: LOCATE_ROUTES },
+    { section: "MAC", routes: MAC_ROUTES },
 ];

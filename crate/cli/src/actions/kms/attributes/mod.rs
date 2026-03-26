@@ -1,5 +1,6 @@
 mod delete;
 mod get;
+mod modify;
 mod set;
 
 use clap::Subcommand;
@@ -7,16 +8,18 @@ use cosmian_kms_client::KmsClient;
 pub use delete::DeleteAttributesAction;
 pub use get::GetAttributesAction;
 pub(crate) use get::get_attributes;
+pub use modify::ModifyAttributesAction;
 pub use set::{SetAttributesAction, SetOrDeleteAttributes, VendorAttributeCli};
 
 use crate::error::result::KmsCliResult;
 
-/// Get/Set/Delete the KMIP object attributes.
+/// Get/Set/Delete/Modify the KMIP object attributes.
 #[derive(Subcommand)]
 pub enum AttributesCommands {
     Get(GetAttributesAction),
     Set(SetAttributesAction),
     Delete(DeleteAttributesAction),
+    Modify(ModifyAttributesAction),
 }
 
 #[cfg(test)]
@@ -41,6 +44,7 @@ impl AttributesCommands {
             }
             Self::Set(action) => action.process(kms_rest_client).await,
             Self::Delete(action) => action.process(kms_rest_client).await,
+            Self::Modify(action) => action.process(kms_rest_client).await,
         }
     }
 }

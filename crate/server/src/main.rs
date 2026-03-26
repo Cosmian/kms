@@ -261,7 +261,7 @@ mod tests {
             info: false,
             hsm: cosmian_kms_server::config::HsmConfig {
                 hsm_model: String::new(),
-                hsm_admin: String::new(),
+                hsm_admin: vec![],
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
@@ -282,12 +282,13 @@ mod tests {
         };
 
         let toml_string = r#"
+vendor_identification = "cosmian"
 default_username = "[default username]"
 force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
-hsm_admin = ""
+hsm_admin = []
 hsm_slot = []
 hsm_password = []
 key_encryption_key = "key wrapping key"
@@ -363,7 +364,6 @@ aws_xks_region = "us-east-1"
 aws_xks_service = "xks-kms"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-aws_xks_kek_user = "kek_user"
 
 [kmip.allowlists]
 "#;

@@ -1,28 +1,25 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
 use base64::Engine;
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
 };
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use cosmian_logger::warn;
 use cosmian_logger::{debug, info, log_init};
 use openssl::pkey::PKey;
 use tempfile::TempDir;
-use test_kms_server::{TestsContext, start_default_test_kms_server};
+use test_kms_server::start_default_test_kms_server;
+#[cfg(not(windows))]
+use {
+    crate::cli_bail, crate::error::result::KmsCliResultHelper, cosmian_logger::warn,
+    std::path::Path, test_kms_server::TestsContext,
+};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use crate::error::result::KmsCliResultHelper;
 use crate::{
     actions::kms::{
         shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
         symmetric::keys::create_key::CreateKeyAction,
     },
-    cli_bail,
     error::result::KmsCliResult,
 };
 
@@ -81,6 +78,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCzdXCsuC+YqBvc
 gGTe9oF4L3Ni0pj2pk6yTfGqt1Az/08IvueZsetFnrIew9ZSaACobSlwIs2moc3s
@@ -110,6 +108,7 @@ qeDmXs6dH40L2I0TLPF0Ax2V7DgXwgeCPnlwLrf96xpV+2UXt1zvqzU8BdK8qT4b
 yLT7mm6+hAwMp3y0u6oBTA==
 -----END PRIVATE KEY-----";
 
+#[cfg(not(windows))]
 const RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3VwrLgvmKgb3IBk3vaB
 eC9zYtKY9qZOsk3xqrdQM/9PCL7nmbHrRZ6yHsPWUmgAqG0pcCLNpqHN7LpJGE0K
@@ -120,7 +119,7 @@ JExzskB4cOnHPAdR5xnp+X3DMKRDuCNYEGUg0YqNu9fJ40yHoFLNclfO1pcYbnZD
 FQIDAQAB
 -----END PUBLIC KEY-----";
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(not(windows))]
 #[tokio::test]
 async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -212,6 +211,7 @@ async fn test_openssl_cli_compat() -> KmsCliResult<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 async fn test_openssl_cli_compat_inner(
     ctx: &TestsContext,
     tmp_path: &Path,
@@ -312,16 +312,6 @@ async fn test_openssl_cli_compat_inner(
 
     Ok(rec_dek)
 }
-
-const GOOGLE_RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg4Oo7ygEBmAlzhUZFm2
-75K999TqNjvgiAi/pSzAJS6XO3sa346zZYjZpj4l4OP5T2xlmPXoF/igbCO9jAeW
-+Y8N1VZ6LRvPQ+ndP22ZyL/kiJFc1jUVrBm9ItzTGSO44Z4A77uDga1eAWkIg/9i
-mp+tY0qmlmhnRHwoQkZDU1c08SLA4p6IV3NssgwKaN8KwM53KDxw6kDo0INfS+Ym
-MNZ8oHg8FJ5Q3ExR54fD1/WFngOSexpzNtGvZGMaoCnISMumEo8nfENtMXxnLquu
-BvYAOQEQs7vl0ES/DD0dNzVonZTo9/c8yr0SlcWg8Uy7XkD5FQSE5A87pOZUDEcD
-FQIDAQAB
------END PUBLIC KEY-----";
 
 const GOOGLE_RSA_3072_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4IC9RHuBZN0JiDhmTahs

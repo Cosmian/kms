@@ -12,6 +12,7 @@ const ALLOWED_ATTRIBUTES = [
     { value: "CryptographicAlgorithm", label: "Cryptographic Algorithm" },
     { value: "CryptographicLength", label: "Cryptographic Length" },
     { value: "CryptographicUsageMask", label: "Key Usage" },
+    { value: "Name", label: "Name" },
     { value: "public_key_id", label: "Public Key ID link" },
     { value: "private_key_id", label: "Private Key ID link" },
     { value: "certificate_id", label: "Certificate ID link" },
@@ -103,7 +104,7 @@ const DeleteAttribute: React.FC = () => {
                             rules={[{ required: true, message: "Please select an attribute name to delete" }]}
                             help="Select the KMIP attribute you want to delete"
                         >
-                            <Select placeholder="Select attribute name">
+                            <Select data-testid="attribute-name-select" placeholder="Select attribute name">
                                 {ALLOWED_ATTRIBUTES.map((attr) => (
                                     <Option key={attr.value} value={attr.value}>
                                         {attr.label}
@@ -114,7 +115,14 @@ const DeleteAttribute: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            danger
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full font-medium"
+                            data-testid="submit-btn"
+                        >
                             Delete Attribute
                         </Button>
                     </Form.Item>
@@ -123,7 +131,9 @@ const DeleteAttribute: React.FC = () => {
 
             {res && (
                 <Card>
-                    <div ref={responseRef} data-testid="response-output">{res}</div>
+                    <div ref={responseRef} data-testid="response-output">
+                        {res}
+                    </div>
                 </Card>
             )}
         </div>

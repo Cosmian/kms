@@ -13,7 +13,7 @@ echo "========================================="
 echo "Running Crypt2pay HSM tests"
 echo "========================================="
 
-[ ! -f /etc/lsb-release ] && {
+[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
   echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
   exit 1
 }

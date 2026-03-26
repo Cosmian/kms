@@ -93,7 +93,7 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.17.0"
+version = "5.18.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
@@ -121,6 +121,7 @@ debug = 0           # No debug info (timestamps/paths)
 [profile.dev]
 strip = "debuginfo"
 incremental = false
+panic = "abort"     # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]
@@ -141,13 +142,16 @@ actix-session = { version = "0.8" }
 actix-server = { version = "2.5", default-features = false }
 actix-tls = "3.4"
 actix-web = { version = "4.12", default-features = false }
-alcoholic_jwt = "4091"
 async-recursion = "1.1"
 async-trait = "0.1"
 base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
+criterion = { version = "0.6", default-features = false, features = [
+    "html_reports",
+    "async_tokio",
+] }
 cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
     "ser",

@@ -7,6 +7,8 @@ description of Bring Your Own Key (BYOK) in Azure Key Vault,
 The vault must be a `premium` Azure Key Vault, and the user performing the operations
 must have the role of `Crypto Officer`.
 
+## Table of Contents
+
 [TOC]
 
 ## Create two test keys in the Cosmian KMS

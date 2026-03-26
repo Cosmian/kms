@@ -10,10 +10,10 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-vi.stubGlobal('localStorage', {
-  getItem: vi.fn(() => 'false'),
-  setItem: vi.fn(),
-})
+vi.stubGlobal("localStorage", {
+    getItem: vi.fn(() => "false"),
+    setItem: vi.fn(),
+});
 
 // Minimal browser polyfills commonly needed by Ant Design / UI code.
 if (typeof window.matchMedia !== "function") {
@@ -111,5 +111,5 @@ vi.stubGlobal(
             status: 200,
             headers: { "Content-Type": "application/json" },
         });
-    })
+    }),
 );

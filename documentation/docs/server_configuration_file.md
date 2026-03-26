@@ -113,8 +113,13 @@ info = false
 # `Smartcard HSM`, and `SoftHSM2` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
 # hsm_model = "<hsm_name>" # the name of the HSM model (see HSMs documentation)
-# The username of the HSM admin. The HSM admin can create objects on the HSM, destroy them, and potentially export them
-# hsm_admin = "<hsm admin username>" # KMS user that can perform the Create operation on the HSM
+# List of KMS usernames that are granted HSM admin privileges.
+# HSM admins can create, destroy, and potentially export objects on the HSM.
+# Use `"*"` as the only entry to grant all authenticated users admin access.
+# Repeat the option or use a comma-separated list to specify multiple admins:
+#   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
+#   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
+# hsm_admin = ["admin"]   # list of HSM admin users; use ["*"] to allow all users to perform HSM operations
 # HSM slot number. The slots used must be listed.
 # Repeat this option to specify multiple slots
 # while specifying a password for each slot (or an empty string for no password)

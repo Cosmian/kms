@@ -71,7 +71,7 @@ pub(super) async fn handle_jwt(
                 // If Identity extraction fails, try the Authorization header
                 req.headers()
                     .get(header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok().map(ToString::to_string))
+                    .and_then(|h| h.to_str().ok().map(str::to_owned))
             },
             |identity| identity.id().ok(),
         )

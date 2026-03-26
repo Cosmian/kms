@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run PyKMIP client tests against a locally launched Cosmian KMS inside nix-shell
+# Run all PyKMIP KMIP-operation tests + Synology DSM end-to-end simulation against a locally launched Cosmian KMS inside nix-shell
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -111,7 +111,7 @@ RUST_LOG=${RUST_LOG:-warn} COSMIAN_KMS_CONF="$COSMIAN_KMS_CONF" \
 KMS_PID=$!
 
 # Ensure we stop the server on exit
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317
 cleanup() {
   set +e
   if ps -p "$KMS_PID" >/dev/null 2>&1; then

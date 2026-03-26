@@ -4,7 +4,9 @@ use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ATTR_TAG,
     kmip_attributes::{Attribute, Attributes},
-    kmip_types::{CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Tag},
+    kmip_types::{
+        CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Name, NameType, Tag,
+    },
 };
 use serde_json::Value;
 use strum::{EnumIter, EnumString, IntoEnumIterator};
@@ -288,6 +290,16 @@ pub fn parse_selected_attributes(
                     serde_json::to_value(tags).unwrap_or_default(),
                 );
             }
+            Tag::Name => {
+                if let Some(names) = attributes.name.as_ref() {
+                    if !names.is_empty() {
+                        results.insert(
+                            tag.to_string(),
+                            serde_json::to_value(names).unwrap_or_default(),
+                        );
+                    }
+                }
+            }
             Tag::VendorExtension => {
                 if let Some(vendor_attributes) = attributes.vendor_attributes.as_ref() {
                     // Filter out tag-related vendor attributes to avoid duplication
@@ -536,6 +548,10 @@ pub fn build_selected_attribute(
         "child_id" => Attribute::Link(Link {
             link_type: LinkType::ChildLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(attribute_value),
+        }),
+        "name" => Attribute::Name(Name {
+            name_value: attribute_value,
+            name_type: NameType::UninterpretedTextString,
         }),
 
         _ => {

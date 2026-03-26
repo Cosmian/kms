@@ -136,18 +136,20 @@ stream_job_logs() {
 
   # Prefer `gh run view` (nice formatting and smaller for failed steps),
   # but it may refuse logs while the overall run is still in progress.
-  # Also fall through if the output is empty (gh exits 0 but writes nothing
-  # when the job has no failed steps in its view).
-  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-    cat "$tmp"
-    rm -f "$tmp"
-    return 0
+  if gh run view "$run_id" --log-failed --job "$job_id" >"$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      cat "$tmp"
+      rm -f "$tmp"
+      return 0
+    fi
   fi
 
-  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-    cat "$tmp"
-    rm -f "$tmp"
-    return 0
+  if gh run view "$run_id" --log --job "$job_id" >"$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      cat "$tmp"
+      rm -f "$tmp"
+      return 0
+    fi
   fi
 
   # Fallback: fetch raw job logs directly (works even if run is still running).

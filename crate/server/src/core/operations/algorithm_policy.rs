@@ -485,11 +485,11 @@ fn validate_hash(req: &Hash, wl: &KmipWhitelists) -> KResult<()> {
 }
 
 fn validate_mac(req: &MAC, wl: &KmipWhitelists) -> KResult<()> {
-    validate_cryptographic_parameters(&req.cryptographic_parameters, wl)
+    validate_cryptographic_parameters_for_mac(&req.cryptographic_parameters, wl)
 }
 
 fn validate_mac_verify(req: &MACVerify, wl: &KmipWhitelists) -> KResult<()> {
-    validate_cryptographic_parameters(&req.cryptographic_parameters, wl)
+    validate_cryptographic_parameters_for_mac(&req.cryptographic_parameters, wl)
 }
 
 fn validate_sign(req: &Sign, wl: &KmipWhitelists) -> KResult<()> {
@@ -667,8 +667,6 @@ fn validate_algorithm(
         | CryptographicAlgorithm::MARS
         | CryptographicAlgorithm::OneTimePad
         | CryptographicAlgorithm::HMACMD5
-        | CryptographicAlgorithm::HMACSHA1
-        | CryptographicAlgorithm::HMACSHA224
         | CryptographicAlgorithm::DSA
         | CryptographicAlgorithm::ECMQV => {
             return deny(
@@ -686,6 +684,8 @@ fn validate_algorithm(
         | CryptographicAlgorithm::ECDSA
         | CryptographicAlgorithm::ECDH
         | CryptographicAlgorithm::EC
+        | CryptographicAlgorithm::HMACSHA1
+        | CryptographicAlgorithm::HMACSHA224
         | CryptographicAlgorithm::HMACSHA256
         | CryptographicAlgorithm::HMACSHA384
         | CryptographicAlgorithm::HMACSHA512
@@ -708,8 +708,12 @@ fn validate_algorithm(
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::ConfigurableKEM
         | CryptographicAlgorithm::MLKEM_512
-        | CryptographicAlgorithm::MLKEM_768 => {
-            // Configurable KEM and ML-KEM variants are in-scope in non-FIPS mode.
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87 => {
+            // Configurable KEM, ML-KEM, and ML-DSA variants are in-scope in non-FIPS mode.
             // If an allowlist is configured, they must still be explicitly allowed.
         }
         _ => {
@@ -752,6 +756,65 @@ fn validate_hashing_algorithm(
             ErrorReason::Constraint_Violation,
             format!("Hash not in recommended whitelist: {hash}"),
         );
+    }
+    Ok(())
+}
+
+/// Like [`validate_hashing_algorithm`] but permits SHA-1 and SHA-224 when used in a MAC
+/// (HMAC) context. NIST SP 800-131A Rev. 2 Table 7 marks HMAC-SHA-1 and HMAC-SHA-224
+/// as "Acceptable", so only the truly broken digests (MD2/MD4/MD5) are denied here.
+fn validate_hashing_algorithm_for_mac(
+    hash: HashingAlgorithm,
+    whitelist: Option<&HashSet<HashingAlgorithm>>,
+) -> KResult<()> {
+    match hash {
+        HashingAlgorithm::MD2 | HashingAlgorithm::MD4 | HashingAlgorithm::MD5 => {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("Deprecated hash for MAC: {hash}"),
+            );
+        }
+        _ => {}
+    }
+    if !allow(whitelist, &hash) {
+        return deny(
+            ErrorReason::Constraint_Violation,
+            format!("Hash not in recommended whitelist: {hash}"),
+        );
+    }
+    Ok(())
+}
+
+/// Like [`validate_cryptographic_parameters`] but uses [`validate_hashing_algorithm_for_mac`]
+/// so that HMAC-SHA-1 and HMAC-SHA-224 are accepted in MAC/MACVerify operations.
+fn validate_cryptographic_parameters_for_mac(
+    params: &Option<CryptographicParameters>,
+    wl: &KmipWhitelists,
+) -> KResult<()> {
+    let Some(params) = params else {
+        return Ok(());
+    };
+
+    if let Some(alg) = params.cryptographic_algorithm {
+        validate_algorithm(alg, wl.algorithms.as_ref())?;
+    }
+    if let Some(hash) = params.hashing_algorithm {
+        validate_hashing_algorithm_for_mac(hash, wl.hashes.as_ref())?;
+    }
+    if let Some(sig) = params.digital_signature_algorithm {
+        validate_signature_algorithm(sig, wl.signature_algorithms.as_ref())?;
+    }
+    if let Some(mode) = params.block_cipher_mode {
+        validate_block_cipher_mode_typed(mode, wl.block_cipher_modes.as_ref())?;
+    }
+    if let Some(padding) = params.padding_method {
+        validate_padding_method_typed(padding, wl.padding_methods.as_ref())?;
+    }
+    if let Some(mgf) = params.mask_generator {
+        validate_mask_generator_typed(mgf, wl.mask_generators.as_ref())?;
+    }
+    if let Some(mgf_hash) = params.mask_generator_hashing_algorithm {
+        validate_hashing_algorithm_for_mac(mgf_hash, wl.mgf_hashes.as_ref())?;
     }
     Ok(())
 }

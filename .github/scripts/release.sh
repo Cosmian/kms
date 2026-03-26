@@ -65,6 +65,7 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" cli_documenta
 
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" scripts/generate_cbom.py
 
 cargo build
 
@@ -78,5 +79,6 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com
 export DOCKER_IMAGE_NAME="ghcr.io/cosmian/kms:latest"
 docker compose -f .github/scripts/docker-compose.yml up -d
 bash .github/scripts/build_ui.sh
+python3 scripts/generate_cbom.py
 bash .github/scripts/nix.sh sbom
 docker compose -f .github/scripts/docker-compose.yml down --remove-orphans

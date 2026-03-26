@@ -1,9 +1,9 @@
 import { Layout, Menu, MenuProps, Tooltip } from "antd";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
 import { useBranding } from "./useBranding";
-import { MenuItem, menuItems } from "./menuItems.tsx";
+import { MenuItem, getMenuItems } from "./menuItems.tsx";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
 const { Sider } = Layout;
@@ -17,10 +17,49 @@ const Sidebar: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
+    const branding = useBranding();
+    const menuItems = useMemo(
+        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel }),
+        [branding.enableCovercrypt, branding.pqcLabel],
+    );
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
-    const branding = useBranding();
     const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
+
+    // Process menu items to disable "Create" and "Import" options based on access rights
+    const processMenuItems = useCallback(
+        (hasCreateAccess: boolean) => {
+            const processItems = (items: MenuItem[]): MenuItem[] => {
+                return items.map((item) => {
+                    const newItem = { ...item };
+
+                    // Check if item is a Create item
+                    const isCreateItem =
+                        item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
+
+                    // // Check if item is an Import item
+                    const isImportItem =
+                        item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
+
+                    // // Handle disabled state based on access rights
+                    if (isCreateItem || isImportItem) {
+                        newItem.disabled = !hasCreateAccess;
+                    }
+
+                    // Process children recursively if they exist
+                    if (newItem.children) {
+                        newItem.children = processItems(newItem.children);
+                    }
+                    console.log(isCreateItem, isImportItem, hasCreateAccess);
+
+                    return newItem;
+                });
+            };
+
+            setProcessedMenuItems(processItems(menuItems));
+        },
+        [menuItems],
+    );
 
     const fetchCreatePermission = useCallback(async () => {
         try {
@@ -29,7 +68,7 @@ const Sidebar: React.FC = () => {
         } catch {
             processMenuItems(false);
         }
-    }, [idToken, serverUrl]);
+    }, [idToken, serverUrl, processMenuItems]);
 
     useEffect(() => {
         (async () => {
@@ -42,35 +81,6 @@ const Sidebar: React.FC = () => {
         })();
         fetchCreatePermission();
     }, [fetchCreatePermission, idToken, serverUrl]);
-
-    // Process menu items to disable "Create" and "Import" options based on access rights
-    const processMenuItems = (hasCreateAccess: boolean) => {
-        const processItems = (items: MenuItem[]): MenuItem[] => {
-            return items.map((item) => {
-                const newItem = { ...item };
-
-                // Check if item is a Create item
-                const isCreateItem = item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
-
-                // Check if item is an Import item
-                const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
-
-                // Handle disabled state based on access rights
-                if (isCreateItem || isImportItem) {
-                    newItem.disabled = !hasCreateAccess;
-                }
-
-                // Process children recursively if they exist
-                if (newItem.children) {
-                    newItem.children = processItems(newItem.children);
-                }
-
-                return newItem;
-            });
-        };
-
-        setProcessedMenuItems(processItems(menuItems));
-    };
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};
@@ -99,7 +109,9 @@ const Sidebar: React.FC = () => {
                 .findIndex((key: string) => levelKeys[key] === levelKeys[currentOpenKey]);
 
             setStateOpenKeys(
-                openKeys.filter((_, index: number) => index !== repeatIndex).filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey])
+                openKeys
+                    .filter((_, index: number) => index !== repeatIndex)
+                    .filter((key: string) => levelKeys[key] <= levelKeys[currentOpenKey]),
             );
         } else {
             // close

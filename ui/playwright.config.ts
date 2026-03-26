@@ -32,9 +32,9 @@ export default defineConfig({
     retries: env.CI ? 1 : 0,
     // Number of concurrent Playwright workers.  Set PLAYWRIGHT_WORKERS to an
     // integer to run tests in parallel (the KMS server handles concurrent load
-    // well – see https://github.com/Cosmian/kms/issues/749).  Defaults to 1
+    // well – see https://github.com/Cosmian/kms/issues/749).  Defaults to 10
     // so that CI runs serially without requiring per-test key cleanup.
-    workers: env.PLAYWRIGHT_WORKERS ? parseInt(env.PLAYWRIGHT_WORKERS, 10) : 1,
+    workers: env.PLAYWRIGHT_WORKERS ? parseInt(env.PLAYWRIGHT_WORKERS, 10) : 10,
     use: {
         baseURL: env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
         headless: true,

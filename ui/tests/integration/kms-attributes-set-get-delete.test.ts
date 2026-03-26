@@ -25,9 +25,7 @@ async function waitForKmsServer(): Promise<void> {
 
     throw new Error(
         `KMS server not reachable at ${KMS_URL} within 60s. ` +
-            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(
-                lastError
-            )}`
+            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(lastError)}`,
     );
 }
 
@@ -95,10 +93,69 @@ describe.sequential("KMS attributes flow (set → get → delete)", () => {
             expect(afterVal == null || afterVal === "").toBe(true);
 
             await wasmClient.parse_revoke_ttlv_response(
-                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest revoke"), null, KMS_URL)
+                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest revoke"), null, KMS_URL),
             );
             await wasmClient.parse_destroy_ttlv_response(
-                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL)
+                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL),
+            );
+        } catch (e) {
+            await cleanup();
+            throw e;
+        }
+    });
+
+    test("symmetric key: set child_id link, modify it to a new value, read it back, then cleanup", async () => {
+        const tags = ["vitest", "attributes-modify", `t-${randomUUID()}`];
+
+        const createReq = wasm.create_sym_key_ttlv_request(undefined, tags, 256, "Aes", false, undefined, undefined);
+        const createStr = await sendKmipRequest(createReq, null, KMS_URL);
+        const createResp = (await wasm.parse_create_ttlv_response(createStr)) as { UniqueIdentifier: string };
+        const keyId = createResp.UniqueIdentifier;
+
+        const cleanup = async (): Promise<void> => {
+            try {
+                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest cleanup revoke"), null, KMS_URL);
+            } catch {
+                // ignore
+            }
+            try {
+                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL);
+            } catch {
+                // ignore
+            }
+        };
+
+        try {
+            const initialChildId = `vitest-child-initial-${randomUUID()}`;
+            const modifiedChildId = `vitest-child-modified-${randomUUID()}`;
+
+            // Set the initial child_id link.
+            const setReq = wasmClient.set_attribute_ttlv_request(keyId, "child_id", initialChildId);
+            const setStr = await sendKmipRequest(setReq, null, KMS_URL);
+            const setResp = wasmClient.parse_set_attribute_ttlv_response(setStr) as { UniqueIdentifier: string };
+            expect(setResp.UniqueIdentifier).toBeTruthy();
+
+            // Modify the child_id link to a new value.
+            const modifyReq = wasmClient.modify_attribute_ttlv_request(keyId, "child_id", modifiedChildId);
+            const modifyStr = await sendKmipRequest(modifyReq, null, KMS_URL);
+            const modifyResp = wasmClient.parse_modify_attribute_ttlv_response(modifyStr) as { UniqueIdentifier: string };
+            expect(modifyResp.UniqueIdentifier).toBeTruthy();
+
+            // Read back and confirm the value was updated (not the original).
+            const getReq = wasmClient.get_attributes_ttlv_request(keyId);
+            const getStr = await sendKmipRequest(getReq, null, KMS_URL);
+            const parsed = wasmClient.parse_get_attributes_ttlv_response(getStr, ["child_id"]);
+            const meta = recordFromParsed(parsed);
+
+            expect(meta).toHaveProperty("child_id");
+            expect(String(meta.child_id)).toContain(modifiedChildId);
+            expect(String(meta.child_id)).not.toContain(initialChildId);
+
+            await wasmClient.parse_revoke_ttlv_response(
+                await sendKmipRequest(wasmClient.revoke_ttlv_request(keyId, "vitest revoke"), null, KMS_URL),
+            );
+            await wasmClient.parse_destroy_ttlv_response(
+                await sendKmipRequest(wasmClient.destroy_ttlv_request(keyId, true), null, KMS_URL),
             );
         } catch (e) {
             await cleanup();

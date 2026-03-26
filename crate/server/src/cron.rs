@@ -46,11 +46,10 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                             },
                             ..Default::default()
                         };
-                        let user = if kms.params.hsm_admin.trim().is_empty() {
-                            kms.params.default_username.clone()
-                        } else {
-                            kms.params.hsm_admin.clone()
-                        };
+                        let user = kms.params.hsm_admin.iter()
+                            .find(|a| a.as_str() != "*")
+                            .cloned()
+                            .unwrap_or_else(|| kms.params.default_username.clone());
                         match kms.locate(request, &user,).await {
                             Ok(resp) => {
                                 let count = resp.located_items.unwrap_or(0);

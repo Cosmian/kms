@@ -24,25 +24,81 @@ The CLI supports multiple authentication methods for the KMS:
 |--------|------------------------|----------|
 | None (Default) | Only `server_url` | Development environments |
 | Access Token | `access_token` | Simple API token authentication |
-| TLS Client Certificate | `ssl_client_pkcs12_path`, `ssl_client_pkcs12_password` | Certificate-based auth |
+| TLS Client Certificate (PEM) | `ssl_client_pem_cert_path`, `ssl_client_pem_key_path` | Certificate-based auth — FIPS-compatible |
+| TLS Client Certificate (PKCS#12) | `ssl_client_pkcs12_path`, `ssl_client_pkcs12_password` | Certificate-based auth — non-FIPS only |
 | OAuth2/OIDC | `oauth2_conf` section | SSO with identity providers |
 | Database Secret | `database_secret` | Encrypted database access |
 
 ## Authenticating Using TLS Client Certificates
 
-To authenticate to the KMS using mutual TLS (mTLS), configure the `ssl_client_pkcs12_path` and
-`ssl_client_pkcs12_password` options in the `http_config` section:
+When the KMS server is configured with mutual TLS (mTLS), `ckms` must present a client
+certificate. Two formats are supported.
+
+### PEM format (FIPS-compatible, recommended)
+
+Provide the certificate and private key as separate PEM files (`.crt`/`.pem` and `.key`/`.pem`).
+This format works in both FIPS and non-FIPS builds.
 
 ```toml
 [http_config]
 server_url = "https://kms.acme.com:9999"
-ssl_client_pkcs12_path = "./certificates/machine.p12"
+
+# Client certificate in PEM format (leaf, optionally with chain)
+ssl_client_pem_cert_path = "/path/to/client.crt"
+
+# Client private key in PEM format (PKCS#8 or traditional RSA/EC)
+ssl_client_pem_key_path = "/path/to/client.key"
+```
+
+Combined with a bearer token (multi-factor authentication):
+
+```toml
+[http_config]
+server_url = "https://kms.acme.com:9999"
+ssl_client_pem_cert_path = "/path/to/client.crt"
+ssl_client_pem_key_path  = "/path/to/client.key"
+access_token = "<JWT_BEARER_TOKEN>"
+```
+
+### PKCS#12 format (non-FIPS only)
+
+Provide the certificate and private key bundled in a single PKCS#12 file (`.p12`).
+
+```toml
+[http_config]
+server_url = "https://kms.acme.com:9999"
+ssl_client_pkcs12_path = "/path/to/client.p12"
 ssl_client_pkcs12_password = "pkcs12_password"
 ```
 
-The `ssl_client_pkcs12_path` must point to a PKCS#12 file containing the client certificate and
-private key. The KMS server authenticates the user using the Common Name (CN) field of the
-certificate's subject.
+### Using the `ckms configure` wizard
+
+Run `ckms configure` and choose the certificate format from the interactive menu:
+
+```text
+Authentication method
+  None
+  Bearer token
+> Client certificate (PEM)             ← FIPS-compatible, recommended
+  Client certificate (PKCS#12)         ← non-FIPS only
+  Both (PEM cert + token)
+  Both (PKCS#12 cert + token)
+```
+
+The wizard prompts for the certificate and key paths (PEM) or the bundle path and password
+(PKCS#12) and writes the result to the active configuration profile.
+
+The KMS server authenticates the user using the Common Name (CN) field of the client
+certificate's subject (e.g. `CN=john.doe@example.com` becomes the username).
+
+### Converting a PKCS#12 bundle to PEM
+
+```bash
+# Extract the certificate
+openssl pkcs12 -in client.p12 -clcerts -nokeys -out client.crt
+# Extract the private key (enter the PKCS#12 password when prompted)
+openssl pkcs12 -in client.p12 -nocerts -nodes -out client.key
+```
 
 ## Common Configuration Options
 

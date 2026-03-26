@@ -210,7 +210,7 @@ pub(crate) async fn rewrap(
         .into();
     };
 
-    let google_cse_kacls_url = format!("{base_url}/google_cse",);
+    let google_cse_kacls_url = format!("{base_url}/google_cse");
 
     match operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms)
         .await

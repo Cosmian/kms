@@ -19,12 +19,13 @@ The supported key-wrapping algorithms are:
 
 | Algorithm            | Wrap Key Type                        | FIPS mode           | Description                                                                                                     |
 | -------------------- | ------------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| AES-KW               | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping without padding as defined in [RFC3394](https://tools.ietf.org/html/rfc3394).            |
 | AES-KWP              | Symmetric key wrapping               | NIST SP 800-38F     | Symmetric key-wrapping with padding as defined in [RFC5649](https://tools.ietf.org/html/rfc5649).               |
 | CKM_RSA_PKCS         | RSA PKCS#1 v1.5                      | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for key wrapping in FIPS 140-3               |
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
 | CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
 | Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-256) AES 256 GCM otherwise.        |
+| ECIES                | P-256, P-384, P-521                  | No                  | ECIES with a NIST curve: P-256 uses SHAKE128 + AES-128-GCM; P-384 and P-521 use SHAKE256 + AES-256-GCM.         |
 
 Any encryption scheme below can be used for key-wrapping as well.
 
@@ -49,7 +50,7 @@ The supported encryption algorithms are:
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | Salsa Sealed Box  | X25519, Ed25519 and Salsa20 Poly1305                    | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
-| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                             |
+| ECIES             | P-256, P-384, P-521                                     | No                  | ECIES with a NIST curve: P-256 uses SHAKE128 + AES-128-GCM; P-384 and P-521 use SHAKE256 + AES-256-GCM.                  |
 
 ## Algorithms Details
 
@@ -65,7 +66,7 @@ with a unique fingerprint.
 AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf). In
 Cosmian KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of
 operation ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag
-with and key sizes of 128 or 256 bits.
+with and key sizes of 128, 192 or 256 bits.
 
 ### ChaCha20-Poly1305
 
@@ -198,18 +199,99 @@ The available post-quantum KEMs are:
 
 The hybridized combinations pair one classical and one post-quantum KEM:
 
-| Hybrid variant            | Pre-quantum | Post-quantum | Approximate security |
-| ------------------------- | ----------- | ------------ | -------------------- |
-| ML-KEM-512 + P-256        | P-256       | ML-KEM-512   | ~128 bits            |
-| ML-KEM-768 + P-256        | P-256       | ML-KEM-768   | ~192 bits            |
-| ML-KEM-512 + Curve25519   | Curve25519  | ML-KEM-512   | ~128 bits            |
-| ML-KEM-768 + Curve25519   | Curve25519  | ML-KEM-768   | ~192 bits            |
+| Hybrid variant          | Pre-quantum | Post-quantum | Approximate security |
+| ----------------------- | ----------- | ------------ | -------------------- |
+| ML-KEM-512 + P-256      | P-256       | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + P-256      | P-256       | ML-KEM-768   | ~192 bits            |
+| ML-KEM-512 + Curve25519 | Curve25519  | ML-KEM-512   | ~128 bits            |
+| ML-KEM-768 + Curve25519 | Curve25519  | ML-KEM-768   | ~192 bits            |
 
 The hybrid approach ensures that security is maintained even if one of the two underlying KEMs
 is broken: the combined shared secret remains secure as long as at least one component KEM is secure.
 
 Key generation, encapsulation and decapsulation are exposed via the KMS CLI under
-`ckms kem` (non-FIPS builds only).
+`ckms pqc` (non-FIPS builds only) using algorithm names `ml-kem-512-p256`, `ml-kem-768-p256`,
+`ml-kem-512-curve25519`, and `ml-kem-768-curve25519`.
+
+### OpenSSL Native PQC Algorithms
+
+Starting with OpenSSL 3.5, the Cosmian KMS also provides direct support for OpenSSL-native Post-Quantum
+Cryptography algorithms standardized by NIST in August 2024. These algorithms are available in
+**non-FIPS builds only**.
+
+#### ML-KEM — Key Encapsulation Mechanism (NIST FIPS 203)
+
+[ML-KEM](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.203.pdf) (Module-Lattice-Based
+Key-Encapsulation Mechanism) is a lattice-based KEM standardized in
+[NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final). It supersedes the CRYSTALS-Kyber
+candidate from the NIST PQC competition.
+
+| Variant     | Security level | Approximate security |
+| ----------- | -------------- | -------------------- |
+| ML-KEM-512  | NIST L1        | ~128 bits            |
+| ML-KEM-768  | NIST L3        | ~192 bits            |
+| ML-KEM-1024 | NIST L5        | ~256 bits            |
+
+Key generation, encapsulation, and decapsulation are exposed via the KMS CLI under `ckms pqc ml-kem`.
+
+#### OpenSSL Hybrid KEM
+
+OpenSSL also provides hybrid combinations that pair a classical elliptic-curve Diffie-Hellman key
+exchange with ML-KEM, following the
+[IETF draft for hybrid key exchange in TLS 1.3](https://datatracker.ietf.org/doc/html/draft-ietf-tls-hybrid-design).
+
+| Variant        | Classical component | Post-quantum component | Approximate security |
+| -------------- | ------------------- | ---------------------- | -------------------- |
+| X25519MLKEM768 | X25519              | ML-KEM-768             | ~192 bits            |
+| X448MLKEM1024  | X448                | ML-KEM-1024            | ~256 bits            |
+
+Key generation, encapsulation, and decapsulation for these hybrid variants are also exposed via
+`ckms pqc ml-kem`.
+
+#### ML-DSA — Lattice-Based Digital Signature (NIST FIPS 204)
+
+[ML-DSA](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf) (Module-Lattice-Based Digital
+Signature Algorithm) is a lattice-based signature scheme standardized in
+[NIST FIPS 204](https://csrc.nist.gov/pubs/fips/204/final). It supersedes the CRYSTALS-Dilithium
+candidate.
+
+| Variant   | Security level | Approximate security |
+| --------- | -------------- | -------------------- |
+| ML-DSA-44 | NIST L2        | ~128 bits            |
+| ML-DSA-65 | NIST L3        | ~192 bits            |
+| ML-DSA-87 | NIST L5        | ~256 bits            |
+
+Key generation, signing, and verification are exposed via the KMS CLI under `ckms pqc ml-dsa`.
+
+#### SLH-DSA — Hash-Based Digital Signature (NIST FIPS 205)
+
+[SLH-DSA](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.205.pdf) (Stateless Hash-Based Digital
+Signature Algorithm) is a hash-based signature scheme standardized in
+[NIST FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). It supersedes the SPHINCS+ candidate
+and is the only standardized PQC signature scheme not based on lattices.
+
+Variants follow the naming convention `SLH-DSA-<hash>-<level><speed>` where:
+
+- `<hash>` is either `SHA2` or `SHAKE`
+- `<level>` is `128`, `192`, or `256` (security level in bits)
+- `<speed>` is `s` (small signature, slower signing) or `f` (fast signing, larger signature)
+
+| Variant            | Hash  | Security | Signature size | Signing speed |
+| ------------------ | ----- | -------- | -------------- | ------------- |
+| SLH-DSA-SHA2-128s  | SHA2  | ~128 bit | Small          | Slow          |
+| SLH-DSA-SHA2-128f  | SHA2  | ~128 bit | Large          | Fast          |
+| SLH-DSA-SHA2-192s  | SHA2  | ~192 bit | Small          | Slow          |
+| SLH-DSA-SHA2-192f  | SHA2  | ~192 bit | Large          | Fast          |
+| SLH-DSA-SHA2-256s  | SHA2  | ~256 bit | Small          | Slow          |
+| SLH-DSA-SHA2-256f  | SHA2  | ~256 bit | Large          | Fast          |
+| SLH-DSA-SHAKE-128s | SHAKE | ~128 bit | Small          | Slow          |
+| SLH-DSA-SHAKE-128f | SHAKE | ~128 bit | Large          | Fast          |
+| SLH-DSA-SHAKE-192s | SHAKE | ~192 bit | Small          | Slow          |
+| SLH-DSA-SHAKE-192f | SHAKE | ~192 bit | Large          | Fast          |
+| SLH-DSA-SHAKE-256s | SHAKE | ~256 bit | Small          | Slow          |
+| SLH-DSA-SHAKE-256f | SHAKE | ~256 bit | Large          | Fast          |
+
+Key generation, signing, and verification are exposed via the KMS CLI under `ckms pqc slh-dsa`.
 
 ## Signature schemes
 
@@ -222,18 +304,33 @@ The `Sign` operation is used to perform digital signature operations on provided
 - Signing raw data (the operation will hash the data using the specified or default hash algorithm)
 - Signing pre-hashed data (digested data) for cases where the client has already computed the hash
 
-| Algorithm  | Signature Key Type                                    | FIPS mode                                               | Description                                                                                                               |
-| ---------- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                          | Yes                                                     | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
-| ECDSA      | P-256, P-384, P-521, X25519, X448 | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA      | Ed25519, Ed448                                        | Yes                                                     | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+| Algorithm  | Signature Key Type                               | FIPS mode                                        | Description                                                                                                               |
+| ---------- | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| RSASSA-PSS | RSA-2048, RSA-3072, RSA-4096                     | Yes                                              | RSA signatures using PKCS#1 PSS padding with approved hash functions (SHA-256, SHA-384, SHA-512).                         |
+| ECDSA      | P-256, P-384, P-521                              | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| ECDSA      | secp256k1                                        | No                                               | ECDSA on the secp256k1 curve (RFC 6979 deterministic). Non-FIPS only.                                                     |
+| EdDSA      | Ed25519, Ed448                                   | Yes                                              | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+| ML-DSA     | ML-DSA-44, ML-DSA-65, ML-DSA-87                  | No (non-FIPS only)                               | Lattice-based signatures. NIST [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final). Supersedes CRYSTALS-Dilithium.      |
+| SLH-DSA    | SLH-DSA-SHA2/SHAKE-128/192/256-s/f (12 variants) | No (non-FIPS only)                               | Hash-based signatures. NIST [FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). Supersedes SPHINCS+.                   |
 
 ### Digital Signature Operations
 
 - `RSASSA-PSS` performs digital signatures using RSA keys with PSS padding and NIST-approved hash functions.
-- `ECDSA` performs digital signatures on elliptic
-  curves `P-256`, `P-384`, `P-521`, `X25519` and `X448`.
+- `ECDSA` performs digital signatures on elliptic curves `P-256`, `P-384`, `P-521` (FIPS), and `secp256k1` (non-FIPS only).
+  Note: `X25519` and `X448` are Diffie-Hellman exchange curves and are **not** used for ECDSA signatures.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
+
+## Key derivation (KMIP DeriveKey)
+
+The KMS exposes the KMIP `DeriveKey` operation, which derives a new symmetric key or secret data
+from an existing key material. Two methods are supported:
+
+| Method | Hash algorithms         | FIPS mode | Notes                                                            |
+| ------ | ----------------------- | --------- | ---------------------------------------------------------------- |
+| PBKDF2 | SHA-{1,224,256,384,512} | Yes       | Default: SHA-256, 600 000 iterations (OWASP). Salt is mandatory. |
+| HKDF   | SHA-{1,224,256,384,512} | Yes       | Default: SHA-256. Salt is optional; info (context) is optional.  |
+
+Both derivation methods are implemented via OpenSSL.
 
 ## Password-based key derivation
 
@@ -254,11 +351,21 @@ which follows FIPS recommendations as well. An additional random 128-bit salt is
 
 ## Hash functions
 
-The Cosmian server supports the following FIPS compliant hashing algorithms:
+The Cosmian server supports the following hashing algorithms:
 
+FIPS 180-4 (SHA-2 family):
+
+- SHA-224
 - SHA-256
 - SHA-384
 - SHA-512
+
+NIST FIPS 202 (SHA-3 family):
+
+- SHA3-224
+- SHA3-256
+- SHA3-384
+- SHA3-512
 
 ## References
 
@@ -309,6 +416,15 @@ The Cosmian server supports the following FIPS compliant hashing algorithms:
 
 - NIST.FIPS.186-5, Digital Signature Standard (DSS), *February 3, 2023*
     - Information on ECDSA, EdDSA and key generation.
+
+- NIST.FIPS.203, Module-Lattice-Based Key-Encapsulation Mechanism Standard, *August 13, 2024*
+    - Specification for ML-KEM (supersedes CRYSTALS-Kyber). Key encapsulation at security levels 1, 3, and 5.
+
+- NIST.FIPS.204, Module-Lattice-Based Digital Signature Standard, *August 13, 2024*
+    - Specification for ML-DSA (supersedes CRYSTALS-Dilithium). Lattice-based digital signatures at security levels 2, 3, and 5.
+
+- NIST.FIPS.205, Stateless Hash-Based Digital Signature Standard, *August 13, 2024*
+    - Specification for SLH-DSA (supersedes SPHINCS+). Hash-based digital signatures using SHA2 or SHAKE, 12 parameter sets.
 
 - NIST.FIPS.800-135r1, Recommendation for Existing Application-Specific Key Derivation Functions,
   *December 2011*

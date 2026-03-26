@@ -1,3 +1,4 @@
+---
 services:
   kms:
     image: ghcr.io/cosmian/kms:${KMS_VERSION}
@@ -27,9 +28,15 @@ services:
       - http://otel-collector:4317
       - --enable-metering
     ports:
-      - "9998:9998"
+      - 9998:9998
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "https://localhost:9998/health" ]
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - --no-check-certificate
+        - https://localhost:9998/health
       interval: 10s
       timeout: 5s
       retries: 3
@@ -40,14 +47,14 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
-    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    command: [--config=/etc/otel-collector-config.yaml]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"
-      - "13133:13133"
+      - 4317:4317
+      - 4318:4318
+      - 8888:8888
+      - 13133:13133
     environment:
       - KMS_VERSION=${KMS_VERSION}
       - ENVIRONMENT=${ENVIRONMENT}
@@ -61,13 +68,13 @@ services:
     image: victoriametrics/victoria-metrics:latest
     container_name: victoria-metrics
     ports:
-      - "8428:8428"
+      - 8428:8428
     command:
-      - "--storageDataPath=/victoria-metrics-data"
-      - "--retentionPeriod=${METRICS_RETENTION_MONTHS}"
-      - "--httpListenAddr=:8428"
-      - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--search.cacheTimestampOffset=10m"
+      - --storageDataPath=/victoria-metrics-data
+      - --retentionPeriod=${METRICS_RETENTION_MONTHS}
+      - --httpListenAddr=:8428
+      - --promscrape.config=/etc/prometheus/prometheus.yml
+      - --search.cacheTimestampOffset=10m
     volumes:
       - victoria-data:/victoria-metrics-data
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
@@ -83,7 +90,7 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"
+      - 3000:3000
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
@@ -92,7 +99,12 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health" ]
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - http://localhost:3000/api/health
       interval: 10s
       timeout: 5s
       retries: 3

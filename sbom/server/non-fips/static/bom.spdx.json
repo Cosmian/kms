@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
-  "documentNamespace": "sbomnix://52e72da3-e6e3-4ea6-90d4-88f2ae7e005d",
+  "name": "SPDXRef-nix-store-jkmkbpacgjfw5s2pf141micfkcqbc9gc-cosmian-kms-server-5.18.0.drv",
+  "documentNamespace": "sbomnix://3269ebb7-ed11-40ce-93ee-ffd8a113ce92",
   "creationInfo": {
-    "created": "2026-03-13T18:03:27.254937+01:00",
+    "created": "2026-03-25T21:26:05.266186+01:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]
@@ -14,8 +14,8 @@
   "packages": [
     {
       "name": "cosmian-kms-server",
-      "SPDXID": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
-      "versionInfo": "5.17.0",
+      "SPDXID": "SPDXRef-nix-store-jkmkbpacgjfw5s2pf141micfkcqbc9gc-cosmian-kms-server-5.18.0.drv",
+      "versionInfo": "5.18.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.17.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.18.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server@5.17.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-server@5.18.0"
         }
       ]
     },
@@ -120,7 +120,7 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-0xg68fd1im3kwv7b2pw7mz04wg3ba8yg-cosmian-kms-server-5.17.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-jkmkbpacgjfw5s2pf141micfkcqbc9gc-cosmian-kms-server-5.18.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv"
     },

@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:ab39e5bf-a16b-4df7-b5aa-e5b304c8fd6f",
+  "serialNumber": "urn:uuid:555f687e-842b-4b95-9105-c3f6f5148986",
   "metadata": {
-    "timestamp": "2026-03-13T17:59:36.479306+01:00",
+    "timestamp": "2026-03-25T20:39:13.640104+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -825,6 +825,48 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "DEBIAN-CVE-2026-3904",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/DEBIAN-CVE-2026-3904",
+        "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "DEBIAN-CVE-2026-4437",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/DEBIAN-CVE-2026-4437",
+        "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "DEBIAN-CVE-2026-4438",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/DEBIAN-CVE-2026-4438",
+        "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "DSA-5514-1",
       "source": {
         "url": "https://osv.dev/DSA-5514-1",
@@ -909,9 +951,37 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "ECHO-3c7d-5484-9e80",
+      "source": {
+        "url": "https://osv.dev/ECHO-3c7d-5484-9e80",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "ECHO-41bb-7a34-940a",
       "source": {
         "url": "https://osv.dev/ECHO-41bb-7a34-940a",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "ECHO-49d5-1f6e-5068",
+      "source": {
+        "url": "https://osv.dev/ECHO-49d5-1f6e-5068",
         "name": "OSV"
       },
       "ratings": [],
@@ -1455,9 +1525,37 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:01702-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:01702-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "SUSE-SU-2025:01702-2",
       "source": {
         "url": "https://osv.dev/SUSE-SU-2025:01702-2",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:02964-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:02964-1",
         "name": "OSV"
       },
       "ratings": [],
@@ -1483,9 +1581,121 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:20038-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:20038-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:20135-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:20135-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:20236-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:20236-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:20332-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:20332-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2025:20361-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2025:20361-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "SUSE-SU-2026:0371-1",
       "source": {
         "url": "https://osv.dev/SUSE-SU-2026:0371-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2026:20178-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2026:20178-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2026:20198-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2026:20198-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "SUSE-SU-2026:20527-1",
+      "source": {
+        "url": "https://osv.dev/SUSE-SU-2026:20527-1",
         "name": "OSV"
       },
       "ratings": [],
@@ -2280,6 +2490,48 @@
       ]
     },
     {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "openSUSE-SU-2025:15222-1",
+      "source": {
+        "url": "https://osv.dev/openSUSE-SU-2025:15222-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "openSUSE-SU-2025:15459-1",
+      "source": {
+        "url": "https://osv.dev/openSUSE-SU-2025:15459-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "openSUSE-SU-2026:20133-1",
+      "source": {
+        "url": "https://osv.dev/openSUSE-SU-2026:20133-1",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
       "bom-ref": "/nix/store/k579w215al09ygy03k53sx28af8cq749-libidn2-2.3.2.drv",
       "id": "MAL-2022-4301",
       "source": {
@@ -2570,6 +2822,28 @@
     },
     {
       "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "CVE-2026-2673",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-2673",
+        "name": "NVD"
+      },
+      "ratings": [
+        {
+          "source": {
+            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-2673",
+            "name": "NVD"
+          },
+          "score": 7.5
+        }
+      ],
+      "tools": [
+        {
+          "name": "grype"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
       "id": "CVE-2025-15467",
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15467",
@@ -2581,7 +2855,7 @@
             "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15467",
             "name": "NVD"
           },
-          "score": 9.8
+          "score": 8.8
         }
       ],
       "tools": [
@@ -2931,6 +3205,20 @@
     },
     {
       "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "CGA-886p-vf8q-j8jx",
+      "source": {
+        "url": "https://osv.dev/CGA-886p-vf8q-j8jx",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
       "id": "CGA-98cj-65vp-55vg",
       "source": {
         "url": "https://osv.dev/CGA-98cj-65vp-55vg",
@@ -3061,6 +3349,34 @@
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/DEBIAN-CVE-2025-27587",
         "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "DEBIAN-CVE-2026-2673",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/DEBIAN-CVE-2026-2673",
+        "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "ECHO-2b7e-78d4-c817",
+      "source": {
+        "url": "https://osv.dev/ECHO-2b7e-78d4-c817",
+        "name": "OSV"
       },
       "ratings": [],
       "tools": [
@@ -4471,6 +4787,34 @@
     },
     {
       "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "RHSA-2026:4163",
+      "source": {
+        "url": "https://osv.dev/RHSA-2026:4163",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "RHSA-2026:4214",
+      "source": {
+        "url": "https://osv.dev/RHSA-2026:4214",
+        "name": "OSV"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
       "id": "RLSA-2021:1024",
       "source": {
         "url": "https://osv.dev/RLSA-2021:1024",
@@ -5328,6 +5672,20 @@
       "id": "UBUNTU-CVE-2026-22796",
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/UBUNTU-CVE-2026-22796",
+        "name": "NVD"
+      },
+      "ratings": [],
+      "tools": [
+        {
+          "name": "osv"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
+      "id": "UBUNTU-CVE-2026-2673",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/UBUNTU-CVE-2026-2673",
         "name": "NVD"
       },
       "ratings": [],

@@ -24,12 +24,11 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-// let us not make other test cases fail
-const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 // Base port for this test's HTTP scenarios; use a high, disjoint range
 // to avoid collisions with other test suites and ONCE servers.
 const PORT: u16 = 12000;
 // Use a far, disjoint range for TLS tests to avoid port collisions when tests run in parallel
+#[cfg(not(target_os = "windows"))]
 const TLS_PORT: u16 = 13000;
 
 // Use a fixed workspace directory so all scenarios share the same DB

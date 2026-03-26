@@ -20,6 +20,7 @@ mod migrate;
 mod ms_dke;
 mod mtls_db;
 mod secret_data_tests;
+mod test_modify_attribute;
 pub(crate) mod test_set_attribute;
 mod test_sign;
 pub(crate) mod test_utils;

@@ -9,7 +9,17 @@
  *   • navigate: import, encrypt, decrypt pages
  */
 import { expect, test } from "@playwright/test";
-import { UI_READY_TIMEOUT, extractUuid, extractUuidAfterLabel, gotoAndWait, selectOption, submitAndWaitForDownload, submitAndWaitForResponse } from "./helpers";
+import {
+    UI_READY_TIMEOUT,
+    extractUuid,
+    extractUuidAfterLabel,
+    gotoAndWait,
+    selectOption,
+    submitAndWaitForDownload,
+    submitAndWaitForResponse,
+} from "./helpers";
+
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
 
 /** Minimal two-axis specification JSON used by all tests. */
 const SPEC_JSON = JSON.stringify({
@@ -35,6 +45,7 @@ async function createMasterKeyPair(page: Parameters<typeof gotoAndWait>[0]) {
 }
 
 test.describe("Covercrypt", () => {
+    test.skip(FIPS_MODE, "Covercrypt is not available in FIPS mode");
     test("create master key pair via inline JSON specification", async ({ page }) => {
         await gotoAndWait(page, "/ui/cc/keys/create-master-key-pair");
 

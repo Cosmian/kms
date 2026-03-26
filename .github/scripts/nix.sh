@@ -33,11 +33,12 @@ usage() {
       redis                  Run Redis-findex tests (requires Redis server, non-FIPS only)
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
-      pykmip                 Run PyKMIP client tests against a running KMS (non-FIPS)
+      pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
-      hsm [backend]          Run HSM tests (Linux only)
+      hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
+      ui                     Run UI E2E tests with Playwright (non-FIPS only)
     package [type]
                        Build package(s) via Nix
       deb              Build Debian package
@@ -79,11 +80,12 @@ usage() {
     $0 test percona
     $0 test mariadb
     $0 --variant non-fips test redis
-    $0 --variant non-fips test pykmip     # PyKMIP client tests
+    $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
     $0 test hsm proteccio       # Proteccio only
+    $0 --variant non-fips test ui           # UI E2E tests (Playwright)
     $0 package                              # Build all packages for this OS
     $0 package deb                          # FIPS variant
     $0 --variant non-fips package deb       # non-FIPS variant
@@ -505,14 +507,14 @@ test_command() {
   esac
 
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
-  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "all" ]; then
+  if [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_HSM=1
   fi
   # For WASM/UI tests, ensure shell.nix includes Node.js + wasm-pack (+ pnpm).
   if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
-  # For PyKMIP tests, ensure Python tooling is present inside the Nix shell
+  # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi

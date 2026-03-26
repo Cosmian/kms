@@ -8,8 +8,8 @@ use cosmian_kms_client::{
         kmip_attributes::Attribute,
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
-            self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, VendorAttribute,
-            VendorAttributeValue,
+            self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Name, NameType,
+            VendorAttribute, VendorAttributeValue,
         },
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
@@ -198,6 +198,11 @@ pub struct SetOrDeleteAttributes {
     #[clap(long)]
     pub child_id: Option<String>,
 
+    /// The name of the object (standard KMIP Name attribute).
+    /// The name is stored as an `UninterpretedTextString` by default.
+    #[clap(long = "name")]
+    pub name: Option<String>,
+
     #[clap(flatten)]
     pub vendor_attributes: Option<VendorAttributeCli>,
 }
@@ -303,6 +308,14 @@ impl SetOrDeleteAttributes {
             let attribute = Attribute::Link(Link {
                 link_type: LinkType::ChildLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(child_id.clone()),
+            });
+            result.push(attribute);
+        }
+
+        if let Some(name_value) = &self.name {
+            let attribute = Attribute::Name(Name {
+                name_value: name_value.clone(),
+                name_type: NameType::UninterpretedTextString,
             });
             result.push(attribute);
         }

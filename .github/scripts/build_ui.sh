@@ -72,6 +72,58 @@ fi
 
 pnpm install --frozen-lockfile
 pnpm run build
+
+# ── Start a fresh KMS server for the integration tests ──────────────────────
+# Go back to repo root to build the KMS binary, then return to ui/.
+KMS_SQLITE_DIR=""
+KMS_PID=""
+cleanup_kms() {
+  [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; }
+  [ -n "${KMS_SQLITE_DIR:-}" ] && rm -rf "${KMS_SQLITE_DIR}"
+}
+trap cleanup_kms EXIT INT TERM
+
+# Kill any existing process on port 9998 so our fresh binary can bind it.
+if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
+  echo "==> Killing stale process on port 9998 …"
+  kill "$(lsof -ti :9998)" 2>/dev/null || true
+  sleep 1
+fi
+
+echo "==> Building KMS server binary …"
+(cd .. && cargo build -p cosmian_kms_server --bin cosmian_kms "$CARGO_FEATURES")
+
+KMS_SQLITE_DIR="$(mktemp -d)"
+echo "==> Starting KMS server (port 9998, sqlite=${KMS_SQLITE_DIR}) …"
+KMS_CONF_FILE="${KMS_SQLITE_DIR}/kms.toml"
+cat >"${KMS_CONF_FILE}" <<EOF
+default_username = "admin"
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${KMS_SQLITE_DIR}"
+clear_database = true
+
+[http]
+hostname = "127.0.0.1"
+port = 9998
+EOF
+(cd .. && ./target/debug/cosmian_kms --config "${KMS_CONF_FILE}") &
+KMS_PID=$!
+
+echo "==> Waiting for KMS server to be ready …"
+for _i in $(seq 1 60); do
+  if curl -sf http://127.0.0.1:9998/version >/dev/null 2>&1; then
+    echo "    KMS server ready."
+    break
+  fi
+  if [ "${_i}" -eq 60 ]; then
+    echo "ERROR: KMS server did not become ready within 60 s." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
 pnpm run test
 pnpm run lint
 pnpm audit

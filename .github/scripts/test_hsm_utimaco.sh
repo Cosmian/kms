@@ -25,7 +25,7 @@ echo "========================================="
 echo "Running Utimaco HSM tests"
 echo "========================================="
 
-[ ! -f /etc/lsb-release ] && {
+[ ! -f /etc/lsb-release ] && [ ! -f /etc/os-release ] && {
   echo "Error: HSM tests are only supported on Linux (Ubuntu/Debian)" >&2
   exit 1
 }
@@ -78,6 +78,12 @@ env -u LD_PRELOAD \
   -- --ignored
 
 # Utimaco loader test (pure Nix, scoped runtime)
+#
+# NOTE — Issue #745 (CKA_ID on KMS-created keys):
+# The `tests::test_hsm_utimaco_generate_aes_key` and
+# `tests::test_hsm_utimaco_generate_rsa_keypair` tests (called from test_hsm_utimaco_all
+# below) now assert that every key created via the base_hsm session has CKA_ID set to the
+# key-id bytes.  A failure here means the fix for issue #745 regressed.
 
 env -u LD_PRELOAD \
   PATH="$PATH" \
@@ -127,5 +133,154 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
 else
   echo "Skipping Google CSE CLI tests (env vars not provided)."
 fi
+
+# ─── pkcs11-tool warning check ────────────────────────────────────────────────
+# Spin up a KMS server, create AES and RSA keys via ckms, then run
+# pkcs11-tool --list-objects to confirm no warnings appear.
+# This is the integration-level regression test for issue #745
+# (KMS was not setting CKA_ID on HSM-created keys).
+test_pkcs11tool_no_warnings() {
+  if ! command -v pkcs11-tool >/dev/null 2>&1; then
+    echo "Skipping pkcs11-tool warning test: pkcs11-tool not in PATH."
+    echo "  Run with WITH_HSM=1 inside nix-shell to include pkgs.opensc."
+    return 0
+  fi
+
+  echo "========================================="
+  echo "pkcs11-tool: checking KMS-created HSM keys for warnings"
+  echo "========================================="
+
+  # Build server + CLI binaries (reuses any already-built artifacts)
+  local -a build_args=(-p cosmian_kms_server -p ckms)
+  if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+    build_args+=("${FEATURES_FLAG[@]}")
+  fi
+  cargo build "${build_args[@]}"
+
+  local cargo_target_dir
+  cargo_target_dir="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+  local kms_bin="$cargo_target_dir/debug/cosmian_kms"
+  local ckms_bin="$cargo_target_dir/debug/ckms"
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  local kms_pid=""
+  local slot=0
+
+  _cleanup_pkcs11_test() {
+    [ -n "${kms_pid:-}" ] && { kill "$kms_pid" 2>/dev/null || true; wait "$kms_pid" 2>/dev/null || true; }
+    rm -rf "${tmp_dir:-}"
+  }
+  trap _cleanup_pkcs11_test EXIT
+
+  local kms_port=19998
+  local sqlite_path="$tmp_dir/kms-data"
+  local ts
+  ts=$(date +%s)
+  local aes_label="pkcs11tool_aes_${ts}"
+  local rsa_label="pkcs11tool_rsa_${ts}"
+  local aes_uid="hsm::0::${aes_label}"
+  local rsa_uid="hsm::0::${rsa_label}"
+
+  # Start KMS server (HTTP, no TLS, SQLite, Utimaco HSM on slot 0)
+  # OPENSSL_MODULES must point to the Nix-provided ossl-modules directory so the
+  # dev-build binary (which has OPENSSLDIR=/usr/local/cosmian baked in) can load
+  # the legacy and fips providers from the Nix store instead.
+  local nix_ossl_modules="${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib/ossl-modules}"
+  env -u LD_PRELOAD \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}:${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    ${nix_ossl_modules:+OPENSSL_MODULES="$nix_ossl_modules"} \
+    UTIMACO_PKCS11_LIB="$UTIMACO_PKCS11_LIB" \
+    CS_PKCS11_R3_CFG="$CS_PKCS11_R3_CFG" \
+    "$kms_bin" \
+      --database-type sqlite \
+      --sqlite-path "$sqlite_path" \
+      --port "$kms_port" \
+      --hostname "127.0.0.1" \
+      --hsm-model utimaco \
+      --hsm-admin admin \
+      --hsm-slot 0 \
+      --hsm-password "$HSM_USER_PASSWORD" \
+    >"$tmp_dir/kms.log" 2>&1 &
+  kms_pid=$!
+
+  # Wait for server readiness (up to 60 s).
+  # The KMIP endpoint returns 422 for the minimal "{}" probe body, which is
+  # correct behaviour – any HTTP response means the server is accepting
+  # connections, so do NOT use `curl -f` (it would treat 4xx as failure).
+  local probe_url="http://127.0.0.1:${kms_port}/kmip/2_1"
+  kms_wait_ready "$probe_url" "$kms_pid" "$tmp_dir/kms.log" 60
+
+  local base_args=(--url "http://127.0.0.1:${kms_port}")
+
+  # Create AES-256 key on HSM slot 0
+  env -u LD_PRELOAD PATH="$PATH" \
+    "$ckms_bin" "${base_args[@]}" sym keys create \
+      --algorithm aes \
+      --number-of-bits 256 \
+      --sensitive \
+      "$aes_uid"
+
+  # Create RSA-2048 key pair on HSM slot 0 (admin-only operation)
+  env -u LD_PRELOAD PATH="$PATH" \
+    "$ckms_bin" "${base_args[@]}" rsa keys create \
+      --size_in_bits 2048 \
+      --sensitive \
+      "$rsa_uid"
+
+  # Stop the KMS server; keys remain in the HSM slot
+  kill "$kms_pid" 2>/dev/null || true
+  wait "$kms_pid" 2>/dev/null || true
+  kms_pid=""
+
+  # List all objects in the Utimaco slot and capture both stdout and stderr
+  # NOTE: pass ONLY UTIMACO_LIB_DIR — do NOT inherit the shell LD_LIBRARY_PATH which
+  # already contains NIX_OPENSSL_OUT/lib (openssl-3.1.2 in FIPS mode). pkcs11-tool
+  # (opensc) requires OPENSSL_3.2.0 symbols and finds its OpenSSL via Nix RPATH.
+  local pkcs11_output pkcs11_rc=0
+  pkcs11_output=$(
+    env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
+    pkcs11-tool \
+      --module "$UTIMACO_PKCS11_LIB" \
+      --login --pin "$HSM_USER_PASSWORD" \
+      --slot "$slot" \
+      --list-objects 2>&1
+  ) || pkcs11_rc=$?
+  if [ "$pkcs11_rc" -ne 0 ]; then
+    echo "WARNING: pkcs11-tool exited with code $pkcs11_rc" >&2
+  fi
+  echo "--- pkcs11-tool --list-objects output ---"
+  echo "$pkcs11_output"
+  echo "-----------------------------------------"
+
+  # Fail if any unexpected CKR_ATTRIBUTE_* warnings appear.
+  # Keys are created with --sensitive, so CKR_ATTRIBUTE_SENSITIVE on VALUE is expected
+  # and harmless; all other attribute errors indicate a malformed key template.
+  pkcs11_check_warnings "$pkcs11_output" "CKR_ATTRIBUTE_SENSITIVE" || exit 1
+
+  echo "OK: no pkcs11-tool warnings on KMS-created HSM keys."
+
+  # Clean up: remove the test keys from the HSM using pkcs11-tool
+  # (same rule: only UTIMACO_LIB_DIR, no inherited LD_LIBRARY_PATH)
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
+    pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
+      --slot "$slot" --delete-object --type secrkey \
+      --label "$aes_label" 2>/dev/null || true
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
+    pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
+      --slot "$slot" --delete-object --type privkey \
+      --label "$rsa_label" 2>/dev/null || true
+  env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
+    pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
+      --slot "$slot" --delete-object --type pubkey \
+      --label "${rsa_label}_pk" 2>/dev/null || true
+
+  trap - EXIT
+  rm -rf "$tmp_dir"
+  echo "pkcs11-tool warning test passed."
+}
+
+test_pkcs11tool_no_warnings
 
 echo "Utimaco HSM tests completed successfully."

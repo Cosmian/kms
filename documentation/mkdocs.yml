@@ -75,8 +75,9 @@ nav:
   - Integrations:
       - API Endpoints: api.md
       - AWS:
-          - ECS Fargate: aws_fargate.md
-          - External Key Store (XKS): ./aws/xks.md
+          - ECS Fargate: aws/fargate.md
+          - External Key Store (XKS): aws/xks.md
+          - BYOK (Bring Your Own Key): aws/byok.md
       - Azure:
           - BYOK (Bring Your Own Key): azure/byok/byok.md
           - EKM (External Key Management): azure/ekm/ekm.md
@@ -90,10 +91,12 @@ nav:
           - Migrating existing Drive CSE elements: google_cse/migrating_drive.md
           - Migrating existing email to Gmail CSE: google_cse/migrating_gmail.md
       - Microsoft 365 Double Key Encryption (DKE): ms_dke/index.md
+      - Microsoft SQL Server External (EKM): ms_sql_server.md
       - MongoDB: mongodb.md
       - MySQL Enterprise Edition: mysql.md
       - Postgresql Percona Database: percona.md
       - PyKMIP: pykmip.md
+      - Synology DSM (NAS volume encryption): synology_dsm.md
       - S/MIME Email encryption: pki/smime.md
       - Snowflake Native App: snowflake/index.md
       - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
@@ -123,6 +126,7 @@ nav:
           - KMIP algorithm policy: kmip_policy.md
           - Benchmarks:
               - Standard algorithms: benchmarks.md
+              - Load tests: benchmarks_load_tests.md
               - DKE and Google CSE: google_dke_benchmarks.md
       - Zeroization: zeroization.md
   - KMIP Support:
@@ -138,6 +142,7 @@ nav:
       - Attributes:
           - Get: kmip/_get_attributes.md
           - Set: kmip/_set_attributes.md
+          - Modify: kmip/_modify_attribute.md
           - Delete: kmip/_delete_attributes.md
       - Certify: kmip/_certify.md
       - Create: kmip/_create.md

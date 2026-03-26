@@ -52,12 +52,13 @@ new_content = re.sub(
 )
 
 with open(target_path, "w") as f:
-    f.write(new_content)
+    f.write(new_content.rstrip() + '\n')
 
 print(f"Regenerated {target_path} from `--print-default-config`")
 
+toml_content = new_toml.rstrip('\n') + '\n'
 for path in (pkg_toml_path, kms_template_path):
     with open(path, "w") as f:
-        f.write(new_toml)
+        f.write(toml_content)
     print(f"Updated {path}")
 PYEOF

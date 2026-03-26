@@ -100,12 +100,7 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
     return await response.json();
 };
 
-export const getNoTTLVRequestWithTimeout = async (
-    path: string,
-    idToken: string | null,
-    serverUrl: string,
-    timeoutMs: number
-) => {
+export const getNoTTLVRequestWithTimeout = async (path: string, idToken: string | null, serverUrl: string, timeoutMs: number) => {
     const kmsUrl = serverUrl + path;
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
@@ -132,7 +127,8 @@ export const getNoTTLVRequestWithTimeout = async (
 };
 
 export const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {
-    const blobData = data instanceof Uint8Array ? [data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer] : [data];
+    const blobData =
+        data instanceof Uint8Array ? [data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer] : [data];
     const blob = new Blob(blobData, { type: mimeType });
     const url = URL.createObjectURL(blob);
 
@@ -199,7 +195,7 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType = "rsa" | "ec" | "symmetric" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -207,6 +203,7 @@ export const getObjectLabel = (type: ObjectType): string => {
         case "ec":
         case "symmetric":
         case "covercrypt":
+        case "pqc":
             return "key";
         case "certificate":
             return "certificate";
@@ -229,6 +226,8 @@ export const getTypeString = (type: ObjectType): string => {
             return "a CoverCrypt";
         case "symmetric":
             return "a symmetric";
+        case "pqc":
+            return "a PQC";
         case "certificate":
             return "a";
         case "secret-data":

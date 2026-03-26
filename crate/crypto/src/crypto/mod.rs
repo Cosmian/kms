@@ -17,6 +17,8 @@ pub mod elliptic_curves;
 #[cfg(feature = "non-fips")]
 pub mod kem;
 pub mod password_derivation;
+#[cfg(feature = "non-fips")]
+pub mod pqc;
 pub mod rsa;
 pub mod secret;
 pub mod symmetric;

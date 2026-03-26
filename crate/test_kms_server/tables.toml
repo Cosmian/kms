@@ -1,0 +1,15 @@
+# criterion-table configuration
+# Used by: cargo criterion -p test_kms_server --message-format=json | criterion-table
+# See https://github.com/nu11ptr/criterion-table
+
+[top_comments]
+"Symmetric key tests" = "AES and ChaCha20 symmetric key creation."
+"Symmetric encryption" = "Single-request encryption and decryption."
+"RSA tests" = "RSA key pair creation, encryption and decryption."
+"EC key creation" = "Elliptic curve key pair creation."
+"EC sign/verify" = "ECDSA, EdDSA and RSA-PSS signature operations."
+"RSA sign/verify" = "RSA-PSS sign and verify (SHA-256)."
+"AES GCM - plaintext of 64 bytes" = "AES GCM parametrized — encrypt/decrypt N items in a single KMIP Message."
+"RSA PKCSv1.5 - plaintext of 32 bytes" = "RSA PKCSv1.5 parametrized — encrypt/decrypt N items in a single KMIP Message."
+"RSA OAEP - plaintext of 32 bytes" = "RSA OAEP parametrized — encrypt/decrypt N items in a single KMIP Message."
+"RSA AES KEY WRAP - plaintext of 32 bytes" = "RSA AES KEY WRAP parametrized — encrypt/decrypt N items in a single KMIP Message."

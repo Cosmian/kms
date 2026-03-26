@@ -155,7 +155,7 @@ pub(crate) async fn retrieve_object_for_operation(
 
     Err(KmsError::Kmip21Error(
         ErrorReason::Object_Not_Found,
-        format!("object not found for identifier {uid_or_tags}",),
+        format!("object not found for identifier {uid_or_tags}"),
     ))
 }
 

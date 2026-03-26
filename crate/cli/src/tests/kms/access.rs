@@ -1,5 +1,4 @@
 // no std imports needed at top-level
-
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
@@ -12,14 +11,17 @@ use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server_with_privileged_users;
 use test_kms_server::{init_test_logging, start_default_test_kms_server_with_cert_auth};
 
+#[cfg(not(feature = "non-fips"))]
+use crate::actions::kms::elliptic_curves::keys::create_key_pair::CreateKeyPairAction;
+#[cfg(not(feature = "non-fips"))]
+use crate::actions::kms::shared::ImportSecretDataOrKeyAction;
 use crate::{
     actions::kms::{
         access::{
             GrantAccess, ListAccessRightsObtained, ListAccessesGranted, ListOwnedObjects,
             RevokeAccess,
         },
-        rsa::keys::create_key_pair::CreateKeyPairAction,
-        shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
+        shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
         },
@@ -34,11 +36,13 @@ async fn gen_key(kms_client: &KmsClient) -> KmsCliResult<UniqueIdentifier> {
 }
 
 /// Generates a key pair
+#[cfg(not(feature = "non-fips"))]
 async fn gen_keypair(kms_client: &KmsClient) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
     CreateKeyPairAction::default().run(kms_client.clone()).await
 }
 
 /// Export and import a symmetric key using a unique temp file to avoid concurrent test collisions
+#[cfg(not(feature = "non-fips"))]
 async fn export_import_sym_key(key_id: &str, kms_client: &KmsClient) -> KmsCliResult<String> {
     let tmp_dir = TempDir::new()?;
     let export_path = tmp_dir.path().join("output.export");

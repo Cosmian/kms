@@ -130,20 +130,28 @@ Authorization: Bearer <JWT_TOKEN>
 
 The server extracts the username from the token's `email` claim.
 
+#### Supported Signing Algorithms
+
+The KMS server automatically detects the signing algorithm from the JWT header (`alg` claim) and validates accordingly. The following signing algorithms from the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) library are supported; tokens using the `none` algorithm (for example, `Algorithm::None` / `alg: "none"`) are explicitly rejected:
+
+| Category | Algorithms |
+|----------|-----------|
+| HMAC (symmetric) | HS256, HS384, HS512 |
+| RSA PKCS#1 | RS256, RS384, RS512 |
+| RSA-PSS | PS256, PS384, PS512 |
+| ECDSA | ES256, ES384 |
+| EdDSA | EdDSA (Ed25519) |
+
+The algorithm is picked up from the token's `alg` header — no server-side configuration is required. The signing key must be published in the JWKS endpoint and matched by its `kid` claim.
+
 #### PKCE Support
 
-The KMS authentication system supports PKCE (Proof Key for Code Exchange) for JWT authentication, which eliminates the need for client secrets. PKCE is a more secure OAuth 2.0 flow for public clients that don't need to store client secrets. The client generates a code verifier and code challenge pair, using the code challenge during authorization and the code verifier during token exchange.
+The KMS supports PKCE (Proof Key for Code Exchange) in two complementary ways:
 
-This is particularly useful for:
+- **CLI / API clients** (`ckms` and direct API usage): PKCE is used to obtain JWT tokens from the IDP. The client secret is **optional** — PKCE provides the security guarantee instead.
+- **KMS Web UI**: PKCE is **mandatory**. The browser login flow always sends `code_challenge_method=S256`. The IDP application must be configured accordingly (see the [PKCE Authentication](pkce_authentication.md) guide for per-provider instructions).
 
-- Mobile applications
-- Single-page applications
-- Desktop applications
-- Any client that cannot securely store a client secret
-
-When using PKCE, client secrets become optional in the OAuth2 configuration. The authorization server validates the code verifier against the previously provided code challenge, ensuring secure authentication without exposing client secrets.
-
-For detailed information about implementing PKCE authentication with the KMS, see the [PKCE Authentication](pkce_authentication.md) guide.
+For detailed information including required IDP settings, provider-specific examples, and troubleshooting, see the [PKCE Authentication](pkce_authentication.md) guide.
 
 #### Multiple Identity Providers
 

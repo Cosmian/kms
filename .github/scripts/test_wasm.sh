@@ -187,9 +187,10 @@ if [ -f ui/pnpm-lock.yaml ]; then
     exit 1
   fi
   run_ui pnpm install --frozen-lockfile
-  run_ui pnpm run lint
+  run_ui pnpm run check
   run_ui pnpm run test:unit
   run_ui pnpm audit --audit-level high
+
 else
   echo "Error: ui/pnpm-lock.yaml not found; pnpm is required" >&2
   exit 1

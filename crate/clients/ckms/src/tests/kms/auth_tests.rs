@@ -236,14 +236,55 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Client Certificate authentication
-    info!("==> Testing server with Client Certificate auth");
+    // Client Certificate authentication (PKCS#12)
+    info!("==> Testing server with Client Certificate auth (PKCS#12)");
     let port = pick_free_port();
     let ctx = start_test_server_with_options(
         default_db_config.clone(),
         port,
         AuthenticationOptions {
             client: ClientAuthOptions::default(),
+            server_params: Some(build_server_params(
+                default_db_config.clone(),
+                port,
+                TlsMode::HttpsWithClientCa,
+                JwtAuth::Disabled,
+                None,
+                None,
+            )?),
+        },
+        None,
+        None,
+    )
+    .await?;
+    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    run_owned_cli_command(&owner_client_conf_path);
+    ctx.stop_server().await?;
+
+    // Client Certificate authentication (PEM cert + key — FIPS-compatible format)
+    info!("==> Testing server with Client Certificate auth (PEM)");
+    let port = pick_free_port();
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pem_cert = manifest_dir
+        .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.crt")
+        .canonicalize()
+        .expect("owner PEM cert must exist in test_data");
+    let pem_key = manifest_dir
+        .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.key")
+        .canonicalize()
+        .expect("owner PEM key must exist in test_data");
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        port,
+        AuthenticationOptions {
+            client: ClientAuthOptions {
+                http: HttpClientConfig {
+                    ssl_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
+                    ssl_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             server_params: Some(build_server_params(
                 default_db_config.clone(),
                 port,

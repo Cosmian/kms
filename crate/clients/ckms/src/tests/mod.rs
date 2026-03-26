@@ -7,12 +7,16 @@
 #![allow(clippy::assertions_on_result_states)]
 #![allow(clippy::panic_in_result_fn)]
 
-use std::{env, path::Path};
+use std::{env, path::Path, sync::Mutex};
 
 use cosmian_config_utils::ConfigUtils;
 use test_kms_server::TestsContext;
 
 use crate::config::ClientConfig;
+
+/// Protects the check-then-write sequence in `save_kms_cli_config` from TOCTOU
+/// races when multiple test threads call it concurrently for the same server port.
+static SAVE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
 mod ensure_binary;
 pub(crate) mod kms;
@@ -53,8 +57,16 @@ pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
     // Ensure binary is built before any test that uses it
     ensure_ckms_binary();
 
+    // Serialize writes within this process to prevent TOCTOU races when
+    // multiple test threads concurrently call this function for the same port.
+    // The process ID is embedded in the filename to prevent cross-process
+    // conflicts when `cargo test --workspace --lib` runs multiple test binaries
+    // concurrently (e.g., ckms + cosmian_kms_cli both using port 9999).
+    let _guard = SAVE_CONFIG_LOCK.lock().expect("SAVE_CONFIG_LOCK poisoned");
+    let pid = std::process::id();
+
     let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}.toml", kms_ctx.server_port))
+        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
         .to_string_lossy()
         .into_owned();
     if !Path::new(&owner_file_path).exists() {
@@ -66,7 +78,7 @@ pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
     }
 
     let user_file_path = env::temp_dir()
-        .join(format!("user_{}.toml", kms_ctx.server_port))
+        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
         .to_string_lossy()
         .into_owned();
     if !Path::new(&user_file_path).exists() {
@@ -84,9 +96,10 @@ pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
 pub(crate) fn force_save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
     // Ensure binary is built before any test that uses it
     ensure_ckms_binary();
+    let pid = std::process::id();
 
     let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}.toml", kms_ctx.server_port))
+        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
         .to_string_lossy()
         .into_owned();
     let conf = ClientConfig {
@@ -96,7 +109,7 @@ pub(crate) fn force_save_kms_cli_config(kms_ctx: &TestsContext) -> (String, Stri
         .expect("Failed to save owner test config");
 
     let user_file_path = env::temp_dir()
-        .join(format!("user_{}.toml", kms_ctx.server_port))
+        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
         .to_string_lossy()
         .into_owned();
     let conf = ClientConfig {

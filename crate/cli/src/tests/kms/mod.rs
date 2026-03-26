@@ -1,10 +1,9 @@
 mod access;
 mod attributes;
 mod auth_tests;
+mod aws;
 mod azure;
 mod certificates;
-#[cfg(feature = "non-fips")]
-mod configurable_kem;
 #[cfg(feature = "non-fips")]
 mod cover_crypt;
 mod derive_key;
@@ -19,6 +18,8 @@ mod mac;
 mod mac_verify;
 mod metrics;
 mod opaque_object;
+#[cfg(feature = "non-fips")]
+mod pqc;
 mod query;
 mod rng;
 mod rsa;
