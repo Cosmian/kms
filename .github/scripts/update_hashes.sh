@@ -198,15 +198,6 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
       continue
     fi
 
-    # Detect ENOTCACHED error which means the npm deps hash needs to be invalidated
-    if [[ "$line" == *"npm error code ENOTCACHED"* ]]; then
-      echo "ERROR: Detected npm ENOTCACHED error in the job logs!" >&2
-      echo "This usually happens when 'package-lock.json' is updated but the Nix npm dependency hash is not invalidated." >&2
-      echo "To fix this, replace the hash in 'nix/expected-hashes/ui.npm.sha256' with 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='." >&2
-      echo "Then commit, push, and let CI run again. It will fail with a real hash mismatch, which this script can then process." >&2
-      exit 1
-    fi
-
     # Capture the "got" hash
     if [[ "$line" == *"got:"* ]] && [[ "$line" =~ (sha256-[A-Za-z0-9+/=]+) ]]; then
       got_hash="${BASH_REMATCH[1]}"

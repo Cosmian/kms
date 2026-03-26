@@ -20,12 +20,12 @@ KMS_PORT=6789
 EKM_PREFIX="cosmian0"
 EKM_INFO_URL="https://localhost:${KMS_PORT}/azureekm/${EKM_PREFIX}/info?api-version=0.1-preview"
 
-# shellcheck disable=SC2329  # invoked indirectly via trap
+# shellcheck disable=SC2317  # invoked indirectly via trap
 cleanup() {
     echo "Stopping KMS server..."
     [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" || true; wait "${KMS_PID}" || true; }
-    [ -n "${SQLITE_PATH:-}" ] && rm -rf "${SQLITE_PATH}" || true
-    [ -n "${KMS_CONF_PATH:-}" ] && rm -f "${KMS_CONF_PATH}" || true
+    [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
+    [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
 }
 trap cleanup EXIT
 

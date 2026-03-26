@@ -372,4 +372,3 @@ cat v5.12.0.json v5.17.0.json | criterion-table
 
 ---
 Made with [criterion-table](https://github.com/nu11ptr/criterion-table)
-

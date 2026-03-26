@@ -77,8 +77,8 @@ echo "  -> Imported KEK with ID: $COSMIAN_KEK_ID"
 
 echo "[6/7] Exporting (wrapping) key material from Cosmian KMS..."
 $COSMIAN_KMS_CLI kms aws byok export \
-    $COSMIAN_KEY_ID \
-    $COSMIAN_KEK_ID \
+    "$COSMIAN_KEY_ID" \
+    "$COSMIAN_KEK_ID" \
     "$WORK_DIR/token.bin" \
     "$WORK_DIR/EncryptedKeyMaterial.bin" >/dev/null
 echo "  -> Generated encrypted key material"

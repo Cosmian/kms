@@ -98,9 +98,6 @@ ensure_expected_hashes() {
   # UI vendor cargo hash file (nix/ui.nix reads ui.vendor.<variant>.sha256; also used for WASM)
   local ui_vendor_file="$hashes_dir/ui.vendor.${VARIANT}.sha256"
   [ -s "$ui_vendor_file" ] || missing=1
-  # UI npm deps hash file (nix/ui.nix reads ui.npm.sha256)
-  local ui_npm_file="$hashes_dir/ui.npm.sha256"
-  [ -s "$ui_npm_file" ] || missing=1
 
   if [ $missing -eq 1 ]; then
     echo "WARNING: One or more expected hash files are missing for variant $VARIANT, link $LINK." >&2

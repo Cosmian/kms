@@ -78,7 +78,7 @@ pnpm run build
 KMS_SQLITE_DIR=""
 KMS_PID=""
 cleanup_kms() {
-  [ -n "${KMS_PID:-}" ] && kill "${KMS_PID}" 2>/dev/null || true
+  [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; }
   [ -n "${KMS_SQLITE_DIR:-}" ] && rm -rf "${KMS_SQLITE_DIR}"
 }
 trap cleanup_kms EXIT INT TERM
