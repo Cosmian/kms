@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, ReactNode, useContext, useState } from "react";
 
 interface AuthContextType {

@@ -103,7 +103,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     const branding = useBranding();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(false);
-    const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
+    const [authMethod, setAuthMethod] = useState<AuthMethod | undefined>(undefined);
     const [loginError, setLoginError] = useState<undefined | string>(undefined);
 
     useEffect(() => {
@@ -172,6 +172,24 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     if (isAuthLoading) {
         return <></>;
     }
+    // Error: couldn't reach server or determine auth method
+    if (authMethod === undefined) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-900">
+                <div
+                    className="text-center text-white p-8 rounded-lg"
+                    style={{ background: "rgba(255,0,0,0.15)", border: "1px solid rgba(255,0,0,0.4)" }}
+                >
+                    <div className="text-4xl mb-4">⚠️</div>
+                    <div className="text-2xl font-bold mb-2">Cannot connect to KMS server</div>
+                    <div className="text-gray-300">
+                        Could not determine the authentication method. Please check that the server is running and reachable.
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <Routes>
             {!isAuthenticated && authMethod === "JWT" ? (

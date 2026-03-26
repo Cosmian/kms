@@ -121,6 +121,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                     </div>
                 </div>
             </Layout.Header>
+            {authMethod === "None" && (
+                <Alert
+                    type="error"
+                    showIcon
+                    banner
+                    message="Authentication is disabled on this KMS server"
+                    description="This server was started without any authentication configured. Anyone with network access can read all keys and data. Creating or importing cryptographic keys is disabled."
+                    style={{ position: "sticky", top: 64, zIndex: 9, borderRadius: 0 }}
+                />
+            )}
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
                 <Sidebar isFips={serverInfo?.fips_mode ?? false} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">

@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT";
+export type AuthMethod = "None" | "JWT" | "CERT" | undefined;
 
 export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: string; user_id: string } | null> => {
     try {
@@ -27,8 +27,9 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
 
         const data: { auth_method: AuthMethod } = await response.json();
         return data.auth_method;
-    } catch {
-        return "None";
+    } catch (error) {
+        console.error(error);
+        return undefined;
     }
 };
 
