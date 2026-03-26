@@ -45,9 +45,6 @@ jobs:
           # azure_ekm is only run with non-fips
           - type: azure_ekm
             features: fips
-          # ui E2E tests use non-fips WASM build
-          - type: ui
-            features: fips
 
     steps:
       - name: Nix installation

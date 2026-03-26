@@ -1231,8 +1231,8 @@ def main() -> None:
     )
     parser.add_argument(
         '--kms-version',
-        default='5.17.0',
-        help='KMS version string to embed in metadata (default: 5.17.0)',
+        default='5.18.0',
+        help='KMS version string to embed in metadata (default: 5.18.0)',
     )
     args = parser.parse_args()
 

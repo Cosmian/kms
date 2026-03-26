@@ -436,9 +436,13 @@ kms_wait_ready() {
   local probe_url="$1" kms_pid="$2" log_file="$3" timeout="${4:-60}"
   local i
   for i in $(seq 1 "$timeout"); do
-    if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
-        -X POST -H "Content-Type: application/json" -d '{}' "$probe_url" 2>/dev/null \
-        | grep -Eq '^[0-9]{3}$'; then
+    # Strip LD_PRELOAD so the FIPS bootstrap shim does not intercept curl's
+    # own TLS stack, which would cause "ERR_OSSL_EVP_UNSUPPORTED" and make
+    # every probe return a non-HTTP error instead of a 4xx/5xx status code.
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+      curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
+      -X POST -H "Content-Type: application/json" -d '{}' "$probe_url" 2>/dev/null |
+      grep -Eq '^[0-9]{3}$'; then
       return 0
     fi
     sleep 1
@@ -461,14 +465,14 @@ pkcs11_check_warnings() {
   local pkcs11_output="$1" exclude="${2:-}"
   local warnings
   if [ -n "$exclude" ]; then
-    warnings=$(echo "$pkcs11_output" \
-      | grep "failed: rv = CKR_ATTRIBUTE_" \
-      | grep -v "$exclude" \
-      || true)
+    warnings=$(echo "$pkcs11_output" |
+      grep "failed: rv = CKR_ATTRIBUTE_" |
+      grep -v "$exclude" ||
+      true)
   else
-    warnings=$(echo "$pkcs11_output" \
-      | grep "failed: rv = CKR_ATTRIBUTE_" \
-      || true)
+    warnings=$(echo "$pkcs11_output" |
+      grep "failed: rv = CKR_ATTRIBUTE_" ||
+      true)
   fi
   if [ -n "$warnings" ]; then
     echo "FAIL: pkcs11-tool reported unexpected attribute warnings for KMS-created HSM keys:" >&2

@@ -385,7 +385,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
           
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.17.0"]
+          [default: "Cosmian KMS v5.18.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory

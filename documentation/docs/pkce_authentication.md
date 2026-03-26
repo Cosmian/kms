@@ -115,7 +115,7 @@ The KMS CLI (`ckms`) and API clients use PKCE to authenticate against the KMS se
 
 2. KMS Server Configuration
 
-    _Important_: on Entra ID, configure the redirect URL (`http://localhost:17899/authorization`) as Native/Desktop (not Single Page Application).
+    *Important*: on Entra ID, configure the redirect URL (`http://localhost:17899/authorization`) as Native/Desktop (not Single Page Application).
 
     ```toml
     [idp_auth]
@@ -139,7 +139,7 @@ The KMS CLI (`ckms`) and API clients use PKCE to authenticate against the KMS se
     # client_secret = <-- Not Set
     ```
 
-    _Note_: Google's IdP officially supports PKCE but still requires a client secret.
+    *Note*: Google's IdP officially supports PKCE but still requires a client secret.
 
 2. KMS Server Configuration
 

@@ -264,6 +264,8 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 8. Run Playwright: `PLAYWRIGHT_WORKERS=10 pnpm run test:e2e`
 9. Parse KMS server logs for ERROR/WARN and report
 
+Update ui/tests/e2e/README.md according to ui/tests/e2e/ tests.
+
 ### Key UI test files
 
 - `ui/playwright.config.ts` — Playwright config (workers, retries, base URL)
@@ -337,13 +339,13 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 
 ## 11. Updating CHANGELOG.md
 
-For each change, compare the current git branch with the upstream branch and add
-a **one-line summary** in `CHANGELOG.md` in the top section (next release). Use
-the formatting style of existing entries. Example:
+For each change, add a **one-line summary** in `CHANGELOG.md` in the top section (next release), except if the change is already described in it. Use the formatting style of existing entries. Example:
 
 ```markdown
 - **UI E2E**: Fix Playwright select helpers to use regex assertions for exact label matching.
 ```
+
+In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
 
 ---
 

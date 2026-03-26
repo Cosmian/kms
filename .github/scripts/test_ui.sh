@@ -11,13 +11,9 @@
 # ============================================================================
 set -euo pipefail
 
-# ── FIPS guard ───────────────────────────────────────────────────────────────
-# UI tests are non-fips only; default to non-fips when caller doesn't specify.
+# ── VARIANT default ─────────────────────────────────────────────────────────
+# Default to non-fips when caller doesn't specify.
 : "${VARIANT:=non-fips}"
-if [ "${VARIANT:-}" = "fips" ]; then
-    echo "UI E2E tests are skipped in FIPS mode." >&2
-    exit 0
-fi
 
 # ── Paths & common helpers ───────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,6 +29,15 @@ init_build_env "$@"
 
 run_ui() {
     (cd "${UI_DIR}" && "$@")
+}
+
+# Run pnpm with FIPS OpenSSL env vars stripped.
+# pnpm 9.x uses MD4 in createBase32Hash (depPathToFilename) which is blocked
+# by the FIPS provider loaded via LD_PRELOAD in the Nix CI shell.
+# Stripping LD_PRELOAD/OPENSSL_CONF/OPENSSL_MODULES lets pnpm use the default
+# OpenSSL provider; cargo/KMS builds are unaffected.
+run_pnpm() {
+    env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
 }
 
 ensure_pnpm() {
@@ -96,7 +101,11 @@ fi
 echo "==> SoftHSM2 slot id: ${SOFTHSM2_HSM_SLOT_ID}"
 
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
-echo "==> Building WASM (non-fips, web target) …"
+if [ "${VARIANT}" = "non-fips" ]; then
+    echo "==> Building WASM (non-fips, web target) …"
+else
+    echo "==> Building WASM (fips, web target) …"
+fi
 (
     cd "${WASM_CRATE}"
     # Unset variables that inject macOS-specific flags into the wasm32 linker.
@@ -104,7 +113,11 @@ echo "==> Building WASM (non-fips, web target) …"
     # and contain -F<sdk>/System/Library/Frameworks which breaks wasm32 linking.
     unset SDKROOT MACOSX_DEPLOYMENT_TARGET RUSTFLAGS LDFLAGS \
         OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
-    wasm-pack build --target web --features non-fips
+    if [ "${VARIANT}" = "non-fips" ]; then
+        wasm-pack build --target web --features non-fips
+    else
+        wasm-pack build --target web
+    fi
 )
 
 PKG_SRC="${WASM_CRATE}/pkg"
@@ -130,22 +143,22 @@ ensure_pnpm
 
 echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
-run_ui pnpm install --frozen-lockfile
+run_ui run_pnpm install --frozen-lockfile
 
 echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) …"
 (cd "${UI_DIR}" && {
     chmod -R u+w dist >/dev/null 2>&1 || true
     rm -rf dist >/dev/null 2>&1 || true
 })
-(cd "${UI_DIR}" && VITE_KMS_URL="http://127.0.0.1:9998" pnpm run build)
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" pnpm run build)
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
 if command -v sudo >/dev/null 2>&1 || [ "$(id -u)" -eq 0 ]; then
-    run_ui pnpm exec playwright install chromium --with-deps
+    run_ui run_pnpm exec playwright install chromium --with-deps
 else
     echo "    sudo not available; installing browser only (no system deps) …"
-    run_ui pnpm exec playwright install chromium
+    run_ui run_pnpm exec playwright install chromium
 fi
 
 # ── 5. Start KMS server ─────────────────────────────────────────────────────
@@ -157,6 +170,8 @@ cleanup() {
     echo "==> Cleaning up …"
     [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; }
     [ -n "${PREVIEW_PID:-}" ] && { kill "${PREVIEW_PID}" 2>/dev/null || true; }
+    # Kill any remaining node/vite child processes that outlived pnpm.
+    fuser -k 5173/tcp 2>/dev/null || true
     rm -rf "${SQLITE_DIR}"
     [ -n "${SOFTHSM2_HOME:-}" ] && rm -rf "${SOFTHSM2_HOME}"
 }
@@ -239,18 +254,31 @@ echo "==> HSM test keys created."
 # ── 7. Start Vite preview server ────────────────────────────────────────────
 echo "==> Starting Vite preview server (port 5173) …"
 VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
-(cd "${UI_DIR}" && pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
 echo "==> Waiting for Vite preview to be ready …"
 for i in $(seq 1 60); do
-    code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5173/ui/ 2>/dev/null || true)
-    if [ -n "${code}" ] && [ "${code}" -ge 100 ] 2>/dev/null; then
-        echo "    Vite preview ready after ${i}s (HTTP ${code})"
+    # Check if process is still alive
+    if ! kill -0 "${PREVIEW_PID}" 2>/dev/null; then
+        echo "ERROR: Vite preview process (PID ${PREVIEW_PID}) exited unexpectedly after ${i}s" >&2
+        echo "--- Vite preview log ---"
+        cat "${VITE_PREVIEW_LOG}" || true
+        echo "--- End Vite preview log ---"
+        exit 1
+    fi
+    # Use bash /dev/tcp instead of nc/curl to avoid OpenSSL initialisation
+    # failures caused by the FIPS LD_PRELOAD bootstrap, and to avoid
+    # relying on nc which is not in the Nix shell PATH.
+    if (echo >/dev/tcp/127.0.0.1/5173) 2>/dev/null; then
+        echo "    Vite preview ready after ${i}s (port open)"
         break
     fi
     if [ "${i}" -eq 60 ]; then
         echo "ERROR: Vite preview did not become ready within 60 s" >&2
+        echo "--- Vite preview log ---"
+        cat "${VITE_PREVIEW_LOG}" || true
+        echo "--- End Vite preview log ---"
         exit 1
     fi
     sleep 1
@@ -265,8 +293,11 @@ PW_ENV=(
     PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
     PLAYWRIGHT_HSM_KEY_COUNT=2
 )
+if [ "${VARIANT}" = "fips" ]; then
+    PW_ENV+=(PLAYWRIGHT_FIPS_MODE=true)
+fi
 
-(cd "${UI_DIR}" && env "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
 
 # ── 9. Report server errors ─────────────────────────────────────────────────
 SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null || true)

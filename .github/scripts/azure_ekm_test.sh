@@ -29,8 +29,8 @@ KMS_PID=""
 
 cleanup() {
     [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; wait "${KMS_PID}" 2>/dev/null || true; }
-    [ -n "${SQLITE_PATH:-}" ] && rm -rf "${SQLITE_PATH}" || true
-    [ -n "${KMS_CONF_PATH:-}" ] && rm -f "${KMS_CONF_PATH}" || true
+    [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
+    [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
 }
 trap cleanup EXIT
 

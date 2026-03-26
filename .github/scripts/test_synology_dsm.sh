@@ -98,7 +98,7 @@ RUST_LOG=${RUST_LOG:-warn} COSMIAN_KMS_CONF="$COSMIAN_KMS_CONF" \
   cargo run --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} &
 KMS_PID=$!
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317
 cleanup() {
   set +e
   if ps -p "$KMS_PID" >/dev/null 2>&1; then

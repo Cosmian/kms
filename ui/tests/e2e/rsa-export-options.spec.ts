@@ -14,7 +14,7 @@
  *   • Allow revoked objects checkbox
  *   • Export by tags
  */
-import { expect, test, Page } from "@playwright/test";
+import { expect, Page, test } from "@playwright/test";
 import {
     createRsaKeyPair,
     createSymKey,
@@ -181,6 +181,8 @@ test.describe("RSA export — wrapping with RSA algorithms", () => {
     });
 
     test("wrap sym key with RSA PKCS v1.5", async ({ page }) => {
+        // RSA PKCS1v15 for encryption is not FIPS 140-3 approved.
+        test.skip(process.env.PLAYWRIGHT_FIPS_MODE === "true", "RSA PKCS v1.5 encryption is not available in FIPS mode");
         await gotoAndWait(page, "/ui/sym/keys/export");
         await page.fill('input[placeholder="Enter key ID"]', symKeyId);
         await selectOptionById(page, "#keyFormat", "JSON TTLV (default)");
