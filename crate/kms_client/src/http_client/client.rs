@@ -45,7 +45,7 @@ use super::{
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct HttpClientConfig {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS server
-    // running an invalid or unsecure SSL certificate
+    // running an invalid or insecure TLS certificate
     #[serde(default)]
     #[serde(skip_serializing_if = "not")]
     pub accept_invalid_certs: bool,
@@ -54,19 +54,31 @@ pub struct HttpClientConfig {
     pub verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pkcs12_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pkcs12_password: Option<String>,
+    #[serde(
+        alias = "ssl_client_pkcs12_path",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls_client_pkcs12_path: Option<String>,
+    #[serde(
+        alias = "ssl_client_pkcs12_password",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls_client_pkcs12_password: Option<String>,
     /// Optional path to a client certificate in PEM format.
-    /// If provided along with `ssl_client_pem_key_path`, it will be used for
+    /// If provided along with `tls_client_pem_key_path`, it will be used for
     /// client authentication instead of PKCS#12.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pem_cert_path: Option<String>,
+    #[serde(
+        alias = "ssl_client_pem_cert_path",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls_client_pem_cert_path: Option<String>,
     /// Optional path to a client private key in PEM format.
-    /// Used together with `ssl_client_pem_cert_path` for client authentication.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pem_key_path: Option<String>,
+    /// Used together with `tls_client_pem_cert_path` for client authentication.
+    #[serde(
+        alias = "ssl_client_pem_key_path",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls_client_pem_key_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -95,10 +107,10 @@ impl Default for HttpClientConfig {
             verified_cert: None,
             access_token: None,
             database_secret: None,
-            ssl_client_pkcs12_path: None,
-            ssl_client_pkcs12_password: None,
-            ssl_client_pem_cert_path: None,
-            ssl_client_pem_key_path: None,
+            tls_client_pkcs12_path: None,
+            tls_client_pkcs12_password: None,
+            tls_client_pem_cert_path: None,
+            tls_client_pem_key_path: None,
             oauth2_conf: None,
             proxy_params: None,
             cipher_suites: None,
@@ -128,10 +140,10 @@ impl HttpClient {
     pub fn instantiate(http_conf: &HttpClientConfig) -> Result<Self, HttpClientError> {
         // Validate client authentication configuration: either PKCS#12 (with password)
         // or PEM (cert + key), but not both or partially provided
-        let pem_cert_set = http_conf.ssl_client_pem_cert_path.is_some();
-        let pem_key_set = http_conf.ssl_client_pem_key_path.is_some();
-        let pkcs12_set = http_conf.ssl_client_pkcs12_path.is_some();
-        let pkcs12_pwd_set = http_conf.ssl_client_pkcs12_password.is_some();
+        let pem_cert_set = http_conf.tls_client_pem_cert_path.is_some();
+        let pem_key_set = http_conf.tls_client_pem_key_path.is_some();
+        let pkcs12_set = http_conf.tls_client_pkcs12_path.is_some();
+        let pkcs12_pwd_set = http_conf.tls_client_pkcs12_password.is_some();
 
         if (pem_cert_set || pem_key_set) && (pkcs12_set || pkcs12_pwd_set) {
             return Err(HttpClientError::Default(

@@ -193,8 +193,8 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
 
     // Authentication method selection
     let current_auth_index = match (
-        http.ssl_client_pem_cert_path.is_some(),
-        http.ssl_client_pkcs12_path.is_some(),
+        http.tls_client_pem_cert_path.is_some(),
+        http.tls_client_pkcs12_path.is_some(),
         http.access_token.is_some(),
     ) {
         (false, false, true) => 1,
@@ -221,10 +221,10 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
 
     // Reset auth fields
     http.access_token = None;
-    http.ssl_client_pkcs12_path = None;
-    http.ssl_client_pkcs12_password = None;
-    http.ssl_client_pem_cert_path = None;
-    http.ssl_client_pem_key_path = None;
+    http.tls_client_pkcs12_path = None;
+    http.tls_client_pkcs12_password = None;
+    http.tls_client_pem_cert_path = None;
+    http.tls_client_pem_key_path = None;
 
     match choice {
         0 => {}
@@ -243,36 +243,36 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
             let cert_path: String = Input::new()
                 .with_prompt("Client PEM certificate path (.crt / .pem)")
                 .allow_empty(true)
-                .with_initial_text(http.ssl_client_pem_cert_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
             if !cert_path.is_empty() {
-                http.ssl_client_pem_cert_path = Some(cert_path);
+                http.tls_client_pem_cert_path = Some(cert_path);
                 let key_path: String = Input::new()
                     .with_prompt("Client PEM key path (.key / .pem)")
                     .allow_empty(false)
-                    .with_initial_text(http.ssl_client_pem_key_path.clone().unwrap_or_default())
+                    .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
                     .interact_text()
                     .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-                http.ssl_client_pem_key_path = Some(key_path);
+                http.tls_client_pem_key_path = Some(key_path);
             }
         }
         3 => {
             let pkcs12_path: String = Input::new()
                 .with_prompt("Client PKCS#12 path (.p12)")
                 .allow_empty(true)
-                .with_initial_text(http.ssl_client_pkcs12_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
             if !pkcs12_path.is_empty() {
-                http.ssl_client_pkcs12_path = Some(pkcs12_path);
+                http.tls_client_pkcs12_path = Some(pkcs12_path);
                 let pw: String = Password::new()
                     .with_prompt("Client PKCS#12 password (leave empty if none)")
                     .allow_empty_password(true)
                     .interact()
                     .map_err(|e| cli_error!("Prompt failed: {e}"))?;
                 if !pw.is_empty() {
-                    http.ssl_client_pkcs12_password = Some(pw);
+                    http.tls_client_pkcs12_password = Some(pw);
                 }
             }
         }
@@ -288,17 +288,17 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
             let cert_path: String = Input::new()
                 .with_prompt("Client PEM certificate path (.crt / .pem)")
                 .allow_empty(false)
-                .with_initial_text(http.ssl_client_pem_cert_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.ssl_client_pem_cert_path = Some(cert_path);
+            http.tls_client_pem_cert_path = Some(cert_path);
             let key_path: String = Input::new()
                 .with_prompt("Client PEM key path (.key / .pem)")
                 .allow_empty(false)
-                .with_initial_text(http.ssl_client_pem_key_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.ssl_client_pem_key_path = Some(key_path);
+            http.tls_client_pem_key_path = Some(key_path);
         }
         5 => {
             let token: String = Input::new()
@@ -312,17 +312,17 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
             let pkcs12_path: String = Input::new()
                 .with_prompt("Client PKCS#12 path (.p12)")
                 .allow_empty(false)
-                .with_initial_text(http.ssl_client_pkcs12_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.ssl_client_pkcs12_path = Some(pkcs12_path);
+            http.tls_client_pkcs12_path = Some(pkcs12_path);
             let pw: String = Password::new()
                 .with_prompt("Client PKCS#12 password (leave empty if none)")
                 .allow_empty_password(true)
                 .interact()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
             if !pw.is_empty() {
-                http.ssl_client_pkcs12_password = Some(pw);
+                http.tls_client_pkcs12_password = Some(pw);
             }
         }
         #[allow(clippy::unreachable)]

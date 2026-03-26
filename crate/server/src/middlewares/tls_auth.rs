@@ -1,6 +1,6 @@
-//! SSL/TLS Authentication Middleware
+//! TLS Authentication Middleware
 //!
-//! This module provides SSL/TLS client certificate-based authentication for the KMS server.
+//! This module provides TLS client certificate-based authentication for the KMS server.
 //! It extracts client certificates from TLS connections and validates them to authenticate
 //! users based on the certificate's Common Name (CN) field.
 
@@ -55,9 +55,9 @@ pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extension
 ///
 /// This middleware checks and extracts the peer certificate for a common name.
 /// The common name is then added to the request context so that it can be used by other middleware or handlers.
-pub(crate) struct SslAuth;
+pub(crate) struct TlsAuth;
 
-impl<S, B> Transform<S, ServiceRequest> for SslAuth
+impl<S, B> Transform<S, ServiceRequest> for TlsAuth
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -66,23 +66,23 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
     type InitError = ();
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-    type Transform = SslAuthMiddleware<S>;
+    type Transform = TlsAuthMiddleware<S>;
 
-    /// Create a new instance of the `SslAuth` middleware.
+    /// Create a new instance of the `TlsAuth` middleware.
     fn new_transform(&self, service: S) -> Self::Future {
-        debug!("Ssl Authentication enabled");
-        // Create a new instance of the `SslAuthMiddleware`.
-        ok(SslAuthMiddleware {
+        debug!("TLS Authentication enabled");
+        // Create a new instance of the `TlsAuthMiddleware`.
+        ok(TlsAuthMiddleware {
             service: Rc::new(service),
         })
     }
 }
 
-pub(crate) struct SslAuthMiddleware<S> {
+pub(crate) struct TlsAuthMiddleware<S> {
     service: Rc<S>,
 }
 
-impl<S, B> Service<ServiceRequest> for SslAuthMiddleware<S>
+impl<S, B> Service<ServiceRequest> for TlsAuthMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -91,20 +91,20 @@ where
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
 
-    /// Poll the `SslAuthMiddleware` for readiness.
+    /// Poll the `TlsAuthMiddleware` for readiness.
     fn poll_ready(&self, ctx: &mut Context) -> Poll<Result<(), Self::Error>> {
         // Poll the underlying service for readiness.
         self.service.poll_ready(ctx)
     }
 
-    /// Call the `SslAuthMiddleware`.
+    /// Call the `TlsAuthMiddleware`.
     ///
     /// This function calls the underlying service and checks the peer certificate for a common name.
     /// If the common name is found, it is added to the request context so that it can be used by other middleware or handlers.
     /// If the common name is not found, an unauthorized response is returned.
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // Log that the middleware is being called.
-        trace!("Ssl Authentication...");
+        trace!("TLS Authentication...");
         let service = self.service.clone();
 
         Box::pin(async move {
@@ -114,7 +114,7 @@ where
                      twice..."
                 );
             } else {
-                match ssl_auth(&req) {
+                match tls_auth(&req) {
                     Ok(user) => {
                         // Authentication successful, insert the claim into request extensions
                         // and proceed with the request
@@ -131,13 +131,13 @@ where
     }
 }
 
-fn ssl_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
+fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
     // Get the peer certificate from the context of the request.
     let Some(certificate) = req.conn_data::<PeerCertificate>() else {
         // Log that the peer certificate is not present.
-        trace!("Ssl Authentication: no peer certificate found");
+        trace!("TLS Authentication: no peer certificate found");
         return Err(KmsError::InvalidRequest(
-            "SSL Authentication: no peer certificate found".to_owned(),
+            "TLS Authentication: no peer certificate found".to_owned(),
         ));
     };
 

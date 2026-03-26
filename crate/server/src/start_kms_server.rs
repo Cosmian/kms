@@ -50,7 +50,7 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, TlsAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
@@ -835,7 +835,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 ))
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
-                    SslAuth,
+                    TlsAuth,
                 ))
                 .wrap(
                     // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
@@ -943,7 +943,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_api_token_auth,
                 ApiTokenAuth::new(kms_server.clone()),
             ))
-            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
             // CORS middleware is the last one, so that the auth middlewares do not run on

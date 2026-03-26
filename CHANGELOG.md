@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **SQLite**: Enable WAL journal mode, `synchronous=NORMAL`, and `busy_timeout=5000` on connection
+  open to fix a ~4× key-creation throughput regression (10 ms → sub-ms per write) observed in
+  Docker/overlayfs environments where fsync latency is high.
+
 ## [5.18.0] - 2026-03-25
 
 ### 🚀 Features
@@ -160,6 +168,7 @@ previously-unknown parse error for those optional vectors.
 
 ##### `ckms bench` concurrency sweep with time limits ([#816](https://github.com/Cosmian/kms/pull/816))
 
+- **Benchmarks**: Added `scripts/run_benchmarks_load_tests_docker.sh` — Docker-based load test comparison script analogous to `run_benchmarks_docker.sh`; pulls two KMS Docker images, runs `ckms bench --load` against each, and produces a side-by-side markdown diff at `documentation/docs/benchmarks/docker/load-tests-<v1>-vs-<v2>.md`.
 - `ckms bench`: added benchmarks for AES-XTS, AES-GCM-SIV, ECIES, Salsa Sealed Box, Covercrypt, and Configurable KEM (ML-KEM-512/768, hybrid variants); `run_benchmarks.sh` now injects `lscpu` output and KMS server version into `documentation/docs/benchmarks.md`
 - `ckms bench`: added `--format` option (`text`/`json`); JSON mode collects criterion estimates into `target/criterion/benchmarks.json`
 - `ckms bench`: criterion is now a regular dependency (not just dev-dependency)

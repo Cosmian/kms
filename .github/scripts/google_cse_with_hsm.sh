@@ -23,8 +23,8 @@ print_json = false
 [http_config]
 server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
-ssl_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
-ssl_client_pkcs12_password = "password"
+tls_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
+tls_client_pkcs12_password = "password"
 ' | tee $TLS_CONFIG
 
 # COSMIAN="ckms -c $TLS_CONFIG"
