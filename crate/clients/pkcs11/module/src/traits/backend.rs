@@ -110,4 +110,11 @@ pub trait Backend: Send + Sync {
         ctx: &DecryptContext,
         ciphertext: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>>;
+
+    fn remote_sign(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+    ) -> ModuleResult<Vec<u8>>;
 }

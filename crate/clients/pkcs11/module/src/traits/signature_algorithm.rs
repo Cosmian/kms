@@ -3,6 +3,7 @@ use crate::traits::DigestType;
 #[derive(Debug, Clone)]
 pub enum SignatureAlgorithm {
     Ecdsa,
+    EdDsa,
     RsaRaw,
     RsaPkcs1v15Raw,
     RsaPkcs1v15Sha1,

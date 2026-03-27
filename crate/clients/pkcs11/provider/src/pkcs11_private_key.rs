@@ -61,12 +61,16 @@ impl PrivateKey for Pkcs11PrivateKey {
         self.remote_id.clone()
     }
 
-    fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> ModuleResult<Vec<u8>> {
-        error!(
-            "sign not implemented for Pkcs11PrivateKey with remote_id: {}",
-            self.remote_id
-        );
-        Err(ModuleError::FunctionNotSupported)
+    fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>> {
+        backend()
+            .remote_sign(&self.remote_id, algorithm, data)
+            .map_err(|e| {
+                error!(
+                    "remote_sign failed for Pkcs11PrivateKey with remote_id {}: {e}",
+                    self.remote_id
+                );
+                e
+            })
     }
 
     fn algorithm(&self) -> KeyAlgorithm {

@@ -6,8 +6,8 @@ use ckms::{
         cosmian_kmip::{
             self,
             kmip_0::kmip_types::{
-                BlockCipherMode, CryptographicUsageMask, PaddingMethod, RevocationReason,
-                RevocationReasonCode, SecretDataType,
+                BlockCipherMode, CryptographicUsageMask, HashingAlgorithm, MaskGenerator,
+                PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
                 extra::VENDOR_ID_COSMIAN,
@@ -16,10 +16,11 @@ use ckms::{
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
                     Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Revoke,
+                    Sign,
                 },
                 kmip_types::{
-                    CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-                    RecommendedCurve, UniqueIdentifier,
+                    CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                    KeyFormatType, RecommendedCurve, UniqueIdentifier,
                 },
             },
         },
@@ -32,7 +33,8 @@ use ckms::{
 };
 use cosmian_logger::{debug, error, trace};
 use cosmian_pkcs11_module::traits::{
-    DecryptContext, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+    SignatureAlgorithm,
 };
 use zeroize::Zeroizing;
 
@@ -560,6 +562,133 @@ pub(crate) async fn kms_decrypt_async(
     let response = kms_rest_client.decrypt(decryption_request).await?;
     response.data.ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
+    })
+}
+
+pub(crate) fn kms_sign(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    tokio::runtime::Runtime::new()?.block_on(kms_sign_async(
+        kms_rest_client,
+        unique_identifier,
+        algorithm,
+        data,
+    ))
+}
+
+/// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
+const fn digest_type_to_hashing_algorithm(digest: &DigestType) -> HashingAlgorithm {
+    match digest {
+        DigestType::Sha1 => HashingAlgorithm::SHA1,
+        DigestType::Sha224 => HashingAlgorithm::SHA224,
+        DigestType::Sha256 => HashingAlgorithm::SHA256,
+        DigestType::Sha384 => HashingAlgorithm::SHA384,
+        DigestType::Sha512 => HashingAlgorithm::SHA512,
+    }
+}
+
+pub(crate) async fn kms_sign_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
+    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
+    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
+    // the server side.
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) = match algorithm {
+        SignatureAlgorithm::Ecdsa => {
+            // CKM_ECDSA: caller (OpenSSH) provides a pre-computed hash
+            let digital_signature_algorithm = match data.len() {
+                48 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA384),
+                64 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
+                _ => Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            };
+            let cp = CryptographicParameters {
+                digital_signature_algorithm,
+                ..Default::default()
+            };
+            (Some(cp), None, Some(data.to_vec()))
+        }
+        SignatureAlgorithm::EdDsa => {
+            // CKM_EDDSA: raw message, Ed25519/Ed448 handles hashing internally
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaRaw | SignatureAlgorithm::RsaPkcs1v15Raw => {
+            // CKM_RSA_PKCS: pass raw bytes, server uses stored key attributes
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha1 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA1WithRSAEncryption),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha256 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha384 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha512 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPss {
+            digest,
+            mask_generation_function,
+            salt_length,
+        } => {
+            let hashing_algorithm = Some(digest_type_to_hashing_algorithm(digest));
+            let mask_generator_hashing_algorithm =
+                Some(digest_type_to_hashing_algorithm(mask_generation_function));
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                hashing_algorithm,
+                mask_generator: Some(MaskGenerator::MFG1),
+                mask_generator_hashing_algorithm,
+                salt_length: Some(i32::try_from(*salt_length)?),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+    };
+
+    let sign_request = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters,
+        data: data_bytes.map(zeroize::Zeroizing::new),
+        digested_data: digested_data_bytes,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let response = kms_rest_client.sign(sign_request).await?;
+    response.signature_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
     })
 }
 

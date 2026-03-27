@@ -38,6 +38,10 @@ let
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
   withXks = (builtins.getEnv "WITH_XKS") == "1";
   withWasm = (builtins.getEnv "WITH_WASM") == "1";
+  # OpenSSH PKCS#11 test: ssh-keygen is part of openssh on Linux (macOS has it natively)
+  withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
+  # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
+  withLuks = (builtins.getEnv "WITH_LUKS") == "1";
 
   rustToolchain =
     if withWasm then
@@ -167,7 +171,11 @@ pkgs.mkShell {
       ]
     else
       [ ]
-  );
+  )
+  # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
+  ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
+  # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ];
 
   shellHook = ''
     set -eo pipefail

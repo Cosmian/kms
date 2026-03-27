@@ -34,6 +34,8 @@ usage() {
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
+      openssh                Run OpenSSH PKCS#11 integration tests (non-FIPS)
+      luks                   Run LUKS disk-encryption PKCS#11 integration tests
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
@@ -81,6 +83,8 @@ usage() {
     $0 test mariadb
     $0 --variant non-fips test redis
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
+    $0 --variant non-fips test openssh    # OpenSSH PKCS#11 integration tests
+    $0 test luks                          # LUKS disk-encryption PKCS#11 tests
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -246,6 +250,17 @@ resolve_command_args() {
   # Flag extra tools for nix-shell through environment (avoids mixing -p with shell.nix)
   if [ "$COMMAND" = "test" ]; then
     export WITH_WGET=1
+  fi
+
+  # OpenSSH and LUKS PKCS#11 tests require a non-FIPS nix-shell environment:
+  # PKCS12 parsing uses legacy KDF, and EdDSA/Covercrypt need the non-FIPS OpenSSL.
+  # Auto-select non-fips unless the caller already specified a variant explicitly.
+  if [ "$COMMAND" = "test" ] && { [ "${TEST_TYPE:-}" = "openssh" ] || [ "${TEST_TYPE:-}" = "luks" ]; }; then
+    if [ -z "${VARIANT_EXPLICIT:-}" ]; then
+      echo "Note: '${TEST_TYPE}' tests always require non-FIPS variant; switching to non-fips."
+      VARIANT="non-fips"
+      export VARIANT
+    fi
   fi
 
   # Some integration tests (e.g., otel_export) require host-facing tools.
@@ -471,6 +486,12 @@ test_command() {
   pykmip)
     SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
     ;;
+  openssh)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_openssh.sh"
+    ;;
+  luks)
+    SCRIPT="$REPO_ROOT/.github/scripts/test_luks.sh"
+    ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
     ;;
@@ -502,7 +523,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -518,6 +539,14 @@ test_command() {
   # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
+  fi
+  # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
+  if [ "$TEST_TYPE" = "openssh" ]; then
+    export WITH_OPENSSH=1
+  fi
+  # For LUKS disk-encryption PKCS#11 tests, ensure opensc (pkcs11-tool) is present on Linux CI
+  if [ "$TEST_TYPE" = "luks" ]; then
+    export WITH_LUKS=1
   fi
   # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
   if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
@@ -549,6 +578,8 @@ test_command() {
         --keep WITH_DOCKER \
         --keep WITH_HSM \
         --keep WITH_PYTHON \
+        --keep WITH_OPENSSH \
+        --keep WITH_LUKS \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
@@ -1008,6 +1039,13 @@ run_in_nix_shell() {
   if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "proteccio" ]; }; then
     USE_PURE=false
     echo "Note: Running HSM tests without --pure to access host utilities (e.g., sudo)."
+  fi
+
+  # On macOS, OpenSSH and LUKS PKCS#11 tests need system ssh-keygen and tools.
+  # On Linux CI they use pkgs.openssh / pkgs.opensc from shell.nix (WITH_OPENSSH / WITH_LUKS).
+  if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; } && [ "$(uname)" = "Darwin" ]; then
+    USE_PURE=false
+    echo "Note: Running ${TEST_TYPE} tests without --pure on macOS to access system tools."
   fi
 
   # On macOS, DMG packaging requires system utilities (hdiutil, sw_vers) not available in pure mode

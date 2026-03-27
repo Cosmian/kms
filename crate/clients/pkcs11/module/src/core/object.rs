@@ -22,7 +22,10 @@ use std::sync::Arc;
 use cosmian_logger::debug;
 use log::error;
 use openssl::pkey::PKey;
-use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
+use p256::{
+    elliptic_curve::sec1::ToEncodedPoint,
+    pkcs8::der::{Encode, asn1::OctetStringRef},
+};
 use pkcs11_sys::{
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CKC_X_509, CKO_CERTIFICATE, CKO_DATA,
     CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
@@ -258,8 +261,16 @@ impl Object {
             Self::PublicKey(pk) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PUBLIC_KEY)),
                 AttributeType::Label => Some(Attribute::Label("Public Key".to_owned())),
-                AttributeType::Modulus => Some(Attribute::Modulus(pk.rsa_modulus()?)),
+                AttributeType::Modulus => {
+                    if !pk.algorithm().is_rsa() {
+                        return Ok(None);
+                    }
+                    Some(Attribute::Modulus(pk.rsa_modulus()?))
+                }
                 AttributeType::PublicExponent => {
+                    if !pk.algorithm().is_rsa() {
+                        return Ok(None);
+                    }
                     Some(Attribute::PublicExponent(pk.rsa_public_exponent()?))
                 }
                 AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
@@ -268,12 +279,16 @@ impl Object {
                     if !pk.algorithm().is_ecc() {
                         return Ok(None);
                     }
-                    Some(Attribute::EcPoint(
-                        pk.ec_p256_public_key()?
-                            .to_encoded_point(false)
-                            .to_bytes()
-                            .to_vec(),
-                    ))
+                    let encoded = pk.ec_p256_public_key()?.to_encoded_point(false);
+                    let point_bytes = encoded.as_bytes();
+                    // PKCS#11 CKA_EC_POINT must be the DER-encoded ANSI X9.62 ECPoint
+                    // (i.e. the raw SEC1 point wrapped in a DER OCTET STRING).
+                    let der_point = OctetStringRef::new(point_bytes)
+                        .and_then(|s| s.to_der())
+                        .map_err(|e| {
+                            ModuleError::Cryptography(format!("EC point DER encoding failed: {e}"))
+                        })?;
+                    Some(Attribute::EcPoint(der_point))
                 }
                 AttributeType::EcParams => {
                     if !pk.algorithm().is_ecc() {
