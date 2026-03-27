@@ -1,0 +1,9 @@
+- **PKCS#11 ObjectsStore**: Fix variable-shadowing bug in `upsert()` that silently no-op'd updates — stub objects with empty key bytes were never replaced with properly-fetched objects, causing `C_GetAttributeValue` to return `CKR_GENERAL_ERROR` for all public-key attributes.
+- **PKCS#11 public key attributes**: Guard `CKA_MODULUS` / `CKA_PUBLIC_EXPONENT` attribute handlers with `is_rsa()` check; return `None` for non-RSA keys instead of propagating `CKR_GENERAL_ERROR`.
+- **PKCS#11 EC point encoding**: Wrap `CKA_EC_POINT` bytes in a DER OCTET STRING per PKCS#11 v2.40 spec so OpenSSH/OpenSSL's `o2i_ECPublicKey` can parse them correctly.
+- **PKCS#11 RSA/EC key bytes**: Fix `Pkcs11PublicKey` to store the inner key bytes extracted from SPKI's BIT STRING (`raw_bytes()`) rather than the full SPKI DER, so `RsaPublicKey::from_der` and `p256::PublicKey::from_sec1_bytes` succeed.
+- **test_openssh.sh**: New shell integration test for the OpenSSH PKCS#11 provider; invokes `ssh-keygen -D` to enumerate RSA and EC P-256 public keys via the PKCS#11 library.
+- **test_luks.sh**: New shell integration test for the LUKS disk-encryption PKCS#11 scenario (Rust unit tests + shell verification with `ckms locate`).
+- **nix.sh**: Add `openssh` and `luks` test cases; export `WITH_OPENSSH=1`/`WITH_LUKS=1`; auto-select `non-fips` variant for both test types when not explicitly specified; disable `--pure` on macOS so system `ssh-keygen` is accessible.
+- **shell.nix**: Add `pkgs.openssh` (Linux) when `WITH_OPENSSH=1` and `pkgs.opensc` (Linux) when `WITH_LUKS=1` so CI runners have the required tools.
+- **test_all.yml**: Add `openssh` and `luks` to the CI test matrix (non-fips only; fips excluded because PKCS12KDF and EdDSA are not FIPS-approved).
