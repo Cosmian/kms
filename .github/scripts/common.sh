@@ -141,6 +141,22 @@ export PIN_URL="https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e
 # Backward-compatible alias used by some scripts
 export PINNED_NIXPKGS_URL="$PIN_URL"
 
+# Warn if a system-level KMS config exists at the default lookup path.
+# Test scripts that start the KMS server with --config are unaffected (the
+# server bypasses the default path entirely when an explicit config is given).
+# Scripts that rely on CLI arguments without --config will fail if this file
+# is present, so we surface the condition early.
+_warn_system_kms_conf() {
+  local default_conf
+  default_conf="/etc/cosmian/kms.toml"
+  if [ -f "$default_conf" ]; then
+    echo "WARNING: ${default_conf} exists on this system." >&2
+    echo "         The KMS server will load this file and ignore any command-line" >&2
+    echo "         arguments when started without an explicit --config flag." >&2
+    echo "         Test scripts in this repo always pass --config to avoid this." >&2
+  fi
+}
+
 # Initialize build/test configuration from CLI args
 # Usage: init_build_env "$@"
 # Exports:
@@ -219,6 +235,7 @@ init_build_env() {
 
   ensure_macos_sdk_env
   ensure_macos_frameworks_ldflags
+  _warn_system_kms_conf
   export VARIANT VARIANT_NAME LINK
 }
 

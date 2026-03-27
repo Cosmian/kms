@@ -135,6 +135,25 @@ test_pkcs11tool_no_warnings() {
   local aes_uid="hsm::${SOFTHSM2_HSM_SLOT_ID}::${aes_label}"
   local rsa_uid="hsm::${SOFTHSM2_HSM_SLOT_ID}::${rsa_label}"
 
+  # Write a temp config so that /etc/cosmian/kms.toml (if present on the host)
+  # does not interfere: when --config is supplied explicitly, the server never
+  # falls back to the default path.
+  local kms_conf="$tmp_dir/kms.toml"
+  cat >"$kms_conf" <<KMS_CONF_EOF
+hsm_model = "softhsm2"
+hsm_admin = ["admin"]
+hsm_slot = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${sqlite_path}"
+
+[http]
+hostname = "127.0.0.1"
+port = ${kms_port}
+KMS_CONF_EOF
+
   # Start KMS server (HTTP, no TLS, SQLite, SoftHSM2).
   # The KMS reads SOFTHSM2_PKCS11_LIB to locate the PKCS#11 module, and
   # SOFTHSM2_CONF to locate the token database.
@@ -144,14 +163,7 @@ test_pkcs11tool_no_warnings() {
     SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
     SOFTHSM2_CONF="$SOFTHSM2_CONF" \
     "$kms_bin" \
-    --database-type sqlite \
-    --sqlite-path "$sqlite_path" \
-    --port "$kms_port" \
-    --hostname "127.0.0.1" \
-    --hsm-model softhsm2 \
-    --hsm-admin admin \
-    --hsm-slot "$SOFTHSM2_HSM_SLOT_ID" \
-    --hsm-password "$HSM_USER_PASSWORD" \
+    --config "$kms_conf" \
     >"$tmp_dir/kms.log" 2>&1 &
   kms_pid=$!
 

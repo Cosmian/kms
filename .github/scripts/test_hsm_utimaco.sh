@@ -168,7 +168,10 @@ test_pkcs11tool_no_warnings() {
   local slot=0
 
   _cleanup_pkcs11_test() {
-    [ -n "${kms_pid:-}" ] && { kill "$kms_pid" 2>/dev/null || true; wait "$kms_pid" 2>/dev/null || true; }
+    [ -n "${kms_pid:-}" ] && {
+      kill "$kms_pid" 2>/dev/null || true
+      wait "$kms_pid" 2>/dev/null || true
+    }
     rm -rf "${tmp_dir:-}"
   }
   trap _cleanup_pkcs11_test EXIT
@@ -182,6 +185,25 @@ test_pkcs11tool_no_warnings() {
   local aes_uid="hsm::0::${aes_label}"
   local rsa_uid="hsm::0::${rsa_label}"
 
+  # Write a temp config so that /etc/cosmian/kms.toml (if present on the host)
+  # does not interfere: when --config is supplied explicitly, the server never
+  # falls back to the default path.
+  local kms_conf="$tmp_dir/kms.toml"
+  cat >"$kms_conf" <<KMS_CONF_EOF
+hsm_model = "utimaco"
+hsm_admin = ["admin"]
+hsm_slot = [0]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${sqlite_path}"
+
+[http]
+hostname = "127.0.0.1"
+port = ${kms_port}
+KMS_CONF_EOF
+
   # Start KMS server (HTTP, no TLS, SQLite, Utimaco HSM on slot 0)
   # OPENSSL_MODULES must point to the Nix-provided ossl-modules directory so the
   # dev-build binary (which has OPENSSLDIR=/usr/local/cosmian baked in) can load
@@ -194,14 +216,7 @@ test_pkcs11tool_no_warnings() {
     UTIMACO_PKCS11_LIB="$UTIMACO_PKCS11_LIB" \
     CS_PKCS11_R3_CFG="$CS_PKCS11_R3_CFG" \
     "$kms_bin" \
-      --database-type sqlite \
-      --sqlite-path "$sqlite_path" \
-      --port "$kms_port" \
-      --hostname "127.0.0.1" \
-      --hsm-model utimaco \
-      --hsm-admin admin \
-      --hsm-slot 0 \
-      --hsm-password "$HSM_USER_PASSWORD" \
+    --config "$kms_conf" \
     >"$tmp_dir/kms.log" 2>&1 &
   kms_pid=$!
 
@@ -217,17 +232,17 @@ test_pkcs11tool_no_warnings() {
   # Create AES-256 key on HSM slot 0
   env -u LD_PRELOAD PATH="$PATH" \
     "$ckms_bin" "${base_args[@]}" sym keys create \
-      --algorithm aes \
-      --number-of-bits 256 \
-      --sensitive \
-      "$aes_uid"
+    --algorithm aes \
+    --number-of-bits 256 \
+    --sensitive \
+    "$aes_uid"
 
   # Create RSA-2048 key pair on HSM slot 0 (admin-only operation)
   env -u LD_PRELOAD PATH="$PATH" \
     "$ckms_bin" "${base_args[@]}" rsa keys create \
-      --size_in_bits 2048 \
-      --sensitive \
-      "$rsa_uid"
+    --size_in_bits 2048 \
+    --sensitive \
+    "$rsa_uid"
 
   # Stop the KMS server; keys remain in the HSM slot
   kill "$kms_pid" 2>/dev/null || true
@@ -241,7 +256,7 @@ test_pkcs11tool_no_warnings() {
   local pkcs11_output pkcs11_rc=0
   pkcs11_output=$(
     env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
-    pkcs11-tool \
+      pkcs11-tool \
       --module "$UTIMACO_PKCS11_LIB" \
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$slot" \
@@ -265,16 +280,16 @@ test_pkcs11tool_no_warnings() {
   # (same rule: only UTIMACO_LIB_DIR, no inherited LD_LIBRARY_PATH)
   env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$slot" --delete-object --type secrkey \
-      --label "$aes_label" 2>/dev/null || true
+    --slot "$slot" --delete-object --type secrkey \
+    --label "$aes_label" 2>/dev/null || true
   env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$slot" --delete-object --type privkey \
-      --label "$rsa_label" 2>/dev/null || true
+    --slot "$slot" --delete-object --type privkey \
+    --label "$rsa_label" 2>/dev/null || true
   env LD_LIBRARY_PATH="${UTIMACO_LIB_DIR}" \
     pkcs11-tool --module "$UTIMACO_PKCS11_LIB" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$slot" --delete-object --type pubkey \
-      --label "${rsa_label}_pk" 2>/dev/null || true
+    --slot "$slot" --delete-object --type pubkey \
+    --label "${rsa_label}_pk" 2>/dev/null || true
 
   trap - EXIT
   rm -rf "$tmp_dir"

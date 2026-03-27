@@ -99,7 +99,10 @@ test_pkcs11tool_no_warnings() {
   local kms_pid=""
 
   _cleanup_pkcs11_test() {
-    [ -n "${kms_pid:-}" ] && { kill "$kms_pid" 2>/dev/null || true; wait "$kms_pid" 2>/dev/null || true; }
+    [ -n "${kms_pid:-}" ] && {
+      kill "$kms_pid" 2>/dev/null || true
+      wait "$kms_pid" 2>/dev/null || true
+    }
     rm -rf "${tmp_dir:-}"
   }
   trap _cleanup_pkcs11_test EXIT
@@ -136,7 +139,7 @@ test_pkcs11tool_no_warnings() {
   fipsmodule_cnf="$(dirname "${OPENSSL_CONF:-/dev/null}")/fipsmodule.cnf"
   if [ -f "$fipsmodule_cnf" ]; then
     # FIPS env: provide [fips_sect] config data but do not auto-activate FIPS
-    cat > "$kms_openssl_cnf" <<OPENSSL_CNF
+    cat >"$kms_openssl_cnf" <<OPENSSL_CNF
 openssl_conf = openssl_init
 
 [openssl_init]
@@ -156,21 +159,33 @@ OPENSSL_CNF
   else
     # Non-FIPS / no fipsmodule.cnf: just load the built-in default provider
     printf '[openssl_conf]\nopenssl_conf = openssl_init\n\n[openssl_init]\nproviders = provider_sect\n\n[provider_sect]\ndefault = default_sect\n\n[default_sect]\nactivate = 1\n' \
-      > "$kms_openssl_cnf"
+      >"$kms_openssl_cnf"
   fi
+
+  # Write a temp config so that /etc/cosmian/kms.toml (if present on the host)
+  # does not interfere: when --config is supplied explicitly, the server never
+  # falls back to the default path.
+  local kms_conf="$tmp_dir/kms.toml"
+  cat >"$kms_conf" <<KMS_CONF_EOF
+hsm_model = "proteccio"
+hsm_admin = ["admin"]
+hsm_slot = [${HSM_SLOT_ID_VALUE}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${sqlite_path}"
+
+[http]
+hostname = "127.0.0.1"
+port = ${kms_port}
+KMS_CONF_EOF
 
   env -u LD_PRELOAD -u LD_LIBRARY_PATH \
     PATH="$PATH" \
     OPENSSL_CONF="$kms_openssl_cnf" \
     "$kms_bin" \
-      --database-type sqlite \
-      --sqlite-path "$sqlite_path" \
-      --port "$kms_port" \
-      --hostname "127.0.0.1" \
-      --hsm-model proteccio \
-      --hsm-admin admin \
-      --hsm-slot "$HSM_SLOT_ID_VALUE" \
-      --hsm-password "$HSM_USER_PASSWORD" \
+    --config "$kms_conf" \
     >"$tmp_dir/kms.log" 2>&1 &
   kms_pid=$!
 
@@ -185,14 +200,14 @@ OPENSSL_CNF
   # pkcs11-tool output clean for the warning check below.
   env -u LD_PRELOAD PATH="$PATH" \
     "$ckms_bin" "${base_args[@]}" sym keys create \
-      --algorithm aes \
-      --number-of-bits 256 \
-      "$aes_uid"
+    --algorithm aes \
+    --number-of-bits 256 \
+    "$aes_uid"
 
   env -u LD_PRELOAD PATH="$PATH" \
     "$ckms_bin" "${base_args[@]}" rsa keys create \
-      --size_in_bits 2048 \
-      "$rsa_uid"
+    --size_in_bits 2048 \
+    "$rsa_uid"
 
   kill "$kms_pid" 2>/dev/null || true
   wait "$kms_pid" 2>/dev/null || true
@@ -204,7 +219,7 @@ OPENSSL_CNF
   set +x
   pkcs11_output=$(
     env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
-    pkcs11-tool \
+      pkcs11-tool \
       --module "$proteccio_lib" \
       --login --pin "$HSM_USER_PASSWORD" \
       --slot "$HSM_SLOT_ID_VALUE" \
@@ -230,16 +245,16 @@ OPENSSL_CNF
   set +x
   env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     pkcs11-tool --module "$proteccio_lib" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$HSM_SLOT_ID_VALUE" --delete-object --type secrkey \
-      --label "$aes_label" 2>/dev/null || true
+    --slot "$HSM_SLOT_ID_VALUE" --delete-object --type secrkey \
+    --label "$aes_label" 2>/dev/null || true
   env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     pkcs11-tool --module "$proteccio_lib" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$HSM_SLOT_ID_VALUE" --delete-object --type privkey \
-      --label "$rsa_label" 2>/dev/null || true
+    --slot "$HSM_SLOT_ID_VALUE" --delete-object --type privkey \
+    --label "$rsa_label" 2>/dev/null || true
   env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     pkcs11-tool --module "$proteccio_lib" --login --pin "$HSM_USER_PASSWORD" \
-      --slot "$HSM_SLOT_ID_VALUE" --delete-object --type pubkey \
-      --label "${rsa_label}_pk" 2>/dev/null || true
+    --slot "$HSM_SLOT_ID_VALUE" --delete-object --type pubkey \
+    --label "${rsa_label}_pk" 2>/dev/null || true
   set -x
 
   trap - EXIT

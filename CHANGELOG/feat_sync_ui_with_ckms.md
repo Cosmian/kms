@@ -23,3 +23,4 @@ All notable changes to this project will be documented in this file.
 - **SQLite**: Enable WAL journal mode, `synchronous=NORMAL`, and `busy_timeout=5000` on connection
   open to fix a ~4× key-creation throughput regression (10 ms → sub-ms per write) observed in
   Docker/overlayfs environments where fsync latency is high.
+- **CI**: All test scripts that start the KMS server are now protected against a system-level `/etc/cosmian/kms.toml`; `test_hsm_softhsm2.sh`, `test_hsm_utimaco.sh`, and `test_hsm_proteccio.sh` write a temporary config file and pass `--config` explicitly so the server never falls back to the default path. `common.sh` now warns early when the default config file is found on the host. ([#810](https://github.com/Cosmian/kms/issues/810))
