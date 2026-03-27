@@ -95,6 +95,57 @@ These sample instructions create a database called `kms` owned by a user `kms_us
     create database kms owner=kms_user;
     ```
 
+##### PostgreSQL High-Availability (multi-host)
+
+The KMS supports **multi-host PostgreSQL connection strings** for high-availability deployments
+(streaming replication, Patroni, pgBouncer clusters, etc.). The `database-url` value is treated
+as a raw string so that `host1:port,host2:port` syntax — which the standard URL parser cannot
+handle — is passed directly to the PostgreSQL driver.
+
+Use the `target_session_attrs` query parameter to control which node the driver connects to:
+
+| Value | Behaviour |
+|---|---|
+| `read-write` | Connect only to the primary (default for HA) |
+| `any` | Connect to any available node (suitable for read replicas) |
+| `read-only` | Connect only to a standby |
+
+**Example — two-node HA cluster:**
+
+=== "kms.toml"
+
+    ```toml
+    [db]
+    database_type = "postgresql"
+    database_url  = "postgresql://kms_user:kms_password@primary:5432,standby:5432/kms?target_session_attrs=read-write"
+    ```
+
+=== "Command line arguments"
+
+    ```sh
+    --database-type=postgresql \
+    --database-url="postgresql://kms_user:kms_password@primary:5432,standby:5432/kms?target_session_attrs=read-write"
+    ```
+
+The URL must start with `postgresql://` or `postgres://`; any other scheme is rejected at
+startup.
+
+##### PostgreSQL failover retry
+
+When a PostgreSQL primary fails over, the driver may return transient connection errors before
+the new primary is ready. The KMS automatically retries failed queries with **exponential
+backoff** for the following PostgreSQL SQLSTATE codes:
+
+| SQLSTATE | Meaning |
+|---|---|
+| `08001` | `sqlclient_unable_to_establish_sqlconnection` |
+| `08004` | `sqlserver_rejected_establishment_of_sqlconnection` |
+| `57P02` | `crash_shutdown` |
+| `57P03` | `cannot_connect_now` |
+
+No additional configuration is required; the retry behaviour is enabled automatically for all
+PostgreSQL connections.
+
 #### MySQL, MariaDB, or Percona XtraDB Cluster
 
 The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.

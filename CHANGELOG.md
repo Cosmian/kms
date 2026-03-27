@@ -50,13 +50,14 @@ Full support for NIST post-quantum algorithms via OpenSSL 3.x default provider
   (drive-relative Linux path) and TDE parameters injected via plain PFILE to bypass the
   `ALTER SYSTEM SET pkcs11_library_location` validator that rejects Windows paths
 
-#### PostgreSQL HA cluster support
+#### PostgreSQL HA cluster support ([#818](https://github.com/Cosmian/kms/pull/818))
 
 PostgreSQL connections now support multi-host connection strings
 (e.g. `postgresql://host1:5432,host2:5432/db?target_session_attrs=read-write`)
 for automatic failover. Added retry logic with exponential backoff for transient
 connection errors during failover, scheme validation for PostgreSQL URLs, and
 additional retryable SQLSTATE codes (08001, 08004, 57P02, 57P03).
+See [database documentation](documentation/docs/database.md) for configuration details.
 
 #### HSM multi-admin support with wildcard ([#801](https://github.com/Cosmian/kms/pull/801))
 
