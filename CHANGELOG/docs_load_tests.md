@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - **Benchmarks**: Generate self-contained HTML benchmark reports (gnuplot SVGs) alongside existing Markdown outputs.
 - **SBOM**: Generate Software Bill of Materials for the `ckms` CLI binary in `sbom/ckms/` (all 4 variant × link-type combinations).
 
+### 🚜 Refactor
+
+- **ckms**: Renamed TLS-related CLI parameters and environment variables from `ssl_xxx` to `tls_xxx` (e.g. `--ssl-client-pkcs12-path` → `--tls-client-pkcs12-path`, `KMS_SSL_CLIENT_PKCS12_PATH` → `KMS_TLS_CLIENT_PKCS12_PATH`). Update any scripts or config files that reference the old `ssl_` prefix.
+
 ### 🐛 Bug Fixes
 
 - **SQLite**: Enable WAL journal mode, `synchronous=NORMAL`, and `busy_timeout=5000` on connection
