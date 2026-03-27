@@ -121,31 +121,42 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                     </div>
                 </div>
             </Layout.Header>
-            {authMethod === "None" && (
-                <Alert
-                    type="error"
-                    showIcon
-                    banner
-                    message="Authentication is disabled on this KMS server"
-                    description="This server was started without any authentication configured. Anyone with network access can read all keys and data. Creating or importing cryptographic keys is disabled."
-                    style={{ position: "sticky", top: 64, zIndex: 9, borderRadius: 0 }}
-                />
-            )}
+
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
                 <Sidebar isFips={serverInfo?.fips_mode ?? false} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
+                        {authMethod === "None" && (
+                            <Alert
+                                type="error"
+                                showIcon
+                                banner
+                                className="mb-4"
+                                message={<span className="text-red-900 font-bold">Authentication is disabled on this KMS server</span>}
+                                description={
+                                    <span className="text-red-900">
+                                        This server was started without any authentication configured. Anyone with network access can read
+                                        all keys and data. Creating or importing cryptographic keys is disabled.
+                                    </span>
+                                }
+                            />
+                        )}
                         {wasmError && (
                             <Alert
                                 type="warning"
                                 showIcon
-                                message="WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by a security policy."
+                                message={
+                                    <span className="text-yellow-900 font-bold">
+                                        WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by
+                                        a security policy.
+                                    </span>
+                                }
                                 description={
-                                    <>
+                                    <span className="text-yellow-900">
                                         Please enable WASM in your browser and refresh this page to be able to use the KMS UI. In Firefox,
                                         you can enable it by setting <code>javascript.options.wasm</code> = true in{" "}
                                         <code>about:config</code>.
-                                    </>
+                                    </span>
                                 }
                             />
                         )}
