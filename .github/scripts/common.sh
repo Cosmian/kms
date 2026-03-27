@@ -338,7 +338,7 @@ _run_workspace_tests() {
   case "$KMS_TEST_DB" in
   postgresql)
     test_filter="test_db_postgresql test_validate_with_certificates"
-    test_args="$test_args --ignored"
+    test_args="$test_args --ignored --skip test_db_postgresql_mtls_connection"
     ;;
   mysql)
     test_filter="test_db_mysql test_validate_with_certificates"
@@ -373,6 +373,10 @@ _run_workspace_tests() {
     cargo_test_args+=(--ignored)
     ;;
   esac
+  # Skip mTLS tests when running regular psql CI (postgres-mtls service is not started).
+  if [ "$KMS_TEST_DB" = "postgresql" ]; then
+    cargo_test_args+=(--skip test_db_postgresql_mtls_connection)
+  fi
   if [ -n "${test_filter:-}" ]; then
     # Split filter into tokens (Rust test name filters are space-separated here by design)
     read -r -a _test_filter_tokens <<<"$test_filter"

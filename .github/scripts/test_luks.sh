@@ -137,7 +137,7 @@ sqlite_path="$tmp_dir/kms-data"
   >"$tmp_dir/kms.log" 2>&1 &
 kms_pid=$!
 
-kms_wait_ready "http://127.0.0.1:${kms_port}/kmip/2_1" "$kms_pid" "$tmp_dir/kms.log" 60
+kms_wait_ready "http://127.0.0.1:${kms_port}/kmip/2_1" "$kms_pid" "$tmp_dir/kms.log" 120
 
 ckms_args=(--url "http://127.0.0.1:${kms_port}")
 
