@@ -1,4 +1,4 @@
-import { Button, message, Spin } from "antd";
+import { Alert, Button, Spin } from "antd";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -7,11 +7,13 @@ import { useBranding } from "../contexts/useBranding";
 interface LoginProps {
     auth: boolean;
     error?: undefined | string;
+    authMethod?: AuthMethod;
 }
 
-const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
+const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
     const [isLoading, setIsLoading] = useState(false);
-    const { login } = useAuth();
+    const [certError, setCertError] = useState<string | null>(null);
+    const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
 
@@ -21,9 +23,29 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
             await login();
         } catch (error) {
             console.error("Login error:", error);
-            message.error("Authentication failed. Please try again.");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleAccessKms = async () => {
+        if (authMethod === "CERT") {
+            try {
+                setIsLoading(true);
+                setCertError(null);
+                // /version works without a cert; /access/create returns 401 without one
+                await getNoTTLVRequest("/access/create", null, serverUrl);
+                navigate("/locate");
+            } catch (err) {
+                console.error("Certificate validation failed:", err);
+                setCertError(
+                    "No client certificate was provided or it is invalid. If the problem persists, close all instances of your browser and relaunch with the correct client certificate previously loaded.",
+                );
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            navigate("locate");
         }
     };
 
@@ -44,6 +66,15 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                 <div className="space-y-6 text-center w-1/2">
                     {auth && <p className="text-white">Sign up for free and explore rights delegation for multiple users</p>}
                     {error && <p className="text-purple-700">{error}</p>}
+                    {certError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message="Certificate authentication failed"
+                            description={certError}
+                            className="text-left mb-4"
+                        />
+                    )}
                     {isLoading ? (
                         <Spin size="large" />
                     ) : auth ? (
@@ -51,7 +82,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                             LOGIN
                         </Button>
                     ) : (
-                        <Button ghost block className="hover:decoration-purple-700" onClick={() => navigate("locate")} loading={isLoading}>
+                        <Button ghost block className="hover:decoration-purple-700" onClick={handleAccessKms} loading={isLoading}>
                             ACCESS KMS
                         </Button>
                     )}
