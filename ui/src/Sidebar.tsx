@@ -50,8 +50,6 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
                     if (newItem.children) {
                         newItem.children = processItems(newItem.children);
                     }
-                    console.log(isCreateItem, isImportItem, hasCreateAccess);
-
                     return newItem;
                 });
             };

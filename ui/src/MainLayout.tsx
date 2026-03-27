@@ -41,8 +41,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
                 const info = await getNoTTLVRequest("/server-info", idToken, serverUrl);
                 setServerInfo(info as ServerInfo);
-            } catch (error) {
-                console.error("Error fetching server version:", error);
+            } catch {
                 setServerVersion("Unavailable");
                 setServerHealth("Unavailable");
                 setServerHealthLatencyMs(null);
@@ -58,19 +57,24 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     const determineDownloadTarget = useCallback(async () => {
         const kmsUrl = serverUrl + downloadCliUrl;
-        const response = await fetch(kmsUrl, {
-            method: "HEAD",
-            credentials: "include",
-            headers: {
-                ...(idToken && { Authorization: `Bearer ${idToken}` }),
-            },
-        });
+        try {
+            const response = await fetch(kmsUrl, {
+                method: "HEAD",
+                credentials: "include",
+                headers: {
+                    ...(idToken && { Authorization: `Bearer ${idToken}` }),
+                },
+            });
 
-        if (response.status == 200) {
-            setDownloadTarget(serverUrl + downloadCliUrl);
-        } else {
-            setDownloadTarget("https://package.cosmian.com/kms");
+            if (response.status == 200) {
+                setDownloadTarget(serverUrl + downloadCliUrl);
+                return;
+            }
+        } catch {
+            // Ignore network issues and fall back to the public package page.
         }
+
+        setDownloadTarget("https://package.cosmian.com/kms");
     }, [downloadCliUrl, idToken, serverUrl]);
 
     useEffect(() => {

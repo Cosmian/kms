@@ -71,6 +71,33 @@ type AppContentProps = {
 const LS_DARKMODE_KEY = "darkMode";
 const initialDarkMode = localStorage.getItem(LS_DARKMODE_KEY);
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.has(host);
+
+const resolveServerUrl = (): string => {
+    const configuredUrl = (import.meta.env.VITE_KMS_URL as string | undefined)?.trim();
+    const defaultDevUrl = `${window.location.protocol}//${window.location.hostname}:9998`;
+    const fallbackUrl = import.meta.env.DEV ? defaultDevUrl : window.location.origin;
+    const candidate = configuredUrl && configuredUrl.length > 0 ? configuredUrl : fallbackUrl;
+
+    try {
+        const target = new URL(candidate, window.location.origin);
+        const current = new URL(window.location.origin);
+        if (
+            isLoopbackHost(target.hostname) &&
+            isLoopbackHost(current.hostname) &&
+            target.protocol === current.protocol &&
+            target.port === current.port
+        ) {
+            return current.origin;
+        }
+        return target.origin;
+    } catch {
+        return fallbackUrl;
+    }
+};
+
 const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasmError }) => {
     const { setServerUrl, setIdToken, setUserId } = useAuth();
     const branding = useBranding();
@@ -88,10 +115,8 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     }, [isDarkMode]);
 
     useEffect(() => {
-        // Automatically use dev URL in development mode
-        const location =
-            (import.meta.env.VITE_KMS_URL as string | undefined) ??
-            (import.meta.env.DEV ? "http://localhost:9998" : window.location.origin);
+        // Keep UI/backend on the same loopback origin when possible to avoid Firefox CORS noise.
+        const location = resolveServerUrl();
         setServerUrl(location);
 
         // Query the server's vendor_identification via KMIP QueryServerInformation.
@@ -132,8 +157,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             setLoginError(undefined);
                         }
                     } catch (error) {
-                        console.log(error);
-                        setLoginError(`An error occurred: ${error}`);
+                        setLoginError(`An error occurred while fetching server information: ${String(error)}`);
                     }
                 }
             }
