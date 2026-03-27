@@ -47,10 +47,10 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
-                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_0 + server fips/non-fips × static/dynamic)
+                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_0 + server + ckms fips/non-fips × static/dynamic)
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
-                         --target <openssl_3_1_2|openssl_3_6_0|server>  Choose SBOM target (default: all)
+                         --target <openssl_3_1_2|openssl_3_6_0|server|ckms>  Choose SBOM target (default: all)
     update-hashes
            Update expected hashes for current platform (release build mandatory)
 
@@ -91,10 +91,11 @@ usage() {
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.0 + all server combinations)
+    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.0 + all server + all ckms combinations)
     $0 sbom --target openssl_3_1_2            # SBOM for the OpenSSL 3.1.2 (FIPS) derivation
     $0 sbom --target openssl_3_6_0            # SBOM for the OpenSSL 3.6.0 (non-FIPS) derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
+    $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
     $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
 EOF
@@ -597,25 +598,27 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
     exit 1
   fi
 
-  # Avoid confusing no-ops: --variant/--link are meaningful only for --target server.
-  if { [ -n "$variant" ] || [ -n "$link" ]; } && [ "$target" != "server" ]; then
+  # Avoid confusing no-ops: --variant/--link are meaningful only for --target server or --target ckms.
+  if { [ -n "$variant" ] || [ -n "$link" ]; } && [ "$target" != "server" ] && [ "$target" != "ckms" ]; then
     if [ -z "$target" ]; then
-      echo "Error: --variant/--link require --target server (otherwise they are ignored)." >&2
+      echo "Error: --variant/--link require --target server or --target ckms (otherwise they are ignored)." >&2
     else
-      echo "Error: --variant/--link are only valid with --target server (got --target $target)." >&2
+      echo "Error: --variant/--link are only valid with --target server or --target ckms (got --target $target)." >&2
     fi
     exit 1
   fi
 
   # Behavior matrix:
-  # - no --target: generate everything (openssl + all server combos)
-  # - --target openssl: generate openssl only
+  # - no --target: generate everything (openssl + all server combos + all ckms combos)
+  # - --target openssl_3_*: generate that openssl only
   # - --target server (no --variant/--link): generate all server combos
   # - --target server with --variant and/or --link: generate only the requested server subset
+  # - --target ckms (no --variant/--link): generate all ckms combos
+  # - --target ckms with --variant and/or --link: generate only the requested ckms subset
   if [ -z "$target" ]; then
     echo "========================================="
     echo "Generating SBOMs for all combinations"
@@ -650,11 +653,23 @@ sbom_command() {
       done
     done
 
+    # Generate SBOMs for all ckms CLI combinations
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        echo ">>> Generating SBOM for ckms ($variant, $link)..."
+        bash "$SCRIPT" --target ckms --variant "$variant" --link "$link" || {
+          echo "ERROR: ckms SBOM generation failed for $variant/$link" >&2
+          exit 1
+        }
+        echo ""
+      done
+    done
+
     echo "========================================="
     echo "✓ All SBOMs generated successfully"
     echo "========================================="
-  elif [ "$target" = "server" ] && { [ -n "$variant" ] || [ -n "$link" ]; }; then
-    # Specific server subset requested
+  elif { [ "$target" = "server" ] || [ "$target" = "ckms" ]; } && { [ -n "$variant" ] || [ -n "$link" ]; }; then
+    # Specific server/ckms subset requested
     echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."
     bash "$SCRIPT" "${args[@]}"
   elif [ "$target" = "server" ]; then
@@ -677,6 +692,26 @@ sbom_command() {
     echo "========================================="
     echo "✓ All server SBOMs generated successfully"
     echo "========================================="
+  elif [ "$target" = "ckms" ]; then
+    echo "========================================="
+    echo "Generating SBOMs for ckms CLI combinations"
+    echo "========================================="
+    echo ""
+
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        echo ">>> Generating SBOM for ckms ($variant, $link)..."
+        bash "$SCRIPT" --target ckms --variant "$variant" --link "$link" || {
+          echo "ERROR: ckms SBOM generation failed for $variant/$link" >&2
+          exit 1
+        }
+        echo ""
+      done
+    done
+
+    echo "========================================="
+    echo "✓ All ckms SBOMs generated successfully"
+    echo "=========================================="
   else
     # Single target requested, use provided arguments
     echo "Running SBOM generation (not in nix-shell - sbomnix needs nix commands)..."

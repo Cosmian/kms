@@ -110,7 +110,7 @@ fi
 
 # ─── Load test benchmarks ─────────────────────────────────────────────────────
 echo ""
-echo "[2/3] Running load test benchmarks (ckms bench --load --mode ${BENCH_MODE} --format markdown)…"
+echo "[2/4] Running load test benchmarks (ckms bench --load --mode ${BENCH_MODE} --format markdown)…"
 rm -f target/criterion/benchmarks_load_tests.md
 BENCH_ARGS=(--load --mode "${BENCH_MODE}" --format markdown "${EXTRA_ARGS[@]}")
 
@@ -127,8 +127,29 @@ CRITERION_MD="target/criterion/benchmarks_load_tests.md"
 
 echo "    Load test benchmarks complete."
 
+# ─── HTML load test report ────────────────────────────────────────────────────
 echo ""
-echo "[3/3] Writing ${OUT_LOAD_MD}…"
+echo "[3/4] Running HTML report (ckms bench --load --mode ${BENCH_MODE} --format html)…"
+rm -rf target/criterion/load-report
+HTML_BENCH_ARGS=(--load --mode "${BENCH_MODE}" --format html "${EXTRA_ARGS[@]}")
+
+set +e
+RUST_LOG=off cargo run -q -p ckms "${CKMS_CARGO_ARGS[@]}" -- --conf-path "${CKMS_CONF}" bench "${HTML_BENCH_ARGS[@]}" 2>&1
+HTML_BENCH_STATUS=$?
+set -e
+
+CRITERION_HTML="target/criterion/load-report/index.html"
+OUT_LOAD_HTML="${OUT_LOAD_MD%.md}.html"
+
+if [[ ${HTML_BENCH_STATUS} -eq 0 && -f "${CRITERION_HTML}" ]]; then
+    cp "${CRITERION_HTML}" "${OUT_LOAD_HTML}"
+    echo "    Written: ${OUT_LOAD_HTML}"
+else
+    echo "    WARNING: HTML load test report not generated (exit ${HTML_BENCH_STATUS}; gnuplot may be missing)"
+fi
+
+echo ""
+echo "[4/4] Writing ${OUT_LOAD_MD}…"
 
 if [ -f "${CRITERION_MD}" ]; then
     BENCH_MD="$(cat "${CRITERION_MD}")"

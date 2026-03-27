@@ -40,6 +40,7 @@ import DestroyForm from "./ObjectsDestroy";
 import ObjectsOwnedList from "./ObjectsOwned";
 import RevokeForm from "./ObjectsRevoke";
 import OpaqueObjectForm from "./OpaqueObject";
+import DeriveKeyForm from "./DeriveKey";
 import PqcDecapsulateForm from "./PqcDecapsulate";
 import PqcEncapsulateForm from "./PqcEncapsulate";
 import PqcKeysCreateForm from "./PqcKeysCreate";
@@ -242,6 +243,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="revoke" element={<RevokeForm objectType="opaque-object" />} />
                             <Route path="destroy" element={<DestroyForm objectType="opaque-object" />} />
                         </Route>
+                        <Route path="derive-key" element={<DeriveKeyForm />} />
                         <Route path="access-rights">
                             <Route path="grant" element={<AccessGrantForm />} />
                             <Route path="revoke" element={<AccessRevokeForm />} />

@@ -29,24 +29,24 @@ use cosmian_kms_client_utils::{
         kmip_2_1::{
             extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
-            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
             kmip_objects::{
                 Certificate as KmipCertificate, Object, ObjectType,
                 OpaqueObject as KmipOpaqueObject, PrivateKey,
             },
             kmip_operations::{
                 CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt,
-                DecryptResponse, DeleteAttribute, DeleteAttributeResponse, Destroy,
-                DestroyResponse, EncryptResponse, ExportResponse, GetAttributes,
-                GetAttributesResponse, Hash, HashResponse, ImportResponse, LocateResponse,
-                ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, RevokeResponse,
-                SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
-                SignatureVerifyResponse, Validate, ValidateResponse,
+                DecryptResponse, DeleteAttribute, DeleteAttributeResponse, DeriveKey,
+                DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
+                GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
+                LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
+                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
-                AttributeReference, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-                LinkType, LinkedObjectIdentifier, OpaqueDataType, QueryFunction, RecommendedCurve,
-                Tag, UniqueIdentifier,
+                AttributeReference, CryptographicAlgorithm, CryptographicParameters,
+                DerivationMethod, KeyFormatType, LinkType, LinkedObjectIdentifier, OpaqueDataType,
+                QueryFunction, RecommendedCurve, Tag, UniqueIdentifier,
             },
             requests::{
                 build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
@@ -2177,4 +2177,107 @@ pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue
 #[wasm_bindgen]
 pub fn parse_hash_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<HashResponse>(response)
+}
+
+/// Build a KMIP `DeriveKey` TTLV request.
+///
+/// Derives a new symmetric key from an existing key or secret data object.
+///
+/// - `base_key_id`: unique identifier of the source key or secret data.
+/// - `derivation_method`: `"PBKDF2"` or `"HKDF"`.
+/// - `salt`: salt bytes (required).
+/// - `iteration_count`: number of iterations, used for PBKDF2 (ignored for HKDF).
+/// - `initialization_vector`: optional IV bytes.
+/// - `hashing_algorithm`: one of `SHA256`, `SHA384`, `SHA512`, `SHA3256`, etc.
+/// - `symmetric_algorithm`: output key algorithm, e.g. `"aes"`.
+/// - `cryptographic_length`: output key length in bits (e.g. `256`).
+/// - `derived_key_id`: optional unique identifier for the newly derived key.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn derive_key_ttlv_request(
+    base_key_id: &str,
+    derivation_method: &str,
+    salt: Vec<u8>,
+    iteration_count: i32,
+    initialization_vector: Option<Vec<u8>>,
+    hashing_algorithm: &str,
+    symmetric_algorithm: &str,
+    cryptographic_length: usize,
+    derived_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    use kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm};
+
+    let method = match derivation_method.to_uppercase().as_str() {
+        "PBKDF2" => DerivationMethod::PBKDF2,
+        "HKDF" => DerivationMethod::HKDF,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unsupported derivation method: {other}"
+            )));
+        }
+    };
+
+    let hash_alg = match hashing_algorithm.to_uppercase().as_str() {
+        "SHA256" => HashingAlgorithm::SHA256,
+        "SHA384" => HashingAlgorithm::SHA384,
+        "SHA512" => HashingAlgorithm::SHA512,
+        "SHA3224" => HashingAlgorithm::SHA3224,
+        "SHA3256" => HashingAlgorithm::SHA3256,
+        "SHA3384" => HashingAlgorithm::SHA3384,
+        "SHA3512" => HashingAlgorithm::SHA3512,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Unsupported hashing algorithm: {other}"
+            )));
+        }
+    };
+
+    let sym_algo = SymmetricAlgorithm::from_str(symmetric_algorithm)
+        .map_err(|e| JsValue::from_str(&format!("Invalid symmetric algorithm: {e}")))?;
+    let (length_bits, _, crypto_algorithm) =
+        prepare_sym_key_elements(Some(cryptographic_length), &None, sym_algo)
+            .map_err(|e| JsValue::from_str(&format!("Error building key elements: {e}")))?;
+
+    let derivation_parameters = DerivationParameters {
+        cryptographic_parameters: Some(CryptographicParameters {
+            hashing_algorithm: Some(hash_alg),
+            ..CryptographicParameters::default()
+        }),
+        initialization_vector,
+        derivation_data: None,
+        salt: Some(salt),
+        iteration_count: Some(iteration_count),
+    };
+
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(crypto_algorithm),
+        cryptographic_length: Some(
+            i32::try_from(length_bits)
+                .map_err(|e| JsValue::from_str(&format!("Cryptographic length overflow: {e}")))?,
+        ),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: derived_key_id.map(UniqueIdentifier::TextString),
+        ..Attributes::default()
+    };
+
+    let request = DeriveKey {
+        object_type: ObjectType::SymmetricKey,
+        object_unique_identifier: UniqueIdentifier::TextString(base_key_id.to_owned()),
+        derivation_method: method,
+        derivation_parameters,
+        attributes,
+    };
+
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Parse a KMIP `DeriveKey` response and return the derived key's unique identifier.
+#[wasm_bindgen]
+pub fn parse_derive_key_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<DeriveKeyResponse>(response)
 }

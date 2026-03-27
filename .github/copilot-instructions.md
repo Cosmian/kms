@@ -60,6 +60,14 @@ Start backends with `docker compose up -d`, then set:
 
 ### Pre-commit hooks
 
+Never commit without using pre-commit hooks enabled:
+
+```sh
+pip install pre-commit conventional-pre-commit
+pre-commit install
+pre-commit install --install-hooks -t commit-msg
+```
+
 Do not ever commit without fixing pre-commit hook errors. If the hooks are failing, investigate and fix the underlying issue instead of bypassing them. Do not use `git commit --no-verify` or similar options to skip hooks. The hooks are there to maintain code quality and consistency, and bypassing them can lead to issues in the codebase. Always address the root cause of any hook failures before committing your changes.
 
 Do not use either SKIP environment variable to bypass pre-commit hooks.
@@ -339,11 +347,7 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 
 ## 11. Updating CHANGELOG.md
 
-For each change, add a **one-line summary** in `CHANGELOG.md` in the top section (next release), except if the change is already described in it. Use the formatting style of existing entries. Example:
-
-```markdown
-- **UI E2E**: Fix Playwright select helpers to use regex assertions for exact label matching.
-```
+For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention. Example:
 
 In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
 

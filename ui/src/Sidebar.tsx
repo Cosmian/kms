@@ -13,14 +13,14 @@ interface LevelKeysProps {
     children?: LevelKeysProps[];
 }
 
-const Sidebar: React.FC = () => {
+const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const branding = useBranding();
     const menuItems = useMemo(
-        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel }),
-        [branding.enableCovercrypt, branding.pqcLabel],
+        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips }),
+        [branding.enableCovercrypt, branding.pqcLabel, isFips],
     );
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();

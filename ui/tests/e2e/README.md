@@ -286,6 +286,34 @@ graph LR
     B --> C[Verify wrapping options]
 ```
 
+### aws-flow
+
+Navigation / smoke tests for AWS BYOK pages. Functional tests require external
+AWS KEK files and are therefore kept as navigation-only checks.
+
+```mermaid
+graph LR
+    A[Navigate AWS import-kek] --> B[Verify page renders]
+    C[Navigate AWS export-key-material] --> D[Verify page renders]
+```
+
+## Derive Key
+
+### derive-key-flow
+
+```mermaid
+graph LR
+    A[Create AES-256 key with DeriveKey mask] --> B[Navigate /derive-key]
+    B --> C[PBKDF2 derive → check UUID in response]
+    A --> D[PBKDF2 with custom output key ID]
+    A --> E[HKDF derive → check UUID in response]
+```
+
+Tests create the base key directly via the KMIP API (with `CryptographicUsageMask:
+DeriveKey = 0x200`) because the standard key-creation UI form does not expose
+that mask. All three derivation paths (basic PBKDF2, PBKDF2 with custom output ID,
+and HKDF) are exercised.
+
 ## Other Flows
 
 ### opaque-flow

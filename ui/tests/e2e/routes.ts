@@ -121,11 +121,20 @@ export const ACCESS_RIGHTS_ROUTES: Route[] = [
     { name: "obtained", path: "/ui/access-rights/obtained", locator: "h1" },
 ];
 
-// ── Azure BYOK routes ────────────────────────────────────────────────────────
+// ── Azure BYOK routes ────────────────────────────────────────────────────
 export const AZURE_ROUTES: Route[] = [
     { name: "import KEK", path: "/ui/azure/import-kek" },
     { name: "export BYOK", path: "/ui/azure/export-byok" },
 ];
+
+// ── AWS BYOK routes ───────────────────────────────────────────────────────
+export const AWS_ROUTES: Route[] = [
+    { name: "import KEK", path: "/ui/aws/import-kek", locator: "button[type='submit']" },
+    { name: "export key material", path: "/ui/aws/export-key-material", locator: "button[type='submit']" },
+];
+
+// ── Derive Key route ─────────────────────────────────────────────────────
+export const DERIVE_KEY_ROUTE: Route[] = [{ name: "derive key", path: "/ui/derive-key" }];
 
 // ── Standalone page routes ───────────────────────────────────────────────────
 // Google CSE is an info page that shows a heading but has no submit button.
@@ -156,7 +165,9 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Attributes", routes: ATTRIBUTES_ROUTES },
     { section: "Access Rights", routes: ACCESS_RIGHTS_ROUTES },
     { section: "Azure", routes: AZURE_ROUTES },
+    { section: "AWS", routes: AWS_ROUTES },
     { section: "Google CSE", routes: GOOGLE_CSE_ROUTES },
+    { section: "Derive Key", routes: DERIVE_KEY_ROUTE },
     { section: "Locate", routes: LOCATE_ROUTES },
     { section: "MAC", routes: MAC_ROUTES },
 ];

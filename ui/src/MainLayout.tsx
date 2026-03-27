@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
-import Header from "./Header";
+import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "./utils";
 
@@ -19,6 +19,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const [serverVersion, setServerVersion] = useState("");
     const [serverHealth, setServerHealth] = useState<string>("");
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
+    const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
@@ -38,6 +39,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 const health = await getNoTTLVRequestWithTimeout("/health", idToken, serverUrl, 2_000);
                 setServerHealth(health?.status ?? "Unavailable");
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
+                const info = await getNoTTLVRequest("/server-info", idToken, serverUrl);
+                setServerInfo(info as ServerInfo);
             } catch (error) {
                 console.error("Error fetching server version:", error);
                 setServerVersion("Unavailable");
@@ -83,7 +86,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         <Layout>
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
-                    <Header isDarkMode={isDarkMode} />
+                    <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
                     <div className="flex items-center h-full" style={{ gap: "16px" }}>
                         {downloadTarget && (
                             <Link to={downloadTarget} target="_blank">
@@ -115,7 +118,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 </div>
             </Layout.Header>
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar />
+                <Sidebar isFips={serverInfo?.fips_mode ?? false} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {wasmError && (

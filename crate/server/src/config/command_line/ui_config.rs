@@ -32,6 +32,12 @@ pub fn get_default_ui_dist_path() -> String {
 #[derive(Default, Debug, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct UiConfig {
+    /// Disable the embedded web UI. When set to false, the UI HTML assets are
+    /// not served and all `/ui/` routes return 404.
+    #[arg(long, env = "KMS_UI_ENABLE", default_value = "true")]
+    #[serde(default = "default_true")]
+    pub enable: bool,
+
     /// The UI distribution folder
     #[arg(short, env = "COSMIAN_UI_DIST_PATH", long)]
     pub ui_index_html_folder: Option<String>,
@@ -53,6 +59,10 @@ impl UiConfig {
             .clone()
             .unwrap_or_else(get_default_ui_dist_path)
     }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 #[derive(Default, Args, Deserialize, Serialize, Clone)]

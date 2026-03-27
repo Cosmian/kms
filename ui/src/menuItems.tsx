@@ -1,4 +1,22 @@
-import { SafetyCertificateOutlined, SearchOutlined, SolutionOutlined, ToolOutlined } from "@ant-design/icons";
+import {
+    AmazonOutlined,
+    ApartmentOutlined,
+    AuditOutlined,
+    CloudOutlined,
+    EyeInvisibleOutlined,
+    ExperimentOutlined,
+    ForkOutlined,
+    GoogleOutlined,
+    InboxOutlined,
+    LockOutlined,
+    SafetyOutlined,
+    SafetyCertificateOutlined,
+    SearchOutlined,
+    SolutionOutlined,
+    TeamOutlined,
+    ToolOutlined,
+    WindowsOutlined,
+} from "@ant-design/icons";
 
 export interface MenuItem {
     key: string;
@@ -22,6 +40,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "sym",
         label: "Symmetric",
+        icon: <SafetyOutlined />,
         collapsedlabel: "SYM",
         children: [
             {
@@ -43,6 +62,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "rsa",
         label: "RSA",
+        icon: <LockOutlined />,
         collapsedlabel: "RSA",
         children: [
             {
@@ -65,6 +85,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "ec",
         label: "Elliptic Curve",
+        icon: <ApartmentOutlined />,
         collapsedlabel: "EC",
         children: [
             {
@@ -84,10 +105,11 @@ const baseMenu: MenuItem[] = [
             { key: "ec/verify", label: "Verify" },
         ],
     },
-    // Covercrypt section appended below
+    // Covercrypt section is inserted after PQC by getMenuItems()
     {
         key: "pqc",
         label: "__PQC_LABEL__",
+        icon: <ExperimentOutlined />,
         collapsedlabel: "PQC",
         children: [
             {
@@ -110,6 +132,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "mac",
         label: "MAC",
+        icon: <AuditOutlined />,
         collapsedlabel: "MAC",
         children: [
             { key: "mac/compute", label: "Compute" },
@@ -119,6 +142,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "sd",
         label: "Secret Data",
+        icon: <EyeInvisibleOutlined />,
         collapsedlabel: "SD",
         children: [
             { key: "secret-data/create", label: "Create" },
@@ -131,6 +155,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "opaque-object",
         label: "Opaque Object",
+        icon: <InboxOutlined />,
         collapsedlabel: "Opaque",
         children: [
             { key: "opaque-object/create", label: "Create" },
@@ -139,6 +164,12 @@ const baseMenu: MenuItem[] = [
             { key: "opaque-object/revoke", label: "Revoke" },
             { key: "opaque-object/destroy", label: "Destroy" },
         ],
+    },
+    {
+        key: "derive-key",
+        label: "Derive Key",
+        icon: <ForkOutlined />,
+        collapsedlabel: "DRV",
     },
     {
         key: "certificates",
@@ -185,33 +216,45 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
-        key: "azure",
-        label: "Azure",
-        collapsedlabel: "Azure",
+        key: "hyperscalers",
+        label: "Hyperscalers",
+        icon: <CloudOutlined />,
+        collapsedlabel: "Cloud",
         children: [
-            { key: "azure/import-kek", label: "Import KEK" },
-            { key: "azure/export-byok", label: "Export BYOK" },
+            {
+                key: "azure",
+                label: "Azure",
+                icon: <WindowsOutlined />,
+                collapsedlabel: "Azure",
+                children: [
+                    { key: "azure/import-kek", label: "Import KEK" },
+                    { key: "azure/export-byok", label: "Export BYOK" },
+                ],
+            },
+            {
+                key: "aws",
+                label: "AWS",
+                icon: <AmazonOutlined />,
+                collapsedlabel: "AWS",
+                children: [
+                    { key: "aws/import-kek", label: "Import KEK" },
+                    { key: "aws/export-key-material", label: "Export key material" },
+                ],
+            },
+            {
+                key: "google-cse",
+                label: "Google CSE",
+                icon: <GoogleOutlined />,
+                collapsedlabel: "CSE",
+            },
         ],
-    },
-    {
-        key: "aws",
-        label: "AWS",
-        collapsedlabel: "AWS",
-        children: [
-            { key: "aws/import-kek", label: "Import KEK" },
-            { key: "aws/export-key-material", label: "Export key material" },
-        ],
-    },
-    {
-        key: "google-cse",
-        label: "Google CSE",
-        collapsedlabel: "CSE",
     },
 ];
 
 const covercryptSection: MenuItem = {
     key: "cc",
     label: "Covercrypt",
+    icon: <TeamOutlined />,
     collapsedlabel: "CC",
     children: [
         {
@@ -231,9 +274,27 @@ const covercryptSection: MenuItem = {
     ],
 };
 
-export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: string }): MenuItem[] {
+export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: string; isFips?: boolean }): MenuItem[] {
     const enableCc = options?.enableCovercrypt ?? true;
     const pqcLabel = options?.pqcLabel ?? "PQC";
-    const menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
-    return enableCc ? [...menu, covercryptSection] : menu;
+    const isFips = options?.isFips ?? false;
+
+    let menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
+
+    // Hide PQC and MAC in FIPS mode (not approved / not available in FIPS build)
+    if (isFips) {
+        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac");
+    }
+
+    // Insert Covercrypt immediately after PQC so Hyperscalers stays last
+    if (enableCc && !isFips) {
+        const pqcIndex = menu.findIndex((item) => item.key === "pqc");
+        if (pqcIndex !== -1) {
+            menu = [...menu.slice(0, pqcIndex + 1), covercryptSection, ...menu.slice(pqcIndex + 1)];
+        } else {
+            menu = [...menu, covercryptSection];
+        }
+    }
+
+    return menu;
 }

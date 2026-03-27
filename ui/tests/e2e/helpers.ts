@@ -443,3 +443,52 @@ export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Prom
     }
     return idItem.value;
 }
+
+/**
+ * Create an AES-256 symmetric key with the `DeriveKey` cryptographic usage
+ * mask (0x0000_0200 = 512) via direct KMIP API call.
+ *
+ * The key is suitable as the base object for `DeriveKey` operations.
+ * The UI key-creation form does not expose the DeriveKey mask, so this helper
+ * bypasses the UI.
+ *
+ * @param _page  Playwright Page object (unused but kept for API consistency).
+ * @returns The UUID of the newly created key.
+ */
+export async function createDerivableSymKey(): Promise<string> {
+    const request = {
+        tag: "Create",
+        type: "Structure",
+        value: [
+            { tag: "ObjectType", type: "Enumeration", value: "SymmetricKey" },
+            {
+                tag: "Attributes",
+                type: "Structure",
+                value: [
+                    { tag: "CryptographicAlgorithm", type: "Enumeration", value: "AES" },
+                    { tag: "CryptographicLength", type: "Integer", value: 256 },
+                    // DeriveKey = 0x0000_0200 = 512
+                    { tag: "CryptographicUsageMask", type: "Integer", value: 512 },
+                ],
+            },
+        ],
+    };
+    const response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`createDerivableSymKey: KMS request failed with status ${response.status}: ${body}`);
+    }
+    const json = (await response.json()) as {
+        tag?: string;
+        value?: Array<{ tag: string; value: unknown }>;
+    };
+    const idItem = json.value?.find((item) => item.tag === "UniqueIdentifier");
+    if (!idItem || typeof idItem.value !== "string") {
+        throw new Error(`createDerivableSymKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
+    }
+    return idItem.value;
+}

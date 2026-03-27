@@ -180,9 +180,8 @@ EOF
   local bench_status=$?
   set -e
 
-  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-
   if [[ ${bench_status} -ne 0 ]]; then
+    docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
     cat >"${out_file}" <<EOF
 # Load Test Benchmarks — KMS ${version} (Docker)
 
@@ -202,6 +201,18 @@ EOF
   fi
   cat "${bench_stderr}" >&2
   rm -f "${bench_stderr}"
+
+  # HTML report — run while the container is still alive
+  echo "[${version}] Running ckms bench --load --mode ${BENCH_MODE} --format html..."
+  rm -rf target/criterion/load-report
+  local html_bench_args=(--load --mode "${BENCH_MODE}" --format html "${EXTRA_ARGS[@]}")
+  set +e
+  RUST_LOG=off cargo run -q -p ckms "${CKMS_CARGO_ARGS[@]}" -- \
+    --conf-path "${TMP_CKMS_CONF}" bench "${html_bench_args[@]}" >/dev/null 2>&1
+  local html_bench_status=$?
+  set -e
+
+  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
   local criterion_md="target/criterion/benchmarks_load_tests.md"
   if [[ -f "${criterion_md}" ]]; then
@@ -223,6 +234,14 @@ cargo run -p ckms ${CKMS_CARGO_ARGS_STR} -- bench ${bench_args[*]}
 ${bench_md}
 EOF
     echo "[${version}] Written ${out_file}"
+    # Copy HTML report if the HTML bench run succeeded
+    local out_html="${out_file%.md}.html"
+    if [[ ${html_bench_status} -eq 0 && -f target/criterion/load-report/index.html ]]; then
+      cp target/criterion/load-report/index.html "${out_html}"
+      echo "[${version}] Written ${out_html}"
+    else
+      echo "[${version}] WARNING: HTML load test report not generated (gnuplot may be missing)"
+    fi
   else
     cat >"${out_file}" <<EOF
 # Load Test Benchmarks — KMS ${version} (Docker)

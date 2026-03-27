@@ -209,6 +209,7 @@ mod tests {
                 ]),
             },
             ui_config: UiConfig {
+                enable: true,
                 ui_index_html_folder: Some("[ui index html folder]".to_owned()),
                 ui_session_salt: None,
                 ui_oidc_auth: OidcConfig {

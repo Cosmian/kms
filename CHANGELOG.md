@@ -2,14 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### 🐛 Bug Fixes
-
-- **SQLite**: Enable WAL journal mode, `synchronous=NORMAL`, and `busy_timeout=5000` on connection
-  open to fix a ~4× key-creation throughput regression (10 ms → sub-ms per write) observed in
-  Docker/overlayfs environments where fsync latency is high.
-
 ## [5.18.0] - 2026-03-25
 
 ### 🚀 Features
