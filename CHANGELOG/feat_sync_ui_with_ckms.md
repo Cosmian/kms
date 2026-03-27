@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **CI**: DB-backed test scripts now fail fast when required services are unreachable instead of silently succeeding after skipping that backend, so `bash .github/scripts/nix.sh --variant non-fips test psql` correctly returns a non-zero exit code when PostgreSQL is down.
 - **SQLite**: Enable WAL journal mode, `synchronous=NORMAL`, and `busy_timeout=5000` on connection
   open to fix a ~4× key-creation throughput regression (10 ms → sub-ms per write) observed in
   Docker/overlayfs environments where fsync latency is high.

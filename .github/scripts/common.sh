@@ -432,10 +432,8 @@ check_and_test_db() {
   if _wait_for_port "$host" "$port" 10; then
     echo "$pretty is reachable. Running tests..."
   else
-    echo "Error: $pretty at $host:$port not reachable after timeout; skipping $pretty tests." >&2
-    # Respect repo guidance: only run DB-backed suites when the service is available.
-    # Return success to allow the overall orchestrator to continue to other suites.
-    return 0
+    echo "Error: $pretty at $host:$port not reachable after timeout; failing test run." >&2
+    return 1
   fi
 
   case "$dbkey" in
