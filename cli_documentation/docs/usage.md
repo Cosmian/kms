@@ -10,33 +10,31 @@ or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNt
 Usage: ckms [OPTIONS] <COMMAND>
 
 Commands:
-  access-rights      Manage the users' access rights to the cryptographic objects
-  attributes         Get/Set/Delete/Modify the KMIP object attributes
-  azure              Support for Azure specific interactions
-  aws                Support for AWS specific interactions
-  bench              Run benchmarks using criterion for statistical analysis.
-  cc                 Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
-  pqc                Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
-  certificates       Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
-  derive-key         Derive a new key from an existing key
-  ec                 Manage elliptic curve keys. Encrypt and decrypt data using ECIES
-  google             Manage google elements. Handle key pairs and identities from Gmail API
-  locate             Locate cryptographic objects inside the KMS
-  login              Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
-  logout             Logout from the Identity Provider
-  hash               Hash arbitrary data.
-  mac                MAC utilities: compute or verify a MAC value.
-  rng                RNG utilities: retrieve random bytes or seed RNG
-  discover-versions  Discover KMIP protocol versions supported by the server
-  query              Query server capabilities and metadata (KMIP Query)
-  rsa                Manage RSA keys. Encrypt and decrypt data using RSA keys
-  opaque-object      Create, import, export, revoke and destroy Opaque Objects
-  secret-data        Create, import, export and destroy secret data
-  server-version     Print the version of the server
-  sym                Manage symmetric keys. Encrypt and decrypt data
-  markdown           Regenerate the CLI documentation in Markdown format
-  configure          Configure the KMS CLI (create ckms.toml)
-  help               Print this message or the help of the given subcommand(s)
+  access-rights  Manage the users' access rights to the cryptographic objects
+  attributes     Get/Set/Delete/Modify the KMIP object attributes
+  azure          Support for Azure specific interactions
+  aws            Support for AWS specific interactions
+  bench          Run benchmarks using criterion for statistical analysis.
+  cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
+  certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+  derive-key     Derive a new key from an existing key
+  ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+  google         Manage google elements. Handle key pairs and identities from Gmail API
+  locate         Locate cryptographic objects inside the KMS
+  login          Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+  logout         Logout from the Identity Provider
+  hash           Hash arbitrary data.
+  mac            MAC utilities: compute or verify a MAC value.
+  rng            RNG utilities: retrieve random bytes or seed RNG
+  server         Server-related commands
+  rsa            Manage RSA keys. Encrypt and decrypt data using RSA keys
+  opaque-object  Create, import, export, revoke and destroy Opaque Objects
+  secret-data    Create, import, export and destroy secret data
+  sym            Manage symmetric keys. Encrypt and decrypt data
+  markdown       Regenerate the CLI documentation in Markdown format
+  configure      Configure the KMS CLI (create ckms.toml)
+  help           Print this message or the help of the given subcommand(s)
 
 Options:
   -c, --conf-path <CONF_PATH>

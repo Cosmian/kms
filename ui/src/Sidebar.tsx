@@ -2,8 +2,8 @@ import { Layout, Menu, MenuProps, Tooltip } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
-import { useBranding } from "./useBranding";
 import { MenuItem, getMenuItems } from "./menuItems.tsx";
+import { useBranding } from "./useBranding";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
 const { Sider } = Layout;

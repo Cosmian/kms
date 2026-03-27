@@ -299,8 +299,8 @@ EOF
   local out_html="${out_file%.md}.html"
   if command -v pandoc >/dev/null 2>&1; then
     pandoc -s --metadata title="Benchmarks \u2014 KMS ${version}" -f gfm \
-      "${out_file}" -o "${out_html}" 2>/dev/null && echo "[${version}] Written ${out_html}" \
-      || echo "[${version}] WARNING: pandoc HTML conversion failed"
+      "${out_file}" -o "${out_html}" 2>/dev/null && echo "[${version}] Written ${out_html}" ||
+      echo "[${version}] WARNING: pandoc HTML conversion failed"
   else
     echo "[${version}] INFO: pandoc not found \u2014 skipping HTML conversion of ${out_file}"
   fi
@@ -450,9 +450,9 @@ EOF
   if command -v pandoc >/dev/null 2>&1; then
     pandoc -s \
       --metadata title="Benchmark diff \u2014 KMS ${BASELINE_VERSION} vs ${COMPARE_VERSION}" \
-      -f gfm "${diff_out}" -o "${diff_out_html}" 2>/dev/null \
-      && echo "HTML diff report written to ${diff_out_html}" \
-      || echo "WARNING: pandoc HTML conversion failed"
+      -f gfm "${diff_out}" -o "${diff_out_html}" 2>/dev/null &&
+      echo "HTML diff report written to ${diff_out_html}" ||
+      echo "WARNING: pandoc HTML conversion failed"
   else
     echo "INFO: pandoc not found \u2014 skipping HTML conversion of ${diff_out}"
   fi
