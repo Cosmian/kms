@@ -15,8 +15,10 @@ pub enum MainDbParams {
     /// contains the directory of the `SQLite` DB file (not the DB file itself)
     /// and an optional `max_connections` override
     Sqlite(PathBuf, Option<u32>),
-    /// contains the `Postgres` connection URL and an optional `max_connections` override
-    Postgres(Url, Option<u32>),
+    /// contains the `Postgres` connection URL (raw string to support multi-host URLs
+    /// like `postgresql://host1:5432,host2:5432/db?target_session_attrs=read-write`)
+    /// and an optional `max_connections` override
+    Postgres(String, Option<u32>),
     /// contains the `MySQL` connection URL and an optional `max_connections` override
     Mysql(Url, Option<u32>),
     /// contains
@@ -44,7 +46,7 @@ impl Display for MainDbParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sqlite(path, _) => write!(f, "sqlite: {}", path.display()),
-            Self::Postgres(url, _) => write!(f, "postgres: {}", redact_url(url)),
+            Self::Postgres(url, _) => write!(f, "postgres: {}", redact_connection_string(url)),
             Self::Mysql(url, _) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
             Self::RedisFindex(url, _) => {
@@ -70,6 +72,28 @@ fn redact_url(original: &Url) -> Url {
     url
 }
 
+/// Redact credentials from a raw connection string (supports multi-host URLs).
+fn redact_connection_string(s: &str) -> String {
+    if let Some(scheme_end) = s.find("://") {
+        let after_scheme = &s[scheme_end + 3..];
+        if let Some(at_pos) = after_scheme.find('@') {
+            let creds = &after_scheme[..at_pos];
+            let redacted = if creds.contains(':') {
+                "****:****"
+            } else {
+                "****"
+            };
+            return format!(
+                "{}://{}@{}",
+                &s[..scheme_end],
+                redacted,
+                &after_scheme[at_pos + 1..]
+            );
+        }
+    }
+    s.to_owned()
+}
+
 impl fmt::Debug for MainDbParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{}", &self))
@@ -80,4 +104,70 @@ impl fmt::Debug for MainDbParams {
 pub enum AdditionalObjectStoresParams {
     /// Proteccio HSM: the Object UIDs prefix, HSM admin username, and the slot passwords
     ProteccioHsm((String, String, HashMap<usize, Option<String>>)),
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_redact_connection_string_user_and_pass() {
+        assert_eq!(
+            redact_connection_string("postgresql://user:pass@host/db"),
+            "postgresql://****:****@host/db"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_user_only() {
+        assert_eq!(
+            redact_connection_string("postgresql://admin@host/db"),
+            "postgresql://****@host/db"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_no_credentials() {
+        assert_eq!(
+            redact_connection_string("postgresql://host/db"),
+            "postgresql://host/db"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_multi_host() {
+        assert_eq!(
+            redact_connection_string("postgresql://u:p@h1:5432,h2:5432/db"),
+            "postgresql://****:****@h1:5432,h2:5432/db"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_empty_creds() {
+        assert_eq!(
+            redact_connection_string("postgresql://@host/db"),
+            "postgresql://****@host/db"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_preserves_query_params() {
+        assert_eq!(
+            redact_connection_string(
+                "postgresql://user:pass@host/db?target_session_attrs=read-write"
+            ),
+            "postgresql://****:****@host/db?target_session_attrs=read-write"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_empty_string() {
+        assert_eq!(redact_connection_string(""), "");
+    }
+
+    #[test]
+    fn test_redact_connection_string_not_a_url() {
+        assert_eq!(redact_connection_string("not-a-url"), "not-a-url");
+    }
 }

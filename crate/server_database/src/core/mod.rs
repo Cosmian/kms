@@ -109,9 +109,7 @@ impl Database {
                 ))
             }
             MainDbParams::Postgres(url, max_conns) => {
-                let db = Arc::new(
-                    PgPool::instantiate(url.as_str(), clear_db_on_start, *max_conns).await?,
-                );
+                let db = Arc::new(PgPool::instantiate(url, clear_db_on_start, *max_conns).await?);
                 let health = Arc::new(PgHealthProbe::new(db.clone()));
                 Ok(Self::new(
                     db.clone(),
