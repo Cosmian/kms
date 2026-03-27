@@ -55,6 +55,14 @@ echo "============================================="
 echo "Part 1: LUKS disk-encryption Rust unit tests"
 echo "============================================="
 
+# The Rust tests use start_default_test_kms_server() on port 9998.
+# If a stale local server is still bound, tests abort with "Address already in use".
+if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
+  echo "Killing stale process on port 9998 before Rust unit tests..."
+  kill "$(lsof -ti :9998)" 2>/dev/null || true
+  sleep 1
+fi
+
 # Build the ckms CLI first so test executables that call `Command::cargo_bin("ckms")`
 # find a compiled binary with matching feature flags.
 cargo build -p ckms "${FEATURES_FLAG[@]}"

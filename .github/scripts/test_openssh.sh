@@ -44,6 +44,14 @@ echo "========================================="
 echo "Part 1: SSH signing Rust unit tests"
 echo "========================================="
 
+# The Rust tests use start_default_test_kms_server() on port 9998.
+# If a stale local server is still bound, tests abort with "Address already in use".
+if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
+  echo "Killing stale process on port 9998 before Rust unit tests..."
+  kill "$(lsof -ti :9998)" 2>/dev/null || true
+  sleep 1
+fi
+
 # Build the ckms CLI binary first so that `Command::cargo_bin("ckms")` inside
 # lib tests finds a binary compiled with the matching feature flags.
 cargo build -p ckms "${FEATURES_FLAG[@]}"
