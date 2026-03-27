@@ -129,11 +129,28 @@ trap _cleanup_luks_test EXIT
 kms_port=19996
 sqlite_path="$tmp_dir/kms-data"
 
+# Force an explicit config to avoid host defaults and ensure deterministic
+# startup behavior in CI and local nix-shell runs.
+kms_conf="$tmp_dir/kms.toml"
+cat >"$kms_conf" <<EOF
+default_username = "admin"
+
+[http]
+hostname = "127.0.0.1"
+port = ${kms_port}
+
+[db]
+database_type = "sqlite"
+sqlite_path = "${sqlite_path}"
+clear_database = true
+
+[logging]
+rust_log = "info,cosmian_kms=info"
+ansi_colors = false
+EOF
+
 "$kms_bin" \
-  --database-type sqlite \
-  --sqlite-path "$sqlite_path" \
-  --port "$kms_port" \
-  --hostname "127.0.0.1" \
+  --config "$kms_conf" \
   >"$tmp_dir/kms.log" 2>&1 &
 kms_pid=$!
 
