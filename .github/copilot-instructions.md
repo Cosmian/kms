@@ -351,7 +351,7 @@ For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_s
 
 In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
 
-Finally, add at bottom of the file the as many "Closes #xxx" it requires to automatically close the related issues when the PR is merged
+Finally, add at bottom of the file if not already exists, the as many "Closes #xxx" it requires to automatically close the related issues when the PR is merged.
 
 ---
 

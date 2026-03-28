@@ -3,10 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
-DATA_DIR="${REPO_ROOT}/test_data/certificates/azure_ekm_test_data"
-
 source "${SCRIPT_DIR}/../common.sh"
+REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
+DATA_DIR="${REPO_ROOT}/test_data/certificates/azure_ekm_test_data"
 init_build_env "$@"
 setup_test_logging
 

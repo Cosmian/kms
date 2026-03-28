@@ -64,6 +64,8 @@ All notable changes to this project will be documented in this file.
 #### Script Infrastructure Reorganization
 
 - **Script reorganization**: Reorganized 76 scripts from the flat `.github/scripts/`, `nix/scripts/`, and `scripts/` directories into logical subdirectories under `.github/scripts/`: `test/`, `build/`, `package/`, `release/`, `benchmarks/`, `pykmip/`, `sbom/`, `docs/`, `demo/`, `windows/`, `shared/`. All cross-references in `nix.sh`, workflow YAMLs, and the scripts themselves have been updated. Added `shared/colors.sh` for shared terminal color helpers and `benchmarks/docker_helpers.sh` for shared Docker benchmark utilities.
+- **Windows workflow script paths**: Fixed `test_windows.yml` and `build_windows.yml` to reference reorganized PowerShell scripts under `.github/scripts/windows/` (`cargo_test.ps1`, `test_ui.ps1`, `cargo_build.ps1`, `windows_ui.ps1`) and updated job display names to use `${{ inputs.archive-name }}`.
+- **PyKMIP / Synology DSM REPO_ROOT bug** (#835): Fixed `test_pykmip.sh`, `test_synology_dsm.sh`, and `azure_ekm_mtls_test.sh` to source `common.sh` first then use `get_repo_root` instead of the incorrect `cd "$SCRIPT_DIR/../.."` (resolved to `.github/` instead of repo root), which caused `COSMIAN_KMS_CONF` to point to a non-existent doubled path (`.github/.github/scripts/pykmip/kms.toml`). ([#835](https://github.com/Cosmian/kms/pull/835))
 
 Closes #811
 Closes #695
