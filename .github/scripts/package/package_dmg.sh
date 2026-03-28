@@ -1,0 +1,419 @@
+#!/usr/bin/env bash
+# Build macOS DMG via cargo-packager inside nix-shell (non-pure),
+# ensuring access to macOS system tools like hdiutil and osascript.
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+cd "$REPO_ROOT"
+# Source unified PIN_URL and helpers
+source "$REPO_ROOT/.github/scripts/common.sh"
+
+# Determine variant and link mode from CLI arguments
+VARIANT="fips"
+LINK="static"
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -v | --variant)
+    VARIANT="${2:-}"
+    shift 2 || true
+    ;;
+  -l | --link)
+    LINK="${2:-}"
+    shift 2 || true
+    ;;
+  *) shift ;;
+  esac
+done
+case "$VARIANT" in
+fips | non-fips) : ;;
+*)
+  echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+  exit 1
+  ;;
+esac
+case "$LINK" in
+static | dynamic) : ;;
+*)
+  echo "Error: --link must be 'static' or 'dynamic'" >&2
+  exit 1
+  ;;
+esac
+
+# Get version from Cargo.toml
+VERSION_STR=$("$REPO_ROOT/.github/scripts/release/get_version.sh")
+
+# Decide if we can reuse an existing built server without triggering a full Nix rebuild.
+if [ "$LINK" = "dynamic" ]; then
+  ATTR="kms-server-${VARIANT}-dynamic-openssl"
+else
+  ATTR="kms-server-${VARIANT}-static-openssl"
+fi
+OUT_LINK="$REPO_ROOT/result-server-${VARIANT}-${LINK}"
+
+reuse_server=false
+force_rebuild=${FORCE_REBUILD:-}
+if [ -z "$force_rebuild" ] && [ -L "$OUT_LINK" ]; then
+  REAL_OUT_EXISTING=$(readlink -f "$OUT_LINK" || true)
+  if [ -n "$REAL_OUT_EXISTING" ] && [ -x "$REAL_OUT_EXISTING/bin/cosmian_kms" ]; then
+    # Quick variant/health check: --info should contain expected OpenSSL mode marker.
+    INFO_OUT=$("$REAL_OUT_EXISTING/bin/cosmian_kms" --info 2>&1 || true)
+    if [ "$VARIANT" = "fips" ]; then
+      echo "$INFO_OUT" | grep -q "OpenSSL FIPS mode" && reuse_server=true || reuse_server=false
+    else
+      echo "$INFO_OUT" | grep -q "OpenSSL default mode" && reuse_server=true || reuse_server=false
+    fi
+    # Extra guard: version string must match repository version from Cargo.toml.
+    if ! echo "$INFO_OUT" | grep -q "${VERSION_STR}"; then
+      reuse_server=false
+    fi
+  fi
+fi
+
+if [ "$reuse_server" = true ]; then
+  echo "Reusing existing server derivation at $OUT_LINK (skip nix-build)"
+  REAL_OUT="$REAL_OUT_EXISTING"
+else
+  echo "Building server derivation (variant: $VARIANT) via nix-build..."
+  # Preserve existing link if reuse failed; replace atomically.
+  rm -f "$OUT_LINK" 2>/dev/null || true
+  nix-build -I "nixpkgs=${PIN_URL}" -A "$ATTR" -o "$OUT_LINK"
+  REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+fi
+
+# Prepare target folders and copy binary where cargo-packager expects it
+BIN_OUT="$REAL_OUT/bin/cosmian_kms"
+HOST_TRIPLE=$(rustc -vV | awk '/host:/ {print $2}')
+mkdir -p "crate/server/target/$HOST_TRIPLE/release" "crate/server/target/release" "target/release"
+# Force overwrite in case readonly artifacts already exist from previous runs
+cp -f -v "$BIN_OUT" "crate/server/target/$HOST_TRIPLE/release/cosmian_kms"
+cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
+cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
+
+# Writable HOME/CARGO_HOME for cargo metadata
+export HOME="${TMPDIR:-/tmp}"
+export CARGO_HOME="$HOME/cargo-home"
+mkdir -p "$CARGO_HOME"
+
+# Ensure macOS system tools are available
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+# Prefer locally installed cargo subcommands in CARGO_HOME/bin
+export PATH="$CARGO_HOME/bin:$PATH"
+
+# Ensure cargo-packager 0.11.7 is available (hardcoded, no env overrides)
+ensure_packager() {
+  REQUIRED="0.11.7"
+  CURRENT=""
+  if command -v cargo-packager >/dev/null 2>&1; then
+    CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  fi
+  if [ "$CURRENT" = "$REQUIRED" ]; then
+    return 0
+  fi
+
+  echo "Installing cargo-packager $REQUIRED via cargo..."
+  cargo install cargo-packager --locked --version "$REQUIRED" --force
+  export PATH="$CARGO_HOME/bin:$PATH"
+  if ! command -v cargo-packager >/dev/null 2>&1; then
+    echo "Error: cargo-packager installation failed or not in PATH" >&2
+    exit 1
+  fi
+  CURRENT=$(cargo-packager --version 2>/dev/null | awk '{print $2}' | sed 's/^v//')
+  if [ "$CURRENT" != "$REQUIRED" ]; then
+    echo "Error: cargo-packager version mismatch (have $CURRENT, need $REQUIRED)" >&2
+    exit 1
+  fi
+}
+
+ensure_packager
+
+APP_PATH_EXISTING="target/release/Cosmian KMS Server.app"
+skip_packager=false
+if [ -z "${FORCE_REBUILD:-}" ] && [ -d "$APP_PATH_EXISTING" ]; then
+  # Validate embedded binary matches expected version & variant.
+  BIN_EMBEDDED="$APP_PATH_EXISTING/Contents/MacOS/cosmian_kms"
+  if [ -x "$BIN_EMBEDDED" ]; then
+    EMBED_INFO=$("$BIN_EMBEDDED" --info 2>&1 || true)
+    if echo "$EMBED_INFO" | grep -q "$VERSION_STR"; then
+      if { [ "$VARIANT" = "fips" ] && echo "$EMBED_INFO" | grep -q "OpenSSL FIPS mode"; } || { [ "$VARIANT" = "non-fips" ] && echo "$EMBED_INFO" | grep -q "OpenSSL default mode"; }; then
+        skip_packager=true
+      fi
+    fi
+  fi
+fi
+
+if [ "$skip_packager" = true ]; then
+  echo "Reusing existing .app bundle (skip cargo-packager)"
+else
+  # Package .app with cargo-packager (avoid create-dmg AppleScript in sandbox)
+  # Remove any stale .app bundle from a previous (possibly failed) run so
+  # cargo-packager creates a fresh, complete bundle structure.
+  rm -rf "target/release/Cosmian KMS Server.app" "crate/server/target/release/Cosmian KMS Server.app"
+  pushd crate/server >/dev/null
+  echo "Building .app bundle via cargo-packager..."
+  if ! cargo packager --verbose --formats app --release -p cosmian_kms_server; then
+    echo "Retrying cargo packager without verbose..."
+    cargo packager --formats app --release -p cosmian_kms_server
+  fi
+  popd >/dev/null
+fi
+
+# Collect output DMG into repo-level result link
+RESULT_DIR="$REPO_ROOT/result-dmg-${VARIANT}-${LINK}"
+mkdir -p "$RESULT_DIR"
+# Create a DMG from the generated .app using hdiutil (no AppleScript)
+APP_BUNDLE=$(find crate/server/target/release -maxdepth 1 -name 'Cosmian KMS Server.app' | head -n1 || true)
+if [ -z "$APP_BUNDLE" ]; then
+  # cargo-packager may place the .app under the workspace root target/release
+  APP_BUNDLE=$(find target/release -maxdepth 1 -name 'Cosmian KMS Server.app' | head -n1 || true)
+fi
+if [ -z "$APP_BUNDLE" ]; then
+  echo "Error: Cosmian KMS Server.app not found under crate/server/target/release or target/release" >&2
+  exit 1
+fi
+
+# Ensure OpenSSL assets are embedded in the app bundle
+RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
+mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
+
+if [ "$VARIANT" = "fips" ]; then
+  # FIPS variant: embed FIPS provider and configs from OpenSSL 3.1.2
+  OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name '*-openssl-3.1.2' 2>/dev/null | head -n1 || true)
+  if [ -n "$OPENSSL_STORE" ]; then
+    SRC_MOD="$OPENSSL_STORE/usr/local/cosmian/lib/ossl-modules/fips.dylib"
+    SRC_CONF="$OPENSSL_STORE/usr/local/cosmian/lib/ssl/openssl.cnf"
+    SRC_FIPS_CONF="$OPENSSL_STORE/usr/local/cosmian/lib/ssl/fipsmodule.cnf"
+    if [ -f "$SRC_MOD" ]; then
+      cp -f "$SRC_MOD" "$RES_DIR/ossl-modules/fips.dylib"
+      echo "Embedded FIPS module: $RES_DIR/ossl-modules/fips.dylib"
+    fi
+    if [ -f "$SRC_CONF" ]; then
+      cp -f "$SRC_CONF" "$RES_DIR/ssl/openssl.cnf"
+      echo "Embedded OpenSSL config: $RES_DIR/ssl/openssl.cnf"
+    fi
+    if [ -f "$SRC_FIPS_CONF" ]; then
+      cp -f "$SRC_FIPS_CONF" "$RES_DIR/ssl/fipsmodule.cnf"
+      echo "Embedded FIPS config: $RES_DIR/ssl/fipsmodule.cnf"
+    fi
+  else
+    echo "Warning: OpenSSL store path not found; skipping FIPS asset embedding" >&2
+  fi
+else
+  # Non-FIPS variant: embed legacy provider and non-FIPS openssl.cnf from the server derivation
+  SERVER_OSSL_DIR="$REAL_OUT/usr/local/cosmian/lib"
+  if [ -d "$SERVER_OSSL_DIR/ossl-modules" ]; then
+    cp -f -r "$SERVER_OSSL_DIR/ossl-modules/"* "$RES_DIR/ossl-modules/" 2>/dev/null || true
+    echo "Embedded non-FIPS OpenSSL modules from server derivation"
+  else
+    echo "Warning: No ossl-modules found in server derivation at $SERVER_OSSL_DIR" >&2
+  fi
+  if [ -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" ]; then
+    cp -f "$SERVER_OSSL_DIR/ssl/openssl.cnf" "$RES_DIR/ssl/openssl.cnf"
+    echo "Embedded non-FIPS OpenSSL config from server derivation"
+  fi
+fi
+arch_raw="$(uname -m)"
+case "$arch_raw" in
+x86_64) DMG_ARCH="amd64" ;;
+aarch64 | arm64) DMG_ARCH="arm64" ;;
+*) DMG_ARCH="$arch_raw" ;;
+esac
+link_n=$([ "$LINK" = "static" ] && echo static-openssl || echo dynamic-openssl)
+DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"
+echo "Creating DMG $DMG_NAME from $APP_BUNDLE..."
+# Always recreate DMG to reflect updated app bundle resources (FIPS assets)
+rm -f "$RESULT_DIR/$DMG_NAME" 2>/dev/null || true
+
+# hdiutil can return "Resource busy" when a stale backing store from a previous
+# (failed) run is still held by the kernel, or when two CI jobs race on the same
+# volume name.  Retry up to 5 times, detaching any stale mount with the same
+# volume name between attempts.
+HDIUTIL_RETRIES=5
+HDIUTIL_DELAY=5 # seconds between retries
+for attempt in $(seq 1 $HDIUTIL_RETRIES); do
+  # Detach any already-mounted volume with the same name to release the lock.
+  stale_dev=$(hdiutil info 2>/dev/null |
+    awk -v vol="Cosmian KMS Server" '
+        /image-path/ { path=$0 }
+        /\/Volumes\// && $0 ~ vol { print prev }
+        { prev=$1 }
+      ' |
+    head -n1 || true)
+  if [ -n "$stale_dev" ]; then
+    echo "Detaching stale volume $stale_dev before attempt $attempt…"
+    hdiutil detach "$stale_dev" -force 2>/dev/null || true
+    sleep 2
+  fi
+
+  if hdiutil create -volname "Cosmian KMS Server" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$DMG_NAME"; then
+    break
+  fi
+
+  if [ "$attempt" -eq "$HDIUTIL_RETRIES" ]; then
+    echo "Error: hdiutil create failed after $HDIUTIL_RETRIES attempts" >&2
+    exit 1
+  fi
+  echo "hdiutil create failed (attempt $attempt/$HDIUTIL_RETRIES), retrying in ${HDIUTIL_DELAY}s…" >&2
+  sleep "$HDIUTIL_DELAY"
+done
+
+echo "Built dmg (${VARIANT}): $RESULT_DIR/$DMG_NAME"
+
+# Write deterministic checksum for the newly created DMG (avoid stale checksum files)
+DMG_SHA256=$(shasum -a 256 "$RESULT_DIR/$DMG_NAME" | awk '{print $1}')
+CHECKSUM_FILE="$RESULT_DIR/${DMG_NAME}.sha256"
+echo "$DMG_SHA256  $DMG_NAME" >"$CHECKSUM_FILE"
+echo "Wrote checksum: $CHECKSUM_FILE ($DMG_SHA256)"
+
+# Run DMG smoke test to validate contents and basic execution
+SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
+if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+  echo "Running DMG smoke test for $RESULT_DIR/$DMG_NAME..."
+  bash "$SMOKE_TEST_SCRIPT" "$RESULT_DIR/$DMG_NAME"
+else
+  echo "Warning: smoke test script not found: $SMOKE_TEST_SCRIPT" >&2
+fi
+
+# Source and use the unified sign_packages function from package_common.sh
+COMMON_LIB="$SCRIPT_DIR/package_common.sh"
+if [ -f "$COMMON_LIB" ]; then
+  # Extract and execute the sign_packages function
+  # shellcheck disable=SC1090
+  source <(sed -n '/^sign_packages()/,/^}/p' "$COMMON_LIB")
+  # Only sign packages when executing inside GitHub Actions (GITHUB_ACTION is
+  # provided by the runner). Avoid attempting signing on developer machines
+  # where the signing key/material isn't available.
+  if [ -n "${GITHUB_ACTION:-}" ]; then
+    sign_packages "$RESULT_DIR/$DMG_NAME"
+  else
+    echo "Skipping package signing (not running in GitHub Actions)."
+  fi
+fi
+
+# Copy public key to result directory if it exists
+PUBLIC_KEY="$REPO_ROOT/nix/signing-keys/cosmian-kms-public.asc"
+if [ -f "$PUBLIC_KEY" ]; then
+  cp -v "$PUBLIC_KEY" "$RESULT_DIR/"
+  echo "Copied public key to $RESULT_DIR/"
+fi
+
+# =============================================================================
+# Build ckms CLI DMG
+# =============================================================================
+echo "=========================================="
+echo "Building ckms CLI DMG (variant: $VARIANT, link: $LINK)..."
+echo "=========================================="
+
+# Resolve / build the CLI Nix derivation (same pattern as the server above)
+if [ "$LINK" = "dynamic" ]; then
+  CLI_ATTR="kms-cli-${VARIANT}-dynamic-openssl"
+else
+  CLI_ATTR="kms-cli-${VARIANT}-static-openssl"
+fi
+CLI_OUT_LINK="$REPO_ROOT/result-cli-${VARIANT}-${LINK}"
+
+reuse_cli=false
+if [ -z "${FORCE_REBUILD:-}" ] && [ -L "$CLI_OUT_LINK" ]; then
+  REAL_CLI_EXISTING=$(readlink -f "$CLI_OUT_LINK" || true)
+  if [ -n "$REAL_CLI_EXISTING" ] && [ -x "$REAL_CLI_EXISTING/bin/ckms" ]; then
+    CLI_INFO=$("$REAL_CLI_EXISTING/bin/ckms" --version 2>&1 || true)
+    if echo "$CLI_INFO" | grep -q "${VERSION_STR}"; then
+      reuse_cli=true
+    fi
+  fi
+fi
+
+if [ "$reuse_cli" = true ]; then
+  echo "Reusing existing CLI derivation at $CLI_OUT_LINK (skip nix-build)"
+  REAL_CLI="$REAL_CLI_EXISTING"
+else
+  echo "Building CLI derivation (variant: $VARIANT) via nix-build..."
+  rm -f "$CLI_OUT_LINK" 2>/dev/null || true
+  nix-build -I "nixpkgs=${PIN_URL}" -A "$CLI_ATTR" -o "$CLI_OUT_LINK"
+  REAL_CLI=$(readlink -f "$CLI_OUT_LINK" || echo "$CLI_OUT_LINK")
+fi
+
+CLI_BIN_OUT="$REAL_CLI/bin/ckms"
+CLI_DYLIB_OUT="$REAL_CLI/lib/libcosmian_pkcs11.dylib"
+
+[ -x "$CLI_BIN_OUT" ] || {
+  echo "ERROR: ckms binary not found: $CLI_BIN_OUT" >&2
+  exit 1
+}
+[ -f "$CLI_DYLIB_OUT" ] || {
+  echo "ERROR: libcosmian_pkcs11.dylib not found: $CLI_DYLIB_OUT" >&2
+  exit 1
+}
+
+# Prepare staging directories for cargo-packager.
+# NOTE: cargo-packager resolves binaries from the workspace-root target/release/,
+# so the binary must also be present there in addition to the crate-local target dirs.
+mkdir -p "crate/clients/ckms/target/$HOST_TRIPLE/release" "crate/clients/ckms/target/release" "target/release"
+cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/$HOST_TRIPLE/release/ckms"
+cp -f -v "$CLI_BIN_OUT" "crate/clients/ckms/target/release/ckms"
+cp -f -v "$CLI_BIN_OUT" "target/release/ckms"
+
+# The ckms Cargo.toml packager metadata references `target/release/cosmian_pkcs11.dll`
+# as a resource (for the Windows/NSIS build).  On macOS, that file does not exist,
+# which would cause cargo-packager to abort.  Create a zero-byte placeholder so the
+# resource check passes; it will be removed from the .app bundle right after packaging.
+touch "crate/clients/ckms/target/release/cosmian_pkcs11.dll"
+
+# Remove any stale CLI .app bundle from a previous (possibly failed) run so
+# cargo-packager creates a fresh, complete bundle structure.
+rm -rf "target/release/Cosmian KMS CLI.app" "crate/clients/ckms/target/release/Cosmian KMS CLI.app"
+
+# Build the ckms .app bundle with cargo-packager
+pushd crate/clients/ckms >/dev/null
+echo "Building ckms .app bundle via cargo-packager..."
+if ! cargo packager --verbose --formats app --release -p ckms; then
+  echo "Retrying cargo packager without verbose..."
+  cargo packager --formats app --release -p ckms
+fi
+popd >/dev/null
+
+# Locate the generated .app bundle (may land under the crate or workspace target)
+CLI_APP_BUNDLE=""
+for search_path in "crate/clients/ckms/target/release" "target/release"; do
+  found=$(find "$search_path" -maxdepth 1 -name 'Cosmian KMS CLI.app' | head -n1 || true)
+  if [ -n "$found" ]; then
+    CLI_APP_BUNDLE="$found"
+    break
+  fi
+done
+[ -n "$CLI_APP_BUNDLE" ] || {
+  echo "ERROR: Cosmian KMS CLI.app not found" >&2
+  exit 1
+}
+
+# Remove the Windows-only placeholder DLL from the app bundle (it must not ship on macOS)
+find "$CLI_APP_BUNDLE" -name 'cosmian_pkcs11.dll' -delete 2>/dev/null || true
+
+# Embed the macOS PKCS#11 dylib into the app bundle's Resources/lib/ directory
+CLI_LIB_DIR="$CLI_APP_BUNDLE/Contents/Resources/lib"
+mkdir -p "$CLI_LIB_DIR"
+cp -f -v "$CLI_DYLIB_OUT" "$CLI_LIB_DIR/libcosmian_pkcs11.dylib"
+echo "Embedded libcosmian_pkcs11.dylib into $CLI_LIB_DIR/"
+
+# Create the ckms DMG using hdiutil
+CLI_DMG_NAME="cosmian-kms-cli-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"
+echo "Creating ckms DMG $CLI_DMG_NAME from ${CLI_APP_BUNDLE}..."
+rm -f "$RESULT_DIR/$CLI_DMG_NAME" 2>/dev/null || true
+hdiutil create -volname "Cosmian KMS CLI" -srcfolder "$CLI_APP_BUNDLE" -ov -format UDZO "$RESULT_DIR/$CLI_DMG_NAME"
+echo "Built ckms dmg (${VARIANT}): $RESULT_DIR/$CLI_DMG_NAME"
+
+# Checksum
+CLI_DMG_SHA256=$(shasum -a 256 "$RESULT_DIR/$CLI_DMG_NAME" | awk '{print $1}')
+CLI_CHECKSUM_FILE="$RESULT_DIR/${CLI_DMG_NAME}.sha256"
+echo "$CLI_DMG_SHA256  $CLI_DMG_NAME" >"$CLI_CHECKSUM_FILE"
+echo "Wrote checksum: $CLI_CHECKSUM_FILE ($CLI_DMG_SHA256)"
+
+# GPG sign the ckms DMG (same pattern as server DMG above)
+if [ -f "$COMMON_LIB" ]; then
+  if [ -n "${GITHUB_ACTION:-}" ]; then
+    sign_packages "$RESULT_DIR/$CLI_DMG_NAME"
+  else
+    echo "Skipping ckms DMG signing (not running in GitHub Actions)."
+  fi
+fi

@@ -198,9 +198,9 @@ bash .github/scripts/nix.sh [--variant <fips|non-fips>] [--link <static|dynamic>
 
 | Type   | Platform | Output                   | Script                       |
 | ------ | -------- | ------------------------ | ---------------------------- |
-| `deb`  | Linux    | Debian/Ubuntu `.deb`     | `nix/scripts/package_deb.sh` |
-| `rpm`  | Linux    | RedHat/SUSE `.rpm`       | `nix/scripts/package_rpm.sh` |
-| `dmg`  | macOS    | macOS disk image `.dmg`  | `nix/scripts/package_dmg.sh` |
+| `deb`  | Linux    | Debian/Ubuntu `.deb`     | `package/package_deb.sh` |
+| `rpm`  | Linux    | RedHat/SUSE `.rpm`       | `package/package_rpm.sh` |
+| `dmg`  | macOS    | macOS disk image `.dmg`  | `package/package_dmg.sh` |
 | (none) | Auto     | All types for current OS | —                            |
 
 **Build Process:**
@@ -481,27 +481,106 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 ### Core Scripts
 
-#### `.github/scripts/`
+#### `.github/scripts/` (root — entrypoints only)
 
-| Script                     | Purpose                                 | Invocation Context          |
-| -------------------------- | --------------------------------------- | --------------------------- |
-| `nix.sh`                   | Unified entrypoint                      | Developer CLI, CI pipelines |
-| `common.sh`                | Shared test helpers (sourced by others) | Never run directly          |
-| `test_*.sh`                | Individual test suite runners           | Via `nix.sh test <type>`    |
-| `release.sh`               | Version bump automation                 | Release workflow            |
-| `test_docker_image.sh`     | Docker TLS/auth integration tests       | CI container tests          |
-| `reinitialize_demo_kms.sh` | Demo server key rotation                | Demo VM cron job            |
+| Script      | Purpose                                 | Invocation Context          |
+| ----------- | --------------------------------------- | --------------------------- |
+| `nix.sh`    | Unified entrypoint                      | Developer CLI, CI pipelines |
+| `common.sh` | Shared test helpers (sourced by others) | Never run directly          |
 
-#### `nix/scripts/`
+#### `test/` — Test suite runners
+
+| Script                  | Purpose                               | Invocation Context          |
+| ----------------------- | ------------------------------------- | --------------------------- |
+| `test_*.sh`             | Individual test suite runners         | Via `nix.sh test <type>`    |
+| `azure_ekm_test.sh`     | Azure EKM integration tests           | Via `nix.sh test azure_ekm` |
+| `google_cse_with_hsm.sh`| Google CSE + HSM combined test        | CI                          |
+
+#### `package/` — Build distributables
 
 | Script              | Purpose                           | Invocation Context        |
 | ------------------- | --------------------------------- | ------------------------- |
 | `package_deb.sh`    | Debian package build              | Via `nix.sh package deb`  |
 | `package_rpm.sh`    | RPM package build                 | Via `nix.sh package rpm`  |
 | `package_dmg.sh`    | macOS DMG build                   | Via `nix.sh package dmg`  |
-| `generate_sbom.sh`  | SBOM generation orchestrator      | Via `nix.sh sbom`         |
-| `get_version.sh`    | Extract version from `Cargo.toml` | Packaging scripts         |
 | `package_common.sh` | Shared packaging helpers          | Sourced by `package_*.sh` |
+| `smoke_test_*.sh`   | Post-package smoke tests          | Via `nix.sh package`      |
+
+#### `release/` — Release management
+
+| Script                  | Purpose                           | Invocation Context        |
+| ----------------------- | --------------------------------- | ------------------------- |
+| `release.sh`            | Version bump automation           | Release workflow          |
+| `get_version.sh`        | Extract version from `Cargo.toml` | Packaging scripts         |
+| `update_hashes.sh`      | Update Nix expected hashes        | Via `nix.sh update-hashes`|
+| `clean_result.sh`       | Remove Nix result symlinks        | Developer housekeeping    |
+| `generate_signing_key.sh`| Generate GPG signing key         | One-time setup            |
+
+#### `sbom/` — Software Bill of Materials
+
+| Script             | Purpose                       | Invocation Context |
+| ------------------ | ----------------------------- | ------------------ |
+| `generate_sbom.sh` | SBOM generation orchestrator  | Via `nix.sh sbom`  |
+| `dedup_cves.py`    | Deduplicate CVE reports        | Post-processing    |
+| `filter_vulns.py`  | Filter vulnerability reports   | Post-processing    |
+
+#### `benchmarks/` — Performance benchmarks
+
+| Script                            | Purpose                         |
+| --------------------------------- | ------------------------------- |
+| `benchmarks.sh`                   | CI benchmark smoke test         |
+| `run_benchmarks.sh`               | Start KMS + run ckms bench      |
+| `run_benchmarks_docker.sh`        | Docker-based benchmark runs     |
+| `run_benchmarks_load_tests.sh`    | Load test benchmarks            |
+
+#### `build/` — Nix build helpers
+
+| Script          | Purpose                    |
+| --------------- | -------------------------- |
+| `nix_build.sh`  | Nix-shell build helper     |
+| `build_ui.sh`   | Build the web UI           |
+| `build_ui_all.sh`| Build UI all variants     |
+
+#### `pykmip/` — PyKMIP client tools
+
+| File                  | Purpose                               |
+| --------------------- | ------------------------------------- |
+| `setup_pykmip.sh`     | Install PyKMIP + configure venv       |
+| `test_pykmip.sh`      | PyKMIP client test runner             |
+| `test_synology_dsm.sh`| Synology DSM simulation tests         |
+| `pykmip_client.py`    | Python KMIP client                    |
+| `kms.toml`            | KMS server config for KMIP socket     |
+| `README_PYKMIP.md`    | PyKMIP usage documentation            |
+
+#### `docs/` — Documentation generation
+
+| Script                 | Purpose                               |
+| ---------------------- | ------------------------------------- |
+| `renew_ckms_markdown.sh`| Regenerate ckms CLI docs             |
+| `renew_server_doc.sh`  | Regenerate server docs                |
+| `gen_kmip_xml_tables.py`| Generate KMIP XML tables             |
+| `update_readme_kmip.py`| Update KMIP README references        |
+
+#### `demo/` — Demo environment
+
+| Script                    | Purpose                               |
+| ------------------------- | ------------------------------------- |
+| `reinitialize_demo_kms.sh`| Demo server key rotation              |
+
+#### `windows/` — Windows CI helpers
+
+| Script             | Purpose                               |
+| ------------------ | ------------------------------------- |
+| `cargo_build.ps1`  | Windows Cargo build                   |
+| `cargo_test.ps1`   | Windows Cargo test                    |
+| `test_ui.ps1`      | Windows UI test runner                |
+| `windows_ui.ps1`   | Windows UI build helper               |
+
+#### `shared/` — Shared utilities
+
+| Script        | Purpose                               |
+| ------------- | ------------------------------------- |
+| `colors.sh`   | Terminal color vars + print helpers   |
 
 ### Test Scripts Detailed
 
@@ -619,7 +698,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     cmd["bash nix.sh sbom --variant <fips|non-fips><br/>(Runs OUTSIDE nix-shell)"]
-    gen["nix/scripts/generate_sbom.sh"]
+    gen[".github/scripts/sbom/generate_sbom.sh"]
     check["Check if binary exists<br/>(auto-build if needed)"]
     sbomnix["Run sbomnix tools<br/>· sbomnix · vulnxscan · nix-visualize"]
     cmd --> gen --> check --> sbomnix
@@ -636,52 +715,14 @@ flowchart TB
 
 #### Update Hashes Workflow
 
-<<<<<<< Updated upstream
-
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  $ bash nix.sh update-hashes [RUN_ID]                                     │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-                                 ▼
-                    ┌────────────────────────┐
-                    │ update_hashes.sh       │
-                    │ (requires `gh`)        │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌────────────────────────┐
-                    │ gh api                 │
-                    │  - find workflow run   │
-                    │  - list failed jobs    │
-                    │  - download logs       │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌────────────────────────┐
-                    │ Parse log lines:       │
-                    │  specified: sha256-... │
-                    │  got: sha256-...       │
-                    └────────┬───────────────┘
-                             │
-                             ▼
-                    ┌─────────────────────────────┐
-                    │ Update nix/expected-hashes/ │
-                    │  - ui.vendor.*.sha256       │
-                    │  - server.vendor.{static,dynamic}.sha256   │
-                    │  - cli.vendor.linux.sha256  │
-                    │  - cli.vendor.{static,dynamic}.darwin.sha256 │
-                    └─────────────────────────────┘
-=======
 ```mermaid
 flowchart TB
     cmd["bash nix.sh update-hashes [RUN_ID]"]
-    script["update_hashes.sh<br/>(requires gh CLI)"]
+    script["release/update_hashes.sh<br/>(requires gh CLI)"]
     gh["gh api<br/>· find workflow run<br/>· list failed jobs<br/>· download logs"]
     parse["Parse log lines:<br/>specified: sha256-...<br/>got: sha256-..."]
     update["Update nix/expected-hashes/<br/>· ui.vendor.*.sha256<br/>· server.vendor.{static,dynamic}.sha256<br/>· cli.vendor.linux.sha256<br/>· cli.vendor.{fips,non-fips}.darwin.sha256"]
     cmd --> script --> gh --> parse --> update
->>>>>>> Stashed changes
 ```
 
 #### Nix Shell Environment Modes
@@ -905,7 +946,7 @@ NO_PREWARM=1 bash .github/scripts/nix.sh package deb   # Skip prewarm (cached st
 **Tests:**
 
 - `RUST_LOG=<level>`: Cargo test verbosity (debug, info, warn, error)
-- `COSMIAN_KMS_CONF`: Path to KMS config file (default: `scripts/kms.toml`)
+- `COSMIAN_KMS_CONF`: Path to KMS config file (default: `.github/scripts/pykmip/kms.toml`)
 - Database connection vars (see test section above)
 - Google CSE credential vars (see test section above)
 

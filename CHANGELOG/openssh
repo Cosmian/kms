@@ -53,6 +53,12 @@ All notable changes to this project will be documented in this file.
 
 - **Benchmarks CI** (#776): `benchmarks.sh` now builds the KMS server + ckms CLI, starts a temporary SQLite KMS instance, and runs `ckms bench --speed sanity --format json` as an end-to-end smoke test; supports `BENCH_SAVE_BASELINE` / `BENCH_LOAD_BASELINE` env vars for criterion regression comparisons on a dedicated machine.
 
+### 🔄 Refactor
+
+#### Script Infrastructure Reorganization
+
+- **Script reorganization**: Reorganized 76 scripts from the flat `.github/scripts/`, `nix/scripts/`, and `scripts/` directories into logical subdirectories under `.github/scripts/`: `test/`, `build/`, `package/`, `release/`, `benchmarks/`, `pykmip/`, `sbom/`, `docs/`, `demo/`, `windows/`, `shared/`. All cross-references in `nix.sh`, workflow YAMLs, and the scripts themselves have been updated. Added `shared/colors.sh` for shared terminal color helpers and `benchmarks/docker_helpers.sh` for shared Docker benchmark utilities.
+
 Closes #811
 Closes #695
 Closes #763

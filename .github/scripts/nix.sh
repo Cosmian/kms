@@ -389,7 +389,7 @@ docker_command() {
   fi
 
   # Extract version from Cargo.toml
-  VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
+  VERSION=$(bash "$REPO_ROOT/.github/scripts/release/get_version.sh")
 
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
   # Backward compatibility: environment variable still honored if set
@@ -416,7 +416,7 @@ docker_command() {
       if [ "$DOCKER_TEST" = true ]; then
         echo "Running Docker image tests..."
         export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}"
-        bash "$REPO_ROOT/.github/scripts/test_docker_image.sh"
+        bash "$REPO_ROOT/.github/scripts/test/test_docker_image.sh"
       fi
     else
       echo "Warning: docker CLI not found; skipping --load" >&2
@@ -431,43 +431,43 @@ docker_command() {
 test_command() {
   case "$TEST_TYPE" in
   all)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_all.sh"
     ;;
   aws_xks)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_xks.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_xks.sh"
     ;;
   wasm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_wasm.sh"
     ;;
   sqlite)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_sqlite.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_sqlite.sh"
     ;;
   mysql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_mysql.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_mysql.sh"
     ;;
   percona)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_percona.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_percona.sh"
     ;;
   otel_export)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_otel_export.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_otel_export.sh"
     ;;
   mariadb)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_maria.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_maria.sh"
     ;;
   psql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_psql.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_psql.sh"
     ;;
   redis)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_redis.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_redis.sh"
     ;;
   azure_ekm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
     ;;
   gcp_cmek)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_gcp_cmek.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
     ;;
   google_cse)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell
     for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
       TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
@@ -484,34 +484,34 @@ test_command() {
     done
     ;;
   pykmip)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_pykmip.sh"
     ;;
   openssh)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_openssh.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_openssh.sh"
     ;;
   luks)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_luks.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
     ;;
   ui)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
     ;;
   hsm)
     # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
     HSM_BACKEND="${1:-all}"
     case "$HSM_BACKEND" in
     all)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm.sh"
       ;;
     softhsm2)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_softhsm2.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_softhsm2.sh"
       shift
       ;;
     utimaco)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_utimaco.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_utimaco.sh"
       shift
       ;;
     proteccio)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_proteccio.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
       shift
       ;;
     *)
@@ -591,7 +591,7 @@ test_command() {
 sbom_command() {
   # SBOM generation using sbomnix - runs OUTSIDE nix-shell
   # sbomnix needs direct access to nix-store and nix commands
-  SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
+  SCRIPT="$REPO_ROOT/.github/scripts/sbom/generate_sbom.sh"
 
   # Parse arguments to check if --target/--variant/--link are specified.
   local target=""
@@ -753,7 +753,7 @@ sbom_command() {
 }
 
 update_hashes_command() {
-  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
+  SCRIPT="$REPO_ROOT/.github/scripts/release/update_hashes.sh"
   [ -f "$SCRIPT" ] || {
     echo "Missing $SCRIPT" >&2
     exit 1
@@ -788,7 +788,7 @@ package_command() {
       PACKAGE_TYPE="dmg"
     fi
     if [ "$PACKAGE_TYPE" = "dmg" ]; then
-      SCRIPT="$REPO_ROOT/nix/scripts/package_dmg.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/package/package_dmg.sh"
       KEEP_VARS=""
       echo "Note: Building DMG via nix-shell to allow macOS system tools (cargo-packager path)."
       # shellcheck disable=SC2086
@@ -843,7 +843,7 @@ package_command() {
         case "$TYPE" in
         deb)
           if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/nix/scripts/package_deb.sh"
+            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_deb.sh"
             [ -f "$SCRIPT_LINUX" ] || {
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
@@ -857,7 +857,7 @@ package_command() {
             echo "=========================================="
             DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
+              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$SMOKE_TEST_SCRIPT' '$DEB_FILE'" || {
                   echo "ERROR: Smoke test failed for $DEB_FILE" >&2
@@ -874,7 +874,7 @@ package_command() {
             echo "=========================================="
             CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
             if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_deb.sh"
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_deb.sh"
               if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
                   echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
@@ -893,7 +893,7 @@ package_command() {
           ;;
         rpm)
           if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/nix/scripts/package_rpm.sh"
+            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_rpm.sh"
             [ -f "$SCRIPT_LINUX" ] || {
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
@@ -907,7 +907,7 @@ package_command() {
             echo "=========================================="
             RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
+              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$SMOKE_TEST_SCRIPT' '$RPM_FILE'" || {
                   echo "ERROR: Smoke test failed for $RPM_FILE" >&2
@@ -924,7 +924,7 @@ package_command() {
             echo "=========================================="
             CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
             if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_rpm.sh"
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_rpm.sh"
               if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
                   echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
@@ -959,7 +959,7 @@ package_command() {
           echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
           DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
-          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
+          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_dmg.sh"
           if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
             if [ -f "$SMOKE_TEST_SCRIPT" ]; then
               echo "Running DMG smoke test for $DMG_FILE..."

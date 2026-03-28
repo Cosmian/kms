@@ -168,7 +168,7 @@ jobs:
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
         run: |
-          bash .github/scripts/test_docker_image.sh
+          bash .github/scripts/test/test_docker_image.sh
 
       - name: Select tag for output
         id: pick
