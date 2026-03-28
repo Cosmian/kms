@@ -249,9 +249,8 @@ impl Session {
                 );
             }
 
-            SearchOptions::Id(cka_id) => {
+            SearchOptions::Id(id) => {
                 if search_class == pkcs11_sys::CKO_CERTIFICATE {
-                    let id = String::from_utf8(cka_id)?;
                     // Find certificates which have this CKA_ID as private key ID
                     let find_ctx = OBJECTS_STORE.read()?;
                     let certificates = find_ctx.get_using_type(&ObjectType::Certificate);
@@ -281,8 +280,6 @@ impl Session {
                         }
                     }
                 } else {
-                    let id = String::from_utf8(cka_id)?;
-
                     let find_ctx = OBJECTS_STORE.read()?;
                     let (object, handle) = find_ctx.get_using_id(&id).ok_or_else(|| {
                         ModuleError::BadArguments(format!(

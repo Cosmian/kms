@@ -118,7 +118,7 @@ async fn pg_get_client_for_tx(
 /// Each attempt gets a fresh connection from the pool so multi-host URLs can resolve
 /// to the new primary.
 macro_rules! pg_retry {
-    ($pool:expr, |$client:ident| $body:expr) => {{
+    ($pool:expr, | $client:ident | $body:expr) => {{
         let mut last_err: Option<InterfaceError> = None;
         for attempt in 0..PG_MAX_RETRIES {
             match $pool.get().await {
@@ -161,7 +161,7 @@ macro_rules! pg_retry {
 /// Gets a fresh connection and starts a new transaction on each retry.
 /// Uses `pg_get_client_for_tx` for connection acquisition with backoff.
 macro_rules! pg_retry_tx {
-    ($pool:expr, |$tx:ident| $body:expr) => {{
+    ($pool:expr, | $tx:ident | $body:expr) => {{
         for attempt in 0..PG_MAX_RETRIES {
             let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
                 Ok(c) => c,

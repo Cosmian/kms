@@ -782,7 +782,7 @@ cryptoki_fn!(
             match object.as_deref() {
                 Some(Object::PublicKey(pk)) => {
                     session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: pk.remote_id(),
+                        remote_object_id: pk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
                     });
@@ -798,7 +798,7 @@ cryptoki_fn!(
                         }
                     };
                     session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: sk.remote_id(),
+                        remote_object_id: sk.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
                     });
@@ -814,7 +814,7 @@ cryptoki_fn!(
                         }
                     };
                     session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: data.remote_id(),
+                        remote_object_id: data.remote_id().to_owned(),
                         algorithm: EncryptionAlgorithm::try_from(mechanism)?,
                         iv,
                     });
@@ -903,7 +903,7 @@ cryptoki_fn!(
             match object.as_deref() {
                 Some(Object::PrivateKey(sk)) => {
                     session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: sk.remote_id(),
+                        remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv: None,
                     });
@@ -920,7 +920,7 @@ cryptoki_fn!(
                     };
 
                     session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: sk.remote_id(),
+                        remote_object_id: sk.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
                     });
@@ -936,7 +936,7 @@ cryptoki_fn!(
                         }
                     };
                     session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: data.remote_id(),
+                        remote_object_id: data.remote_id().to_owned(),
                         algorithm: mechanism.try_into()?,
                         iv,
                     });

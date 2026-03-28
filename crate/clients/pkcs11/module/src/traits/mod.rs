@@ -24,7 +24,6 @@ pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
 pub use key_algorithm::KeyAlgorithm;
-pub use once_cell;
 pub use private_key::PrivateKey;
 pub use public_key::PublicKey;
 pub use signature_algorithm::SignatureAlgorithm;
@@ -72,7 +71,9 @@ impl DigestType {
 #[derive(Debug)]
 pub enum SearchOptions {
     All,
-    Id(Vec<u8>),
+    /// The PKCS#11 `CKA_ID` converted to UTF-8 at the point of construction,
+    /// so consumers never need to call `String::from_utf8` themselves.
+    Id(String),
 }
 
 impl TryFrom<&Attributes> for SearchOptions {
@@ -83,7 +84,7 @@ impl TryFrom<&Attributes> for SearchOptions {
             return Ok(Self::All);
         }
         if let Some(Attribute::Id(id)) = attributes.get(AttributeType::Id) {
-            Ok(Self::Id(id.clone()))
+            Ok(Self::Id(String::from_utf8(id.clone())?))
         } else {
             Ok(Self::All)
         }
@@ -104,3 +105,36 @@ pub fn random_label() -> String {
             .map(char::from)
             .collect::<String>()
 }
+
+/// Generates `PartialEq`, `Eq`, `Hash`, and `Debug` impls for a given PKCS#11 dyn trait
+/// whose objects are identified by a `remote_id() -> &str` method. All five object-type
+/// traits (`Certificate`, `PrivateKey`, `PublicKey`, `SymmetricKey`, `DataObject`) share
+/// this identity pattern, so one macro invocation replaces ~15 lines of boilerplate each.
+macro_rules! impl_remote_object_impls {
+    ($trait_name:ident) => {
+        impl PartialEq for dyn $trait_name {
+            fn eq(&self, other: &Self) -> bool {
+                self.remote_id() == other.remote_id()
+            }
+        }
+        impl Eq for dyn $trait_name {}
+        impl std::hash::Hash for dyn $trait_name {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                self.remote_id().hash(state);
+            }
+        }
+        impl std::fmt::Debug for dyn $trait_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_struct(stringify!($trait_name))
+                    .field("remote_id", &self.remote_id())
+                    .finish_non_exhaustive()
+            }
+        }
+    };
+}
+
+impl_remote_object_impls!(Certificate);
+impl_remote_object_impls!(PrivateKey);
+impl_remote_object_impls!(PublicKey);
+impl_remote_object_impls!(SymmetricKey);
+impl_remote_object_impls!(DataObject);

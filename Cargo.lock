@@ -1395,7 +1395,6 @@ dependencies = [
  "cosmian_logger",
  "hex",
  "log",
- "once_cell",
  "openssl",
  "p256",
  "pkcs1",

@@ -41,6 +41,18 @@ use crate::{
 pub(crate) const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
 
+/// Extract the `Id` from a `SearchOptions`, returning an error if `All` was passed.
+/// Centralises the "find requires an ID" check shared by four `Backend` methods.
+fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
+    match query {
+        SearchOptions::Id(id) => Ok(id),
+        SearchOptions::All => Err(ModuleError::Backend(Box::new(pkcs11_error!(
+            "{}: find must be made using an ID",
+            caller
+        )))),
+    }
+}
+
 pub(crate) struct CliBackend {
     kms_rest_client: KmsClient,
 }
@@ -237,15 +249,7 @@ impl Backend for CliBackend {
 
     fn find_private_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_private_key: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_private_key")?;
         let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
@@ -291,15 +295,7 @@ impl Backend for CliBackend {
 
     fn find_public_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_public_key: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_public_key")?;
         let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PublicKey::try_from_kms_object(&kms_object)?))
     }
@@ -362,15 +358,7 @@ impl Backend for CliBackend {
 
     fn find_symmetric_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn SymmetricKey>> {
         trace!("find_symmetric_key: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_symmetric_key: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_symmetric_key")?;
         let kms_object = get_kms_object(
             &self.kms_rest_client,
             &id,
@@ -400,15 +388,7 @@ impl Backend for CliBackend {
 
     fn find_data_object(&self, query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_data_object: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_data_object")?;
         match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::Raw) {
             Ok(kms_object) => Ok(Some(Arc::new(Pkcs11DataObject::try_from_kms_object(
                 kms_object,

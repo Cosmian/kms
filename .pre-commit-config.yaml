@@ -42,7 +42,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|crate/cli/src/tests/kms/shared/export_import.rs|nix/signing-keys/cosmian-kms-public.asc|sbom/
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|crate/cli/src/tests/kms/shared/export_import.rs|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -107,7 +107,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/server_cli.md
+        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
 
   - repo: https://github.com/psf/black
     rev: 25.1.0
@@ -259,8 +259,8 @@ repos:
         name: renew server docs (CLI help + configuration file)
         description: |
           Build cosmian_kms (non-fips) and regenerate:
-            - documentation/docs/server_cli.md from --help
-            - documentation/docs/server_configuration_file.md from --print-default-config
+            - documentation/docs/configuration/server_cli.md from --help
+            - documentation/docs/configuration/server_configuration_file.md from --print-default-config
             - pkg/kms.toml and crate/server/kms_template.toml
         entry: bash .github/scripts/renew_server_doc.sh
         language: system

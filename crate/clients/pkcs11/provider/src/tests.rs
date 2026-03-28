@@ -465,7 +465,10 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
 
     // Private key discovery
     let private_keys = backend.find_all_private_keys()?;
-    let pk_ids: Vec<String> = private_keys.iter().map(|k| k.remote_id()).collect();
+    let pk_ids: Vec<String> = private_keys
+        .iter()
+        .map(|k| k.remote_id().to_owned())
+        .collect();
     assert!(
         pk_ids.contains(&rsa_sk_id),
         "RSA SSH private key {rsa_sk_id} not found in find_all_private_keys"
@@ -477,7 +480,10 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
 
     // Public key discovery
     let public_keys = backend.find_all_public_keys()?;
-    let pub_ids: Vec<String> = public_keys.iter().map(|k| k.remote_id()).collect();
+    let pub_ids: Vec<String> = public_keys
+        .iter()
+        .map(|k| k.remote_id().to_owned())
+        .collect();
     assert!(
         pub_ids.contains(&rsa_pk_id),
         "RSA SSH public key {rsa_pk_id} not found in find_all_public_keys"

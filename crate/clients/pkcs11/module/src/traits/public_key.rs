@@ -1,4 +1,4 @@
-use std::{hash::Hash, sync::Arc};
+use std::sync::Arc;
 
 use pkcs1::RsaPublicKey;
 
@@ -9,7 +9,7 @@ use crate::{
 
 pub trait PublicKey: Send + Sync {
     /// The unique ID of the key (in the KMS)
-    fn remote_id(&self) -> String;
+    fn remote_id(&self) -> &str;
     fn fingerprint(&self) -> &[u8];
     fn verify(
         &self,
@@ -33,26 +33,4 @@ pub trait PublicKey: Send + Sync {
     }
     /// Return the EC P256 public key if the key is an EC key
     fn ec_p256_public_key(&self) -> ModuleResult<p256::PublicKey>;
-}
-
-impl PartialEq for dyn PublicKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.remote_id() == other.remote_id()
-    }
-}
-
-impl std::fmt::Debug for dyn PublicKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PublicKey")
-            .field("remote id", &self.remote_id())
-            .finish_non_exhaustive()
-    }
-}
-
-impl Eq for dyn PublicKey {}
-
-impl Hash for dyn PublicKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.remote_id().hash(state);
-    }
 }

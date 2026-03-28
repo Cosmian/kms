@@ -62,8 +62,8 @@ impl TryFrom<KmsObject> for Pkcs11Certificate {
 }
 
 impl Certificate for Pkcs11Certificate {
-    fn remote_id(&self) -> String {
-        self.remote_id.clone()
+    fn remote_id(&self) -> &str {
+        &self.remote_id
     }
 
     fn to_der(&self) -> cosmian_pkcs11_module::ModuleResult<Vec<u8>> {

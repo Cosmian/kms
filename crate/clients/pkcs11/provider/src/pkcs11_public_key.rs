@@ -36,10 +36,26 @@ impl Pkcs11PublicKey {
     }
 
     pub(crate) fn try_from_spki(spki: &SubjectPublicKeyInfoOwned) -> ModuleResult<Self> {
-        let algorithm = &spki.algorithm;
-        let algorithm = KeyAlgorithm::from_oid(&algorithm.oid).ok_or_else(|| {
-            ModuleError::BadArguments(format!("OID not found: {}", algorithm.oid))
-        })?;
+        // For EC keys, the algorithm OID in SPKI is id-ecPublicKey (1.2.840.10045.2.1)
+        // and the curve OID lives in the parameters.
+        // For all other key types (RSA, EdDSA, X25519, …) the algorithm OID is the identity.
+        let algorithm = if spki.algorithm.oid.to_string() == "1.2.840.10045.2.1" {
+            let params = spki.algorithm.parameters.as_ref().ok_or_else(|| {
+                ModuleError::BadArguments("EC SPKI is missing curve OID in parameters".to_owned())
+            })?;
+            let curve_oid = params.decode_as::<pkcs1::ObjectIdentifier>().map_err(|e| {
+                ModuleError::Cryptography(format!(
+                    "failed to decode EC curve OID from SPKI parameters: {e}"
+                ))
+            })?;
+            KeyAlgorithm::from_oid(&curve_oid).ok_or_else(|| {
+                ModuleError::BadArguments(format!("EC curve OID not supported: {curve_oid}"))
+            })?
+        } else {
+            KeyAlgorithm::from_oid(&spki.algorithm.oid).ok_or_else(|| {
+                ModuleError::BadArguments(format!("OID not found: {}", spki.algorithm.oid))
+            })?
+        };
         // Extract the inner key bytes from the SPKI's BIT STRING:
         //   RSA  → PKCS#1 DER (SEQUENCE { INTEGER n, INTEGER e })
         //   EC   → raw SEC1 point bytes (04 || x || y)
@@ -60,7 +76,6 @@ impl Pkcs11PublicKey {
     /// (`SubjectPublicKeyInfo` DER bytes), which is what `get_kms_object` returns
     /// when `KeyFormatType::PKCS8` is requested for a public key.
     pub(crate) fn try_from_kms_object(kms_object: &KmsObject) -> ModuleResult<Self> {
-        let remote_id = kms_object.remote_id.clone();
         let raw_bytes = Zeroizing::new(
             kms_object
                 .object
@@ -72,49 +87,15 @@ impl Pkcs11PublicKey {
         );
         let spki = SubjectPublicKeyInfoOwned::from_der(&raw_bytes)
             .map_err(|e| ModuleError::Cryptography(format!("invalid SPKI DER: {e}")))?;
-
-        // For EC keys, the algorithm OID in SPKI is id-ecPublicKey (1.2.840.10045.2.1)
-        // and the curve OID lives in the parameters. For all other key types (RSA, EdDSA,
-        // X25519, …) the algorithm OID itself identifies the key type.
-        let algorithm = if spki.algorithm.oid.to_string() == "1.2.840.10045.2.1" {
-            let params = spki.algorithm.parameters.as_ref().ok_or_else(|| {
-                ModuleError::BadArguments("EC SPKI is missing curve OID in parameters".to_owned())
-            })?;
-            let curve_oid = params.decode_as::<pkcs1::ObjectIdentifier>().map_err(|e| {
-                ModuleError::Cryptography(format!(
-                    "failed to decode EC curve OID from SPKI parameters: {e}"
-                ))
-            })?;
-            KeyAlgorithm::from_oid(&curve_oid).ok_or_else(|| {
-                ModuleError::BadArguments(format!("EC curve OID not supported: {curve_oid}"))
-            })?
-        } else {
-            KeyAlgorithm::from_oid(&spki.algorithm.oid).ok_or_else(|| {
-                ModuleError::BadArguments(format!(
-                    "public key OID not supported: {}",
-                    spki.algorithm.oid
-                ))
-            })?
-        };
-
-        // Extract the inner key bytes from the SPKI's BIT STRING:
-        //   RSA  → PKCS#1 DER (SEQUENCE { INTEGER n, INTEGER e })
-        //   EC   → raw SEC1 point bytes (04 || x || y)
-        let inner_key_bytes = spki.subject_public_key.raw_bytes().to_vec();
-        let fingerprint = sha3::Sha3_256::digest(&inner_key_bytes).to_vec();
-        let der_bytes = Zeroizing::new(inner_key_bytes);
-        Ok(Self {
-            remote_id,
-            der_bytes,
-            fingerprint,
-            algorithm,
-        })
+        let mut key = Self::try_from_spki(&spki)?;
+        key.remote_id.clone_from(&kms_object.remote_id);
+        Ok(key)
     }
 }
 
 impl PublicKey for Pkcs11PublicKey {
-    fn remote_id(&self) -> String {
-        self.remote_id.clone()
+    fn remote_id(&self) -> &str {
+        &self.remote_id
     }
 
     fn fingerprint(&self) -> &[u8] {

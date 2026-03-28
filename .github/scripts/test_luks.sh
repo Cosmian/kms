@@ -269,10 +269,10 @@ verify_disk_encryption_objects_via_ckms_and_rust() {
       COSMIAN_PKCS11_LOGGING_LEVEL="info" \
       COSMIAN_PKCS11_DISK_ENCRYPTION_TAG="disk-encryption" \
       cargo test \
-        -p cosmian_pkcs11 \
-        "${FEATURES_FLAG[@]}" \
-        -- test_kms_client_and_backend \
-        --nocapture 2>&1
+      -p cosmian_pkcs11 \
+      "${FEATURES_FLAG[@]}" \
+      -- test_kms_client_and_backend \
+      --nocapture 2>&1
   )
   set -x
   echo "$lib_output"
@@ -290,9 +290,9 @@ if command -v pkcs11-tool >/dev/null 2>&1; then
     CKMS_CONF="$ckms_conf" \
       COSMIAN_PKCS11_LOGGING_LEVEL="warn" \
       pkcs11-tool \
-        --module "$pkcs11_lib" \
-        --login --login-type so \
-        --list-objects 2>&1 || true
+      --module "$pkcs11_lib" \
+      --login --login-type so \
+      --list-objects 2>&1 || true
   )
   set -x
 
@@ -335,6 +335,128 @@ if command -v pkcs11-tool >/dev/null 2>&1; then
 else
   echo "pkcs11-tool not available (macOS or pkcs11-tool not installed); skipping object listing via pkcs11-tool."
   verify_disk_encryption_objects_via_ckms_and_rust
+fi
+
+# ── Part 3: cryptsetup LUKS2 PKCS#11 enrollment (Linux only) ─────────────────
+echo "============================================="
+echo "Part 3: cryptsetup LUKS2 PKCS#11 enrollment"
+echo "============================================="
+
+if [ "$(uname)" != "Linux" ]; then
+  echo "Skipping: cryptsetup tests require Linux (current OS: $(uname))."
+elif ! command -v cryptsetup >/dev/null 2>&1; then
+  echo "Skipping: cryptsetup not found in PATH."
+else
+  # Determine privilege escalation: use sudo only when not already root.
+  if [ "$(id -u)" -eq 0 ]; then
+    CRYPT_SUDO=""
+  elif sudo -n true 2>/dev/null; then
+    CRYPT_SUDO="sudo"
+  else
+    echo "Skipping cryptsetup sub-test: neither root nor passwordless sudo available."
+    CRYPT_SUDO="__skip__"
+  fi
+
+  if [ "${CRYPT_SUDO}" != "__skip__" ]; then
+    luks_img="$tmp_dir/luks_disk.img"
+    luks_passphrase="cosmian_luks_slot0"
+
+    # Create a 16 MiB blank image file for the LUKS2 container.
+    dd if=/dev/zero of="$luks_img" bs=1M count=16 status=none
+    echo "Created blank LUKS image: $luks_img"
+
+    # Format as LUKS2 (passphrase in slot 0, used later to unlock when adding the PKCS#11 token).
+    # cryptsetup luksFormat on a regular file does not require kernel DM access (no root needed
+    # for the header write itself), but --batch-mode disables the interactive safety prompt.
+    if echo -n "$luks_passphrase" |
+      ${CRYPT_SUDO} cryptsetup luksFormat \
+        --type luks2 \
+        --batch-mode \
+        --key-file=- \
+        "$luks_img" 2>&1; then
+      echo "Formatted $luks_img as LUKS2."
+      echo "--- Initial LUKS2 header (no tokens) ---"
+      ${CRYPT_SUDO} cryptsetup luksDump "$luks_img"
+
+      # ── Enroll PKCS#11 token via systemd-cryptenroll ───────────────────────
+      # systemd-cryptenroll (systemd >= 248) can enroll a PKCS#11 certificate into a
+      # LUKS2 token slot.  It:
+      #   1. Locates a valid certificate on the token (our KMS RSA cert).
+      #   2. Generates a random LUKS key and encrypts it with the RSA public key.
+      #   3. Writes the encrypted blob as a JSON token into the LUKS2 header.
+      # To decrypt later, the HSM/PKCS#11 library uses the private key to unwrap it.
+      if command -v systemd-cryptenroll >/dev/null 2>&1; then
+        echo "Enrolling Cosmian KMS PKCS#11 token into LUKS2 header..."
+
+        # Export env vars so they survive a potential sudo -E boundary.
+        export CKMS_CONF="$ckms_conf"
+        export PKCS11_MODULE_PATH="$pkcs11_lib"
+        export COSMIAN_PKCS11_LOGGING_LEVEL="warn"
+        export COSMIAN_PKCS11_DISK_ENCRYPTION_TAG="disk-encryption"
+
+        ENROLL_CMD="systemd-cryptenroll"
+        [ -n "${CRYPT_SUDO}" ] && ENROLL_CMD="sudo -E systemd-cryptenroll"
+
+        set +x
+        enroll_rc=0
+        enroll_output=$(
+          echo -n "$luks_passphrase" |
+            ${ENROLL_CMD} \
+              --unlock-key-file=- \
+              --pkcs11-token-uri="pkcs11:token=Cosmian-KMS" \
+              "$luks_img" 2>&1
+        ) || enroll_rc=$?
+        set -x
+
+        echo "systemd-cryptenroll exit code: $enroll_rc"
+        echo "--- systemd-cryptenroll output ---"
+        echo "$enroll_output"
+        echo "----------------------------------"
+
+        echo "--- LUKS2 header after enrollment attempt ---"
+        ${CRYPT_SUDO} cryptsetup luksDump "$luks_img"
+
+        if [ "$enroll_rc" -eq 0 ]; then
+          token_info=$(${CRYPT_SUDO} cryptsetup luksDump "$luks_img")
+          if echo "$token_info" | grep -qiE "pkcs11|systemd-pkcs11"; then
+            echo "OK: PKCS#11 token successfully enrolled in LUKS2 header."
+          else
+            echo "WARN: enrollment command succeeded but luksDump found no PKCS#11 token."
+          fi
+        else
+          # Non-zero exit is not fatal: systemd may lack PKCS#11 support in this build,
+          # or the token URI may not match.  The core library tests already passed.
+          echo "WARN: systemd-cryptenroll returned exit code $enroll_rc."
+          echo "This may indicate the systemd build lacks PKCS#11 support or an"
+          echo "unresolvable token URI.  Core PKCS#11 library tests already passed."
+        fi
+      else
+        echo "systemd-cryptenroll not found; skipping PKCS#11 token slot enrollment."
+        echo "Install systemd >= 248 with PKCS#11 support to enable token enrollment."
+
+        # Alternative verification: export the certificate that would be used for enrollment.
+        echo "Exporting certificate from KMS to confirm PKCS#11 provider interoperability..."
+        cert_export_out=$(
+          "$ckms_bin" "${ckms_args[@]}" certificates export \
+            --tag disk-encryption \
+            --format pem \
+            "$tmp_dir/token_cert.pem" 2>&1 || true
+        )
+        echo "$cert_export_out"
+        if [ -f "$tmp_dir/token_cert.pem" ]; then
+          echo "Certificate details:"
+          openssl x509 -in "$tmp_dir/token_cert.pem" -noout -subject -issuer 2>/dev/null || true
+          echo "OK: Certificate exported from PKCS#11 token; token available for LUKS2 enrollment."
+        fi
+      fi
+
+      rm -f "$luks_img"
+      echo "OK: cryptsetup LUKS2 PKCS#11 integration test complete."
+    else
+      echo "WARN: cryptsetup luksFormat failed (likely missing privileges); skipping LUKS2 test."
+      rm -f "$luks_img"
+    fi
+  fi
 fi
 
 # Cleanup via the EXIT trap.

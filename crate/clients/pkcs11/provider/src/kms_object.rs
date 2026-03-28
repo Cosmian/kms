@@ -1,4 +1,4 @@
-use std::{path::PathBuf, vec};
+use std::{fmt, path::PathBuf, sync::OnceLock, vec};
 
 use ckms::{
     config::ClientConfig,
@@ -40,6 +40,71 @@ use zeroize::Zeroizing;
 
 use crate::error::{Pkcs11Error, result::Pkcs11Result};
 
+/// Shared Tokio runtime — created once, reused for every blocking KMS call.
+/// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
+static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
+    tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+        // Runtime creation can only fail due to OS resource exhaustion; no
+        // recovery is possible, so terminate the process immediately.
+        eprintln!("FATAL: failed to create Tokio runtime: {e}");
+        std::process::abort()
+    })
+});
+
+/// Write-once, read-many holder for sensitive key material.
+///
+/// Replaces the `Arc<RwLock<Zeroizing<Vec<u8>>>>` + empty-vec sentinel pattern
+/// with a lock-free `OnceLock`, removing the poisonable mutex and clarifying
+/// the "set at most once" semantics.
+pub(crate) struct LazyKeyMaterial(OnceLock<Zeroizing<Vec<u8>>>);
+
+impl LazyKeyMaterial {
+    /// Unloaded — material will be fetched on first access.
+    pub(crate) const fn new() -> Self {
+        Self(OnceLock::new())
+    }
+
+    /// Pre-populated — material is already available.
+    pub(crate) fn preloaded(bytes: Zeroizing<Vec<u8>>) -> Self {
+        let cell = OnceLock::new();
+        // cell is freshly created, so set() always succeeds.
+        drop(cell.set(bytes));
+        Self(cell)
+    }
+
+    /// Return the key material, calling `fetch` exactly once if not yet loaded.
+    /// Thread-safe: concurrent calls are serialised by `OnceLock`; the loser's
+    /// fetched copy is dropped (and therefore zeroized) automatically.
+    pub(crate) fn get_or_fetch<E, F>(&self, fetch: F) -> Result<Zeroizing<Vec<u8>>, E>
+    where
+        F: FnOnce() -> Result<Zeroizing<Vec<u8>>, E>,
+    {
+        if let Some(bytes) = self.0.get() {
+            return Ok(bytes.clone());
+        }
+        let fetched = fetch()?;
+        // Clone before calling set() so we always have a value to return,
+        // regardless of whether this thread wins or loses a concurrent race.
+        let to_return = fetched.clone();
+        // Best-effort store: if another thread already filled the cell,
+        // set() returns Err(fetched) which is explicitly dropped (and zeroed).
+        drop(self.0.set(fetched));
+        Ok(to_return)
+    }
+}
+
+impl fmt::Debug for LazyKeyMaterial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("LazyKeyMaterial")
+            .field(&if self.0.get().is_some() {
+                "loaded"
+            } else {
+                "unloaded"
+            })
+            .finish()
+    }
+}
+
 /// A wrapper around a KMS KMIP object.
 #[allow(dead_code)]
 pub(crate) struct KmsObject {
@@ -58,7 +123,7 @@ pub(crate) fn locate_kms_objects(
     kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    tokio::runtime::Runtime::new()?.block_on(locate_kms_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
@@ -73,7 +138,7 @@ pub(crate) fn get_kms_objects(
     tags: &[String],
     key_format_type: Option<KeyFormatType>,
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_objects_async(
+    RUNTIME.block_on(get_kms_objects_async(
         kms_rest_client,
         tags,
         key_format_type,
@@ -88,8 +153,7 @@ pub(crate) fn get_kms_secret_data_objects(
     kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    tokio::runtime::Runtime::new()?
-        .block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
 }
 
 async fn get_kms_secret_data_objects_async(
@@ -176,7 +240,7 @@ pub(crate) fn get_kms_object(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_object_async(
+    RUNTIME.block_on(get_kms_object_async(
         kms_client,
         object_id_or_tags,
         key_format_type,
@@ -253,7 +317,7 @@ pub(crate) fn kms_import_symmetric_key(
     sensitive: bool,
     label: Option<&str>,
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(kms_import_symmetric_key_async(
+    RUNTIME.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
         algorithm,
         key_length,
@@ -357,7 +421,7 @@ pub(crate) fn kms_import_object(
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(kms_import_object_async(kms_rest_client, label, data))
+    RUNTIME.block_on(kms_import_object_async(kms_rest_client, label, data))
 }
 
 pub(crate) async fn kms_import_object_async(
@@ -419,8 +483,7 @@ pub(crate) fn kms_revoke_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    tokio::runtime::Runtime::new()?
-        .block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
+    RUNTIME.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_revoke_object_async(
@@ -446,8 +509,7 @@ pub(crate) fn kms_destroy_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    tokio::runtime::Runtime::new()?
-        .block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
+    RUNTIME.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_destroy_object_async(
@@ -470,7 +532,7 @@ pub(crate) fn kms_encrypt(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
-    tokio::runtime::Runtime::new()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
 }
 
 pub(crate) async fn kms_encrypt_async(
@@ -523,7 +585,7 @@ pub(crate) fn kms_decrypt(
     decrypt_ctx: &DecryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
-    tokio::runtime::Runtime::new()?.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
+    RUNTIME.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
 }
 
 pub(crate) async fn kms_decrypt_async(
@@ -571,7 +633,7 @@ pub(crate) fn kms_sign(
     algorithm: &SignatureAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
-    tokio::runtime::Runtime::new()?.block_on(kms_sign_async(
+    RUNTIME.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
@@ -696,7 +758,7 @@ pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
 ) -> Pkcs11Result<Attributes> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_object_attributes_async(kms_client, object_id))
+    RUNTIME.block_on(get_kms_object_attributes_async(kms_client, object_id))
 }
 
 pub(crate) async fn get_kms_object_attributes_async(

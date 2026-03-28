@@ -58,8 +58,8 @@ impl Zeroize for DummyDataObject {
 }
 
 impl DataObject for DummyDataObject {
-    fn remote_id(&self) -> String {
-        self.remote_id.clone()
+    fn remote_id(&self) -> &str {
+        &self.remote_id
     }
 
     fn value(&self) -> Zeroizing<Vec<u8>> {
@@ -84,8 +84,8 @@ impl DataObject for DummyDataObject {
 struct DummySymKey;
 
 impl SymmetricKey for DummySymKey {
-    fn remote_id(&self) -> String {
-        "dummy_key".to_owned()
+    fn remote_id(&self) -> &'static str {
+        "dummy_key"
     }
 
     fn algorithm(&self) -> KeyAlgorithm {
