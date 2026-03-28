@@ -70,15 +70,23 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
 
     useEffect(() => {
         (async () => {
+            let method: AuthMethod | null = null;
             try {
-                const method = await fetchAuthMethod(serverUrl);
+                method = await fetchAuthMethod(serverUrl);
                 setAuthMethod(method);
             } catch {
                 /* ignore */
             }
+            // In no-auth mode ("None") grant create/import access immediately
+            // without calling the permissions API. Also grant if the auth method
+            // could not be determined (e.g. server not yet reachable).
+            if (method === "None" || method === null) {
+                processMenuItems(true);
+            } else {
+                fetchCreatePermission();
+            }
         })();
-        fetchCreatePermission();
-    }, [fetchCreatePermission, idToken, serverUrl]);
+    }, [fetchCreatePermission, idToken, serverUrl, processMenuItems]);
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};

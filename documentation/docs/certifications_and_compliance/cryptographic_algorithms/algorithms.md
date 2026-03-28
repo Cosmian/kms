@@ -145,7 +145,49 @@ The algorithm can be used with any NIST approved hash function described above; 
 corresponding value in the `Cryptographic Parameters` when performing a KMIP operation.
 
 To request this algorithm using key-wrapping as part of the `Import/Export` operations, specify the
-id of an RSA key as the key wrapping key and set the `Cryptographic Algorithm` to `AES`.
+id/tags of an RSA key as the wrapping key and set the `Cryptographic Algorithm` to `RSA` and
+the `Padding Method` to `None` in the `Key Wrapping Specification`.
+
+!!! note "Why `PaddingMethod::None` selects `CKM_RSA_AES_KEY_WRAP`"
+    In the Cosmian KMIP routing logic, the **padding method discriminates** between the three RSA
+    wrapping schemes:
+
+    | Padding Method | Algorithm selected               |
+    | -------------- | -------------------------------- |
+    | `None`         | **CKM_RSA_AES_KEY_WRAP** (this scheme) |
+    | `OAEP`         | CKM_RSA_PKCS_OAEP                |
+    | `PKCS1v15`     | CKM_RSA_PKCS (non-FIPS only)     |
+
+    `PaddingMethod::None` **does not mean unpadded RSA**. It is the signal to route toward the
+    hybrid RSA/AES wrapping scheme. The RSA OAEP padding is still applied internally — the field
+    merely selects _which_ wrapping scheme to invoke.
+
+The following JSON TTLV snippet shows the `CryptographicParameters` to embed in a
+`KeyWrappingSpecification` on an `Export` or `Import` request:
+
+```json
+{
+  "tag": "CryptographicParameters",
+  "type": "Structure",
+  "value": [
+    {
+      "tag": "CryptographicAlgorithm",
+      "type": "Enumeration",
+      "value": "RSA"
+    },
+    {
+      "tag": "PaddingMethod",
+      "type": "Enumeration",
+      "value": "None"
+    },
+    {
+      "tag": "HashingAlgorithm",
+      "type": "Enumeration",
+      "value": "SHA256"
+    }
+  ]
+}
+```
 
 This algorithm is compatible with the one used in Google KMS.
 

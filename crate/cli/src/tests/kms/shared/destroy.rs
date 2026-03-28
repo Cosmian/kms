@@ -5,11 +5,17 @@ use test_kms_server::{TestsContext, start_default_test_kms_server};
 #[cfg(feature = "non-fips")]
 use crate::actions::kms::cover_crypt::keys::{
     create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
+    destroy_key::DestroyKeyAction as DestroyCcKeyAction,
 };
 use crate::{
     actions::kms::{
-        elliptic_curves::keys::create_key_pair::CreateKeyPairAction,
-        secret_data::create_secret::CreateSecretDataAction,
+        elliptic_curves::keys::{
+            create_key_pair::CreateKeyPairAction,
+            destroy_key::DestroyKeyAction as DestroyEcKeyAction,
+        },
+        secret_data::{
+            create_secret::CreateSecretDataAction, destroy_secret::DestroySecretDataAction,
+        },
         shared::ExportSecretDataOrKeyAction,
         symmetric::keys::{
             create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
@@ -156,7 +162,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(private_key_id.to_string()),
             remove: false,
             tags: None,
@@ -174,7 +180,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(private_key_id.to_string()),
             remove: false,
             tags: None,
@@ -198,7 +204,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(public_key_id.to_string()),
             remove: false,
             tags: None,
@@ -220,7 +226,7 @@ async fn test_destroy_ec_key() -> KmsCliResult<()> {
 
         trace!("OK. destroying");
 
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(public_key_id.to_string()),
             remove: false,
             tags: None,
@@ -251,7 +257,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(private_key_id.to_string()),
             remove: true,
             tags: None,
@@ -270,7 +276,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
         .await?;
 
         // destroy should work after revocation
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(private_key_id.to_string()),
             remove: true,
             tags: None,
@@ -290,7 +296,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
             .await?;
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(public_key_id.to_string()),
             remove: true,
             tags: None,
@@ -312,7 +318,7 @@ async fn test_destroy_and_remove_ec_key() -> KmsCliResult<()> {
 
         // destroy should work after revocation
 
-        DestroyKeyAction {
+        DestroyEcKeyAction {
             key_id: Some(public_key_id.to_string()),
             remove: true,
             tags: None,
@@ -375,7 +381,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(master_private_key_id.clone()),
             remove: false,
             tags: None,
@@ -393,7 +399,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(master_private_key_id.clone()),
             remove: false,
             tags: None,
@@ -456,7 +462,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(master_public_key_id.clone()),
             remove: false,
             tags: None,
@@ -474,7 +480,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(master_public_key_id.clone()),
             remove: false,
             tags: None,
@@ -537,7 +543,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .to_string();
 
         // destroy should not work when not revoked
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(user_key_id_1.clone()),
             remove: false,
             tags: None,
@@ -555,7 +561,7 @@ async fn test_destroy_cover_crypt() -> KmsCliResult<()> {
         .run(ctx.get_owner_client())
         .await?;
 
-        DestroyKeyAction {
+        DestroyCcKeyAction {
             key_id: Some(user_key_id_1.clone()),
             remove: false,
             tags: None,
@@ -613,8 +619,8 @@ async fn test_destroy_secret_data() -> KmsCliResult<()> {
         .to_string();
 
     // destroy should not work when not revoked
-    DestroyKeyAction {
-        key_id: Some(secret_id.clone()),
+    DestroySecretDataAction {
+        secret_id: Some(secret_id.clone()),
         remove: false,
         tags: None,
     }
@@ -631,8 +637,8 @@ async fn test_destroy_secret_data() -> KmsCliResult<()> {
     .run(ctx.get_owner_client())
     .await?;
 
-    DestroyKeyAction {
-        key_id: Some(secret_id.clone()),
+    DestroySecretDataAction {
+        secret_id: Some(secret_id.clone()),
         remove: false,
         tags: None,
     }

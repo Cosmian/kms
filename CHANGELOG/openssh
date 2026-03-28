@@ -30,3 +30,16 @@ All notable changes to this project will be documented in this file.
 - **PKCS#11 `impl_remote_object_impls!` macro**: Replaced ~75 lines of duplicated `PartialEq`/`Eq`/`Hash`/`Debug` boilerplate across the five trait files with a single `macro_rules!` invoked once per trait in `traits/mod.rs`; also unified `Certificate`'s debug output with the other traits.
 - **PKCS#11 `Pkcs11PublicKey::try_from_kms_object`**: Refactored to delegate to `try_from_spki`, eliminating ~35 lines of duplicated SPKI-parsing logic; simultaneously fixed a latent bug in `try_from_spki` where EC keys (id-ecPublicKey OID) were not handled, causing incorrect algorithm detection for EC certificate public keys.
 - **PKCS#11 remove stale `once_cell` dependency**: Removed `pub use once_cell` re-export from `traits/mod.rs` and corresponding `once_cell = "1.21.3"` from `module/Cargo.toml` (superseded by `std::sync::OnceLock`).
+
+### 🐛 Bug Fixes
+
+- **TLS auth** (#811): Reject client certificates whose CN is empty or `*`; prevents wildcard spoofing attacks.
+- **HSM config** (#695): Expose `KMS_HSM_PASSWORD` and `KMS_HSM_SLOT` environment variables for `--hsm-password` / `--hsm-slot` server options so HSM credentials can be injected without config-file edits.
+- **CLI destroy type-safety** (#763): `ckms {sym,rsa,ec,pqc,cc} keys destroy` now performs a `GetAttributes` pre-flight check and rejects attempts to destroy a key of the wrong type with a clear error message.
+- **UI no-auth mode** (#739): The web UI `create` / `import` buttons are now enabled immediately in no-auth mode (`AuthMethod::None`); previously the async sequencing called the permissions API before the auth method was resolved, causing buttons to stay disabled.
+
+### 📚 Documentation
+
+- **AI agent symlinks** (#723): `AGENTS.md` and `CLAUDE.md` are now symlinks to `.github/copilot-instructions.md` so all AI agents always read the single authoritative instructions file.
+- **`CKM_RSA_AES_KEY_WRAP` invocation** (#688): Document that this scheme is selected by pairing `CryptographicAlgorithm::RSA` with `PaddingMethod::None`; explains the counter-intuitive routing (None ≠ unpadded RSA), adds a KMIP JSON TTLV example, and adds a routing table. Fix broken `../algorithms.md` links in `_export.md` and `_import.md`.
+- **Benchmarks CI** (#776): `benchmarks.sh` now builds the KMS server + ckms CLI, starts a temporary SQLite KMS instance, and runs `ckms bench --speed sanity --format json` as an end-to-end smoke test; supports `BENCH_SAVE_BASELINE` / `BENCH_LOAD_BASELINE` env vars for criterion regression comparisons on a dedicated machine.

@@ -131,7 +131,8 @@ info = false
 # hsm_slot = [1, 2, ...] # slot numbers
 # Password for the user logging in to the HSM Slot specified with `--hsm_slot`
 # Provide an empty string for no password
-# see `--hsm_slot` for more information
+# see `--hsm_slot` for more information.
+# Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
 # hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...] # corresponding user slot passwords/pins
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.

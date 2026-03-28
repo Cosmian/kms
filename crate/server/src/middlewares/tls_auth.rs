@@ -151,10 +151,20 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         None => kms_bail!("Client certificate has no common name"),
         Some(cn) => match cn.data().as_utf8() {
             Ok(cn) => {
-                trace!("Client certificate common name: {}", cn);
-                Ok(AuthenticatedUser {
-                    username: cn.to_string(),
-                })
+                let username = cn.to_string();
+                let trimmed = username.trim();
+                if trimmed.is_empty() {
+                    kms_bail!("Client certificate CN is empty; access denied");
+                }
+                if trimmed == "*" {
+                    kms_bail!(
+                        "Client certificate CN '{}' is a wildcard and not a valid username; \
+                         access denied",
+                        username
+                    );
+                }
+                trace!("Client certificate common name: {}", username);
+                Ok(AuthenticatedUser { username })
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
         },

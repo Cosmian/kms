@@ -11,7 +11,8 @@ Unique Identifier returned by this operation into the ID Placeholder variable.
 
 ### Implementation
 
-Key unwrapping on import is supported for all keys. Please check the [algorithms page](../algorithms.md)
+Key unwrapping on import is supported for all keys. Please check the
+[algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
 for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).

@@ -74,10 +74,15 @@ Options:
             --hsm-slot 2 --hsm-password password2
           ```
 
+          [env: KMS_HSM_SLOT=]
+
       --hsm-password <HSM_PASSWORD>
           Password for the user logging in to the HSM Slot specified with `--hsm_slot`
           Provide an empty string for no password
-          see `--hsm_slot` for more information
+          see `--hsm_slot` for more information.
+          Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
+
+          [env: KMS_HSM_PASSWORD=]
 
       --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
           Specifies which KMIP object types should be automatically unwrapped when retrieved.
