@@ -1,5 +1,5 @@
-mod ssl_auth;
-pub(crate) use ssl_auth::{SslAuth, extract_peer_certificate};
+mod tls_auth;
+pub(crate) use tls_auth::{TlsAuth, extract_peer_certificate};
 
 mod api_token;
 pub(crate) use api_token::ApiTokenAuth;

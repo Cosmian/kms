@@ -44,7 +44,7 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
             } else {
                 "none"
             },
-            if http.ssl_client_pkcs12_path.is_some() {
+            if http.tls_client_pkcs12_path.is_some() {
                 "set"
             } else {
                 "none"
@@ -73,7 +73,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
             } else {
                 "none"
             },
-            if http.ssl_client_pkcs12_path.is_some() {
+            if http.tls_client_pkcs12_path.is_some() {
                 "set"
             } else {
                 "none"
@@ -279,8 +279,8 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         AuthenticationOptions {
             client: ClientAuthOptions {
                 http: HttpClientConfig {
-                    ssl_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
-                    ssl_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
+                    tls_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
+                    tls_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
                     ..Default::default()
                 },
                 ..Default::default()

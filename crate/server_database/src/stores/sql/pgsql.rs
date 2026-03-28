@@ -64,6 +64,21 @@ fn pg_retry_backoff_ms(attempt: u32) -> u64 {
     50_u64 * (1_u64 << cap)
 }
 
+fn decode_pg_ssl_file_query_value(value: &str) -> String {
+    // Keep the common fast path allocation-free.
+    if !value.as_bytes().iter().any(|b| *b == b'%' || *b == b'+') {
+        return value.to_owned();
+    }
+
+    // Decode query value semantics (`%xx` and `+`) without reparsing the full URL.
+    // This is required when PostgreSQL URLs are split manually (multi-host support),
+    // otherwise OpenSSL receives encoded file paths like `%2Fhome%2F...`.
+    let encoded = format!("v={value}");
+    url::form_urlencoded::parse(encoded.as_bytes())
+        .find_map(|(k, v)| (k == "v").then(|| v.into_owned()))
+        .unwrap_or_else(|| value.to_owned())
+}
+
 /// Get a client from the pool, retrying on transient connection errors.
 /// Used by Migrate trait methods for startup resilience.
 async fn pg_get_client(pool: &deadpool_postgres::Pool) -> DbResult<deadpool_postgres::Object> {
@@ -274,6 +289,7 @@ impl PgPool {
 
             // Load CA cert if provided (sslrootcert)
             if let Some(ca_file) = query_params.get("sslrootcert") {
+                let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
                 builder
                     .set_ca_file(ca_file.as_str())
                     .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
@@ -281,6 +297,7 @@ impl PgPool {
 
             // Load client cert/key for mutual TLS (sslcert, sslkey)
             if let Some(cert_file) = query_params.get("sslcert") {
+                let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
                 builder
                     .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
                     .map_err(|e| {
@@ -288,6 +305,7 @@ impl PgPool {
                     })?;
             }
             if let Some(key_file) = query_params.get("sslkey") {
+                let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
                 builder
                     .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
                     .map_err(|e| {

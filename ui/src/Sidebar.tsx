@@ -2,8 +2,8 @@ import { Layout, Menu, MenuProps, Tooltip } from "antd";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext.tsx";
-import { useBranding } from "./useBranding";
 import { MenuItem, getMenuItems } from "./menuItems.tsx";
+import { useBranding } from "./useBranding";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "./utils.ts";
 
 const { Sider } = Layout;
@@ -13,14 +13,14 @@ interface LevelKeysProps {
     children?: LevelKeysProps[];
 }
 
-const Sidebar: React.FC = () => {
+const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const branding = useBranding();
     const menuItems = useMemo(
-        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel }),
-        [branding.enableCovercrypt, branding.pqcLabel],
+        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips }),
+        [branding.enableCovercrypt, branding.pqcLabel, isFips],
     );
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
@@ -50,8 +50,6 @@ const Sidebar: React.FC = () => {
                     if (newItem.children) {
                         newItem.children = processItems(newItem.children);
                     }
-                    console.log(isCreateItem, isImportItem, hasCreateAccess);
-
                     return newItem;
                 });
             };

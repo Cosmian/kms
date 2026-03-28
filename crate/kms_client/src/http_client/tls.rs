@@ -19,12 +19,12 @@ use super::{HttpClientConfig, error::result::HttpClientResult};
 ///    invalid certificate acceptance based on `accept_invalid_certs`.
 ///
 /// 2. **PEM Client Certificate Authentication**: When
-///    `ssl_client_pem_cert_path` and `ssl_client_pem_key_path` are provided,
+///    `tls_client_pem_cert_path` and `tls_client_pem_key_path` are provided,
 ///    loads and configures client certificate authentication using PEM format
 ///    (FIPS compatible).
 ///
 /// 3. **PKCS12 Client Certificate Authentication**: When
-///    `ssl_client_pkcs12_path` is provided, loads and configures client
+///    `tls_client_pkcs12_path` is provided, loads and configures client
 ///    certificate authentication using PKCS12 format (non-FIPS mode only).
 ///
 /// # Parameters
@@ -71,8 +71,8 @@ fn add_client_identity(
 ) -> HttpClientResult<ClientBuilder> {
     // Prefer PEM (cert + key) if provided; otherwise fall back to PKCS#12
     let builder = if let (Some(cert_path), Some(key_path)) = (
-        http_conf.ssl_client_pem_cert_path.as_deref(),
-        http_conf.ssl_client_pem_key_path.as_deref(),
+        http_conf.tls_client_pem_cert_path.as_deref(),
+        http_conf.tls_client_pem_key_path.as_deref(),
     ) {
         let mut cert_reader = BufReader::new(File::open(cert_path)?);
         let mut cert_bytes = vec![];
@@ -86,14 +86,14 @@ fn add_client_identity(
         // from_pkcs8_pem expects (cert_pem, key_pem) separately
         let identity = Identity::from_pkcs8_pem(&cert_bytes, &key_bytes)?;
         builder.identity(identity)
-    } else if let Some(ssl_client_pkcs12) = &http_conf.ssl_client_pkcs12_path {
-        let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+    } else if let Some(pkcs12_path) = &http_conf.tls_client_pkcs12_path {
+        let mut pkcs12 = BufReader::new(File::open(pkcs12_path)?);
         let mut pkcs12_bytes = vec![];
         pkcs12.read_to_end(&mut pkcs12_bytes)?;
         let pkcs12 = Identity::from_pkcs12_der(
             &pkcs12_bytes,
             &http_conf
-                .ssl_client_pkcs12_password
+                .tls_client_pkcs12_password
                 .clone()
                 .unwrap_or_default(),
         )?;

@@ -50,14 +50,14 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, SslAuth,
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, TlsAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -835,7 +835,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 ))
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
-                    SslAuth,
+                    TlsAuth,
                 ))
                 .wrap(
                     // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
@@ -850,7 +850,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
-        if ui_index_folder.join("index.html").exists() {
+        if kms_server_for_http.params.ui_enable && ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
             let oidc_config = kms_server_for_http.params.ui_oidc_auth.clone();
 
@@ -874,14 +874,18 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/sym{_:.*}",
                 "/rsa{_:.*}",
                 "/ec{_:.*}",
+                "/pqc{_:.*}",
+                "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
                 "/opaque-object{_:.*}",
                 "/certificates{_:.*}",
                 "/attributes{_:.*}",
                 "/access-rights{_:.*}",
+                "/derive-key{_:.*}",
                 "/azure{_:.*}",
-                "/google-cse",
+                "/aws{_:.*}",
+                "/google-cse{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_config))
@@ -921,7 +925,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
-            .service(get_version);
+            .service(get_version)
+            .service(get_server_info);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
@@ -943,7 +948,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_api_token_auth,
                 ApiTokenAuth::new(kms_server.clone()),
             ))
-            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
             // Enable CORS for the application.
             // Since Actix is running the middlewares in reverse order, it's important that the
             // CORS middleware is the last one, so that the auth middlewares do not run on

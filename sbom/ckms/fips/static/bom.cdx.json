@@ -1,0 +1,47 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "version": 1,
+  "serialNumber": "urn:uuid:3b619668-20e0-4e8f-b091-9c706042cb75",
+  "metadata": {
+    "timestamp": "2026-03-27T12:08:57.055032+01:00",
+    "properties": [
+      {
+        "name": "sbom_type",
+        "value": "runtime_only"
+      }
+    ],
+    "tools": [
+      {
+        "vendor": "TII",
+        "name": "sbomnix",
+        "version": "1.7.3"
+      }
+    ],
+    "component": {
+      "type": "library",
+      "bom-ref": "/nix/store/08ginw7b264m4gcbvwhjnm2gvxbn4nbm-cosmian-kms-cli-5.18.0.drv",
+      "name": "cosmian-kms-cli",
+      "version": "5.18.0",
+      "purl": "pkg:nix/cosmian-kms-cli@5.18.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-cli:cosmian-kms-cli:5.18.0:*:*:*:*:*:*:*",
+      "properties": [
+        {
+          "name": "nix:output_path",
+          "value": "/nix/store/lipa3wms9x85d58y74w7ls561xvhk24p-cosmian-kms-cli-5.18.0"
+        },
+        {
+          "name": "nix:drv_path",
+          "value": "/nix/store/08ginw7b264m4gcbvwhjnm2gvxbn4nbm-cosmian-kms-cli-5.18.0.drv"
+        }
+      ]
+    }
+  },
+  "components": [],
+  "dependencies": [
+    {
+      "ref": "/nix/store/08ginw7b264m4gcbvwhjnm2gvxbn4nbm-cosmian-kms-cli-5.18.0.drv"
+    }
+  ],
+  "vulnerabilities": []
+}

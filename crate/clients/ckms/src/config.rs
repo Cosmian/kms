@@ -113,8 +113,8 @@ mod tests {
         let http_config = HttpClientConfig {
             server_url: "https://localhost:9999".to_owned(),
             accept_invalid_certs: true,
-            ssl_client_pkcs12_path: Some("/path/to/owner.client.p12".to_owned()),
-            ssl_client_pkcs12_password: Some("password".to_owned()),
+            tls_client_pkcs12_path: Some("/path/to/owner.client.p12".to_owned()),
+            tls_client_pkcs12_password: Some("password".to_owned()),
             ..HttpClientConfig::default()
         };
         let config = ClientConfig {

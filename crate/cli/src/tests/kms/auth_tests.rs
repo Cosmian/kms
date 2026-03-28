@@ -62,22 +62,22 @@ fn client_http_with_cert() -> HttpClientConfig {
     #[cfg(feature = "non-fips")]
     {
         HttpClientConfig {
-            ssl_client_pkcs12_path: Some(
+            tls_client_pkcs12_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
                     .to_string(),
             ),
-            ssl_client_pkcs12_password: Some("password".to_string()),
+            tls_client_pkcs12_password: Some("password".to_string()),
             ..Default::default()
         }
     }
     #[cfg(not(feature = "non-fips"))]
     {
         HttpClientConfig {
-            ssl_client_pem_cert_path: Some(
+            tls_client_pem_cert_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt"
                     .to_string(),
             ),
-            ssl_client_pem_key_path: Some(
+            tls_client_pem_key_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.key"
                     .to_string(),
             ),
@@ -97,11 +97,11 @@ fn client_http_with_cert_and_token(token: String) -> HttpClientConfig {
     #[cfg(feature = "non-fips")]
     {
         HttpClientConfig {
-            ssl_client_pkcs12_path: Some(
+            tls_client_pkcs12_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12"
                     .to_string(),
             ),
-            ssl_client_pkcs12_password: Some("password".to_string()),
+            tls_client_pkcs12_password: Some("password".to_string()),
             access_token: Some(token),
             ..Default::default()
         }
@@ -109,11 +109,11 @@ fn client_http_with_cert_and_token(token: String) -> HttpClientConfig {
     #[cfg(not(feature = "non-fips"))]
     {
         HttpClientConfig {
-            ssl_client_pem_cert_path: Some(
+            tls_client_pem_cert_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt"
                     .to_string(),
             ),
-            ssl_client_pem_key_path: Some(
+            tls_client_pem_key_path: Some(
                 "../../test_data/certificates/client_server/owner/owner.client.acme.com.key"
                     .to_string(),
             ),

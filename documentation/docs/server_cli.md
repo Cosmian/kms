@@ -293,6 +293,11 @@ Options:
           
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --enable
+          Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
+          
+          [env: KMS_UI_ENABLE=]
+
   -u, --ui-index-html-folder <UI_INDEX_HTML_FOLDER>
           The UI distribution folder
           

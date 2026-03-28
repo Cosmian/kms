@@ -74,23 +74,19 @@ Possible values:  `"true", "false"`
 
 **`rng`** [[17]](#17-ckms-rng)  RNG utilities: retrieve random bytes or seed RNG
 
-**`discover-versions`** [[18]](#18-ckms-discover-versions)  Discover KMIP protocol versions supported by the server
+**`server`** [[18]](#18-ckms-server)  Server-related commands
 
-**`query`** [[19]](#19-ckms-query)  Query server capabilities and metadata (KMIP Query)
+**`rsa`** [[19]](#19-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
 
-**`rsa`** [[20]](#20-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
+**`opaque-object`** [[20]](#20-ckms-opaque-object)  Create, import, export, revoke and destroy Opaque Objects
 
-**`opaque-object`** [[21]](#21-ckms-opaque-object)  Create, import, export, revoke and destroy Opaque Objects
+**`secret-data`** [[21]](#21-ckms-secret-data)  Create, import, export and destroy secret data
 
-**`secret-data`** [[22]](#22-ckms-secret-data)  Create, import, export and destroy secret data
+**`sym`** [[22]](#22-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
 
-**`server-version`** [[23]](#23-ckms-server-version)  Print the version of the server
+**`markdown`** [[23]](#23-ckms-markdown)  Regenerate the CLI documentation in Markdown format
 
-**`sym`** [[24]](#24-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
-
-**`markdown`** [[25]](#25-ckms-markdown)  Regenerate the CLI documentation in Markdown format
-
-**`configure`** [[26]](#26-ckms-configure)  Configure the KMS CLI (create ckms.toml)
+**`configure`** [[24]](#24-ckms-configure)  Configure the KMS CLI (create ckms.toml)
 
 ---
 
@@ -2586,27 +2582,55 @@ Seed the server RNG with provided hex-encoded bytes
 
 ---
 
-## 18 ckms discover-versions
+## 18 ckms server
+
+Server-related commands
+
+### Usage
+`ckms server <subcommand>`
+
+### Subcommands
+
+**`version`** [[18.1]](#181-ckms-server-version)  Show server version information
+
+**`discover-versions`** [[18.2]](#182-ckms-server-discover-versions)  Discover KMIP protocol versions supported by the server
+
+**`query`** [[18.3]](#183-ckms-server-query)  Query server capabilities and metadata (KMIP Query)
+
+---
+
+## 18.1 ckms server version
+
+Show server version information
+
+### Usage
+`ckms server version`
+
+
+---
+
+## 18.2 ckms server discover-versions
 
 Discover KMIP protocol versions supported by the server
 
 ### Usage
-`ckms discover-versions`
+`ckms server discover-versions`
 
 
 ---
 
-## 19 ckms query
+## 18.3 ckms server query
 
 Query server capabilities and metadata (KMIP Query)
 
 ### Usage
-`ckms query`
+`ckms server query`
+
 
 
 ---
 
-## 20 ckms rsa
+## 19 ckms rsa
 
 Manage RSA keys. Encrypt and decrypt data using RSA keys
 
@@ -2615,27 +2639,27 @@ Manage RSA keys. Encrypt and decrypt data using RSA keys
 
 ### Subcommands
 
-**`keys`** [[20.1]](#201-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
+**`keys`** [[19.1]](#191-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[20.2]](#202-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
-
- - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
- - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
- - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
-
-**`decrypt`** [[20.3]](#203-ckms-rsa-decrypt)  Decrypt a file with the given private key using either
+**`encrypt`** [[19.2]](#192-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
  - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
  - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
 
-**`sign`** [[20.4]](#204-ckms-rsa-sign)  Digital signature supported is RSASSA-PSS
+**`decrypt`** [[19.3]](#193-ckms-rsa-decrypt)  Decrypt a file with the given private key using either
 
-**`sign-verify`** [[20.5]](#205-ckms-rsa-sign-verify)  Verify an RSASSA-PSS signature for a given data file
+ - `CKM_RSA_PKCS` a.k.a PKCS #1 RSA V1.5 as specified in PKCS#11 v2.40
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `CKM_RSA_AES_KEY_WRAP` as specified in PKCS#11 v2.40
+
+**`sign`** [[19.4]](#194-ckms-rsa-sign)  Digital signature supported is RSASSA-PSS
+
+**`sign-verify`** [[19.5]](#195-ckms-rsa-sign-verify)  Verify an RSASSA-PSS signature for a given data file
 
 ---
 
-## 20.1 ckms rsa keys
+## 19.1 ckms rsa keys
 
 Create, destroy, import, and export RSA key pairs
 
@@ -2644,23 +2668,23 @@ Create, destroy, import, and export RSA key pairs
 
 ### Subcommands
 
-**`create`** [[20.1.1]](#2011-ckms-rsa-keys-create)  Create a new RSA key pair
+**`create`** [[19.1.1]](#1911-ckms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[20.1.2]](#2012-ckms-rsa-keys-export)  Export a key or secret data from the KMS
+**`export`** [[19.1.2]](#1912-ckms-rsa-keys-export)  Export a key or secret data from the KMS
 
-**`import`** [[20.1.3]](#2013-ckms-rsa-keys-import)  Import a secret data or a key in the KMS.
+**`import`** [[19.1.3]](#1913-ckms-rsa-keys-import)  Import a secret data or a key in the KMS.
 
-**`wrap`** [[20.1.4]](#2014-ckms-rsa-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[19.1.4]](#1914-ckms-rsa-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`unwrap`** [[20.1.5]](#2015-ckms-rsa-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`unwrap`** [[19.1.5]](#1915-ckms-rsa-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[20.1.6]](#2016-ckms-rsa-keys-revoke)  Revoke a public or private key
+**`revoke`** [[19.1.6]](#1916-ckms-rsa-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[20.1.7]](#2017-ckms-rsa-keys-destroy)  Destroy a public or private key
+**`destroy`** [[19.1.7]](#1917-ckms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
-## 20.1.1 ckms rsa keys create
+## 19.1.1 ckms rsa keys create
 
 Create a new RSA key pair
 
@@ -2689,7 +2713,7 @@ If the wrapping key is:
 
 ---
 
-## 20.1.2 ckms rsa keys export
+## 19.1.2 ckms rsa keys export
 
 Export a key or secret data from the KMS
 
@@ -2748,7 +2772,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 20.1.3 ckms rsa keys import
+## 19.1.3 ckms rsa keys import
 
 Import a secret data or a key in the KMS.
 
@@ -2796,7 +2820,7 @@ If the wrapping key is:
 
 ---
 
-## 20.1.4 ckms rsa keys wrap
+## 19.1.4 ckms rsa keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2821,7 +2845,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 20.1.5 ckms rsa keys unwrap
+## 19.1.5 ckms rsa keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2844,7 +2868,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 20.1.6 ckms rsa keys revoke
+## 19.1.6 ckms rsa keys revoke
 
 Revoke a public or private key
 
@@ -2862,7 +2886,7 @@ Revoke a public or private key
 
 ---
 
-## 20.1.7 ckms rsa keys destroy
+## 19.1.7 ckms rsa keys destroy
 
 Destroy a public or private key
 
@@ -2885,7 +2909,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 20.2 ckms rsa encrypt
+## 19.2 ckms rsa encrypt
 
 Encrypt a file with the given public key using either
 
@@ -2917,7 +2941,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 20.3 ckms rsa decrypt
+## 19.3 ckms rsa decrypt
 
 Decrypt a file with the given private key using either
 
@@ -2949,7 +2973,7 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 ---
 
-## 20.4 ckms rsa sign
+## 19.4 ckms rsa sign
 
 Digital signature supported is RSASSA-PSS
 
@@ -2973,7 +2997,7 @@ Possible values:  `"true", "false"`
 
 ---
 
-## 20.5 ckms rsa sign-verify
+## 19.5 ckms rsa sign-verify
 
 Verify an RSASSA-PSS signature for a given data file
 
@@ -3001,7 +3025,7 @@ Possible values:  `"true", "false"`
 
 ---
 
-## 21 ckms opaque-object
+## 20 ckms opaque-object
 
 Create, import, export, revoke and destroy Opaque Objects
 
@@ -3010,19 +3034,19 @@ Create, import, export, revoke and destroy Opaque Objects
 
 ### Subcommands
 
-**`create`** [[21.1]](#211-ckms-opaque-object-create)  Create (register) an `OpaqueObject` by importing raw bytes.
+**`create`** [[20.1]](#201-ckms-opaque-object-create)  Create (register) an `OpaqueObject` by importing raw bytes.
 
-**`export`** [[21.2]](#212-ckms-opaque-object-export)  Export a key or secret data from the KMS
+**`export`** [[20.2]](#202-ckms-opaque-object-export)  Export a key or secret data from the KMS
 
-**`import`** [[21.3]](#213-ckms-opaque-object-import)  Import a secret data or a key in the KMS.
+**`import`** [[20.3]](#203-ckms-opaque-object-import)  Import a secret data or a key in the KMS.
 
-**`revoke`** [[21.4]](#214-ckms-opaque-object-revoke)  Revoke an `OpaqueObject`
+**`revoke`** [[20.4]](#204-ckms-opaque-object-revoke)  Revoke an `OpaqueObject`
 
-**`destroy`** [[21.5]](#215-ckms-opaque-object-destroy)  Destroy an `OpaqueObject`
+**`destroy`** [[20.5]](#205-ckms-opaque-object-destroy)  Destroy an `OpaqueObject`
 
 ---
 
-## 21.1 ckms opaque-object create
+## 20.1 ckms opaque-object create
 
 Create (register) an `OpaqueObject` by importing raw bytes.
 
@@ -3043,7 +3067,7 @@ Create (register) an `OpaqueObject` by importing raw bytes.
 
 ---
 
-## 21.2 ckms opaque-object export
+## 20.2 ckms opaque-object export
 
 Export a key or secret data from the KMS
 
@@ -3102,7 +3126,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 21.3 ckms opaque-object import
+## 20.3 ckms opaque-object import
 
 Import a secret data or a key in the KMS.
 
@@ -3150,7 +3174,7 @@ If the wrapping key is:
 
 ---
 
-## 21.4 ckms opaque-object revoke
+## 20.4 ckms opaque-object revoke
 
 Revoke an `OpaqueObject`
 
@@ -3168,7 +3192,7 @@ Revoke an `OpaqueObject`
 
 ---
 
-## 21.5 ckms opaque-object destroy
+## 20.5 ckms opaque-object destroy
 
 Destroy an `OpaqueObject`
 
@@ -3189,7 +3213,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 22 ckms secret-data
+## 21 ckms secret-data
 
 Create, import, export and destroy secret data
 
@@ -3198,23 +3222,23 @@ Create, import, export and destroy secret data
 
 ### Subcommands
 
-**`create`** [[22.1]](#221-ckms-secret-data-create)  Create a new secret data
+**`create`** [[21.1]](#211-ckms-secret-data-create)  Create a new secret data
 
-**`export`** [[22.2]](#222-ckms-secret-data-export)  Export a key or secret data from the KMS
+**`export`** [[21.2]](#212-ckms-secret-data-export)  Export a key or secret data from the KMS
 
-**`import`** [[22.3]](#223-ckms-secret-data-import)  Import a secret data or a key in the KMS.
+**`import`** [[21.3]](#213-ckms-secret-data-import)  Import a secret data or a key in the KMS.
 
-**`wrap`** [[22.4]](#224-ckms-secret-data-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[21.4]](#214-ckms-secret-data-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`unwrap`** [[22.5]](#225-ckms-secret-data-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`unwrap`** [[21.5]](#215-ckms-secret-data-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[22.6]](#226-ckms-secret-data-revoke)  Revoke a secret data
+**`revoke`** [[21.6]](#216-ckms-secret-data-revoke)  Revoke a secret data
 
-**`destroy`** [[22.7]](#227-ckms-secret-data-destroy)  Destroy a secret data
+**`destroy`** [[21.7]](#217-ckms-secret-data-destroy)  Destroy a secret data
 
 ---
 
-## 22.1 ckms secret-data create
+## 21.1 ckms secret-data create
 
 Create a new secret data
 
@@ -3247,7 +3271,7 @@ If the wrapping key is:
 
 ---
 
-## 22.2 ckms secret-data export
+## 21.2 ckms secret-data export
 
 Export a key or secret data from the KMS
 
@@ -3306,7 +3330,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 22.3 ckms secret-data import
+## 21.3 ckms secret-data import
 
 Import a secret data or a key in the KMS.
 
@@ -3354,7 +3378,7 @@ If the wrapping key is:
 
 ---
 
-## 22.4 ckms secret-data wrap
+## 21.4 ckms secret-data wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3379,7 +3403,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 22.5 ckms secret-data unwrap
+## 21.5 ckms secret-data unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3402,7 +3426,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 22.6 ckms secret-data revoke
+## 21.6 ckms secret-data revoke
 
 Revoke a secret data
 
@@ -3420,7 +3444,7 @@ Revoke a secret data
 
 ---
 
-## 22.7 ckms secret-data destroy
+## 21.7 ckms secret-data destroy
 
 Destroy a secret data
 
@@ -3443,17 +3467,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 23 ckms server-version
-
-Print the version of the server
-
-### Usage
-`ckms server-version`
-
-
----
-
-## 24 ckms sym
+## 22 ckms sym
 
 Manage symmetric keys. Encrypt and decrypt data
 
@@ -3462,15 +3476,15 @@ Manage symmetric keys. Encrypt and decrypt data
 
 ### Subcommands
 
-**`keys`** [[24.1]](#241-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
+**`keys`** [[22.1]](#221-ckms-sym-keys)  Create, destroy, import, and export symmetric keys
 
-**`encrypt`** [[24.2]](#242-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
+**`encrypt`** [[22.2]](#222-ckms-sym-encrypt)  Encrypt a file using a symmetric cipher
 
-**`decrypt`** [[24.3]](#243-ckms-sym-decrypt)  Decrypt a file using a symmetric key.
+**`decrypt`** [[22.3]](#223-ckms-sym-decrypt)  Decrypt a file using a symmetric key.
 
 ---
 
-## 24.1 ckms sym keys
+## 22.1 ckms sym keys
 
 Create, destroy, import, and export symmetric keys
 
@@ -3479,25 +3493,25 @@ Create, destroy, import, and export symmetric keys
 
 ### Subcommands
 
-**`create`** [[24.1.1]](#2411-ckms-sym-keys-create)  Create a new symmetric key
+**`create`** [[22.1.1]](#2211-ckms-sym-keys-create)  Create a new symmetric key
 
-**`re-key`** [[24.1.2]](#2412-ckms-sym-keys-re-key)  Refresh an existing symmetric key
+**`re-key`** [[22.1.2]](#2212-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[24.1.3]](#2413-ckms-sym-keys-export)  Export a key or secret data from the KMS
+**`export`** [[22.1.3]](#2213-ckms-sym-keys-export)  Export a key or secret data from the KMS
 
-**`import`** [[24.1.4]](#2414-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
+**`import`** [[22.1.4]](#2214-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
 
-**`wrap`** [[24.1.5]](#2415-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[22.1.5]](#2215-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`unwrap`** [[24.1.6]](#2416-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`unwrap`** [[22.1.6]](#2216-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[24.1.7]](#2417-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`revoke`** [[22.1.7]](#2217-ckms-sym-keys-revoke)  Revoke a symmetric key
 
-**`destroy`** [[24.1.8]](#2418-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`destroy`** [[22.1.8]](#2218-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
-## 24.1.1 ckms sym keys create
+## 22.1.1 ckms sym keys create
 
 Create a new symmetric key
 
@@ -3532,7 +3546,7 @@ If the wrapping key is:
 
 ---
 
-## 24.1.2 ckms sym keys re-key
+## 22.1.2 ckms sym keys re-key
 
 Refresh an existing symmetric key
 
@@ -3545,7 +3559,7 @@ Refresh an existing symmetric key
 
 ---
 
-## 24.1.3 ckms sym keys export
+## 22.1.3 ckms sym keys export
 
 Export a key or secret data from the KMS
 
@@ -3604,7 +3618,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 24.1.4 ckms sym keys import
+## 22.1.4 ckms sym keys import
 
 Import a secret data or a key in the KMS.
 
@@ -3652,7 +3666,7 @@ If the wrapping key is:
 
 ---
 
-## 24.1.5 ckms sym keys wrap
+## 22.1.5 ckms sym keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3677,7 +3691,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 24.1.6 ckms sym keys unwrap
+## 22.1.6 ckms sym keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3700,7 +3714,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 24.1.7 ckms sym keys revoke
+## 22.1.7 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -3718,7 +3732,7 @@ Revoke a symmetric key
 
 ---
 
-## 24.1.8 ckms sym keys destroy
+## 22.1.8 ckms sym keys destroy
 
 Destroy a symmetric key
 
@@ -3741,7 +3755,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 24.2 ckms sym encrypt
+## 22.2 ckms sym encrypt
 
 Encrypt a file using a symmetric cipher
 
@@ -3773,7 +3787,7 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rf
 
 ---
 
-## 24.3 ckms sym decrypt
+## 22.3 ckms sym decrypt
 
 Decrypt a file using a symmetric key.
 
@@ -3805,7 +3819,7 @@ Possible values:  `"chacha20-poly1305", "aes-gcm", "aes-xts", "aes-gcm-siv", "rf
 
 ---
 
-## 25 ckms markdown
+## 23 ckms markdown
 
 Regenerate the CLI documentation in Markdown format
 
@@ -3819,7 +3833,7 @@ Regenerate the CLI documentation in Markdown format
 
 ---
 
-## 26 ckms configure
+## 24 ckms configure
 
 Configure the KMS CLI (create ckms.toml)
 

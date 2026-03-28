@@ -11,8 +11,7 @@ export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: strin
 
         const data: { id_token: string; user_id: string } = await response.json();
         return data;
-    } catch (error) {
-        console.error(error);
+    } catch {
         return null;
     }
 };
@@ -28,8 +27,7 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
 
         const data: { auth_method: AuthMethod } = await response.json();
         return data.auth_method;
-    } catch (error) {
-        console.error(error);
+    } catch {
         return "None";
     }
 };

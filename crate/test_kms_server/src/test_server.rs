@@ -1087,35 +1087,35 @@ fn generate_owner_conf(
         // Respect any explicit client identity provided by the caller; otherwise, inject defaults.
         #[cfg(feature = "non-fips")]
         {
-            let has_pkcs12 = http_conf.ssl_client_pkcs12_path.is_some();
-            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
-                && http_conf.ssl_client_pem_key_path.is_some();
+            let has_pkcs12 = http_conf.tls_client_pkcs12_path.is_some();
+            let has_pem = http_conf.tls_client_pem_cert_path.is_some()
+                && http_conf.tls_client_pem_key_path.is_some();
 
             if !has_pkcs12 && !has_pem {
                 // Inject default owner PKCS#12 only if caller didn't provide an identity
                 let p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12",
                 );
-                http_conf.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
-                http_conf.ssl_client_pkcs12_password = Some("password".to_owned());
+                http_conf.tls_client_pkcs12_path = Some(path_to_string(&p)?);
+                http_conf.tls_client_pkcs12_password = Some("password".to_owned());
                 // Ensure PEM fields are cleared in non-FIPS when using PKCS#12
-                http_conf.ssl_client_pem_cert_path = None;
-                http_conf.ssl_client_pem_key_path = None;
+                http_conf.tls_client_pem_cert_path = None;
+                http_conf.tls_client_pem_key_path = None;
             } else if has_pkcs12 {
                 // PKCS#12 provided by caller takes precedence; clear PEM to avoid ambiguity
-                http_conf.ssl_client_pem_cert_path = None;
-                http_conf.ssl_client_pem_key_path = None;
+                http_conf.tls_client_pem_cert_path = None;
+                http_conf.tls_client_pem_key_path = None;
             } else {
                 // PEM provided by caller in non-FIPS: honor it; ensure PKCS#12 is cleared
-                http_conf.ssl_client_pkcs12_path = None;
-                http_conf.ssl_client_pkcs12_password = None;
+                http_conf.tls_client_pkcs12_path = None;
+                http_conf.tls_client_pkcs12_password = None;
             }
         }
         #[cfg(not(feature = "non-fips"))]
         {
             // In FIPS mode, use PEM certificate and key; PKCS#12 must not be used.
-            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
-                && http_conf.ssl_client_pem_key_path.is_some();
+            let has_pem = http_conf.tls_client_pem_cert_path.is_some()
+                && http_conf.tls_client_pem_key_path.is_some();
             if !has_pem {
                 // Inject default owner PEM identity only if caller didn't provide one
                 let cert_p = root_path.join(
@@ -1124,19 +1124,19 @@ fn generate_owner_conf(
                 let key_p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.key",
                 );
-                http_conf.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
-                http_conf.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
+                http_conf.tls_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+                http_conf.tls_client_pem_key_path = Some(path_to_string(&key_p)?);
             }
             // Always clear PKCS#12 in FIPS
-            http_conf.ssl_client_pkcs12_path = None;
-            http_conf.ssl_client_pkcs12_password = None;
+            http_conf.tls_client_pkcs12_path = None;
+            http_conf.tls_client_pkcs12_password = None;
         }
     } else {
         // If server doesn't require client cert, don't send one
-        http_conf.ssl_client_pkcs12_path = None;
-        http_conf.ssl_client_pkcs12_password = None;
-        http_conf.ssl_client_pem_cert_path = None;
-        http_conf.ssl_client_pem_key_path = None;
+        http_conf.tls_client_pkcs12_path = None;
+        http_conf.tls_client_pkcs12_password = None;
+        http_conf.tls_client_pem_cert_path = None;
+        http_conf.tls_client_pem_key_path = None;
     }
 
     let conf = KmsClientConfig {
@@ -1168,10 +1168,10 @@ fn generate_user_conf(
         {
             let p = root_dir
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
-            conf.http_config.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
-            conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
-            conf.http_config.ssl_client_pem_cert_path = None;
-            conf.http_config.ssl_client_pem_key_path = None;
+            conf.http_config.tls_client_pkcs12_path = Some(path_to_string(&p)?);
+            conf.http_config.tls_client_pkcs12_password = Some("password".to_owned());
+            conf.http_config.tls_client_pem_cert_path = None;
+            conf.http_config.tls_client_pem_key_path = None;
         }
         #[cfg(not(feature = "non-fips"))]
         {
@@ -1179,17 +1179,17 @@ fn generate_user_conf(
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.crt");
             let key_p = root_dir
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.key");
-            conf.http_config.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
-            conf.http_config.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
-            conf.http_config.ssl_client_pkcs12_path = None;
-            conf.http_config.ssl_client_pkcs12_password = None;
+            conf.http_config.tls_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+            conf.http_config.tls_client_pem_key_path = Some(path_to_string(&key_p)?);
+            conf.http_config.tls_client_pkcs12_path = None;
+            conf.http_config.tls_client_pkcs12_password = None;
         }
     } else {
         // For HTTP, ensure no TLS identity is configured to avoid builder errors.
-        conf.http_config.ssl_client_pkcs12_path = None;
-        conf.http_config.ssl_client_pkcs12_password = None;
-        conf.http_config.ssl_client_pem_cert_path = None;
-        conf.http_config.ssl_client_pem_key_path = None;
+        conf.http_config.tls_client_pkcs12_path = None;
+        conf.http_config.tls_client_pkcs12_password = None;
+        conf.http_config.tls_client_pem_cert_path = None;
+        conf.http_config.tls_client_pem_key_path = None;
     }
     conf.http_config.access_token = set_access_token(
         matches!(client_opts.jwt, JwtPolicy::AutoDefault) && use_jwt_token,

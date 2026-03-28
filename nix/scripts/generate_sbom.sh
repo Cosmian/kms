@@ -7,10 +7,11 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 # Parse arguments
-# Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_0', or 'server'.
+# Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'.
 # - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
 # - openssl_3_6_0: scans the OpenSSL 3.6.0 (non-FIPS) derivation from nix/openssl.nix
 # - server:        scans the KMS server derivation
+# - ckms:          scans the ckms CLI binary derivation
 TARGET="openssl_3_1_2"
 # Variant and link are only relevant for 'server' target
 VARIANT="fips" # fips | non-fips
@@ -24,13 +25,14 @@ Generate SBOM (Software Bill of Materials) using sbomnix standard tools
 Usage: $0 [OPTIONS]
 
 Options:
-  --target TARGET      One of: openssl_3_1_2 | openssl_3_6_0 | server (default: openssl_3_1_2)
-  --variant VARIANT    One of: fips | non-fips (server target only; default: fips)
-  --link LINK          One of: static | dynamic (server target only; default: static)
+  --target TARGET      One of: openssl_3_1_2 | openssl_3_6_0 | server | ckms (default: openssl_3_1_2)
+  --variant VARIANT    One of: fips | non-fips (server/ckms target only; default: fips)
+  --link LINK          One of: static | dynamic (server/ckms target only; default: static)
   --output DIR         Output directory for SBOM files (default:
                        - openssl_3_1_2: ./sbom/openssl_3_1_2
                        - openssl_3_6_0: ./sbom/openssl_3_6_0
-                       - server:        ./sbom/server/<variant>/<link>)
+                       - server:        ./sbom/server/<variant>/<link>
+                       - ckms:          ./sbom/ckms/<variant>/<link>)
   -h, --help           Show this help message
 
 Examples:
@@ -40,6 +42,8 @@ Examples:
   $0 --target server                       # Target KMS server (fips, static OpenSSL)
   $0 --target server --variant non-fips    # Target KMS server (non-fips)
   $0 --target server --link dynamic        # Target KMS server (dynamic link, if available)
+  $0 --target ckms                         # Target ckms CLI binary (fips, static OpenSSL)
+  $0 --target ckms --variant non-fips      # Target ckms CLI binary (non-fips)
   $0 --output /tmp/sbom                    # Use custom output directory
 
 Generated files:
@@ -118,8 +122,34 @@ server)
     NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
   fi
   ;;
+ckms)
+  # Validate variant/link values
+  case "$VARIANT" in
+  fips | non-fips) : ;;
+  *)
+    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+    exit 1
+    ;;
+  esac
+  case "$LINK" in
+  static | dynamic) : ;;
+  *)
+    echo "Error: --link must be 'static' or 'dynamic'" >&2
+    exit 1
+    ;;
+  esac
+
+  # Scan the CLI binary derivation
+  if [ "$LINK" = "dynamic" ]; then
+    DERIVATION="kms-cli-${VARIANT}-dynamic-openssl"
+    NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-dynamic-openssl"
+  else
+    DERIVATION="kms-cli-${VARIANT}-static-openssl"
+    NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-static-openssl"
+  fi
+  ;;
 *)
-  echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_0', or 'server'." >&2
+  echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'." >&2
   exit 1
   ;;
 esac
@@ -129,6 +159,9 @@ if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
   case "$TARGET" in
   server)
     OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
+    ;;
+  ckms)
+    OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
     ;;
   openssl_3_1_2)
     OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
@@ -290,7 +323,7 @@ echo ""
 echo "Generating metadata..."
 
 OPENSSL_NOTE=""
-if [ "$TARGET" = "server" ]; then
+if [ "$TARGET" = "server" ] || [ "$TARGET" = "ckms" ]; then
   if [ "$LINK" = "static" ]; then
     OPENSSL_NOTE="OpenSSL is statically linked in the binary"
   else
