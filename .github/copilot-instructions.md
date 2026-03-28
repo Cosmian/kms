@@ -402,3 +402,21 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 | `gh` command hangs | Interactive pager opened | Use `GH_PAGER=cat gh ...` |
 | Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)` |
 | TypeScript unused-variable error in UI tests | `noUnusedLocals: true` in tsconfig | Remove the variable or prefix with `_` |
+
+---
+
+## 15. Documentation synchronization rules
+
+When making user-visible changes, keep documentation synchronized across these three sources:
+
+- `documentation/docs/` contains the detailed, canonical documentation.
+- `documentation/mkdocs.yml` is the navigation and structure source of truth.
+- `README.md` is a concise summary and entry point only.
+
+Required behavior for any AI agent:
+
+1. If a feature is added or behavior is changed, add or update detailed docs under `documentation/docs/`.
+2. Update `documentation/mkdocs.yml` so the new/updated page appears in the correct section.
+3. Update `README.md` with a brief summary (not full details) and links to the detailed docs.
+4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
+5. Avoid duplicating full documentation in `README.md`; keep README content short and navigational.

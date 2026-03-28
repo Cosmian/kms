@@ -95,9 +95,9 @@ cosmian_pkcs11: /usr/local/lib/libcosmian_pkcs11.so
 
 ## Configuring the access to the KMS
 
-The PKCS#11 module uses the same configuration file as the [CLI](../configuration.md). Since it may be run as a system user, the configuration file should be made available in `/etc/cosmian/ckms.toml`.
+The PKCS#11 module uses the same configuration file as the [CLI](https://docs.cosmian.com/kms_clients/configuration/). Since it may be run as a system user, the configuration file should be made available in `/etc/cosmian/ckms.toml`.
 
-See [Authenticating users to the KMS](../authentication.md) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
+See [Authenticating users to the KMS](../../configuration/authentication.md) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a PKCS#12 file for authentication.
 
@@ -108,7 +108,7 @@ ssl_client_pkcs12_path = "./certificates/machine123.acme.p12"
 ssl_client_pkcs12_password = "machine123_pkcs12_password"
 ```
 
-To use Open ID connect, install the [KMS CLI](../installation.md) from [Cosmian packages](https://package.cosmian.com/kms/) and use the `ckms login` command to authenticate to the KMS first.
+To use Open ID connect, install the [KMS CLI](https://docs.cosmian.com/kms_clients/installation/) from [Cosmian packages](https://package.cosmian.com/kms/) and use the `ckms login` command to authenticate to the KMS first.
 
 ## Logging
 

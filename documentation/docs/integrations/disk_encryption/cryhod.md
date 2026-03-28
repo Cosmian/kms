@@ -59,7 +59,7 @@ Click `next`
 The configuration file is located in the User home `.cosmian` sub-directory,
 in the `ckms.toml` file.
 
-See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
+See [Authenticating users to the KMS](../../configuration/authentication.md#authenticating-using-tls-client-certificates) to learn how to configure the KMS to use Open ID Connect or certificate authentication.
 Please note that the KMS can also manage the machines' certificates.
 
 Here is an example configuration file for the PKCS#11 provider library accessing the KMS using a

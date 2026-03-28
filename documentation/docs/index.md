@@ -38,18 +38,19 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [Google Workspace Client Side Encryption (CSE)](./google_cse/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./ms_dke/index.md)
 - **Transparent data encryption**:
-    - [Veracrypt](../kms_clients/pkcs11/veracrypt.md)
-    - [LUKS](../kms_clients/pkcs11/luks.md)
-    - [VMware](./vcenter.md)
-    - [Oracle Database TDE](../kms_clients/pkcs11/oracle/tde.md),
-    - [MongoDB](./mongodb.md),
-    - [Mysql Enterprise](./mysql.md)
-    - [Microsoft SQL Server External (EKM)](./ms_sql_server.md)
-    - [PostgreSQL](./percona.md)
-    - and more
+    - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
+    - [LUKS](./integrations/disk_encryption/luks.md)
+        - [VMware](./integrations/vcenter.md)
+    - [Oracle Database TDE](./integrations/databases/oracle_tde.md)
+    - [MongoDB](./integrations/databases/mongodb.md)
+    - [Mysql Enterprise](./integrations/databases/mysql.md)
+    - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
+    - [PostgreSQL](./integrations/databases/percona.md)
+    - [OpenSSH](./integrations/openssh.md)
+        - and more
 - **Big Data encryption**:
-    - [Snowflake](./snowflake/index.md)
-    - [Databricks, Spark,..  UDFs](./python_udf/index.md)
+    - [Snowflake](./integrations/databases/snowflake_native_app/index.md)
+        - [Databricks, Spark,..  UDFs](./integrations/user_defined_function_for_pyspark_databricks_in_python/index.md)
 
 ## Three-in-one: Key lifecycle management + Encryption oracle + Public key infrastructure
 

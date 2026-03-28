@@ -3,7 +3,7 @@
 The Cosmian KMS is integrated with [Veracrypt](https://www.veracrypt.fr/en/Home.html)
 disk encryption using the Cosmian KMS PKCS#11 provider library.
 
-Veracrypt is a free, open-source disk encryption software for Windows, macOS, and Linux, and is a successor to TrueCrypt, certified by ANSSI. 
+Veracrypt is a free, open-source disk encryption software for Windows, macOS, and Linux, and is a successor to TrueCrypt, certified by ANSSI.
 Veracrypt has undergone a formal security evaluation by the BSI.
 
 Using the Cosmian KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
@@ -21,9 +21,9 @@ Then click `OK`.
 
 ## Configuring access to the KMS
 
-The PKCS#11 provider library uses the same configuration file as the [CLI](../index.md).
+The PKCS#11 provider library uses the same configuration file as the [CLI](https://docs.cosmian.com/kms_clients/).
 
-See [Authenticating users to the KMS](../authentication.md#authenticating-using-tls-client-certificates)
+See [Authenticating users to the KMS](../../configuration/authentication.md#authenticating-using-tls-client-certificates)
 to learn how to configure the KMS to use OpenID Connect or certificate authentication.
 Please note that the KMS can also manage the machines' certificates.
 
@@ -37,9 +37,8 @@ ssl_client_pkcs12_path = "./certificates/machine123.acme.p12"
 ssl_client_pkcs12_password = "machine123_pkcs12_password"
 ```
 
-To use Open ID connect, install the [KMS CLI](../index.md) from <https://package.cosmian.com/kms/> and
+To use Open ID connect, install the [KMS CLI](https://docs.cosmian.com/kms_clients/) from <https://package.cosmian.com/kms/> and
 use the `ckms login` command to authenticate to the KMS first.
-
 
 ## Logging
 
