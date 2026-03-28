@@ -81,7 +81,7 @@ When the KMS is started from the command line, the HSM support can be enabled by
 --hsm-model "proteccio" \
 --hsm-admin "<HSM_ADMIN_USERNAME>"  \
 --hsm-slot <number_of_1st_slot> --hsm-password <password_of_1st_slot> \
---hsm-slot <number_of_2nd_slot> --hsm-password <password_of_2nd_slot>
+--hsm-slot <number_of_2and_slot> --hsm-password <password_of_2and_slot>
 ```
 
 The `hsm-model` parameter is the HSM model to be used; use `proteccio`

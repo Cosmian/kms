@@ -94,7 +94,7 @@ Note: It may take up to 24 hours for Google to propagate the Client-Side Encrypt
 
 ## Insert user identity
 
-After creating the key-pair, you must associate it with the user’s identity. To do so, run the following command:
+After creating the key-pair, you must associate it with the user's identity. To do so, run the following command:
 
 ```sh
 ckms google identities insert \

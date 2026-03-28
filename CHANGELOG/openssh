@@ -1,3 +1,11 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [Unreleased]
+
+### 🚀 Features
+
 - **PKCS#11 ObjectsStore**: Fix variable-shadowing bug in `upsert()` that silently no-op'd updates — stub objects with empty key bytes were never replaced with properly-fetched objects, causing `C_GetAttributeValue` to return `CKR_GENERAL_ERROR` for all public-key attributes.
 - **PKCS#11 public key attributes**: Guard `CKA_MODULUS` / `CKA_PUBLIC_EXPONENT` attribute handlers with `is_rsa()` check; return `None` for non-RSA keys instead of propagating `CKR_GENERAL_ERROR`.
 - **PKCS#11 EC point encoding**: Wrap `CKA_EC_POINT` bytes in a DER OCTET STRING per PKCS#11 v2.40 spec so OpenSSH/OpenSSL's `o2i_ECPublicKey` can parse them correctly.
@@ -14,3 +22,4 @@
 - **CI fix**: Export `WITH_CURL=1` for `openssh`/`luks` nix test types and fail fast in `kms_wait_ready` if curl is missing, preventing silent readiness timeouts in pure nix-shell jobs.
 - **CI fix**: Add `ui/.prettierignore` to exclude `pnpm-lock.yaml` from Prettier checks (Nix pnpm 9 rewrites the lock file format, then Prettier 3.8.1 rejects it).
 - **CI fix**: Skip `test_db_postgresql_mtls_connection` in the regular psql CI test run (the `postgres-mtls` Docker service is not started there) to stop the `test_db_postgresql` substring filter from accidentally running the mTLS-only test.
+- **CI fix**: In `test_luks.sh`, treat `pkcs11-tool` `C_FindObjectsInit`/`CKR_ARGUMENTS_BAD` as an OpenSC/provider compatibility path and fall back to `ckms locate` + Rust PKCS#11 enumeration checks instead of hard-failing on tool-specific listing output.

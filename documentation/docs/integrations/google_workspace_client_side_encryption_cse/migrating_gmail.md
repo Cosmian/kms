@@ -9,13 +9,13 @@ A more general view of all the migration options to and from Gmail can be found 
 [this link](https://support.google.com/a/topic/13002773)
 
 - [Migrating existing emails to Gmail CSE](#migrating-existing-emails-to-gmail-cse)
-  - [Install the migration utility](#install-the-migration-utility)
-  - [Create a service account credential with domain-wide access](#create-a-service-account-credential-with-domain-wide-access)
-    - [Create a service account](#create-a-service-account)
-    - [Create a key in JSON format](#create-a-key-in-json-format)
-    - [Grant the GMail API domain-wide access](#grant-the-gmail-api-domain-wide-access)
-  - [Migrate : example usage](#migrate-example-usage)
-  - [Export Data from GMail](#export-data-from-gmail)
+    - [Install the migration utility](#install-the-migration-utility)
+    - [Create a service account credential with domain-wide access](#create-a-service-account-credential-with-domain-wide-access)
+        - [Create a service account](#create-a-service-account)
+        - [Create a key in JSON format](#create-a-key-in-json-format)
+        - [Grant the GMail API domain-wide access](#grant-the-gmail-api-domain-wide-access)
+    - [Migrate example usage](#migrate-example-usage)
+    - [Export Data from GMail](#export-data-from-gmail)
 
 ## Install the migration utility
 
@@ -59,7 +59,7 @@ The OAuth scopes required are:
 For more details on Google OAuth scopes, check
 [this reference](https://developers.google.com/identity/protocols/oauth2/scopes)
 
-## Migrate : example usage
+## Migrate example usage
 
 Perform a dry-run over two input files to verify that they can be parsed and
 that their messages can be encrypted in preparation for migration:

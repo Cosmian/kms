@@ -116,12 +116,12 @@ For example, if you are using the docker image, you can run the following comman
     ```toml title="Configuration file"
     # Server configuration
     kms_public_url = "http://localhost:9998"
-    
+
     # JWT authentication with Google
     [idp_auth]
     # issuer,jwks[,aud1[,aud2...]]; audiences optional (any-of when multiple)
     jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,"]
-    
+
     # Google CSE configuration
     [google_cse_config]
     google_cse_enable = true
@@ -155,7 +155,7 @@ ckms sym keys create -t google_cse google_cse
 ckms sym keys import -t google_cse PATH_TO_YOUR_KEY google_cse
 ```
 
-Next, you’ll need to assign access rights to each user who requires CSE functionality, whether they are part of your organization or a guest.
+Next, you'll need to assign access rights to each user who requires CSE functionality, whether they are part of your organization or a guest.
 You can also grant wildcard access ('*') to allow all users to use this key in CSE endpoints.
 
 ```sh

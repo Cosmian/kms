@@ -40,7 +40,7 @@ The format of the `.well-known` file is specified by [RFC 8259](https://tools.ie
       "client_id": "313892590415-d3h1l7kl4htab916r6jevqdtu8bfmh9m.apps.googleusercontent.com"
     },
     "calendar-android": {
-      "client_id": "313892590415-q84luo8fon5pn5vl8a6rppo1qvcd3qvn.apps.googleusercontent.com"
+      "client_id": "313892590415-q84luo8fon5on5vl8a6rppo1qvcd3qvn.apps.googleusercontent.com"
     },
     "calendar-ios": {
       "client_id": "313892590415-283b3nilr8561tedgu1n4dcm9hd6g3hr.apps.googleusercontent.com"
@@ -63,8 +63,7 @@ The format of the `.well-known` file is specified by [RFC 8259](https://tools.ie
 
 `client_id` is the OAuth 2.0 client ID of the Google Workspace domain that is created using the Google Cloud Console
 
-
-# Configuring a static web server to serve the .well-known file
+## Configuring a static web server to serve the .well-known file
 
 The URL at which Google client-side encryption expects the `.well-known` file is on the link pointed by the red arrow below.
 

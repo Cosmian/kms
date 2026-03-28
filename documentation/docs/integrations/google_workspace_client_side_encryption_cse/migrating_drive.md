@@ -3,7 +3,7 @@
 This guide explains how to migrate encrypted content in Google Drive to a new key management service (KMS), specifically using Cosmian KMS.
 
 For a complete overview of Google's migration flow and all available options, refer to
-[Google’s official technical documentation](https://support.google.com/a/answer/12850453#migrate).
+[Google's official technical documentation](https://support.google.com/a/answer/12850453#migrate).
 
 ## Cosmian KMS migration support and configuration
 
@@ -17,7 +17,7 @@ These endpoints allow Cosmian KMS to serve as either the source or target key se
 
 ## JWT Authentication for Migration
 
-Google’s migration flow requires both key services (KACLS) to authenticate with each other via signed JWTs. To support this:
+Google's migration flow requires both key services (KACLS) to authenticate with each other via signed JWTs. To support this:
 
 Cosmian KMS generates a dedicated RSA key pair at startup (if not already present in the database).
 
