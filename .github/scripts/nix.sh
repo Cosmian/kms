@@ -548,8 +548,9 @@ test_command() {
   if [ "$TEST_TYPE" = "luks" ]; then
     export WITH_LUKS=1
   fi
-  # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
+  # Ensure curl is present for test types that use HTTP readiness probes
+  # or curl-based integration helpers inside the nix-shell.
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
     export WITH_CURL=1
   fi
 

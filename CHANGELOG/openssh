@@ -11,5 +11,6 @@
 - **CI fix**: Start KMS in `test_openssh.sh` and `test_luks.sh` with an explicit generated `kms.toml` (`--config`) to avoid default-config startup hangs in CI runners.
 - **CI fix**: Probe KMS readiness on `/` instead of `/kmip/2_1` in OpenSSH/LUKS scripts to avoid intermittent KMIP probe timeouts while the server is already listening.
 - **Test stability**: Before OpenSSH/LUKS Rust unit tests, kill stale listeners on port 9998 to prevent `start_default_test_kms_server` failures (`Address already in use`).
+- **CI fix**: Export `WITH_CURL=1` for `openssh`/`luks` nix test types and fail fast in `kms_wait_ready` if curl is missing, preventing silent readiness timeouts in pure nix-shell jobs.
 - **CI fix**: Add `ui/.prettierignore` to exclude `pnpm-lock.yaml` from Prettier checks (Nix pnpm 9 rewrites the lock file format, then Prettier 3.8.1 rejects it).
 - **CI fix**: Skip `test_db_postgresql_mtls_connection` in the regular psql CI test run (the `postgres-mtls` Docker service is not started there) to stop the `test_db_postgresql` substring filter from accidentally running the mTLS-only test.
