@@ -328,6 +328,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
 [ui_config]
+enable = true
 ui_index_html_folder = "[ui index html folder]"
 
 [ui_config.ui_oidc_auth]

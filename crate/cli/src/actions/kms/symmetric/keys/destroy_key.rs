@@ -63,6 +63,12 @@ impl DestroyKeyAction {
             )));
         }
 
-        destroy(kms_rest_client, &id, self.remove).await
+        destroy(
+            kms_rest_client,
+            &id,
+            self.remove,
+            attr.attributes.object_type,
+        )
+        .await
     }
 }

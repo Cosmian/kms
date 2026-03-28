@@ -173,7 +173,7 @@ repos:
         description: |
           Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md
           and cli_documentation/docs/usage.md.
-        entry: bash .github/scripts/renew_ckms_markdown.sh
+        entry: bash .github/scripts/docs/renew_ckms_markdown.sh
         language: system
         types: [rust]
         pass_filenames: false
@@ -181,7 +181,7 @@ repos:
       # Remove folders result*
       - id: clean-result-folders
         name: Clean result* folders
-        entry: bash .github/scripts/clean_result.sh
+        entry: bash .github/scripts/release/clean_result.sh
         language: system
         types: [rust]
         pass_filenames: false
@@ -196,21 +196,21 @@ repos:
 
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
-        entry: bash .github/scripts/test_wasm.sh
+        entry: bash .github/scripts/test/test_wasm.sh
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: ui-e2e
         name: UI end-to-end
-        entry: bash .github/scripts/test_ui.sh
+        entry: bash .github/scripts/test/test_ui.sh
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
-        entry: bash .github/scripts/test_sqlite.sh --variant fips
+        entry: bash .github/scripts/test/test_sqlite.sh --variant fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -218,14 +218,14 @@ repos:
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
-        entry: bash .github/scripts/test_sqlite.sh --variant non-fips
+        entry: bash .github/scripts/test/test_sqlite.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)
-        entry: bash .github/scripts/test_redis.sh --variant non-fips
+        entry: bash .github/scripts/test/test_redis.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -262,7 +262,7 @@ repos:
             - documentation/docs/configuration/server_cli.md from --help
             - documentation/docs/configuration/server_configuration_file.md from --print-default-config
             - pkg/kms.toml and crate/server/kms_template.toml
-        entry: bash .github/scripts/renew_server_doc.sh
+        entry: bash .github/scripts/docs/renew_server_doc.sh
         language: system
         types: [rust]
         pass_filenames: false

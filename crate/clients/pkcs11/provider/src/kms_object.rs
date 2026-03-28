@@ -521,6 +521,7 @@ pub(crate) async fn kms_destroy_object_async(
             unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
             remove: false,
             cascade: true,
+            expected_object_type: None,
         })
         .await?;
 

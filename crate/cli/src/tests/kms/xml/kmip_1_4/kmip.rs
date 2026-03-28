@@ -191,6 +191,7 @@ async fn kmip_1_4_xml_tl() {
                         unique_identifier: Some(uid),
                         cascade: false,
                         remove: false,
+                        expected_object_type: None,
                     })
                     .await,
             );

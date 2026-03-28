@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType as Kmip21ObjectType,
-        kmip_operations::{Export, Import, Operation},
+        kmip_operations::{Destroy, Export, Import, Operation},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
         requests::symmetric_key_create_request,
     },
@@ -184,6 +184,69 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
     delete_key(&dek_uid, &admin, &kms).await?;
     delete_key(&tmp_uid, &admin, &kms).await?;
     delete_key(&kek_uid, &admin, &kms).await?;
+
+    Ok(())
+}
+
+/// Issue #763 — Destroying an HSM key is guarded by `expected_object_type`.
+///
+/// When `Destroy.expected_object_type` is provided and the target UID is an HSM key
+/// (prefixed with `hsm::`), the server performs a PKCS#11 roundtrip to verify the
+/// actual key type before proceeding. A mismatch (e.g. trying to destroy an AES key
+/// with `expected_object_type = PrivateKey`) must be rejected with `Invalid_Object_Type`.
+pub(super) async fn test_hsm_destroy_type_guard() -> KResult<()> {
+    let kek_uuid = Uuid::new_v4();
+    let admin = Uuid::new_v4().to_string();
+
+    let sqlite_path = get_tmp_sqlite_path();
+    let mut clap_config = hsm_clap_config(&admin, Some(kek_uuid))?;
+    clap_config.db.sqlite_path = sqlite_path;
+    let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
+        return Err(KmsError::Default("Missing KEK".to_owned()));
+    };
+
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+
+    // Create a symmetric (AES) key on the HSM.
+    create_kek(&kek_uid, &admin, &kms).await?;
+
+    // Attempt to destroy the AES key with the wrong expected type (PrivateKey).
+    // The server must reject this via the PKCS#11 type-check roundtrip.
+    let destroy_wrong_type = Destroy {
+        unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
+        remove: true,
+        cascade: true,
+        expected_object_type: Some(Kmip21ObjectType::PrivateKey),
+    };
+    let result = send_message(
+        kms.clone(),
+        &admin,
+        vec![Operation::Destroy(destroy_wrong_type)],
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "Expected type-mismatch error when destroying an AES key with PrivateKey expected type"
+    );
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Invalid_Object_Type") || err_msg.contains("object type"),
+        "Expected Invalid_Object_Type error, got: {err_msg}"
+    );
+
+    // Destroy the AES key with the correct expected type (SymmetricKey). Must succeed.
+    let destroy_correct_type = Destroy {
+        unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
+        remove: true,
+        cascade: true,
+        expected_object_type: Some(Kmip21ObjectType::SymmetricKey),
+    };
+    send_message(
+        kms.clone(),
+        &admin,
+        vec![Operation::Destroy(destroy_correct_type)],
+    )
+    .await?;
 
     Ok(())
 }
