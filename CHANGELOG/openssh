@@ -6,40 +6,57 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- **PKCS#11 ObjectsStore**: Fix variable-shadowing bug in `upsert()` that silently no-op'd updates — stub objects with empty key bytes were never replaced with properly-fetched objects, causing `C_GetAttributeValue` to return `CKR_GENERAL_ERROR` for all public-key attributes.
-- **PKCS#11 public key attributes**: Guard `CKA_MODULUS` / `CKA_PUBLIC_EXPONENT` attribute handlers with `is_rsa()` check; return `None` for non-RSA keys instead of propagating `CKR_GENERAL_ERROR`.
-- **PKCS#11 EC point encoding**: Wrap `CKA_EC_POINT` bytes in a DER OCTET STRING per PKCS#11 v2.40 spec so OpenSSH/OpenSSL's `o2i_ECPublicKey` can parse them correctly.
-- **PKCS#11 RSA/EC key bytes**: Fix `Pkcs11PublicKey` to store the inner key bytes extracted from SPKI's BIT STRING (`raw_bytes()`) rather than the full SPKI DER, so `RsaPublicKey::from_der` and `p256::PublicKey::from_sec1_bytes` succeed.
+#### OpenSSH PKCS#11 Support
+
+- **Reliable key material refresh**: fixed `ObjectsStore::upsert()` replacement logic so placeholder objects are properly updated with fetched key bytes, preventing `CKR_GENERAL_ERROR` during OpenSSH key enumeration.
+- **Correct public-key decoding paths**: fixed RSA/EC public key extraction to use SPKI BIT STRING payload bytes and refactored conversion through `try_from_spki`, including correct EC OID handling.
+- **PKCS#11-compliant EC point export**: encoded `CKA_EC_POINT` as DER OCTET STRING (PKCS#11 v2.40), enabling OpenSSH/OpenSSL parsing compatibility.
+- **Safer attribute exposure for mixed key types**: guarded RSA-only attributes (`CKA_MODULUS`, `CKA_PUBLIC_EXPONENT`) behind `is_rsa()` checks to avoid non-RSA lookup failures.
+- **Provider runtime and API hardening**: migrated provider internals to lock-free/shared primitives (`OnceLock`, shared runtime, `LazyKeyMaterial`) and reduced cloning/boilerplate (`remote_id() -> &str`, macro-based trait impls), improving stability and performance under OpenSSH PKCS#11 usage patterns.
+
+#### OpenSSH and LUKS Integration
+
 - **test_openssh.sh**: New shell integration test for the OpenSSH PKCS#11 provider; invokes `ssh-keygen -D` to enumerate RSA and EC P-256 public keys via the PKCS#11 library.
 - **test_luks.sh**: New shell integration test for the LUKS disk-encryption PKCS#11 scenario (Rust unit tests + shell verification with `ckms locate`).
-- **nix.sh**: Add `openssh` and `luks` test cases; export `WITH_OPENSSH=1`/`WITH_LUKS=1`; auto-select `non-fips` variant for both test types when not explicitly specified; disable `--pure` on macOS so system `ssh-keygen` is accessible.
-- **shell.nix**: Add `pkgs.openssh` (Linux) when `WITH_OPENSSH=1` and `pkgs.opensc` (Linux) when `WITH_LUKS=1` so CI runners have the required tools.
-- **test_all.yml**: Add `openssh` and `luks` to the CI test matrix (non-fips only; fips excluded because PKCS12KDF and EdDSA are not FIPS-approved).
-- **CI fix**: Increase KMS server startup timeout in `test_openssh.sh` and `test_luks.sh` from 60 s to 120 s to give CI runners enough time to boot the server.
-- **CI fix**: Start KMS in `test_openssh.sh` and `test_luks.sh` with an explicit generated `kms.toml` (`--config`) to avoid default-config startup hangs in CI runners.
-- **CI fix**: Probe KMS readiness on `/` instead of `/kmip/2_1` in OpenSSH/LUKS scripts to avoid intermittent KMIP probe timeouts while the server is already listening.
-- **Test stability**: Before OpenSSH/LUKS Rust unit tests, kill stale listeners on port 9998 to prevent `start_default_test_kms_server` failures (`Address already in use`).
-- **CI fix**: Export `WITH_CURL=1` for `openssh`/`luks` nix test types and fail fast in `kms_wait_ready` if curl is missing, preventing silent readiness timeouts in pure nix-shell jobs.
-- **CI fix**: Add `ui/.prettierignore` to exclude `pnpm-lock.yaml` from Prettier checks (Nix pnpm 9 rewrites the lock file format, then Prettier 3.8.1 rejects it).
-- **CI fix**: Skip `test_db_postgresql_mtls_connection` in the regular psql CI test run (the `postgres-mtls` Docker service is not started there) to stop the `test_db_postgresql` substring filter from accidentally running the mTLS-only test.
-- **CI fix**: In `test_luks.sh`, treat `pkcs11-tool` `C_FindObjectsInit`/`CKR_ARGUMENTS_BAD` as an OpenSC/provider compatibility path and fall back to `ckms locate` + Rust PKCS#11 enumeration checks instead of hard-failing on tool-specific listing output.
-- **Docs**: Reintegrate PKCS#11 pages from `cli_documentation/docs/pkcs11` into main docs under `documentation/docs/integrations`, grouping database integrations in `integrations/databases`, disk encryption in `integrations/disk_encryption`, and adding an OpenSSH integration entry.
-- **PKCS#11 refactoring**: Applied a set of Rust correctness and performance improvements to `crate/clients/pkcs11`: fixed `ObjectType::SymmetricKey` discriminant (was incorrectly returning `DataObject`); replaced the `STAGED_BACKEND`+`LazyLock` two-static pattern with a single `OnceLock` backend singleton; changed `SearchOptions::Id` from `Vec<u8>` to `String` (UTF-8 conversion at construction); introduced a `LazyKeyMaterial` newtype (`OnceLock`-backed, lock-free) replacing `Arc<RwLock<…>>` in `Pkcs11PrivateKey` and `Pkcs11SymmetricKey`; extracted `require_id()` helper to deduplicate match boilerplate in four `find_*` functions; and replaced 12 per-call `tokio::runtime::Runtime::new()?` with a single shared `static RUNTIME: LazyLock<Runtime>`.
 - **test_luks.sh Part 3**: Added cryptsetup LUKS2 PKCS#11 enrollment integration test — creates a 16 MiB LUKS2 container, enrolls the Cosmian KMS PKCS#11 token via `systemd-cryptenroll`, and verifies enrollment via `cryptsetup luksDump`.
-- **PKCS#11 `remote_id() -> &str`**: Changed all five object-type traits (`Certificate`, `PrivateKey`, `PublicKey`, `SymmetricKey`, `DataObject`) to return `&str` instead of `String`, eliminating five `clone()` calls per attribute access; all provider concrete types updated accordingly.
-- **PKCS#11 `impl_remote_object_impls!` macro**: Replaced ~75 lines of duplicated `PartialEq`/`Eq`/`Hash`/`Debug` boilerplate across the five trait files with a single `macro_rules!` invoked once per trait in `traits/mod.rs`; also unified `Certificate`'s debug output with the other traits.
-- **PKCS#11 `Pkcs11PublicKey::try_from_kms_object`**: Refactored to delegate to `try_from_spki`, eliminating ~35 lines of duplicated SPKI-parsing logic; simultaneously fixed a latent bug in `try_from_spki` where EC keys (id-ecPublicKey OID) were not handled, causing incorrect algorithm detection for EC certificate public keys.
-- **PKCS#11 remove stale `once_cell` dependency**: Removed `pub use once_cell` re-export from `traits/mod.rs` and corresponding `once_cell = "1.21.3"` from `module/Cargo.toml` (superseded by `std::sync::OnceLock`).
+
+#### Documentation and Integrations
+
+- **Docs**: Reintegrate PKCS#11 pages from `cli_documentation/docs/pkcs11` into main docs under `documentation/docs/integrations`, grouping database integrations in `integrations/databases`, disk encryption in `integrations/disk_encryption`, and adding an OpenSSH integration entry.
 
 ### 🐛 Bug Fixes
 
+#### Server Security and Configuration
+
 - **TLS auth** (#811): Reject client certificates whose CN is empty or `*`; prevents wildcard spoofing attacks.
 - **HSM config** (#695): Expose `KMS_HSM_PASSWORD` and `KMS_HSM_SLOT` environment variables for `--hsm-password` / `--hsm-slot` server options so HSM credentials can be injected without config-file edits.
+
+#### CLI Operations
+
 - **CLI destroy type-safety** (#763): `ckms {sym,rsa,ec,pqc,cc} keys destroy` now performs a `GetAttributes` pre-flight check and rejects attempts to destroy a key of the wrong type with a clear error message.
+
+#### Web UI
+
 - **UI no-auth mode** (#739): The web UI `create` / `import` buttons are now enabled immediately in no-auth mode (`AuthMethod::None`); previously the async sequencing called the permissions API before the auth method was resolved, causing buttons to stay disabled.
 
 ### 📚 Documentation
 
+#### AI Agent Instructions
+
 - **AI agent symlinks** (#723): `AGENTS.md` and `CLAUDE.md` are now symlinks to `.github/copilot-instructions.md` so all AI agents always read the single authoritative instructions file.
+
+#### KMIP Wrapping Documentation
+
 - **`CKM_RSA_AES_KEY_WRAP` invocation** (#688): Document that this scheme is selected by pairing `CryptographicAlgorithm::RSA` with `PaddingMethod::None`; explains the counter-intuitive routing (None ≠ unpadded RSA), adds a KMIP JSON TTLV example, and adds a routing table. Fix broken `../algorithms.md` links in `_export.md` and `_import.md`.
+
+#### Benchmarking and CI Documentation
+
 - **Benchmarks CI** (#776): `benchmarks.sh` now builds the KMS server + ckms CLI, starts a temporary SQLite KMS instance, and runs `ckms bench --speed sanity --format json` as an end-to-end smoke test; supports `BENCH_SAVE_BASELINE` / `BENCH_LOAD_BASELINE` env vars for criterion regression comparisons on a dedicated machine.
+
+Closes #811
+Closes #695
+Closes #763
+Closes #739
+Closes #723
+Closes #688
+Closes #776

@@ -347,9 +347,11 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 
 ## 11. Updating CHANGELOG.md
 
-For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` that will be committed (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention. Example:
+For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` that will be committed (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention (Features, Bug Fixes, Build, Refactor, Documentation, Testing, CI, Security). Under a CHANGELOG section, try regrouping by sub-feature or component if multiple entries relate to the same area (e.g. "KMIP operations", "Web UI", "PostgreSQL backend"). This helps maintain readability as the number of entries grows.
 
 In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
+
+Finally, add at bottom of the file the as many "Closes #xxx" it requires to automatically close the related issues when the PR is merged
 
 ---
 
