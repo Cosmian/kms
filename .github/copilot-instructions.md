@@ -195,6 +195,8 @@ OpenSSL can locate `legacy.so` / `fips.so` from the build tree.
 
 ## 7. CI overview
 
+As pre-requisite, do not skip or ignore tests
+
 ### Entry point
 
 All CI runs go through **Nix** via a single script:

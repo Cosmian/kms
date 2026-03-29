@@ -66,6 +66,9 @@ All notable changes to this project will be documented in this file.
 - **Script reorganization**: Reorganized 76 scripts from the flat `.github/scripts/`, `nix/scripts/`, and `scripts/` directories into logical subdirectories under `.github/scripts/`: `test/`, `build/`, `package/`, `release/`, `benchmarks/`, `pykmip/`, `sbom/`, `docs/`, `demo/`, `windows/`, `shared/`. All cross-references in `nix.sh`, workflow YAMLs, and the scripts themselves have been updated. Added `shared/colors.sh` for shared terminal color helpers and `benchmarks/docker_helpers.sh` for shared Docker benchmark utilities.
 - **Windows workflow script paths**: Fixed `test_windows.yml` and `build_windows.yml` to reference reorganized PowerShell scripts under `.github/scripts/windows/` (`cargo_test.ps1`, `test_ui.ps1`, `cargo_build.ps1`, `windows_ui.ps1`) and updated job display names to use `${{ inputs.archive-name }}`.
 - **PyKMIP / Synology DSM REPO_ROOT bug** (#835): Fixed `test_pykmip.sh`, `test_synology_dsm.sh`, and `azure_ekm_mtls_test.sh` to source `common.sh` first then use `get_repo_root` instead of the incorrect `cd "$SCRIPT_DIR/../.."` (resolved to `.github/` instead of repo root), which caused `COSMIAN_KMS_CONF` to point to a non-existent doubled path (`.github/.github/scripts/pykmip/kms.toml`). ([#835](https://github.com/Cosmian/kms/pull/835))
+- **REPO_ROOT bug in remaining test scripts** (#835): Fixed same `cd "$SCRIPT_DIR/../.."` REPO_ROOT bug in `test_xks.sh`, `test_gcp_cmek.sh`, and `test_lb_kms_shutdown.sh`; all now source `common.sh` first and use `get_repo_root`. ([#835](https://github.com/Cosmian/kms/pull/835))
+- **Stale `build_ui.sh` paths after reorganization**: Fixed `release.sh` and `build_ui_all.sh` which still referenced `build_ui.sh` at the old root path; updated to `build/build_ui.sh` after the script reorganization.
+- **`run_benchmarks.sh` local development**: Script now sources `common.sh`, uses `get_repo_root`, and auto-detects `OPENSSL_MODULES`/`OPENSSL_CONF` from the Cargo target directory (with `arm64`→`aarch64` normalization) so it can start the KMS server outside of Nix without a missing-provider error.
 
 Closes #811
 Closes #695
@@ -74,4 +77,3 @@ Closes #739
 Closes #776
 Closes #723
 Closes #688
-Closes #776

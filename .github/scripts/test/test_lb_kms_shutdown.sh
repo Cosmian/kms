@@ -5,7 +5,9 @@ COMPOSE_FILE="${COMPOSE_FILE:-.github/scripts/docker-compose.yml}"
 RECREATE_NGINX="${RECREATE_NGINX:-1}"
 LB_PORT="${LB_PORT:-18080}"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../common.sh"
+ROOT_DIR="$(get_repo_root "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
 log() {

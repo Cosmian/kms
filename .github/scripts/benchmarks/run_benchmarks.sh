@@ -30,7 +30,9 @@ CKMS_CARGO_ARGS_STR="${CKMS_CARGO_ARGS:---release --features non-fips}"
 read -r -a CKMS_CARGO_ARGS <<<"${CKMS_CARGO_ARGS_STR}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+# shellcheck source=.github/scripts/common.sh
+source "${SCRIPT_DIR}/../common.sh"
+ROOT_DIR="$(get_repo_root "${SCRIPT_DIR}")"
 cd "${ROOT_DIR}"
 
 OUT_REST_MD="documentation/docs/benchmarks.md"

@@ -78,7 +78,7 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" 's/(#\([0-9]\+\))/([#\1](https:\/\/github.com
 
 export DOCKER_IMAGE_NAME="ghcr.io/cosmian/kms:latest"
 docker compose -f .github/scripts/docker-compose.yml up -d
-bash .github/scripts/build_ui.sh
+bash .github/scripts/build/build_ui.sh
 python3 scripts/generate_cbom.py
 bash .github/scripts/nix.sh sbom
 docker compose -f .github/scripts/docker-compose.yml down --remove-orphans

@@ -10,8 +10,8 @@
 set -euo pipefail
 set -x
 
-bash ./.github/scripts/build_ui.sh
+bash ./.github/scripts/build/build_ui.sh
 git add crate/server/ui
 
-FEATURES=non-fips bash ./.github/scripts/build_ui.sh
+FEATURES=non-fips bash ./.github/scripts/build/build_ui.sh
 git add crate/server/ui_non_fips
