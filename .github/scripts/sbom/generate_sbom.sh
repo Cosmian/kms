@@ -6,6 +6,11 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 
+# Source shared helpers to pick up PIN_URL (pinned nixpkgs tarball URL).
+# This avoids relying on NIX_PATH being set in the CI environment.
+# shellcheck source=.github/scripts/common.sh
+source "$SCRIPT_DIR/../common.sh"
+
 # Parse arguments
 # Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'.
 # - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
@@ -214,8 +219,8 @@ run_sbomnix() {
     # sbomnix is available in PATH, use it directly
     sbomnix "$@"
   else
-    # Use nix-shell to provide sbomnix
-    nix-shell -p sbomnix --run "sbomnix $*"
+    # Use nix-shell to provide sbomnix; pass pinned nixpkgs via -I so NIX_PATH is not required
+    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "sbomnix $*"
   fi
 }
 
@@ -225,8 +230,8 @@ run_vulnxscan() {
     # vulnxscan is available in PATH, use it directly
     vulnxscan "$@"
   else
-    # Use nix-shell to provide vulnxscan (part of sbomnix package)
-    nix-shell -p sbomnix --run "vulnxscan $*"
+    # Use nix-shell to provide vulnxscan (part of sbomnix package); pin nixpkgs to avoid NIX_PATH lookup
+    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "vulnxscan $*"
   fi
 }
 
@@ -236,8 +241,8 @@ run_nixgraph() {
     # nixgraph is available in PATH, use it directly
     nixgraph "$@"
   else
-    # Use nix-shell to provide nixgraph (part of sbomnix package)
-    nix-shell -p sbomnix --run "nixgraph $*"
+    # Use nix-shell to provide nixgraph (part of sbomnix package); pin nixpkgs to avoid NIX_PATH lookup
+    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "nixgraph $*"
   fi
 }
 
