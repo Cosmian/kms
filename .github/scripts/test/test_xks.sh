@@ -3,9 +3,8 @@ set -euo pipefail
 set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
-
 source "${SCRIPT_DIR}/../common.sh"
+REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 init_build_env "$@"
 setup_test_logging
