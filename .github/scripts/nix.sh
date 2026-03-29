@@ -53,6 +53,12 @@ usage() {
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
                          --target <openssl_3_1_2|openssl_3_6_0|server|ckms>  Choose SBOM target (default: all)
+                         --variant <fips|non-fips>    Variant filter (only with --target server|ckms)
+                         --link <static|dynamic>      Link filter (only with --target server|ckms)
+                         --retrieve                   Download SBOMs from package.cosmian.com instead of generating
+                         --branch <branch>            Remote branch/tag to retrieve (default: inferred from git)
+                                                      Tag example:    '5.16.2'
+                                                      Branch example: 'last_build/develop'
     update-hashes
            Update expected hashes for current platform (release build mandatory)
 
@@ -101,6 +107,9 @@ usage() {
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
+    $0 sbom --retrieve                      # Retrieve all server+ckms SBOMs for current git branch
+    $0 sbom --retrieve --branch 5.16.2      # Retrieve SBOMs for a specific release tag
+    $0 sbom --retrieve --target server --variant fips --link static  # Retrieve a specific SBOM
     $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
 EOF
   exit 1
@@ -588,15 +597,102 @@ test_command() {
         --keep PLAYWRIGHT_WORKERS"
 }
 
+# Download pre-generated SBOMs from package.cosmian.com.
+# Usage: sbom_retrieve <branch> <target> <variant> <link>
+# - branch: remote path segment (tag name or 'last_build/<branch>'); empty = auto-detect
+# - target: 'server', 'ckms', or '' (both)
+# - variant/link: optional filters; empty = all combinations
+sbom_retrieve() {
+  local branch="${1:-}"
+  local target="${2:-}"
+  local variant="${3:-}"
+  local link="${4:-}"
+
+  # Auto-detect branch if not supplied
+  if [ -z "$branch" ]; then
+    if [ -n "${GITHUB_REF:-}" ] && [[ "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
+      branch="${GITHUB_REF_NAME}"
+    elif [ -n "${GITHUB_HEAD_REF:-}" ]; then
+      branch="last_build/${GITHUB_HEAD_REF}"
+    elif [ -n "${GITHUB_REF_NAME:-}" ]; then
+      branch="last_build/${GITHUB_REF_NAME}"
+    else
+      local git_branch
+      git_branch=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "develop")
+      branch="last_build/${git_branch}"
+    fi
+  fi
+
+  local base_url="https://package.cosmian.com/kms/${branch}/sbom"
+  local local_base="$REPO_ROOT/sbom"
+
+  # Determine targets to download
+  local -a targets_list=()
+  if [ -n "$target" ]; then
+    targets_list=("$target")
+  else
+    targets_list=("server" "ckms")
+  fi
+
+  # Determine variant/link combinations
+  local -a variants_list=()
+  local -a links_list=()
+  if [ -n "$variant" ]; then
+    variants_list=("$variant")
+  else
+    variants_list=("fips" "non-fips")
+  fi
+  if [ -n "$link" ]; then
+    links_list=("$link")
+  else
+    links_list=("static" "dynamic")
+  fi
+
+  local -a files=("bom.cdx.json" "bom.spdx.json" "meta.json")
+
+  echo "Retrieving SBOMs from ${base_url} ..."
+  local any_ok=0
+  for t in "${targets_list[@]}"; do
+    for v in "${variants_list[@]}"; do
+      for l in "${links_list[@]}"; do
+        local remote_dir="${base_url}/${t}/${v}/${l}"
+        local local_dir="${local_base}/${t}/${v}/${l}"
+        mkdir -p "$local_dir"
+        echo ">>> ${t}/${v}/${l}:"
+        for f in "${files[@]}"; do
+          if curl --fail --silent --show-error \
+              --output "${local_dir}/${f}" \
+              "${remote_dir}/${f}" 2>/dev/null; then
+            echo "    ${f} ✓"
+            any_ok=1
+          else
+            echo "    ${f} — not available" >&2
+          fi
+        done
+      done
+    done
+  done
+
+  if [ "$any_ok" -eq 0 ]; then
+    echo "Error: No SBOM files could be retrieved from ${base_url}" >&2
+    echo "       Check that the branch/tag exists and was built with SBOM generation enabled." >&2
+    exit 1
+  fi
+
+  echo "✓ SBOMs retrieved under ${local_base}"
+}
+
 sbom_command() {
   # SBOM generation using sbomnix - runs OUTSIDE nix-shell
   # sbomnix needs direct access to nix-store and nix commands
   SCRIPT="$REPO_ROOT/.github/scripts/sbom/generate_sbom.sh"
 
-  # Parse arguments to check if --target/--variant/--link are specified.
+  # Parse arguments to check if --target/--variant/--link/--retrieve/--branch are specified.
   local target=""
   local variant=""
   local link=""
+  local retrieve=0
+  local branch=""
   local args=()
   local -a unknown_args=()
   while [ $# -gt 0 ]; do
@@ -616,6 +712,14 @@ sbom_command() {
       args+=("$1" "$2")
       shift 2
       ;;
+    --retrieve)
+      retrieve=1
+      shift
+      ;;
+    --branch)
+      branch="${2:-}"
+      shift 2
+      ;;
     -h | --help)
       args+=("$1")
       shift
@@ -630,8 +734,14 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
     exit 1
+  fi
+
+  # --retrieve mode: download files from package.cosmian.com and exit.
+  if [ "$retrieve" -eq 1 ]; then
+    sbom_retrieve "$branch" "$target" "$variant" "$link"
+    exit 0
   fi
 
   # Avoid confusing no-ops: --variant/--link are meaningful only for --target server or --target ckms.

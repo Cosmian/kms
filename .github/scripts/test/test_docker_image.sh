@@ -153,8 +153,8 @@ echo "Running example compose test ($COMPOSE_FILE:kms-example)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-example || true
 
 # === Load balancer shutdown behavior test ===
-echo "Running load balancer shutdown test (.github/scripts/test_lb_kms_shutdown.sh)"
-bash .github/scripts/test_lb_kms_shutdown.sh
+echo "Running load balancer shutdown test (.github/scripts/test/test_lb_kms_shutdown.sh)"
+bash .github/scripts/test/test_lb_kms_shutdown.sh
 
 # === Oracle TDE HSM test ===
 # Run Oracle Database + KMS side by side and verify that Oracle can use
