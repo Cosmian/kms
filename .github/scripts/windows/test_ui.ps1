@@ -20,7 +20,7 @@
 $ErrorActionPreference = "Stop"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
-$RepoRoot = (Get-Item (Join-Path (Join-Path $PSScriptRoot "..") "..")).FullName
+$RepoRoot = (Get-Item (Join-Path (Join-Path (Join-Path $PSScriptRoot "..") "..") "..")).FullName
 $WasmCrate = Join-Path (Join-Path $RepoRoot "crate") "wasm"
 $UiDir = Join-Path $RepoRoot "ui"
 
