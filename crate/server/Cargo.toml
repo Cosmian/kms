@@ -115,6 +115,7 @@ utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.18.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
+tower = "0.5.3"
 
 [dev-dependencies]
 actix-http = { workspace = true }

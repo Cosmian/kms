@@ -22,7 +22,6 @@ use actix_web::{
     error::InternalError,
     http::StatusCode,
 };
-use chrono::Duration;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
@@ -32,9 +31,13 @@ use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
 };
+use scratchstack_aws_signature::principal::{Principal, User};
 use scratchstack_aws_signature::{
-    Request as Sigv4Request, SigningKey, SigningKeyKind::KSecret, sigv4_verify,
+    GetSigningKeyRequest, GetSigningKeyResponse, KSecretKey, NO_ADDITIONAL_SIGNED_HEADERS,
+    SignatureOptions, service_for_signing_key_fn, sigv4_validate_request,
 };
+use std::str::FromStr;
+use tower::BoxError;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -160,42 +163,53 @@ where
                 .await;
 
             let http_request = to_http_request(&actix_web_http_request, &body_as_bytes)?;
-            let (parts, body) = http_request.into_parts();
-            // let body_as_bytes: Option<Bytes> = hyper::body::to_bytes(body).await.ok();
-            // let body_as_vec_u8: Option<Vec<u8>> =
-            //     body_as_bytes.as_ref().map(|bytes| bytes.to_vec());
-            let sigv4_req = Sigv4Request::from_http_request_parts(&parts, Some(body));
-            let gsk_req = sigv4_req
-                .to_get_signing_key_request(
-                    KSecret,
-                    params.region.as_str(),
-                    params.service.as_str(),
-                )
-                .map_err(|signature_err| {
-                    actix_web::error::ErrorUnauthorized(signature_err.to_string())
-                })?;
 
-            if access_key_id != gsk_req.access_key {
-                let err: Self::Error = XksErrorReply {
-                    errorName: XksErrorName::AuthenticationFailedException,
-                    errorMessage: Some(format!("Access key id {} not found", gsk_req.access_key)),
+            // Build a one-shot signing-key service using the 0.11 API.
+            // service_for_signing_key_fn wraps an async fn into the tower::Service
+            // required by sigv4_validate_request, so we don't have to implement
+            // the Service trait manually.
+            let expected_key_id = access_key_id.clone();
+            let secret = access_key.clone();
+            let get_signing_key = move |req: GetSigningKeyRequest| {
+                let expected_key_id = expected_key_id.clone();
+                let secret = secret.clone();
+                async move {
+                    if req.access_key() != expected_key_id {
+                        return Err::<GetSigningKeyResponse, BoxError>(
+                            format!("Access key id {} not found", req.access_key()).into(),
+                        );
+                    }
+                    let k_secret = KSecretKey::from_str(&secret)
+                        .map_err(|e| -> BoxError { e.to_string().into() })?;
+                    let k_signing =
+                        k_secret.to_ksigning(req.request_date(), req.region(), req.service());
+                    // A minimal principal is required by the response builder;
+                    // the actual identity check is the access-key comparison above.
+                    let principal = Principal::from(vec![
+                        User::new("aws", "000000000000", "/", "xks-service")
+                            .map_err(|e| -> BoxError { e.to_string().into() })?
+                            .into(),
+                    ]);
+                    GetSigningKeyResponse::builder()
+                        .principal(principal)
+                        .signing_key(k_signing)
+                        .build()
+                        .map_err(|e| -> BoxError { e.to_string().into() })
                 }
-                .into();
-                return Err(err);
-            }
-
-            let signing_key = SigningKey {
-                kind: KSecret,
-                key: access_key.as_bytes().to_vec(),
             };
-            let allowed_mismatch = Some(Duration::minutes(5));
-            if let Err(signature_error) = sigv4_verify(
-                &sigv4_req,
-                &signing_key,
-                allowed_mismatch,
+            let mut svc = service_for_signing_key_fn(get_signing_key);
+
+            if let Err(signature_error) = sigv4_validate_request(
+                http_request,
                 params.region.as_str(),
                 params.service.as_str(),
-            ) {
+                &mut svc,
+                chrono::Utc::now(),
+                &NO_ADDITIONAL_SIGNED_HEADERS,
+                SignatureOptions::default(),
+            )
+            .await
+            {
                 tracing::warn!("SigV4 failure: {signature_error}");
                 let err: Self::Error = XksErrorReply {
                     errorName: XksErrorName::AuthenticationFailedException,
