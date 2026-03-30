@@ -252,6 +252,8 @@ bash .github/scripts/nix.sh docker --variant non-fips --load --test
 
 **Stack**: React 19 + Vite 7 + Ant Design 5 + Tailwind CSS 4 + Playwright + pnpm
 
+The UI must be seen as a mirror of the `ckms` CLI tool. All features added to the `ckms` CLI tool or development must be synced on the Web UI.
+
 ### Running UI tests
 
 ```bash

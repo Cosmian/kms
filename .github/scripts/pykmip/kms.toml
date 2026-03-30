@@ -1,5 +1,5 @@
 ## Usage
-## COSMIAN_KMS_CONF=/Users/bgrieder/Desktop/kms.toml cargo run --bin cosmian_kms
+## COSMIAN_KMS_CONF=/Users/jdoe/Desktop/kms.toml cargo run --bin cosmian_kms
 
 # The default username to use when no authentication method is provided.
 default_username = "admin"
