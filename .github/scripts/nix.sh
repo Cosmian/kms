@@ -532,7 +532,7 @@ test_command() {
       shift
       ;;
     crypt2pay)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_crypt2pay.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_crypt2pay.sh"
       shift
       ;;
     *)
