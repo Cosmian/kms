@@ -9,6 +9,7 @@ if ! command -v openvpn >/dev/null 2>&1; then
     sudo apt-get install -y openvpn
 fi
 
+export OVPN_CONF="${OVPN_CONF}"
 sudo openvpn --config "$OVPN_CONF" --daemon
 
 sleep 10
