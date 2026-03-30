@@ -1,0 +1,67 @@
+---
+name: Benchmark Regression
+
+on:
+  # Run on demand from the GitHub UI (useful for one-off checks)
+  workflow_dispatch:
+    inputs:
+      bench_speed:
+        description: Benchmark speed mode (sanity|quick|normal)
+        required: false
+        default: quick
+      regression_threshold:
+        description: Maximum average regression in % before failing
+        required: false
+        default: '10'
+      variant:
+        description: Build variant (fips|non-fips)
+        required: false
+        default: non-fips
+
+  # Run weekly on Sunday at 02:00 UTC against the default branch
+  schedule:
+    - cron: 0 2 * * 0
+
+jobs:
+  benchmark-regression:
+    name: Benchmark Regression – ${{ inputs.variant || 'non-fips' }}
+    # Benchmarks require a stable, dedicated machine to produce comparable results.
+    # See https://github.com/Cosmian/kms/issues/776
+    runs-on: self-hosted
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Install dependencies (jq, bc)
+        run: |
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq jq bc curl
+          elif command -v brew >/dev/null 2>&1; then
+            brew install jq bc
+          fi
+
+      - name: Run benchmark regression analysis
+        env:
+          VARIANT: ${{ inputs.variant || 'non-fips' }}
+          BENCH_SPEED: ${{ inputs.bench_speed || 'quick' }}
+          REGRESSION_THRESHOLD: ${{ inputs.regression_threshold || '10' }}
+        run: |
+          bash .github/scripts/benchmarks/benchmark_regression.sh \
+            --variant "$VARIANT"
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ inputs.variant || 'non-fips' }}-${{ github.run_id }}
+          path: |
+            target/criterion/benchmarks.json
+          retention-days: 90

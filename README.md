@@ -11,29 +11,14 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 The **Cosmian KMS** presents some unique features, such as:
 
-- large-scale encryption, decryption of data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
-- support for signature at scale, including the Bitcoin curve secp256k1 (non-FIPS mode)
-- the ability to confidentially run in a public cloud, or any zero-trust environment, using Cosmian VM. See our cloud-ready confidential KMS on the [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
-- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
-- out-of-the-box support of [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
-- out-of-the-box support of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- out-of-the-box support of [AWS External Key Store (XKS) v2](./documentation/docs/aws/xks.md) — Cosmian KMS acts as an XKS proxy; key material never enters AWS
-- out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
-- out-of-the-box support of [Microsoft SQL Server External (EKM)](./documentation/docs/ms_sql_server.md) — Cosmian KMS acts as a SQL Server EKM provider backend over mutual TLS
-- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
-- [Synology DSM](./documentation/docs/synology_dsm.md) NAS volume encryption via KMIP
-- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
-- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
-- [MongoDB](./documentation/docs/mongodb.md)
-- [Mysql Enterprise](./documentation/docs/mysql.md)
-- Oracle DB [TDE support](https://docs.cosmian.com/kms_clients/pkcs11/oracle/tde/)
-- [Percona Postgresql DB](./documentation/docs/percona.md)
-- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
-- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/kms_clients/)
-- a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
-- integrated with [OpenTelemetry](https://opentelemetry.io/)
+- **Use cases**: [large-scale encryption/decryption](./documentation/docs/use_cases/encrypting_and_decrypting_at_scale.md) and [client-side/application-level encryption](./documentation/docs/use_cases/client_side_and_application_level_encryption.md), with support for signature at scale (including secp256k1 in non-FIPS mode).
+- **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/aws/xks.md), [Azure EKM](./documentation/docs/integrations/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/microsoft_365_double_key_encryption_dke/index.md).
+- **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md), and [Snowflake Native App](./documentation/docs/integrations/databases/snowflake_native_app/index.md).
+- **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/synology_dsm.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/user_defined_function_for_pyspark_databricks_in_python/index.md).
+- **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), and [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md).
+- **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), and [OpenTelemetry integration](./documentation/docs/configuration/logging.md).
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -126,6 +111,19 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 [TOC]
 
+## 🔐 HSM support
+
+| HSM                                        | Status |
+| ------------------------------------------ | ------ |
+| Proteccio (Bull Atos)                      | ✅      |
+| Crypt2pay                                  | ✅      |
+| Utimaco SecurityServer                     | ✅      |
+| CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
+| SoftHSM2 (testing)                         | ✅      |
+| AWS CloudHSM                               | 🚧      |
+| Azure Dedicated HSM                        | 🚧      |
+| GCP Cloud HSM                              | 🚧      |
+
 ## 🔗 Integrations
 
 > Legend: ✅ implemented · 🚧 not yet implemented
@@ -189,37 +187,29 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 ---
 
-### 🗄️ Database & Storage Integrations
+### 🗄️ Database Integrations
+
+| Product            | Integration                                               | Status |
+| ------------------ | --------------------------------------------------------- | ------ |
+| Oracle DB          | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)) | ✅      |
+| MongoDB            | CSFLE / Queryable Encryption via KMIP                     | ✅      |
+| MySQL Enterprise   | TDE via KMIP ([docs](./documentation/docs/mysql.md))      | ✅      |
+| Percona PostgreSQL | TDE via KMIP ([docs](./documentation/docs/percona.md))    | ✅      |
+| HashCorp Vault     | Key transit / secrets engine via KMIP                     | 🚧      |
+| CockroachDB        | TDE via KMIP                                              | 🚧      |
+
+### 💾 Storage & Data Platform Integrations
 
 | Product                | Integration                                                                                          | Status |
 | ---------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
-| Oracle DB              | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/))                    | ✅      |
-| MongoDB                | CSFLE / Queryable Encryption via KMIP                                                                | ✅      |
-| MySQL Enterprise       | TDE via KMIP ([docs](./documentation/docs/mysql.md))                                                 | ✅      |
-| Percona PostgreSQL     | TDE via KMIP ([docs](./documentation/docs/percona.md))                                               | ✅      |
 | VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/vcenter.md))                                         | ✅      |
 | VeraCrypt              | Virtual disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)) | ✅      |
 | LUKS                   | Linux disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/))        | ✅      |
 | Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/synology_dsm.md))                         | ✅      |
 | Snowflake              | UDF-based column encryption ([docs](./documentation/docs/snowflake/index.md))                        | ✅      |
 | Big Data / Python UDFs | Bulk encrypt/decrypt ([docs](./documentation/docs/python_udf/index.md))                              | ✅      |
-| HashCorp Vault        | Key transit / secrets engine via KMIP                                                                | 🚧      |
-| CockroachDB            | TDE via KMIP                                                                                         | 🚧      |
 
 ---
-
-### 🔐 HSM Integrations
-
-| HSM                                        | Status |
-| ------------------------------------------ | ------ |
-| Proteccio (Bull Atos)                      | ✅      |
-| Crypt2pay                                  | ✅      |
-| Utimaco SecurityServer                     | ✅      |
-| CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
-| SoftHSM2 (testing)                         | ✅      |
-| AWS CloudHSM                               | 🚧      |
-| Azure Dedicated HSM                        | 🚧      |
-| GCP Cloud HSM                              | 🚧      |
 
 ---
 

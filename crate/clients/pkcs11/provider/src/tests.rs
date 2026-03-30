@@ -8,8 +8,11 @@ use ckms::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, PrivateKey},
-            kmip_types::{CryptographicAlgorithm, KeyFormatType},
-            requests::{self, create_symmetric_key_kmip_object, import_object_request},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+            requests::{
+                self, create_ec_key_pair_request, create_rsa_key_pair_request,
+                create_symmetric_key_kmip_object, import_object_request,
+            },
         },
         cosmian_kms_client::KmsClient,
     },
@@ -22,7 +25,7 @@ use cosmian_pkcs11_module::{
         C_Initialize, C_OpenSession, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::Backend,
+    traits::{Backend, SignatureAlgorithm},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_ULONG, CKA_LABEL, CKF_SERIAL_SESSION,
@@ -33,7 +36,7 @@ use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     C_GetFunctionList,
-    backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, CliBackend},
+    backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
 };
@@ -227,14 +230,23 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
     // labels.sort();
     // assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
 
-    // RSA certificate
+    // RSA certificate — at least one from the P12 imported by initialize_backend();
+    // other tests running against the shared server may add more.
     let certificates = backend.find_all_certificates()?;
-    assert_eq!(certificates.len(), 1);
-    // assert_eq!(certificates[0].label(), "luks_volume");
+    assert!(
+        !certificates.is_empty(),
+        "expected at least 1 certificate from the imported P12, got {}",
+        certificates.len()
+    );
 
-    // RSA private key
+    // Private key from the imported P12, plus any SSH keys added by concurrently
+    // running tests that share the same test-server instance.
     let private_keys = backend.find_all_private_keys()?;
-    assert_eq!(private_keys.len(), 1);
+    assert!(
+        !private_keys.is_empty(),
+        "expected at least 1 private key from the imported P12, got {}",
+        private_keys.len()
+    );
 
     Ok(())
 }
@@ -325,5 +337,160 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
 
     assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+// ── SSH integration tests ────────────────────────────────────────────────────
+
+async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (String, String) {
+    let req = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        [COSMIAN_PKCS11_SSH_KEY_TAG],
+        bits,
+        false,
+        None,
+    )
+    .expect("failed to build RSA key pair request");
+    let resp = kms_rest_client
+        .create_key_pair(req)
+        .await
+        .expect("failed to create RSA SSH key pair");
+    (
+        resp.private_key_unique_identifier.to_string(),
+        resp.public_key_unique_identifier.to_string(),
+    )
+}
+
+async fn create_ec_ssh_keypair(
+    kms_rest_client: &KmsClient,
+    curve: RecommendedCurve,
+) -> (String, String) {
+    let req = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        [COSMIAN_PKCS11_SSH_KEY_TAG],
+        curve,
+        false,
+        None,
+    )
+    .expect("failed to build EC key pair request");
+    let resp = kms_rest_client
+        .create_key_pair(req)
+        .await
+        .expect("failed to create EC SSH key pair");
+    (
+        resp.private_key_unique_identifier.to_string(),
+        resp.public_key_unique_identifier.to_string(),
+    )
+}
+
+/// Test that a remote RSA-PKCS1v15-SHA256 signature can be produced for an
+/// `ssh-auth`-tagged RSA-2048 private key stored in the KMS.
+#[test]
+#[serial]
+fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, _pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id)
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let data = b"hello ssh world, this is a test message for RSA signing";
+    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::RsaPkcs1v15Sha256, data)?;
+    assert!(
+        !signature.is_empty(),
+        "RSA-2048 signature must not be empty"
+    );
+    // RSA-2048 produces a 256-byte signature
+    assert_eq!(signature.len(), 256, "RSA-2048 signature must be 256 bytes");
+    Ok(())
+}
+
+/// Test that a remote ECDSA P-256 signature can be produced for an
+/// `ssh-auth`-tagged EC P-256 private key stored in the KMS.
+/// The data passed is a pre-computed 32-byte SHA-256 digest, matching
+/// the `CKM_ECDSA` behaviour used by OpenSSH.
+#[test]
+#[serial]
+fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, _pk_id) = create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::P256).await;
+        (ctx.owner_client_config.clone(), sk_id)
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
+    let prehash = [0x42_u8; 32];
+    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    assert!(
+        !signature.is_empty(),
+        "ECDSA P-256 signature must not be empty"
+    );
+    Ok(())
+}
+
+/// Test that SSH-tagged keypairs are returned by the backend's key-discovery
+/// methods. The test creates one RSA-2048 and one EC P-256 keypair under the
+/// `ssh-auth` tag and verifies that the corresponding key IDs appear in the
+/// results of `find_all_private_keys` and `find_all_public_keys`.
+#[test]
+#[serial]
+fn test_ssh_key_discovery() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, rsa_sk_id, rsa_pk_id, ec_sk_id, ec_pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (rsa_sk, rsa_pk) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        let (ec_sk, ec_pk) = create_ec_ssh_keypair(&kms_rest_client, RecommendedCurve::P256).await;
+        (
+            ctx.owner_client_config.clone(),
+            rsa_sk,
+            rsa_pk,
+            ec_sk,
+            ec_pk,
+        )
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    // Private key discovery
+    let private_keys = backend.find_all_private_keys()?;
+    let pk_ids: Vec<String> = private_keys
+        .iter()
+        .map(|k| k.remote_id().to_owned())
+        .collect();
+    assert!(
+        pk_ids.contains(&rsa_sk_id),
+        "RSA SSH private key {rsa_sk_id} not found in find_all_private_keys"
+    );
+    assert!(
+        pk_ids.contains(&ec_sk_id),
+        "EC SSH private key {ec_sk_id} not found in find_all_private_keys"
+    );
+
+    // Public key discovery
+    let public_keys = backend.find_all_public_keys()?;
+    let pub_ids: Vec<String> = public_keys
+        .iter()
+        .map(|k| k.remote_id().to_owned())
+        .collect();
+    assert!(
+        pub_ids.contains(&rsa_pk_id),
+        "RSA SSH public key {rsa_pk_id} not found in find_all_public_keys"
+    );
+    assert!(
+        pub_ids.contains(&ec_pk_id),
+        "EC SSH public key {ec_pk_id} not found in find_all_public_keys"
+    );
     Ok(())
 }

@@ -450,6 +450,14 @@ check_and_test_db() {
 kms_wait_ready() {
   local probe_url="$1" kms_pid="$2" log_file="$3" timeout="${4:-60}"
   local i
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required for kms_wait_ready but was not found in PATH." >&2
+    echo "Hint: run via nix.sh with WITH_CURL=1 so shell.nix injects pkgs.curl." >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+
   for i in $(seq 1 "$timeout"); do
     # Strip LD_PRELOAD so the FIPS bootstrap shim does not intercept curl's
     # own TLS stack, which would cause "ERR_OSSL_EVP_UNSUPPORTED" and make

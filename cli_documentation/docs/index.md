@@ -7,8 +7,8 @@ The KMS offers a high-performance, scalable solution with unique features such a
 
 Beyond the CLI interface, Cosmian also provides a **PKCS#11 library** (`libcosmian_pkcs11.so`) that enables seamless integration with existing cryptographic infrastructure. This library acts as a bridge between applications requiring PKCS#11 interfaces and the Cosmian KMS, providing:
 
-- **Database Encryption Support**: Integration with Oracle Database Transparent Data Encryption ([TDE](./pkcs11/oracle/tde.md)) for automatic encryption of data at rest, either through Oracle Key Vault or direct HSM communication
-- **Disk Encryption Support**: Compatible with popular disk encryption solutions including [VeraCrypt](./pkcs11/veracrypt.md), [LUKS](./pkcs11/luks.md), and [Cryhod](./pkcs11/cryhod.md) for protecting data on storage devices
+- **Database Encryption Support**: Integration with Oracle Database Transparent Data Encryption ([TDE](https://docs.cosmian.com/integrations/databases/oracle_tde/)) for automatic encryption of data at rest, either through Oracle Key Vault or direct HSM communication
+- **Disk Encryption Support**: Compatible with popular disk encryption solutions including [VeraCrypt](https://docs.cosmian.com/integrations/disk_encryption/veracrypt/), [LUKS](https://docs.cosmian.com/integrations/disk_encryption/luks/), and [Cryhod](https://docs.cosmian.com/integrations/disk_encryption/cryhod/) for protecting data on storage devices
 
 The PKCS#11 library enables organizations to leverage Cosmian's advanced cryptographic capabilities while maintaining compatibility with their existing security infrastructure and workflows.
 

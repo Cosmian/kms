@@ -1,16 +1,19 @@
 use std::collections::HashSet;
 
 use async_recursion::async_recursion;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, State},
-    kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Destroy, DestroyResponse},
-        kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Destroy, DestroyResponse},
+            kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
+        },
     },
+    cosmian_kms_interfaces::{CryptoOracle, KeyType},
 };
 use cosmian_logger::{debug, info, trace};
 use zeroize::Zeroizing;
@@ -39,6 +42,21 @@ pub(crate) async fn destroy_operation(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // Issue #763: for HSM keys, validate the key type via a PKCS#11 roundtrip
+    // before committing to destroy. This prevents accidentally destroying an AES
+    // key with `rsa keys destroy` (or vice versa) when both share the same label.
+    if let Some(expected_type) = &request.expected_object_type {
+        let uid_str = unique_identifier
+            .as_str()
+            .context("Destroy: unique identifier must be a string")?;
+        if let Some(prefix) = has_prefix(uid_str) {
+            let oracles = kms.crypto_oracles.read().await;
+            if let Some(oracle) = oracles.get(prefix) {
+                guard_hsm_key_type(uid_str, expected_type, oracle.as_ref()).await?;
+            }
+        }
+    }
 
     recursively_destroy_object(
         unique_identifier,
@@ -446,5 +464,47 @@ fn record_cascading_destroy_metrics(op_start: std::time::Instant, kms: &KMS, use
         metrics.record_kmip_operation("Destroy", user);
         let duration = op_start.elapsed().as_secs_f64();
         metrics.record_kmip_operation_duration("Destroy", duration);
+    }
+}
+
+/// Issue #763 — Guard an HSM destroy against a key-type mismatch.
+///
+/// Performs a single PKCS#11 `get_key_type` call on the HSM oracle and checks
+/// the result against `expected_type`.  If the types differ the destroy is
+/// rejected before any key material is touched.
+///
+/// Errors from the PKCS#11 call itself are logged as a trace warning and do
+/// **not** block the destroy; the subsequent `delete` will fail gracefully if
+/// the key is unreachable.  A missing key (`Ok(None)`) is also allowed through
+/// for the same reason.
+async fn guard_hsm_key_type(
+    uid: &str,
+    expected_type: &ObjectType,
+    oracle: &dyn CryptoOracle,
+) -> KResult<()> {
+    match oracle.get_key_type(uid).await {
+        Ok(Some(actual_key_type)) => {
+            let actual_object_type = match actual_key_type {
+                KeyType::AesKey => ObjectType::SymmetricKey,
+                KeyType::RsaPrivateKey => ObjectType::PrivateKey,
+                KeyType::RsaPublicKey => ObjectType::PublicKey,
+            };
+            if actual_object_type != *expected_type {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Object_Type,
+                    format!(
+                        "HSM key type mismatch for '{uid}': PKCS#11 reports this key is \
+                         {actual_object_type:?}, but the destroy command expected \
+                         {expected_type:?}. Use the correct subcommand to destroy this key."
+                    ),
+                ));
+            }
+            Ok(())
+        }
+        Ok(None) => Ok(()), // key not found in HSM — let the delete handle it
+        Err(e) => {
+            trace!("HSM get_key_type probe for '{uid}' failed: {e}; proceeding with destroy");
+            Ok(()) // don't block on PKCS#11 probe errors
+        }
     }
 }

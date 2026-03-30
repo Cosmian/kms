@@ -31,6 +31,8 @@ jobs:
           - azure_ekm
           - ui
           - gcp_cmek
+          - openssh
+          - luks
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -44,6 +46,12 @@ jobs:
             features: fips
           # azure_ekm is only run with non-fips
           - type: azure_ekm
+            features: fips
+          # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
+          - type: openssh
+            features: fips
+          # luks disk-encryption PKCS#11 tests force non-fips
+          - type: luks
             features: fips
 
     steps:

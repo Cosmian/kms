@@ -84,12 +84,18 @@ pub struct HsmConfig {
     ///   --hsm-slot 1 --hsm-password password1 \
     ///   --hsm-slot 2 --hsm-password password2
     /// ```
-    #[clap(verbatim_doc_comment, long)]
+    #[clap(verbatim_doc_comment, long, env = "KMS_HSM_SLOT")]
     pub hsm_slot: Vec<usize>,
 
     /// Password for the user logging in to the HSM Slot specified with `--hsm_slot`
     /// Provide an empty string for no password
-    /// see `--hsm_slot` for more information
-    #[clap(verbatim_doc_comment, long, requires = "hsm_slot")]
+    /// see `--hsm_slot` for more information.
+    /// Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        env = "KMS_HSM_PASSWORD",
+        requires = "hsm_slot"
+    )]
     pub hsm_password: Vec<String>,
 }

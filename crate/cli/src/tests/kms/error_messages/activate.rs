@@ -250,6 +250,7 @@ async fn test_activate_destroyed_key() -> KmsCliResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(key_id.clone())),
         remove: false,
         cascade: false,
+        expected_object_type: None,
     };
     client.destroy(destroy_request).await?;
 

@@ -195,6 +195,8 @@ OpenSSL can locate `legacy.so` / `fips.so` from the build tree.
 
 ## 7. CI overview
 
+As pre-requisite, do not skip or ignore tests
+
 ### Entry point
 
 All CI runs go through **Nix** via a single script:
@@ -347,9 +349,11 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 
 ## 11. Updating CHANGELOG.md
 
-For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` that will be committed (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention. Example:
+For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` that will be committed (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention (Features, Bug Fixes, Build, Refactor, Documentation, Testing, CI, Security). Under a CHANGELOG section, try regrouping by sub-feature or component if multiple entries relate to the same area (e.g. "KMIP operations", "Web UI", "PostgreSQL backend"). This helps maintain readability as the number of entries grows.
 
 In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
+
+Finally, add at bottom of the file if not already exists, the as many "Closes #xxx" it requires to automatically close the related issues when the PR is merged.
 
 ---
 
@@ -402,3 +406,21 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 | `gh` command hangs | Interactive pager opened | Use `GH_PAGER=cat gh ...` |
 | Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)` |
 | TypeScript unused-variable error in UI tests | `noUnusedLocals: true` in tsconfig | Remove the variable or prefix with `_` |
+
+---
+
+## 15. Documentation synchronization rules
+
+When making user-visible changes, keep documentation synchronized across these three sources:
+
+- `documentation/docs/` contains the detailed, canonical documentation.
+- `documentation/mkdocs.yml` is the navigation and structure source of truth.
+- `README.md` is a concise summary and entry point only.
+
+Required behavior for any AI agent:
+
+1. If a feature is added or behavior is changed, add or update detailed docs under `documentation/docs/`.
+2. Update `documentation/mkdocs.yml` so the new/updated page appears in the correct section.
+3. Update `README.md` with a brief summary (not full details) and links to the detailed docs.
+4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
+5. Avoid duplicating full documentation in `README.md`; keep README content short and navigational.

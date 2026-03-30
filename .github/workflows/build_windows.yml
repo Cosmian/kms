@@ -13,7 +13,7 @@ on:
 
 jobs:
   cargo-build:
-    name: windows-2022-non-fips
+    name: ${{ inputs.archive-name }} - 2022-non-fips
     runs-on: windows-2022
     steps:
       - name: Print ENV
@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows_ui.ps1
+          . .\.github\scripts\windows\windows_ui.ps1
           Build-UI -Variant non-fips
 
       - name: Copy UI to server directory
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\cargo_build.ps1
+          . .\.github\scripts\windows\cargo_build.ps1
           BuildProject
 
       - name: Rename installers to new convention
@@ -122,7 +122,7 @@ jobs:
 
   test:
     needs: cargo-build
-    name: windows-2022 - test on clean env. ${{ inputs.archive-name }}
+    name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
     steps:
       - uses: actions/download-artifact@v8
@@ -146,7 +146,7 @@ jobs:
           Write-Host "CLI installer present: $($cliExe.FullName)"
 
   publish-windows-release:
-    name: Publish Windows assets (self-hosted container)
+    name: ${{ inputs.archive-name }} - publish assets
     needs: cargo-build
     runs-on: [self-hosted, not-sgx]
     container:

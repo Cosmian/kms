@@ -34,6 +34,8 @@ usage() {
       google_cse             Run Google CSE tests (requires credentials)
       gcp_cmek               Run GCP CMEK wrapping key tests
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
+      openssh                Run OpenSSH PKCS#11 integration tests (non-FIPS)
+      luks                   Run LUKS disk-encryption PKCS#11 integration tests
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
@@ -51,6 +53,12 @@ usage() {
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
                          --target <openssl_3_1_2|openssl_3_6_0|server|ckms>  Choose SBOM target (default: all)
+                         --variant <fips|non-fips>    Variant filter (only with --target server|ckms)
+                         --link <static|dynamic>      Link filter (only with --target server|ckms)
+                         --retrieve                   Download SBOMs from package.cosmian.com instead of generating
+                         --branch <branch>            Remote branch/tag to retrieve (default: inferred from git)
+                                                      Tag example:    '5.16.2'
+                                                      Branch example: 'last_build/develop'
     update-hashes
            Update expected hashes for current platform (release build mandatory)
 
@@ -81,6 +89,8 @@ usage() {
     $0 test mariadb
     $0 --variant non-fips test redis
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
+    $0 --variant non-fips test openssh    # OpenSSH PKCS#11 integration tests
+    $0 test luks                          # LUKS disk-encryption PKCS#11 tests
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -97,6 +107,9 @@ usage() {
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
+    $0 sbom --retrieve                      # Retrieve all server+ckms SBOMs for current git branch
+    $0 sbom --retrieve --branch 5.16.2      # Retrieve SBOMs for a specific release tag
+    $0 sbom --retrieve --target server --variant fips --link static  # Retrieve a specific SBOM
     $0 update-hashes                        # Update (server+ui, fips+non-fips, static+dynamic)
 EOF
   exit 1
@@ -248,6 +261,17 @@ resolve_command_args() {
     export WITH_WGET=1
   fi
 
+  # OpenSSH and LUKS PKCS#11 tests require a non-FIPS nix-shell environment:
+  # PKCS12 parsing uses legacy KDF, and EdDSA/Covercrypt need the non-FIPS OpenSSL.
+  # Auto-select non-fips unless the caller already specified a variant explicitly.
+  if [ "$COMMAND" = "test" ] && { [ "${TEST_TYPE:-}" = "openssh" ] || [ "${TEST_TYPE:-}" = "luks" ]; }; then
+    if [ -z "${VARIANT_EXPLICIT:-}" ]; then
+      echo "Note: '${TEST_TYPE}' tests always require non-FIPS variant; switching to non-fips."
+      VARIANT="non-fips"
+      export VARIANT
+    fi
+  fi
+
   # Some integration tests (e.g., otel_export) require host-facing tools.
   # Provide them via nix-shell so the environment is self-contained.
   if [ "$COMMAND" = "test" ] && [ "${TEST_TYPE:-}" = "otel_export" ]; then
@@ -374,7 +398,7 @@ docker_command() {
   fi
 
   # Extract version from Cargo.toml
-  VERSION=$(bash "$REPO_ROOT/nix/scripts/get_version.sh")
+  VERSION=$(bash "$REPO_ROOT/.github/scripts/release/get_version.sh")
 
   OUT_LINK="$REPO_ROOT/result-docker-$DOCKER_VARIANT-$DOCKER_LINK"
   # Backward compatibility: environment variable still honored if set
@@ -401,7 +425,7 @@ docker_command() {
       if [ "$DOCKER_TEST" = true ]; then
         echo "Running Docker image tests..."
         export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}"
-        bash "$REPO_ROOT/.github/scripts/test_docker_image.sh"
+        bash "$REPO_ROOT/.github/scripts/test/test_docker_image.sh"
       fi
     else
       echo "Warning: docker CLI not found; skipping --load" >&2
@@ -416,43 +440,43 @@ docker_command() {
 test_command() {
   case "$TEST_TYPE" in
   all)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_all.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_all.sh"
     ;;
   aws_xks)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_xks.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_xks.sh"
     ;;
   wasm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_wasm.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_wasm.sh"
     ;;
   sqlite)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_sqlite.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_sqlite.sh"
     ;;
   mysql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_mysql.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_mysql.sh"
     ;;
   percona)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_percona.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_percona.sh"
     ;;
   otel_export)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_otel_export.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_otel_export.sh"
     ;;
   mariadb)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_maria.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_maria.sh"
     ;;
   psql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_psql.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_psql.sh"
     ;;
   redis)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_redis.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_redis.sh"
     ;;
   azure_ekm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_azure_ekm.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
     ;;
   gcp_cmek)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_gcp_cmek.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
     ;;
   google_cse)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_google_cse.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_google_cse.sh"
     # Validate required Google OAuth credentials before entering nix-shell
     for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
       TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
@@ -469,28 +493,34 @@ test_command() {
     done
     ;;
   pykmip)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_pykmip.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_pykmip.sh"
+    ;;
+  openssh)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_openssh.sh"
+    ;;
+  luks)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
     ;;
   ui)
-    SCRIPT="$REPO_ROOT/.github/scripts/test_ui.sh"
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
     ;;
   hsm)
     # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
     HSM_BACKEND="${1:-all}"
     case "$HSM_BACKEND" in
     all)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm.sh"
       ;;
     softhsm2)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_softhsm2.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_softhsm2.sh"
       shift
       ;;
     utimaco)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_utimaco.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_utimaco.sh"
       shift
       ;;
     proteccio)
-      SCRIPT="$REPO_ROOT/.github/scripts/test_hsm_proteccio.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
       shift
       ;;
     *)
@@ -502,7 +532,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -519,8 +549,17 @@ test_command() {
   if [ "$TEST_TYPE" = "pykmip" ]; then
     export WITH_PYTHON=1
   fi
-  # For Azure EKM tests, ensure curl is present inside the Nix shell in order to use it for emulating a friendly test HSM
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ]; then
+  # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
+  if [ "$TEST_TYPE" = "openssh" ]; then
+    export WITH_OPENSSH=1
+  fi
+  # For LUKS disk-encryption PKCS#11 tests, ensure opensc (pkcs11-tool) is present on Linux CI
+  if [ "$TEST_TYPE" = "luks" ]; then
+    export WITH_LUKS=1
+  fi
+  # Ensure curl is present for test types that use HTTP readiness probes
+  # or curl-based integration helpers inside the nix-shell.
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
     export WITH_CURL=1
   fi
 
@@ -549,6 +588,8 @@ test_command() {
         --keep WITH_DOCKER \
         --keep WITH_HSM \
         --keep WITH_PYTHON \
+        --keep WITH_OPENSSH \
+        --keep WITH_LUKS \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
@@ -556,15 +597,102 @@ test_command() {
         --keep PLAYWRIGHT_WORKERS"
 }
 
+# Download pre-generated SBOMs from package.cosmian.com.
+# Usage: sbom_retrieve <branch> <target> <variant> <link>
+# - branch: remote path segment (tag name or 'last_build/<branch>'); empty = auto-detect
+# - target: 'server', 'ckms', or '' (both)
+# - variant/link: optional filters; empty = all combinations
+sbom_retrieve() {
+  local branch="${1:-}"
+  local target="${2:-}"
+  local variant="${3:-}"
+  local link="${4:-}"
+
+  # Auto-detect branch if not supplied
+  if [ -z "$branch" ]; then
+    if [ -n "${GITHUB_REF:-}" ] && [[ "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
+      branch="${GITHUB_REF_NAME}"
+    elif [ -n "${GITHUB_HEAD_REF:-}" ]; then
+      branch="last_build/${GITHUB_HEAD_REF}"
+    elif [ -n "${GITHUB_REF_NAME:-}" ]; then
+      branch="last_build/${GITHUB_REF_NAME}"
+    else
+      local git_branch
+      git_branch=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "develop")
+      branch="last_build/${git_branch}"
+    fi
+  fi
+
+  local base_url="https://package.cosmian.com/kms/${branch}/sbom"
+  local local_base="$REPO_ROOT/sbom"
+
+  # Determine targets to download
+  local -a targets_list=()
+  if [ -n "$target" ]; then
+    targets_list=("$target")
+  else
+    targets_list=("server" "ckms")
+  fi
+
+  # Determine variant/link combinations
+  local -a variants_list=()
+  local -a links_list=()
+  if [ -n "$variant" ]; then
+    variants_list=("$variant")
+  else
+    variants_list=("fips" "non-fips")
+  fi
+  if [ -n "$link" ]; then
+    links_list=("$link")
+  else
+    links_list=("static" "dynamic")
+  fi
+
+  local -a files=("bom.cdx.json" "bom.spdx.json" "meta.json")
+
+  echo "Retrieving SBOMs from ${base_url} ..."
+  local any_ok=0
+  for t in "${targets_list[@]}"; do
+    for v in "${variants_list[@]}"; do
+      for l in "${links_list[@]}"; do
+        local remote_dir="${base_url}/${t}/${v}/${l}"
+        local local_dir="${local_base}/${t}/${v}/${l}"
+        mkdir -p "$local_dir"
+        echo ">>> ${t}/${v}/${l}:"
+        for f in "${files[@]}"; do
+          if curl --fail --silent --show-error \
+              --output "${local_dir}/${f}" \
+              "${remote_dir}/${f}" 2>/dev/null; then
+            echo "    ${f} ✓"
+            any_ok=1
+          else
+            echo "    ${f} — not available" >&2
+          fi
+        done
+      done
+    done
+  done
+
+  if [ "$any_ok" -eq 0 ]; then
+    echo "Error: No SBOM files could be retrieved from ${base_url}" >&2
+    echo "       Check that the branch/tag exists and was built with SBOM generation enabled." >&2
+    exit 1
+  fi
+
+  echo "✓ SBOMs retrieved under ${local_base}"
+}
+
 sbom_command() {
   # SBOM generation using sbomnix - runs OUTSIDE nix-shell
   # sbomnix needs direct access to nix-store and nix commands
-  SCRIPT="$REPO_ROOT/nix/scripts/generate_sbom.sh"
+  SCRIPT="$REPO_ROOT/.github/scripts/sbom/generate_sbom.sh"
 
-  # Parse arguments to check if --target/--variant/--link are specified.
+  # Parse arguments to check if --target/--variant/--link/--retrieve/--branch are specified.
   local target=""
   local variant=""
   local link=""
+  local retrieve=0
+  local branch=""
   local args=()
   local -a unknown_args=()
   while [ $# -gt 0 ]; do
@@ -584,6 +712,14 @@ sbom_command() {
       args+=("$1" "$2")
       shift 2
       ;;
+    --retrieve)
+      retrieve=1
+      shift
+      ;;
+    --branch)
+      branch="${2:-}"
+      shift 2
+      ;;
     -h | --help)
       args+=("$1")
       shift
@@ -598,8 +734,14 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
     exit 1
+  fi
+
+  # --retrieve mode: download files from package.cosmian.com and exit.
+  if [ "$retrieve" -eq 1 ]; then
+    sbom_retrieve "$branch" "$target" "$variant" "$link"
+    exit 0
   fi
 
   # Avoid confusing no-ops: --variant/--link are meaningful only for --target server or --target ckms.
@@ -721,7 +863,7 @@ sbom_command() {
 }
 
 update_hashes_command() {
-  SCRIPT="$REPO_ROOT/.github/scripts/update_hashes.sh"
+  SCRIPT="$REPO_ROOT/.github/scripts/release/update_hashes.sh"
   [ -f "$SCRIPT" ] || {
     echo "Missing $SCRIPT" >&2
     exit 1
@@ -756,7 +898,7 @@ package_command() {
       PACKAGE_TYPE="dmg"
     fi
     if [ "$PACKAGE_TYPE" = "dmg" ]; then
-      SCRIPT="$REPO_ROOT/nix/scripts/package_dmg.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/package/package_dmg.sh"
       KEEP_VARS=""
       echo "Note: Building DMG via nix-shell to allow macOS system tools (cargo-packager path)."
       # shellcheck disable=SC2086
@@ -811,7 +953,7 @@ package_command() {
         case "$TYPE" in
         deb)
           if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/nix/scripts/package_deb.sh"
+            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_deb.sh"
             [ -f "$SCRIPT_LINUX" ] || {
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
@@ -825,7 +967,7 @@ package_command() {
             echo "=========================================="
             DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
             if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_deb.sh"
+              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_deb.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$SMOKE_TEST_SCRIPT' '$DEB_FILE'" || {
                   echo "ERROR: Smoke test failed for $DEB_FILE" >&2
@@ -842,7 +984,7 @@ package_command() {
             echo "=========================================="
             CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
             if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_deb.sh"
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_deb.sh"
               if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
                   echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
@@ -861,7 +1003,7 @@ package_command() {
           ;;
         rpm)
           if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/nix/scripts/package_rpm.sh"
+            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_rpm.sh"
             [ -f "$SCRIPT_LINUX" ] || {
               echo "Missing $SCRIPT_LINUX" >&2
               exit 1
@@ -875,7 +1017,7 @@ package_command() {
             echo "=========================================="
             RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_rpm.sh"
+              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_rpm.sh"
               if [ -f "$SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$SMOKE_TEST_SCRIPT' '$RPM_FILE'" || {
                   echo "ERROR: Smoke test failed for $RPM_FILE" >&2
@@ -892,7 +1034,7 @@ package_command() {
             echo "=========================================="
             CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
             if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_cli_rpm.sh"
+              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_rpm.sh"
               if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
                 nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
                   echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
@@ -927,7 +1069,7 @@ package_command() {
           echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
 
           DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
-          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/smoke_test_dmg.sh"
+          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_dmg.sh"
           if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
             if [ -f "$SMOKE_TEST_SCRIPT" ]; then
               echo "Running DMG smoke test for $DMG_FILE..."
@@ -1008,6 +1150,13 @@ run_in_nix_shell() {
   if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "hsm" ] || [ "$TEST_TYPE" = "proteccio" ]; }; then
     USE_PURE=false
     echo "Note: Running HSM tests without --pure to access host utilities (e.g., sudo)."
+  fi
+
+  # On macOS, OpenSSH and LUKS PKCS#11 tests need system ssh-keygen and tools.
+  # On Linux CI they use pkgs.openssh / pkgs.opensc from shell.nix (WITH_OPENSSH / WITH_LUKS).
+  if [ "$COMMAND" = "test" ] && { [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; } && [ "$(uname)" = "Darwin" ]; then
+    USE_PURE=false
+    echo "Note: Running ${TEST_TYPE} tests without --pure on macOS to access system tools."
   fi
 
   # On macOS, DMG packaging requires system utilities (hdiutil, sw_vers) not available in pure mode

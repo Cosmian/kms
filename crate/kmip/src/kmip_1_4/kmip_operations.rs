@@ -1103,6 +1103,7 @@ impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
             )),
             remove: false,
             cascade: false,
+            expected_object_type: None,
         }
     }
 }

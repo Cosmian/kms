@@ -84,6 +84,10 @@ async fn test_hsm_all() {
         .unwrap();
     info!("HSM: server_side_unwrap (issue #762)");
     Box::pin(issues::test_server_side_unwrap()).await.unwrap();
+    info!("HSM: destroy_type_guard (issue #763)");
+    Box::pin(issues::test_hsm_destroy_type_guard())
+        .await
+        .unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
@@ -257,6 +261,7 @@ async fn delete_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         remove: true,
         cascade: true,
+        expected_object_type: None,
     };
     let response = send_message(
         kms.clone(),
@@ -346,8 +351,8 @@ async fn send_message(
             };
             if bi.result_status != ResultStatusEnumeration::Success {
                 return Err(KmsError::ServerError(format!(
-                    "operation failed: {:?}",
-                    bi.result_message
+                    "operation failed: reason={:?}, message={:?}",
+                    bi.result_reason, bi.result_message
                 )));
             }
             bi.response_payload

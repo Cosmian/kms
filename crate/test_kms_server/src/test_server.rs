@@ -882,7 +882,7 @@ pub fn build_server_params_full(
         socket_server: SocketServerConfig {
             // Start socket server when HTTPS and client cert auth are used
             socket_server_start: opts.tls.use_https() && opts.tls.use_known_ca_list(),
-            socket_server_port: opts.port + 100,
+            socket_server_port: opts.port.saturating_add(100),
             ..Default::default()
         },
         workspace: WorkspaceConfig {

@@ -206,6 +206,7 @@ impl UnwrapSecretDataOrKeyAction {
             unique_identifier: Some(UniqueIdentifier::TextString(tmp_id.clone())),
             remove: true,
             cascade: true,
+            expected_object_type: None,
         };
         kms_rest_client
             .destroy(destroy_request)

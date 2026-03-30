@@ -1,4 +1,4 @@
-use std::{path::PathBuf, vec};
+use std::{fmt, path::PathBuf, sync::OnceLock, vec};
 
 use ckms::{
     config::ClientConfig,
@@ -6,8 +6,8 @@ use ckms::{
         cosmian_kmip::{
             self,
             kmip_0::kmip_types::{
-                BlockCipherMode, CryptographicUsageMask, PaddingMethod, RevocationReason,
-                RevocationReasonCode, SecretDataType,
+                BlockCipherMode, CryptographicUsageMask, HashingAlgorithm, MaskGenerator,
+                PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
                 extra::VENDOR_ID_COSMIAN,
@@ -16,10 +16,11 @@ use ckms::{
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
                     Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Revoke,
+                    Sign,
                 },
                 kmip_types::{
-                    CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-                    RecommendedCurve, UniqueIdentifier,
+                    CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                    KeyFormatType, RecommendedCurve, UniqueIdentifier,
                 },
             },
         },
@@ -32,11 +33,77 @@ use ckms::{
 };
 use cosmian_logger::{debug, error, trace};
 use cosmian_pkcs11_module::traits::{
-    DecryptContext, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+    DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
+    SignatureAlgorithm,
 };
 use zeroize::Zeroizing;
 
 use crate::error::{Pkcs11Error, result::Pkcs11Result};
+
+/// Shared Tokio runtime — created once, reused for every blocking KMS call.
+/// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
+static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
+    tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+        // Runtime creation can only fail due to OS resource exhaustion; no
+        // recovery is possible, so terminate the process immediately.
+        eprintln!("FATAL: failed to create Tokio runtime: {e}");
+        std::process::abort()
+    })
+});
+
+/// Write-once, read-many holder for sensitive key material.
+///
+/// Replaces the `Arc<RwLock<Zeroizing<Vec<u8>>>>` + empty-vec sentinel pattern
+/// with a lock-free `OnceLock`, removing the poisonable mutex and clarifying
+/// the "set at most once" semantics.
+pub(crate) struct LazyKeyMaterial(OnceLock<Zeroizing<Vec<u8>>>);
+
+impl LazyKeyMaterial {
+    /// Unloaded — material will be fetched on first access.
+    pub(crate) const fn new() -> Self {
+        Self(OnceLock::new())
+    }
+
+    /// Pre-populated — material is already available.
+    pub(crate) fn preloaded(bytes: Zeroizing<Vec<u8>>) -> Self {
+        let cell = OnceLock::new();
+        // cell is freshly created, so set() always succeeds.
+        drop(cell.set(bytes));
+        Self(cell)
+    }
+
+    /// Return the key material, calling `fetch` exactly once if not yet loaded.
+    /// Thread-safe: concurrent calls are serialised by `OnceLock`; the loser's
+    /// fetched copy is dropped (and therefore zeroized) automatically.
+    pub(crate) fn get_or_fetch<E, F>(&self, fetch: F) -> Result<Zeroizing<Vec<u8>>, E>
+    where
+        F: FnOnce() -> Result<Zeroizing<Vec<u8>>, E>,
+    {
+        if let Some(bytes) = self.0.get() {
+            return Ok(bytes.clone());
+        }
+        let fetched = fetch()?;
+        // Clone before calling set() so we always have a value to return,
+        // regardless of whether this thread wins or loses a concurrent race.
+        let to_return = fetched.clone();
+        // Best-effort store: if another thread already filled the cell,
+        // set() returns Err(fetched) which is explicitly dropped (and zeroed).
+        drop(self.0.set(fetched));
+        Ok(to_return)
+    }
+}
+
+impl fmt::Debug for LazyKeyMaterial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("LazyKeyMaterial")
+            .field(&if self.0.get().is_some() {
+                "loaded"
+            } else {
+                "unloaded"
+            })
+            .finish()
+    }
+}
 
 /// A wrapper around a KMS KMIP object.
 #[allow(dead_code)]
@@ -56,7 +123,7 @@ pub(crate) fn locate_kms_objects(
     kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    tokio::runtime::Runtime::new()?.block_on(locate_kms_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
@@ -71,7 +138,7 @@ pub(crate) fn get_kms_objects(
     tags: &[String],
     key_format_type: Option<KeyFormatType>,
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_objects_async(
+    RUNTIME.block_on(get_kms_objects_async(
         kms_rest_client,
         tags,
         key_format_type,
@@ -86,8 +153,7 @@ pub(crate) fn get_kms_secret_data_objects(
     kms_rest_client: &KmsClient,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    tokio::runtime::Runtime::new()?
-        .block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
 }
 
 async fn get_kms_secret_data_objects_async(
@@ -174,7 +240,7 @@ pub(crate) fn get_kms_object(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_object_async(
+    RUNTIME.block_on(get_kms_object_async(
         kms_client,
         object_id_or_tags,
         key_format_type,
@@ -251,7 +317,7 @@ pub(crate) fn kms_import_symmetric_key(
     sensitive: bool,
     label: Option<&str>,
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(kms_import_symmetric_key_async(
+    RUNTIME.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
         algorithm,
         key_length,
@@ -355,7 +421,7 @@ pub(crate) fn kms_import_object(
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
-    tokio::runtime::Runtime::new()?.block_on(kms_import_object_async(kms_rest_client, label, data))
+    RUNTIME.block_on(kms_import_object_async(kms_rest_client, label, data))
 }
 
 pub(crate) async fn kms_import_object_async(
@@ -417,8 +483,7 @@ pub(crate) fn kms_revoke_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    tokio::runtime::Runtime::new()?
-        .block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
+    RUNTIME.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_revoke_object_async(
@@ -444,8 +509,7 @@ pub(crate) fn kms_destroy_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    tokio::runtime::Runtime::new()?
-        .block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
+    RUNTIME.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_destroy_object_async(
@@ -457,6 +521,7 @@ pub(crate) async fn kms_destroy_object_async(
             unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
             remove: false,
             cascade: true,
+            expected_object_type: None,
         })
         .await?;
 
@@ -468,7 +533,7 @@ pub(crate) fn kms_encrypt(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
-    tokio::runtime::Runtime::new()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
+    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data))
 }
 
 pub(crate) async fn kms_encrypt_async(
@@ -521,7 +586,7 @@ pub(crate) fn kms_decrypt(
     decrypt_ctx: &DecryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
-    tokio::runtime::Runtime::new()?.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
+    RUNTIME.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
 }
 
 pub(crate) async fn kms_decrypt_async(
@@ -563,11 +628,138 @@ pub(crate) async fn kms_decrypt_async(
     })
 }
 
+pub(crate) fn kms_sign(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    RUNTIME.block_on(kms_sign_async(
+        kms_rest_client,
+        unique_identifier,
+        algorithm,
+        data,
+    ))
+}
+
+/// Map a PKCS#11 `DigestType` to its KMIP `HashingAlgorithm` counterpart.
+const fn digest_type_to_hashing_algorithm(digest: &DigestType) -> HashingAlgorithm {
+    match digest {
+        DigestType::Sha1 => HashingAlgorithm::SHA1,
+        DigestType::Sha224 => HashingAlgorithm::SHA224,
+        DigestType::Sha256 => HashingAlgorithm::SHA256,
+        DigestType::Sha384 => HashingAlgorithm::SHA384,
+        DigestType::Sha512 => HashingAlgorithm::SHA512,
+    }
+}
+
+pub(crate) async fn kms_sign_async(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: &SignatureAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    // Map the PKCS#11 mechanism to KMIP CryptographicParameters.
+    // For CKM_ECDSA (SignatureAlgorithm::Ecdsa), the data is a pre-computed hash
+    // passed by OpenSSH — send it as `digested_data` to prevent double-hashing on
+    // the server side.
+    let (cryptographic_parameters, data_bytes, digested_data_bytes) = match algorithm {
+        SignatureAlgorithm::Ecdsa => {
+            // CKM_ECDSA: caller (OpenSSH) provides a pre-computed hash
+            let digital_signature_algorithm = match data.len() {
+                48 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA384),
+                64 => Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
+                _ => Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            };
+            let cp = CryptographicParameters {
+                digital_signature_algorithm,
+                ..Default::default()
+            };
+            (Some(cp), None, Some(data.to_vec()))
+        }
+        SignatureAlgorithm::EdDsa => {
+            // CKM_EDDSA: raw message, Ed25519/Ed448 handles hashing internally
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaRaw | SignatureAlgorithm::RsaPkcs1v15Raw => {
+            // CKM_RSA_PKCS: pass raw bytes, server uses stored key attributes
+            (None, Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha1 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA1WithRSAEncryption),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha256 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha384 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPkcs1v15Sha512 => {
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(
+                    DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+                ),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+        SignatureAlgorithm::RsaPss {
+            digest,
+            mask_generation_function,
+            salt_length,
+        } => {
+            let hashing_algorithm = Some(digest_type_to_hashing_algorithm(digest));
+            let mask_generator_hashing_algorithm =
+                Some(digest_type_to_hashing_algorithm(mask_generation_function));
+            let cp = CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                hashing_algorithm,
+                mask_generator: Some(MaskGenerator::MFG1),
+                mask_generator_hashing_algorithm,
+                salt_length: Some(i32::try_from(*salt_length)?),
+                ..Default::default()
+            };
+            (Some(cp), Some(data.to_vec()), None)
+        }
+    };
+
+    let sign_request = Sign {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters,
+        data: data_bytes.map(zeroize::Zeroizing::new),
+        digested_data: digested_data_bytes,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+
+    let response = kms_rest_client.sign(sign_request).await?;
+    response.signature_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("Sign response does not contain signature data".to_owned())
+    })
+}
+
 pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
 ) -> Pkcs11Result<Attributes> {
-    tokio::runtime::Runtime::new()?.block_on(get_kms_object_attributes_async(kms_client, object_id))
+    RUNTIME.block_on(get_kms_object_attributes_async(kms_client, object_id))
 }
 
 pub(crate) async fn get_kms_object_attributes_async(

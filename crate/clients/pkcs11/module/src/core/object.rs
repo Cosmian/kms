@@ -22,7 +22,10 @@ use std::sync::Arc;
 use cosmian_logger::debug;
 use log::error;
 use openssl::pkey::PKey;
-use p256::{elliptic_curve::sec1::ToEncodedPoint, pkcs8::der::Encode};
+use p256::{
+    elliptic_curve::sec1::ToEncodedPoint,
+    pkcs8::der::{Encode, asn1::OctetStringRef},
+};
 use pkcs11_sys::{
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CKC_X_509, CKO_CERTIFICATE, CKO_DATA,
     CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
@@ -51,6 +54,7 @@ pub enum ObjectType {
     Profile,
     PublicKey,
     DataObject,
+    SymmetricKey,
 }
 
 impl Object {
@@ -61,19 +65,20 @@ impl Object {
             Self::PrivateKey(_) => ObjectType::PrivateKey,
             Self::Profile(_) => ObjectType::Profile,
             Self::PublicKey(_) => ObjectType::PublicKey,
-            Self::DataObject(_) | Self::SymmetricKey(_) => ObjectType::DataObject,
+            Self::DataObject(_) => ObjectType::DataObject,
+            Self::SymmetricKey(_) => ObjectType::SymmetricKey,
         }
     }
 
     #[must_use]
     pub fn remote_id(&self) -> String {
         match self {
-            Self::Certificate(cert) => cert.remote_id(),
-            Self::PrivateKey(private_key) => private_key.remote_id(),
-            Self::SymmetricKey(symmetric_key) => symmetric_key.remote_id(),
+            Self::Certificate(cert) => cert.remote_id().to_owned(),
+            Self::PrivateKey(private_key) => private_key.remote_id().to_owned(),
+            Self::SymmetricKey(symmetric_key) => symmetric_key.remote_id().to_owned(),
             Self::Profile(id) => id.to_string(),
-            Self::PublicKey(public_key) => public_key.remote_id(),
-            Self::DataObject(data) => data.remote_id(),
+            Self::PublicKey(public_key) => public_key.remote_id().to_owned(),
+            Self::DataObject(data) => data.remote_id().to_owned(),
         }
     }
 
@@ -128,7 +133,7 @@ impl Object {
                 AttributeType::Encrypt => Some(Attribute::Encrypt(true)),
                 // Oracle TDE requires CKA_EXTRACTABLE=FALSE for master keys
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
-                AttributeType::Id => Some(Attribute::Id(sym_key.remote_id().into_bytes())),
+                AttributeType::Id => Some(Attribute::Id(sym_key.remote_id().as_bytes().to_vec())),
                 AttributeType::KeyType => {
                     Some(Attribute::KeyType(sym_key.algorithm().to_ck_key_type()))
                 }
@@ -169,7 +174,9 @@ impl Object {
                     }
                 }
                 AttributeType::Extractable => Some(Attribute::Extractable(false)),
-                AttributeType::Id => Some(Attribute::Id(private_key.remote_id().into_bytes())),
+                AttributeType::Id => {
+                    Some(Attribute::Id(private_key.remote_id().as_bytes().to_vec()))
+                }
                 AttributeType::KeyType => {
                     Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
                 }
@@ -258,22 +265,34 @@ impl Object {
             Self::PublicKey(pk) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_PUBLIC_KEY)),
                 AttributeType::Label => Some(Attribute::Label("Public Key".to_owned())),
-                AttributeType::Modulus => Some(Attribute::Modulus(pk.rsa_modulus()?)),
+                AttributeType::Modulus => {
+                    if !pk.algorithm().is_rsa() {
+                        return Ok(None);
+                    }
+                    Some(Attribute::Modulus(pk.rsa_modulus()?))
+                }
                 AttributeType::PublicExponent => {
+                    if !pk.algorithm().is_rsa() {
+                        return Ok(None);
+                    }
                     Some(Attribute::PublicExponent(pk.rsa_public_exponent()?))
                 }
                 AttributeType::KeyType => Some(Attribute::KeyType(pk.algorithm().to_ck_key_type())),
-                AttributeType::Id => Some(Attribute::Id(pk.remote_id().into_bytes())),
+                AttributeType::Id => Some(Attribute::Id(pk.remote_id().as_bytes().to_vec())),
                 AttributeType::EcPoint => {
                     if !pk.algorithm().is_ecc() {
                         return Ok(None);
                     }
-                    Some(Attribute::EcPoint(
-                        pk.ec_p256_public_key()?
-                            .to_encoded_point(false)
-                            .to_bytes()
-                            .to_vec(),
-                    ))
+                    let encoded = pk.ec_p256_public_key()?.to_encoded_point(false);
+                    let point_bytes = encoded.as_bytes();
+                    // PKCS#11 CKA_EC_POINT must be the DER-encoded ANSI X9.62 ECPoint
+                    // (i.e. the raw SEC1 point wrapped in a DER OCTET STRING).
+                    let der_point = OctetStringRef::new(point_bytes)
+                        .and_then(|s| s.to_der())
+                        .map_err(|e| {
+                            ModuleError::Cryptography(format!("EC point DER encoding failed: {e}"))
+                        })?;
+                    Some(Attribute::EcPoint(der_point))
                 }
                 AttributeType::EcParams => {
                     if !pk.algorithm().is_ecc() {
@@ -288,14 +307,14 @@ impl Object {
             },
             Self::DataObject(data) => match type_ {
                 AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
-                AttributeType::Id => Some(Attribute::Id(data.remote_id().into_bytes())),
+                AttributeType::Id => Some(Attribute::Id(data.remote_id().as_bytes().to_vec())),
                 // TODO(BGR) should we hold zeroizable values here ?
                 AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
                 AttributeType::Application => Some(Attribute::Application(data.application())),
                 AttributeType::Private => Some(Attribute::Private(true)),
                 // Return the actual object ID as label so callers (e.g. Oracle TDE) can
                 // match ORACLE.SECURITY.KM.ENCRYPTION.* labels during C_FindObjects filtering.
-                AttributeType::Label => Some(Attribute::Label(data.remote_id())),
+                AttributeType::Label => Some(Attribute::Label(data.remote_id().to_owned())),
                 _ => {
                     error!("Data object: type_ unimplemented: {type_:?}");
                     None

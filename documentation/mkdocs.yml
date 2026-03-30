@@ -61,102 +61,109 @@ nav:
   - Why use the Cosmian KMS: index.md
   - Quick start: quick_start.md
   - Use cases:
-      - Encrypting and decrypting at scale: encrypting_and_decrypting_at_scale.md
-      - Client-side and application-level encryption: client_side_and_application_level_encryption.md
+      - Encrypting and decrypting at scale: use_cases/encrypting_and_decrypting_at_scale.md
+      - Client-side and application-level encryption: use_cases/client_side_and_application_level_encryption.md
   - HSM support:
-      - Introduction: hsms/index.md
-      - HSM keys & operations: hsms/hsm_operations.md
-      - Trustway Crypt2pay: hsms/crypt2pay.md
-      - Trustway Proteccio: hsms/proteccio.md
-      - Utimaco General Purpose: hsms/utimaco.md
-      - Smart card HSM / Nitrokey HSM 2: hsms/sc_hsm.md
-      - SoftHSMv2: hsms/softhsm2.md
-      - Other HSMs: hsms/other_hsms.md
+      - Introduction: hsm_support/introduction/index.md
+      - HSM keys & operations: hsm_support/hsm_operations.md
+      - Trustway Crypt2pay: hsm_support/crypt2pay.md
+      - Trustway Proteccio: hsm_support/proteccio.md
+      - Utimaco General Purpose: hsm_support/utimaco.md
+      - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
+      - SoftHSMv2: hsm_support/softhsm2.md
+      - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
-      - API Endpoints: api.md
+      - API Endpoints: integrations/api.md
       - AWS:
-          - ECS Fargate: aws/fargate.md
-          - External Key Store (XKS): aws/xks.md
-          - BYOK (Bring Your Own Key): aws/byok.md
+          - ECS Fargate: integrations/aws/fargate.md
+          - External Key Store (XKS): integrations/aws/xks.md
+          - BYOK (Bring Your Own Key): integrations/aws/byok.md
       - Azure:
-          - BYOK (Bring Your Own Key): azure/byok/byok.md
-          - EKM (External Key Management): azure/ekm/ekm.md
+          - BYOK (Bring Your Own Key): integrations/azure/byok.md
+          - EKM (External Key Management): integrations/azure/ekm.md
       - Google GCP:
-          - CMEK (Customer Managed Encryption Keys): google_gcp/cmek.md
-          - CSEK (Customer Supplied Encryption Keys): google_gcp/csek.md
+          - CMEK (Customer Managed Encryption Keys): integrations/google_gcp/cmek.md
+          - CSEK (Customer Supplied Encryption Keys): integrations/google_gcp/csek.md
       - Google Workspace Client-Side Encryption (CSE):
-          - Getting started: google_cse/index.md
-          - Configuring the .well-known file: google_cse/configuring-the-well-known-file-and-server.md
-          - Generating Gmail keys: google_cse/configuring_gmail_cse.md
-          - Migrating existing Drive CSE elements: google_cse/migrating_drive.md
-          - Migrating existing email to Gmail CSE: google_cse/migrating_gmail.md
-      - Microsoft 365 Double Key Encryption (DKE): ms_dke/index.md
-      - Microsoft SQL Server External (EKM): ms_sql_server.md
-      - MongoDB: mongodb.md
-      - MySQL Enterprise Edition: mysql.md
-      - Postgresql Percona Database: percona.md
-      - PyKMIP: pykmip.md
-      - Synology DSM (NAS volume encryption): synology_dsm.md
-      - S/MIME Email encryption: pki/smime.md
-      - Snowflake Native App: snowflake/index.md
-      - User Defined Function for PySpark, Databricks,... in Python: python_udf/index.md
-      - VMware vCenter: vcenter.md
+          - Getting started: integrations/google_workspace_client_side_encryption_cse/getting_started/index.md
+          - Configuring the .well-known file: integrations/google_workspace_client_side_encryption_cse/configuring-the-well-known-file-and-server.md
+          - Generating Gmail keys: integrations/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
+          - Migrating existing Drive CSE elements: integrations/google_workspace_client_side_encryption_cse/migrating_drive.md
+          - Migrating existing email to Gmail CSE: integrations/google_workspace_client_side_encryption_cse/migrating_gmail.md
+      - Microsoft 365 Double Key Encryption (DKE): integrations/microsoft_365_double_key_encryption_dke/index.md
+      - Databases:
+          - MongoDB: integrations/databases/mongodb.md
+          - MySQL Enterprise Edition: integrations/databases/mysql.md
+          - PostgreSQL Percona Database: integrations/databases/percona.md
+          - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
+          - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
+          - Oracle Database TDE: integrations/databases/oracle_tde.md
+      - Disk encryption:
+          - Veracrypt: integrations/disk_encryption/veracrypt.md
+          - LUKS: integrations/disk_encryption/luks.md
+          - Cryhod: integrations/disk_encryption/cryhod.md
+      - OpenSSH: integrations/openssh.md
+      - PyKMIP: integrations/pykmip.md
+      - Synology DSM (NAS volume encryption): integrations/synology_dsm.md
+      - S/MIME Email encryption: integrations/smime.md
+      - User Defined Function for PySpark, Databricks,... in Python: integrations/user_defined_function_for_pyspark_databricks_in_python/index.md
+      - VMware vCenter: integrations/vcenter.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
       - High-availability: installation/high_availability_mode.md
   - Configuration:
-      - Configuration file: server_configuration_file.md
-      - Configuration examples: configurations.md
-      - Command line arguments: server_cli.md
-      - Databases: database.md
-      - Authenticating users to the server: authentication.md
-      - PKCE Authentication: pkce_authentication.md
-      - Authorizing users with access rights: authorization.md
-      - Enabling TLS: tls.md
-      - Logging and telemetry: logging.md
-      - Monitoring: monitoring-setup.md
-      - User interface: ui.md
-      - UI branding: ui_branding.md
-      - Custom OpenSSL build: openssl_override.md
+      - Configuration file: configuration/server_configuration_file.md
+      - Configuration examples: configuration/configurations.md
+      - Command line arguments: configuration/server_cli.md
+      - Databases: configuration/database.md
+      - Authenticating users to the server: configuration/authentication.md
+      - PKCE Authentication: configuration/pkce_authentication.md
+      - Authorizing users with access rights: configuration/authorization.md
+      - Enabling TLS: configuration/tls.md
+      - Logging and telemetry: configuration/logging.md
+      - Monitoring: configuration/monitoring-setup.md
+      - User interface: configuration/ui.md
+      - UI branding: configuration/ui_branding.md
+      - Custom OpenSSL build: configuration/openssl_override.md
   - Certifications and compliance:
-      - FIPS 140-3: fips.md
+      - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
-          - Algorithms: algorithms.md
-          - KMIP algorithm policy: kmip_policy.md
+          - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
+          - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
           - Benchmarks:
-              - Standard algorithms: benchmarks.md
-              - Load tests: benchmarks_load_tests.md
-              - DKE and Google CSE: google_dke_benchmarks.md
-      - Zeroization: zeroization.md
+              - Standard algorithms: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks.md
+              - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
+              - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
+      - Zeroization: certifications_and_compliance/zeroization.md
   - KMIP Support:
-      - Introduction: kmip/index.md
-      - KMIP support summary: kmip/support.md
-      - Supported Objects: kmip/objects.md
-      - Supported Formats: kmip/formats.md
-      - Objects Tagging: kmip/tagging.md
-      - Attributes Extensions: kmip/attributes.md
-      - The JSON TTLV KMIP API: kmip/json_ttlv_api.md
-      - Bulk mode with Messages: kmip/messages.md
-      - Operations: kmip/operations.md
+      - Introduction: kmip_support/introduction/index.md
+      - KMIP support summary: kmip_support/support.md
+      - Supported Objects: kmip_support/objects.md
+      - Supported Formats: kmip_support/formats.md
+      - Objects Tagging: kmip_support/tagging.md
+      - Attributes Extensions: kmip_support/attributes.md
+      - The JSON TTLV KMIP API: kmip_support/json_ttlv_api.md
+      - Bulk mode with Messages: kmip_support/messages.md
+      - Operations: kmip_support/operations.md
       - Attributes:
-          - Get: kmip/_get_attributes.md
-          - Set: kmip/_set_attributes.md
-          - Modify: kmip/_modify_attribute.md
-          - Delete: kmip/_delete_attributes.md
-      - Certify: kmip/_certify.md
-      - Create: kmip/_create.md
-      - Create Key Pair: kmip/_create_key_pair.md
-      - Decrypt: kmip/_decrypt.md
-      - Destroy: kmip/_destroy.md
-      - Encrypt: kmip/_encrypt.md
-      - Export: kmip/_export.md
-      - Get: kmip/_get.md
-      - Hash: kmip/_hash.md
-      - Import: kmip/_import.md
-      - Locate: kmip/_locate.md
-      - Mac: kmip/_mac.md
-      - Re-Key: kmip/_re-key.md
-      - Re-Key Key Pair: kmip/_re-key_key_pair.md
-      - Revoke: kmip/_revoke.md
-      - Sign: kmip/_signature.md
+          - Get: kmip_support/attributes/_get_attributes.md
+          - Set: kmip_support/attributes/_set_attributes.md
+          - Modify: kmip_support/attributes/_modify_attribute.md
+          - Delete: kmip_support/attributes/_delete_attributes.md
+      - Certify: kmip_support/_certify.md
+      - Create: kmip_support/_create.md
+      - Create Key Pair: kmip_support/_create_key_pair.md
+      - Decrypt: kmip_support/_decrypt.md
+      - Destroy: kmip_support/_destroy.md
+      - Encrypt: kmip_support/_encrypt.md
+      - Export: kmip_support/_export.md
+      - Get: kmip_support/_get.md
+      - Hash: kmip_support/_hash.md
+      - Import: kmip_support/_import.md
+      - Locate: kmip_support/_locate.md
+      - Mac: kmip_support/_mac.md
+      - Re-Key: kmip_support/_re-key.md
+      - Re-Key Key Pair: kmip_support/_re-key_key_pair.md
+      - Revoke: kmip_support/_revoke.md
+      - Sign: kmip_support/_signature.md
