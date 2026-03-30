@@ -10,7 +10,8 @@ if ! command -v openvpn >/dev/null 2>&1; then
 fi
 
 export OVPN_CONF="${OVPN_CONF}"
-sudo openvpn --config "$OVPN_CONF" --daemon
+echo "$OVPN_CONF" > /tmp/openvpn.ovpn
+sudo openvpn --config /tmp/openvpn.ovpn --daemon
 
 sleep 10
 
