@@ -11,6 +11,14 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 # shellcheck source=.github/scripts/common.sh
 source "$SCRIPT_DIR/../common.sh"
 
+# sbomnix version to use — fetched directly from GitHub via Nix flakes so it
+# is independent of the global nixpkgs pin.  v1.7.4 is the first version that
+# ships both --impure and --include-vulns for sbomnix.
+SBOMNIX_VERSION="v1.7.4"
+
+# Nix experimental features needed for `nix run` (flake-based tool invocation)
+export NIX_CONFIG="experimental-features = nix-command flakes"
+
 # Parse arguments
 # Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'.
 # - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
@@ -55,7 +63,6 @@ Generated files:
   - bom.cdx.json               CycloneDX SBOM (industry standard)
   - bom.spdx.json              SPDX SBOM (ISO/IEC 5962:2021)
   - sbom.csv                   CSV format for spreadsheet analysis
-  - vulns.csv                  Vulnerability scan results
   - graph.png                  Dependency graph visualization
   - meta.json                  Build metadata
 EOF
@@ -213,38 +220,23 @@ echo ""
 
 cd "$REPO_ROOT"
 
-# Helper function to run sbomnix commands via nix-shell if sbomnix is not available
-run_sbomnix() {
-  if command -v sbomnix >/dev/null 2>&1; then
-    # sbomnix is available in PATH, use it directly
-    sbomnix "$@"
+# Helper: run a tool from the sbomnix flake at the pinned version.
+# Falls back to the tool already in PATH (e.g. in a Nix devshell).
+_run_sbomnix_tool() {
+  local tool="$1"
+  shift
+  if command -v "$tool" >/dev/null 2>&1; then
+    "$tool" "$@"
   else
-    # Use nix-shell to provide sbomnix; pass pinned nixpkgs via -I so NIX_PATH is not required
-    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "sbomnix $*"
+    # Fetch sbomnix exactly at SBOMNIX_VERSION from its own flake on GitHub.
+    # --impure is required so that sbomnix can call nix evaluation at runtime.
+    nix run --impure "github:tiiuae/sbomnix/${SBOMNIX_VERSION}#${tool}" -- "$@"
   fi
 }
 
-# Helper function to run vulnxscan commands via nix-shell if not available
-run_vulnxscan() {
-  if command -v vulnxscan >/dev/null 2>&1; then
-    # vulnxscan is available in PATH, use it directly
-    vulnxscan "$@"
-  else
-    # Use nix-shell to provide vulnxscan (part of sbomnix package); pin nixpkgs to avoid NIX_PATH lookup
-    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "vulnxscan $*"
-  fi
-}
-
-# Helper function to run nixgraph commands via nix-shell if not available
-run_nixgraph() {
-  if command -v nixgraph >/dev/null 2>&1; then
-    # nixgraph is available in PATH, use it directly
-    nixgraph "$@"
-  else
-    # Use nix-shell to provide nixgraph (part of sbomnix package); pin nixpkgs to avoid NIX_PATH lookup
-    nix-shell -I "nixpkgs=${PIN_URL}" -p sbomnix --run "nixgraph $*"
-  fi
-}
+run_sbomnix()   { _run_sbomnix_tool sbomnix   "$@"; }
+run_vulnxscan() { _run_sbomnix_tool vulnxscan "$@"; }
+run_nixgraph()  { _run_sbomnix_tool nixgraph  "$@"; }
 
 # Check for build output
 echo "Checking build output..."
@@ -279,8 +271,6 @@ echo ""
 
 # Run vulnerability scan
 echo "Running vulnerability scan..."
-# Enable experimental Nix features required by vulnix
-export NIX_CONFIG="experimental-features = nix-command flakes"
 VULNXSCAN_LOG="$SBOM_WORKDIR/vulnxscan.log"
 # vulnxscan writes a large console report to stderr. Keep output quiet on success,
 # but show the log if the scan fails.
@@ -296,13 +286,6 @@ if ! (cd "$SBOM_WORKDIR" && run_vulnxscan "$NIX_RESULT" --out "$OUTPUT_DIR/vulns
 fi
 if [ -f "$OUTPUT_DIR/vulns.csv" ] && [ -s "$OUTPUT_DIR/vulns.csv" ]; then
   echo "  ✓ vulns.csv"
-
-  # Deduplicate CVE-like rows in-place so the final output stays a single CSV.
-  # This removes duplicates like DEBIAN-CVE-YYYY-NNNN / UBUNTU-CVE-YYYY-NNNN / CVE-YYYY-NNNN.
-  if command -v python3 >/dev/null 2>&1 && [ -f "$REPO_ROOT/.github/scripts/sbom/dedup_cves.py" ]; then
-    echo "Deduplicating CVE rows in vulns.csv..."
-    python3 "$REPO_ROOT/.github/scripts/sbom/dedup_cves.py" --csv "$OUTPUT_DIR/vulns.csv" --inplace --strategy debian || true
-  fi
 else
   echo "  ⚠ Vulnerability scan produced no results"
 fi
@@ -348,7 +331,7 @@ cat >"$OUTPUT_DIR/meta.json" <<EOF
     "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
     "generator": {
       "tool": "sbomnix",
-      "version": "$(sbomnix --version 2>&1 | head -1 | awk '{print $NF}' || echo "unknown")"
+      "version": "${SBOMNIX_VERSION}"
     }
   },
   "component_count": $(wc -l <"$OUTPUT_DIR/sbom.csv" 2>/dev/null | awk '{print $1-1}' || echo 0),

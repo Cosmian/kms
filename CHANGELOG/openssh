@@ -44,6 +44,12 @@ All notable changes to this project will be documented in this file.
 
 - **UI no-auth mode** (#739): The web UI `create` / `import` buttons are now enabled immediately in no-auth mode (`AuthMethod::None`); previously the async sequencing called the permissions API before the auth method was resolved, causing buttons to stay disabled.
 
+### 🔧 CI
+
+#### SBOM Generation
+
+- **Fix sbomnix version and arguments**: The global nixpkgs pin ships an older sbomnix that does not support `--impure` or `--include-vulns`, causing *"unrecognized arguments"* errors in CI. Pinned sbomnix to **v1.7.4** via its own GitHub flake (`github:tiiuae/sbomnix/v1.7.4`) — independent of the nixpkgs pin — so the supported flags are guaranteed. Restored `--impure --include-vulns` on all three `sbomnix` invocations, moved `NIX_CONFIG=nix-command flakes` export to script start (needed for `nix run`), and removed the now-unnecessary `dedup_cves.py` post-processing step.
+
 ### 📚 Documentation
 
 #### AI Agent Instructions
