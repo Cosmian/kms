@@ -69,7 +69,9 @@ ignore = [
   # { id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
-]# The path where the advisory databases are cloned/fetched into
+  { id = "RUSTSEC-2021-0153", reason = "scratchstack-aws-signature 0.11.3 (latest) depends on the unmaintained encoding 0.2.33 crate" },
+] # The path where the advisory databases are cloned/fetched into
+
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
 # db-urls = ["https://github.com/rustsec/advisory-db"]

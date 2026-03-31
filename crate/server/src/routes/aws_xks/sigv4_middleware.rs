@@ -37,8 +37,10 @@ use scratchstack_aws_signature::{
     SignatureOptions, service_for_signing_key_fn, sigv4_validate_request,
 };
 use std::str::FromStr;
-use tower::BoxError;
 use zeroize::Zeroizing;
+
+/// Local type alias matching ``tower::BoxError`` to avoid a direct dependency on the tower crate.
+type SigV4BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 use crate::{
     core::KMS,
@@ -164,46 +166,44 @@ where
 
             let http_request = to_http_request(&actix_web_http_request, &body_as_bytes)?;
 
-            // Build a one-shot signing-key service using the 0.11 API.
-            // service_for_signing_key_fn wraps an async fn into the tower::Service
-            // required by sigv4_validate_request, so we don't have to implement
-            // the Service trait manually.
             let expected_key_id = access_key_id.clone();
             let secret = access_key.clone();
+
+            // service_for_signing_key_fn wraps an async fn into the tower::Service
+            // required by sigv4_validate_request, so we don't have to implement
+            // the Service trait manually - hence the creation of the closure below.
             let get_signing_key = move |req: GetSigningKeyRequest| {
                 let expected_key_id = expected_key_id.clone();
                 let secret = secret.clone();
                 async move {
                     if req.access_key() != expected_key_id {
-                        return Err::<GetSigningKeyResponse, BoxError>(
+                        return Err::<GetSigningKeyResponse, SigV4BoxError>(
                             format!("Access key id {} not found", req.access_key()).into(),
                         );
                     }
                     let k_secret = KSecretKey::from_str(&secret)
-                        .map_err(|e| -> BoxError { e.to_string().into() })?;
+                        .map_err(|e| -> SigV4BoxError { e.to_string().into() })?;
                     let k_signing =
                         k_secret.to_ksigning(req.request_date(), req.region(), req.service());
-                    // A minimal principal is required by the response builder;
-                    // the actual identity check is the access-key comparison above.
                     let principal = Principal::from(vec![
                         User::new("aws", "000000000000", "/", "xks-service")
-                            .map_err(|e| -> BoxError { e.to_string().into() })?
+                            .map_err(|e| -> SigV4BoxError { e.to_string().into() })?
                             .into(),
-                    ]);
+                    ]); // A minimal principal is required by the response builder;
                     GetSigningKeyResponse::builder()
                         .principal(principal)
                         .signing_key(k_signing)
                         .build()
-                        .map_err(|e| -> BoxError { e.to_string().into() })
+                        .map_err(|e| -> SigV4BoxError { e.to_string().into() })
                 }
             };
-            let mut svc = service_for_signing_key_fn(get_signing_key);
+            let mut get_signing_key_service = service_for_signing_key_fn(get_signing_key);
 
             if let Err(signature_error) = sigv4_validate_request(
                 http_request,
                 params.region.as_str(),
                 params.service.as_str(),
-                &mut svc,
+                &mut get_signing_key_service,
                 chrono::Utc::now(),
                 &NO_ADDITIONAL_SIGNED_HEADERS,
                 SignatureOptions::default(),

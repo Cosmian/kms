@@ -1321,7 +1321,6 @@ dependencies = [
  "time",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
- "tower 0.5.3",
  "tracing",
  "url",
  "utimaco_pkcs11_loader",
