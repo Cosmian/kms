@@ -41,6 +41,7 @@ use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_JWT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
@@ -296,6 +297,41 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
         .await
         .unwrap_or_else(|e| {
             error!("failed to start test server with cert auth: {e}");
+            std::process::abort();
+        })
+}
+
+/// Plain-HTTP server with JWT authentication enabled (Auth0 IdP).
+///
+/// Use this in tests that verify JWT-based authentication end-to-end.
+/// The owner client config is pre-populated with [`crate::test_jwt::AUTH0_TOKEN`].
+pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsContext {
+    crate::init_openssl_providers_for_tests();
+
+    trace!("Starting test server with JWT auth");
+    ONCE_SERVER_WITH_JWT_AUTH
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 6)?;
+            let db_config = get_db_config(port, None);
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Enabled,
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (JWT auth): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with JWT auth: {e}");
             std::process::abort();
         })
 }

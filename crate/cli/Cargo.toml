@@ -52,7 +52,7 @@ criterion = { workspace = true }
 libc = "0.2"
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }
-jsonwebtoken = "10.3"
+jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
 pem = { workspace = true }
 reqwest = { workspace = true }
