@@ -213,6 +213,78 @@ When running `ckms login`:
 3. The browser redirects to a local endpoint (<http://localhost:17899/authorization>)
 4. The CLI captures the token and saves it in your configuration file
 
+## Corporate Network / Forward Proxy
+
+When the KMS CLI is used inside a corporate network, the system HTTP proxy may intercept
+outbound connections and block non-standard ports (e.g., `9998`) or internal hostnames.
+This typically manifests as a `TunnelUnsuccessful` connection error.
+
+> **Note on `--proxy-exclusion-list`**: this CLI flag is silently ignored unless
+> `--proxy-url` is **also** provided. Without `--proxy-url`, `proxy_exclusion_list` is
+> dropped and the Windows system proxy operates unconstrained. Use the `ckms.toml`
+> configuration or environment variables for a persistent solution.
+
+### Option 1 — Environment variable (no config change needed)
+
+Set `NO_PROXY` before running the CLI:
+
+```bash
+# Linux / macOS
+export NO_PROXY="kms-host"
+ckms kms locate
+
+# Windows (PowerShell)
+$env:NO_PROXY = "kms-host"
+cosmian.exe kms locate
+```
+
+### Option 2 — CLI flags (one-off, requires `--proxy-url`)
+
+`--proxy-exclusion-list` only takes effect when `--proxy-url` is also supplied:
+
+```bash
+cosmian.exe \
+  --proxy-url="http://corp-proxy.example.com:8080" \
+  --proxy-exclusion-list="kms-host" \
+  kms locate
+```
+
+Equivalent environment variables (persist for the shell session):
+
+```bash
+export CLI_PROXY_URL="http://corp-proxy.example.com:8080"
+export CLI_PROXY_NO_PROXY="kms-host,127.0.0.1,localhost"
+```
+
+### Option 3 — `ckms.toml` (persistent, recommended)
+
+Edit `~/.cosmian/ckms.toml` (Windows: `%USERPROFILE%\.cosmian\ckms.toml`):
+
+```toml
+[http_config]
+server_url = "https://kms-host:9998"
+
+[http_config.proxy_params]
+# URL of the corporate proxy (on Windows: netsh winhttp show proxy)
+url = "http://corp-proxy.example.com:8080"
+
+# Optional: Basic auth credentials for the proxy
+# basic_auth_username = "DOMAIN\\username"
+# basic_auth_password = "password"
+
+# Hosts to bypass — add your KMS hostname here
+exclusion_list = ["kms-host", "kms-host:9998", "127.0.0.1", "localhost"]
+```
+
+For a proxy requiring a custom `Proxy-Authorization` header:
+
+```toml
+[http_config.proxy_params]
+url = "http://corp-proxy.example.com:8080"
+custom_auth_header = "Bearer <proxy-token>"
+exclusion_list = ["kms-host"]
+```
+
 ## Troubleshooting
 
 - **Authentication Failures**: Verify client ID and URLs are correct
