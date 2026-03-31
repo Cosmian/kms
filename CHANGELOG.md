@@ -176,30 +176,6 @@ JWT validation: complete migration from `alcoholic_jwt` to `jsonwebtoken` in ser
 adding support for multiple algorithms (RS256, ES256, ...).
 Update the documentation, Google CSE routes, and OIDC UI auth flow; updated Google CSE tests accordingly.
 
-#### OpenSSH PKCS#11 integration (`ssh-auth` tag)
-
-SSH key pairs tagged with `ssh-auth` in the KMS are now automatically exposed by
-`libcosmian_pkcs11.so` as OpenSSH identity keys. The private key never leaves the KMS: every
-`C_Sign` call is forwarded to the KMS Sign API and only the signature is returned to the SSH
-client.
-
-- **Remote signing**: `Pkcs11PrivateKey::sign()` now delegates to the KMS via `KmsClient::sign()`.
-  Supported mechanisms: `CKM_ECDSA` (NIST P-256/P-384), `CKM_EDDSA` (Ed25519, non-FIPS),
-  `CKM_RSA_PKCS` (RSA-2048/4096), `CKM_RSA_PKCS_*` (RSA with SHA-1/256/384/512), and
-  `CKM_RSA_PKCS_PSS`.
-- **Key discovery**: `find_all_private_keys()` and `find_all_public_keys()` now query both the
-  `disk-encryption` tag (existing) and the new `ssh-auth` tag. The tag name is overridable via
-  the `COSMIAN_PKCS11_SSH_KEY_TAG` environment variable.
-- **EC public-key SPKI parsing**: `Pkcs11PublicKey::try_from_kms_object()` now correctly
-  identifies ECDSA keys by inspecting the curve OID in the SPKI `AlgorithmIdentifier` parameters
-  (`id-ecPublicKey` OID `1.2.840.10045.2.1`) rather than the algorithm OID.
-- **EdDSA / `CKM_EDDSA`**: new `SignatureAlgorithm::EdDsa` variant and `Mechanism::EdDsa`
-  (`CKM_EDDSA = 0x1057`) added to the PKCS#11 provider.
-- **Integration tests**: `test_ssh_rsa_sign`, `test_ssh_ecdsa_p256_sign`, and
-  `test_ssh_key_discovery` added to the provider test suite.
-- **Documentation**: new `cli_documentation/docs/pkcs11/openssh.md` guide covering key creation,
-  public-key export, SSH client configuration, supported algorithms, and troubleshooting.
-
 #### HMAC-SHA-1 and HMAC-SHA-224 Support ([#786](https://github.com/Cosmian/kms/issues/786)) ([#797](https://github.com/Cosmian/kms/pull/797))
 
 NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
