@@ -169,7 +169,7 @@ dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }
 http = "1.4"
-jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
 lazy_static = "1.5"
 leb128 = "0.2"
 libloading = "0.8"
