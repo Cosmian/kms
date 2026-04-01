@@ -301,7 +301,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
         })
 }
 
-/// Plain-HTTP server with JWT authentication enabled (Auth0 IdP).
+/// Plain-HTTP server with JWT authentication enabled (Auth0 `IdP`).
 ///
 /// Use this in tests that verify JWT-based authentication end-to-end.
 /// The owner client config is pre-populated with [`crate::test_jwt::AUTH0_TOKEN`].
