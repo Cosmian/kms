@@ -8,4 +8,5 @@ ignore = [
     # which pulls ring 0.16.20.
     "RUSTSEC-2025-0009",
     "RUSTSEC-2025-0010",
+    "RUSTSEC-2023-0071",
 ]
