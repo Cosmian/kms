@@ -60,13 +60,13 @@ const ECKeyCreateForm: React.FC = () => {
                 values.tags,
                 values.curve,
                 values.sensitive,
-                values.wrappingKeyId
+                values.wrappingKeyId,
             );
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`
+                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
             }
         } catch (e) {
@@ -136,7 +136,13 @@ const ECKeyCreateForm: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Create EC Keypair
                         </Button>
                     </Form.Item>

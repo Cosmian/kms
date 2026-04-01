@@ -1,5 +1,6 @@
 ---
 name: CI
+run-name: CI (${{ github.head_ref || github.ref_name }})
 
 on:
   push:
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
   pull_request:
   schedule:
-    - cron: 0 0 * * *   # Daily at midnight
+    - cron: 0 0 * * * # Daily at midnight
 
 jobs:
   main:

@@ -31,10 +31,10 @@ impl ObjectsStore {
     pub(crate) fn upsert(&mut self, object: Arc<Object>) -> CK_OBJECT_HANDLE {
         // check if the object already exists in the store by searching it by ID
         let id = object.remote_id();
-        if let Some((object, handle)) = self.objects.get_mut(&id) {
+        if let Some((stored, handle)) = self.objects.get_mut(&id) {
             debug!("STORE: updating object with remote id: {id} and handle: {handle}");
-            *object = object.clone();
-            self.ids.insert(*handle, Arc::downgrade(object));
+            *stored = object;
+            self.ids.insert(*handle, Arc::downgrade(stored));
             return *handle;
         }
         let handle = if self.ids.is_empty() {

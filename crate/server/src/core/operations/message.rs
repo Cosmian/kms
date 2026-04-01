@@ -422,9 +422,12 @@ async fn process_operation(
             Operation::AddAttribute(add_attribute) => Operation::AddAttributeResponse(
                 kms.add_attribute(add_attribute, user).await?,
             ),
-        Operation::ModifyAttribute(kmip_request) => Operation::ModifyAttributeResponse(
-            modify_attribute(kms, kmip_request, user).await?,
-        ),
+        Operation::ModifyAttribute(kmip_request) => {
+            let echoed_attribute = Some(kmip_request.new_attribute.clone());
+            let mut resp = modify_attribute(kms, kmip_request, user).await?;
+            resp.echoed_attribute = echoed_attribute;
+            Operation::ModifyAttributeResponse(resp)
+        }
         Operation::Check(kmip_request) => {
             use crate::core::operations::check;
             Operation::CheckResponse(check(kms, kmip_request, user).await?)

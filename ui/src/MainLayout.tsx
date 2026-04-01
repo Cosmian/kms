@@ -1,10 +1,10 @@
 import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { Button, Layout, Spin, Switch, Tag } from "antd";
+import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import Footer from "./Footer";
-import Header from "./Header";
+import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "./utils";
 
@@ -12,12 +12,14 @@ type MainLayoutProps = {
     isDarkMode: boolean;
     setIsDarkMode: (value: boolean) => void;
     authMethod: AuthMethod;
+    wasmError: boolean;
 };
 
-const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, authMethod, wasmError }) => {
     const [serverVersion, setServerVersion] = useState("");
     const [serverHealth, setServerHealth] = useState<string>("");
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
+    const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
@@ -26,9 +28,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const isServerHealthy = normalizedServerHealth === "UP";
 
     const serverHealthLabel =
-        serverHealthLatencyMs === null
-            ? `Health DB: ${serverHealth}`
-            : `Health DB: ${serverHealth} (${serverHealthLatencyMs}ms)`;
+        serverHealthLatencyMs === null ? `Health DB: ${serverHealth}` : `Health DB: ${serverHealth} (${serverHealthLatencyMs}ms)`;
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {
@@ -36,21 +36,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             try {
                 const version = await getNoTTLVRequest("/version", idToken, serverUrl);
                 setServerVersion(version);
-                    const health = await getNoTTLVRequestWithTimeout(
-                        "/health",
-                        idToken,
-                        serverUrl,
-                        2_000
-                    );
-                    setServerHealth(health?.status ?? "Unavailable");
-                    setServerHealthLatencyMs(
-                        typeof health?.latency_ms === "number" ? health.latency_ms : null
-                    );
-            } catch (error) {
-                console.error("Error fetching server version:", error);
+                const health = await getNoTTLVRequestWithTimeout("/health", idToken, serverUrl, 2_000);
+                setServerHealth(health?.status ?? "Unavailable");
+                setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
+                const info = await getNoTTLVRequest("/server-info", idToken, serverUrl);
+                setServerInfo(info as ServerInfo);
+            } catch {
                 setServerVersion("Unavailable");
-                    setServerHealth("Unavailable");
-                    setServerHealthLatencyMs(null);
+                setServerHealth("Unavailable");
+                setServerHealthLatencyMs(null);
             } finally {
                 setLoading(false);
             }
@@ -59,23 +53,28 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         }
     }, [authMethod, idToken, serverUrl]);
 
-    const downloadCliUrl = "/download-cli"
+    const downloadCliUrl = "/download-cli";
 
     const determineDownloadTarget = useCallback(async () => {
         const kmsUrl = serverUrl + downloadCliUrl;
-        const response = await fetch(kmsUrl, {
-            method: "HEAD",
-            credentials: "include",
-            headers: {
-                ...(idToken && { Authorization: `Bearer ${idToken}` }),
-            },
-        });
+        try {
+            const response = await fetch(kmsUrl, {
+                method: "HEAD",
+                credentials: "include",
+                headers: {
+                    ...(idToken && { Authorization: `Bearer ${idToken}` }),
+                },
+            });
 
-        if (response.status == 200) {
-            setDownloadTarget(serverUrl + downloadCliUrl)
-        } else {
-            setDownloadTarget('https://package.cosmian.com/kms')
+            if (response.status == 200) {
+                setDownloadTarget(serverUrl + downloadCliUrl);
+                return;
+            }
+        } catch {
+            // Ignore network issues and fall back to the public package page.
         }
+
+        setDownloadTarget("https://package.cosmian.com/kms");
     }, [downloadCliUrl, idToken, serverUrl]);
 
     useEffect(() => {
@@ -91,11 +90,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         <Layout>
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
-                    <Header isDarkMode={isDarkMode} />
-                    <div className="flex items-center h-full" style={{ gap: '16px' }}>
-                        {downloadTarget && <Link to={downloadTarget} target="_blank">
-                            <Button type="primary" shape="round" icon={<DownloadOutlined />}>Download CLI</Button>
-                        </Link>}
+                    <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
+                    <div className="flex items-center h-full" style={{ gap: "16px" }}>
+                        {downloadTarget && (
+                            <Link to={downloadTarget} target="_blank">
+                                <Button type="primary" shape="round" icon={<DownloadOutlined />}>
+                                    Download CLI
+                                </Button>
+                            </Link>
+                        )}
                         <Switch
                             className="w-20"
                             checked={isDarkMode}
@@ -119,9 +122,23 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 </div>
             </Layout.Header>
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar />
+                <Sidebar isFips={serverInfo?.fips_mode ?? false} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
+                        {wasmError && (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message="WebAssembly is not available. It may be blocked by an extension, disabled manually, or restricted by a security policy."
+                                description={
+                                    <>
+                                        Please enable WASM in your browser and refresh this page to be able to use the KMS UI. In Firefox,
+                                        you can enable it by setting <code>javascript.options.wasm</code> = true in{" "}
+                                        <code>about:config</code>.
+                                    </>
+                                }
+                            />
+                        )}
                         {loading ? <Spin size="large" /> : <Outlet />}
                     </Layout.Content>
                     <Footer

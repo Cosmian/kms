@@ -408,7 +408,67 @@ fn decrypt_single(
         KeyFormatType::TransparentECPrivateKey
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
+        | KeyFormatType::PKCS8
+        | KeyFormatType::Raw => {
+            // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform decapsulation
+            // instead of standard decryption.
+            #[cfg(feature = "non-fips")]
+            {
+                let key_algo = key_block
+                    .cryptographic_algorithm()
+                    .copied()
+                    .or_else(|| owm.attributes().cryptographic_algorithm);
+                if matches!(
+                    key_algo,
+                    Some(
+                        CryptographicAlgorithm::MLKEM_512
+                            | CryptographicAlgorithm::MLKEM_768
+                            | CryptographicAlgorithm::MLKEM_1024
+                    )
+                ) {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_kem::ml_kem_decapsulate;
+                    let ciphertext = request.data.as_ref().ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Decrypt ML-KEM: ciphertext (encapsulation) must be provided"
+                                .to_owned(),
+                        )
+                    })?;
+                    let (priv_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let shared_secret = ml_kem_decapsulate(&priv_bytes, ciphertext)?;
+                    return Ok(DecryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(Zeroizing::from(shared_secret)),
+                        correlation_value: request.correlation_value.clone(),
+                    });
+                }
+                if let Some(
+                    algo @ (CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024),
+                ) = key_algo
+                {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::hybrid_kem::hybrid_kem_decapsulate;
+                    let ciphertext = request.data.as_ref().ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Decrypt hybrid KEM: ciphertext (encapsulation) must be provided"
+                                .to_owned(),
+                        )
+                    })?;
+                    let (priv_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let shared_secret = hybrid_kem_decapsulate(algo, &priv_bytes, ciphertext)?;
+                    return Ok(DecryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(Zeroizing::from(shared_secret)),
+                        correlation_value: request.correlation_value.clone(),
+                    });
+                }
+            }
+
+            // Raw format can be either a private key or a symmetric key;
+            // route symmetric keys to the correct handler.
+            if matches!(owm.object(), Object::SymmetricKey { .. }) {
+                return decrypt_single_with_symmetric_key(owm, request)?;
+            }
+
             trace!(
                 "matching on public key format type: {:?}",
                 key_block.key_format_type
@@ -416,9 +476,7 @@ fn decrypt_single(
             decrypt_with_private_key(owm, request, server_params)
         }
 
-        KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-            decrypt_single_with_symmetric_key(owm, request)?
-        }
+        KeyFormatType::TransparentSymmetricKey => decrypt_single_with_symmetric_key(owm, request)?,
 
         other => Err(KmsError::NotSupported(format!(
             "decryption with keys of format: {other}"

@@ -2,8 +2,8 @@ use reqwest::{
     Client,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
-use serde::{Deserialize, Serialize};
-use tracing::info;
+use serde::{Deserialize, Deserializer, Serialize};
+use tracing::{info, warn};
 
 use super::{
     Oauth2LoginConfig, ProxyParams,
@@ -42,10 +42,10 @@ use super::{
 /// - TLS 1.2 ECDHE-RSA: `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`,
 ///   `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`,
 ///   `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[derive(Serialize, Eq, PartialEq, Debug, Clone)]
 pub struct HttpClientConfig {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS server
-    // running an invalid or unsecure SSL certificate
+    // running an invalid or insecure TLS certificate
     #[serde(default)]
     #[serde(skip_serializing_if = "not")]
     pub accept_invalid_certs: bool,
@@ -55,18 +55,18 @@ pub struct HttpClientConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pkcs12_path: Option<String>,
+    pub tls_client_pkcs12_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pkcs12_password: Option<String>,
+    pub tls_client_pkcs12_password: Option<String>,
     /// Optional path to a client certificate in PEM format.
-    /// If provided along with `ssl_client_pem_key_path`, it will be used for
+    /// If provided along with `tls_client_pem_key_path`, it will be used for
     /// client authentication instead of PKCS#12.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pem_cert_path: Option<String>,
+    pub tls_client_pem_cert_path: Option<String>,
     /// Optional path to a client private key in PEM format.
-    /// Used together with `ssl_client_pem_cert_path` for client authentication.
+    /// Used together with `tls_client_pem_cert_path` for client authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssl_client_pem_key_path: Option<String>,
+    pub tls_client_pem_key_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -95,10 +95,10 @@ impl Default for HttpClientConfig {
             verified_cert: None,
             access_token: None,
             database_secret: None,
-            ssl_client_pkcs12_path: None,
-            ssl_client_pkcs12_password: None,
-            ssl_client_pem_cert_path: None,
-            ssl_client_pem_key_path: None,
+            tls_client_pkcs12_path: None,
+            tls_client_pkcs12_password: None,
+            tls_client_pem_cert_path: None,
+            tls_client_pem_key_path: None,
             oauth2_conf: None,
             proxy_params: None,
             cipher_suites: None,
@@ -111,6 +111,99 @@ impl Default for HttpClientConfig {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 const fn not(b: &bool) -> bool {
     !*b
+}
+
+/// Intermediate struct used to deserialise `HttpClientConfig` from TOML/JSON.
+///
+/// Keeping both the canonical `tls_client_*` names and the legacy `ssl_client_*`
+/// names as distinct fields lets us detect which key was actually present in the
+/// config file and emit a deprecation warning before merging the values.
+#[derive(Deserialize)]
+struct HttpClientConfigDeserHelper {
+    #[serde(default)]
+    accept_invalid_certs: bool,
+    server_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verified_cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    access_token: Option<String>,
+    // Canonical (new) names
+    tls_client_pkcs12_path: Option<String>,
+    tls_client_pkcs12_password: Option<String>,
+    tls_client_pem_cert_path: Option<String>,
+    tls_client_pem_key_path: Option<String>,
+    // Legacy (deprecated) names — accepted but trigger a warning
+    ssl_client_pkcs12_path: Option<String>,
+    ssl_client_pkcs12_password: Option<String>,
+    ssl_client_pem_cert_path: Option<String>,
+    ssl_client_pem_key_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    database_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oauth2_conf: Option<Oauth2LoginConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_params: Option<ProxyParams>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cipher_suites: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_headers: Option<Vec<String>>,
+}
+
+impl<'de> Deserialize<'de> for HttpClientConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = HttpClientConfigDeserHelper::deserialize(deserializer)?;
+
+        // Emit deprecation warnings for legacy ssl_ fields and merge into tls_ fields.
+        macro_rules! merge_deprecated {
+            ($new:expr, $old:expr, $old_name:literal, $new_name:literal) => {{
+                if $old.is_some() {
+                    warn!(
+                        "ckms config: `{}` is deprecated — rename it to `{}` in your \
+                         ckms.toml to silence this warning.",
+                        $old_name, $new_name
+                    );
+                }
+                // New name takes precedence if both are set.
+                $new.or($old)
+            }};
+        }
+
+        Ok(Self {
+            accept_invalid_certs: raw.accept_invalid_certs,
+            server_url: raw.server_url,
+            verified_cert: raw.verified_cert,
+            access_token: raw.access_token,
+            tls_client_pkcs12_path: merge_deprecated!(
+                raw.tls_client_pkcs12_path,
+                raw.ssl_client_pkcs12_path,
+                "ssl_client_pkcs12_path",
+                "tls_client_pkcs12_path"
+            ),
+            tls_client_pkcs12_password: merge_deprecated!(
+                raw.tls_client_pkcs12_password,
+                raw.ssl_client_pkcs12_password,
+                "ssl_client_pkcs12_password",
+                "tls_client_pkcs12_password"
+            ),
+            tls_client_pem_cert_path: merge_deprecated!(
+                raw.tls_client_pem_cert_path,
+                raw.ssl_client_pem_cert_path,
+                "ssl_client_pem_cert_path",
+                "tls_client_pem_cert_path"
+            ),
+            tls_client_pem_key_path: merge_deprecated!(
+                raw.tls_client_pem_key_path,
+                raw.ssl_client_pem_key_path,
+                "ssl_client_pem_key_path",
+                "tls_client_pem_key_path"
+            ),
+            database_secret: raw.database_secret,
+            oauth2_conf: raw.oauth2_conf,
+            proxy_params: raw.proxy_params,
+            cipher_suites: raw.cipher_suites,
+            custom_headers: raw.custom_headers,
+        })
+    }
 }
 
 /// A struct implementing some of the 50+ operations a KMIP client should
@@ -128,10 +221,10 @@ impl HttpClient {
     pub fn instantiate(http_conf: &HttpClientConfig) -> Result<Self, HttpClientError> {
         // Validate client authentication configuration: either PKCS#12 (with password)
         // or PEM (cert + key), but not both or partially provided
-        let pem_cert_set = http_conf.ssl_client_pem_cert_path.is_some();
-        let pem_key_set = http_conf.ssl_client_pem_key_path.is_some();
-        let pkcs12_set = http_conf.ssl_client_pkcs12_path.is_some();
-        let pkcs12_pwd_set = http_conf.ssl_client_pkcs12_password.is_some();
+        let pem_cert_set = http_conf.tls_client_pem_cert_path.is_some();
+        let pem_key_set = http_conf.tls_client_pem_key_path.is_some();
+        let pkcs12_set = http_conf.tls_client_pkcs12_path.is_some();
+        let pkcs12_pwd_set = http_conf.tls_client_pkcs12_password.is_some();
 
         if (pem_cert_set || pem_key_set) && (pkcs12_set || pkcs12_pwd_set) {
             return Err(HttpClientError::Default(

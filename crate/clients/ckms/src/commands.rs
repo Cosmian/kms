@@ -105,10 +105,10 @@ pub enum CliCommands {
     /// Handle KMS actions
     #[clap(flatten)]
     Kms(KmsActions),
-    /// Action to auto-generate doc in Markdown format
-    /// Run `cargo run --bin ckms -- markdown
-    /// documentation/docs/cli/main_commands.md`
-    #[clap(hide = true)]
+    /// Regenerate the CLI documentation in Markdown format.
+    ///
+    /// Writes a Markdown file documenting all subcommands and their options.
+    /// Example: `ckms markdown documentation/docs/cli/main_commands.md`
     Markdown(MarkdownAction),
     /// Configure the KMS CLI (create ckms.toml)
     Configure,
@@ -193,19 +193,24 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
 
     // Authentication method selection
     let current_auth_index = match (
-        http.ssl_client_pkcs12_path.is_some(),
+        http.tls_client_pem_cert_path.is_some(),
+        http.tls_client_pkcs12_path.is_some(),
         http.access_token.is_some(),
     ) {
-        (false, false) => 0,
-        (false, true) => 1,
-        (true, false) => 2,
-        (true, true) => 3,
+        (false, false, true) => 1,
+        (true, false, false) => 2,
+        (false, true, false) => 3,
+        (true, false, true) => 4,
+        (false, true, true) => 5,
+        _ => 0, // None, or ambiguous state (both PEM and PKCS#12 set)
     };
     let auth_methods = vec![
         "None",
         "Bearer token",
+        "Client certificate (PEM)",
         "Client certificate (PKCS#12)",
-        "Both (cert + token)",
+        "Both (PEM cert + token)",
+        "Both (PKCS#12 cert + token)",
     ];
     let choice = Select::new()
         .with_prompt("Authentication method")
@@ -216,8 +221,10 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
 
     // Reset auth fields
     http.access_token = None;
-    http.ssl_client_pkcs12_path = None;
-    http.ssl_client_pkcs12_password = None;
+    http.tls_client_pkcs12_path = None;
+    http.tls_client_pkcs12_password = None;
+    http.tls_client_pem_cert_path = None;
+    http.tls_client_pem_key_path = None;
 
     match choice {
         0 => {}
@@ -233,25 +240,67 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
             }
         }
         2 => {
+            let cert_path: String = Input::new()
+                .with_prompt("Client PEM certificate path (.crt / .pem)")
+                .allow_empty(true)
+                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
+                .interact_text()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            if !cert_path.is_empty() {
+                http.tls_client_pem_cert_path = Some(cert_path);
+                let key_path: String = Input::new()
+                    .with_prompt("Client PEM key path (.key / .pem)")
+                    .allow_empty(false)
+                    .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
+                    .interact_text()
+                    .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+                http.tls_client_pem_key_path = Some(key_path);
+            }
+        }
+        3 => {
             let pkcs12_path: String = Input::new()
                 .with_prompt("Client PKCS#12 path (.p12)")
                 .allow_empty(true)
-                .with_initial_text(http.ssl_client_pkcs12_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
             if !pkcs12_path.is_empty() {
-                http.ssl_client_pkcs12_path = Some(pkcs12_path);
+                http.tls_client_pkcs12_path = Some(pkcs12_path);
                 let pw: String = Password::new()
                     .with_prompt("Client PKCS#12 password (leave empty if none)")
                     .allow_empty_password(true)
                     .interact()
                     .map_err(|e| cli_error!("Prompt failed: {e}"))?;
                 if !pw.is_empty() {
-                    http.ssl_client_pkcs12_password = Some(pw);
+                    http.tls_client_pkcs12_password = Some(pw);
                 }
             }
         }
-        3 => {
+        4 => {
+            let token: String = Input::new()
+                .with_prompt("Bearer token")
+                .allow_empty(false)
+                .with_initial_text(http.access_token.clone().unwrap_or_default())
+                .interact_text()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            http.access_token = Some(token);
+
+            let cert_path: String = Input::new()
+                .with_prompt("Client PEM certificate path (.crt / .pem)")
+                .allow_empty(false)
+                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
+                .interact_text()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            http.tls_client_pem_cert_path = Some(cert_path);
+            let key_path: String = Input::new()
+                .with_prompt("Client PEM key path (.key / .pem)")
+                .allow_empty(false)
+                .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
+                .interact_text()
+                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            http.tls_client_pem_key_path = Some(key_path);
+        }
+        5 => {
             let token: String = Input::new()
                 .with_prompt("Bearer token")
                 .allow_empty(false)
@@ -263,17 +312,17 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
             let pkcs12_path: String = Input::new()
                 .with_prompt("Client PKCS#12 path (.p12)")
                 .allow_empty(false)
-                .with_initial_text(http.ssl_client_pkcs12_path.clone().unwrap_or_default())
+                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
                 .interact_text()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.ssl_client_pkcs12_path = Some(pkcs12_path);
+            http.tls_client_pkcs12_path = Some(pkcs12_path);
             let pw: String = Password::new()
                 .with_prompt("Client PKCS#12 password (leave empty if none)")
                 .allow_empty_password(true)
                 .interact()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
             if !pw.is_empty() {
-                http.ssl_client_pkcs12_password = Some(pw);
+                http.tls_client_pkcs12_password = Some(pw);
             }
         }
         #[allow(clippy::unreachable)]

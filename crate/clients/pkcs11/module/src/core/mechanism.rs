@@ -25,9 +25,9 @@ use cosmian_logger::{debug, error};
 use pkcs11_sys::{
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1, CKG_MGF1_SHA224,
     CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD,
-    CKM_AES_KEY_GEN, CKM_ECDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS,
-    CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS,
+    CKM_AES_KEY_GEN, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA_1,
+    CKM_SHA1_RSA_PKCS, CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
+    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS,
 };
 
 use crate::{
@@ -44,6 +44,7 @@ pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_SHA384_RSA_PKCS,
     CKM_SHA512_RSA_PKCS,
     CKM_ECDSA,
+    CKM_EDDSA,
     CKM_RSA_PKCS_PSS,
 ];
 
@@ -57,6 +58,7 @@ pub enum Mechanism {
         iv: [u8; AES_IV_SIZE],
     },
     Ecdsa,
+    EdDsa,
     RsaPkcs,
     RsaPkcsSha1,
     RsaPkcsSha256,
@@ -96,6 +98,7 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
         }
 
         CKM_ECDSA => Ok(Mechanism::Ecdsa),
+        CKM_EDDSA => Ok(Mechanism::EdDsa),
         CKM_RSA_PKCS => Ok(Mechanism::RsaPkcs),
         CKM_SHA1_RSA_PKCS => Ok(Mechanism::RsaPkcsSha1),
         CKM_SHA256_RSA_PKCS => Ok(Mechanism::RsaPkcsSha256),
@@ -165,6 +168,7 @@ impl From<&Mechanism> for CK_MECHANISM_TYPE {
             Mechanism::AesCbcPad { .. } => CKM_AES_CBC_PAD,
             Mechanism::AesCbc { .. } => CKM_AES_CBC,
             Mechanism::Ecdsa => CKM_ECDSA,
+            Mechanism::EdDsa => CKM_EDDSA,
             Mechanism::RsaPkcs => CKM_RSA_PKCS,
             Mechanism::RsaPkcsSha1 => CKM_SHA1_RSA_PKCS,
             Mechanism::RsaPkcsSha256 => CKM_SHA256_RSA_PKCS,
@@ -181,6 +185,7 @@ impl TryFrom<Mechanism> for SignatureAlgorithm {
     fn try_from(mechanism: Mechanism) -> ModuleResult<Self> {
         match mechanism {
             Mechanism::Ecdsa => Ok(Self::Ecdsa),
+            Mechanism::EdDsa => Ok(Self::EdDsa),
             Mechanism::RsaPkcs => Ok(Self::RsaPkcs1v15Raw),
             Mechanism::RsaPkcsSha1 => Ok(Self::RsaPkcs1v15Sha1),
             Mechanism::RsaPkcsSha256 => Ok(Self::RsaPkcs1v15Sha256),

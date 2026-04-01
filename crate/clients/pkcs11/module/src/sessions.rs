@@ -204,11 +204,42 @@ impl Session {
                             self.update_find_objects_context(Arc::new(Object::SymmetricKey(c)))
                         })
                         .collect::<ModuleResult<Vec<_>>>()?,
-                    pkcs11_sys::CKO_DATA => backend()
-                        .find_all_data_objects()?
-                        .into_iter()
-                        .map(|c| self.update_find_objects_context(Arc::new(Object::DataObject(c))))
-                        .collect::<ModuleResult<Vec<_>>>()?,
+                    pkcs11_sys::CKO_DATA => {
+                        // Use OBJECTS_STORE directly for CKO_DATA searches.
+                        //
+                        // `load_find_context` calls `find_all_objects()` before this function,
+                        // which already populates OBJECTS_STORE with all KMS DataObject entries
+                        // (via locate + get_attributes). Newly-created companions from a recent
+                        // C_CreateObject are also already in OBJECTS_STORE (inserted by upsert).
+                        //
+                        // Querying the KMS via `find_all_data_objects()` instead would make a
+                        // `batch_get` request that fails the ENTIRE batch when ANY single object
+                        // cannot be fetched (e.g. old SecretData objects in unexpected state).
+                        // Using the local store avoids that fragility entirely.
+                        let label_filter = attributes.get_label().ok();
+                        let find_ctx = OBJECTS_STORE.read()?;
+                        let data_objects = find_ctx.get_using_type(&ObjectType::DataObject);
+                        debug!(
+                            "CKO_DATA search: label_filter={:?}, store has {} DataObjects",
+                            label_filter,
+                            data_objects.len()
+                        );
+                        let mut result = vec![];
+                        for (object, handle) in data_objects {
+                            if let Object::DataObject(data) = &*object {
+                                if label_filter.as_ref().is_none_or(|l| data.remote_id() == *l) {
+                                    debug!(
+                                        "CKO_DATA match: remote_id={}, handle={}",
+                                        data.remote_id(),
+                                        handle
+                                    );
+                                    self.find_objects_ctx.push(handle);
+                                    result.push(handle);
+                                }
+                            }
+                        }
+                        result
+                    }
                     o => return Err(ModuleError::Todo(format!("Object not supported: {o}"))),
                 };
                 debug!(
@@ -218,9 +249,8 @@ impl Session {
                 );
             }
 
-            SearchOptions::Id(cka_id) => {
+            SearchOptions::Id(id) => {
                 if search_class == pkcs11_sys::CKO_CERTIFICATE {
-                    let id = String::from_utf8(cka_id)?;
                     // Find certificates which have this CKA_ID as private key ID
                     let find_ctx = OBJECTS_STORE.read()?;
                     let certificates = find_ctx.get_using_type(&ObjectType::Certificate);
@@ -250,8 +280,6 @@ impl Session {
                         }
                     }
                 } else {
-                    let id = String::from_utf8(cka_id)?;
-
                     let find_ctx = OBJECTS_STORE.read()?;
                     let (object, handle) = find_ctx.get_using_id(&id).ok_or_else(|| {
                         ModuleError::BadArguments(format!(

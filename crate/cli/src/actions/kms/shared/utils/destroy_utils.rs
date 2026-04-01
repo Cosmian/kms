@@ -1,6 +1,8 @@
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::kmip_2_1::{kmip_operations::Destroy, kmip_types::UniqueIdentifier},
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::ObjectType, kmip_operations::Destroy, kmip_types::UniqueIdentifier,
+    },
 };
 
 use crate::{
@@ -14,12 +16,16 @@ use crate::{
 /// * `kms_rest_client` - The KMS client
 /// * `uid` - The object id
 /// * `remove` - If the object should be removed from the database
+/// * `expected_object_type` - For HSM keys, the expected key type to guard against
+///   accidental cross-type destroys (issue #763). Passed straight through to the
+///   server which verifies via a PKCS#11 `get_key_type` roundtrip.
 /// # Returns
 /// * `KmsCliResult<()>` - The result of the operation
 pub(crate) async fn destroy(
     kms_rest_client: KmsClient,
     uid: &str,
     remove: bool,
+    expected_object_type: Option<ObjectType>,
 ) -> KmsCliResult<UniqueIdentifier> {
     // Create the kmip query
     let uid = UniqueIdentifier::TextString(uid.to_owned());
@@ -30,6 +36,7 @@ pub(crate) async fn destroy(
         // destroying a public/private key cascades to its pair unless the server is
         // configured otherwise.
         cascade: true,
+        expected_object_type,
     };
 
     // Query the KMS with your kmip data

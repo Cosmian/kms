@@ -215,7 +215,7 @@ impl MainDBConfig {
         if let Some(database_type) = &self.database_type {
             return Ok(match database_type.as_str() {
                 "postgresql" => {
-                    let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")
+                    let url = ensure_url_string(self.database_url.as_deref(), "KMS_POSTGRES_URL")
                         .context("db:init")?;
                     MainDbParams::Postgres(url, self.max_connections)
                 }
@@ -258,6 +258,33 @@ impl MainDBConfig {
     }
 }
 
+/// Resolve the database URL from the command-line option or an environment variable,
+/// returning the raw string.  This avoids `Url::parse()` which cannot handle
+/// multi-host `PostgreSQL` connection strings
+/// (e.g. `postgresql://host1:5432,host2:5432/db?target_session_attrs=read-write`).
+fn ensure_url_string(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<String> {
+    let url = database_url.map_or_else(
+        || {
+            std::env::var(alternate_env_variable).map_err(|_e| {
+                kms_error!(
+                    "No database URL supplied either using the 'database-url' option, or the \
+                     KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
+                )
+            })
+        },
+        |url| Ok(url.to_owned()),
+    )?;
+    if url.is_empty() {
+        return Err(kms_error!("Database URL must not be empty"));
+    }
+    if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
+        return Err(kms_error!(
+            "PostgreSQL URL must start with 'postgresql://' or 'postgres://'"
+        ));
+    }
+    Ok(url)
+}
+
 fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
     let url = database_url.map_or_else(
         || {
@@ -292,4 +319,60 @@ fn ensure_value(
         },
         |value| Ok(value.to_owned()),
     )
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unwrap_in_result,
+    clippy::assertions_on_result_states
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ensure_url_string_valid_postgresql_scheme() {
+        let result = ensure_url_string(Some("postgresql://host/db"), "UNUSED_ENV");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "postgresql://host/db");
+    }
+
+    #[test]
+    fn test_ensure_url_string_valid_postgres_scheme() {
+        let result = ensure_url_string(Some("postgres://host/db"), "UNUSED_ENV");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ensure_url_string_invalid_mysql_scheme() {
+        let result = ensure_url_string(Some("mysql://host/db"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_invalid_http_scheme() {
+        let result = ensure_url_string(Some("http://host/db"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_not_a_url() {
+        let result = ensure_url_string(Some("not-a-url"), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("postgresql://"));
+    }
+
+    #[test]
+    fn test_ensure_url_string_empty() {
+        let result = ensure_url_string(Some(""), "UNUSED_ENV");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("empty"));
+    }
 }

@@ -209,6 +209,7 @@ mod tests {
                 ]),
             },
             ui_config: UiConfig {
+                enable: true,
                 ui_index_html_folder: Some("[ui index html folder]".to_owned()),
                 ui_session_salt: None,
                 ui_oidc_auth: OidcConfig {
@@ -261,7 +262,7 @@ mod tests {
             info: false,
             hsm: cosmian_kms_server::config::HsmConfig {
                 hsm_model: String::new(),
-                hsm_admin: String::new(),
+                hsm_admin: vec![],
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
@@ -282,12 +283,13 @@ mod tests {
         };
 
         let toml_string = r#"
+vendor_identification = "cosmian"
 default_username = "[default username]"
 force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""
-hsm_admin = ""
+hsm_admin = []
 hsm_slot = []
 hsm_password = []
 key_encryption_key = "key wrapping key"
@@ -326,6 +328,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
 [ui_config]
+enable = true
 ui_index_html_folder = "[ui index html folder]"
 
 [ui_config.ui_oidc_auth]
@@ -363,7 +366,6 @@ aws_xks_region = "us-east-1"
 aws_xks_service = "xks-kms"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-aws_xks_kek_user = "kek_user"
 
 [kmip.allowlists]
 "#;

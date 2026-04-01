@@ -190,11 +190,30 @@ pub enum CryptographicAlgorithm {
     MLKEM_512 = 0x0000_0039,
     MLKEM_768 = 0x0000_003A,
     MLKEM_1024 = 0x0000_003B,
+    MLDSA_44 = 0x0000_003C,
+    MLDSA_65 = 0x0000_003D,
+    MLDSA_87 = 0x0000_003E,
+    SLHDSA_SHA2_128s = 0x0000_003F,
+    SLHDSA_SHA2_128f = 0x0000_0040,
+    SLHDSA_SHA2_192s = 0x0000_0041,
+    SLHDSA_SHA2_192f = 0x0000_0042,
+    SLHDSA_SHA2_256s = 0x0000_0043,
+    SLHDSA_SHA2_256f = 0x0000_0044,
+    SLHDSA_SHAKE_128s = 0x0000_0045,
+    SLHDSA_SHAKE_128f = 0x0000_0046,
+    SLHDSA_SHAKE_192s = 0x0000_0047,
+    SLHDSA_SHAKE_192f = 0x0000_0048,
+    SLHDSA_SHAKE_256s = 0x0000_0049,
+    SLHDSA_SHAKE_256f = 0x0000_004A,
     // Available slot 0x8880_0001,
     // Available slot 0x8880_0002,
     ConfigurableKEM = 0x8880_0003,
     CoverCrypt = 0x8880_0004,
     CoverCryptBulk = 0x8880_0005,
+    X25519MLKEM768 = 0x8880_0006,
+    X448MLKEM1024 = 0x8880_0007,
+    // SecP256r1MLKEM768 (0x8880_0008) and SecP384r1MLKEM1024 (0x8880_0009)
+    // are not supported: OpenSSL 3.6.0 cannot serialize/deserialize their private keys.
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that

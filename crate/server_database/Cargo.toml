@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.17.0"
+version = "5.19.0"
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
@@ -30,14 +30,18 @@ interop = ["cosmian_kmip/interop"]
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.17.0" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.17.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.17.0" }
 cosmian_findex = { version = "8.0.2", optional = true }
+cosmian_kmip = { path = "../kmip", version = "5.19.0" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.19.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.19.0" }
 cosmian_logger = { workspace = true }
 cosmian_sse_memories = { version = "8.0.2", optional = true }
+deadpool-postgres = "0.14"
 lru = { workspace = true }
+mysql_async = { version = "0.36", features = ["native-tls-tls"] }
 num_cpus = { workspace = true }
+openssl = "0.10"
+postgres-openssl = "0.5"
 rawsql = "0.1"
 redis = { version = "0.32", features = [
   "aio",
@@ -46,23 +50,19 @@ redis = { version = "0.32", features = [
   "connection-manager",
   "tokio-comp",
 ], optional = true }
+rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { version = "0.7", features = [
   "with-uuid-1",
   "with-serde_json-1",
 ] }
-postgres-openssl = "0.5"
-deadpool-postgres = "0.14"
-mysql_async = { version = "0.36", features = ["native-tls-tls"] }
-openssl = "0.10"
 tokio-rusqlite = "0.7"
-rusqlite = { version = "0.37", features = ["bundled", "serde_json"] }
-thiserror = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
 url = { workspace = true }
 uuid = { workspace = true }
-strum = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -53,11 +53,11 @@ use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2,
-    CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN,
-    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_RSA,
-    CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1,
-    CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
+    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1,
+    CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE,
+    CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
+    CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
     CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
     CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
@@ -418,9 +418,9 @@ impl Session {
     /// Retrieve the object handle for a given object ID from the HSM.
     ///
     /// This function attempts to locate the handle of an object (such as a key) in the HSM
-    /// by searching for objects whose `CKA_LABEL` attribute matches the provided object ID.
-    /// attribute when searching. To optimize performance, previously found handles are cached
-    /// and reused if available.
+    /// by first searching by `CKA_ID` (set by Cosmian KMS on every key it creates), then
+    /// falling back to `CKA_LABEL` for externally provisioned keys that may not have `CKA_ID`.
+    /// To optimize performance, previously found handles are cached and reused if available.
     ///
     /// Special handling is included for key pairs who might be saved with the same label for both:
     /// * If the provided ID ends with `_pk`, the function first tries to find an exact match.
@@ -430,7 +430,7 @@ impl Session {
     ///   the one that matches the requested identifier (`_pk` → public key, otherwise private/secret key).
     ///
     /// # Arguments
-    /// * `object_id` - A byte slice representing the identifier (label) of the object to find.
+    /// * `object_id` - A byte slice representing the identifier of the object to find.
     ///
     /// # Returns
     /// * `HResult<CK_OBJECT_HANDLE>` - A result containing the handle of the object if found.
@@ -448,32 +448,17 @@ impl Session {
             return Ok(handle);
         }
 
-        // Proteccio does not allow the ID for secret keys so we use the label
-        // and we do the same on base HSM
-        let template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: object_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-            ulValueLen: CK_ULONG::try_from(object_id.len())?,
-        }];
-
-        // Get all handles for objects that have the appropriate label
-        let mut object_handles = self.find_object_handles(template.to_vec())?;
+        // Search by CKA_ID first (set by KMS on every key it creates), then fall back to
+        // CKA_LABEL for externally provisioned keys that may not have CKA_ID set.
+        let mut object_handles = self.find_by_id_or_label(object_id)?;
         if object_handles.is_empty() {
             if object_id.ends_with(b"_pk") {
-                // Check if the HSM stores the object without the suffix
+                // Check if the HSM stores the public key without the _pk suffix
                 let mut object_id_trimmed = object_id.strip_suffix(b"_pk").unwrap_or(object_id);
                 object_id_trimmed = object_id_trimmed
                     .strip_suffix(b" ")
                     .unwrap_or(object_id_trimmed);
-                let template_trimmed = [CK_ATTRIBUTE {
-                    type_: CKA_LABEL,
-                    pValue: object_id_trimmed
-                        .as_ptr()
-                        .cast::<std::ffi::c_void>()
-                        .cast_mut(),
-                    ulValueLen: CK_ULONG::try_from(object_id_trimmed.len())?,
-                }];
-                object_handles = self.find_object_handles(template_trimmed.to_vec())?;
+                object_handles = self.find_by_id_or_label(object_id_trimmed)?;
                 if object_handles.is_empty() {
                     return Err(HError::Default("Object not found".to_owned()));
                 }
@@ -486,8 +471,10 @@ impl Session {
             .first()
             .ok_or_else(|| HError::Default("Object handles empty".to_owned()))?;
         if object_handles.len() > 1 {
-            // Multiple matches in case the HSM uses the same ID for SK and PK
+            // Multiple matches; this happens when the HSM uses the same label for SK and PK.
+            // Disambiguate by key type.
             debug!("Found {} possible handles", object_handles.len());
+            let mut matched_type_count = 0;
             for handle in object_handles {
                 let Some(object_type) = self.get_key_type(handle)? else {
                     continue;
@@ -495,12 +482,26 @@ impl Session {
                 if object_id.ends_with(b"_pk") {
                     // We are looking for a public key. Check if the results contain one.
                     if object_type == RsaPublicKey {
+                        if matched_type_count > 0 {
+                            let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
+                            return Err(HError::Default(format!(
+                                "Multiple RSA public keys with label '{label}' found in the HSM slot. \
+                                 Labels must be unique per key type."
+                            )));
+                        }
                         object_handle = handle;
-                        break;
+                        matched_type_count += 1;
                     }
                 } else if object_type == AesKey || object_type == RsaPrivateKey {
+                    if matched_type_count > 0 {
+                        let label = std::str::from_utf8(object_id).unwrap_or("<non-utf8>");
+                        return Err(HError::Default(format!(
+                            "Multiple keys with label '{label}' and the same key type found in the \
+                             HSM slot. Labels must be unique per key type."
+                        )));
+                    }
                     object_handle = handle;
-                    break;
+                    matched_type_count += 1;
                 }
             }
         }
@@ -510,6 +511,31 @@ impl Session {
             .insert(object_id.to_vec(), object_handle)?;
 
         Ok(object_handle)
+    }
+
+    /// Find PKCS#11 object handles by searching `CKA_ID` first, then `CKA_LABEL`.
+    ///
+    /// Cosmian KMS sets both `CKA_ID` and `CKA_LABEL` on every key it creates, so
+    /// `CKA_ID`-based lookup is the primary path.  `CKA_LABEL` is the fallback for
+    /// externally provisioned keys (e.g., pre-loaded via `pkcs11-tool`) that may not
+    /// have `CKA_ID` set.
+    fn find_by_id_or_label(&self, id: &[u8]) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        let id_template = [CK_ATTRIBUTE {
+            type_: CKA_ID,
+            pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(id.len())?,
+        }];
+        let handles = self.find_object_handles(id_template.to_vec())?;
+        if !handles.is_empty() {
+            return Ok(handles);
+        }
+        // Fall back to CKA_LABEL for keys not created by Cosmian KMS
+        let label_template = [CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+            ulValueLen: CK_ULONG::try_from(id.len())?,
+        }];
+        self.find_object_handles(label_template.to_vec())
     }
 
     /// Clear all cached object handles for this HSM slot.
@@ -1883,36 +1909,54 @@ impl Session {
     /// * `object_handle` - The object handle
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
+    ///
+    /// Reads `CKA_ID` first (set by Cosmian KMS on every key it creates); if absent or
+    /// empty, falls back to `CKA_LABEL` (for externally provisioned keys).
+    /// For RSA public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
-        let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL, // Must be CKA_LABEL to match get_object_handle
-            pValue: ptr::null_mut(),
-            ulValueLen: 0,
-        }];
-        if self
-            .call_get_attributes(object_handle, &mut template)?
-            .is_none()
-        {
-            return Ok(None);
+        // Try CKA_ID first, then CKA_LABEL
+        for attr_type in [CKA_ID, CKA_LABEL] {
+            let mut template = [CK_ATTRIBUTE {
+                type_: attr_type,
+                pValue: ptr::null_mut(),
+                ulValueLen: 0,
+            }];
+            if self
+                .call_get_attributes(object_handle, &mut template)?
+                .is_none()
+            {
+                continue;
+            }
+            let id_len = template[0].ulValueLen;
+            if id_len == 0 {
+                continue;
+            }
+            let mut id: Vec<u8> = vec![0_u8; usize::try_from(id_len)?];
+            let mut template = [CK_ATTRIBUTE {
+                type_: attr_type,
+                pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: id_len,
+            }];
+            if self
+                .call_get_attributes(object_handle, &mut template)?
+                .is_none()
+            {
+                continue;
+            }
+            if id.is_empty() {
+                continue;
+            }
+            // When read via CKA_LABEL, append _pk for RSA public keys lacking the suffix.
+            // (When read via CKA_ID, KMS already stored the _pk suffix in the id.)
+            if attr_type == CKA_LABEL
+                && self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey)
+                && !id.ends_with(b"_pk")
+            {
+                id.extend_from_slice(b"_pk");
+            }
+            return Ok(Some(id));
         }
-        let id_len = template[0].ulValueLen;
-        let mut id: Vec<u8> = vec![0_u8; usize::try_from(id_len)?];
-        let mut template = [CK_ATTRIBUTE {
-            type_: CKA_LABEL,
-            pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
-            ulValueLen: id_len,
-        }];
-        if self
-            .call_get_attributes(object_handle, &mut template)?
-            .is_none()
-        {
-            return Ok(None);
-        }
-        if self.get_key_type(object_handle)? == Some(KeyType::RsaPublicKey) && !id.ends_with(b"_pk")
-        {
-            id.extend_from_slice(b"_pk");
-        }
-        Ok(Some(id))
+        Ok(None)
     }
 }
 

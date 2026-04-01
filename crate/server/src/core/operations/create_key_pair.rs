@@ -2,6 +2,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
+    hybrid_kem::create_hybrid_kem_key_pair, ml_dsa::create_ml_dsa_key_pair,
+    ml_kem::create_ml_kem_key_pair, slh_dsa::create_slh_dsa_key_pair,
+};
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
@@ -454,6 +459,63 @@ pub(super) fn generate_key_pair(
             request.public_key_attributes,
         ),
         CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            request.private_key_attributes,
+            request.public_key_attributes,
+        ),
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024 => create_ml_kem_key_pair(
+            cryptographic_algorithm,
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            request.private_key_attributes,
+            request.public_key_attributes,
+        ),
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87 => create_ml_dsa_key_pair(
+            cryptographic_algorithm,
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            request.private_key_attributes,
+            request.public_key_attributes,
+        ),
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::X25519MLKEM768 | CryptographicAlgorithm::X448MLKEM1024 => {
+            create_hybrid_kem_key_pair(
+                cryptographic_algorithm,
+                vendor_id,
+                private_key_uid,
+                public_key_uid,
+                common_attributes,
+                request.private_key_attributes,
+                request.public_key_attributes,
+            )
+        }
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => create_slh_dsa_key_pair(
+            cryptographic_algorithm,
             vendor_id,
             private_key_uid,
             public_key_uid,

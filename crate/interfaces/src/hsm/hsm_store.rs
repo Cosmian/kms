@@ -16,27 +16,43 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
     AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, ObjectWithMetadata, ObjectsStore, as_hsm_uid,
+    InterfaceError, InterfaceResult, KeyMaterial, KeyType, ObjectWithMetadata, ObjectsStore,
+    as_hsm_uid, crypto_oracle::KeyMetadata,
 };
 
 pub struct HsmStore {
     hsm: Arc<dyn HSM + Send + Sync>,
-    hsm_admin: String,
+    hsm_admin: Vec<String>,
     vendor_id: String,
 }
 
 impl HsmStore {
-    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &str, vendor_id: &str) -> Self {
+    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &[String], vendor_id: &str) -> Self {
         Self {
             hsm,
             hsm_admin: hsm_admin.to_owned(),
             vendor_id: vendor_id.to_owned(),
         }
+    }
+
+    /// Returns `true` if `user` is an HSM admin.
+    /// Wildcard `"*"` grants access to every user.
+    fn is_admin(&self, user: &str) -> bool {
+        self.hsm_admin.iter().any(|a| a == "*" || a == user)
+    }
+
+    /// Returns the name to use as the owner of HSM objects.
+    /// Picks the first non-wildcard admin, falling back to `"admin"`.
+    fn owner_name(&self) -> &str {
+        self.hsm_admin
+            .iter()
+            .find(|a| a.as_str() != "*")
+            .map_or("admin", String::as_str)
     }
 }
 
@@ -54,7 +70,7 @@ impl ObjectsStore for HsmStore {
         attributes: &Attributes,
         _tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
-        if owner != self.hsm_admin {
+        if !self.is_admin(owner) {
             return Err(InterfaceError::InvalidRequest(
                 "Only the HSM Admin can create HSM objects".to_owned(),
             ));
@@ -107,12 +123,8 @@ impl ObjectsStore for HsmStore {
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
                 // Convert the HSM object into an ObjectWithMetadata
-                let owm = to_object_with_metadata(
-                    &hsm_object,
-                    uid,
-                    self.hsm_admin.as_str(),
-                    &self.vendor_id,
-                )?;
+                let owm =
+                    to_object_with_metadata(&hsm_object, uid, self.owner_name(), &self.vendor_id)?;
                 Some(owm)
             } else {
                 None
@@ -158,7 +170,7 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<String>> {
         if let Some((uid, _object, attributes, _tags)) = is_rsa_keypair_creation(operations) {
             debug!("Creating RSA keypair with uid: {uid}");
-            if user != self.hsm_admin {
+            if !self.is_admin(user) {
                 return Err(InterfaceError::InvalidRequest(
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
                 ));
@@ -189,11 +201,9 @@ impl ObjectsStore for HsmStore {
     }
 
     async fn is_object_owned_by(&self, _uid: &str, owner: &str) -> InterfaceResult<bool> {
-        debug!(
-            "Is {owner}, the owner of {_uid}? {}",
-            owner == self.hsm_admin
-        );
-        Ok(owner == self.hsm_admin)
+        let is_admin = self.is_admin(owner);
+        debug!("Is {owner} an HSM admin? {}", is_admin);
+        Ok(is_admin)
     }
 
     async fn list_uids_for_tags(
@@ -214,12 +224,13 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut uids = Vec::new();
-        if user_must_be_owner && user != self.hsm_admin {
-            warn!(
-                "User '{}' is not the HSM admin '{}' but 'user_must_be_owner'",
-                user, self.hsm_admin
+        // HSM keys are visible to all authenticated users for listing.
+        // Only mutating operations (create/delete) require HSM admin.
+        if user_must_be_owner && !self.is_admin(user) {
+            debug!(
+                "User '{}' is not an HSM admin; returning HSM keys as read-only listing",
+                user
             );
-            return Ok(uids);
         }
         let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
             debug!("No researched_attributes provided. Defaulting to empty filter attributes");
@@ -235,7 +246,7 @@ impl ObjectsStore for HsmStore {
         let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
             Ok(object_filter) => object_filter,
             Err(e) => {
-                warn!("{e}");
+                debug!("HSM find: incompatible filter, skipping HSM search: {e}");
                 return Ok(uids);
             }
         };
@@ -264,7 +275,7 @@ impl ObjectsStore for HsmStore {
                     .await
                     .unwrap_or_default();
                 if let Some(expected_key_size) = key_size_filter {
-                    if let Some(meta) = object_meta {
+                    if let Some(ref meta) = object_meta {
                         if meta.key_length_in_bits != expected_key_size {
                             continue;
                         }
@@ -286,12 +297,58 @@ impl ObjectsStore for HsmStore {
                         continue;
                     }
                 }
-                uids.push((uid, State::Active, Attributes::default()));
+                // Populate basic attributes from HSM metadata so callers
+                // (Locate, /access/owned) can display key info without a
+                // separate GetAttributes round-trip.
+                let attrs = build_find_attributes(&object_meta, &object_filter);
+                uids.push((uid, State::Active, attrs));
             }
         }
 
         Ok(uids)
     }
+}
+
+fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
+    let mut attrs = Attributes::default();
+    if let Some(m) = meta {
+        attrs.cryptographic_length = Some(i32::try_from(m.key_length_in_bits).unwrap_or_default());
+        match m.key_type {
+            KeyType::AesKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
+                attrs.object_type = Some(ObjectType::SymmetricKey);
+            }
+            KeyType::RsaPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+            }
+            KeyType::RsaPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PublicKey);
+            }
+        }
+    } else {
+        // No metadata available — infer from the filter
+        match filter {
+            HsmObjectFilter::AesKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
+                attrs.object_type = Some(ObjectType::SymmetricKey);
+            }
+            HsmObjectFilter::RsaKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+            }
+            HsmObjectFilter::RsaPrivateKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PrivateKey);
+            }
+            HsmObjectFilter::RsaPublicKey => {
+                attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
+                attrs.object_type = Some(ObjectType::PublicKey);
+            }
+            HsmObjectFilter::Any => {}
+        }
+    }
+    attrs
 }
 
 fn check_basic_compatibility(

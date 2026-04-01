@@ -9,8 +9,8 @@ mod pkcs12_tests {
     fn test_pkcs12_nonexistent_file() {
         // Test with non-existent PKCS12 file
         let config = HttpClientConfig {
-            ssl_client_pkcs12_path: Some("/nonexistent/path/file.p12".to_owned()),
-            ssl_client_pkcs12_password: Some("password".to_owned()),
+            tls_client_pkcs12_path: Some("/nonexistent/path/file.p12".to_owned()),
+            tls_client_pkcs12_password: Some("password".to_owned()),
             ..Default::default()
         };
 
@@ -24,10 +24,10 @@ mod pkcs12_tests {
         log_init(None);
         // Test with PKCS12 file from the workspace test data
         let config = HttpClientConfig {
-            ssl_client_pkcs12_path: Some(
+            tls_client_pkcs12_path: Some(
                 "../../test_data/client_server/owner/owner.client.acme.com.p12".to_owned(),
             ),
-            ssl_client_pkcs12_password: Some("password".to_owned()),
+            tls_client_pkcs12_password: Some("password".to_owned()),
             ..Default::default()
         };
 
@@ -112,10 +112,10 @@ mod client_auth_constraints_tests {
     #[test]
     fn test_error_when_both_pem_and_pkcs12_provided() {
         let config = HttpClientConfig {
-            ssl_client_pkcs12_path: Some("/tmp/client.p12".to_owned()),
-            ssl_client_pkcs12_password: Some("password".to_owned()),
-            ssl_client_pem_cert_path: Some("/tmp/client.crt".to_owned()),
-            ssl_client_pem_key_path: Some("/tmp/client.key".to_owned()),
+            tls_client_pkcs12_path: Some("/tmp/client.p12".to_owned()),
+            tls_client_pkcs12_password: Some("password".to_owned()),
+            tls_client_pem_cert_path: Some("/tmp/client.crt".to_owned()),
+            tls_client_pem_key_path: Some("/tmp/client.key".to_owned()),
             ..Default::default()
         };
 
@@ -129,7 +129,7 @@ mod client_auth_constraints_tests {
     #[test]
     fn test_error_when_only_pem_cert_provided() {
         let config = HttpClientConfig {
-            ssl_client_pem_cert_path: Some("/tmp/client.crt".to_owned()),
+            tls_client_pem_cert_path: Some("/tmp/client.crt".to_owned()),
             ..Default::default()
         };
 
@@ -140,7 +140,7 @@ mod client_auth_constraints_tests {
     #[test]
     fn test_error_when_only_pem_key_provided() {
         let config = HttpClientConfig {
-            ssl_client_pem_key_path: Some("/tmp/client.key".to_owned()),
+            tls_client_pem_key_path: Some("/tmp/client.key".to_owned()),
             ..Default::default()
         };
 
@@ -151,7 +151,7 @@ mod client_auth_constraints_tests {
     #[test]
     fn test_error_when_pkcs12_without_password() {
         let config = HttpClientConfig {
-            ssl_client_pkcs12_path: Some("/tmp/client.p12".to_owned()),
+            tls_client_pkcs12_path: Some("/tmp/client.p12".to_owned()),
             ..Default::default()
         };
 

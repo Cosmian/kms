@@ -33,7 +33,7 @@ use crate::{
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SymmetricKey, Version, register_backend,
+        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
 };
 
@@ -58,8 +58,8 @@ impl Zeroize for DummyDataObject {
 }
 
 impl DataObject for DummyDataObject {
-    fn remote_id(&self) -> String {
-        self.remote_id.clone()
+    fn remote_id(&self) -> &str {
+        &self.remote_id
     }
 
     fn value(&self) -> Zeroizing<Vec<u8>> {
@@ -84,8 +84,8 @@ impl DataObject for DummyDataObject {
 struct DummySymKey;
 
 impl SymmetricKey for DummySymKey {
-    fn remote_id(&self) -> String {
-        "dummy_key".to_owned()
+    fn remote_id(&self) -> &'static str {
+        "dummy_key"
     }
 
     fn algorithm(&self) -> KeyAlgorithm {
@@ -207,6 +207,15 @@ impl Backend for TestBackend {
         _data: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
         Ok(Zeroizing::new(vec![0; 32]))
+    }
+
+    fn remote_sign(
+        &self,
+        _remote_id: &str,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+    ) -> ModuleResult<Vec<u8>> {
+        Err(ModuleError::FunctionNotSupported)
     }
 }
 

@@ -538,6 +538,10 @@ impl TTLVXMLDeserializer {
                         "AES" => Some((0x0000_0003, "AES")),
                         "RSA" => Some((0x0000_0004, "RSA")),
                         "DSA" => Some((0x0000_0005, "DSA")),
+                        // SKIPJACK: historically mandated by KMIP 1.0 optional profiles (SKFF-O-1..3).
+                        // Deprecated in later specs but the numeric code 0x18 is consistent across
+                        // all KMIP versions so we can safely parse it.
+                        "SKIPJACK" => Some((0x0000_0018, "SKIPJACK")),
                         "ECDSA" => Some((0x0000_0006, "ECDSA")),
                         // Vendor / extension algorithms present in mandatory vectors
                         "HMAC_SHA1" => Some((0x0000_0007, "HMACSHA1")),

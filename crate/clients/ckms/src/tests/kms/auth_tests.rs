@@ -13,7 +13,8 @@ use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, ClientAuthOptions, MainDBConfig, ServerJwtAuth as JwtAuth,
-    ServerTlsMode as TlsMode, build_server_params, start_test_server_with_options,
+    ServerTlsMode as TlsMode, build_server_params, start_default_test_kms_server_with_jwt_auth,
+    start_test_server_with_options,
 };
 use tokio::fs;
 
@@ -44,7 +45,7 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
             } else {
                 "none"
             },
-            if http.ssl_client_pkcs12_path.is_some() {
+            if http.tls_client_pkcs12_path.is_some() {
                 "set"
             } else {
                 "none"
@@ -73,7 +74,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
             } else {
                 "none"
             },
-            if http.ssl_client_pkcs12_path.is_some() {
+            if http.tls_client_pkcs12_path.is_some() {
                 "set"
             } else {
                 "none"
@@ -236,14 +237,55 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Client Certificate authentication
-    info!("==> Testing server with Client Certificate auth");
+    // Client Certificate authentication (PKCS#12)
+    info!("==> Testing server with Client Certificate auth (PKCS#12)");
     let port = pick_free_port();
     let ctx = start_test_server_with_options(
         default_db_config.clone(),
         port,
         AuthenticationOptions {
             client: ClientAuthOptions::default(),
+            server_params: Some(build_server_params(
+                default_db_config.clone(),
+                port,
+                TlsMode::HttpsWithClientCa,
+                JwtAuth::Disabled,
+                None,
+                None,
+            )?),
+        },
+        None,
+        None,
+    )
+    .await?;
+    let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
+    run_owned_cli_command(&owner_client_conf_path);
+    ctx.stop_server().await?;
+
+    // Client Certificate authentication (PEM cert + key — FIPS-compatible format)
+    info!("==> Testing server with Client Certificate auth (PEM)");
+    let port = pick_free_port();
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pem_cert = manifest_dir
+        .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.crt")
+        .canonicalize()
+        .expect("owner PEM cert must exist in test_data");
+    let pem_key = manifest_dir
+        .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.key")
+        .canonicalize()
+        .expect("owner PEM key must exist in test_data");
+    let ctx = start_test_server_with_options(
+        default_db_config.clone(),
+        port,
+        AuthenticationOptions {
+            client: ClientAuthOptions {
+                http: HttpClientConfig {
+                    tls_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
+                    tls_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             server_params: Some(build_server_params(
                 default_db_config.clone(),
                 port,
@@ -569,6 +611,34 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         "/tmp/kms_test_workspace_{base_port}"
     )))
     .await;
+
+    Ok(())
+}
+
+/// Regression test: ensure JWT authentication succeeds end-to-end.
+///
+/// This test guards against the panic introduced in `jsonwebtoken` 10.x when
+/// neither the `rust_crypto` nor the `aws_lc_rs` feature is enabled for that
+/// crate. Previously the server worker would panic on the first JWT-authenticated
+/// request with:
+///
+/// > "Could not automatically determine the process-level CryptoProvider …"
+///
+/// The test also catches the `jsonwebtoken` 10.x audience-validation regression:
+/// tokens carrying an `aud` claim were rejected with `InvalidAudience` when the
+/// server had no expected audience configured (`validate_aud` defaulted to `true`
+/// but the expected audience set was empty).
+#[allow(clippy::large_stack_frames)]
+#[tokio::test]
+pub(crate) async fn test_jwt_authentication_no_panic() -> CosmianResult<()> {
+    log_init(None);
+
+    let ctx = start_default_test_kms_server_with_jwt_auth().await;
+    let (owner_conf_path, _) = force_save_kms_cli_config(ctx);
+
+    // A simple `access owned` command is enough to exercise the full
+    // JWT-authenticated request path without touching any cryptographic keys.
+    run_owned_cli_command(&owner_conf_path);
 
     Ok(())
 }

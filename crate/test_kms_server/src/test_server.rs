@@ -1,5 +1,6 @@
 use std::{
     env,
+    net::TcpListener,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
     thread::{self, JoinHandle},
@@ -40,6 +41,7 @@ use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};
 /// for N-1 tests.
 pub(crate) static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_JWT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
@@ -47,6 +49,30 @@ pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
+
+fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
+    if TcpListener::bind(("127.0.0.1", preferred_port)).is_ok() {
+        return Ok(preferred_port);
+    }
+
+    let fallback = TcpListener::bind(("127.0.0.1", 0)).map_err(|error| {
+        KmsClientError::UnexpectedError(format!(
+            "failed to allocate a fallback localhost port for test KMS server: {error}"
+        ))
+    })?;
+    let port = fallback
+        .local_addr()
+        .map_err(|error| {
+            KmsClientError::UnexpectedError(format!(
+                "failed to read fallback localhost port for test KMS server: {error}"
+            ))
+        })?
+        .port();
+    info!(
+        "Preferred test KMS port {preferred_port} is already in use; falling back to port {port}"
+    );
+    Ok(port)
+}
 
 // Small utilities to reduce repetition
 #[inline]
@@ -217,15 +243,16 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ONCE.get_or_try_init(|| async move {
         let use_kek = env::var_os("KMS_USE_KEK");
+        let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT)?;
         match use_kek {
             Some(_use_kek) => {
-                let server_params = create_server_params_with_kek().await.unwrap();
+                let server_params = create_server_params_with_kek(port).await.unwrap();
                 start_from_server_params(server_params).await
             }
             None => {
                 start_test_server_with_options(
-                    get_db_config(DEFAULT_KMS_SERVER_PORT, None),
-                    DEFAULT_KMS_SERVER_PORT,
+                    get_db_config(port, None),
+                    port,
                     AuthenticationOptions::new(),
                     None,
                     None,
@@ -249,7 +276,7 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 1;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 1)?;
             let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
@@ -274,6 +301,41 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
         })
 }
 
+/// Plain-HTTP server with JWT authentication enabled (Auth0 `IdP`).
+///
+/// Use this in tests that verify JWT-based authentication end-to-end.
+/// The owner client config is pre-populated with [`crate::test_jwt::AUTH0_TOKEN`].
+pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsContext {
+    crate::init_openssl_providers_for_tests();
+
+    trace!("Starting test server with JWT auth");
+    ONCE_SERVER_WITH_JWT_AUTH
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 6)?;
+            let db_config = get_db_config(port, None);
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Enabled,
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (JWT auth): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with JWT auth: {e}");
+            std::process::abort();
+        })
+}
+
 /// revocable key IDs
 pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
@@ -281,9 +343,10 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 2)?;
             start_test_server_with_options(
-                get_db_config(DEFAULT_KMS_SERVER_PORT + 2, None),
-                DEFAULT_KMS_SERVER_PORT + 2,
+                get_db_config(port, None),
+                port,
                 AuthenticationOptions::new(),
                 non_revocable_key_id,
                 None,
@@ -303,7 +366,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 3;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 3)?;
             let db_config = get_db_config(port, None);
 
             let server_params = build_server_params_full(BuildServerParamsOptions {
@@ -313,7 +376,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
                 jwt: JwtAuth::Disabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -360,7 +423,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
                 jwt: JwtAuth::Enabled,
                 hsm: Some(HsmConfig {
                     hsm_model: "utimaco".to_owned(),
-                    hsm_admin: "tech@cosmian.com".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
                     hsm_slot: vec![0],
                     hsm_password: vec!["12345678".to_owned()],
                 }),
@@ -416,7 +479,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     Ok((workspace_dir, kek_id.to_owned()))
 }
 
-async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError> {
+async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsClientError> {
     let (workspace_dir, kek_id) = create_kek_in_db().await?;
     trace!(
         "Key encryption key created: {kek_id} in workspace {}",
@@ -428,7 +491,6 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
         "workspace_dir must exist and kek_id must be non-empty"
     );
 
-    let port = DEFAULT_KMS_SERVER_PORT + 4;
     let db_config = get_db_config(port, Some(&workspace_dir));
 
     let reuse_db_config = MainDBConfig {
@@ -443,7 +505,7 @@ async fn create_server_params_with_kek() -> Result<ServerParams, KmsClientError>
         jwt: JwtAuth::Enabled,
         hsm: Some(HsmConfig {
             hsm_model: "utimaco".to_owned(),
-            hsm_admin: "owner.client@acme.com".to_owned(),
+            hsm_admin: vec!["owner.client@acme.com".to_owned()],
             hsm_slot: vec![0],
             hsm_password: vec!["12345678".to_owned()],
         }),
@@ -467,7 +529,8 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_KEK
         .get_or_try_init(|| async move {
-            let server_params = create_server_params_with_kek().await.unwrap();
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
+            let server_params = create_server_params_with_kek(port).await.unwrap();
 
             start_from_server_params(server_params).await
         })
@@ -485,7 +548,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let port = DEFAULT_KMS_SERVER_PORT + 5;
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 5)?;
             let db_config = get_db_config(port, None);
 
             // Use Auth0 config for IdP-enabled server
@@ -855,7 +918,7 @@ pub fn build_server_params_full(
         socket_server: SocketServerConfig {
             // Start socket server when HTTPS and client cert auth are used
             socket_server_start: opts.tls.use_https() && opts.tls.use_known_ca_list(),
-            socket_server_port: opts.port + 100,
+            socket_server_port: opts.port.saturating_add(100),
             ..Default::default()
         },
         workspace: WorkspaceConfig {
@@ -1060,35 +1123,35 @@ fn generate_owner_conf(
         // Respect any explicit client identity provided by the caller; otherwise, inject defaults.
         #[cfg(feature = "non-fips")]
         {
-            let has_pkcs12 = http_conf.ssl_client_pkcs12_path.is_some();
-            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
-                && http_conf.ssl_client_pem_key_path.is_some();
+            let has_pkcs12 = http_conf.tls_client_pkcs12_path.is_some();
+            let has_pem = http_conf.tls_client_pem_cert_path.is_some()
+                && http_conf.tls_client_pem_key_path.is_some();
 
             if !has_pkcs12 && !has_pem {
                 // Inject default owner PKCS#12 only if caller didn't provide an identity
                 let p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12",
                 );
-                http_conf.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
-                http_conf.ssl_client_pkcs12_password = Some("password".to_owned());
+                http_conf.tls_client_pkcs12_path = Some(path_to_string(&p)?);
+                http_conf.tls_client_pkcs12_password = Some("password".to_owned());
                 // Ensure PEM fields are cleared in non-FIPS when using PKCS#12
-                http_conf.ssl_client_pem_cert_path = None;
-                http_conf.ssl_client_pem_key_path = None;
+                http_conf.tls_client_pem_cert_path = None;
+                http_conf.tls_client_pem_key_path = None;
             } else if has_pkcs12 {
                 // PKCS#12 provided by caller takes precedence; clear PEM to avoid ambiguity
-                http_conf.ssl_client_pem_cert_path = None;
-                http_conf.ssl_client_pem_key_path = None;
+                http_conf.tls_client_pem_cert_path = None;
+                http_conf.tls_client_pem_key_path = None;
             } else {
                 // PEM provided by caller in non-FIPS: honor it; ensure PKCS#12 is cleared
-                http_conf.ssl_client_pkcs12_path = None;
-                http_conf.ssl_client_pkcs12_password = None;
+                http_conf.tls_client_pkcs12_path = None;
+                http_conf.tls_client_pkcs12_password = None;
             }
         }
         #[cfg(not(feature = "non-fips"))]
         {
             // In FIPS mode, use PEM certificate and key; PKCS#12 must not be used.
-            let has_pem = http_conf.ssl_client_pem_cert_path.is_some()
-                && http_conf.ssl_client_pem_key_path.is_some();
+            let has_pem = http_conf.tls_client_pem_cert_path.is_some()
+                && http_conf.tls_client_pem_key_path.is_some();
             if !has_pem {
                 // Inject default owner PEM identity only if caller didn't provide one
                 let cert_p = root_path.join(
@@ -1097,19 +1160,19 @@ fn generate_owner_conf(
                 let key_p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.key",
                 );
-                http_conf.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
-                http_conf.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
+                http_conf.tls_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+                http_conf.tls_client_pem_key_path = Some(path_to_string(&key_p)?);
             }
             // Always clear PKCS#12 in FIPS
-            http_conf.ssl_client_pkcs12_path = None;
-            http_conf.ssl_client_pkcs12_password = None;
+            http_conf.tls_client_pkcs12_path = None;
+            http_conf.tls_client_pkcs12_password = None;
         }
     } else {
         // If server doesn't require client cert, don't send one
-        http_conf.ssl_client_pkcs12_path = None;
-        http_conf.ssl_client_pkcs12_password = None;
-        http_conf.ssl_client_pem_cert_path = None;
-        http_conf.ssl_client_pem_key_path = None;
+        http_conf.tls_client_pkcs12_path = None;
+        http_conf.tls_client_pkcs12_password = None;
+        http_conf.tls_client_pem_cert_path = None;
+        http_conf.tls_client_pem_key_path = None;
     }
 
     let conf = KmsClientConfig {
@@ -1141,10 +1204,10 @@ fn generate_user_conf(
         {
             let p = root_dir
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.p12");
-            conf.http_config.ssl_client_pkcs12_path = Some(path_to_string(&p)?);
-            conf.http_config.ssl_client_pkcs12_password = Some("password".to_owned());
-            conf.http_config.ssl_client_pem_cert_path = None;
-            conf.http_config.ssl_client_pem_key_path = None;
+            conf.http_config.tls_client_pkcs12_path = Some(path_to_string(&p)?);
+            conf.http_config.tls_client_pkcs12_password = Some("password".to_owned());
+            conf.http_config.tls_client_pem_cert_path = None;
+            conf.http_config.tls_client_pem_key_path = None;
         }
         #[cfg(not(feature = "non-fips"))]
         {
@@ -1152,17 +1215,17 @@ fn generate_user_conf(
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.crt");
             let key_p = root_dir
                 .join("../../test_data/certificates/client_server/user/user.client.acme.com.key");
-            conf.http_config.ssl_client_pem_cert_path = Some(path_to_string(&cert_p)?);
-            conf.http_config.ssl_client_pem_key_path = Some(path_to_string(&key_p)?);
-            conf.http_config.ssl_client_pkcs12_path = None;
-            conf.http_config.ssl_client_pkcs12_password = None;
+            conf.http_config.tls_client_pem_cert_path = Some(path_to_string(&cert_p)?);
+            conf.http_config.tls_client_pem_key_path = Some(path_to_string(&key_p)?);
+            conf.http_config.tls_client_pkcs12_path = None;
+            conf.http_config.tls_client_pkcs12_password = None;
         }
     } else {
         // For HTTP, ensure no TLS identity is configured to avoid builder errors.
-        conf.http_config.ssl_client_pkcs12_path = None;
-        conf.http_config.ssl_client_pkcs12_password = None;
-        conf.http_config.ssl_client_pem_cert_path = None;
-        conf.http_config.ssl_client_pem_key_path = None;
+        conf.http_config.tls_client_pkcs12_path = None;
+        conf.http_config.tls_client_pkcs12_password = None;
+        conf.http_config.tls_client_pem_cert_path = None;
+        conf.http_config.tls_client_pem_key_path = None;
     }
     conf.http_config.access_token = set_access_token(
         matches!(client_opts.jwt, JwtPolicy::AutoDefault) && use_jwt_token,

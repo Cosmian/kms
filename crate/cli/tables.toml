@@ -1,0 +1,37 @@
+# criterion-table configuration
+# Used by: cargo criterion -p cosmian_kms_cli --message-format=json | criterion-table
+# See https://github.com/nu11ptr/criterion-table
+
+[top_comments]
+# Encryption benchmarks
+"encrypt/aes-gcm" = "AES-GCM authenticated encryption (128, 192, 256-bit keys)."
+"encrypt/aes-xts" = "AES-XTS disk encryption (256, 512-bit keys)."
+"encrypt/aes-gcm-siv" = "AES-GCM-SIV deterministic authenticated encryption (128, 256-bit keys)."
+"encrypt/chacha20-poly1305" = "ChaCha20-Poly1305 authenticated encryption (256-bit key)."
+"encrypt/rsa-oaep" = "RSA OAEP encryption with SHA-256 (2048, 3072, 4096-bit keys)."
+"encrypt/rsa-aes-kwp" = "RSA AES KEY WRAP hybrid encryption (2048, 3072, 4096-bit keys)."
+"encrypt/rsa-pkcs1v15" = "RSA PKCS#1 v1.5 encryption (2048, 3072, 4096-bit keys)."
+"encrypt/ecies" = "ECIES hybrid encryption (P-256, P-384, P-521)."
+"encrypt/salsa-sealed-box" = "Salsa Sealed Box encryption (X25519 + XSalsa20-Poly1305)."
+"encrypt/covercrypt" = "Covercrypt attribute-based encryption."
+# KEM benchmarks
+"kem/configurable" = "Post-quantum hybridized KEM encapsulation and decapsulation."
+# Key creation benchmarks
+"key-creation/symmetric" = "AES and ChaCha20 symmetric key creation."
+"key-creation/rsa" = "RSA key pair creation (2048, 3072, 4096-bit)."
+"key-creation/ec" = "Elliptic curve key pair creation (NIST curves, Edwards curves)."
+"key-creation/covercrypt" = "Covercrypt master key pair creation."
+"key-creation/kem" = "Configurable KEM key pair creation."
+# Sign/verify benchmarks
+"sign-verify/ecdsa-p256" = "ECDSA P-256 sign and verify (SHA-256)."
+"sign-verify/ecdsa-p384" = "ECDSA P-384 sign and verify (SHA-384)."
+"sign-verify/ecdsa-p521" = "ECDSA P-521 sign and verify (SHA-512)."
+"sign-verify/ecdsa-secp256k1" = "ECDSA secp256k1 sign and verify (SHA-256)."
+"sign-verify/eddsa-ed25519" = "EdDSA Ed25519 sign and verify."
+"sign-verify/eddsa-ed448" = "EdDSA Ed448 sign and verify."
+"sign-verify/rsa-pss" = "RSA-PSS sign and verify with SHA-256 (2048, 3072, 4096-bit keys)."
+# Batch benchmarks
+"batch/aes-gcm" = "AES-GCM batch — encrypt/decrypt N items in a single BulkData call."
+"batch/rsa-oaep" = "RSA-OAEP batch — encrypt/decrypt N items in a single KMIP message."
+"batch/rsa-aes-kwp" = "RSA AES Key Wrap batch — encrypt/decrypt N items in a single KMIP message."
+"batch/rsa-pkcs1v15" = "RSA PKCS#1 v1.5 batch — encrypt/decrypt N items in a single KMIP message."

@@ -121,7 +121,14 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" loading={isLoading} danger className="w-full text-white font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={isLoading}
+                            danger
+                            className="w-full text-white font-medium"
+                            data-testid="submit-btn"
+                        >
                             Revoke {label.charAt(0).toUpperCase() + label.slice(1)}
                         </Button>
                     </Form.Item>

@@ -308,6 +308,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.clone())),
         remove: false,
         cascade: true,
+        expected_object_type: None,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

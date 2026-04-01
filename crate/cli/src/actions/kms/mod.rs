@@ -1,6 +1,7 @@
 pub mod access;
 pub mod actions;
 pub mod attributes;
+pub mod aws;
 pub mod azure;
 pub mod bench;
 pub mod certificates;
@@ -21,6 +22,6 @@ pub mod symmetric;
 pub mod version;
 
 #[cfg(feature = "non-fips")]
-pub mod configurable_kem;
-#[cfg(feature = "non-fips")]
 pub mod cover_crypt;
+#[cfg(feature = "non-fips")]
+pub mod pqc;

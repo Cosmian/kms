@@ -7,6 +7,7 @@ pub(super) mod import_export_encodings;
 pub(super) mod import_export_wrapping;
 #[cfg(feature = "non-fips")]
 pub(super) mod locate;
+pub(super) mod openssl_utils;
 pub(super) mod revoke;
 #[cfg(feature = "non-fips")]
 pub(super) mod wrap_unwrap;
