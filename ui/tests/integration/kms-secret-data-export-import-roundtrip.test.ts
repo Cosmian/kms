@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { getNoTTLVRequest, sendKmipRequest } from "../../src/utils";
+import { getNoTTLVRequest, sendKmipRequest } from "../../src/utils/utils";
 import init, * as wasm from "../../src/wasm/pkg";
 import * as wasmClient from "../../src/wasm/pkg/cosmian_kms_client_wasm";
 

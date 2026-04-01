@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import { AuthProvider, useAuth } from "../../../src/AuthContext";
+import { AuthProvider, useAuth } from "../../../src/contexts/AuthContext";
 
 test("useAuth throws outside provider", () => {
     const Consumer = () => {

@@ -3,7 +3,7 @@ import React from "react";
 import { expect, test } from "vitest";
 
 import App from "../../../src/App";
-import { BrandingProvider } from "../../../src/BrandingProvider";
+import { BrandingProvider } from "../../../src/contexts/BrandingProvider";
 
 const mockBranding = {
     title: "Test KMS",

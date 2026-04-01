@@ -8,7 +8,7 @@ import {
     get_attributes_ttlv_request_with_options,
     parse_export_ttlv_response,
     parse_get_attributes_ttlv_response,
-} from "./wasm/pkg";
+} from "../../wasm/pkg";
 
 interface ExportAzureBYOKFormData {
     wrappedKeyId: string;

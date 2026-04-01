@@ -14,7 +14,7 @@ The `src` directory is organized like follows:
 - **`contexts/`**: React Context providers for global state management (e.g., Auth, Branding).
 - **`pages/`**: Top-level standalone page components (e.g., Login, Not Found).
 - **`utils/`**: Shared helper functions and API utilities.
-- **`views/`**: Feature-specific UI modules, grouped by cryptographic domain (e.g., `Access/`, `Certificates/`, `RSA/`, `Symmetric/`, etc.).
+- **`actions/`**: Feature-specific UI modules, grouped by cryptographic domain (e.g., `Access/`, `Certificates/`, `RSA/`, `Symmetric/`, etc.).
 - **`wasm/`**: WebAssembly binding logic.
 
 ---

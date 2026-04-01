@@ -1,13 +1,13 @@
 import { Button, Card, Form, Input, InputNumber, Radio, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "./AuthContext";
-import { sendKmipRequest } from "./utils";
+import { useAuth } from "../../contexts/AuthContext";
+import { sendKmipRequest } from "../../utils/utils";
 import {
     create_secret_data_ttlv_request,
     derive_key_ttlv_request,
     parse_derive_key_ttlv_response,
     parse_import_ttlv_response,
-} from "./wasm/pkg";
+} from "../../wasm/pkg";
 
 const HASHING_ALGORITHMS = [
     { label: "SHA-256", value: "SHA256" },

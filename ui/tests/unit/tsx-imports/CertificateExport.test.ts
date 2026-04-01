@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import CertificateExport from "../../../src/CertificateExport";
+import CertificateExport from "../../../src/actions/Certificates/CertificateExport";
 import { smokeRender } from "../test-utils";
 
 test("renders CertificateExport", () => {

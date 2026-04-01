@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import Sidebar from "../../../src/Sidebar";
+import Sidebar from "../../../src/components/layout/Sidebar";
 import { smokeRender } from "../test-utils";
 
 test("renders Sidebar", () => {

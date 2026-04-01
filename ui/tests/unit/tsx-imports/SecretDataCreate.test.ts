@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import SecretDataCreate from "../../../src/SecretDataCreate";
+import SecretDataCreate from "../../../src/actions/Objects/SecretDataCreate";
 import { smokeRender } from "../test-utils";
 
 test("renders SecretDataCreate", () => {

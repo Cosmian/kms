@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import SymKeysCreate from "../../../src/SymKeysCreate";
+import SymKeysCreate from "../../../src/actions/Keys/SymKeysCreate";
 import { smokeRender } from "../test-utils";
 
 test("renders SymKeysCreate", () => {
