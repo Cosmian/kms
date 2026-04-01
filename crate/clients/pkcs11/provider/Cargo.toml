@@ -24,8 +24,9 @@ doctest = false
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
-ckms = { path = "../../ckms", version = "5.18.0" }
-cosmian_pkcs11_module = { path = "../module", version = "5.18.0" }
+ckms = { path = "../../ckms", version = "5.19.0" }
+cosmian_logger = { workspace = true }
+cosmian_pkcs11_module = { path = "../module", version = "5.19.0" }
 etcetera = "0.8.0"
 hex = "0.4"
 p256 = { version = "0.13.2", default-features = false, features = [
@@ -39,7 +40,6 @@ serde_json = { workspace = true }
 sha3 = { version = "0.10", default-features = false }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-cosmian_logger = { workspace = true }
 tracing-error = "0.2.1"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 x509-cert = { version = "0.2", default-features = false }
