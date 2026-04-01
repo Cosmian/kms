@@ -405,7 +405,7 @@ features = ["non-fips"]
 
 # Product information
 product-name = "Cosmian KMS Server"
-long-description = "Cosmian KMS is a high-performance, open-source FIPS 140-3 compliant Key Management System written in Rust. It provides enterprise-grade key management capabilities with support for various cryptographic operations, database backends, and HSM integrations."
+long-description = "Cosmian KMS is a high-performance, source available FIPS 140-3 compliant Key Management System written in Rust. It provides enterprise-grade key management capabilities with support for various cryptographic operations, database backends, and HSM integrations."
 license-file = "../../LICENSE"
 
 # Identifier for the package (Windows)

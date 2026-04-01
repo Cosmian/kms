@@ -74,23 +74,24 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
-      - AWS:
-          - ECS Fargate: integrations/aws/fargate.md
-          - External Key Store (XKS): integrations/aws/xks.md
-          - BYOK (Bring Your Own Key): integrations/aws/byok.md
-      - Azure:
-          - BYOK (Bring Your Own Key): integrations/azure/byok.md
-          - EKM (External Key Management): integrations/azure/ekm.md
-      - Google GCP:
-          - CMEK (Customer Managed Encryption Keys): integrations/google_gcp/cmek.md
-          - CSEK (Customer Supplied Encryption Keys): integrations/google_gcp/csek.md
-      - Google Workspace Client-Side Encryption (CSE):
-          - Getting started: integrations/google_workspace_client_side_encryption_cse/getting_started/index.md
-          - Configuring the .well-known file: integrations/google_workspace_client_side_encryption_cse/configuring-the-well-known-file-and-server.md
-          - Generating Gmail keys: integrations/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
-          - Migrating existing Drive CSE elements: integrations/google_workspace_client_side_encryption_cse/migrating_drive.md
-          - Migrating existing email to Gmail CSE: integrations/google_workspace_client_side_encryption_cse/migrating_gmail.md
-      - Microsoft 365 Double Key Encryption (DKE): integrations/microsoft_365_double_key_encryption_dke/index.md
+      - Cloud providers:
+          - Amazon Web Services (AWS):
+              - ECS Fargate: integrations/cloud_providers/aws/fargate.md
+              - External Key Store (XKS): integrations/cloud_providers/aws/xks.md
+              - BYOK (Bring Your Own Key): integrations/cloud_providers/aws/byok.md
+          - Microsoft Azure:
+              - BYOK (Bring Your Own Key): integrations/cloud_providers/azure/byok.md
+              - EKM (External Key Management): integrations/cloud_providers/azure/ekm.md
+              - Microsoft 365 Double Key Encryption (DKE): integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md
+          - Google Cloud Platform (GCP):
+              - CMEK (Customer Managed Encryption Keys): integrations/cloud_providers/google_gcp/cmek.md
+              - CSEK (Customer Supplied Encryption Keys): integrations/cloud_providers/google_gcp/csek.md
+          - Google Workspace Client-Side Encryption (CSE):
+              - Getting started: integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md
+              - Configuring the .well-known file: integrations/cloud_providers/google_workspace_client_side_encryption_cse/configuring-the-well-known-file-and-server.md
+              - Generating Gmail keys: integrations/cloud_providers/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
+              - Migrating existing Drive CSE elements: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_drive.md
+              - Migrating existing email to Gmail CSE: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_gmail.md
       - Databases:
           - MongoDB: integrations/databases/mongodb.md
           - MySQL Enterprise Edition: integrations/databases/mysql.md

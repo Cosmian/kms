@@ -5,7 +5,7 @@
 > explains project structure, build commands, CI workflows, coding conventions,
 > and troubleshooting steps so the agent can act autonomously and correctly.
 
-Cosmian KMS is a high-performance, open-source **FIPS 140-3** compliant Key
+Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
@@ -426,3 +426,42 @@ Required behavior for any AI agent:
 3. Update `README.md` with a brief summary (not full details) and links to the detailed docs.
 4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
 5. Avoid duplicating full documentation in `README.md`; keep README content short and navigational.
+
+### Integration documentation alignment rules
+
+The integrations section is the most commonly extended area. Keep these three views in sync at all times:
+
+**Source of truth for navigation structure**: `documentation/mkdocs.yml`
+
+**Canonical integration file paths**:
+
+- Cloud providers: `documentation/docs/integrations/cloud_providers/<provider>/`
+    - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
+    - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
+    - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
+    - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
+    - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
+- Databases: `documentation/docs/integrations/databases/`
+    - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md, snowflake_native_app/
+- Disk encryption: `documentation/docs/integrations/disk_encryption/`
+    - veracrypt.md, luks.md, cryhod.md
+- Other integrations: `documentation/docs/integrations/`
+    - openssh.md, pykmip.md, smime.md, synology_dsm.md, vcenter.md, user_defined_function_for_pyspark_databricks_in_python/
+
+**README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
+
+| README section | mkdocs.yml grouping | Files location |
+|---|---|---|
+| ☁️ Cloud Provider — External Key Management | `Cloud providers:` | `integrations/cloud_providers/` |
+| 🗄️ Database Integrations | `Databases:` | `integrations/databases/` |
+| 💿 Disk Encryption | `Disk encryption:` | `integrations/disk_encryption/` |
+| 💾 Storage & Other Integrations | flat items under `Integrations:` | `integrations/` root |
+
+**When adding a new integration**:
+
+1. Add the doc file under the correct `documentation/docs/integrations/` subdirectory.
+2. Add the nav entry in `documentation/mkdocs.yml` under the correct group.
+3. Add a row to the matching README table with a correct relative link starting with `./documentation/docs/integrations/...`.
+4. README links must use the full path relative to repo root (e.g. `./documentation/docs/integrations/databases/ms_sql_server.md`), not shortened or incorrect paths.
+
+**Never** put an integration in a different category in README than it appears in mkdocs.yml, or leave it out of the README table if it has a mkdocs page.
