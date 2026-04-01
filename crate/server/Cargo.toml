@@ -5,11 +5,11 @@ authors.workspace = true
 categories.workspace = true
 edition.workspace = true
 exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
+homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-homepage.workspace = true
 description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
 
 # NOTE: OpenSSL FIPS Build Paths
@@ -43,8 +43,8 @@ insecure = []
 timeout = []
 # Enable extra cryptographic mechanisms which are non-FIPS compliant.
 non-fips = [
-    "cosmian_kms_client_utils/non-fips",
-    "cosmian_kms_server_database/non-fips",
+  "cosmian_kms_client_utils/non-fips",
+  "cosmian_kms_server_database/non-fips",
 ]
 # Enable interop test operations (should only be used for testing)
 interop = ["cosmian_kms_server_database/interop"]
@@ -61,19 +61,19 @@ async-recursion = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
-cosmian_kms_access = { path = "../access", version = "5.18.0" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.18.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.18.0" }
+cosmian_kms_access = { path = "../access", version = "5.19.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.19.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.19.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.18.0" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.19.0" }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
@@ -81,10 +81,10 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { workspace = true }
 openssl-sys = "0.9"
@@ -92,18 +92,17 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.18.0" }
-reqwest = { workspace = true, features = [
-    # Remove "default" which includes rustls
-    "json",
-    "native-tls",
-    "socks",
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.19.0" }
+reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
+  "json",
+  "native-tls",
+  "socks",
 ] }
 scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.18.0" }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.18.0" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.19.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.19.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
@@ -111,15 +110,15 @@ tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.18.0" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.19.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = { workspace = true }
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.18.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.18.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.19.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.19.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }
 tempfile = { workspace = true }
@@ -147,74 +146,74 @@ depends = ""
 conflicts = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
 replaces = "cosmian-kms-server-non-fips-dynamic, cosmian-kms-server-fips-dynamic"
 assets = [
-    [
-        "../../ui_non_fips/dist/**/*",
-        "usr/local/cosmian/ui/dist/",
-        "644",
-    ],
-    [
-        "target/release/cosmian_kms",
-        "usr/sbin/cosmian_kms",
-        "500",
-    ],
-    [
-        "../../README.md",
-        "usr/share/doc/cosmian/README.md",
-        "644",
-    ],
-    [
-        "../../pkg/kms.toml",
-        "etc/cosmian/",
-        "400",
-    ],
-    [
-        "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
-        "usr/local/cosmian/lib/ossl-modules/legacy.so",
-        "500",
-    ],
+  [
+    "../../ui_non_fips/dist/**/*",
+    "usr/local/cosmian/ui/dist/",
+    "644",
+  ],
+  [
+    "target/release/cosmian_kms",
+    "usr/sbin/cosmian_kms",
+    "500",
+  ],
+  [
+    "../../README.md",
+    "usr/share/doc/cosmian/README.md",
+    "644",
+  ],
+  [
+    "../../pkg/kms.toml",
+    "etc/cosmian/",
+    "400",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
+    "usr/local/cosmian/lib/ossl-modules/legacy.so",
+    "500",
+  ],
 ]
 systemd-units = [
-    { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
+  { unit-name = "cosmian_kms", unit-scripts = "../../pkg", enable = true, start = false, restart-after-upgrade = false },
 ]
 
 [package.metadata.deb.variants.fips]
 features = []
 assets = [
-    [
-        "../../ui/dist/**/*",
-        "usr/local/cosmian/ui/dist/",
-        "644",
-    ],
-    [
-        "target/release/cosmian_kms",
-        "usr/sbin/cosmian_kms",
-        "500",
-    ],
-    [
-        "../../README.md",
-        "usr/share/doc/cosmian/README.md",
-        "644",
-    ],
-    [
-        "../../pkg/kms.toml",
-        "etc/cosmian/",
-        "400",
-    ],
-    [
-        "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
-        "usr/local/cosmian/lib/ossl-modules/fips.so",
-        "500",
-    ],
-    [
-        "target/openssl-3.6.0-linux/ssl/openssl.cnf",
-        "usr/local/cosmian/lib/ssl/openssl.cnf",
-        "644",
-    ],
-    [
-        "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
-        "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
-        "644",
-    ],
+  [
+    "../../ui/dist/**/*",
+    "usr/local/cosmian/ui/dist/",
+    "644",
+  ],
+  [
+    "target/release/cosmian_kms",
+    "usr/sbin/cosmian_kms",
+    "500",
+  ],
+  [
+    "../../README.md",
+    "usr/share/doc/cosmian/README.md",
+    "644",
+  ],
+  [
+    "../../pkg/kms.toml",
+    "etc/cosmian/",
+    "400",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
+    "usr/local/cosmian/lib/ossl-modules/fips.so",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/openssl.cnf",
+    "usr/local/cosmian/lib/ssl/openssl.cnf",
+    "644",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
+    "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
+    "644",
+  ],
 ]
 
 # FIPS variant with dynamic OpenSSL linkage
@@ -225,51 +224,51 @@ features = []
 depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    [
-        "../../ui/dist/**/*",
-        "usr/local/cosmian/ui/dist/",
-        "500",
-    ],
-    [
-        "target/release/cosmian_kms",
-        "usr/sbin/cosmian_kms",
-        "500",
-    ],
-    [
-        "../../README.md",
-        "usr/share/doc/cosmian/README.md",
-        "644",
-    ],
-    [
-        "../../pkg/kms.toml",
-        "etc/cosmian/",
-        "400",
-    ],
-    [
-        "target/openssl-3.6.0-linux/lib/libssl.so.3",
-        "usr/local/cosmian/lib/libssl.so.3",
-        "500",
-    ],
-    [
-        "target/openssl-3.6.0-linux/lib/libcrypto.so.3",
-        "usr/local/cosmian/lib/libcrypto.so.3",
-        "500",
-    ],
-    [
-        "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
-        "usr/local/cosmian/lib/ossl-modules/fips.so",
-        "500",
-    ],
-    [
-        "target/openssl-3.6.0-linux/ssl/openssl.cnf",
-        "usr/local/cosmian/lib/ssl/openssl.cnf",
-        "644",
-    ],
-    [
-        "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
-        "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
-        "644",
-    ],
+  [
+    "../../ui/dist/**/*",
+    "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
+    "target/release/cosmian_kms",
+    "usr/sbin/cosmian_kms",
+    "500",
+  ],
+  [
+    "../../README.md",
+    "usr/share/doc/cosmian/README.md",
+    "644",
+  ],
+  [
+    "../../pkg/kms.toml",
+    "etc/cosmian/",
+    "400",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/lib/libssl.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/lib/libcrypto.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
+    "usr/local/cosmian/lib/ossl-modules/fips.so",
+    "500",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/openssl.cnf",
+    "usr/local/cosmian/lib/ssl/openssl.cnf",
+    "644",
+  ],
+  [
+    "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
+    "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
+    "644",
+  ],
 ]
 
 # Non-FIPS variant with dynamic OpenSSL linkage
@@ -279,41 +278,41 @@ features = ["non-fips"]
 depends = ""
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    [
-        "../../ui_non_fips/dist/**/*",
-        "usr/local/cosmian/ui/dist/",
-        "500",
-    ],
-    [
-        "target/release/cosmian_kms",
-        "usr/sbin/cosmian_kms",
-        "500",
-    ],
-    [
-        "../../README.md",
-        "usr/share/doc/cosmian/README.md",
-        "644",
-    ],
-    [
-        "../../pkg/kms.toml",
-        "etc/cosmian/",
-        "400",
-    ],
-    [
-        "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3",
-        "usr/local/cosmian/lib/libssl.so.3",
-        "500",
-    ],
-    [
-        "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3",
-        "usr/local/cosmian/lib/libcrypto.so.3",
-        "500",
-    ],
-    [
-        "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
-        "usr/local/cosmian/lib/ossl-modules/legacy.so",
-        "500",
-    ],
+  [
+    "../../ui_non_fips/dist/**/*",
+    "usr/local/cosmian/ui/dist/",
+    "500",
+  ],
+  [
+    "target/release/cosmian_kms",
+    "usr/sbin/cosmian_kms",
+    "500",
+  ],
+  [
+    "../../README.md",
+    "usr/share/doc/cosmian/README.md",
+    "644",
+  ],
+  [
+    "../../pkg/kms.toml",
+    "etc/cosmian/",
+    "400",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3",
+    "usr/local/cosmian/lib/libssl.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3",
+    "usr/local/cosmian/lib/libcrypto.so.3",
+    "500",
+  ],
+  [
+    "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
+    "usr/local/cosmian/lib/ossl-modules/legacy.so",
+    "500",
+  ],
 ]
 
 # END DEBIAN PACKAGING
@@ -324,12 +323,12 @@ assets = [
 [package.metadata.generate-rpm]
 license = "BUSL-1.1"
 assets = [
-    { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
-    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
-    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+  { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
+  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
+  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 features = ["non-fips"]
@@ -338,15 +337,15 @@ require-sh = true
 [package.metadata.generate-rpm.variants.fips]
 license = "BUSL-1.1"
 assets = [
-    # Use FIPS UI assets for the FIPS variant
-    { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
-    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
-    { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
-    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+  # Use FIPS UI assets for the FIPS variant
+  { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
+  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
+  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
 require-sh = true
@@ -358,16 +357,16 @@ features = []
 license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-    { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
-    { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
-    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+  { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
+  { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
+  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
+  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no"
 require-sh = true
@@ -379,14 +378,14 @@ features = []
 license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
-    { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
-    { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-    { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
-    { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
-    { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
-    { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
-    { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
-    { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
+  { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
+  { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
+  { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
+  { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
+  { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
 auto-req = "no"
 require-sh = true

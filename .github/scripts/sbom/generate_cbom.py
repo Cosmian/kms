@@ -35,6 +35,22 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Repo root is three levels up from the script file
+#   .github/scripts/sbom/generate_cbom.py → .github/scripts/sbom/ → .github/scripts/ → .github/ → repo root
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+
+def _read_kms_version_from_cargo(repo_root: Path) -> str:
+    """Read the KMS version from the workspace Cargo.toml using regex (no toml dep needed)."""
+    cargo_toml = repo_root / 'Cargo.toml'
+    if cargo_toml.exists():
+        text = cargo_toml.read_text(encoding='utf-8')
+        m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        if m:
+            return m.group(1)
+    return 'unknown'
+
+
 # ---------------------------------------------------------------------------
 # Implementing-library catalogue
 # ---------------------------------------------------------------------------
@@ -1231,8 +1247,8 @@ def main() -> None:
     )
     parser.add_argument(
         '--kms-version',
-        default='5.18.0',
-        help='KMS version string to embed in metadata (default: 5.18.0)',
+        default=_read_kms_version_from_cargo(REPO_ROOT),
+        help='KMS version string to embed in metadata (default: read from Cargo.toml)',
     )
     args = parser.parse_args()
 

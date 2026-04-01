@@ -35,10 +35,10 @@ except ImportError:
         file=sys.stderr,
     )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 OPS_DIR = ROOT / 'crate' / 'server' / 'src' / 'core' / 'operations'
 ATTRS_FILE = ROOT / 'crate' / 'kmip' / 'src' / 'kmip_2_1' / 'kmip_attributes.rs'
-SUPPORT_MD = ROOT / 'documentation' / 'docs' / 'kmip' / 'support.md'
+SUPPORT_MD = ROOT / 'documentation' / 'docs' / 'kmip_support' / 'support.md'
 README_MD = ROOT / 'README.md'
 OASIS_DIR = ROOT / 'crate' / 'kmip' / 'src' / 'oasis'
 

@@ -1,34 +1,34 @@
 [workspace]
 default-members = [
-    "crate/server",
-    "crate/clients/pkcs11/provider",
-    "crate/clients/ckms",
+  "crate/server",
+  "crate/clients/pkcs11/provider",
+  "crate/clients/ckms",
 ]
 members = [
-    # Common crates
-    "crate/kmip",
-    # Client crates
-    "crate/client_utils",
-    "crate/kms_client",
-    "crate/wasm",
-    "crate/cli",
-    "crate/clients/ckms",
-    "crate/clients/pkcs11/module",
-    "crate/clients/pkcs11/provider",
-    # Server crates
-    "crate/access",
-    "crate/crypto",
-    "crate/hsm/proteccio",
-    "crate/hsm/crypt2pay",
-    "crate/hsm/softhsm2",
-    "crate/hsm/smartcardhsm",
-    "crate/hsm/utimaco",
-    "crate/hsm/base_hsm",
-    "crate/interfaces",
-    "crate/server",
-    "crate/server_database",
-    # Test crates
-    "crate/test_kms_server",
+  # Common crates
+  "crate/kmip",
+  # Client crates
+  "crate/client_utils",
+  "crate/kms_client",
+  "crate/wasm",
+  "crate/cli",
+  "crate/clients/ckms",
+  "crate/clients/pkcs11/module",
+  "crate/clients/pkcs11/provider",
+  # Server crates
+  "crate/access",
+  "crate/crypto",
+  "crate/hsm/proteccio",
+  "crate/hsm/crypt2pay",
+  "crate/hsm/softhsm2",
+  "crate/hsm/smartcardhsm",
+  "crate/hsm/utimaco",
+  "crate/hsm/base_hsm",
+  "crate/interfaces",
+  "crate/server",
+  "crate/server_database",
+  # Test crates
+  "crate/test_kms_server",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -93,12 +93,12 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.18.0"
+version = "5.19.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
-    "Bruno Grieder <bruno.grieder@cosmian.com>",
-    "Emmanuel Coste <emmanuel.coste@cosmian.com>",
+  "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Emmanuel Coste <emmanuel.coste@cosmian.com>",
 ]
 license = "BUSL-1.1" # "Business Source License 1.1"
 license-file = "LICENSE"
@@ -110,18 +110,18 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat"         # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols"   # Strip symbol tables for smaller binaries
-opt-level = "z"     # Optimize for size while maintaining performance
-codegen-units = 1   # Single codegen unit: best optimization and determinism
-panic = "abort"     # Smaller binaries, no unwinding tables
+lto = "fat" # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols" # Strip symbol tables for smaller binaries
+opt-level = "z" # Optimize for size while maintaining performance
+codegen-units = 1 # Single codegen unit: best optimization and determinism
+panic = "abort" # Smaller binaries, no unwinding tables
 incremental = false # Disable incremental compilation for determinism
-debug = 0           # No debug info (timestamps/paths)
+debug = 0 # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
 incremental = false
-panic = "abort"     # prevent UB from unwinding panics across extern "C" boundary
+panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]
@@ -148,23 +148,12 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-criterion = { version = "0.6", default-features = false, features = [
-    "html_reports",
-    "async_tokio",
-] }
+criterion = { version = "0.6", default-features = false, features = ["html_reports", "async_tokio"] }
 cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "11.0", default-features = false, features = [
-    "ser",
-] }
+cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
 cosmian_logger = "0.5"
 der = { version = "0.7", default-features = false }
-dialoguer = { version = "0.11", default-features = false, features = [
-    "editor",
-    "fuzzy-select",
-    "history",
-    "password",
-    "completion",
-] }
+dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }

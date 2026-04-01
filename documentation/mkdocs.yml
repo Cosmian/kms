@@ -136,6 +136,8 @@ nav:
               - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
               - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
       - Zeroization: certifications_and_compliance/zeroization.md
+      - SBOM: certifications_and_compliance/sbom.md
+      - CBOM: certifications_and_compliance/cbom.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md

@@ -144,12 +144,6 @@ repos:
     rev: v1.0.42
     hooks:
       - id: nightly-cargo-format
-      - id: dprint-toml-fix
-        stages: [manual]
-      - id: cargo-upgrade
-        stages: [manual]
-      - id: cargo-update
-        stages: [manual]
       - id: cargo-machete
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
@@ -255,6 +249,54 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: nix-build-ui-fips
+        name: Nix build UI (FIPS)
+        entry: nix-build -A ui-fips
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-ui-non-fips
+        name: Nix build UI (non-FIPS)
+        entry: nix-build -A ui-non-fips
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-cli-fips-static
+        name: Nix build KMS CLI (FIPS static OpenSSL)
+        entry: nix-build -A kms-cli-fips-static-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-cli-non-fips-dynamic
+        name: Nix build KMS CLI (non-FIPS dynamic OpenSSL)
+        entry: nix-build -A kms-cli-non-fips-dynamic-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-server-fips-static
+        name: Nix build KMS server (FIPS static OpenSSL)
+        entry: nix-build -A kms-server-fips-static-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-server-non-fips-dynamic
+        name: Nix build KMS server (non-FIPS dynamic OpenSSL)
+        entry: nix-build -A kms-server-non-fips-dynamic-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
       - id: renew-server-doc
         name: renew server docs (CLI help + configuration file)
         description: |
@@ -273,6 +315,12 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 

@@ -42,16 +42,16 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_kms_cli = { path = "../../cli", version = "5.18.0" }
+cosmian_kms_cli = { path = "../../cli", version = "5.19.0" }
 cosmian_logger = { workspace = true }
 csv = "1.3"
 der = { workspace = true, features = ["pem"] }
-hex = { workspace = true }
 dialoguer = { version = "0.11", default-features = false, features = [
   "fuzzy-select",
   "password",
   "editor",
 ] }
+hex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }

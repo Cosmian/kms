@@ -35,7 +35,7 @@ crate/server/ui*
 ui_non_fips/
 vendor/
 http_cache.sqlite
-sbom.*
+sbom/*
 resources/cli.zip
 .claude
 ui/test-results

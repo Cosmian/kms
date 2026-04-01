@@ -2,12 +2,12 @@
 name = "smartcardhsm_pkcs11_loader"
 version.workspace = true
 authors.workspace = true
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords.workspace = true
-categories.workspace = true
 description = "Smart card HSM PKCS#11 loader"
 
 [lints]
@@ -17,7 +17,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.18.0" }
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.19.0" }
 
 [dev-dependencies]
 libloading = { workspace = true }
