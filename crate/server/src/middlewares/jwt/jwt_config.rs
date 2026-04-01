@@ -180,6 +180,11 @@ impl JwtConfig {
             }
             if let Some(jwt_audience) = &self.jwt_audience {
                 validation.set_audience(jwt_audience.as_slice());
+            } else {
+                // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
+                // expected audience is configured in the Validation struct (InvalidAudience).
+                // When the server does not restrict by audience, skip audience validation.
+                validation.validate_aud = false;
             }
 
             let kid = header.kid.ok_or_else(|| {

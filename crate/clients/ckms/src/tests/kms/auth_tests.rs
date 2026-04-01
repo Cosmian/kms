@@ -13,7 +13,8 @@ use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, ClientAuthOptions, MainDBConfig, ServerJwtAuth as JwtAuth,
-    ServerTlsMode as TlsMode, build_server_params, start_test_server_with_options,
+    ServerTlsMode as TlsMode, build_server_params, start_default_test_kms_server_with_jwt_auth,
+    start_test_server_with_options,
 };
 use tokio::fs;
 
@@ -610,6 +611,34 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         "/tmp/kms_test_workspace_{base_port}"
     )))
     .await;
+
+    Ok(())
+}
+
+/// Regression test: ensure JWT authentication succeeds end-to-end.
+///
+/// This test guards against the panic introduced in `jsonwebtoken` 10.x when
+/// neither the `rust_crypto` nor the `aws_lc_rs` feature is enabled for that
+/// crate. Previously the server worker would panic on the first JWT-authenticated
+/// request with:
+///
+/// > "Could not automatically determine the process-level CryptoProvider …"
+///
+/// The test also catches the `jsonwebtoken` 10.x audience-validation regression:
+/// tokens carrying an `aud` claim were rejected with `InvalidAudience` when the
+/// server had no expected audience configured (`validate_aud` defaulted to `true`
+/// but the expected audience set was empty).
+#[allow(clippy::large_stack_frames)]
+#[tokio::test]
+pub(crate) async fn test_jwt_authentication_no_panic() -> CosmianResult<()> {
+    log_init(None);
+
+    let ctx = start_default_test_kms_server_with_jwt_auth().await;
+    let (owner_conf_path, _) = force_save_kms_cli_config(ctx);
+
+    // A simple `access owned` command is enough to exercise the full
+    // JWT-authenticated request path without touching any cryptographic keys.
+    run_owned_cli_command(&owner_conf_path);
 
     Ok(())
 }

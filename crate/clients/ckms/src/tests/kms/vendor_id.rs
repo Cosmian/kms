@@ -18,8 +18,9 @@ use test_kms_server::{
 use crate::error::result::CosmianResult;
 
 const TEST_VENDOR_ID: &str = "test_vendor_id";
-/// Port offset +6 from `DEFAULT_KMS_SERVER_PORT` (9998); free for this dedicated test.
-const TEST_PORT: u16 = 9998 + 6;
+/// Port offset +7 from `DEFAULT_KMS_SERVER_PORT` (9998).
+/// Offsets 0-6 and 20 are already reserved by `test_kms_server` singleton servers.
+const TEST_PORT: u16 = 9998 + 7;
 
 /// Verify that a KMS server configured with a custom `vendor_identification`
 /// stores KMIP `VendorAttribute` entries under that custom vendor ID rather
