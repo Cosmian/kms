@@ -5,7 +5,7 @@ import { BrandingProvider } from "../../src/contexts/BrandingProvider";
 
 import { AuthProvider } from "../../src/contexts/AuthContext";
 
-export type SmokeRenderOptions = {
+type SmokeRenderOptions = {
     route?: string;
     withRoutes?: boolean;
     path?: string;

@@ -123,6 +123,6 @@ export function applyBrandingToDocument(branding: Branding) {
     }
 }
 
-export function getDefaultBranding(): Branding {
+function getDefaultBranding(): Branding {
     return DEFAULT_BRANDING;
 }

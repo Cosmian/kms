@@ -1,7 +1,7 @@
 import { createContext } from "react";
 import type { Branding } from "../utils/branding";
 
-export type BrandingContextValue = {
+type BrandingContextValue = {
     branding: Branding;
 };
 

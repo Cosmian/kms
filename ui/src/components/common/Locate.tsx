@@ -6,7 +6,7 @@ import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 
-export interface LocateObjectRow {
+interface LocateObjectRow {
     object_id: string;
     state?: string;
     attributes?: { ObjectType?: string };

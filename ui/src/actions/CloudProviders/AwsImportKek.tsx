@@ -20,7 +20,7 @@ type KeyImportResponse = {
 
 // These values MUST match the WrappingAlgorithm enum's strum kebab-case serialization
 // in crate/client_utils/src/export_utils.rs (used by wasm.export_ttlv_request).
-export enum WrappingAlgorithm {
+enum WrappingAlgorithm {
     RsaOaepSha1 = "rsa-oaep-sha1",
     RsaOaepSha256 = "rsa-oaep",
     RsaAesKeyWrapSha1 = "rsa-aes-key-wrap-sha1",
