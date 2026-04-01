@@ -2,20 +2,20 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-la7hfmg1apsdk6fddx2zzk2x1ipdli91-cosmian-kms-server-5.17.0.drv",
-  "documentNamespace": "sbomnix://64926bff-6387-48c8-bfaf-a0c1924effea",
+  "name": "SPDXRef-nix-store-960ki8s767cr2mybda95chlzlqpvs90h-cosmian-kms-server-5.19.0.drv",
+  "documentNamespace": "sbomnix://610ba4f2-8cdd-40a7-9029-b1474d7e7c7d",
   "creationInfo": {
-    "created": "2026-03-13T18:01:12.973350+01:00",
+    "created": "2026-04-01T11:17:52.878200+00:00",
     "creators": [
-      "Tool: sbomnix-1.7.3"
+      "Tool: sbomnix-1.7.4"
     ]
   },
   "comment": "included dependencies: 'runtime_only'",
   "packages": [
     {
       "name": "cosmian-kms-server",
-      "SPDXID": "SPDXRef-nix-store-la7hfmg1apsdk6fddx2zzk2x1ipdli91-cosmian-kms-server-5.17.0.drv",
-      "versionInfo": "5.17.0",
+      "SPDXID": "SPDXRef-nix-store-960ki8s767cr2mybda95chlzlqpvs90h-cosmian-kms-server-5.19.0.drv",
+      "versionInfo": "5.19.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.17.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server:cosmian-kms-server:5.19.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server@5.17.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-server@5.19.0"
         }
       ]
     },
@@ -120,7 +120,7 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-la7hfmg1apsdk6fddx2zzk2x1ipdli91-cosmian-kms-server-5.17.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-960ki8s767cr2mybda95chlzlqpvs90h-cosmian-kms-server-5.19.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv"
     },

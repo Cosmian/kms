@@ -25,7 +25,7 @@ const PROXY_URL: &str = "http://localhost:8888";
 const PROXY_USER: &str = "myuser";
 const PROXY_PASSWORD: &str = "mypwd";
 
-/// Verify that `ckms server-version` succeeds when the connection to the KMS
+/// Verify that `ckms server version` succeeds when the connection to the KMS
 /// server is routed through an authenticated forward HTTP proxy.
 ///
 /// Steps:
@@ -33,7 +33,7 @@ const PROXY_PASSWORD: &str = "mypwd";
 /// 2. Read `KMS_URL` from the environment to determine the target URL.
 ///    In CI this is set to `http://<local-ip>:9998` so the proxy actually
 ///    forwards the request — Squid does not proxy connections to `127.0.0.1`.
-/// 3. Run `ckms server-version` with the proxy env vars configured.
+/// 3. Run `ckms server version` with the proxy env vars configured.
 /// 4. Assert the command exits successfully.
 #[ignore = "requires a Squid proxy on localhost:8888 (myuser/mypwd) and KMS_URL set to a non-loopback address"]
 #[tokio::test]
@@ -63,7 +63,8 @@ pub(crate) async fn test_server_version_using_forward_proxy() {
         .env("CLI_PROXY_URL", PROXY_URL)
         .env("CLI_PROXY_BASIC_AUTH_USERNAME", PROXY_USER)
         .env("CLI_PROXY_BASIC_AUTH_PASSWORD", PROXY_PASSWORD)
-        .arg("server-version")
+        .arg("server")
+        .arg("version")
         .assert()
         .success();
 }

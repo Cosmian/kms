@@ -511,6 +511,35 @@ async fn post_process_active_private_key(
         .await;
     }
 
+    // PQC keys are stored as PKCS#8 (ML-KEM, ML-DSA, SLH-DSA) or Raw
+    // (hybrid KEMs) and do not support an OpenSSL round-trip.
+    // Return as-is, honouring wrapping when requested.
+    if is_pqc_algorithm(key_block.cryptographic_algorithm) {
+        let stored_fmt = key_block.key_format_type;
+        if key_format_type.is_some()
+            && !matches!(
+                key_format_type,
+                Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
+            )
+        {
+            kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
+        }
+        // If a specific format is requested that differs from the stored format, reject
+        if let Some(requested) = key_format_type {
+            if *requested != stored_fmt {
+                kms_bail!(
+                    "export: PQC key stored as {stored_fmt:?} cannot be converted to {requested:?}"
+                )
+            }
+        }
+        if let Some(kws) = key_wrapping_specification {
+            let mut cloned = object_with_metadata.object().clone();
+            Box::pin(wrap_object(&mut cloned, kws, kms, user)).await?;
+            *object_with_metadata.object_mut() = cloned;
+        }
+        return Ok(());
+    }
+
     // Take the existing attributes from the Object and merge them with the object attributes
     let mut attributes = match key_block.attributes() {
         Ok(attrs) => {
@@ -777,6 +806,32 @@ async fn process_public_key(
             ))
             .await;
         }
+
+        // PQC public keys: skip the OpenSSL round-trip, same rationale as private keys.
+        if is_pqc_algorithm(key_block.cryptographic_algorithm) {
+            let stored_fmt = key_block.key_format_type;
+            if key_format_type.is_some()
+                && !matches!(
+                    key_format_type,
+                    Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
+                )
+            {
+                kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
+            }
+            if let Some(requested) = key_format_type {
+                if *requested != stored_fmt {
+                    kms_bail!(
+                        "export: PQC key stored as {stored_fmt:?} cannot be converted to {requested:?}"
+                    )
+                }
+            }
+            if let Some(kws) = key_wrapping_specification {
+                let mut cloned = object_with_metadata.object().clone();
+                Box::pin(wrap_object(&mut cloned, kws, kms, user)).await?;
+                *object_with_metadata.object_mut() = cloned;
+            }
+            return Ok(());
+        }
     }
 
     // Take the existing attributes from the Object and merge them with the object attributes
@@ -943,6 +998,35 @@ async fn process_covercrypt_key(
         .await?;
     }
     Ok(())
+}
+
+/// Returns `true` for PQC algorithm variants (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA).
+const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
+    matches!(
+        algo,
+        Some(
+            CryptographicAlgorithm::MLKEM_512
+                | CryptographicAlgorithm::MLKEM_768
+                | CryptographicAlgorithm::MLKEM_1024
+                | CryptographicAlgorithm::MLDSA_44
+                | CryptographicAlgorithm::MLDSA_65
+                | CryptographicAlgorithm::MLDSA_87
+                | CryptographicAlgorithm::X25519MLKEM768
+                | CryptographicAlgorithm::X448MLKEM1024
+                | CryptographicAlgorithm::SLHDSA_SHA2_128s
+                | CryptographicAlgorithm::SLHDSA_SHA2_128f
+                | CryptographicAlgorithm::SLHDSA_SHA2_192s
+                | CryptographicAlgorithm::SLHDSA_SHA2_192f
+                | CryptographicAlgorithm::SLHDSA_SHA2_256s
+                | CryptographicAlgorithm::SLHDSA_SHA2_256f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256f
+        )
+    )
 }
 
 pub(super) fn openssl_private_key_to_kmip_default_format(

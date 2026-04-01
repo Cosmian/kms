@@ -141,6 +141,22 @@ export PIN_URL="https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e
 # Backward-compatible alias used by some scripts
 export PINNED_NIXPKGS_URL="$PIN_URL"
 
+# Warn if a system-level KMS config exists at the default lookup path.
+# Test scripts that start the KMS server with --config are unaffected (the
+# server bypasses the default path entirely when an explicit config is given).
+# Scripts that rely on CLI arguments without --config will fail if this file
+# is present, so we surface the condition early.
+_warn_system_kms_conf() {
+  local default_conf
+  default_conf="/etc/cosmian/kms.toml"
+  if [ -f "$default_conf" ]; then
+    echo "WARNING: ${default_conf} exists on this system." >&2
+    echo "         The KMS server will load this file and ignore any command-line" >&2
+    echo "         arguments when started without an explicit --config flag." >&2
+    echo "         Test scripts in this repo always pass --config to avoid this." >&2
+  fi
+}
+
 # Initialize build/test configuration from CLI args
 # Usage: init_build_env "$@"
 # Exports:
@@ -219,6 +235,7 @@ init_build_env() {
 
   ensure_macos_sdk_env
   ensure_macos_frameworks_ldflags
+  _warn_system_kms_conf
   export VARIANT VARIANT_NAME LINK
 }
 
@@ -415,14 +432,75 @@ check_and_test_db() {
   if _wait_for_port "$host" "$port" 10; then
     echo "$pretty is reachable. Running tests..."
   else
-    echo "Error: $pretty at $host:$port not reachable after timeout; skipping $pretty tests." >&2
-    # Respect repo guidance: only run DB-backed suites when the service is available.
-    # Return success to allow the overall orchestrator to continue to other suites.
-    return 0
+    echo "Error: $pretty at $host:$port not reachable after timeout; failing test run." >&2
+    return 1
   fi
 
   case "$dbkey" in
   redis) dbkey="redis-findex" ;;
   esac
   run_db_tests "$dbkey"
+}
+
+# ─── HSM / pkcs11-tool shared helpers ─────────────────────────────────────────
+
+# Wait for a running KMS server to accept HTTP requests.
+# Exits the script (not just the function) on timeout or early process death.
+# Usage: kms_wait_ready <probe_url> <kms_pid> <log_file> [<timeout_secs>]
+kms_wait_ready() {
+  local probe_url="$1" kms_pid="$2" log_file="$3" timeout="${4:-60}"
+  local i
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required for kms_wait_ready but was not found in PATH." >&2
+    echo "Hint: run via nix.sh with WITH_CURL=1 so shell.nix injects pkgs.curl." >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+
+  for i in $(seq 1 "$timeout"); do
+    # Strip LD_PRELOAD so the FIPS bootstrap shim does not intercept curl's
+    # own TLS stack, which would cause "ERR_OSSL_EVP_UNSUPPORTED" and make
+    # every probe return a non-HTTP error instead of a 4xx/5xx status code.
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+      curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
+      -X POST -H "Content-Type: application/json" -d '{}' "$probe_url" 2>/dev/null |
+      grep -Eq '^[0-9]{3}$'; then
+      return 0
+    fi
+    sleep 1
+    if ! kill -0 "$kms_pid" 2>/dev/null; then
+      echo "ERROR: KMS server process exited early; log:" >&2
+      cat "$log_file" >&2
+      exit 1
+    fi
+  done
+  echo "ERROR: KMS server did not start in ${timeout} s; log:" >&2
+  cat "$log_file" >&2
+  exit 1
+}
+
+# Scan pkcs11-tool output for unexpected CKR_ATTRIBUTE_* warnings.
+# Prints an error message and returns 1 if unexpected warnings are found.
+# Usage: pkcs11_check_warnings <pkcs11_output> [<warn_exclude_pattern>]
+#   warn_exclude_pattern  optional grep -v pattern for known-harmless warnings
+pkcs11_check_warnings() {
+  local pkcs11_output="$1" exclude="${2:-}"
+  local warnings
+  if [ -n "$exclude" ]; then
+    warnings=$(echo "$pkcs11_output" |
+      grep "failed: rv = CKR_ATTRIBUTE_" |
+      grep -v "$exclude" ||
+      true)
+  else
+    warnings=$(echo "$pkcs11_output" |
+      grep "failed: rv = CKR_ATTRIBUTE_" ||
+      true)
+  fi
+  if [ -n "$warnings" ]; then
+    echo "FAIL: pkcs11-tool reported unexpected attribute warnings for KMS-created HSM keys:" >&2
+    echo "$warnings" >&2
+    return 1
+  fi
+  return 0
 }

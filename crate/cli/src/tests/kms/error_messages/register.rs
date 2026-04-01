@@ -228,8 +228,7 @@ async fn test_register_invalid_attribute() -> KmsCliResult<()> {
 
         // Current implementation accepts this (lenient behavior)
         // A strict implementation would return InvalidAttribute error
-        if result.is_err() {
-            let err = result.unwrap_err();
+        if let Err(err) = result {
             let err_msg = err.to_string();
             // Should contain error about invalid attribute or value
             assert!(

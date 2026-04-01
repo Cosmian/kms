@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, web};
-use alcoholic_jwt::{JWKS, token_kid};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use reqwest::Client;
 use serde_json::Value;
 use url::Url;
@@ -127,9 +127,11 @@ pub(crate) async fn callback(
         return HttpResponse::BadRequest().body("Invalid query parameters");
     };
 
-    // Retrieve stored values
-    let stored_pkce_verifier = match session.get::<String>("pkce_verifier") {
-        Ok(Some(v)) => Some(v),
+    // Retrieve stored values.
+    // PKCE is mandatory for the UI login flow: the login_flow handler always generates
+    // and stores a verifier, so Ok(None) here means the session was lost or tampered.
+    let pkce_verifier = match session.get::<String>("pkce_verifier") {
+        Ok(Some(v)) => v,
         Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -194,8 +196,11 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError().body("Missing token_endpoint");
     };
 
-    if let Some(verifier) = stored_pkce_verifier {
-        // Exchange code for tokens
+    // pkce_verifier is always present here (the Ok(None) arm returned BadRequest above).
+    // Use a plain binding to make it explicit that PKCE is unconditionally required.
+    let verifier = pkce_verifier;
+    {
+        // Exchange code for tokens (grant_type=authorization_code, client_secret_post method)
         let mut form: Vec<(String, String)> = vec![
             ("grant_type".to_owned(), "authorization_code".to_owned()),
             ("code".to_owned(), auth_code.clone()),
@@ -243,7 +248,7 @@ pub(crate) async fn callback(
                     .body(format!("Failed to parse JWKS: {e}"));
             }
         };
-        let jwks: JWKS = match serde_json::from_value(jwks_val) {
+        let jwks: JwkSet = match serde_json::from_value(jwks_val) {
             Ok(j) => j,
             Err(_) => {
                 return HttpResponse::InternalServerError().body("Invalid JWKS format");
@@ -251,38 +256,59 @@ pub(crate) async fn callback(
         };
 
         // Select key by kid
-        let kid = match token_kid(id_token_str) {
-            Ok(Some(k)) => k,
-            Ok(None) => {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": "No kid in id_token" }));
-            }
+        let header = match decode_header(id_token_str) {
+            Ok(header) => header,
             Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": format!("Failed to parse kid: {e}") }));
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Failed to decode token header: {e}") }),
+                );
             }
         };
-        let Some(jwk) = jwks.find(&kid) else {
-            return HttpResponse::InternalServerError()
+        let Some(kid) = header.kid else {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "error": "No kid in id_token" }));
+        };
+        let Some(jwk) = jwks
+            .keys
+            .iter()
+            .find(|jwk| jwk.common.key_id.as_deref() == Some(kid.as_str()))
+        else {
+            return HttpResponse::Unauthorized()
                 .json(serde_json::json!({ "error": "Key not found in JWKS" }));
         };
 
-        let validations = vec![
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::Issuer(issuer.clone()),
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::NotExpired,
-            alcoholic_jwt::Validation::Audience(client_id.clone()),
-        ];
-
-        let valid = match alcoholic_jwt::validate(id_token_str, jwk, validations) {
-            Ok(v) => v,
+        let decoding_key = match DecodingKey::from_jwk(jwk) {
+            Ok(key) => key,
             Err(e) => {
-                return HttpResponse::InternalServerError()
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }),
+                );
+            }
+        };
+
+        let mut validation = Validation::new(header.alg);
+        validation.set_audience(&[&client_id]);
+
+        #[cfg(all(not(test), not(feature = "insecure")))]
+        {
+            validation.set_issuer(&[&issuer]);
+            validation.validate_exp = true;
+        }
+
+        #[cfg(any(test, feature = "insecure"))]
+        {
+            validation.validate_exp = false;
+        }
+
+        let valid = match decode::<Value>(id_token_str, &decoding_key, &validation) {
+            Ok(v) => v.claims,
+            Err(e) => {
+                return HttpResponse::Unauthorized()
                     .json(serde_json::json!({ "error": format!("Token validation failed: {e}") }));
             }
         };
-        let claims = valid.claims;
+
+        let claims = valid;
         // Check nonce
         let nonce_claim = claims.get("nonce").and_then(|v| v.as_str());
         if nonce_claim != Some(stored_nonce.as_str()) {

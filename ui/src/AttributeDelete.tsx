@@ -115,7 +115,14 @@ const DeleteAttribute: React.FC = () => {
                     </Card>
 
                     <Form.Item>
-                        <Button type="primary" danger htmlType="submit" loading={isLoading} className="w-full font-medium" data-testid="submit-btn">
+                        <Button
+                            type="primary"
+                            danger
+                            htmlType="submit"
+                            loading={isLoading}
+                            className="w-full font-medium"
+                            data-testid="submit-btn"
+                        >
                             Delete Attribute
                         </Button>
                     </Form.Item>
@@ -124,7 +131,9 @@ const DeleteAttribute: React.FC = () => {
 
             {res && (
                 <Card>
-                    <div ref={responseRef} data-testid="response-output">{res}</div>
+                    <div ref={responseRef} data-testid="response-output">
+                        {res}
+                    </div>
                 </Card>
             )}
         </div>

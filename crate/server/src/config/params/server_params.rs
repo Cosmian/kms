@@ -23,12 +23,16 @@ use crate::{
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 #[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
 
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
+
+    /// Whether the embedded web UI is enabled
+    pub ui_enable: bool,
 
     /// A secret salt used to derive the session cookie encryption key.
     /// This MUST be identical across all KMS instances behind the same load balancer.
@@ -98,9 +102,9 @@ pub struct ServerParams {
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
 
-    /// The username of the HSM admin.
-    /// The HSM admin can create objects on the HSM.
-    pub hsm_admin: String,
+    /// List of KMS usernames that are granted HSM admin privileges.
+    /// Use `["*"]` to grant all authenticated users admin access.
+    pub hsm_admin: Vec<String>,
 
     /// The HSM model, if any
     pub hsm_model: Option<String>,
@@ -246,6 +250,7 @@ impl ServerParams {
                     .context("failed initializing IdPs from idp_auth")?
             },
             ui_index_html_folder,
+            ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
             main_db_params: Some(
                 conf.db
@@ -566,6 +571,7 @@ impl fmt::Debug for ServerParams {
         }
 
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
+        debug_struct.field("ui_enable", &self.ui_enable);
 
         debug_struct.finish()
     }

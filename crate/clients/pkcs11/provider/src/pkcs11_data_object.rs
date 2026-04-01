@@ -30,8 +30,8 @@ impl Zeroize for Pkcs11DataObject {
 }
 
 impl DataObject for Pkcs11DataObject {
-    fn remote_id(&self) -> String {
-        self.remote_id.clone()
+    fn remote_id(&self) -> &str {
+        &self.remote_id
     }
 
     fn value(&self) -> Zeroizing<Vec<u8>> {

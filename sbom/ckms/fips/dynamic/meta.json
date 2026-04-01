@@ -1,0 +1,20 @@
+{
+  "spec_version": "1.0.0",
+  "build": {
+    "variant": "fips",
+    "derivation": "kms-cli-fips-dynamic-openssl",
+    "output_path": "/nix/store/asa17amjiaa2ix16x9p4qgzk90bx0l1d-cosmian-kms-cli-dynamic-5.19.0",
+    "timestamp": "2026-04-01T11:17:59Z",
+    "generator": {
+      "tool": "sbomnix",
+      "version": "v1.7.4"
+    }
+  },
+  "component_count": 1,
+  "vulnerability_count": 0,
+  "notes": [
+    "OpenSSL is dynamically linked in the binary",
+    "All dependencies are from Nix store with pinned versions",
+    "SBOM reflects the exact Nix build output (derivation closure)"
+  ]
+}

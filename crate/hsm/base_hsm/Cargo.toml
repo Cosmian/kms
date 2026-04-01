@@ -18,7 +18,7 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kms_interfaces = { path = "../../interfaces", version = "5.17.0" }
+cosmian_kms_interfaces = { path = "../../interfaces", version = "5.19.0" }
 cosmian_logger = { workspace = true }
 futures = { workspace = true }
 libloading = { workspace = true }
@@ -26,5 +26,5 @@ lru = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
-zeroize = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+zeroize = { workspace = true }

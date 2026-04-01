@@ -184,10 +184,23 @@ impl<'de> Deserialize<'de> for KeyBlock {
 
 impl From<KeyBlock> for kmip_2_1::kmip_data_structures::KeyBlock {
     fn from(val: KeyBlock) -> Self {
+        let is_wrapped = val.key_wrapping_data.is_some();
+        // In KMIP 1.x an unwrapped opaque key is stored as KeyValue::ByteString.
+        // In KMIP 2.1 KeyValue::ByteString is reserved for *wrapped* keys; an
+        // unwrapped key with raw bytes must use KeyValue::Structure{ByteString}.
+        let key_value = val.key_value.map(|kv| match kv {
+            KeyValue::ByteString(b) if !is_wrapped => {
+                kmip_2_1::kmip_data_structures::KeyValue::Structure {
+                    key_material: kmip_2_1::kmip_data_structures::KeyMaterial::ByteString(b),
+                    attributes: None,
+                }
+            }
+            other => other.into(),
+        });
         Self {
             key_format_type: val.key_format_type.into(),
             key_compression_type: val.key_compression_type.map(Into::into),
-            key_value: val.key_value.map(Into::into),
+            key_value,
             cryptographic_algorithm: val.cryptographic_algorithm.map(Into::into),
             cryptographic_length: val.cryptographic_length,
             key_wrapping_data: val.key_wrapping_data.map(Into::into),

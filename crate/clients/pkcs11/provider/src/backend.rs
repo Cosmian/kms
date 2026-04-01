@@ -18,16 +18,17 @@ use cosmian_pkcs11_module::{
     core::object::Object,
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SymmetricKey, Version,
+        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
     },
 };
 use zeroize::Zeroizing;
 
 use crate::{
     kms_object::{
-        get_kms_object, get_kms_object_attributes, get_kms_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, locate_kms_objects,
+        get_kms_object, get_kms_object_attributes, get_kms_objects, get_kms_secret_data_objects,
+        key_algorithm_from_attributes, kms_decrypt, kms_destroy_object, kms_encrypt,
+        kms_import_object, kms_import_symmetric_key, kms_revoke_object, kms_sign,
+        locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -38,6 +39,19 @@ use crate::{
 };
 
 pub(crate) const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
+pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
+
+/// Extract the `Id` from a `SearchOptions`, returning an error if `All` was passed.
+/// Centralises the "find requires an ID" check shared by four `Backend` methods.
+fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
+    match query {
+        SearchOptions::Id(id) => Ok(id),
+        SearchOptions::All => Err(ModuleError::Backend(Box::new(pkcs11_error!(
+            "{}: find must be made using an ID",
+            caller
+        )))),
+    }
+}
 
 pub(crate) struct CliBackend {
     kms_rest_client: KmsClient,
@@ -235,15 +249,7 @@ impl Backend for CliBackend {
 
     fn find_private_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_private_key: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_private_key")?;
         let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
@@ -252,14 +258,35 @@ impl Backend for CliBackend {
         trace!("find_all_private_keys");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
+        let ssh_key_tag = std::env::var("COSMIAN_PKCS11_SSH_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_SSH_KEY_TAG.to_owned());
+
+        let mut seen = std::collections::HashSet::new();
         let mut private_keys = vec![];
-        let ids = locate_kms_objects(
+
+        let disk_ids = locate_kms_objects(
             &self.kms_rest_client,
             &[disk_encryption_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
-        )?;
-        for id in ids {
-            if let Some(private_key) = self.create_private_key_from_id(&id) {
-                private_keys.push(private_key);
+        )
+        .unwrap_or_default();
+        for id in disk_ids {
+            if seen.insert(id.clone()) {
+                if let Some(private_key) = self.create_private_key_from_id(&id) {
+                    private_keys.push(private_key);
+                }
+            }
+        }
+
+        let ssh_ids = locate_kms_objects(
+            &self.kms_rest_client,
+            &[ssh_key_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
+        )
+        .unwrap_or_default();
+        for id in ssh_ids {
+            if seen.insert(id.clone()) {
+                if let Some(private_key) = self.create_private_key_from_id(&id) {
+                    private_keys.push(private_key);
+                }
             }
         }
 
@@ -268,24 +295,56 @@ impl Backend for CliBackend {
 
     fn find_public_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
-        Err(ModuleError::Backend(Box::new(pkcs11_error!(
-            "find_public_key: not implemented"
-        ))))
+        let id = require_id(query, "find_public_key")?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
+        Ok(Arc::new(Pkcs11PublicKey::try_from_kms_object(&kms_object)?))
     }
 
     fn find_all_public_keys(&self) -> ModuleResult<Vec<Arc<dyn PublicKey>>> {
-        warn!("find_all_public_keys not implemented");
-        Ok(vec![])
+        trace!("find_all_public_keys");
+        let ssh_key_tag = std::env::var("COSMIAN_PKCS11_SSH_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_SSH_KEY_TAG.to_owned());
+        let ids = locate_kms_objects(
+            &self.kms_rest_client,
+            &[ssh_key_tag, SYSTEM_TAG_PUBLIC_KEY.to_owned()],
+        )
+        .unwrap_or_default();
+        let mut public_keys = Vec::with_capacity(ids.len());
+        for id in ids {
+            let kms_object = match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    warn!(
+                        "find_all_public_keys: failed to export public key {id}: {e}, \
+                             skipping"
+                    );
+                    continue;
+                }
+            };
+            match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
+                Ok(pk) => {
+                    let arc_pk: Arc<dyn PublicKey> = Arc::new(pk);
+                    public_keys.push(arc_pk);
+                }
+                Err(e) => warn!(
+                    "find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e}, \
+                     skipping"
+                ),
+            }
+        }
+        Ok(public_keys)
     }
 
     fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects: entering");
-        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
-        let kms_objects = get_kms_objects(
+        // Use the _sd system tag AND ObjectType::SecretData filter to find ONLY real SecretData
+        // objects. Without the type filter, Locate would also return SymmetricKeys that happen
+        // to carry the _sd tag (e.g. old TDE master key objects from prior sessions), which
+        // would cause batch_export_objects to fail if those objects cannot be exported as Raw.
+        let kms_objects = get_kms_secret_data_objects(
             &self.kms_rest_client,
-            &[disk_encryption_tag, SYSTEM_TAG_SECRET_DATA.to_owned()],
-            Some(KeyFormatType::Raw),
+            &[SYSTEM_TAG_SECRET_DATA.to_owned()],
         )?;
         trace!("find_all_data_objects: found {} objects", kms_objects.len());
 
@@ -299,15 +358,7 @@ impl Backend for CliBackend {
 
     fn find_symmetric_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn SymmetricKey>> {
         trace!("find_symmetric_key: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_symmetric_key: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_symmetric_key")?;
         let kms_object = get_kms_object(
             &self.kms_rest_client,
             &id,
@@ -337,15 +388,7 @@ impl Backend for CliBackend {
 
     fn find_data_object(&self, query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
-        let id = match query {
-            SearchOptions::Id(id) => id,
-            SearchOptions::All => {
-                return Err(ModuleError::Backend(Box::new(pkcs11_error!(
-                    "find_data_object: find must be made using an ID"
-                ))));
-            }
-        };
-        let id = String::from_utf8(id)?;
+        let id = require_id(query, "find_data_object")?;
         match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::Raw) {
             Ok(kms_object) => Ok(Some(Arc::new(Pkcs11DataObject::try_from_kms_object(
                 kms_object,
@@ -446,5 +489,15 @@ impl Backend for CliBackend {
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
         debug!("decrypt: decrypt_ctx: {ctx:?}");
         kms_decrypt(&self.kms_rest_client, ctx, ciphertext).map_err(Into::into)
+    }
+
+    fn remote_sign(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+    ) -> ModuleResult<Vec<u8>> {
+        debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
     }
 }

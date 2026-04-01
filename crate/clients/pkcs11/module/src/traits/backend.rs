@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use zeroize::Zeroizing;
 
@@ -34,28 +34,20 @@ pub struct EncryptContext {
     pub iv: Option<Vec<u8>>,
 }
 
-//  The Backend is first staged so it can be stored in a Box<dyn Backend>. This
-//  allows the Backend to be reference with `&'static`.
-static STAGED_BACKEND: RwLock<Option<Box<dyn Backend>>> = RwLock::new(None);
-#[expect(clippy::expect_used)]
-static BACKEND: std::sync::LazyLock<Box<dyn Backend>> = std::sync::LazyLock::new(|| {
-    STAGED_BACKEND
-        .write()
-        .expect("Failed to acquire write lock")
-        .take()
-        .expect("Backend not initialized")
-});
+static BACKEND: std::sync::OnceLock<Box<dyn Backend>> = std::sync::OnceLock::new();
 
-/// Stores a backend to later be returned by all calls `crate::backend()`.
-#[expect(clippy::expect_used, clippy::missing_panics_doc)]
+/// Stores the backend for use in all calls to [`backend()`].
+/// Must be called before any PKCS#11 operation.  Subsequent calls are no-ops
+/// (the first registration wins); this is safe because the backend type is
+/// fixed per process, and calling modules always register the same backend.
 pub fn register_backend(backend: Box<dyn Backend>) {
-    *STAGED_BACKEND
-        .write()
-        .expect("Failed to acquire write lock") = Some(backend);
+    // Ignore the Result: Err(T) means already set, which is acceptable.
+    drop(BACKEND.set(backend));
 }
 
+#[expect(clippy::expect_used, clippy::missing_panics_doc)]
 pub fn backend() -> &'static dyn Backend {
-    BACKEND.as_ref()
+    BACKEND.get().expect("backend not initialized").as_ref()
 }
 
 pub trait Backend: Send + Sync {
@@ -110,4 +102,11 @@ pub trait Backend: Send + Sync {
         ctx: &DecryptContext,
         ciphertext: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>>;
+
+    fn remote_sign(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+    ) -> ModuleResult<Vec<u8>>;
 }

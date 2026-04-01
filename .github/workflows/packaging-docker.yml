@@ -81,7 +81,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.0
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Extract base Docker metadata
         id: meta
@@ -168,7 +168,7 @@ jobs:
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
         run: |
-          bash .github/scripts/test_docker_image.sh
+          bash .github/scripts/test/test_docker_image.sh
 
       - name: Select tag for output
         id: pick
@@ -203,7 +203,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.0
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4

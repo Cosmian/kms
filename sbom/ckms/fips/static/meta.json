@@ -1,0 +1,20 @@
+{
+  "spec_version": "1.0.0",
+  "build": {
+    "variant": "fips",
+    "derivation": "kms-cli-fips-static-openssl",
+    "output_path": "/nix/store/n3q226lkzyqmr66qil6rz5bi0wmn3c3k-cosmian-kms-cli-5.19.0",
+    "timestamp": "2026-04-01T11:28:26Z",
+    "generator": {
+      "tool": "sbomnix",
+      "version": "v1.7.4"
+    }
+  },
+  "component_count": 1,
+  "vulnerability_count": 0,
+  "notes": [
+    "OpenSSL is statically linked in the binary",
+    "All dependencies are from Nix store with pinned versions",
+    "SBOM reflects the exact Nix build output (derivation closure)"
+  ]
+}

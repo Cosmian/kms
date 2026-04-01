@@ -17,8 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::hash::Hash;
-
 use zeroize::Zeroizing;
 
 use crate::{
@@ -28,7 +26,7 @@ use crate::{
 
 pub trait PrivateKey: Send + Sync {
     /// The unique identifier of the key (in the KMS)
-    fn remote_id(&self) -> String;
+    fn remote_id(&self) -> &str;
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>>;
 
@@ -45,26 +43,4 @@ pub trait PrivateKey: Send + Sync {
     /// Return the RSA public exponent if the key is an RSA key
     /// In big endian
     fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>>;
-}
-
-impl std::fmt::Debug for dyn PrivateKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PrivateKey")
-            .field("remote id", &self.remote_id())
-            .finish_non_exhaustive()
-    }
-}
-
-impl PartialEq for dyn PrivateKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.remote_id() == other.remote_id()
-    }
-}
-
-impl Eq for dyn PrivateKey {}
-
-impl Hash for dyn PrivateKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.remote_id().hash(state);
-    }
 }

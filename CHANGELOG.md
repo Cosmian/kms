@@ -2,34 +2,214 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.18.0] - 2026-04-XX
+## [5.19.0] - 2026-04-01
 
 ### 🚀 Features
 
-#### HMAC-SHA-1 and HMAC-SHA-224 Support
+- PostgreSQL HA cluster support with multi-host URLs (#818)
+
+#### OpenSSH PKCS#11 Support
+
+- **Reliable key material refresh**: fixed `ObjectsStore::upsert()` replacement logic so placeholder objects are properly updated with fetched key bytes, preventing `CKR_GENERAL_ERROR` during OpenSSH key enumeration.
+- **Correct public-key decoding paths**: fixed RSA/EC public key extraction to use SPKI BIT STRING payload bytes and refactored conversion through `try_from_spki`, including correct EC OID handling.
+- **PKCS#11-compliant EC point export**: encoded `CKA_EC_POINT` as DER OCTET STRING (PKCS#11 v2.40), enabling OpenSSH/OpenSSL parsing compatibility.
+- **Safer attribute exposure for mixed key types**: guarded RSA-only attributes (`CKA_MODULUS`, `CKA_PUBLIC_EXPONENT`) behind `is_rsa()` checks to avoid non-RSA lookup failures.
+- **Provider runtime and API hardening**: migrated provider internals to lock-free/shared primitives (`OnceLock`, shared runtime, `LazyKeyMaterial`) and reduced cloning/boilerplate (`remote_id() -> &str`, macro-based trait impls),
+- improving stability and performance under OpenSSH PKCS#11 usage patterns.
+
+#### Web UI Enhancements - Sync UI with ckms
+
+- **UI**: Add DeriveKey page — derive a symmetric key from an existing key or password using PBKDF2/HKDF, with full WASM binding (`derive_key_ttlv_request`, `parse_derive_key_ttlv_response`).
+- **UI**: Add `/server-info` endpoint exposing KMS version, FIPS mode, and HSM status; display HSM info in the UI header.
+- **UI**: Add `--no-ui` / `KMS_UI_ENABLE=false` server flag to disable the built-in web interface at runtime.
+- **UI**: Regroup Azure, AWS, and Google CSE menu entries under a "Hyperscalers" group; add icons to all sidebar categories.
+- **UI**: Hide PQC, MAC, and Covercrypt menu entries when the server is running in FIPS mode.
+
+### 🐛 Bug Fixes
+
+### JWT authentication
+
+- Fix server worker panic on the first JWT-authenticated request: `jsonwebtoken` 10.x requires
+  an explicit crypto-backend feature (`rust_crypto` or `aws_lc_rs`); added `rust_crypto` to both
+  the workspace and CLI `jsonwebtoken` dependencies
+- Fix `401 No authentication provided` when the JWT token carries an `aud` claim but the server
+  has no expected audience configured: `jsonwebtoken` 10.x now rejects such tokens with
+  `InvalidAudience` unless `validate_aud` is explicitly disabled; the server's JWT validation now
+  sets `validate_aud = false` when no audience restriction is configured
+
+### Server Security and Configuration
+
+- **TLS auth** (#811): Reject client certificates whose CN is empty or `*`; prevents wildcard spoofing attacks.
+- **HSM config** (#695): Expose `KMS_HSM_PASSWORD` and `KMS_HSM_SLOT` environment variables for `--hsm-password` / `--hsm-slot` server options so HSM credentials can be injected without config-file edits.
+
+#### CLI Operations
+
+- **CLI destroy type-safety** (#763): `ckms {sym,rsa,ec,pqc,cc} keys destroy` now performs a `GetAttributes` pre-flight check and rejects attempts to destroy a key of the wrong type with a clear error message.
+
+#### HSM Operations
+
+- **Server-side HSM destroy type guard** (#763): When `Destroy.expected_object_type` is set and the target UID belongs to an HSM object (prefix `hsm::`), the server performs a PKCS#11 attribute roundtrip to retrieve the actual key type and
+- rejects the destroy with `Invalid_Object_Type` if the types do not match (e.g. attempting to destroy an AES key via `rsa keys destroy`). ([#763](https://github.com/Cosmian/kms/issues/763))
+- **HSM destroy type-guard test assertion** (#763): Fixed `send_message` test helper in HSM tests to include `result_reason` in the error string so that `Invalid_Object_Type` is surfaced when the destroy-type guard fires;
+the assertion now reliably matches the KMIP `ErrorReason`. ([#763](https://github.com/Cosmian/kms/issues/763))
+
+#### Web UI
+
+- **UI no-auth mode** (#739): The web UI `create` / `import` buttons are now enabled immediately in no-auth mode (`AuthMethod::None`); previously the async sequencing called the permissions API before the auth method was resolved,
+causing buttons to stay disabled.
+
+### 🔧 CI
+
+- **CI**: All test scripts that start the KMS server are now protected against a system-level `/etc/cosmian/kms.toml`; `test_hsm_softhsm2.sh`, `test_hsm_utimaco.sh`, and `test_hsm_proteccio.sh` write a temporary config file and
+pass `--config` explicitly so the server never falls back to the default path. `common.sh` now warns early when the default config file is found on the host. ([#810](https://github.com/Cosmian/kms/issues/810))
+
+#### SBOM Generation
+
+- **Fix sbomnix version and arguments**: The global nixpkgs pin ships an older sbomnix that does not support `--impure` or `--include-vulns`, causing *"unrecognized arguments"* errors in CI.
+Pinned sbomnix to **v1.7.4** via its own GitHub flake (`github:tiiuae/sbomnix/v1.7.4`) — independent of the nixpkgs pin — so the supported flags are guaranteed. Restored `--impure --include-vulns` on all three `sbomnix` invocations,
+moved `NIX_CONFIG=nix-command flakes` export to script start (needed for `nix run`), and removed the now-unnecessary `dedup_cves.py` post-processing step.
+
+### 📚 Documentation
+
+- **Docs**: Reintegrate PKCS#11 pages from `cli_documentation/docs/pkcs11` into main docs under `documentation/docs/integrations`, grouping database integrations in `integrations/databases`, disk encryption in `integrations/disk_encryption`,
+and adding an OpenSSH integration entry.
+
+#### KMIP Wrapping Documentation
+
+- **`CKM_RSA_AES_KEY_WRAP` invocation** (#688): Document that this scheme is selected by pairing `CryptographicAlgorithm::RSA` with `PaddingMethod::None`; explains the counter-intuitive routing (None ≠ unpadded RSA), adds a KMIP JSON TTLV example,
+and adds a routing table. Fix broken `../algorithms.md` links in `_export.md` and `_import.md`.
+
+#### Benchmarking and CI Documentation
+
+- **Benchmarks CI** (#776): `benchmarks.sh` now builds the KMS server + ckms CLI, starts a temporary SQLite KMS instance, and runs `ckms bench --speed sanity --format json` as an end-to-end smoke test;
+supports `BENCH_SAVE_BASELINE` / `BENCH_LOAD_BASELINE` env vars for criterion regression comparisons on a dedicated machine.
+- **Benchmark regression workflow** (#776): New `benchmark_regression.sh` script and `benchmark.yml` GitHub Actions workflow provide automated performance regression detection.
+The script downloads the reference `benchmarks.json` from `package.cosmian.com`, runs benchmarks on the current branch, and fails if the average global regression exceeds a configurable threshold (default 10%).
+The workflow runs on a self-hosted runner (for stable timings) on a weekly schedule and on demand. ([#776](https://github.com/Cosmian/kms/issues/776))
+
+### 🔄 Refactor
+
+#### Script Infrastructure Reorganization
+
+- **Script reorganization**: Reorganized 76 scripts from the flat `.github/scripts/`, `nix/scripts/`, and `scripts/` directories into logical subdirectories under
+`.github/scripts/`: `test/`, `build/`, `package/`, `release/`, `benchmarks/`, `pykmip/`, `sbom/`, `docs/`, `demo/`, `windows/`, `shared/`. All cross-references in `nix.sh`, workflow YAMLs, and the scripts themselves have been updated.
+Added `shared/colors.sh` for shared terminal color helpers and `benchmarks/docker_helpers.sh` for shared Docker benchmark utilities.
+- **ckms**: Renamed TLS-related CLI parameters and environment variables from `ssl_xxx` to `tls_xxx` (e.g. `--ssl-client-pkcs12-path` → `--tls-client-pkcs12-path`, `KMS_SSL_CLIENT_PKCS12_PATH` → `KMS_TLS_CLIENT_PKCS12_PATH`).
+Update any scripts or config files that reference the old `ssl_` prefix.
+
+### ⚙️ Build
+
+- *(deps)* Bump sigstore/cosign-installer from 4.1.0 to 4.1.1 (#832)
+- *(deps)* Bump picomatch (#831)
+- *(deps)* Bump brace-expansion (#833)
+- *(deps)* Bump brace-expansion (#836)
+- *(deps)* Bump crazy-max/ghaction-dump-context from 2 to 3 (#865)
+- *(deps)* Bump actions/checkout from 4 to 6 (#872)
+- *(deps)* Bump actions/upload-artifact from 4 to 7 (#873)
+
+## [5.18.0] - 2026-03-25
+
+### 🚀 Features
+
+#### Post-Quantum Cryptography (ML-KEM + ML-DSA + SLH-DSA) ([#787](https://github.com/Cosmian/kms/pull/787))
+
+Full support for NIST post-quantum algorithms via OpenSSL 3.x default provider
+(non-FIPS builds only):
+
+- **ML-KEM** (Key Encapsulation Mechanism): ML-KEM-512, ML-KEM-768, ML-KEM-1024 — key pair
+  creation, encapsulation, and decapsulation via KMIP Encrypt/Decrypt operations
+- **ML-DSA** (Digital Signature Algorithm): ML-DSA-44, ML-DSA-65, ML-DSA-87 — key pair
+  creation, signing, and verification via KMIP Sign/SignatureVerify operations
+- **SLH-DSA** (Supersingular Isogeny-based Hash-based DSA): SLH-DSA-SHA2-128s, SLH-DSA-SHA2-192s,
+  SLH-DSA-SHA2-256s — key pair creation, signing, and verification via KMIP Sign/SignatureVerify
+  operations
+- New KMIP enumeration values for all six PQC algorithms
+- Server dispatch for PQC key creation, encrypt/decrypt (KEM), and sign/verify
+- CLI actions: `ckms pqc keys create`, `ckms pqc encapsulate`, `ckms pqc decapsulate`,
+  `ckms pqc sign`, `ckms pqc verify`
+- WASM bindings: `create_pqc_key_pair_ttlv_request()`, `get_pqc_algorithms()`
+- Web UI pages: PQC key creation, ML-KEM encapsulate/decapsulate, ML-DSA sign/verify
+- Playwright E2E tests for all PQC UI flows
+- CLI integration tests for ML-KEM and ML-DSA roundtrips
+
+#### Configurable Hybrid KEM merged into PQC ([#787](https://github.com/Cosmian/kms/pull/787))
+
+- Merged the standalone `ckms kem` subcommand into `ckms pqc` — the four hybridized KEM
+  algorithms (ml-kem-512-p256, ml-kem-768-p256, ml-kem-512-curve25519, ml-kem-768-curve25519)
+  are now created, encapsulated, and decapsulated through the standard PQC workflow
+- Auto-detection in encapsulate response handles both PQC and ConfigurableKEM response formats
+- WASM bindings updated with the 4 hybrid algorithms
+- UI branding supports `hiddenPqcAlgorithms` to hide specific algorithms from the PQC dropdown
+- CLI and ckms integration tests added for configurable hybrid KEM roundtrips
+
+#### Support of AWS Bring Your Own Key (BYOK)  ([#681](https://github.com/Cosmian/kms/pull/681))
+
+- Introduce 2 CLI actions for AWS BYOK
+- Add scripts that automate the AWS BYOK flow, available to download with the documentation
+
+#### Oracle TDE HSM integration on Windows ([#794](https://github.com/Cosmian/kms/pull/794))
+
+- New PowerShell scripts `test_oracle_tde.ps1` and `set_hsm.ps1` install `cosmian_pkcs11.dll`
+  and run a full end-to-end Oracle TDE test on a native Windows Oracle installation (no Docker)
+- Workarounds for two Oracle 26ai Windows bugs: DLL placed at `C:\opt\oracle\extapi\64\pkcs11\`
+  (drive-relative Linux path) and TDE parameters injected via plain PFILE to bypass the
+  `ALTER SYSTEM SET pkcs11_library_location` validator that rejects Windows paths
+
+#### PostgreSQL HA cluster support ([#818](https://github.com/Cosmian/kms/pull/818))
+
+PostgreSQL connections now support multi-host connection strings
+(e.g. `postgresql://host1:5432,host2:5432/db?target_session_attrs=read-write`)
+for automatic failover. Added retry logic with exponential backoff for transient
+connection errors during failover, scheme validation for PostgreSQL URLs, and
+additional retryable SQLSTATE codes (08001, 08004, 57P02, 57P03).
+See [database documentation](documentation/docs/database.md) for configuration details.
+
+#### HSM multi-admin support with wildcard ([#801](https://github.com/Cosmian/kms/pull/801))
+
+`hsm_admin` is now a list of KMS usernames with HSM admin privileges. Use `["*"]` to grant all
+authenticated users access to all HSM operations. TOML: `hsm_admin = ["alice", "bob"]`;
+CLI: `--hsm-admin alice --hsm-admin bob`; env: `KMS_HSM_ADMIN=alice,bob`.
+
+#### Migration to `jsonwebtoken` crate for JWT validation ([#790](https://github.com/Cosmian/kms/pull/790))
+
+JWT validation: complete migration from `alcoholic_jwt` to `jsonwebtoken` in server middleware,
+adding support for multiple algorithms (RS256, ES256, ...).
+Update the documentation, Google CSE routes, and OIDC UI auth flow; updated Google CSE tests accordingly.
+
+#### OpenSSH PKCS#11 integration (`ssh-auth` tag)
+
+SSH key pairs tagged with `ssh-auth` in the KMS are now automatically exposed by
+`libcosmian_pkcs11.so` as OpenSSH identity keys. The private key never leaves the KMS: every
+`C_Sign` call is forwarded to the KMS Sign API and only the signature is returned to the SSH
+client.
+
+- **Remote signing**: `Pkcs11PrivateKey::sign()` now delegates to the KMS via `KmsClient::sign()`.
+  Supported mechanisms: `CKM_ECDSA` (NIST P-256/P-384), `CKM_EDDSA` (Ed25519, non-FIPS),
+  `CKM_RSA_PKCS` (RSA-2048/4096), `CKM_RSA_PKCS_*` (RSA with SHA-1/256/384/512), and
+  `CKM_RSA_PKCS_PSS`.
+- **Key discovery**: `find_all_private_keys()` and `find_all_public_keys()` now query both the
+  `disk-encryption` tag (existing) and the new `ssh-auth` tag. The tag name is overridable via
+  the `COSMIAN_PKCS11_SSH_KEY_TAG` environment variable.
+- **EC public-key SPKI parsing**: `Pkcs11PublicKey::try_from_kms_object()` now correctly
+  identifies ECDSA keys by inspecting the curve OID in the SPKI `AlgorithmIdentifier` parameters
+  (`id-ecPublicKey` OID `1.2.840.10045.2.1`) rather than the algorithm OID.
+- **EdDSA / `CKM_EDDSA`**: new `SignatureAlgorithm::EdDsa` variant and `Mechanism::EdDsa`
+  (`CKM_EDDSA = 0x1057`) added to the PKCS#11 provider.
+- **Integration tests**: `test_ssh_rsa_sign`, `test_ssh_ecdsa_p256_sign`, and
+  `test_ssh_key_discovery` added to the provider test suite.
+- **Documentation**: new `cli_documentation/docs/pkcs11/openssh.md` guide covering key creation,
+  public-key export, SSH client configuration, supported algorithms, and troubleshooting.
+
+#### HMAC-SHA-1 and HMAC-SHA-224 Support ([#786](https://github.com/Cosmian/kms/issues/786)) ([#797](https://github.com/Cosmian/kms/pull/797))
 
 NIST SP 800-131A Rev. 2 Table 7 classifies HMAC-SHA-1 and HMAC-SHA-224 as
 **Acceptable** algorithms. The KMS server previously blocked them via the
-algorithm policy layer. They are now fully supported:
-
-- Server `algorithm_policy.rs`: removed `HMACSHA1` / `HMACSHA224` from the
-  deny-list; added them to the allowed-list alongside `HMACSHA256/384/512`;
-  introduced `validate_hashing_algorithm_for_mac` (permits SHA-1/SHA-224 in
-  HMAC context) and `validate_cryptographic_parameters_for_mac` used by both
-  `MAC` and `MACVerify` policy paths
-- Server `mac.rs`: `compute_hmac` now handles `HashingAlgorithm::SHA1` and
-  `HashingAlgorithm::SHA224` via OpenSSL `Md::sha1()` / `Md::sha224()`
-- CLI `mac.rs`: `CHashingAlgorithm` enum extended with `SHA1` and `SHA224`
-  variants (`--algorithm sha1` / `--algorithm sha224`)
-- UI: new **MAC → Compute** and **MAC → Verify** menu entries with SHA-1 listed
-  first in the algorithm selector to highlight the newly enabled support
-
-Fixes ([#786](https://github.com/Cosmian/kms/issues/786))
+algorithm policy layer. They are now fully supported.
 
 #### Synology DSM NAS Volume Encryption Integration
 
 Cosmian KMS is now validated against Synology DSM 7.x KMIP-based volume
-encryption.  A Python simulation client (`scripts/synology_dsm_client.py`)
+encryption. A Python simulation client (`scripts/synology_dsm_client.py`)
 replays the exact KMIP operation sequence performed by DSM when it configures
 an external KMS server, and a corresponding CI job (`synology_dsm`) is added
 to the test matrix so regressions are caught automatically:
@@ -40,27 +220,130 @@ to the test matrix so regressions are caught automatically:
   setup, DSM configuration, and automated CI testing
 - `README.md` updated with Synology DSM in the disk encryption compatibility table
 
-### 🐛 Bug Fixes
-
+- **Synology DSM simulation (PyKMIP): fix `ModifyAttribute` step after issue [#820](https://github.com/Cosmian/kms/issues/820) server fix**:
+  `KMIPProxy.send_request_payload()` returns the response *payload* object on success (not a batch
+  item), so the returned object has no `result_status` field. Calling `_check_result()` on it
+  always returned `False`, causing spurious cleanup (Destroy) even when the server returned
+  `SUCCESS`. Fix: drop the `_check_result` call — `send_request_payload` raises
+  `OperationFailure` on server errors; reaching the success path without an exception is sufficient.
+  Also fixed `test_pykmip.sh` `set -e` preventing simulation output from being visible when the
+  script fails. Fixes CI failure for `Test on pykmip - non-fips`. ([#799](https://github.com/Cosmian/kms/pull/799))
+- **`OperationPolicyName` round-trip preservation (issue #796)**: KMIP 1.x clients (e.g. Synology
+  DSM 7.2.2) include the `OperationPolicyName` attribute in Register/Create requests per the KMIP
+  1.0 spec section 3.18. This attribute was deprecated in KMIP 1.3 and removed in KMIP 2.0+. The
+  server now emits a `WARN` log entry (useful for tracing legacy clients in server logs) and
+  preserves the value internally as a vendor attribute (`KMIP1 / __Operation Policy Name__`) so
+  that a subsequent `GetAttributes` request for `"Operation Policy Name"` from the same KMIP 1.x
+  client returns the expected value. Additionally, the server correctly ignores `OperationPolicyName`
+  when sent via `AddAttribute` to avoid creating a duplicate entry on top of the one already stored
+  during Create/Register.
+  Fixes ([#796](https://github.com/Cosmian/kms/issues/796))
+- **KMIP 1.x → 2.1 attribute conversion fixes**: Several KMIP 1.x attributes were incorrectly
+  lost or corrupted during the KMIP 1.x → 2.1 internal conversion:
+    - `X509CertificateIdentifier`, `X509CertificateIssuer`, `X509CertificateSubject`, `Digest`,
+    and `Pkcs12FriendlyName` all exist in KMIP 2.1 but were being dropped with a `WARN` in the
+    bulk conversion path (Create/Register), and mapped to a garbage `Comment` attribute in the
+    single-attribute path (AddAttribute/SetAttribute). They are now correctly mapped to their
+    KMIP 2.1 equivalents in both paths.
+    - `CertificateIdentifier`, `CertificateIssuer`, and `CertificateSubject` (the non-X509 variants
+    removed in KMIP 2.0+) are now preserved as `VendorAttribute(KMIP1, ...)` in both paths
+    instead of being silently dropped, and are decoded back to their KMIP 1.4 types when a KMIP
+    1.x client retrieves them via `GetAttributes`.
+    - `StorageStatusMask` in the single-attribute path no longer corrupts the `Comment` attribute
+    slot; it is preserved as a `VendorAttribute` with a `WARN`. ([#799](https://github.com/Cosmian/kms/pull/799))
+- **`TransparentECPrivateKey`/`TransparentECPublicKey` → KMIP 1.4 conversion**: The
+  `TryFrom<kmip_2_1::KeyFormatType> for kmip_1_4::KeyFormatType` conversion previously returned
+  an error for these key format types even though KMIP 1.4 defines them with the same numeric
+  values (0x14/0x15). They are now correctly converted, enabling KMIP 1.4 clients to retrieve
+  EC keys whose format was stored internally by the server using the KMIP 2.1 canonical type. ([#799](https://github.com/Cosmian/kms/pull/799))
 - **ModifyAttribute**: Fully implement `ModifyAttribute` operation — attribute changes are now persisted
   and ACL checks enforced; setting `ActivationDate` to a past/present date on a Pre-Active object
   now correctly transitions it to Active (KMIP spec §3.22). Fixes an incompatibility with Synology
-  DSM ([#760](https://github.com/Cosmian/kms/issues/760))
-- **ModifyAttribute CLI/UI**: Expose `ModifyAttribute` in the `cosmian_kms_cli` and `ckms` crates
-  (`ckms attributes modify`) and in the web UI (Attributes → Modify); WASM bindings
-  `modify_attribute_ttlv_request` / `parse_modify_attribute_ttlv_response` added
-- **test_modify_attribute**: Fix `ckms` test to use a state-independent attribute (`CryptographicLength`)
-  instead of `ActivationDate`; symmetric keys are created Active by default so the previous
-  `ActivationDate` test was never reachable on an Active object
+  DSM ([#760](https://github.com/Cosmian/kms/issues/760)) ([#788](https://github.com/Cosmian/kms/pull/788))
 - **Name attribute stored as VendorExtension instead of standard KMIP attribute**: Setting the `Name`
   attribute via the CLI (`ckms attributes set --name <value>`) or the web UI now correctly stores it
   as the standard KMIP `Name` attribute instead of a `VendorAttribute` (hex-encoded bytes inside
-  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746)):
-    - New `--name` flag added to `ckms attributes set`, `modify`, and `delete`
-    - `build_selected_attribute` WASM helper extended with a `"name"` case
-    - `parse_selected_attributes` now returns `Name` entries under the `Tag::Name` key
-    - UI: `AttributeSet`, `AttributeModify`, and `AttributeDelete` forms include a **Name** option
-    - Playwright E2E tests cover the full Name attribute lifecycle (set → get → modify → delete)
+  `VendorExtension`). Fixes ([#746](https://github.com/Cosmian/kms/issues/746)) ([#795](https://github.com/Cosmian/kms/pull/795))
+
+#### KMIP 1.0 XML Non-Regression Test Vectors ([#799](https://github.com/Cosmian/kms/pull/799))
+
+All 84 official OASIS KMIP 1.0 XML conformance test vectors are now parsed and
+validated as part of the test suite:
+
+- `mandatory/` – 57 files (19 unique test cases × 3 minor-version variants):
+  SKLC-M-1..3 (symmetric key lifecycle), SKFF-M-1..12 (symmetric key
+  foundry/factory), AKLC-M-1..3 (asymmetric key lifecycle), OMOS-M-1
+  (opaque managed object store)
+- `optional/` – 27 files (9 unique test cases × 3 minor-version variants):
+  SKLC-O-1, SKFF-O-1..6, AKLC-O-1, OMOS-O-1
+
+As a side effect, the XML deserializer now correctly maps the `SKIPJACK`
+enumeration token (`0x0000_0018`) used by `SKFF-O-1..3`, fixing a
+previously-unknown parse error for those optional vectors.
+
+#### Microsoft SQL Server External Key Management (EKM) ([#809](https://github.com/Cosmian/kms/pull/809))
+
+- Microsoft SQL Server EKM is now available via a Windows DLL provider that forwards key operations to the Cosmian KMS over mutual TLS.
+
+#### ckms new features
+
+##### `ckms bench` concurrency sweep with time limits ([#816](https://github.com/Cosmian/kms/pull/816))
+
+- **Benchmarks**: Added `scripts/run_benchmarks_load_tests_docker.sh` — Docker-based load test comparison script analogous to `run_benchmarks_docker.sh`; pulls two KMS Docker images, runs `ckms bench --load` against each, and produces a side-by-side markdown diff at `documentation/docs/benchmarks/docker/load-tests-<v1>-vs-<v2>.md`.
+- `ckms bench`: added benchmarks for AES-XTS, AES-GCM-SIV, ECIES, Salsa Sealed Box, Covercrypt, and Configurable KEM (ML-KEM-512/768, hybrid variants); `run_benchmarks.sh` now injects `lscpu` output and KMS server version into `documentation/docs/benchmarks.md`
+- `ckms bench`: added `--format` option (`text`/`json`); JSON mode collects criterion estimates into `target/criterion/benchmarks.json`
+- `ckms bench`: criterion is now a regular dependency (not just dev-dependency)
+- `ckms bench`: fixed ChaCha20-Poly1305 benchmarks — changed from `[128, 256]` to `[256]` key sizes (ChaCha20 only supports 256-bit keys)
+
+##### PEM client certificate support in ckms arguments ([#804](https://github.com/Cosmian/kms/issues/804)) ([#829](https://github.com/Cosmian/kms/pull/829))
+
+The `ckms configure` wizard now exposes PEM client certificate authentication in addition to
+PKCS#12. Users can select "Client certificate (PEM)" or "Both (PEM cert + token)" and provide
+the certificate (`.crt`/`.pem`) and private key (`.key`/`.pem`) paths separately. The
+`ssl_client_pem_cert_path` and `ssl_client_pem_key_path` config fields were already supported by
+the HTTP client but were not reachable through the interactive wizard.
+
+### 🐛 Bug Fixes
+
+- **AZURE BYOK**: Fix Azure BYOK silent error when exporting a previously wrapped key ([#685](https://github.com/Cosmian/kms/issues/685))
+- Fix AWS BYOK silent when exporting a previously wrapped key. ([#681](https://github.com/Cosmian/kms/pull/681))
+- **CLI**: `bench` and `markdown` subcommands are now visible in `ckms --help` ([#821](https://github.com/Cosmian/kms/issues/821)) ([#816](https://github.com/Cosmian/kms/pull/816)); both were incorrectly hidden with `#[clap(hide = true)]`.
+- **CI**: Fix intermittent ckms config parse error ("missing field `http_config`") caused by a cross-process TOCTOU race when `cargo test --workspace --lib` runs multiple test binaries concurrently; config temp files now include the process ID in their name. Fixes ([#779](https://github.com/Cosmian/kms/issues/779)) ([#812](https://github.com/Cosmian/kms/pull/812))
+- **CI (UI FIPS)**: Fix `ERR_OSSL_EVP_UNSUPPORTED` crash when running `nix.sh --variant fips test ui`; pnpm 9.x uses MD4 in `createBase32Hash` which is blocked by the FIPS provider loaded via `LD_PRELOAD` in the Nix shell. `test_ui.sh` now strips `LD_PRELOAD`/`OPENSSL_CONF`/`OPENSSL_MODULES` from all pnpm invocations so Node.js uses the default OpenSSL provider while Rust/cargo builds remain FIPS-mode.
+
+#### HSM related fixes
+
+- **HSM: CKA_ID missing on HSM-created keys**: Keys generated via the HSM PKCS#11 path were stored
+  without a `CKA_ID`, making them invisible to some PKCS#11 tools. The KMS now sets `CKA_ID` at
+  key creation time for all HSM backends (Proteccio, Utimaco, SoftHSM2). ([#801](https://github.com/Cosmian/kms/pull/801))
+- **HSM**: HSM key lookup (`get_object_handle`) now searches by `CKA_ID` first (primary
+  path for KMS-created keys) and falls back to `CKA_LABEL` for externally provisioned keys
+  that may not have `CKA_ID` set; `get_object_id` follows the same order ([#801](https://github.com/Cosmian/kms/pull/801))
+- **HSM**: Non-admin users can now create KMS keys wrapped by the server-level
+  `key_encryption_key`; the ownership check is skipped for this shared server resource
+  ([#761](https://github.com/Cosmian/kms/issues/761)) ([#801](https://github.com/Cosmian/kms/pull/801))
+- **HSM/CLI**: `ckms sym keys unwrap -i hsm::<slot>::<label>` no longer fails with
+  "This key is sensitive and cannot be exported from the HSM"; the unwrap is now performed
+  server-side through the KMS crypto oracle so the HSM key material is never exported
+  ([#762](https://github.com/Cosmian/kms/issues/762)) ([#801](https://github.com/Cosmian/kms/pull/801))
+- Fix Locate for mixed HSM + software key environments
+    - **Server**: `HsmStore.find()` now returns HSM keys to all authenticated users for read-only listing (previously required HSM admin), and populates basic attributes (algorithm, length, object type) from HSM metadata so Locate and `/access/owned` display key info without a separate `GetAttributes` round-trip.
+    - **UI**: Locate page now correctly merges HSM keys (`hsm::` prefix) into results even when they are absent from `/access/owned`; HSM keys default to "Active" state during enrichment.
+    - **UI Locate**: Fix "State: Unknown" shown for all objects when clicking "Search Objects" with no filters — state is now resolved from `/access/owned` (software keys) and defaults to "Active" for HSM keys without invoking per-object `GetAttributes`.
+    - **UI E2E**: New `locate-hsm.spec.ts` Playwright integration tests run against a real SoftHSM2 KMS; `test_ui.sh` (via `nix.sh test ui`) wires up the full stack (WASM build → KMS server → SoftHSM2 token → pre-created keys → Vite preview → Playwright) on both Linux and macOS. `test_ui.sh` now requires `softhsm2-util` to be installed and errors out with a clear message if it is missing. ([#822](https://github.com/Cosmian/kms/pull/822))
+
+### ⚙️ Build
+
+- *(deps)* Bump pnpm/action-setup from 4 to 5 ([#800](https://github.com/Cosmian/kms/pull/800))
+- *(deps)* Bump rustls-webpki in the cargo group across 1 directory ([#815](https://github.com/Cosmian/kms/pull/815))
+
+### 🧪 Testing
+
+- Create integration tests for AWS KMS BYOK using OpenSSL to unwrap locally and mock the AWS infrastructure ([#681](https://github.com/Cosmian/kms/pull/681))
+
+### 📚 Documentation
+
+- Documentation for AWS BYOK on docs.cosmian ([#681](https://github.com/Cosmian/kms/pull/681))
 
 ## [5.17.0] - 2026-03-13
 
@@ -208,7 +491,7 @@ in this repository under `crate/clients/ckms/`:
     - Removed `${toString ../.}` from RUSTFLAGS `-C remap-path-prefix` — it embedded the machine-specific workspace path into the derivation, causing cross-machine hash divergence.
     - Added `-C strip=symbols` and `-C symbol-mangling-version=v0` to strip residual host-path artefacts from symbol tables.
     - Scrub the Nix-store path from OpenSSL's `buildinf.h` at build time so the OpenSSL derivation hash is identical across machines.
-- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05) — eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
+- Pin all `builtins.fetchTarball` calls in `default.nix` with explicit `sha256` hashes (nixpkgs 24.11, rust-overlay, nixpkgs 22.05). Eliminates Nix-version-sensitive evaluation impurity and removes the `NIXPKGS_GLIBC_234_URL` environment variable override.
 - Non-FIPS Docker image now ships OpenSSL 3.6.0 provider modules (`legacy.so`, `openssl.cnf`) and sets `OPENSSL_CONF`/`OPENSSL_MODULES` environment variables, matching the FIPS image layout.
 - macOS packaging fixes in `nix/scripts/package_dmg.sh` and related CI scripts.
 - *(deps)* Bump keccak in the cargo group across 1 directory ([#728](https://github.com/Cosmian/kms/pull/728))

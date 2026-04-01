@@ -51,6 +51,25 @@ impl SqlitePool {
         _max_connections: Option<u32>,
     ) -> DbResult<Self> {
         let conn = Connection::open(path).await?;
+        // Enable WAL journal mode and NORMAL synchronous for better write throughput.
+        // WAL mode allows concurrent reads during writes and avoids the two-fsync
+        // overhead of DELETE journal mode.  With synchronous=NORMAL SQLite fsyncs
+        // the WAL file only at checkpoints (background) rather than on every commit,
+        // which reduces per-write latency from ~10 ms to sub-millisecond on typical
+        // Docker / overlayfs environments.
+        // busy_timeout lets writers retry on transient lock conflicts instead of
+        // returning SQLITE_BUSY immediately (important under concurrent load tests).
+        conn.call(
+            |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                c.execute_batch(
+                    "PRAGMA journal_mode=WAL;\
+                 PRAGMA synchronous=NORMAL;\
+                 PRAGMA busy_timeout=5000;",
+                )
+            },
+        )
+        .await
+        .map_err(DbError::from)?;
         let pool = Self { conn };
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();

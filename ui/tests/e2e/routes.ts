@@ -57,6 +57,19 @@ export const EC_KEY_ROUTES: Route[] = [
     { name: "verify", path: "/ui/ec/verify" },
 ];
 
+// ── PQC Key routes ───────────────────────────────────────────────────────────
+export const PQC_KEY_ROUTES: Route[] = [
+    { name: "create", path: "/ui/pqc/keys/create" },
+    { name: "export", path: "/ui/pqc/keys/export" },
+    { name: "import", path: "/ui/pqc/keys/import" },
+    { name: "revoke", path: "/ui/pqc/keys/revoke" },
+    { name: "destroy", path: "/ui/pqc/keys/destroy" },
+    { name: "encapsulate", path: "/ui/pqc/encapsulate" },
+    { name: "decapsulate", path: "/ui/pqc/decapsulate" },
+    { name: "sign", path: "/ui/pqc/sign" },
+    { name: "verify", path: "/ui/pqc/verify" },
+];
+
 // ── Covercrypt Key routes ────────────────────────────────────────────────────
 export const CC_KEY_ROUTES: Route[] = [
     { name: "create master key pair", path: "/ui/cc/keys/create-master-key-pair" },
@@ -108,11 +121,20 @@ export const ACCESS_RIGHTS_ROUTES: Route[] = [
     { name: "obtained", path: "/ui/access-rights/obtained", locator: "h1" },
 ];
 
-// ── Azure BYOK routes ────────────────────────────────────────────────────────
+// ── Azure BYOK routes ────────────────────────────────────────────────────
 export const AZURE_ROUTES: Route[] = [
     { name: "import KEK", path: "/ui/azure/import-kek" },
     { name: "export BYOK", path: "/ui/azure/export-byok" },
 ];
+
+// ── AWS BYOK routes ───────────────────────────────────────────────────────
+export const AWS_ROUTES: Route[] = [
+    { name: "import KEK", path: "/ui/aws/import-kek", locator: "button[type='submit']" },
+    { name: "export key material", path: "/ui/aws/export-key-material", locator: "button[type='submit']" },
+];
+
+// ── Derive Key route ─────────────────────────────────────────────────────
+export const DERIVE_KEY_ROUTE: Route[] = [{ name: "derive key", path: "/ui/derive-key" }];
 
 // ── Standalone page routes ───────────────────────────────────────────────────
 // Google CSE is an info page that shows a heading but has no submit button.
@@ -136,13 +158,16 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Symmetric Keys", routes: SYM_KEY_ROUTES },
     { section: "RSA Keys", routes: RSA_KEY_ROUTES },
     { section: "EC Keys", routes: EC_KEY_ROUTES },
+    { section: "PQC Keys", routes: PQC_KEY_ROUTES },
     { section: "Covercrypt Keys", routes: CC_KEY_ROUTES },
     { section: "Certificates", routes: CERT_ROUTES },
     { section: "Opaque Objects", routes: OPAQUE_ROUTES },
     { section: "Attributes", routes: ATTRIBUTES_ROUTES },
     { section: "Access Rights", routes: ACCESS_RIGHTS_ROUTES },
     { section: "Azure", routes: AZURE_ROUTES },
+    { section: "AWS", routes: AWS_ROUTES },
     { section: "Google CSE", routes: GOOGLE_CSE_ROUTES },
+    { section: "Derive Key", routes: DERIVE_KEY_ROUTE },
     { section: "Locate", routes: LOCATE_ROUTES },
     { section: "MAC", routes: MAC_ROUTES },
 ];

@@ -6,9 +6,9 @@
 
 use std::{collections::HashMap, sync::RwLock};
 
-use alcoholic_jwt::{JWK, JWKS};
 use chrono::{DateTime, Duration, Utc};
 use cosmian_logger::trace;
+use jsonwebtoken::jwk::{Jwk, JwkSet};
 use reqwest::{Client, header::HeaderValue};
 use serde_json::{Value, json};
 
@@ -19,7 +19,7 @@ static REFRESH_INTERVAL: i64 = 60; // in secs
 #[derive(Debug)]
 pub struct JwksManager {
     pub(crate) uris: Vec<String>,
-    pub(crate) jwks: RwLock<HashMap<String, JWKS>>,
+    pub(crate) jwks: RwLock<HashMap<String, JwkSet>>,
     pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
     pub(crate) proxy_params: Option<ProxyParams>,
 }
@@ -38,7 +38,7 @@ impl JwksManager {
     }
 
     /// Lock `jwks` to replace it
-    fn set_jwks(&self, new_jwks: HashMap<String, JWKS>) -> KResult<()> {
+    fn set_jwks(&self, new_jwks: HashMap<String, JwkSet>) -> KResult<()> {
         let mut jwks = self.jwks.write().map_err(|e| {
             KmsError::ServerError(format!("cannot lock JWKS for write. Error: {e:?}"))
         })?;
@@ -47,13 +47,17 @@ impl JwksManager {
     }
 
     /// Find the key identifier `kid` in each registered JWKS
-    pub fn find(&self, kid: &str) -> KResult<Option<JWK>> {
+    pub fn find(&self, kid: &str) -> KResult<Option<Jwk>> {
         Ok(self
             .jwks
             .read()
             .map_err(|e| KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}")))?
             .iter()
-            .find_map(|(_, jwks)| jwks.find(kid))
+            .find_map(|(_, jwks)| {
+                jwks.keys
+                    .iter()
+                    .find(|jwk| jwk.common.key_id.as_deref() == Some(kid))
+            })
             .cloned())
     }
 
@@ -91,7 +95,7 @@ impl JwksManager {
     async fn fetch_all(
         uris: &[String],
         proxy_params: &Option<ProxyParams>,
-    ) -> HashMap<String, JWKS> {
+    ) -> HashMap<String, JwkSet> {
         // Create a vector of futures to fetch JWKS from each URI
         let jwks_downloads: Vec<_> = uris
             .iter()
@@ -122,7 +126,7 @@ impl JwksManager {
 async fn parse_jwks(
     jwks_uri: &String,
     proxy_params: &Option<ProxyParams>,
-) -> KResult<(String, JWKS)> {
+) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
     let mut client = Client::builder();
@@ -170,7 +174,7 @@ async fn parse_jwks(
         Value::Array(array) => array
             .clone()
             .into_iter()
-            .filter(|v| match serde_json::from_value::<JWK>(v.clone()) {
+            .filter(|v| match serde_json::from_value::<Jwk>(v.clone()) {
                 Ok(_jwk) => {
                     // Too invasive trace
                     // trace!("Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?}");
@@ -190,7 +194,7 @@ async fn parse_jwks(
     }
     // Attempt to deserialize the JWKS from the JSON value
     let jwks = json!({"keys": Value::Array(jwks)});
-    let jwks = serde_json::from_value::<JWKS>(jwks.clone()).map_err(|e| {
+    let jwks = serde_json::from_value::<JwkSet>(jwks.clone()).map_err(|e| {
         kms_error!("Failed to reconstruct JWKS from array of JWK at `{jwks_uri}`: {e}: {jwks:#?}")
     })?;
     Ok((jwks_uri.clone(), jwks))

@@ -24,25 +24,81 @@ The CLI supports multiple authentication methods for the KMS:
 |--------|------------------------|----------|
 | None (Default) | Only `server_url` | Development environments |
 | Access Token | `access_token` | Simple API token authentication |
-| TLS Client Certificate | `ssl_client_pkcs12_path`, `ssl_client_pkcs12_password` | Certificate-based auth |
+| TLS Client Certificate (PEM) | `ssl_client_pem_cert_path`, `ssl_client_pem_key_path` | Certificate-based auth — FIPS-compatible |
+| TLS Client Certificate (PKCS#12) | `ssl_client_pkcs12_path`, `ssl_client_pkcs12_password` | Certificate-based auth — non-FIPS only |
 | OAuth2/OIDC | `oauth2_conf` section | SSO with identity providers |
 | Database Secret | `database_secret` | Encrypted database access |
 
 ## Authenticating Using TLS Client Certificates
 
-To authenticate to the KMS using mutual TLS (mTLS), configure the `ssl_client_pkcs12_path` and
-`ssl_client_pkcs12_password` options in the `http_config` section:
+When the KMS server is configured with mutual TLS (mTLS), `ckms` must present a client
+certificate. Two formats are supported.
+
+### PEM format (FIPS-compatible, recommended)
+
+Provide the certificate and private key as separate PEM files (`.crt`/`.pem` and `.key`/`.pem`).
+This format works in both FIPS and non-FIPS builds.
 
 ```toml
 [http_config]
 server_url = "https://kms.acme.com:9999"
-ssl_client_pkcs12_path = "./certificates/machine.p12"
+
+# Client certificate in PEM format (leaf, optionally with chain)
+ssl_client_pem_cert_path = "/path/to/client.crt"
+
+# Client private key in PEM format (PKCS#8 or traditional RSA/EC)
+ssl_client_pem_key_path = "/path/to/client.key"
+```
+
+Combined with a bearer token (multi-factor authentication):
+
+```toml
+[http_config]
+server_url = "https://kms.acme.com:9999"
+ssl_client_pem_cert_path = "/path/to/client.crt"
+ssl_client_pem_key_path  = "/path/to/client.key"
+access_token = "<JWT_BEARER_TOKEN>"
+```
+
+### PKCS#12 format (non-FIPS only)
+
+Provide the certificate and private key bundled in a single PKCS#12 file (`.p12`).
+
+```toml
+[http_config]
+server_url = "https://kms.acme.com:9999"
+ssl_client_pkcs12_path = "/path/to/client.p12"
 ssl_client_pkcs12_password = "pkcs12_password"
 ```
 
-The `ssl_client_pkcs12_path` must point to a PKCS#12 file containing the client certificate and
-private key. The KMS server authenticates the user using the Common Name (CN) field of the
-certificate's subject.
+### Using the `ckms configure` wizard
+
+Run `ckms configure` and choose the certificate format from the interactive menu:
+
+```text
+Authentication method
+  None
+  Bearer token
+> Client certificate (PEM)             ← FIPS-compatible, recommended
+  Client certificate (PKCS#12)         ← non-FIPS only
+  Both (PEM cert + token)
+  Both (PKCS#12 cert + token)
+```
+
+The wizard prompts for the certificate and key paths (PEM) or the bundle path and password
+(PKCS#12) and writes the result to the active configuration profile.
+
+The KMS server authenticates the user using the Common Name (CN) field of the client
+certificate's subject (e.g. `CN=john.doe@example.com` becomes the username).
+
+### Converting a PKCS#12 bundle to PEM
+
+```bash
+# Extract the certificate
+openssl pkcs12 -in client.p12 -clcerts -nokeys -out client.crt
+# Extract the private key (enter the PKCS#12 password when prompted)
+openssl pkcs12 -in client.p12 -nocerts -nodes -out client.key
+```
 
 ## Common Configuration Options
 
@@ -156,6 +212,78 @@ When running `ckms login`:
 2. You authenticate with your identity provider
 3. The browser redirects to a local endpoint (<http://localhost:17899/authorization>)
 4. The CLI captures the token and saves it in your configuration file
+
+## Corporate Network / Forward Proxy
+
+When the KMS CLI is used inside a corporate network, the system HTTP proxy may intercept
+outbound connections and block non-standard ports (e.g., `9998`) or internal hostnames.
+This typically manifests as a `TunnelUnsuccessful` connection error.
+
+> **Note on `--proxy-exclusion-list`**: this CLI flag is silently ignored unless
+> `--proxy-url` is **also** provided. Without `--proxy-url`, `proxy_exclusion_list` is
+> dropped and the Windows system proxy operates unconstrained. Use the `ckms.toml`
+> configuration or environment variables for a persistent solution.
+
+### Option 1 — Environment variable (no config change needed)
+
+Set `NO_PROXY` before running the CLI:
+
+```bash
+# Linux / macOS
+export NO_PROXY="kms-host"
+ckms kms locate
+
+# Windows (PowerShell)
+$env:NO_PROXY = "kms-host"
+cosmian.exe kms locate
+```
+
+### Option 2 — CLI flags (one-off, requires `--proxy-url`)
+
+`--proxy-exclusion-list` only takes effect when `--proxy-url` is also supplied:
+
+```bash
+cosmian.exe \
+  --proxy-url="http://corp-proxy.example.com:8080" \
+  --proxy-exclusion-list="kms-host" \
+  kms locate
+```
+
+Equivalent environment variables (persist for the shell session):
+
+```bash
+export CLI_PROXY_URL="http://corp-proxy.example.com:8080"
+export CLI_PROXY_NO_PROXY="kms-host,127.0.0.1,localhost"
+```
+
+### Option 3 — `ckms.toml` (persistent, recommended)
+
+Edit `~/.cosmian/ckms.toml` (Windows: `%USERPROFILE%\.cosmian\ckms.toml`):
+
+```toml
+[http_config]
+server_url = "https://kms-host:9998"
+
+[http_config.proxy_params]
+# URL of the corporate proxy (on Windows: netsh winhttp show proxy)
+url = "http://corp-proxy.example.com:8080"
+
+# Optional: Basic auth credentials for the proxy
+# basic_auth_username = "DOMAIN\\username"
+# basic_auth_password = "password"
+
+# Hosts to bypass — add your KMS hostname here
+exclusion_list = ["kms-host", "kms-host:9998", "127.0.0.1", "localhost"]
+```
+
+For a proxy requiring a custom `Proxy-Authorization` header:
+
+```toml
+[http_config.proxy_params]
+url = "http://corp-proxy.example.com:8080"
+custom_auth_header = "Bearer <proxy-token>"
+exclusion_list = ["kms-host"]
+```
 
 ## Troubleshooting
 

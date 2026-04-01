@@ -11,6 +11,7 @@ use actix_web::{
 };
 use clap::crate_version;
 use cosmian_logger::{error, info, warn};
+use serde::Serialize;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -89,6 +90,51 @@ pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResul
             "FIPS"
         }
     )))
+}
+
+#[derive(Serialize)]
+struct HsmInfo {
+    configured: bool,
+    model: Option<String>,
+    slots: Vec<usize>,
+}
+
+#[derive(Serialize)]
+struct ServerInfo {
+    version: String,
+    fips_mode: bool,
+    hsm: HsmInfo,
+}
+
+/// Get high-level server information: version, FIPS mode, and HSM status.
+/// This endpoint is public (no authentication required) so the UI can query it before login.
+#[get("/server-info")]
+pub(crate) async fn get_server_info(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<ServerInfo>> {
+    info!("GET /server-info {}", kms.get_user(&req));
+    let fips_mode = !cfg!(feature = "non-fips");
+    let mut slots: Vec<usize> = kms.params.slot_passwords.keys().copied().collect();
+    slots.sort_unstable();
+    Ok(Json(ServerInfo {
+        version: format!(
+            "{} ({}-{})",
+            crate_version!().to_owned(),
+            openssl::version::version(),
+            if cfg!(feature = "non-fips") {
+                "non-FIPS"
+            } else {
+                "FIPS"
+            }
+        ),
+        fips_mode,
+        hsm: HsmInfo {
+            configured: kms.params.hsm_model.is_some(),
+            model: kms.params.hsm_model.clone(),
+            slots,
+        },
+    }))
 }
 
 pub(crate) async fn cli_archive_download(

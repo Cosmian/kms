@@ -31,6 +31,6 @@ pub struct DestroyOpaqueObjectAction {
 impl DestroyOpaqueObjectAction {
     pub(crate) async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.object_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
-        destroy(kms_rest_client, &id, self.remove).await
+        destroy(kms_rest_client, &id, self.remove, None).await
     }
 }

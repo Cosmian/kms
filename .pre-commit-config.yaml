@@ -42,7 +42,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|crate/cli/src/tests/kms/shared/export_import.rs|nix/signing-keys/cosmian-kms-public.asc|sbom/
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/kms/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|crate/cli/src/tests/kms/shared/export_import.rs|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -107,7 +107,7 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/server_cli.md
+        exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
 
   - repo: https://github.com/psf/black
     rev: 25.1.0
@@ -144,12 +144,6 @@ repos:
     rev: v1.0.42
     hooks:
       - id: nightly-cargo-format
-      - id: dprint-toml-fix
-        stages: [manual]
-      - id: cargo-upgrade
-        stages: [manual]
-      - id: cargo-update
-        stages: [manual]
       - id: cargo-machete
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
@@ -173,7 +167,7 @@ repos:
         description: |
           Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md
           and cli_documentation/docs/usage.md.
-        entry: bash .github/scripts/renew_ckms_markdown.sh
+        entry: bash .github/scripts/docs/renew_ckms_markdown.sh
         language: system
         types: [rust]
         pass_filenames: false
@@ -181,29 +175,36 @@ repos:
       # Remove folders result*
       - id: clean-result-folders
         name: Clean result* folders
-        entry: bash .github/scripts/clean_result.sh
+        entry: bash .github/scripts/release/clean_result.sh
         language: system
         types: [rust]
         pass_filenames: false
         stages: [manual]
 
+      - id: pnpm-ui-format
+        name: pnpm ui format
+        entry: pnpm -C ui format
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
-        entry: bash .github/scripts/test_wasm.sh
+        entry: bash .github/scripts/test/test_wasm.sh
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: ui-e2e
         name: UI end-to-end
-        entry: bash .github/scripts/test_ui.sh
+        entry: bash .github/scripts/test/test_ui.sh
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
-        entry: bash .github/scripts/test_sqlite.sh --variant fips
+        entry: bash .github/scripts/test/test_sqlite.sh --variant fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -211,15 +212,14 @@ repos:
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
-        entry: bash .github/scripts/test_sqlite.sh --variant non-fips
+        entry: bash .github/scripts/test/test_sqlite.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)
-        entry: bash .github/scripts/test_redis.sh --variant non-fips
+        entry: bash .github/scripts/test/test_redis.sh --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -249,14 +249,62 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: nix-build-ui-fips
+        name: Nix build UI (FIPS)
+        entry: nix-build -A ui-fips
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-ui-non-fips
+        name: Nix build UI (non-FIPS)
+        entry: nix-build -A ui-non-fips
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-cli-fips-static
+        name: Nix build KMS CLI (FIPS static OpenSSL)
+        entry: nix-build -A kms-cli-fips-static-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-cli-non-fips-dynamic
+        name: Nix build KMS CLI (non-FIPS dynamic OpenSSL)
+        entry: nix-build -A kms-cli-non-fips-dynamic-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-server-fips-static
+        name: Nix build KMS server (FIPS static OpenSSL)
+        entry: nix-build -A kms-server-fips-static-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: nix-build-kms-server-non-fips-dynamic
+        name: Nix build KMS server (non-FIPS dynamic OpenSSL)
+        entry: nix-build -A kms-server-non-fips-dynamic-openssl
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
       - id: renew-server-doc
         name: renew server docs (CLI help + configuration file)
         description: |
           Build cosmian_kms (non-fips) and regenerate:
-            - documentation/docs/server_cli.md from --help
-            - documentation/docs/server_configuration_file.md from --print-default-config
+            - documentation/docs/configuration/server_cli.md from --help
+            - documentation/docs/configuration/server_configuration_file.md from --print-default-config
             - pkg/kms.toml and crate/server/kms_template.toml
-        entry: bash .github/scripts/renew_server_doc.sh
+        entry: bash .github/scripts/docs/renew_server_doc.sh
         language: system
         types: [rust]
         pass_filenames: false
@@ -267,6 +315,12 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
+      - id: dprint-toml-fix
+        stages: [manual]
+      - id: cargo-upgrade
+        stages: [manual]
+      - id: cargo-update
+        stages: [manual]
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 

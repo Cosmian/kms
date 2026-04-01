@@ -24,7 +24,7 @@ use crate::{
 /// client to accept and forward it without erroring out on its own.
 const CUSTOM_HEADER: &str = "X-Custom-Test: cosmian-test-value";
 
-/// Verify that `ckms server-version` succeeds when a single extra header is
+/// Verify that `ckms server version` succeeds when a single extra header is
 /// passed via `--header`.
 #[tokio::test]
 pub(crate) async fn test_server_version_with_custom_header() {
@@ -35,13 +35,14 @@ pub(crate) async fn test_server_version_with_custom_header() {
     cmd.env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("--header")
         .arg(CUSTOM_HEADER)
-        .arg("server-version");
+        .arg("server")
+        .arg("version");
 
     recover_cmd_logs(&mut cmd);
     cmd.assert().success();
 }
 
-/// Verify that `ckms server-version` succeeds when the short flag `-H` is used.
+/// Verify that `ckms server version` succeeds when the short flag `-H` is used.
 #[tokio::test]
 pub(crate) async fn test_server_version_with_short_header_flag() {
     let ctx = start_default_test_kms_server().await;
@@ -51,7 +52,8 @@ pub(crate) async fn test_server_version_with_short_header_flag() {
     cmd.env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("-H")
         .arg(CUSTOM_HEADER)
-        .arg("server-version");
+        .arg("server")
+        .arg("version");
 
     recover_cmd_logs(&mut cmd);
     cmd.assert().success();
@@ -69,7 +71,8 @@ pub(crate) async fn test_server_version_with_multiple_custom_headers() {
         .arg("X-First-Header: first-value")
         .arg("--header")
         .arg("X-Second-Header: second-value")
-        .arg("server-version");
+        .arg("server")
+        .arg("version");
 
     recover_cmd_logs(&mut cmd);
     cmd.assert().success();
@@ -87,7 +90,8 @@ pub(crate) async fn test_invalid_header_format_fails() {
         .env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("--header")
         .arg("InvalidHeaderWithoutColon")
-        .arg("server-version")
+        .arg("server")
+        .arg("version")
         .output()
         .expect("failed to spawn ckms");
 

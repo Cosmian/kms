@@ -1,0 +1,47 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "version": 1,
+  "serialNumber": "urn:uuid:f061efef-8327-4c98-8fcb-7ac474fb7e3b",
+  "metadata": {
+    "timestamp": "2026-04-01T11:15:12.929142+00:00",
+    "properties": [
+      {
+        "name": "sbom_type",
+        "value": "runtime_only"
+      }
+    ],
+    "tools": [
+      {
+        "vendor": "TII",
+        "name": "sbomnix",
+        "version": "1.7.4"
+      }
+    ],
+    "component": {
+      "type": "library",
+      "bom-ref": "/nix/store/sjxbmvrlsk3bx7r5v1n96kab7vaxn8gy-cosmian-kms-cli-dynamic-5.19.0.drv",
+      "name": "cosmian-kms-cli-dynamic",
+      "version": "5.19.0",
+      "purl": "pkg:nix/cosmian-kms-cli-dynamic@5.19.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.19.0:*:*:*:*:*:*:*",
+      "properties": [
+        {
+          "name": "nix:output_path",
+          "value": "/nix/store/d3dlgx6gn25m1vd16yr7gfbw4rflhimf-cosmian-kms-cli-dynamic-5.19.0"
+        },
+        {
+          "name": "nix:drv_path",
+          "value": "/nix/store/sjxbmvrlsk3bx7r5v1n96kab7vaxn8gy-cosmian-kms-cli-dynamic-5.19.0.drv"
+        }
+      ]
+    }
+  },
+  "components": [],
+  "dependencies": [
+    {
+      "ref": "/nix/store/sjxbmvrlsk3bx7r5v1n96kab7vaxn8gy-cosmian-kms-cli-dynamic-5.19.0.drv"
+    }
+  ],
+  "vulnerabilities": []
+}

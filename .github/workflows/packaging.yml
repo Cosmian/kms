@@ -79,6 +79,21 @@ jobs:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
+      - name: Generate SBOM (server + ckms)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: |
+          bash .github/scripts/nix.sh sbom --target server --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          bash .github/scripts/nix.sh sbom --target ckms   --variant ${{ matrix.features }} --link ${{ matrix.link }}
+
+      - name: Upload SBOM artifact
+        if: matrix.runner == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom_${{ matrix.features }}_${{ matrix.link }}
+          path: sbom/
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Upload package
         uses: actions/upload-artifact@v7
         with:
@@ -199,6 +214,58 @@ jobs:
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
             ./nix/signing-keys/cosmian-kms-public.asc
+
+  publish-sbom:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+
+    name: Publish SBOM ${{ matrix.features }}-${{ matrix.link }}
+    needs: packages
+    concurrency:
+      group: publish-sbom-${{ matrix.features }}-${{ matrix.link }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        link: [static, dynamic]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: sbom_${{ matrix.features }}_${{ matrix.link }}
+          path: sbom
+
+      - name: Push SBOM to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          SBOM_REMOTE_BASE="/mnt/package/kms/${BRANCH}/sbom"
+
+          for target in server ckms; do
+            remote_dir="${SBOM_REMOTE_BASE}/${target}/${{ matrix.features }}/${{ matrix.link }}"
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              cosmian@package.cosmian.com mkdir -p "${remote_dir}"
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              sbom/${target}/${{ matrix.features }}/${{ matrix.link }}/* \
+              cosmian@package.cosmian.com:"${remote_dir}/"
+          done
 
   tests:
     needs: packages

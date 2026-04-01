@@ -60,7 +60,7 @@ async function importRsaKey(
         usages?: string[];
         tags?: string[];
         replaceExisting?: boolean;
-    }
+    },
 ): Promise<string> {
     await gotoAndWait(page, "/ui/rsa/keys/import");
     await page.setInputFiles('input[type="file"]', filePath);

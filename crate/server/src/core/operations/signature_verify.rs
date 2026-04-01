@@ -1,3 +1,5 @@
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::ErrorReason,
@@ -187,6 +189,51 @@ pub(crate) async fn signature_verify(
     );
 
     // Perform signature verification
+    // ML-DSA: check the key's algorithm; if PQC, use ml_dsa_verify directly
+    #[cfg(feature = "non-fips")]
+    {
+        let key_algo = uid_owm
+            .object()
+            .key_block()
+            .ok()
+            .and_then(|kb| kb.cryptographic_algorithm().copied())
+            .or_else(|| uid_owm.attributes().cryptographic_algorithm);
+        if matches!(
+            key_algo,
+            Some(
+                CryptographicAlgorithm::MLDSA_44
+                    | CryptographicAlgorithm::MLDSA_65
+                    | CryptographicAlgorithm::MLDSA_87
+                    | CryptographicAlgorithm::SLHDSA_SHA2_128s
+                    | CryptographicAlgorithm::SLHDSA_SHA2_128f
+                    | CryptographicAlgorithm::SLHDSA_SHA2_192s
+                    | CryptographicAlgorithm::SLHDSA_SHA2_192f
+                    | CryptographicAlgorithm::SLHDSA_SHA2_256s
+                    | CryptographicAlgorithm::SLHDSA_SHA2_256f
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+                    | CryptographicAlgorithm::SLHDSA_SHAKE_256f
+            )
+        ) {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_verify;
+            let valid = ml_dsa_verify(&verification_key, &data_to_verify, signature_data)?;
+            let vi = if valid {
+                ValidityIndicator::Valid
+            } else {
+                ValidityIndicator::Invalid
+            };
+            return Ok(SignatureVerifyResponse {
+                unique_identifier: UniqueIdentifier::TextString(unique_identifier),
+                validity_indicator: Some(vi),
+                data: None,
+                correlation_value: request.correlation_value,
+            });
+        }
+    }
+
     let validity_indicator = verify_signature(
         &verification_key,
         &data_to_verify,

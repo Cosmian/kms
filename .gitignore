@@ -12,6 +12,7 @@ data/keys
 **/data/shared
 crate/cli/*.sqlite
 .DS_Store
+._*
 .idea/
 rustc-ice*.txt
 node_modules/
@@ -25,7 +26,7 @@ run.sh
 .openssl
 resources/tarballs/openssl-3.1.2.tar.gz
 .utimaco
-.softhsm2
+.softhsm2*
 *.xz*
 result
 result-*
@@ -34,7 +35,11 @@ crate/server/ui*
 ui_non_fips/
 vendor/
 http_cache.sqlite
-sbom.*
+sbom/*
 resources/cli.zip
 .claude
 ui/test-results
+._*
+
+# On windows, ignore the vcpkg installed OpenSSL directory
+vcpkg_installed/

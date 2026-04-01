@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use alcoholic_jwt::token_kid;
 use cosmian_logger::{debug, trace};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 
 use super::operations::Role;
 use crate::{
@@ -133,16 +133,11 @@ pub(super) fn decode_jwt_authorization_token(
         &jwt_config.jwt_issuer_uri
     );
 
-    let validations = vec![alcoholic_jwt::Validation::Issuer(
-        jwt_config.jwt_issuer_uri.clone(),
-    )];
+    let header = decode_header(token)
+        .map_err(|e| KmsError::Unauthorized(format!("Failed to decode token header: {e}")))?;
 
-    // If a JWKS contains multiple keys, the correct KID first
-    // needs to be fetched from the token headers.
-    let kid = token_kid(token)
-        .map_err(|e| {
-            KmsError::Unauthorized(format!("Failed to decode token headers. Error: {e:?}"))
-        })?
+    let kid = header
+        .kid
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
@@ -159,14 +154,45 @@ pub(super) fn decode_jwt_authorization_token(
     })?;
     trace!("JWK has been found:\n{jwk:?}");
 
-    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
-        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
+    let decoding_key = DecodingKey::from_jwk(jwk)
+        .map_err(|e| KmsError::Unauthorized(format!("Failed to build decoding key: {e}")))?;
 
-    trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
-    trace!("valid_jwt headers: {:?}", valid_jwt.headers);
+    let mut validation = Validation::new(header.alg);
+    // Allow tokens to omit some standard claims (e.g., iat, nbf), but handle exp explicitly.
+    validation.required_spec_claims.clear();
+    validation.set_issuer(&[&jwt_config.jwt_issuer_uri]);
 
-    let user_claims: UserClaim = serde_json::from_value(valid_jwt.claims)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT claims are malformed: {err:?}")))?;
+    #[cfg(all(not(test), not(feature = "insecure")))]
+    {
+        validation.validate_exp = true;
+    }
+
+    #[cfg(any(test, feature = "insecure"))]
+    {
+        validation.validate_exp = false;
+    }
+
+    // Keep `exp` required whenever expiration validation is enabled.
+    if validation.validate_exp {
+        validation.required_spec_claims.insert("exp".to_owned());
+    } else {
+        validation.required_spec_claims.remove("exp");
+    }
+
+    let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
+        .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+
+    let user_claims = token_data.claims;
+
+    let jwt_headers = serde_json::to_value(token_data.header)
+        .map_err(|err| KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}")))
+        .and_then(|v| {
+            serde_json::from_value(v).map_err(|err| {
+                KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}"))
+            })
+        })?;
+    trace!("valid_jwt user claims: {:?}", user_claims);
+    trace!("valid_jwt headers: {:?}", jwt_headers);
 
     // Audience post-check in non-test, non-insecure builds
     #[cfg(all(not(test), not(feature = "insecure")))]
@@ -195,9 +221,6 @@ pub(super) fn decode_jwt_authorization_token(
             }
         }
     }
-
-    let jwt_headers = serde_json::from_value(valid_jwt.headers)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT headers is malformed: {err:?}")))?;
 
     Ok((user_claims, jwt_headers))
 }

@@ -36,7 +36,7 @@ impl RsaCommands {
     /// Returns an error if there is an issue executing the command.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Keys(command) => command.process(kms_rest_client).await?,
+            Self::Keys(command) => Box::pin(command.process(kms_rest_client)).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
             Self::Sign(action) => action.run(kms_rest_client).await?,

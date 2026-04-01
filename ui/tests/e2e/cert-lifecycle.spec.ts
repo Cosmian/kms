@@ -10,14 +10,7 @@
  */
 import { expect, test } from "@playwright/test";
 import * as fs from "fs";
-import {
-    createRsaKeyPair,
-    gotoAndWait,
-    submitAndWaitForDownload,
-    submitAndWaitForResponse,
-    uploadFile,
-    writeTempFile,
-} from "./helpers";
+import { createRsaKeyPair, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse, uploadFile, writeTempFile } from "./helpers";
 
 const PLAINTEXT = "Hello Cosmian KMS – Certificate E2E roundtrip test!";
 

@@ -38,6 +38,10 @@ let
   withCurl = (builtins.getEnv "WITH_CURL") == "1";
   withXks = (builtins.getEnv "WITH_XKS") == "1";
   withWasm = (builtins.getEnv "WITH_WASM") == "1";
+  # OpenSSH PKCS#11 test: ssh-keygen is part of openssh on Linux (macOS has it natively)
+  withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
+  # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
+  withLuks = (builtins.getEnv "WITH_LUKS") == "1";
 
   rustToolchain =
     if withWasm then
@@ -109,6 +113,9 @@ pkgs.mkShell {
     pkgs.gcc
     rustToolchain
     opensslFipsBootstrap
+    # zlib is needed on macOS in Nix pure mode (-nodefaultlibs strips system /usr/lib).
+    # Including it here puts its path into NIX_LDFLAGS so the Nix cc-wrapper can find -lz.
+    pkgs.zlib
   ]
   ++ (
     if withWasm then
@@ -144,6 +151,11 @@ pkgs.mkShell {
         softhsmDrv
         pkgs.wget
       ]
+      # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
+      # have CKA_ID set and do not trigger pkcs11-tool warnings (#745).
+      # opensc requires winscard.h (PC/SC) which is Linux-only; on macOS
+      # the test_pkcs11tool_no_warnings function skips gracefully.
+      ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.opensc ]
       # Utimaco HSM simulator is only available on x86_64-linux
       ++ pkgs.lib.optionals (pkgs.stdenv.system == "x86_64-linux") [ utimacoDrv ]
       # psmimic is only available on Linux; macOS has killall built-in
@@ -159,7 +171,11 @@ pkgs.mkShell {
       ]
     else
       [ ]
-  );
+  )
+  # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
+  ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
+  # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ];
 
   shellHook = ''
     set -eo pipefail
@@ -220,7 +236,11 @@ pkgs.mkShell {
       # Runtime library path for FIPS (shared)
       if [ "''${WITH_HSM:-}" = "1" ]; then
         export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-        unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
+        # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
+        if [ "$(uname)" = "Linux" ]; then
+          unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        fi
       else
         export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
@@ -256,7 +276,11 @@ pkgs.mkShell {
       # Runtime library path for non-FIPS
       if [ "''${WITH_HSM:-}" = "1" ]; then
         export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib"
-        unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
+        # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
+        if [ "$(uname)" = "Linux" ]; then
+          unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
+        fi
       else
         export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi

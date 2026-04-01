@@ -161,6 +161,29 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Ok(())
 }
 
+// Multi-host PostgreSQL tests — require two running PostgreSQL instances:
+//   Port 5432: docker run --name pg1 -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432 -d postgres
+//   Port 5433: docker run --name pg2 -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5433:5432 -d postgres
+async fn get_pgsql_multihost() -> DbResult<PgPool> {
+    let url = option_env!("KMS_POSTGRES_MULTIHOST_URL").unwrap_or(
+        "postgresql://kms:kms@127.0.0.1:5432,127.0.0.1:5433/kms?target_session_attrs=read-write",
+    );
+    PgPool::instantiate(url, true, None).await
+}
+
+#[ignore = "Requires two running PostgreSQL instances on ports 5432 and 5433. \
+             Must not run concurrently with test_db_postgresql (shared DB on port 5432)."]
+#[tokio::test]
+pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    // Verify that a multi-host connection string with target_session_attrs works
+    let pg = get_pgsql_multihost().await?;
+    crud(&pg).await?;
+    atomic(&pg).await?;
+    upsert(&pg).await?;
+    Ok(())
+}
+
 #[ignore = "Requires a running MySQL or MariaDB instance"]
 #[tokio::test]
 pub(crate) async fn test_db_mysql() -> DbResult<()> {

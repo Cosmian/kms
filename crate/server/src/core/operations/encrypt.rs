@@ -691,7 +691,53 @@ fn encrypt_with_public_key(
         KeyFormatType::TransparentECPublicKey
         | KeyFormatType::TransparentRSAPublicKey
         | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
+        | KeyFormatType::PKCS8
+        | KeyFormatType::Raw => {
+            // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform encapsulation
+            // instead of standard encryption.
+            #[cfg(feature = "non-fips")]
+            {
+                let key_algo = key_block
+                    .cryptographic_algorithm()
+                    .copied()
+                    .or_else(|| owm.attributes().cryptographic_algorithm);
+                if matches!(
+                    key_algo,
+                    Some(
+                        CryptographicAlgorithm::MLKEM_512
+                            | CryptographicAlgorithm::MLKEM_768
+                            | CryptographicAlgorithm::MLKEM_1024
+                    )
+                ) {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_kem::ml_kem_encapsulate;
+                    let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let (shared_secret, ciphertext) = ml_kem_encapsulate(&pub_bytes)?;
+                    return Ok(EncryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(shared_secret),
+                        i_v_counter_nonce: Some(ciphertext),
+                        correlation_value: request.correlation_value.clone(),
+                        authenticated_encryption_tag: None,
+                    });
+                }
+                if let Some(
+                    algo @ (CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024),
+                ) = key_algo
+                {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::hybrid_kem::hybrid_kem_encapsulate;
+                    let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
+                    let (shared_secret, ciphertext) = hybrid_kem_encapsulate(algo, &pub_bytes)?;
+                    return Ok(EncryptResponse {
+                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                        data: Some(shared_secret),
+                        i_v_counter_nonce: Some(ciphertext),
+                        correlation_value: request.correlation_value.clone(),
+                        authenticated_encryption_tag: None,
+                    });
+                }
+            }
+
             let plaintext = request.data.as_ref().ok_or_else(|| {
                 KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
             })?;

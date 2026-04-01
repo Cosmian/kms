@@ -863,6 +863,10 @@ impl Display for ModifyAttribute {
 pub struct ModifyAttributeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+    /// Carries the modified attribute for KMIP 1.x response down-conversion only.
+    /// Skipped during serialization so it never appears on the KMIP 2.1 wire.
+    #[serde(skip)]
+    pub echoed_attribute: Option<Attribute>,
 }
 
 impl Display for ModifyAttributeResponse {
@@ -1500,6 +1504,13 @@ pub struct Destroy {
     /// Default is false to match KMIP profiles that do not cascade by default.
     #[serde(skip_serializing_if = "<&bool>::not", default)]
     pub cascade: bool,
+    /// Cosmian extension: when set and the Unique Identifier refers to an HSM object
+    /// (prefixed with `hsm::`), the server SHALL verify via PKCS#11 attributes that the
+    /// actual key type matches this expected object type before destroying.
+    /// This prevents accidentally destroying the wrong key type (e.g., an AES key via
+    /// `rsa keys destroy` when both key types share the same label on the HSM).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_object_type: Option<ObjectType>,
 }
 
 impl Display for Destroy {
@@ -1513,6 +1524,9 @@ impl Display for Destroy {
         }
         if self.cascade {
             write!(f, "  cascade: true")?;
+        }
+        if let Some(t) = &self.expected_object_type {
+            write!(f, "  expected_object_type: {t:?}")?;
         }
         write!(f, "}}")
     }

@@ -470,7 +470,6 @@ Trigger: CI packaging job fails with a fixed-output derivation hash mismatch
            ┌──────────────────────────┐
            │ Updates files in         │
            │ nix/expected-hashes/     │
-           │  • ui.npm.sha256         │
            │  • ui.vendor.*.sha256    │
            │  • server.vendor.{static,dynamic}.sha256     │
            │  • cli.vendor.linux.sha256                     │
@@ -614,7 +613,7 @@ flowchart TB
         trigger["CI packaging job fails with fixed-output hash mismatch"]
         update_cmd["bash .github/scripts/nix.sh update-hashes [RUN_ID]"]
         update_sh["update_hashes.sh<br/>• requires gh<br/>• downloads job logs<br/>• parses specified/got hashes"]
-        update_files["Updates nix/expected-hashes/<br/>• ui.npm.sha256 • ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cli.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
+        update_files["Updates nix/expected-hashes/<br/>• ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cli.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
         trigger --> update_cmd --> update_sh --> update_files
     end
 

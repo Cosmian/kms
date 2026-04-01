@@ -11,27 +11,14 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 The **Cosmian KMS** presents some unique features, such as:
 
-- large-scale encryption and decryption of data [see this documentation](./documentation/docs/encrypting_and_decrypting_at_scale.md)
-- the ability to confidentially run in a public cloud, or any zero-trust environment, using Cosmian VM. See our cloud-ready confidential KMS on the [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/) our [deployment guide](./documentation/docs/installation/marketplace_guide.md)
-- support of state-of-the-art authentication mechanisms (see [authentication](./documentation/docs/authentication.md))
-- out-of-the-box support of [Google Workspace Client Side Encryption (CSE)](./documentation/docs/google_cse/index.md)
-- out-of-the-box support of [Microsoft Double Key Encryption (DKE)](./documentation/docs/ms_dke/index.md)
-- out-of-the-box support of [AWS External Key Store (XKS) v2](./documentation/docs/aws/xks.md) — Cosmian KMS acts as an XKS proxy; key material never enters AWS
-- out-of-the-box support of [Azure External Key Manager (EKM)](./documentation/docs/azure/ekm/ekm.md) — Cosmian KMS acts as an Azure EKM proxy with mTLS authentication
-- support for the [CardContact SmartCard, Nitrokey HSM 2, Proteccio, Crypt2pay, Utimaco and other HSMs](./documentation/docs/hsms/index.md) with KMS keys wrapped by the HSM
-- [Veracrypt](https://docs.cosmian.com/kms_clients/pkcs11/veracrypt/) and [LUKS](https://docs.cosmian.com/kms_clients/pkcs11/luks/) disk encryption support
-- [Synology DSM](./documentation/docs/synology_dsm.md) NAS volume encryption via KMIP
-- [FIPS 140-3](./documentation/docs/fips.md) mode gated behind the feature `fips`
-- a [binary and JSON KMIP 1.0-1.4 and 2.0-2.1](./documentation/docs/kmip/index.md) compliant interface
-- [MongoDB](./documentation/docs/mongodb.md)
-- [Mysql Enterprise](./documentation/docs/mysql.md)
-- Oracle DB [TDE support](https://docs.cosmian.com/kms_clients/pkcs11/oracle/tde/)
-- [Percona Postgresql DB](./documentation/docs/percona.md)
-- VMWare [vCenter Trust Key Provider integration](./documentation/docs/vcenter.md)
-- User Defined Functions for [Big Data](./documentation/docs/python_udf/index.md) including [snowflake](./documentation/docs/snowflake/index.md)
-- a full-featured client [command line and graphical interface](https://docs.cosmian.com/kms_clients/)
-- a [high-availability mode](documentation/docs/installation/high_availability_mode.md) with simple horizontal scaling
-- integrated with [OpenTelemetry](https://opentelemetry.io/)
+- **Use cases**: [large-scale encryption/decryption](./documentation/docs/use_cases/encrypting_and_decrypting_at_scale.md) and [client-side/application-level encryption](./documentation/docs/use_cases/client_side_and_application_level_encryption.md), with support for signature at scale (including secp256k1 in non-FIPS mode).
+- **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/aws/xks.md), [Azure EKM](./documentation/docs/integrations/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/microsoft_365_double_key_encryption_dke/index.md).
+- **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md), and [Snowflake Native App](./documentation/docs/integrations/databases/snowflake_native_app/index.md).
+- **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/synology_dsm.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/user_defined_function_for_pyspark_databricks_in_python/index.md).
+- **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), and [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md).
+- **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), and [OpenTelemetry integration](./documentation/docs/configuration/logging.md).
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -43,7 +30,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.17.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.19.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -106,7 +93,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Application‑level encryption at scale (files, objects, datasets) with centralized key lifecycle.
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
-- Enterprise integrations: Google Workspace CSE, Microsoft DKE, AWS XKS v2, and Azure EKM.
+- Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
 - PKI operations: issue, sign, validate, and automate certificate lifecycles.
 
@@ -114,15 +101,31 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - FIPS 140-3 mode on by default; switch to `--features non-fips` for extended algorithms.
 - Reproducible builds via Nix; release artifacts ship with SHA-256 checksums.
-- Software Bill of Materials (SBOM) and vulnerability reports:
-    - CycloneDX: [`sbom/bom.cdx.json`](sbom/server/fips/static/bom.cdx.json)
-    - SPDX: [`sbom/bom.spdx.json`](sbom/server/fips/static/bom.spdx.json)
-    - Vulnerabilities: [`sbom/vulns.csv`](sbom/server/fips/static/vulns.csv)
+- Software Bill of Materials (SBOM) and vulnerability reports for server and CLI (`ckms`):
+    - CycloneDX (server): [`sbom/server/fips/static/bom.cdx.json`](sbom/server/fips/static/bom.cdx.json)
+    - SPDX (server): [`sbom/server/fips/static/bom.spdx.json`](sbom/server/fips/static/bom.spdx.json)
+    - Vulnerabilities (server): [`sbom/server/fips/static/vulns.csv`](sbom/server/fips/static/vulns.csv)
+    - CycloneDX (ckms CLI): [`sbom/ckms/fips/static/bom.cdx.json`](sbom/ckms/fips/static/bom.cdx.json)
     - Overview: [`sbom/README.md`](sbom/README.md)
+- Cryptography Bill of Materials (CBOM): full inventory of cryptographic assets (algorithms, libraries, parameters) in CycloneDX 1.6 format.
+    - [`cbom/cbom.cdx.json`](cbom/cbom.cdx.json) — generated by `.github/scripts/sbom/generate_cbom.py`
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](monitoring/OTLP_METRICS.md).
 
 [TOC]
+
+## 🔐 HSM support
+
+| HSM                                        | Status |
+| ------------------------------------------ | ------ |
+| Proteccio (Bull Atos)                      | ✅      |
+| Crypt2pay                                  | ✅      |
+| Utimaco SecurityServer                     | ✅      |
+| CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
+| SoftHSM2 (testing)                         | ✅      |
+| AWS CloudHSM                               | 🚧      |
+| Azure Dedicated HSM                        | 🚧      |
+| GCP Cloud HSM                              | 🚧      |
 
 ## 🔗 Integrations
 
@@ -149,7 +152,7 @@ AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service 
 | Delegation model     | Description                                                                                                                                                                                                                                                                  | Status |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | **XKS** (live proxy) | Key material never enters AWS; every encrypt/decrypt is proxied to Cosmian KMS — covers all AWS services that support KMS encryption (S3, EBS, RDS, DynamoDB, Secrets Manager, SQS, SNS, Redshift, OpenSearch, EMR, Glue, Lambda…) — [docs](./documentation/docs/aws/xks.md) | ✅      |
-| **BYOK**             | Key material generated by you and imported once into AWS KMS; AWS holds a copy                                                                                                                                                                                               | 🚧      |
+| **BYOK**             | Key material generated by you and imported once into AWS KMS; AWS holds a copy                                                                                                                                                                                               | ✅      |
 | **CMK**              | Key generated and stored inside AWS KMS; you control lifecycle only                                                                                                                                                                                                          | 🚧      |
 
 #### Microsoft Azure
@@ -160,8 +163,8 @@ Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service in
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
 | **EKM** (live proxy) | Key material never leaves Cosmian KMS; Azure services proxy encrypt/decrypt operations to Cosmian KMS via mTLS — [docs](./documentation/docs/azure/ekm/ekm.md)                                                                                   | ✅      |
 | **DKE** (live proxy) | Key material never leaves Cosmian KMS; M365 / Purview requires both your key and Microsoft's key to decrypt                                                                                                                                      | ✅      |
-| **BYOK**             | Key material generated by you, imported once into Azure Key Vault; Azure holds a copy — applies to Azure Information Protection (AIP)                                                                                                            | 🚧      |
-| **BYOK / CMK**       | Key imported or generated inside Azure Key Vault; applies to all remaining Azure data services (Storage, Disk Encryption, SQL/Managed Instance TDE, Cosmos DB, Synapse, Databricks, Container Registry, Monitor, Service Bus, ASK etcd, Backup…) | 🚧      |
+| **BYOK**             | Key material generated by you, imported once into Azure Key Vault; Azure holds a copy — applies to Azure Information Protection (AIP)                                                                                                            | ✅      |
+| **BYOK / CMK**       | Key imported or generated inside Azure Key Vault; applies to all remaining Azure data services (Storage, Disk Encryption, SQL/Managed Instance TDE, Cosmos DB, Synapse, Databricks, Container Registry, Monitor, Service Bus, ASK etcd, Backup…) | ✅      |
 
 #### Google Cloud Platform (GCP)
 
@@ -171,7 +174,8 @@ GCP EKM is a **single proxy gateway** — like AWS XKS, implementing EKM once co
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | **EKM** (live proxy)           | Key material never enters GCP; every encrypt/decrypt is proxied to Cosmian KMS — covers all CMEK-capable GCP services                                   | ✅      |
 | **Workspace CSE** (live proxy) | Google Workspace Client-Side Encryption; keys held exclusively in Cosmian KMS                                                                           | ✅      |
-| **BYOK**                       | Key material generated by you and imported into Cloud KMS; Google holds a copy — supported by a subset of services (Cloud Storage, BigQuery, Cloud SQL) | 🚧      |
+| **CSEK**                       | Customer-Supplied Encryption Key: symmetric key generated in Cosmian KMS, wrapped with Google's CSEK certificate and supplied per-request — [docs](./documentation/docs/google_gcp/csek.md) | ✅      |
+| **BYOK / CMEK**                | Key material generated in Cosmian KMS, wrapped with Google's import wrapping key, and imported into Cloud KMS — [docs](./documentation/docs/google_gcp/cmek.md)                           | ✅      |
 | **CMK**                        | Key generated and stored in Cloud KMS; you control lifecycle only                                                                                       | 🚧      |
 
 #### Oracle Cloud Infrastructure (OCI)
@@ -186,37 +190,29 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 ---
 
-### 🗄️ Database & Storage Integrations
+### 🗄️ Database Integrations
+
+| Product            | Integration                                               | Status |
+| ------------------ | --------------------------------------------------------- | ------ |
+| Oracle DB          | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)) | ✅      |
+| MongoDB            | CSFLE / Queryable Encryption via KMIP                     | ✅      |
+| MySQL Enterprise   | TDE via KMIP ([docs](./documentation/docs/mysql.md))      | ✅      |
+| Percona PostgreSQL | TDE via KMIP ([docs](./documentation/docs/percona.md))    | ✅      |
+| HashCorp Vault     | Key transit / secrets engine via KMIP                     | 🚧      |
+| CockroachDB        | TDE via KMIP                                              | 🚧      |
+
+### 💾 Storage & Data Platform Integrations
 
 | Product                | Integration                                                                                          | Status |
 | ---------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
-| Oracle DB              | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/))                    | ✅      |
-| MongoDB                | CSFLE / Queryable Encryption via KMIP                                                                | ✅      |
-| MySQL Enterprise       | TDE via KMIP ([docs](./documentation/docs/mysql.md))                                                 | ✅      |
-| Percona PostgreSQL     | TDE via KMIP ([docs](./documentation/docs/percona.md))                                               | ✅      |
 | VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/vcenter.md))                                         | ✅      |
 | VeraCrypt              | Virtual disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)) | ✅      |
 | LUKS                   | Linux disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/))        | ✅      |
 | Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/synology_dsm.md))                         | ✅      |
 | Snowflake              | UDF-based column encryption ([docs](./documentation/docs/snowflake/index.md))                        | ✅      |
 | Big Data / Python UDFs | Bulk encrypt/decrypt ([docs](./documentation/docs/python_udf/index.md))                              | ✅      |
-| HashCorp Vault        | Key transit / secrets engine via KMIP                                                                | 🚧      |
-| CockroachDB            | TDE via KMIP                                                                                         | 🚧      |
 
 ---
-
-### 🔐 HSM Integrations
-
-| HSM                                        | Status |
-| ------------------------------------------ | ------ |
-| Proteccio (Bull Atos)                      | ✅      |
-| Crypt2pay                                  | ✅      |
-| Utimaco SecurityServer                     | ✅      |
-| CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
-| SoftHSM2 (testing)                         | ✅      |
-| AWS CloudHSM                               | 🚧      |
-| Azure Dedicated HSM                        | 🚧      |
-| GCP Cloud HSM                              | 🚧      |
 
 ---
 
@@ -261,47 +257,47 @@ The following table shows operation support across all KMIP versions.
 | Operation | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Activate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Add Attribute          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Add Attribute          |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Archive                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Cancel                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Certify                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Check                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Create                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Create Key Pair        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Create Split Key       |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
-| Decrypt                |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Delete Attribute       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Create Split Key       |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Decrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Delete Attribute       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | DeriveKey              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Destroy                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Discover Versions      |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Encrypt                |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Discover Versions      |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Encrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Export                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
 | Get                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attribute List     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attributes         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attribute List     |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attributes         |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Get Usage Allocation   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Hash                   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Hash                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Import                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
-| Join Split Key         |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| Join Split Key         |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Locate                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC                    |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC Verify             |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Notify                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| MAC                    |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| MAC Verify             |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Notify                 |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
 | Obtain Lease           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Poll                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Put                    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Put                    |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
 | Query                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Retrieve           |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Seed               |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| RNG Retrieve           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| RNG Seed               |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Re-certify             |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Re-key                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-key Key Pair        |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Re-key Key Pair        |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Recover                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Register               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Revoke                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Set Attribute (Modify) |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Sign                   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Signature Verify       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Set Attribute (Modify) |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
+| Sign                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Signature Verify       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Validate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 
 #### Methodology
@@ -324,10 +320,10 @@ The following table shows managed object support across all KMIP versions.
 | Public Key     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Private Key    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Split Key      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Template       |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |
+| Template       |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |   N/A   |   N/A   |
 | Secret Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Opaque Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| PGP Key        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
+| PGP Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 
 Notes:
 
@@ -347,24 +343,24 @@ The following table shows base object support across all KMIP versions.
 | Key Value                                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Key Wrapping Data                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Key Wrapping Specification               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Transparent Key Structures               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Template-Attribute Structures            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Transparent Key Structures               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
+| Template-Attribute Structures            |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | Server Information                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Extension Information                    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Extension Information                    |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Data                                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Data Length                              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Signature Data                           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| MAC Data                                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Data Length                              |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Signature Data                           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| MAC Data                                 |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Nonce                                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Correlation Value                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Init Indicator                           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Final Indicator                          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Parameters                           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Profile Information                      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Validation Information                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Capability Information                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Authenticated Encryption Additional Data |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Authenticated Encryption Tag             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Init Indicator                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
+| Final Indicator                          |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
+| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| Profile Information                      |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| Validation Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| Capability Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| Authenticated Encryption Additional Data |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
+| Authenticated Encryption Tag             |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
 
 Notes:
 
@@ -383,16 +379,16 @@ The following table shows transparent key structure support across all KMIP vers
 | DSA Public Key           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | RSA Private Key          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | RSA Public Key           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| DH Private Key           |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| DH Public Key            |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| EC Private Key           |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| DH Private Key           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| DH Public Key            |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| EC Private Key           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | EC Public Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| ECDSA Private Key        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| ECDSA Public Key         |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| ECDH Private Key         |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| ECDH Public Key          |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| ECMQV Private Key        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
-| ECMQV Public Key         |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
+| ECDSA Private Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
+| ECDSA Public Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
+| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECDH Public Key          |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECMQV Private Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECMQV Public Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 
 Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
@@ -641,10 +637,11 @@ Prerequisites (manual):
 1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
 2. Install OpenSSL 3.6.0 with vcpkg:
 
+In this project root directory, run:
+
 ```powershell
 vcpkg install --triplet x64-windows-static  # arm64-windows-static for ARM64
-vcpkg integrate install
-$env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+$env:OPENSSL_DIR=(Get-Item .).FullName+"\vcpkg_installed\vcpkg\pkgs\openssl_x64-windows-static"
 ```
 
 For FIPS builds (to build fips.dll):

@@ -38,13 +38,9 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error }) => {
                 className="relative w-2/3 shadow-2xl rounded-lg p-20 flex flex-col items-center"
                 style={{ backgroundColor: branding.loginCardColor ?? "rgba(126,34,206,0.3)" }}
             >
-                {branding.logoDarkUrl && (
-                    <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />
-                )}
+                {branding.logoDarkUrl && <img src={branding.logoDarkUrl} alt={branding.logoAlt} className="z-10 w-40 mb-20" />}
                 <div className="text-center text-7xl font-bold text-white mb-10 z-10">{branding.loginTitle}</div>
-                {branding.loginSubtitle && (
-                    <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>
-                )}
+                {branding.loginSubtitle && <div className="text-center text-xl text-white/90 mb-10 z-10">{branding.loginSubtitle}</div>}
                 <div className="space-y-6 text-center w-1/2">
                     {auth && <p className="text-white">Sign up for free and explore rights delegation for multiple users</p>}
                     {error && <p className="text-purple-700">{error}</p>}

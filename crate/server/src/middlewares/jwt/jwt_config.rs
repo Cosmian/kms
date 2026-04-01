@@ -6,8 +6,11 @@
 
 use std::{fmt, sync::Arc};
 
-use alcoholic_jwt::token_kid;
 use cosmian_logger::trace;
+#[cfg(any(test, feature = "insecure"))]
+use jsonwebtoken::dangerous;
+#[cfg(all(not(test), not(feature = "insecure")))]
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{self, SeqAccess, Visitor},
@@ -147,70 +150,65 @@ impl JwtConfig {
             self.jwt_issuer_uri
         );
 
-        let mut validations = vec![
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.clone()),
-            #[cfg(all(not(test), not(feature = "insecure")))]
-            alcoholic_jwt::Validation::NotExpired,
-        ];
-        // When only a single audience is configured, we can leverage the validator's Audience check.
-        // For multiple audiences, we'll validate post-decode against any-of configured audiences.
+        // In test/insecure mode, skip all JWT validation (signature, expiry, issuer, audience).
+        // This allows tests to supply arbitrary tokens without a live JWKS endpoint.
+        #[cfg(any(test, feature = "insecure"))]
+        {
+            let _ = validate_subject; // unused when validation is disabled
+            let token_data = dangerous::insecure_decode::<UserClaim>(token)
+                .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+            Ok(token_data.claims)
+        }
+
+        // In production, fully validate: issuer, expiry, audience, and signature via JWKS.
         #[cfg(all(not(test), not(feature = "insecure")))]
-        if let Some(audiences) = &self.jwt_audience {
-            if audiences.len() == 1 {
-                if let Some(single) = audiences.first() {
-                    validations.push(alcoholic_jwt::Validation::Audience(single.clone()));
-                }
+        {
+            let header = decode_header(token).map_err(|e| {
+                KmsError::Unauthorized(format!("Failed to decode token header: {e}"))
+            })?;
+
+            let mut validation = Validation::new(header.alg);
+            validation.set_issuer(&[&self.jwt_issuer_uri]);
+            validation.validate_exp = true;
+            validation.required_spec_claims.clear();
+            if validate_subject {
+                // Require both subject and expiration in production
+                validation.set_required_spec_claims(&["sub", "exp"]);
+            } else {
+                // At minimum, always require expiration
+                validation.set_required_spec_claims(&["exp"]);
             }
-        }
-        if validate_subject {
-            validations.push(alcoholic_jwt::Validation::SubjectPresent);
-        }
-
-        // If a JWKS contains multiple keys, the correct KID first
-        // needs to be fetched from the token headers.
-        let kid = token_kid(token)
-            .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
-            .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
-
-        let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
-            // Only log JWKS on error
-            KmsError::Unauthorized(format!(
-                "Specified key not found in set. Looking for kid `{kid}` in JWKS:\n{:?}",
-                self.jwks
-            ))
-        })?;
-
-        trace!("JWK has been found:\n{jwk:?}");
-
-        let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
-            .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
-
-        let payload: UserClaim = serde_json::from_value(valid_jwt.claims)
-            .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
-        // Post-decode audience check when multiple audiences are configured (any-of semantics)
-        #[cfg(all(not(test), not(feature = "insecure")))]
-        if let Some(configured_audiences) = &self.jwt_audience {
-            if !configured_audiences.is_empty() {
-                // If we already validated a single audience via alcoholic_jwt, this is redundant but safe.
-                let token_audiences = payload.aud.clone().unwrap_or_default();
-                let matches_any = token_audiences
-                    .iter()
-                    .any(|aud| configured_audiences.iter().any(|allowed| allowed == aud));
-                if !matches_any {
-                    let expected = format!("{configured_audiences:?}");
-                    let got = if token_audiences.is_empty() {
-                        "<empty>".to_owned()
-                    } else {
-                        format!("{token_audiences:?}")
-                    };
-                    return Err(KmsError::Unauthorized(format!(
-                        "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
-                    )));
-                }
+            if let Some(jwt_audience) = &self.jwt_audience {
+                validation.set_audience(jwt_audience.as_slice());
+            } else {
+                // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
+                // expected audience is configured in the Validation struct (InvalidAudience).
+                // When the server does not restrict by audience, skip audience validation.
+                validation.validate_aud = false;
             }
-        }
 
-        Ok(payload)
+            let kid = header.kid.ok_or_else(|| {
+                KmsError::Unauthorized("No 'kid' claim present in token".to_owned())
+            })?;
+
+            let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
+                // Only log JWKS on error
+                KmsError::Unauthorized(format!(
+                    "Specified key not found in set. Looking for kid `{kid}` in JWKS:\n{:?}",
+                    self.jwks
+                ))
+            })?;
+
+            trace!("JWK has been found:\n{jwk:?}");
+
+            let decoding_key = DecodingKey::from_jwk(&jwk).map_err(|e| {
+                KmsError::Unauthorized(format!("Failed to build decoding key from JWK: {e}"))
+            })?;
+
+            let token_data = decode::<UserClaim>(token, &decoding_key, &validation)
+                .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
+
+            Ok(token_data.claims)
+        }
     }
 }

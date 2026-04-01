@@ -443,6 +443,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         )),
         remove: false,
         cascade: true,
+        expected_object_type: None,
     };
     let destroy_response: DestroyResponse = test_utils::post_2_1(&app, &request).await?;
     assert_eq!(

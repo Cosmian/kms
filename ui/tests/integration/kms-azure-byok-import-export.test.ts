@@ -25,9 +25,7 @@ async function waitForKmsServer(): Promise<void> {
 
     throw new Error(
         `KMS server not reachable at ${KMS_URL} within 60s. ` +
-            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(
-                lastError
-            )}`
+            `Start it with: cargo run -p cosmian_kms_server --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data --hostname 127.0.0.1 --port 9998. Last error: ${String(lastError)}`,
     );
 }
 
@@ -80,7 +78,7 @@ describe.sequential("Azure BYOK flow (import KEK → export .byok)", () => {
             true,
             kekTags,
             kekKeyUsage,
-            undefined
+            undefined,
         );
 
         const importKekStr = await sendKmipRequest(importKekReq, null, KMS_URL);
@@ -108,8 +106,8 @@ describe.sequential("Azure BYOK flow (import KEK → export .byok)", () => {
                 wrappedKeyData instanceof Uint8Array
                     ? wrappedKeyData
                     : typeof wrappedKeyData === "string"
-                    ? toUint8(Buffer.from(wrappedKeyData, "base64"))
-                    : toUint8(wrappedKeyData);
+                      ? toUint8(Buffer.from(wrappedKeyData, "base64"))
+                      : toUint8(wrappedKeyData);
 
             expect(wrappedKeyBytes.length).toBeGreaterThan(0);
 

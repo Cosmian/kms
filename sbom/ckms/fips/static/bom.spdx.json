@@ -1,0 +1,38 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "SPDXRef-nix-store-zim9s5rckacxg4sgmsqv1vdqx13s4zf4-cosmian-kms-cli-5.19.0.drv",
+  "documentNamespace": "sbomnix://20666e11-044e-4263-9f3f-bda91c77b7c2",
+  "creationInfo": {
+    "created": "2026-04-01T11:28:12.192869+00:00",
+    "creators": [
+      "Tool: sbomnix-1.7.4"
+    ]
+  },
+  "comment": "included dependencies: 'runtime_only'",
+  "packages": [
+    {
+      "name": "cosmian-kms-cli",
+      "SPDXID": "SPDXRef-nix-store-zim9s5rckacxg4sgmsqv1vdqx13s4zf4-cosmian-kms-cli-5.19.0.drv",
+      "versionInfo": "5.19.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-cli:cosmian-kms-cli:5.19.0:*:*:*:*:*:*:*"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:nix/cosmian-kms-cli@5.19.0"
+        }
+      ]
+    }
+  ],
+  "relationships": []
+}
