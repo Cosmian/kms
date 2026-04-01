@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:2d3172d3-cd2d-4ea7-aa67-bb219830b62b",
+  "serialNumber": "urn:uuid:e6735790-db27-420d-b58c-64d72412c42b",
   "metadata": {
-    "timestamp": "2026-03-27T12:16:35.646431+01:00",
+    "timestamp": "2026-04-01T11:17:37.678756+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -15,24 +15,24 @@
       {
         "vendor": "TII",
         "name": "sbomnix",
-        "version": "1.7.3"
+        "version": "1.7.4"
       }
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/mc588k2mrsrv16vh3w133v49ng75zyx5-cosmian-kms-cli-dynamic-5.18.0.drv",
+      "bom-ref": "/nix/store/khpvdxs477d09ak6p90x7zirjb084y3f-cosmian-kms-cli-dynamic-5.19.0.drv",
       "name": "cosmian-kms-cli-dynamic",
-      "version": "5.18.0",
-      "purl": "pkg:nix/cosmian-kms-cli-dynamic@5.18.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.18.0:*:*:*:*:*:*:*",
+      "version": "5.19.0",
+      "purl": "pkg:nix/cosmian-kms-cli-dynamic@5.19.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.19.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/r1c7lzkqcfdp3hfsx1hz6d2mxakywjxd-cosmian-kms-cli-dynamic-5.18.0"
+          "value": "/nix/store/asa17amjiaa2ix16x9p4qgzk90bx0l1d-cosmian-kms-cli-dynamic-5.19.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/mc588k2mrsrv16vh3w133v49ng75zyx5-cosmian-kms-cli-dynamic-5.18.0.drv"
+          "value": "/nix/store/khpvdxs477d09ak6p90x7zirjb084y3f-cosmian-kms-cli-dynamic-5.19.0.drv"
         }
       ]
     }
@@ -40,7 +40,7 @@
   "components": [],
   "dependencies": [
     {
-      "ref": "/nix/store/mc588k2mrsrv16vh3w133v49ng75zyx5-cosmian-kms-cli-dynamic-5.18.0.drv"
+      "ref": "/nix/store/khpvdxs477d09ak6p90x7zirjb084y3f-cosmian-kms-cli-dynamic-5.19.0.drv"
     }
   ],
   "vulnerabilities": []
