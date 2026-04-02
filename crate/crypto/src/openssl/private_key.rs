@@ -239,7 +239,7 @@ fn ec_private_key_from_scalar(
         RecommendedCurve::SECP224K1 => (Nid::SECP224K1, 28),
         x => crypto_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
-    let mut big_num_context = BigNumContext::new()?;
+    let big_num_context = BigNumContext::new()?;
 
     let mut scalar_vec = scalar.to_bytes_be();
     pad_be_bytes(&mut scalar_vec, privkey_size);
@@ -247,7 +247,7 @@ fn ec_private_key_from_scalar(
 
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
-    ec_public_key.mul_generator2(&ec_group, &scalar, &mut big_num_context)?;
+    ec_public_key.mul_generator(&ec_group, &scalar, &big_num_context)?;
     Ok(PKey::from_ec_key(EcKey::from_private_components(
         &ec_group,
         &scalar,

@@ -161,6 +161,24 @@ where
             ))
         }),
         n => {
+            // If all candidates except one have rotate_latest=false and exactly one has
+            // rotate_latest=true, auto-select the latest key in the rotation lineage.
+            // This allows tag-based operations to transparently follow key rotations.
+            let latest: Vec<ObjectWithMetadata> = eligible
+                .iter()
+                .filter(|owm| owm.attributes().rotate_latest == Some(true))
+                .cloned()
+                .collect();
+            let non_latest_all_rotated = eligible
+                .iter()
+                .filter(|owm| owm.attributes().rotate_latest != Some(true))
+                .all(|owm| owm.attributes().rotate_latest == Some(false));
+            if latest.len() == 1 && non_latest_all_rotated {
+                return latest
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| KmsError::ItemNotFound("unreachable: len == 1".to_owned()));
+            }
             let ids: Vec<&str> = eligible.iter().map(ObjectWithMetadata::id).collect();
             Err(KmsError::InvalidRequest(format!(
                 "{op_name}: identifier {uid_display} resolves to {n} valid keys {ids:?}; \

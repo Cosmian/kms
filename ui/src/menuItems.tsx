@@ -15,6 +15,7 @@ import {
     SolutionOutlined,
     TeamOutlined,
     ToolOutlined,
+    UsbOutlined,
     WindowsOutlined,
 } from "@ant-design/icons";
 
@@ -48,6 +49,7 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "sym/keys/create", label: "Create" },
+                    { key: "sym/keys/re-key", label: "Re-Key" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
                     { key: "sym/keys/revoke", label: "Revoke" },
@@ -70,6 +72,7 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "rsa/keys/create", label: "Create" },
+                    { key: "rsa/keys/re-key", label: "Re-Key" },
                     { key: "rsa/keys/export", label: "Export" },
                     { key: "rsa/keys/import", label: "Import" },
                     { key: "rsa/keys/revoke", label: "Revoke" },
@@ -93,6 +96,7 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "ec/keys/create", label: "Create" },
+                    { key: "ec/keys/re-key", label: "Re-Key" },
                     { key: "ec/keys/export", label: "Export" },
                     { key: "ec/keys/import", label: "Import" },
                     { key: "ec/keys/revoke", label: "Revoke" },
@@ -117,6 +121,7 @@ const baseMenu: MenuItem[] = [
                 label: "Keys",
                 children: [
                     { key: "pqc/keys/create", label: "Create" },
+                    { key: "pqc/keys/re-key", label: "Re-Key" },
                     { key: "pqc/keys/export", label: "Export" },
                     { key: "pqc/keys/import", label: "Import" },
                     { key: "pqc/keys/revoke", label: "Revoke" },
@@ -216,6 +221,12 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "hsm-status",
+        label: "HSM Status",
+        icon: <UsbOutlined />,
+        collapsedlabel: "HSM",
+    },
+    {
         key: "hyperscalers",
         label: "Hyperscalers",
         icon: <CloudOutlined />,
@@ -263,6 +274,7 @@ const covercryptSection: MenuItem = {
             children: [
                 { key: "cc/keys/create-master-key-pair", label: "Create Master Key Pair" },
                 { key: "cc/keys/create-user-key", label: "Create User Key" },
+                { key: "cc/keys/re-key", label: "Re-Key" },
                 { key: "cc/keys/export", label: "Export" },
                 { key: "cc/keys/import", label: "Import" },
                 { key: "cc/keys/revoke", label: "Revoke" },

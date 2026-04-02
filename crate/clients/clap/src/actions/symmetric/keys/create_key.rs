@@ -14,7 +14,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::console,
+    actions::{console, shared::utils::apply_rotation_policy_if_set},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -77,6 +77,20 @@ pub struct CreateKeyAction {
         verbatim_doc_comment
     )]
     pub wrapping_key_id: Option<String>,
+
+    /// Auto-rotation interval in seconds. Set to 0 to disable.
+    /// Example: 86400 for daily rotation, 604800 for weekly rotation.
+    #[clap(long = "rotate-interval", short = 'i', required = false)]
+    pub rotate_interval: Option<i32>,
+
+    /// Optional name to identify the rotation policy lineage.
+    #[clap(long = "rotate-name", required = false)]
+    pub rotate_name: Option<String>,
+
+    /// Delay in seconds before the first automatic rotation is triggered.
+    /// Defaults to the rotation interval if not set.
+    #[clap(long = "rotate-offset", required = false)]
+    pub rotate_offset: Option<i32>,
 }
 
 impl CreateKeyAction {
@@ -142,6 +156,16 @@ impl CreateKeyAction {
         stdout.set_tags(Some(&self.tags));
         stdout.set_unique_identifier(&unique_identifier);
         stdout.write()?;
+
+        // Apply rotation policy if any fields are set
+        apply_rotation_policy_if_set(
+            &kms_rest_client,
+            &unique_identifier.to_string(),
+            self.rotate_interval,
+            self.rotate_name.as_deref(),
+            self.rotate_offset,
+        )
+        .await?;
 
         Ok(unique_identifier)
     }

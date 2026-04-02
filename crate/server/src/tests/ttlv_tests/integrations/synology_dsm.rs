@@ -37,9 +37,6 @@
 //! Steps 8 and 9 only proceed if `ModifyAttributeResponse` correctly echoes
 //! the modified `Name` attribute (KMIP 1.2 spec §4.14, issue #820).
 
-use std::sync::Arc;
-
-use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -58,30 +55,12 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_operations::{Activate, Locate, ModifyAttribute, Operation, Query, Register},
         kmip_types::{KeyFormatType, NameType, OperationEnumeration, QueryFunction},
     },
-    kmip_2_1::{
-        extra::tagging::VENDOR_ID_COSMIAN,
-        kmip_operations::Operation as Operation21,
-        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
-        requests::symmetric_key_create_request,
-    },
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
-use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::{
-    config::ServerParams,
-    core::KMS,
-    result::KResult,
-    tests::{
-        hsm::test_helpers::{get_hsm_password, get_hsm_slot_id},
-        test_utils::get_tmp_sqlite_path,
-        ttlv_tests::{get_client, socket_client::SocketClient},
-    },
-};
-
-const EMPTY_TAGS: [&str; 0] = [];
+use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 
 /// Volume UUID as used by DSM for Name-based Locate and `ModifyAttribute`.
 const VOLUME_UUID: &str = "2e043205-f1e7-48bb-a615-d331f2f84751";
@@ -438,154 +417,4 @@ fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {
         }),
         "ModifyAttributeResponse.attribute must echo the exact Name attribute that was set"
     );
-}
-
-// ─── Non-regression test vector: issue #933 (KMIP 1.2 protocol) ──────────────
-
-/// Non-regression test for issue #933 using the **exact KMIP 1.2** protocol
-/// payload that the Synology DSM 7.2.2 client sends.
-///
-/// ## Context from the issue
-///
-/// The Synology client connects with KMIP 1.2 and performs:
-/// 1. `Locate` — finds the key UID (e.g. `hsm::1::kms-master-kek-*`)
-/// 2. `ModifyAttribute(Name)` — renames it with a `-deprecated-*` suffix
-///
-/// Step 2 failed with:
-/// ```text
-/// Operation processing failed:
-/// Database Error: Ext. store error:
-/// This key is sensitive and cannot be exported from the HSM.
-/// ```
-///
-/// ## This test
-///
-/// Replays the exact KMIP 1.2 `ModifyAttribute(Name)` payload on a sensitive
-/// HSM key and asserts success.  This exercises the KMIP 1.2 code path (the
-/// companion test above uses KMIP 2.1).
-#[tokio::test]
-#[ignore = "Requires softhsm2: HSM_MODEL=softhsm2, HSM_USER_PASSWORD, HSM_SLOT_ID"]
-async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
-    log_init(None);
-
-    let owner = Uuid::new_v4().to_string();
-    let kek_uuid = Uuid::new_v4();
-
-    // Build a softhsm2-backed KMS config.
-    let user_password = get_hsm_password()?;
-    let slot = get_hsm_slot_id()?;
-    let kek_uid = as_hsm_uid!(slot, kek_uuid);
-    let sqlite_path = get_tmp_sqlite_path();
-
-    let mut clap_config = crate::tests::test_utils::https_clap_config();
-    clap_config.hsm.hsm_model = "softhsm2".to_owned();
-    clap_config.hsm.hsm_admin = vec![owner.clone()];
-    clap_config.hsm.hsm_slot = vec![slot];
-    clap_config.hsm.hsm_password = vec![user_password];
-    clap_config.db.sqlite_path = sqlite_path;
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-
-    // Step 1: Create a sensitive AES-256 key in the HSM (non-extractable).
-    let create_request = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(kek_uid.clone())),
-        256,
-        CryptographicAlgorithm::AES,
-        EMPTY_TAGS,
-        true, // sensitive / non-extractable
-        None,
-    )?;
-    let request = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 2,
-                protocol_version_minor: 1,
-            },
-            maximum_response_size: Some(9999),
-            batch_count: 1,
-            ..Default::default()
-        },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
-                Operation21::Create(create_request),
-            ),
-        )],
-    };
-    let create_resp = kms.message(request, &owner).await?;
-    let ResponseMessageBatchItemVersioned::V21(bi) = &create_resp.batch_item[0] else {
-        panic!("Expected KMIP 2.1 response");
-    };
-    assert_eq!(
-        bi.result_status,
-        ResultStatusEnumeration::Success,
-        "Create HSM key failed: {:?}",
-        bi.result_reason
-    );
-
-    // Step 2: Send KMIP 1.2 ModifyAttribute(Name) — the exact protocol version
-    // and payload structure the Synology DSM 7.2.2 client uses.
-    // This is the TTLV test vector from issue #933.
-    let deprecated_name = format!("{kek_uid}-deprecated-1");
-    let modify_request = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: kmip12(),
-            batch_count: 1,
-            ..Default::default()
-        },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
-                operation: OperationEnumeration::ModifyAttribute,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::ModifyAttribute(ModifyAttribute {
-                    unique_identifier: Some(kek_uid.clone()),
-                    attribute: Attribute::Name(Name {
-                        name_value: deprecated_name.clone(),
-                        name_type: NameType::UninterpretedTextString,
-                    }),
-                }),
-                message_extension: None,
-            },
-        )],
-    };
-    let modify_resp = kms.message(modify_request, &owner).await?;
-    let ResponseMessageBatchItemVersioned::V14(bi) = &modify_resp.batch_item[0] else {
-        panic!("Expected KMIP 1.2 response");
-    };
-    assert_eq!(
-        bi.result_status,
-        ResultStatusEnumeration::Success,
-        "KMIP 1.2 ModifyAttribute(Name) failed for sensitive HSM key (issue #933): {:?} - {:?}",
-        bi.result_reason,
-        bi.result_message,
-    );
-
-    // Cleanup: destroy the key.
-    let destroy_request = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 2,
-                protocol_version_minor: 1,
-            },
-            maximum_response_size: Some(9999),
-            batch_count: 1,
-            ..Default::default()
-        },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
-                Operation21::Destroy(
-                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy {
-                        unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
-                        remove: true,
-                        cascade: true,
-                        expected_object_type: None,
-                    },
-                ),
-            ),
-        )],
-    };
-    drop(kms.message(destroy_request, &owner).await);
-
-    Ok(())
 }

@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 use cosmian_logger::debug;
 
 use crate::{
-    actions::console,
+    actions::{console, shared::utils::apply_rotation_policy_if_set},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -72,6 +72,20 @@ pub struct CreateMasterKeyPairAction {
         verbatim_doc_comment
     )]
     pub(crate) wrapping_key_id: Option<String>,
+
+    /// Auto-rotation interval in seconds. Set to 0 to disable.
+    /// Example: 86400 for daily rotation, 604800 for weekly rotation.
+    #[clap(long = "rotate-interval", short = 'i', required = false)]
+    pub(crate) rotate_interval: Option<i32>,
+
+    /// Optional name to identify the rotation policy lineage.
+    #[clap(long = "rotate-name", required = false)]
+    pub(crate) rotate_name: Option<String>,
+
+    /// Delay in seconds before the first automatic rotation is triggered.
+    /// Defaults to the rotation interval if not set.
+    #[clap(long = "rotate-offset", required = false)]
+    pub(crate) rotate_offset: Option<i32>,
 }
 
 impl CreateMasterKeyPairAction {
@@ -101,6 +115,17 @@ impl CreateMasterKeyPairAction {
             &res.public_key_unique_identifier,
         );
         stdout.write()?;
+
+        // Apply rotation policy on the private key if any fields are set
+        apply_rotation_policy_if_set(
+            &kms_rest_client,
+            &res.private_key_unique_identifier.to_string(),
+            self.rotate_interval,
+            self.rotate_name.as_deref(),
+            self.rotate_offset,
+        )
+        .await?;
+
         Ok((
             res.private_key_unique_identifier,
             res.public_key_unique_identifier,

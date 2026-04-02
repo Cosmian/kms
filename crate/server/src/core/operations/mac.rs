@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
     },
 };
-use cosmian_logger::trace;
+use cosmian_logger::{debug, trace};
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 
 use crate::{
@@ -39,12 +39,12 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
     ctx.digest_sign_update(data)?;
     let mut hmac = Vec::with_capacity(64); // 512 bits being the maximum size of supported hash functions
     ctx.digest_sign_final_to_vec(&mut hmac)?;
-    trace!("HMAC computed: {} bytes", hmac.len());
+    debug!("HMAC: {:?}", hmac);
     Ok(hmac)
 }
 
 pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
-    trace!("uid={:?}", request.unique_identifier);
+    trace!("Mac: {}", serde_json::to_string(&request)?);
 
     let uid = request
         .unique_identifier
@@ -186,7 +186,7 @@ pub(super) async fn mac_verify(
     request: MACVerify,
     user: &str,
 ) -> KResult<MACVerifyResponse> {
-    trace!("uid={}", request.unique_identifier);
+    trace!("MacVerify: {}", serde_json::to_string(&request)?);
     let UniqueIdentifier::TextString(uid) = &request.unique_identifier else {
         kms_bail!("MacVerify: unique_identifier must be a string")
     };

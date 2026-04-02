@@ -146,9 +146,6 @@ async fn fetch_certificate(
     let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
     (cert, cert_attributes, cert_x509_der)
 }
-
-/// Check a generated certificate chain
-/// and return its Object, attributes and DER bytes
 async fn check_certificate_chain(
     ctx: &TestsContext,
     issuer_private_key_id: &str,

@@ -237,11 +237,14 @@ impl KmipAllowlistsConfig {
             CryptographicAlgorithm::ConfigurableKEM,
             // ML-KEM (post-quantum lattice-based KEM) variants used as the inner algorithm
             // inside ConfigurableKEM requests.
-            CryptographicAlgorithm::MLKEM_512,
+            // Note: ML-KEM-512 is excluded from the DEFAULT policy because ANSSI requires it
+            // to be used only in hybrid mode (classical + PQC). Users who need ML-KEM-512
+            // can explicitly allow it via a CUSTOM policy.
             CryptographicAlgorithm::MLKEM_768,
             CryptographicAlgorithm::MLKEM_1024,
             // ML-DSA (post-quantum lattice-based signature) variants.
-            CryptographicAlgorithm::MLDSA_44,
+            // Note: ML-DSA-44 is excluded from the DEFAULT policy because ANSSI only tolerates
+            // it in hybrid mode. Use ML-DSA-65 or ML-DSA-87 for standalone PQC signatures.
             CryptographicAlgorithm::MLDSA_65,
             CryptographicAlgorithm::MLDSA_87,
         ];

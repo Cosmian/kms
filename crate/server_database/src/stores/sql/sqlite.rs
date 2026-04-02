@@ -2,10 +2,6 @@
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
 };
 
 use async_trait::async_trait;
@@ -14,16 +10,17 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
+use time::OffsetDateTime;
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
-use super::locate_query::{SqlitePlaceholder, query_from_attributes};
+use super::locate_query::{SqlitePlaceholder, is_due_for_rotation, query_from_attributes};
 use crate::{
     db_error,
     error::{DbError, DbResult},
@@ -45,77 +42,45 @@ macro_rules! get_sqlite_query {
 
 #[derive(Clone)]
 pub(crate) struct SqlitePool {
-    /// Dedicated connection for write operations (create, update, delete).
-    writer: Connection,
-    /// Pool of connections for read operations (retrieve, find, list).
-    /// `SQLite` WAL mode allows concurrent readers alongside a single writer.
-    readers: Vec<Connection>,
-    /// Round-robin counter for distributing reads across the pool.
-    reader_idx: Arc<AtomicUsize>,
+    conn: Connection,
 }
 
 impl SqlitePool {
-    /// Opens `count` connections to the same `SQLite` database and applies
-    /// `PRAGMAs` to each. Returns them in a `Vec`.
-    async fn open_connections(path: &Path, count: usize) -> DbResult<Vec<Connection>> {
-        let mut conns = Vec::with_capacity(count);
-        for _ in 0..count {
-            let conn = Connection::open(path).await?;
-            conn.call(
-                |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    c.execute_batch(
-                        "PRAGMA journal_mode=WAL;\
-                         PRAGMA synchronous=NORMAL;\
-                         PRAGMA busy_timeout=5000;",
-                    )
+    pub(crate) async fn instantiate(
+        path: &Path,
+        clear_database: bool,
+        _max_connections: Option<u32>,
+    ) -> DbResult<Self> {
+        let conn = Connection::open(path).await?;
+        let pool = Self { conn };
+        // Enable WAL journal mode and NORMAL synchronous for better write throughput.
+        // WAL mode allows concurrent reads during writes and avoids the two-fsync
+        // overhead of DELETE journal mode.  With synchronous=NORMAL SQLite fsyncs
+        // the WAL file only at checkpoints (background) rather than on every commit,
+        // which reduces per-write latency from ~10 ms to sub-millisecond on typical
+        // Docker / overlayfs environments.
+        // busy_timeout lets writers retry on transient lock conflicts instead of
+        // returning SQLITE_BUSY immediately (important under concurrent load tests).
+        let pragma_sql = pool.get_query("pragma-wal-mode")?.to_owned();
+        pool.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute_batch(&pragma_sql)
                 },
             )
             .await
             .map_err(DbError::from)?;
-            conns.push(conn);
-        }
-        Ok(conns)
-    }
-
-    pub(crate) async fn instantiate(
-        path: &Path,
-        clear_database: bool,
-        max_connections: Option<u32>,
-    ) -> DbResult<Self> {
-        // Determine reader pool size: default to 2×CPUs capped at 10,
-        // matching the MySQL/PostgreSQL backend pool sizing strategy.
-        // Note: total connections = num_readers + 1 (dedicated writer).
-        let default_readers: usize = num_cpus::get().saturating_mul(2).min(10);
-        let num_readers: usize = max_connections
-            .and_then(|v| usize::try_from(v).ok())
-            .unwrap_or(default_readers)
-            .max(1);
-
-        // Open the writer connection
-        let writer_vec = Self::open_connections(path, 1).await?;
-        let writer = writer_vec
-            .into_iter()
-            .next()
-            .ok_or_else(|| DbError::DatabaseError("Failed to open writer connection".to_owned()))?;
-
-        // Open the reader connections
-        let readers = Self::open_connections(path, num_readers).await?;
-
-        let pool = Self {
-            writer,
-            readers,
-            reader_idx: Arc::new(AtomicUsize::new(0)),
-        };
-
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
+        let create_notifications = pool.get_query("create-table-notifications")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
-        pool.writer
+        let clean_notifications = pool.get_query("clean-table-notifications")?.to_owned();
+        pool.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -123,10 +88,12 @@ impl SqlitePool {
                     tx.execute(&create_objects, [])?;
                     tx.execute(&create_read_access, [])?;
                     tx.execute(&create_tags, [])?;
+                    tx.execute(&create_notifications, [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
                         tx.execute(&clean_tags, [])?;
+                        tx.execute(&clean_notifications, [])?;
                     }
                     tx.commit()?;
                     Ok(())
@@ -143,17 +110,10 @@ impl SqlitePool {
         Ok(pool)
     }
 
-    /// Returns a reader connection using round-robin distribution.
-    fn reader(&self) -> &Connection {
-        let idx = self.reader_idx.fetch_add(1, Ordering::Relaxed) % self.readers.len();
-        #[allow(clippy::indexing_slicing)]
-        // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
-        &self.readers[idx]
-    }
-
     pub(crate) async fn health_check(&self) -> DbResult<()> {
-        self.writer
-            .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
+        let sql = get_sqlite_query!("health-check").to_owned();
+        self.conn
+            .call(move |c| c.query_row(&sql, [], |_row| Ok(())))
             .await
             .map_err(DbError::from)
     }
@@ -225,12 +185,13 @@ impl ObjectsStore for SqlitePool {
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         // If an explicit UID already exists, return a clear error matching CLI expectations
+        let check_sql = replace_dollars_with_qn(get_sqlite_query!("check-object-exists"));
         let exists = self
-            .writer
+            .conn
             .call({
                 let uid_check = uid.clone();
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+                    let mut stmt = c.prepare(&check_sql)?;
                     let present = stmt.exists(params_from_iter([&uid_check]))?;
                     Ok(present)
                 }
@@ -254,7 +215,7 @@ impl ObjectsStore for SqlitePool {
 
         let uid_clone = uid.clone();
         let tags_owned: HashSet<String> = tags.clone();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -285,7 +246,8 @@ impl ObjectsStore for SqlitePool {
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         let select_object = get_sqlite_query!("select-object").to_string();
         let uid_s = uid.to_owned();
-        let res = self.reader()
+        let res = self
+            .conn
             .call(move |c: &mut rusqlite::Connection| -> Result<Option<ObjectWithMetadata>, rusqlite::Error> {
                 let mut stmt = c.prepare(&select_object)?;
                 let row = stmt
@@ -304,7 +266,7 @@ impl ObjectsStore for SqlitePool {
         let sql = get_sqlite_query!("select-tags").to_string();
         let uid_s = uid.to_owned();
         let tags = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -340,7 +302,7 @@ impl ObjectsStore for SqlitePool {
 
         let uid_s = uid.to_owned();
         let tags_owned: Option<HashSet<String>> = tags.cloned();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -367,7 +329,7 @@ impl ObjectsStore for SqlitePool {
         let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-state"));
         let state_s = state.to_string();
         let uid_s = uid.to_owned();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -385,7 +347,7 @@ impl ObjectsStore for SqlitePool {
         let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
         let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
         let uid_s = uid.to_owned();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -408,7 +370,7 @@ impl ObjectsStore for SqlitePool {
         let user_s = user.to_owned();
         let ops_owned: Vec<OwnedOp> = operations.iter().map(OwnedOp::from).collect();
         let v = self
-            .writer
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -428,7 +390,7 @@ impl ObjectsStore for SqlitePool {
         let uid_s = uid.to_owned();
         let owner_s = owner.to_owned();
         let owned = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -453,7 +415,7 @@ impl ObjectsStore for SqlitePool {
         let tag_list: Vec<String> = tags.iter().cloned().collect();
         let len_val: i64 = i64::try_from(tags.len()).unwrap_or(0);
         let set = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -495,7 +457,8 @@ impl ObjectsStore for SqlitePool {
         );
         let sql_conversion = replace_dollars_with_qn(&locate.sql);
         let locate_params = locate.params;
-        let rows = self.reader()
+        let rows = self
+            .conn
             .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql_conversion)?;
                 let values: Vec<rusqlite::types::Value> = locate_params
@@ -531,6 +494,82 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(rows)
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Search in the stored `object` JSON column for objects whose KeyWrappingData
+        // EncryptionKeyInformation UniqueIdentifier matches the given wrapping key UID.
+        // We check all the object variant prefixes that can hold a KeyBlock.
+        let sql = replace_dollars_with_qn(get_sqlite_query!("find-wrapped-by-objects-sqlite"));
+        let uid_s = wrapping_key_uid.to_owned();
+        let user_s = user.to_owned();
+        let rows = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, State, Attributes)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut q =
+                        stmt.query(params_from_iter([uid_s.as_str(), user_s.as_str()]))?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let state_str: String = r.get(1)?;
+                        let state = State::try_from(state_str.as_str())
+                            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+                        let raw: String = r.get(2)?;
+                        let attrs = if raw.is_empty() {
+                            Attributes::default()
+                        } else {
+                            serde_json::from_str::<Attributes>(&raw)
+                                .map_err(|_e| rusqlite::Error::InvalidQuery)?
+                        };
+                        out.push((id, state, attrs));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows)
+    }
+
+    async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        // Find all Active objects with rotate_interval > 0.
+        // The actual due-date check is done in Rust after fetching.
+        let sql = replace_dollars_with_qn(get_sqlite_query!("find-due-for-rotation-sqlite"));
+        let rows = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<(String, String)>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let attrs_json: String = r.get(1)?;
+                        out.push((id, attrs_json));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
+        let mut due = Vec::new();
+        for (uid, attrs_json) in rows {
+            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
+            if is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
+    }
 }
 
 #[async_trait(?Send)]
@@ -542,7 +581,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
         let res: Option<String> = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&select_param)?;
@@ -569,7 +608,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
         let state_json = serde_json::to_string(&state)?;
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -593,7 +632,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
         let res: Option<String> = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&select_param)?;
@@ -617,7 +656,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
         let version_s = version.to_owned();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -644,7 +683,7 @@ impl PermissionsStore for SqlitePool {
         let sql = get_sqlite_query!("select-objects-access-obtained").to_string();
         let user_s = user.to_owned();
         let list = self
-            .reader()
+            .conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<
                     HashMap<String, (String, State, HashSet<KmipOperation>)>,
@@ -679,7 +718,8 @@ impl PermissionsStore for SqlitePool {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         let sql = get_sqlite_query!("select-rows-read_access-with-object-id").to_string();
         let uid_s = uid.to_owned();
-        let map = self.reader()
+        let map = self
+            .conn
             .call(move |c: &mut rusqlite::Connection| -> Result<HashMap<String, HashSet<KmipOperation>>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql)?;
                 let mut rows = stmt.query(params_from_iter([&uid_s]))?;
@@ -708,7 +748,7 @@ impl PermissionsStore for SqlitePool {
         let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-row-read_access"));
         let uid_s = uid.to_owned();
         let user_s = user.to_owned();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let mut stmt = c.prepare(&sql_select)?;
@@ -749,7 +789,7 @@ impl PermissionsStore for SqlitePool {
         let uid_s = uid.to_owned();
         let user_s = user.to_owned();
         let operations = operations.clone();
-        self.writer
+        self.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let mut stmt = c.prepare(&sql_select)?;
@@ -798,7 +838,7 @@ impl SqlitePool {
         let sql = get_sqlite_query!("select-user-accesses-for-object").to_string();
         let uid_s = uid.to_owned();
         let user_s = userid.to_owned();
-        self.reader()
+        self.conn
             .call(move |c: &mut rusqlite::Connection| -> Result<HashSet<KmipOperation>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql)?;
                 let res = stmt
@@ -826,7 +866,8 @@ fn create_sqlite(
 ) -> DbResult<String> {
     // If an explicit UID is provided and already exists, return a clear error
     if let Some(ref explicit_uid) = uid {
-        let mut stmt = tx.prepare("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+        let check_sql = replace_dollars_with_qn(get_sqlite_query!("check-object-exists"));
+        let mut stmt = tx.prepare(&check_sql)?;
         let exists = stmt.exists(params_from_iter([explicit_uid]))?;
         if exists {
             return Err(DbError::DatabaseError(
@@ -990,4 +1031,151 @@ fn apply_owned_ops(
         }
     }
     Ok(uids)
+}
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for SQLite
+// ---------------------------------------------------------------------------
+
+#[async_trait(?Send)]
+impl NotificationsStore for SqlitePool {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let created_at_str = created_at.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        let event_type = event_type.to_owned();
+        let message = message.to_owned();
+        let object_id = object_id.map(str::to_owned);
+        let insert_sql = replace_dollars_with_qn(get_sqlite_query!("insert-notification"));
+        self.conn
+            .call(move |c| -> Result<i64, rusqlite::Error> {
+                c.query_row(
+                    &insert_sql,
+                    rusqlite::params![user_id, event_type, message, object_id, created_at_str],
+                    |row| row.get(0),
+                )
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let user_id = user_id.to_owned();
+        let list_sql = replace_dollars_with_qn(get_sqlite_query!("list-notifications"));
+        let rows = self
+            .conn
+            .call(
+                move |c| -> Result<
+                    Vec<(
+                        i64,
+                        String,
+                        String,
+                        String,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                    )>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&list_sql)?;
+                    let rows = stmt
+                        .query_map(rusqlite::params![user_id, limit, offset], |row| {
+                            Ok((
+                                row.get::<_, i64>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, String>(3)?,
+                                row.get::<_, Option<String>>(4)?,
+                                row.get::<_, String>(5)?,
+                                row.get::<_, Option<String>>(6)?,
+                            ))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(rows)
+                },
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+
+        rows.into_iter()
+            .map(|(id, uid, et, msg, oid, ca_str, ra_str)| {
+                let created_at = OffsetDateTime::parse(&ca_str, &fmt)
+                    .map_err(|e| InterfaceError::Db(format!("bad created_at: {e}")))?;
+                let read_at = ra_str
+                    .map(|s| {
+                        OffsetDateTime::parse(&s, &fmt)
+                            .map_err(|e| InterfaceError::Db(format!("bad read_at: {e}")))
+                    })
+                    .transpose()?;
+                Ok(Notification {
+                    id,
+                    user_id: uid,
+                    event_type: et,
+                    message: msg,
+                    object_id: oid,
+                    created_at,
+                    read_at,
+                })
+            })
+            .collect()
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let user_id = user_id.to_owned();
+        let count_sql = replace_dollars_with_qn(get_sqlite_query!("count-unread-notifications"));
+        self.conn
+            .call(move |c| -> Result<i64, rusqlite::Error> {
+                c.query_row(&count_sql, rusqlite::params![user_id], |row| row.get(0))
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        let mark_sql = replace_dollars_with_qn(get_sqlite_query!("mark-notification-read"));
+        let changed = self
+            .conn
+            .call(move |c| -> Result<usize, rusqlite::Error> {
+                c.execute(&mark_sql, rusqlite::params![now_str, id, user_id])
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(changed > 0)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: OffsetDateTime) -> InterfaceResult<()> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        let mark_all_sql =
+            replace_dollars_with_qn(get_sqlite_query!("mark-all-notifications-read"));
+        self.conn
+            .call(move |c| -> Result<(), rusqlite::Error> {
+                c.execute(&mark_all_sql, rusqlite::params![now_str, user_id])?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
 }

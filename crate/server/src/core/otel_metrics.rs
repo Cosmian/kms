@@ -91,6 +91,9 @@ pub struct OtelMetrics {
 
     /// HSM operation counts (if HSM is enabled)
     pub hsm_operations_total: Counter<u64>,
+
+    /// Auto-rotation events per algorithm
+    pub key_auto_rotation_total: Counter<u64>,
 }
 
 impl OtelMetrics {
@@ -255,6 +258,13 @@ impl OtelMetrics {
             .with_unit("{operation}")
             .build();
 
+        // Auto-rotation events
+        let key_auto_rotation_total = meter
+            .u64_counter("kms.key.auto_rotation")
+            .with_description("Total number of automatic key rotation events")
+            .with_unit("{rotation}")
+            .build();
+
         Ok(Self {
             meter,
             _meter_provider: meter_provider,
@@ -278,6 +288,7 @@ impl OtelMetrics {
             active_keys_count_value: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
+            key_auto_rotation_total,
         })
     }
 
@@ -460,6 +471,11 @@ impl OtelMetrics {
     /// Update server uptime (should be called periodically)
     pub fn update_uptime(&self) {
         self.server_uptime_seconds.add(1, &[]);
+    }
+
+    pub fn increment_auto_rotation_counter(&self, algorithm: &str) {
+        self.key_auto_rotation_total
+            .add(1, &[KeyValue::new("algorithm", algorithm.to_owned())]);
     }
 
     /// Get a reference to the meter for custom metrics

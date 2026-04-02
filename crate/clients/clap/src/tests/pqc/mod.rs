@@ -19,6 +19,9 @@ async fn test_kem(ctx: &TestsContext, name: &str, algorithm: PqcAlgorithm) -> Km
             algorithm,
             tags: vec![name.to_owned()],
             sensitive: false,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         }
         .run(ctx.get_owner_client()),
     )
@@ -70,6 +73,9 @@ async fn test_sign_verify(
             algorithm,
             tags: vec![name.to_owned()],
             sensitive: false,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         }
         .run(ctx.get_owner_client()),
     )

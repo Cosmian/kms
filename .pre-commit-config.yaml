@@ -302,5 +302,5 @@ repos:
     rev: v3.13.7
     hooks:
       - id: markdown-link-check
-        args: [-q, --config, ./.github/.markdown-link-check.json]
+        args: [-q, --config, .github/.markdown-link-check.json]
         exclude: .github/copilot-instructions.md

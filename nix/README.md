@@ -743,9 +743,9 @@ bash .github/scripts/nix.sh package deb
 
 Each package will have a corresponding `.asc` signature:
 
-- `result-deb-fips/cosmian_kms_server_5.11.1_amd64.deb.asc`
-- `result-rpm-fips/cosmian_kms_server_fips-5.11.1.x86_64.rpm.asc`
-- `result-dmg-fips/Cosmian KMS Server_5.11.1_arm64.dmg.asc`
+- `result-deb-fips/cosmian_kms_server_5.21.0_amd64.deb.asc`
+- `result-rpm-fips/cosmian_kms_server_fips-5.21.0.x86_64.rpm.asc`
+- `result-dmg-fips/Cosmian KMS Server_5.21.0_arm64.dmg.asc`
 
 ### Verify signatures
 
@@ -754,7 +754,7 @@ Each package will have a corresponding `.asc` signature:
 gpg --import nix/signing-keys/cosmian-kms-public.asc
 
 # Verify package
-gpg --verify result-deb-fips/cosmian_kms_server_5.11.1_amd64.deb.asc
+gpg --verify result-deb-fips/cosmian_kms_server_5.21.0_amd64.deb.asc
 ```
 
 See `nix/signing-keys/README.md` for detailed signing documentation.

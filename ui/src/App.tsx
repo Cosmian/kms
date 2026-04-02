@@ -9,37 +9,40 @@ import AttributeDeleteForm from "./actions/Attributes/AttributeDelete";
 import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
 import AttributeSetForm from "./actions/Attributes/AttributeSet";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import ExportAzureBYOKForm from "./actions/CloudProviders/AzureExportByok";
-import ImportAzureKekForm from "./actions/CloudProviders/AzureImportKek";
 import CertificateCertifyForm from "./actions/Certificates/CertificateCertify";
 import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
+import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
+import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
+import ExportAzureBYOKForm from "./actions/CloudProviders/AzureExportByok";
+import ImportAzureKekForm from "./actions/CloudProviders/AzureImportKek";
 import CCDecryptForm from "./actions/Covercrypt/CovercryptDecrypt";
 import CCEncryptForm from "./actions/Covercrypt/CovercryptEncrypt";
 import CovercryptMasterKeyForm from "./actions/Covercrypt/CovercryptMasterKey";
+import CovercryptReKeyForm from "./actions/Covercrypt/CovercryptReKey";
 import CovercryptUserKeyForm from "./actions/Covercrypt/CovercryptUserKey";
-import CseInfo from "./actions/Keys/CseInfo";
 import ECDecryptForm from "./actions/EC/ECDecrypt";
 import ECEncryptForm from "./actions/EC/ECEncrypt";
 import ECKeyCreateForm from "./actions/EC/ECKeysCreate";
 import ECSignForm from "./actions/EC/ECSign";
 import ECVerifyForm from "./actions/EC/ECVerify";
+import CseInfo from "./actions/Keys/CseInfo";
+import DeriveKeyForm from "./actions/Keys/DeriveKey";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
+import KeysReKeyForm from "./actions/Keys/KeysReKey";
+import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
-import LocateForm from "./components/common/Locate";
-import LoginPage from "./pages/LoginPage";
-import MainLayout from "./components/layout/MainLayout";
-import NotFoundPage from "./pages/NotFoundPage";
+import HsmStatus from "./actions/Objects/HsmStatus";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
 import RevokeForm from "./actions/Objects/ObjectsRevoke";
 import OpaqueObjectForm from "./actions/Objects/OpaqueObject";
+import SecretDataCreateForm from "./actions/Objects/SecretDataCreate";
 import PqcDecapsulateForm from "./actions/PQC/PqcDecapsulate";
 import PqcEncapsulateForm from "./actions/PQC/PqcEncapsulate";
 import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
@@ -50,17 +53,19 @@ import RsaEncryptForm from "./actions/RSA/RsaEncrypt";
 import RsaKeyCreateForm from "./actions/RSA/RsaKeysCreate";
 import RsaSignForm from "./actions/RSA/RsaSign";
 import RsaVerifyForm from "./actions/RSA/RsaVerify";
-import SecretDataCreateForm from "./actions/Objects/SecretDataCreate";
-import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import SymmetricDecryptForm from "./actions/Symmetric/SymmetricDecrypt";
 import SymmetricEncryptForm from "./actions/Symmetric/SymmetricEncrypt";
 import SymmetricHashForm from "./actions/Symmetric/SymmetricHash";
+import LocateForm from "./components/common/Locate";
+import MainLayout from "./components/layout/MainLayout";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
+import LoginPage from "./pages/LoginPage";
+import NotFoundPage from "./pages/NotFoundPage";
+import NotificationsPage from "./pages/NotificationsPage";
+import SymKeysReKeyForm from "./SymKeysReKey";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
-import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
-import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
-import DeriveKeyForm from "./actions/Keys/DeriveKey";
 
 type AppContentProps = {
     isDarkMode: boolean;
@@ -247,6 +252,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         <Route path="locate" element={<LocateForm />} />
                         <Route path="sym">
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
+                            <Route path="keys/re-key" element={<SymKeysReKeyForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
@@ -257,6 +263,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="rsa">
                             <Route path="keys/create" element={<RsaKeyCreateForm />} />
+                            <Route path="keys/re-key" element={<KeysReKeyForm objectLabel="RSA private key" />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"rsa"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="rsa" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="rsa" />} />
@@ -268,6 +275,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="ec">
                             <Route path="keys/create" element={<ECKeyCreateForm />} />
+                            <Route path="keys/re-key" element={<KeysReKeyForm objectLabel="EC private key" />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"ec"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="ec" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="ec" />} />
@@ -279,6 +287,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="pqc">
                             <Route path="keys/create" element={<PqcKeysCreateForm />} />
+                            <Route path="keys/re-key" element={<KeysReKeyForm objectLabel="PQC private key" />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="pqc" />} />
@@ -296,6 +305,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="cc">
                                 <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
                                 <Route path="keys/create-user-key" element={<CovercryptUserKeyForm />} />
+                                <Route path="keys/re-key" element={<CovercryptReKeyForm />} />
                                 <Route path="keys/export" element={<KeyExportForm key_type={"covercrypt"} />} />
                                 <Route path="keys/import" element={<KeyImportForm key_type={"covercrypt"} />} />
                                 <Route path="keys/revoke" element={<RevokeForm objectType="covercrypt" />} />
@@ -326,6 +336,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
                         </Route>
+                        <Route path="hsm-status" element={<HsmStatus />} />
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />
                             <Route path="certs/export" element={<CertificateExportForm />} />
@@ -351,6 +362,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
                         <Route path="google-cse" element={<CseInfo />} />
+                        <Route path="notifications" element={<NotificationsPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </>
