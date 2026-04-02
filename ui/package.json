@@ -49,6 +49,10 @@
         "vitest": "^3.2.4"
     },
     "pnpm": {
+        "supportedArchitectures": {
+            "os": ["current", "linux", "darwin", "win32"],
+            "cpu": ["current", "x64", "arm64"]
+        },
         "overrides": {
             "esbuild": "^0.25.10",
             "@babel/runtime": "^7.26.10",
