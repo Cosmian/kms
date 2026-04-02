@@ -37,7 +37,7 @@ Supported wrapping algorithms:
 - An active AWS account
 - Either: AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms).
 - A running [Cosmian KMS](https://docs.cosmian.com/key_management_system/quick_start/) instance.
-- Either: [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../ui.md) of your deployed KMS instance.
+- Either: [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
 ## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
@@ -89,7 +89,7 @@ If successful, the output should look like :
 ### 2. Create a symmetric key in Cosmian KMS
 
 ```bash
-./cosmian kms sym keys create symmetric_key_test1
+ckms sym keys create symmetric_key_test1
 ```
 
 **Response:**
@@ -140,7 +140,7 @@ echo -n "<YourBase64EncodedPublicKey>" | openssl enc -d -base64 -A -out kek.bin
 ### 4. Import the AWS KEK into Cosmian KMS
 
 ```bash
-./cosmian kms aws byok import \
+ckms aws byok import \
     --kek-base64 "<YourBase64EncodedPublicKey>" \
     --wrapping-algorithm RSAES_OAEP_SHA_256 \
     --key-arn "<YourKeyArn>" \
@@ -152,7 +152,7 @@ Feel free to change the key id to whatever you want, we will call the kek `aws_k
 #### Alternative : importing the kek as file
 
 ```bash
-./cosmian kms aws byok import \
+ckms aws byok import \
     --kek-file kek.bin \
     --wrapping-algorithm RSAES_OAEP_SHA_256 \
     --key-arn arn:aws:kms:eu-west-3:447182645454:key/350e35ef-ac51-4dbb-82a4-9bc50b0ea42b \
@@ -175,7 +175,7 @@ The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully
 ```bash
 # Provide token file simply to display the correct AWS CLI command for import
 # If the output file is not specified, the CLI returns base64 encoded encrypted key material
-./cosmian kms aws byok export \
+ckms aws byok export \
     symmetric_key_test1 \
     kek_test1 \
     token.bin \
@@ -249,13 +249,13 @@ To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash
 The following scripts are available for download:
 
 - **RSA BYOK Script**: Automates the import of RSA private key material. Supports RSA key sizes: `2048`, `3072`, and `4096`.
-  [📥 Download `run_rsa_byok.sh`](byok_scripts/run_rsa_byok.sh)
+  Find `run_rsa_byok.sh` on repository
 
 - **ECC BYOK Script**: Automates the import of Elliptic Curve private key material. Supports NIST curves: `p256`, `p384`, and `p521`.
-  [📥 Download `run_ecc_byok.sh`](byok_scripts/run_ecc_byok.sh)
+  Find `run_ecc_byok.sh` on repository
 
 - **AES BYOK Script**: Automates the import of 256-bit AES symmetric key material.
-  [📥 Download `run_aes_byok.sh`](byok_scripts/run_aes_byok.sh)
+  Find `run_aes_byok.sh` on repository
 
 ### Usage
 

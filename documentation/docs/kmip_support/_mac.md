@@ -23,7 +23,7 @@ The Cosmian KMS server supports the following MAC algorithms:
 - HMAC-SHA-384
 - HMAC-SHA-512
 
-For the complete list of supported MAC algorithms, please check the [algorithms page](../algorithms.md).
+For the complete list of supported MAC algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 #### Example - Simple MAC
 

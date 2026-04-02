@@ -263,7 +263,7 @@ a harmless `WARN` entry; the key operation still succeeds.
   (`clients_ca_cert_file` set in `kms.toml`) so that only authorised NAS
   devices can access keys.
 - **Key access policy**: Use the Cosmian KMS
-  [policy](../../documentation/docs/kmip_policy.md) to restrict each NAS to
+  [policy](../certifications_and_compliance/cryptographic_algorithms/kmip_policy.md) to restrict each NAS to
   its own keys.
 - **Key rotation**: Revoke and re-create keys periodically.  DSM will
   re-encrypt the volume DEK with the new KMS key on the next mount.

@@ -122,9 +122,9 @@ Let's save the root CA as **`mhsm-root-ca.pem`** - We will need it in the next s
 
 ### Cosmian KMS setup
 
-Follow the [Cosmian KMS installation guide](../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
+Follow the [Cosmian KMS installation guide](../../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
 
-Alternatively, you can deploy a pre-configured Cosmian Confidential VM [like explained in this guide.](../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
+Alternatively, you can deploy a pre-configured Cosmian Confidential VM [like explained in this guide.](../../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
 
 Environment variables can also be used for all the configurations below.
 
@@ -133,7 +133,7 @@ Environment variables can also be used for all the configurations below.
 #### mTLS Configuration
 
 Configure mutual TLS authentication to accept connections from Azure Managed HSM by adding of editing to following lines in your configuration file:
-For detailed information about TLS client certificate authentication, see the [TLS Client Certificate configuration guide](../../configurations.md#tls-client-cert).
+For detailed information about TLS client certificate authentication, see the [TLS Client Certificate configuration guide](../../../configuration/configurations.md#tls-client-cert).
 
 ```toml
 [tls]

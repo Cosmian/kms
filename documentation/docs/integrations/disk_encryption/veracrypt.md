@@ -23,7 +23,7 @@ Then click `OK`.
 
 The PKCS#11 provider library uses the same configuration file as the [CLI](https://docs.cosmian.com/kms_clients/).
 
-See [Authenticating users to the KMS](../../configuration/authentication.md#authenticating-using-tls-client-certificates)
+See [Authenticating users to the KMS](../../configuration/authentication.md#tls-client-certificate-authentication)
 to learn how to configure the KMS to use OpenID Connect or certificate authentication.
 Please note that the KMS can also manage the machines' certificates.
 

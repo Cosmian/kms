@@ -32,7 +32,7 @@ Before saving an encrypted document, the Office client will:
 1. Generate an ephemeral 128-bit AES key and use it to encrypt the document
 2. Call the Cosmian KMS to get your 2048-bit RSA public key (the Office client will cache the key for 24 hours)
 3. Use that key to wrap the AES key using the PKCS#11 CKM_RSA_PKCS_OAEP (NIST 800 56B Rev2) algorithm; the hashing
-   algorithm is set to SHA-256 (see [the list of supported algorithms](../algorithms.md) for details)
+   algorithm is set to SHA-256 (see [the list of supported algorithms](../../../certifications_and_compliance/cryptographic_algorithms/algorithms.md) for details)
 4. Send the wrapped AES key and the encrypted document to Microsoft servers, where Azure RMS will also wrap the
    wrapped AES key with their own key (hence the "double key" acronym)
 
@@ -45,7 +45,7 @@ Retrieving an encrypted document works as follows, the Office client will:
 4. Decrypt the document using the recovered AES key and display it.
 
 **Note**: The Cosmian KMS implementation of the PKCS#11 CKM_RSA_PKCS_OAEP algorithm is FIPS compliant. The DKE
-API is therefore available on the Cosmian server running in [FIPS mode](../fips.md).
+API is therefore available on the Cosmian server running in [FIPS mode](../../../certifications_and_compliance/fips.md).
 
 ## Configuring the Cosmian KMS server
 
@@ -65,14 +65,14 @@ Cosmian KMS server to only accept requests from valid Office clients is critical
 
 !!! important "Running the KMS server in the cloud for DKE"
 It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-Cosmian VM](../installation/marketplace_guide.md). However, due to the lack of authentication, and thus the need to
+Cosmian VM](../../../installation/marketplace_guide.md). However, due to the lack of authentication, and thus the need to
 firewall the server,
 one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
 particularly if running on Azure.
 
 ### Create an RSA key with tag `dke_key`
 
-Using the [KMS CLI](../../kms_clients/index.md), create a 2048-bit RSA key with the tag `dke_key`:
+Using the [KMS CLI](../../../../kms_clients/index.md), create a 2048-bit RSA key with the tag `dke_key`:
 
 ```shell
 ckms rsa keys create --tag dke_key --size_in_bits 2048
@@ -84,7 +84,7 @@ details.
 
 #### Rotate the DKE key
 
-If later on you need to rotate the DKE key, you can use the [KMS CLI](../../kms_clients/index.md) to create a new
+If later on you need to rotate the DKE key, you can use the [KMS CLI](../../../../kms_clients/index.md) to create a new
 key with a new tag.
 You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
@@ -194,11 +194,11 @@ Select `Use Double Key Encryption` on the encryption configuration screen and ma
 you do not activate co-authoring.
 
 !!! important "Use the correct URL"
-The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
+    The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
 
-      - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
-      - `ms_dke` is the root of REST path for the DKE services.
-      - `dke_key` is the tag set for the RSA key pair to use for this label.
+    - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
+    - `ms_dke` is the root of REST path for the DKE services.
+    - `dke_key` is the tag set for the RSA key pair to use for this label.
 
 ![Sensitivity Label](./sensitivity_label.png)
 

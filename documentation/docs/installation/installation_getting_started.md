@@ -6,7 +6,7 @@ Please check [this page](./marketplace_guide.md) for more information.
 
 When installed using the options below, the KMS server will be automatically configured to run
 using an SQLite database.
-If you wish to change the database configuration, please refer to the [database guide](../database.md).
+If you wish to change the database configuration, please refer to the [database guide](../configuration/database.md).
 
 For high availability and scalability, refer to the [High Availability Guide](./high_availability_mode.md).
 
@@ -147,24 +147,24 @@ gpg: Good signature from "Cosmian KMS Release <tech@cosmian.com>"
 
 === "macOS"
 
-        Download the installer for your architecture and run it:
+    Download the installer for your architecture and run it:
 
-        - Apple Silicon (ARM64):
-
-            ```sh
-            open "https://package.cosmian.com/kms/5.19.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.19.0_arm64.dmg"
-            ```
-
-        Then drag-and-drop the app to Applications or follow the DMG instructions.
-
-        Note: The 5.19.0 DMG is provided for Apple Silicon (ARM64).
-
-        After installation, run:
+    - Apple Silicon (ARM64):
 
         ```sh
-        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms --version
-        /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms
+        open "https://package.cosmian.com/kms/5.19.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.19.0_arm64.dmg"
         ```
+
+    Then drag-and-drop the app to Applications or follow the DMG instructions.
+
+    Note: The 5.19.0 DMG is provided for Apple Silicon (ARM64).
+
+    After installation, run:
+
+    ```sh
+    /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms --version
+    /Applications/Cosmian\ KMS\ Server.app/Contents/MacOS/cosmian_kms
+    ```
 
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
@@ -176,21 +176,21 @@ gpg: Good signature from "Cosmian KMS Release <tech@cosmian.com>"
 
 Available dynamic packages for Debian-based distributions:
 
-    ```sh
-    # Non-FIPS dynamic (OpenSSL linked dynamically)
-    wget https://package.cosmian.com/kms/5.19.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.19.0_amd64.deb
-    # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.19.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.19.0_amd64.deb
-    ```
+```sh
+# Non-FIPS dynamic (OpenSSL linked dynamically)
+wget https://package.cosmian.com/kms/5.19.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.19.0_amd64.deb
+# FIPS dynamic
+wget https://package.cosmian.com/kms/5.19.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.19.0_amd64.deb
+```
 
 Available dynamic packages for Rocky Linux:
 
-    ```sh
-    # Non-FIPS dynamic
-    wget https://package.cosmian.com/kms/5.19.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.19.0_x86_64.rpm
-    # FIPS dynamic
-    wget https://package.cosmian.com/kms/5.19.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.19.0_x86_64.rpm
-    ```
+```sh
+# Non-FIPS dynamic
+wget https://package.cosmian.com/kms/5.19.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.19.0_x86_64.rpm
+# FIPS dynamic
+wget https://package.cosmian.com/kms/5.19.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.19.0_x86_64.rpm
+```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
 shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
@@ -215,4 +215,4 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
 
     - The KMS UI is available at `http://localhost:9998/ui`
     - The server uses the configuration file located at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
-    - See the [server configuration](../server_configuration_file.md) for more information
+    - See the [server configuration](../configuration/server_configuration_file.md) for more information

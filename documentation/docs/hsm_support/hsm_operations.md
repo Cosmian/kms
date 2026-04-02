@@ -57,7 +57,7 @@ KMS_HSM_ADMIN=alice@example.com,bob@example.com cosmian_kms ...
     ownership and access-rights model for all other operations (`Encrypt`, `Decrypt`, `Get`, etc.).
     An HSM admin can therefore `grant` these operations to ordinary users, who can then use the
     HSM key without themselves being HSM admins.
-    See [HSM keys and authorization](../authorization.md#hsm-keys-and-authorization) for details.
+    See [HSM keys and authorization](../configuration/authorization.md#hsm-keys-and-authorization) for details.
 
 ## Creating a KMS key wrapped by an HSM key
 
