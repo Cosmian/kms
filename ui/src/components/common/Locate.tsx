@@ -1,10 +1,10 @@
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
 import type { TableColumnsType } from "antd";
+import { Button, Card, Col, Form, Input, InputNumber, Modal, Popover, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import HashMapDisplay from "./HashMapDisplay";
-import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
+import { AuthMethod, downloadFile, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import HashMapDisplay from "./HashMapDisplay";
 
 interface LocateObjectRow {
     object_id: string;
@@ -74,6 +74,13 @@ const LocateForm: React.FC = () => {
     const [detailsData, setDetailsData] = useState<Map<string, unknown> | undefined>(undefined);
     const [detailsForId, setDetailsForId] = useState<string | undefined>(undefined);
     const [actionLoadingId, setActionLoadingId] = useState<string | undefined>(undefined);
+    const [rotatePopovers, setRotatePopovers] = useState<Record<string, boolean>>({});
+    const [rotateInputs, setRotateInputs] = useState<Record<string, string>>({});
+    const [rotateUnits, setRotateUnits] = useState<Record<string, string>>({});
+    const [tablePageSize, setTablePageSize] = useState<number>(10);
+    const [exportPopovers, setExportPopovers] = useState<Record<string, boolean>>({});
+    const [exportFormats, setExportFormats] = useState<Record<string, string>>({});
+    const [exportLoadingId, setExportLoadingId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         if (res && responseRef.current) {
@@ -144,6 +151,11 @@ const LocateForm: React.FC = () => {
                             "public_key_id",
                             "private_key_id",
                             "certificate_id",
+                            "rotate_date",
+                            "initial_date",
+                            "activation_date",
+                            "original_creation_date",
+                            "rotate_interval",
                         ]);
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
@@ -294,6 +306,11 @@ const LocateForm: React.FC = () => {
                                             "public_key_id",
                                             "private_key_id",
                                             "certificate_id",
+                                            "rotate_date",
+                                            "initial_date",
+                                            "activation_date",
+                                            "original_creation_date",
+                                            "rotate_interval",
                                         ]);
                                         const m = extractMeta(parsed);
                                         return {
@@ -362,6 +379,11 @@ const LocateForm: React.FC = () => {
                                         "public_key_id",
                                         "private_key_id",
                                         "certificate_id",
+                                        "rotate_date",
+                                        "initial_date",
+                                        "activation_date",
+                                        "original_creation_date",
+                                        "rotate_interval",
                                     ]);
                                     const m = extractMeta(parsed);
                                     return {
@@ -427,24 +449,6 @@ const LocateForm: React.FC = () => {
                         const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
                         setObjects(merged);
                         setRes(`${merged.length} Object(s) located.`);
-                        // Populate state without per-object GetAttributes: one /access/owned call
-                        // covers software keys; HSM keys (hsm:: prefix) default to Active.
-                        try {
-                            const supplemented = await supplementStateFromOwned(mapped, idToken, serverUrl);
-                            setObjects(
-                                supplemented.map((row) => ({
-                                    ...row,
-                                    state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
-                                })),
-                            );
-                        } catch {
-                            setObjects(
-                                mapped.map((row) => ({
-                                    ...row,
-                                    state: row.object_id.startsWith("hsm::") ? "Active" : undefined,
-                                })),
-                            );
-                        }
                         return;
                     }
                     // Try to supplement state from non-TTLV owned list when available
@@ -544,6 +548,11 @@ const LocateForm: React.FC = () => {
                                                 "cryptographic_algorithm",
                                                 "cryptographic_length",
                                                 "key_format_type",
+                                                "rotate_date",
+                                                "initial_date",
+                                                "activation_date",
+                                                "original_creation_date",
+                                                "rotate_interval",
                                             ]);
                                             const m = extractMeta(parsed);
                                             return {
@@ -683,6 +692,57 @@ const LocateForm: React.FC = () => {
         }
     };
 
+    const formatUnixDate = (ts: number): string => {
+        const d = new Date(ts * 1000);
+        return d.toISOString().replace("T", " ").slice(0, 16);
+    };
+
+    const formatInterval = (secs: number): string => {
+        if (secs <= 0) return "disabled";
+        const d = Math.floor(secs / 86400);
+        if (d >= 365) return `${Math.floor(d / 365)}y`;
+        if (d >= 30) return `${Math.floor(d / 30)}mo`;
+        if (d >= 7) return `${Math.floor(d / 7)}w`;
+        if (d > 0) return `${d}d`;
+        const h = Math.floor(secs / 3600);
+        if (h > 0) return `${h}h`;
+        const m = Math.floor(secs / 60);
+        if (m > 0) return `${m}min`;
+        return `${secs}s`;
+    };
+
+    const unitToSeconds = (unit: string): number => {
+        switch (unit) {
+            case "seconds":
+                return 1;
+            case "minutes":
+                return 60;
+            case "hours":
+                return 3600;
+            case "days":
+                return 86400;
+            case "months":
+                return 2592000;
+            case "years":
+                return 31536000;
+            default:
+                return 86400;
+        }
+    };
+
+    const handleSetRotateInterval = async (uid: string, seconds: number) => {
+        try {
+            const req = wasm.set_attribute_ttlv_request(uid, "rotate_interval", String(seconds));
+            await sendKmipRequest(req, idToken, serverUrl);
+            setObjects((prev) =>
+                prev ? prev.map((r) => (r.object_id === uid ? { ...r, meta: { ...(r.meta || {}), rotate_interval: seconds } } : r)) : prev,
+            );
+            setRotatePopovers((p) => ({ ...p, [uid]: false }));
+        } catch (e) {
+            console.error("Failed to set rotate_interval:", e);
+        }
+    };
+
     const handleRefreshRow = async (uid: string) => {
         try {
             const getReq = wasm.get_attributes_ttlv_request(uid);
@@ -709,6 +769,143 @@ const LocateForm: React.FC = () => {
             }
         } catch {
             /* ignore */
+        }
+    };
+
+    // Returns the format options and default format for the export popover,
+    // mirroring the per-type choices in KeysExport.tsx.
+    const getExportFormats = (objectType?: string, meta?: Record<string, unknown>): { formats: AlgoOption[]; defaultFmt: string } => {
+        if (objectType === "Certificate") {
+            return {
+                formats: [
+                    { value: "Pem", label: "PEM" },
+                    { value: "JsonTtlv", label: "JSON TTLV" },
+                    { value: "Pkcs12", label: "PKCS#12" },
+                    { value: "Pkcs7", label: "PKCS#7" },
+                ],
+                defaultFmt: "Pem",
+            };
+        }
+        if (objectType === "SymmetricKey" || objectType === "SecretData" || objectType === "Secret Data") {
+            return {
+                formats: [
+                    { value: "json-ttlv", label: "JSON TTLV (default)" },
+                    { value: "base64", label: "Base64" },
+                    { value: "raw", label: "Raw" },
+                ],
+                defaultFmt: "json-ttlv",
+            };
+        }
+        if (objectType === "OpaqueObject" || objectType === "Opaque Object") {
+            return {
+                formats: [
+                    { value: "json-ttlv", label: "JSON TTLV (default)" },
+                    { value: "base64", label: "Base64" },
+                    { value: "raw", label: "Raw" },
+                ],
+                defaultFmt: "json-ttlv",
+            };
+        }
+        if (objectType === "PrivateKey" || objectType === "PublicKey") {
+            const algo = String(meta?.["cryptographic_algorithm"] ?? "").toUpperCase();
+            if (algo === "RSA") {
+                return {
+                    formats: [
+                        { value: "json-ttlv", label: "JSON TTLV (default)" },
+                        { value: "pkcs1-pem", label: "PKCS1 PEM" },
+                        { value: "pkcs1-der", label: "PKCS1 DER" },
+                        { value: "pkcs8-pem", label: "PKCS8 PEM" },
+                        { value: "pkcs8-der", label: "PKCS8 DER" },
+                        { value: "base64", label: "Base64" },
+                        { value: "raw", label: "Raw" },
+                    ],
+                    defaultFmt: "json-ttlv",
+                };
+            }
+            if (algo === "EC" || algo === "ECDH" || algo === "ECDSA" || algo.startsWith("ED")) {
+                return {
+                    formats: [
+                        { value: "json-ttlv", label: "JSON TTLV (default)" },
+                        { value: "sec1-pem", label: "SEC1 PEM" },
+                        { value: "sec1-der", label: "SEC1 DER" },
+                        { value: "pkcs8-pem", label: "PKCS8 PEM" },
+                        { value: "pkcs8-der", label: "PKCS8 DER" },
+                        { value: "base64", label: "Base64" },
+                        { value: "raw", label: "Raw" },
+                    ],
+                    defaultFmt: "json-ttlv",
+                };
+            }
+            // PQC / Covercrypt / unknown asymmetric
+            return {
+                formats: [
+                    { value: "json-ttlv", label: "JSON TTLV (default)" },
+                    { value: "raw", label: "Raw" },
+                ],
+                defaultFmt: "json-ttlv",
+            };
+        }
+        // Fallback: json-ttlv + raw
+        return {
+            formats: [
+                { value: "json-ttlv", label: "JSON TTLV (default)" },
+                { value: "raw", label: "Raw" },
+            ],
+            defaultFmt: "json-ttlv",
+        };
+    };
+
+    const handleExport = async (uid: string, format: string, objectType?: string) => {
+        setExportLoadingId(uid);
+        try {
+            const isCert = objectType === "Certificate";
+            if (isCert) {
+                const req = wasm.export_certificate_ttlv_request(uid, format, undefined);
+                const respStr = await sendKmipRequest(req, idToken, serverUrl);
+                if (respStr) {
+                    const data = await wasm.parse_export_certificate_ttlv_response(respStr, format);
+                    const extMap: Record<string, string> = {
+                        JsonTtlv: "json",
+                        Pem: "pem",
+                        Pkcs12: "p12",
+                        Pkcs12Legacy: "p12",
+                        Pkcs7: "p7b",
+                    };
+                    const ext = extMap[format] ?? "bin";
+                    const mimeType =
+                        format === "JsonTtlv"
+                            ? "application/json"
+                            : format === "Pem"
+                              ? "application/x-pem-file"
+                              : "application/octet-stream";
+                    downloadFile(data, `certificate_${uid}.${ext}`, mimeType);
+                }
+            } else {
+                const req = wasm.export_ttlv_request(uid, false, format, undefined, undefined, undefined);
+                const respStr = await sendKmipRequest(req, idToken, serverUrl);
+                if (respStr) {
+                    const data = await wasm.parse_export_ttlv_response(respStr, format);
+                    const extMap: Record<string, string> = {
+                        "json-ttlv": "json",
+                        "sec1-pem": "pem",
+                        "pkcs1-pem": "pem",
+                        "pkcs8-pem": "pem",
+                        "sec1-der": "der",
+                        "pkcs1-der": "der",
+                        "pkcs8-der": "der",
+                        base64: "b64",
+                    };
+                    const ext = extMap[format] ?? "bin";
+                    const mimeType =
+                        format === "json-ttlv" ? "application/json" : format === "base64" ? "text/plain" : "application/octet-stream";
+                    downloadFile(data, `${uid}.${ext}`, mimeType);
+                }
+            }
+            setExportPopovers((p) => ({ ...p, [uid]: false }));
+        } catch (e) {
+            console.error("Export error:", e);
+        } finally {
+            setExportLoadingId(undefined);
         }
     };
 
@@ -812,9 +1009,10 @@ const LocateForm: React.FC = () => {
                                 dataSource={objects || []}
                                 rowKey="object_id"
                                 pagination={{
-                                    pageSize: 10,
+                                    pageSize: tablePageSize,
                                     showSizeChanger: true,
                                     pageSizeOptions: [10, 20, 50, 100],
+                                    onShowSizeChange: (_current, size) => setTablePageSize(size),
                                 }}
                                 className="border rounded"
                                 columns={
@@ -823,6 +1021,43 @@ const LocateForm: React.FC = () => {
                                             title: "Object UID",
                                             dataIndex: "object_id",
                                             key: "object_id",
+                                            render: (text: string, record: LocateObjectRow) => {
+                                                const uid = text;
+                                                const objectType = record.attributes?.ObjectType;
+                                                const { formats: availableFormats, defaultFmt } = getExportFormats(objectType, record.meta);
+                                                const fmt = exportFormats[uid] ?? defaultFmt;
+                                                return (
+                                                    <Popover
+                                                        open={exportPopovers[uid]}
+                                                        onOpenChange={(v) => setExportPopovers((p) => ({ ...p, [uid]: v }))}
+                                                        trigger={["hover", "click"]}
+                                                        mouseLeaveDelay={0.4}
+                                                        content={
+                                                            <Space size="small">
+                                                                <Select
+                                                                    size="small"
+                                                                    style={{ width: 150 }}
+                                                                    value={fmt}
+                                                                    options={availableFormats}
+                                                                    onChange={(v) => setExportFormats((p) => ({ ...p, [uid]: v }))}
+                                                                />
+                                                                <Button
+                                                                    size="small"
+                                                                    type="primary"
+                                                                    loading={exportLoadingId === uid}
+                                                                    onClick={() => handleExport(uid, fmt, objectType)}
+                                                                >
+                                                                    Export
+                                                                </Button>
+                                                            </Space>
+                                                        }
+                                                    >
+                                                        <span style={{ fontFamily: "monospace", fontSize: 12, cursor: "default" }}>
+                                                            {uid}
+                                                        </span>
+                                                    </Popover>
+                                                );
+                                            },
                                         },
                                         {
                                             title: "Type",
@@ -876,34 +1111,179 @@ const LocateForm: React.FC = () => {
                                             ),
                                         },
                                         {
+                                            title: "Date",
+                                            key: "date",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) => {
+                                                const da = (a.meta?.["rotate_date"] ??
+                                                    a.meta?.["initial_date"] ??
+                                                    a.meta?.["activation_date"] ??
+                                                    a.meta?.["original_creation_date"]) as number | undefined;
+                                                const db = (b.meta?.["rotate_date"] ??
+                                                    b.meta?.["initial_date"] ??
+                                                    b.meta?.["activation_date"] ??
+                                                    b.meta?.["original_creation_date"]) as number | undefined;
+                                                return (da ?? 0) - (db ?? 0);
+                                            },
+                                            defaultSortOrder: "descend" as const,
+                                            render: (row: LocateObjectRow) => {
+                                                const rotateDate = row.meta?.["rotate_date"] as number | undefined;
+                                                const initialDate = row.meta?.["initial_date"] as number | undefined;
+                                                const activationDate = row.meta?.["activation_date"] as number | undefined;
+                                                const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
+                                                const dateValue = rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
+                                                if (!dateValue) {
+                                                    if (row.object_id.startsWith("hsm::")) {
+                                                        return (
+                                                            <Tooltip title="HSM-resident keys have no creation date stored in the PKCS#11 token">
+                                                                <span style={{ color: "#bbb", fontSize: "12px" }}>HSM</span>
+                                                            </Tooltip>
+                                                        );
+                                                    }
+                                                    return <span style={{ color: "#bbb" }}>—</span>;
+                                                }
+                                                const label = rotateDate
+                                                    ? "Last rotation"
+                                                    : initialDate
+                                                      ? "Created"
+                                                      : activationDate
+                                                        ? "Activated"
+                                                        : "Created";
+                                                return (
+                                                    <Tooltip title={`${label}: ${formatUnixDate(dateValue)}`}>
+                                                        <span style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
+                                                            {rotateDate && <span style={{ color: "#1677ff" }}>↻ </span>}
+                                                            {formatUnixDate(dateValue)}
+                                                        </span>
+                                                    </Tooltip>
+                                                );
+                                            },
+                                        },
+                                        {
                                             title: "Actions",
                                             key: "actions",
-                                            render: (row: LocateObjectRow) => (
-                                                <Space size="small">
-                                                    <Button
-                                                        size="small"
-                                                        onClick={() => handleRevoke(row.object_id)}
-                                                        loading={actionLoadingId === row.object_id}
-                                                    >
-                                                        Revoke
-                                                    </Button>
-                                                    <Button
-                                                        danger
-                                                        size="small"
-                                                        onClick={() => handleDestroy(row.object_id)}
-                                                        loading={actionLoadingId === row.object_id}
-                                                    >
-                                                        Destroy
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        onClick={() => handleShowDetails(row.object_id)}
-                                                        loading={actionLoadingId === row.object_id}
-                                                    >
-                                                        Details
-                                                    </Button>
-                                                </Space>
-                                            ),
+                                            render: (row: LocateObjectRow) => {
+                                                const interval = row.meta?.["rotate_interval"] as number | undefined;
+                                                const hasInterval = interval != null && Number(interval) > 0;
+                                                return (
+                                                    <Space size="small">
+                                                        <Button
+                                                            size="small"
+                                                            onClick={() => handleRevoke(row.object_id)}
+                                                            loading={actionLoadingId === row.object_id}
+                                                        >
+                                                            Revoke
+                                                        </Button>
+                                                        <Button
+                                                            danger
+                                                            size="small"
+                                                            onClick={() => handleDestroy(row.object_id)}
+                                                            loading={actionLoadingId === row.object_id}
+                                                        >
+                                                            Destroy
+                                                        </Button>
+                                                        <Button
+                                                            size="small"
+                                                            onClick={() => handleShowDetails(row.object_id)}
+                                                            loading={actionLoadingId === row.object_id}
+                                                        >
+                                                            Details
+                                                        </Button>
+                                                        <Popover
+                                                            open={rotatePopovers[row.object_id] ?? false}
+                                                            onOpenChange={(v) => setRotatePopovers((p) => ({ ...p, [row.object_id]: v }))}
+                                                            title="Auto-Rotate"
+                                                            trigger="click"
+                                                            content={
+                                                                <Space direction="vertical" size="small" style={{ width: 260 }}>
+                                                                    {hasInterval && (
+                                                                        <div>
+                                                                            Current: <b>{formatInterval(Number(interval))}</b>
+                                                                        </div>
+                                                                    )}
+                                                                    <Space>
+                                                                        <InputNumber
+                                                                            size="small"
+                                                                            min={0}
+                                                                            addonAfter={
+                                                                                <Select
+                                                                                    size="small"
+                                                                                    style={{ width: 76 }}
+                                                                                    value={rotateUnits[row.object_id] ?? "days"}
+                                                                                    onChange={(v: string) =>
+                                                                                        setRotateUnits((p) => ({
+                                                                                            ...p,
+                                                                                            [row.object_id]: v,
+                                                                                        }))
+                                                                                    }
+                                                                                    options={[
+                                                                                        { value: "seconds", label: "sec" },
+                                                                                        { value: "minutes", label: "min" },
+                                                                                        { value: "hours", label: "h" },
+                                                                                        { value: "days", label: "days" },
+                                                                                        { value: "months", label: "mo" },
+                                                                                        { value: "years", label: "yr" },
+                                                                                    ]}
+                                                                                />
+                                                                            }
+                                                                            style={{ width: 170 }}
+                                                                            value={
+                                                                                rotateInputs[row.object_id] !== undefined
+                                                                                    ? Number(rotateInputs[row.object_id])
+                                                                                    : undefined
+                                                                            }
+                                                                            onChange={(v) =>
+                                                                                setRotateInputs((p) => ({
+                                                                                    ...p,
+                                                                                    [row.object_id]: String(v ?? 0),
+                                                                                }))
+                                                                            }
+                                                                            placeholder="Interval"
+                                                                        />
+                                                                    </Space>
+                                                                    <Space>
+                                                                        <Button
+                                                                            size="small"
+                                                                            type="primary"
+                                                                            onClick={() =>
+                                                                                handleSetRotateInterval(
+                                                                                    row.object_id,
+                                                                                    Math.round(
+                                                                                        Number(rotateInputs[row.object_id] ?? 0) *
+                                                                                            unitToSeconds(
+                                                                                                rotateUnits[row.object_id] ?? "days",
+                                                                                            ),
+                                                                                    ),
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            Set
+                                                                        </Button>
+                                                                        {hasInterval && (
+                                                                            <Button
+                                                                                size="small"
+                                                                                danger
+                                                                                onClick={() => handleSetRotateInterval(row.object_id, 0)}
+                                                                            >
+                                                                                Disable
+                                                                            </Button>
+                                                                        )}
+                                                                    </Space>
+                                                                </Space>
+                                                            }
+                                                        >
+                                                            {hasInterval ? (
+                                                                <Tag color="blue" style={{ cursor: "pointer", fontSize: "11px" }}>
+                                                                    ↻ {formatInterval(Number(interval))}
+                                                                </Tag>
+                                                            ) : (
+                                                                <Button size="small" style={{ fontSize: "11px" }}>
+                                                                    Auto-Rotate
+                                                                </Button>
+                                                            )}
+                                                        </Popover>
+                                                    </Space>
+                                                );
+                                            },
                                         },
                                     ] as TableColumnsType<LocateObjectRow>
                                 }

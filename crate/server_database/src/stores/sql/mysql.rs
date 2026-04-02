@@ -10,8 +10,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
@@ -19,6 +19,7 @@ use mysql_async::ClientIdentity;
 use mysql_async::{Pool, SslOpts, Transaction, prelude::*};
 use rawsql::Loader;
 use serde_json::Value;
+use time::OffsetDateTime;
 use url::Url;
 use uuid::Uuid;
 
@@ -256,8 +257,25 @@ impl MySqlPool {
             conn.query_drop(sql).await.map_err(DbError::from)?;
         }
 
+        // Create notifications table if it doesn't exist
+        conn.query_drop(
+            "CREATE TABLE IF NOT EXISTS notifications (\
+                id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, \
+                user_id VARCHAR(255) NOT NULL, \
+                event_type VARCHAR(64) NOT NULL, \
+                message TEXT NOT NULL, \
+                object_id VARCHAR(255), \
+                created_at VARCHAR(64) NOT NULL, \
+                read_at VARCHAR(64))",
+        )
+        .await
+        .map_err(DbError::from)?;
+
         // Optional: clear database content for tests to ensure isolation
         if clear_database {
+            conn.query_drop("DELETE FROM notifications")
+                .await
+                .map_err(DbError::from)?;
             for name in [
                 "clean-table-objects",
                 "clean-table-read_access",
@@ -624,6 +642,96 @@ impl ObjectsStore for MySqlPool {
             vendor_id,
         )
         .await?)
+    }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // MySQL/MariaDB: search in the stored `object` JSON column using JSON_EXTRACT
+        let sql = "SELECT DISTINCT objects.id, objects.state, objects.attributes \
+             FROM objects \
+             LEFT JOIN read_access ON objects.id = read_access.id \
+                 AND read_access.userid = ? \
+             WHERE (objects.owner = ? OR read_access.userid = ?) \
+               AND ( \
+                 JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
+                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
+                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
+                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
+                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
+               )";
+        let uid_s = wrapping_key_uid.to_owned();
+        let user_s = user.to_owned();
+        let mut conn = self
+            .get_configured_conn()
+            .await
+            .map_err(InterfaceError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(
+                sql,
+                (
+                    user_s.clone(),
+                    user_s.clone(),
+                    user_s.clone(),
+                    uid_s.clone(),
+                    uid_s.clone(),
+                    uid_s.clone(),
+                    uid_s.clone(),
+                    uid_s.clone(),
+                ),
+            )
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let id: String = row
+                .get(0)
+                .ok_or_else(|| InterfaceError::Db("missing id".to_owned()))?;
+            let state_str: String = row
+                .get(1)
+                .ok_or_else(|| InterfaceError::Db("missing state".to_owned()))?;
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::Db(e.to_string()))?;
+            let attrs_val: mysql_async::Value = row
+                .get(2)
+                .ok_or_else(|| InterfaceError::Db("missing attributes".to_owned()))?;
+            let attrs_json = match &attrs_val {
+                mysql_async::Value::Bytes(b) => {
+                    String::from_utf8(b.clone()).map_err(|e| InterfaceError::Db(e.to_string()))?
+                }
+                _ => return Err(InterfaceError::Db("unexpected attribute type".to_owned())),
+            };
+            let attrs: Attributes =
+                serde_json::from_str(&attrs_json).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            out.push((id, state, attrs));
+        }
+        Ok(out)
+    }
+
+    async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        let sql = "SELECT objects.id, objects.attributes \
+             FROM objects \
+             WHERE objects.state = 'Active' \
+               AND JSON_EXTRACT(objects.attributes, '$.RotateInterval') IS NOT NULL \
+               AND CAST(JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '$.RotateInterval')) AS UNSIGNED) > 0";
+        let mut conn = self
+            .get_configured_conn()
+            .await
+            .map_err(InterfaceError::from)?;
+        let rows: Vec<(String, String)> = conn
+            .query(sql)
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let mut due = Vec::new();
+        for (uid, attrs_json) in rows {
+            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
     }
 }
 
@@ -1175,3 +1283,159 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for MySQL
+// ---------------------------------------------------------------------------
+
+#[async_trait(?Send)]
+impl NotificationsStore for MySqlPool {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let ca_str = created_at
+            .format(&fmt)
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let oid: Option<String> = object_id.map(str::to_owned);
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        conn.exec_drop(
+            "INSERT INTO notifications \
+             (user_id, event_type, message, object_id, created_at) \
+             VALUES (?, ?, ?, ?, ?)",
+            (user_id, event_type, message, oid, ca_str),
+        )
+        .await
+        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let id: Option<u64> = conn
+            .exec_first("SELECT LAST_INSERT_ID()", ())
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let raw = id.unwrap_or(0);
+        Ok(i64::try_from(raw).unwrap_or(i64::MAX))
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let rows: Vec<(
+            i64,
+            String,
+            String,
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+        )> = conn
+            .exec(
+                "SELECT id, user_id, event_type, message, object_id, created_at, read_at \
+                 FROM notifications WHERE user_id = ? \
+                 ORDER BY (read_at IS NULL) DESC, created_at DESC \
+                 LIMIT ? OFFSET ?",
+                (user_id, limit, offset),
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        rows.into_iter()
+            .map(|(id, uid, et, msg, oid, ca_str, ra_str)| {
+                let created_at = OffsetDateTime::parse(&ca_str, &fmt)
+                    .map_err(|e| InterfaceError::Db(format!("bad created_at: {e}")))?;
+                let read_at = ra_str
+                    .map(|s| {
+                        OffsetDateTime::parse(&s, &fmt)
+                            .map_err(|e| InterfaceError::Db(format!("bad read_at: {e}")))
+                    })
+                    .transpose()?;
+                Ok(Notification {
+                    id,
+                    user_id: uid,
+                    event_type: et,
+                    message: msg,
+                    object_id: oid,
+                    created_at,
+                    read_at,
+                })
+            })
+            .collect()
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let count: Option<i64> = conn
+            .exec_first(
+                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL",
+                (user_id,),
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(count.unwrap_or(0))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now
+            .format(&fmt)
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        conn.exec_drop(
+            "UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL",
+            (now_str, id, user_id),
+        )
+        .await
+        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let affected: Option<u64> = conn
+            .exec_first("SELECT ROW_COUNT()", ())
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(affected.unwrap_or(0) > 0)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: OffsetDateTime) -> InterfaceResult<()> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now
+            .format(&fmt)
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        conn.exec_drop(
+            "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
+            (now_str, user_id),
+        )
+        .await
+        .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
+}

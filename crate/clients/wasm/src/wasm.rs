@@ -40,8 +40,8 @@ use cosmian_kms_client_utils::{
                 DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
                 GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
                 LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
-                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                ReKey, ReKeyResponse, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
+                SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -2035,6 +2035,56 @@ pub fn set_attribute_ttlv_request(
 #[wasm_bindgen]
 pub fn parse_set_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<SetAttributeResponse>(response)
+}
+
+/// Build a TTLV `ReKey` request for the given symmetric key UID.
+#[wasm_bindgen]
+pub fn rekey_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let request = ReKey {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        ..ReKey::default()
+    };
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Parse a TTLV `ReKey` response and return `{ UniqueIdentifier: string }`.
+#[wasm_bindgen]
+pub fn parse_rekey_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    parse_ttlv_response::<ReKeyResponse>(response)
+}
+
+/// Build a TTLV `ReKeyKeyPair` request to re-key a Covercrypt access policy.
+///
+/// `msk_id` is the unique identifier of the Covercrypt Master Secret Key.
+/// `access_policy` is a boolean policy expression, e.g.
+/// `"Department::HR && Security Level::Confidential"`.
+///
+/// This is non-FIPS only because Covercrypt is a non-FIPS algorithm.
+#[wasm_bindgen]
+#[cfg(feature = "non-fips")]
+#[allow(clippy::needless_pass_by_value)]
+pub fn rekey_cc_keypair_ttlv_request(
+    msk_id: String,
+    access_policy: String,
+) -> Result<JsValue, JsValue> {
+    use cosmian_kms_client_utils::{
+        cover_crypt_utils::build_rekey_cc_keypair_request,
+        reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReKeyKeyPair,
+    };
+    let vendor_id = get_vendor_id();
+    let request: ReKeyKeyPair = build_rekey_cc_keypair_request(&vendor_id, &msk_id, &access_policy)
+        .map_err(|e| JsValue::from_str(&format!("Covercrypt rekey request failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Parse a TTLV `ReKeyKeyPairResponse` and return `{ PrivateKeyUniqueIdentifier, PublicKeyUniqueIdentifier }`.
+#[wasm_bindgen]
+#[cfg(feature = "non-fips")]
+pub fn parse_rekey_cc_keypair_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
+    use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReKeyKeyPairResponse;
+    parse_ttlv_response::<ReKeyKeyPairResponse>(response)
 }
 
 #[wasm_bindgen]

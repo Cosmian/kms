@@ -19,6 +19,7 @@ use cosmian_kms_interfaces::{
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
@@ -551,6 +552,81 @@ impl ObjectsStore for RedisWithFindex {
                 )
             })
             .collect())
+    }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // For Redis-Findex: scan all keys with prefix do::, decrypt and filter in memory.
+        // This is O(n) in the number of stored objects.
+        let pattern = "do::*";
+        let keys: Vec<String> = self
+            .objects_db
+            .scan_keys(pattern)
+            .await
+            .map_err(|e| db_error!(format!("Redis scan_keys error: {e:?}")))?;
+
+        let permissions: std::collections::HashMap<String, _> = self
+            .permission_db
+            .list_user_permissions(&UserId(user.to_owned()))
+            .await?
+            .into_iter()
+            .map(|(k, v)| (k.0, v))
+            .collect();
+
+        let uids: std::collections::HashSet<String> = keys
+            .into_iter()
+            .map(|k| k.trim_start_matches("do::").to_owned())
+            .collect();
+
+        let all_objects = self.objects_db.objects_get(&uids).await?;
+        let mut out = Vec::new();
+        for (uid, redis_obj) in all_objects {
+            if redis_obj.owner != user && !permissions.contains_key(&uid) {
+                continue;
+            }
+            let wrapped_by = redis_obj
+                .object
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.key_wrapping_data.as_ref())
+                .and_then(|kwd| kwd.encryption_key_information.as_ref())
+                .map(|eki| eki.unique_identifier.to_string());
+            if wrapped_by.as_deref() == Some(wrapping_key_uid) {
+                let attrs = redis_obj.object.attributes().cloned().unwrap_or_default();
+                out.push((uid, redis_obj.state, attrs));
+            }
+        }
+        Ok(out)
+    }
+
+    async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        let pattern = "do::*";
+        let keys: Vec<String> = self
+            .objects_db
+            .scan_keys(pattern)
+            .await
+            .map_err(|e| db_error!(format!("Redis scan_keys error: {e:?}")))?;
+
+        let uids: std::collections::HashSet<String> = keys
+            .into_iter()
+            .map(|k| k.trim_start_matches("do::").to_owned())
+            .collect();
+
+        let all_objects = self.objects_db.objects_get(&uids).await?;
+        let mut due = Vec::new();
+        for (uid, redis_obj) in all_objects {
+            if redis_obj.state != State::Active {
+                continue;
+            }
+            let attrs = redis_obj.object.attributes().cloned().unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
     }
 }
 

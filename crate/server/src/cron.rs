@@ -7,7 +7,53 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::debug;
 use tokio::sync::oneshot;
 
-use crate::core::KMS;
+use crate::core::{
+    KMS,
+    operations::{dispatch_renewal_warnings, run_auto_rotation},
+};
+
+/// Spawn a background thread that periodically runs the key auto-rotation check.
+/// The thread runs independently of the metrics cron and is spawned whenever
+/// `auto_rotation_check_interval_secs > 0` in the server configuration.
+///
+/// Returns a `oneshot::Sender<()>` that cleanly stops the thread when sent.
+pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let interval_secs = kms.params.auto_rotation_check_interval_secs;
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                debug!("[auto-rotate-cron] Failed to build runtime: {}", e);
+                return;
+            }
+        };
+
+        rt.block_on(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+            let mut shutdown_rx = shutdown_rx;
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
+                        Box::pin(run_auto_rotation(&kms)).await;
+                        Box::pin(dispatch_renewal_warnings(&kms)).await;
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    shutdown_tx
+}
 
 /// Spawn a background thread that periodically refreshes metrics.
 /// Returns a oneshot Sender that, when sent, cleanly stops the cron thread.
@@ -34,6 +80,7 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
         rt.block_on(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             let mut uptime_interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
             let mut shutdown_rx = shutdown_rx;
             loop {
                 tokio::select! {

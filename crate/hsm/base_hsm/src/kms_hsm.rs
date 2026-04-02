@@ -159,10 +159,14 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let handles = session.list_objects(object_filter)?;
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
-            if let Ok(Some(object_id)) = session.get_object_id(handle) {
-                object_ids.push(object_id);
-            } else {
-                debug!("Invalid object, skipping");
+            match session.get_object_id(handle) {
+                Ok(Some(object_id)) => object_ids.push(object_id),
+                Ok(None) => debug!(
+                    "[kms_hsm] HSM object handle {handle} has no CKA_ID or CKA_LABEL; skipping"
+                ),
+                Err(e) => debug!(
+                    "[kms_hsm] Failed to retrieve ID for HSM object handle {handle}: {e}; skipping"
+                ),
             }
         }
         Ok(object_ids)

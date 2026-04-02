@@ -3,6 +3,7 @@ import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import NotificationBell from "./NotificationBell";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
@@ -109,6 +110,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 </Button>
                             </Link>
                         )}
+                        <NotificationBell />
                         <Switch
                             className="w-20"
                             checked={isDarkMode}

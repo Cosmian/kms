@@ -62,6 +62,17 @@ export async function submitAndWaitForResponse(page: Page): Promise<string> {
 }
 
 /**
+ * Clicks the "Set Rotation Policy" button and waits for a response panel to appear.
+ * Returns the text content of the response panel.
+ */
+export async function setPolicyAndWaitForResponse(page: Page): Promise<string> {
+    await page.click('[data-testid="set-rotation-policy-btn"]');
+    const responseEl = page.locator('[data-testid="response-output"]');
+    await responseEl.waitFor({ state: "visible", timeout: UI_RESPONSE_TIMEOUT });
+    return (await responseEl.textContent()) ?? "";
+}
+
+/**
  * Like `submitAndWaitForResponse` but additionally intercepts the file
  * download that operations such as Export / Encrypt trigger via a synthetic
  * `<a download>` click.

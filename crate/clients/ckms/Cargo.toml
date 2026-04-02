@@ -67,6 +67,7 @@ predicates = "3.1"
 regex = { version = "1.11", default-features = false }
 tempfile = { workspace = true }
 test_kms_server = { path = "../../test_kms_server" }
+time = { workspace = true }
 x509-parser = { workspace = true, features = ["verify"] }
 
 # ------------------------------------------------------------------------------

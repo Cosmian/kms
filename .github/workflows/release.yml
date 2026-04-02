@@ -18,7 +18,7 @@ name: Release
 #      then polls until that run completes (the packaging CI publishes SBOMs
 #      to package.cosmian.com at last_build/release/<new_version>).
 #   8. Retrieves the generated SBOMs from package.cosmian.com and commits them.
-#   9. Git-flow finalisation (mirrors `git flow release finish`):
+#   9. Git-flow finalization (mirrors `git flow release finish`):
 #        a. Merges release/<new_version> into main (--no-ff).
 #        b. Creates the annotated tag X.Y.Z on main's merge commit.
 #           (conventional git-flow always tags the main merge commit, not the
@@ -225,69 +225,13 @@ jobs:
   # conflicts.  Each job pulls the latest HEAD before pushing.
   # ─────────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
-    name: Update Nix vendor hashes (${{ matrix.runner }})
+    name: Update Nix vendor hashes
     needs: prepare
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-latest, macos-15]
-
-    steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.release_branch }}
-          fetch-depth: 0
-          submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Warm Nix store
-        run: |
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u \
-          | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            fallback=$(echo "$url" | sed \
-              's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 \
-                   --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
-
-      - name: Recompute all Nix vendor hashes
-        run: bash .github/scripts/release/nix_build_update_hash.sh
-
-      - name: Commit updated Nix hashes
-        run: |
-          git add nix/expected-hashes/
-          if git diff --cached --quiet; then
-            echo "Nix hashes are already up-to-date, nothing to commit."
-          else
-            git commit -m "build: update Nix vendor hashes (${{ runner.os }}) for ${{ inputs.new_version }}"
-            # Pull after committing to avoid "index contains uncommitted changes"
-            # error. The two platform jobs touch disjoint file sets so rebase
-            # always succeeds cleanly.
-            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
-            git push origin "${{ needs.prepare.outputs.release_branch }}"
-          fi
+    uses: ./.github/workflows/update-nix-hashes.yml
+    secrets: inherit
+    with:
+      branch: ${{ needs.prepare.outputs.release_branch }}
+      commit_message: 'build: update Nix vendor hashes for ${{ inputs.new_version }}'
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion

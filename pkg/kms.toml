@@ -291,3 +291,23 @@ azure_ekm_enable = false
 aws_xks_enable = false
 
 [kmip.allowlists]
+
+[notifications.smtp]
+# The KMS HTTP server port
+port = 0
+
+
+[notifications.renewal]
+strategy = "time_before_renewal"
+# Days before scheduled renewal at which a warning email is sent.
+#
+# Only used when `strategy = "time_before_renewal"`. Values are sorted descending internally; duplicates are ignored. Default: `[30, 7, 1]` — 1 month, 1 week, and 1 day before renewal.
+#
+# Example: `warn_before_renewal_days = [90, 30, 14, 7, 1]`
+warn_before_renewal_days = [
+    30,
+    7,
+    1,
+]
+notify_on_success = true
+notify_on_failure = true

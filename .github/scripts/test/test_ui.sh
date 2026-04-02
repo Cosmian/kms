@@ -171,7 +171,6 @@ cleanup() {
     [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; }
     [ -n "${PREVIEW_PID:-}" ] && { kill "${PREVIEW_PID}" 2>/dev/null || true; }
     # Kill any remaining node/vite child processes that outlived pnpm.
-    fuser -k 5173/tcp 2>/dev/null || true
     rm -rf "${SQLITE_DIR}"
     [ -n "${SOFTHSM2_HOME:-}" ] && rm -rf "${SOFTHSM2_HOME}"
 }

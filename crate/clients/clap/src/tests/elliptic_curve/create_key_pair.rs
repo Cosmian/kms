@@ -16,6 +16,9 @@ pub(crate) async fn test_create_key_pair() -> KmsCliResult<()> {
         private_key_id: None,
         sensitive: false,
         wrapping_key_id: None,
+        rotate_interval: None,
+        rotate_name: None,
+        rotate_offset: None,
     }
     .run(ctx.get_owner_client())
     .await?;

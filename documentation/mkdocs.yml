@@ -176,5 +176,6 @@ nav:
       - Mac: kmip_support/_mac.md
       - Re-Key: kmip_support/_re-key.md
       - Re-Key Key Pair: kmip_support/_re-key_key_pair.md
+      - Key Auto-Rotation Policy: kmip_support/key_auto_rotation.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md

@@ -1,11 +1,13 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
 import { FormUploadDragger } from "../../components/common/FormUpload";
+import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
+import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "../Keys/RotationPolicyFields";
 
-interface CovercryptMasterKeyFormData {
+interface CovercryptMasterKeyFormData extends RotationPolicyFormValues {
     specification: string;
     tags: string[];
     sensitive: boolean;
@@ -53,6 +55,17 @@ const CovercryptMasterKeyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_keypair_ttlv_response(result_str);
+                await applyRotationPolicy(
+                    result.PrivateKeyUniqueIdentifier,
+                    values.rotateInterval,
+                    values.rotateName,
+                    values.rotateOffset,
+                    sendKmipRequest,
+                    parse_set_attribute_ttlv_response,
+                    set_attribute_ttlv_request,
+                    idToken,
+                    serverUrl,
+                );
                 setRes(
                     `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
@@ -192,6 +205,10 @@ const CovercryptMasterKeyForm: React.FC = () => {
                                 <span>Sensitive Key</span>
                             </Checkbox>
                         </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <RotationPolicyFields />
                     </Card>
 
                     <Form.Item>
