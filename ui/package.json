@@ -12,7 +12,7 @@
         "format": "prettier . --write",
         "knip": "knip",
         "check": "tsc --noEmit && prettier --check . && eslint . && knip",
-        "test": "vitest --run -c tests/vitest.unit.config.ts && vitest --run -c tests/vitest.int.config.ts",
+        "test": "vitest --run -c tests/vitest.unit.config.ts",
         "test:unit": "vitest --run -c tests/vitest.unit.config.ts",
         "test:integration": "vitest --run -c tests/vitest.int.config.ts",
         "test:e2e": "playwright test"
@@ -50,8 +50,17 @@
     },
     "pnpm": {
         "supportedArchitectures": {
-            "os": ["current", "linux", "darwin", "win32"],
-            "cpu": ["current", "x64", "arm64"]
+            "os": [
+                "current",
+                "linux",
+                "darwin",
+                "win32"
+            ],
+            "cpu": [
+                "current",
+                "x64",
+                "arm64"
+            ]
         },
         "overrides": {
             "esbuild": "^0.25.10",

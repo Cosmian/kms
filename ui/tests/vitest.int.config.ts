@@ -11,7 +11,7 @@ export default defineConfig({
             },
         },
         environment: "node",
-        include: ["./integration/**/*.test.ts"],
+        include: ["./tests/integration/**/*.test.ts"],
         testTimeout: 120_000,
         // The beforeAll hook in each integration test waits up to 120 s for the
         // KMS server to become ready (waitForKmsServer) and then initialises the
