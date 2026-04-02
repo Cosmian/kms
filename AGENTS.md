@@ -309,8 +309,8 @@ The UI has three test layers — all must pass before merging:
 | Layer | Runner | Location | Config |
 |---|---|---|---|
 | E2E | Playwright | `ui/tests/e2e/` | `ui/playwright.config.ts` |
-| Integration | Vitest | `ui/tests/integration/` | `ui/vitest.int.config.ts` |
-| Unit | Vitest | `ui/tests/unit/` | `ui/vitest.unit.config.ts` |
+| Integration | Vitest | `ui/tests/integration/` | `ui/tests/vitest.int.config.ts` |
+| Unit | Vitest | `ui/tests/unit/` | `ui/tests/vitest.unit.config.ts` |
 
 ### UI test conventions
 

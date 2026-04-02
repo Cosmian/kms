@@ -1,8 +1,23 @@
 # Contributing to Cosmian KMS
 
+- [Contributing to Cosmian KMS](#contributing-to-cosmian-kms)
+  - [Issues](#issues)
+    - [Reporting an Issue](#reporting-an-issue)
+    - [Issue Lifecycle](#issue-lifecycle)
+  - [Pull Requests](#pull-requests)
+    - [Changelog Entries](#changelog-entries)
+  - [Contributing to the UI](#contributing-to-the-ui)
+  - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
+  - [Testing](#testing)
+  - [Contributor License Agreement](#contributor-license-agreement)
+  - [Code of Conduct](#code-of-conduct)
+  - [Getting Help](#getting-help)
+
+---
+
 Please note: We take Cosmian KMS's security and our users' trust very seriously. If you believe you have found a
-security issue in Cosmian KMS, please responsibly disclose by contacting us at
-[tech@cosmian.com](mailto:tech@cosmian.com).
+security issue in Cosmian KMS, please read our [security policy](SECURITY.md) and responsibly disclose by contacting
+us at [tech@cosmian.com](mailto:tech@cosmian.com).
 
 First: if you're unsure or afraid of anything, just ask or submit the issue or pull request anyways. You won't be
 yelled at for giving it your best effort. The worst that can happen is that you'll be politely asked to change
@@ -74,41 +89,22 @@ we'll mark the PR incomplete and ask you to follow up on the missing requirement
 
 ### Changelog Entries
 
-Please include a file within your PR named `changelog/#.txt`, where `#` is your pull request ID. There are many
-examples under [changelog](changelog), but the general format is:
+Create a file `CHANGELOG/<your-branch-name-with-slashes-replaced-by-underscores>.md` and add a one-line summary of
+your change. For example, for branch `fix/my-bug` create `CHANGELOG/fix_my-bug.md`.
 
-```text
-CATEGORY
-COMPONENT: summary of change
-```
+Use one of these section headers: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`,
+`Security`. Group related entries under a sub-feature or component if applicable. See existing files in
+[CHANGELOG/](CHANGELOG/) for examples.
 
-Where COMPONENT is the relevant component (see below), and the summary of change is a short description of what your PR
-CATEGORY is one of `🚀 Features`, `🐛 Bug Fixes`, `📚 Documentation`, `🧪 Testing`, `⚙️ Miscellaneous Tasks`, or
-`🚜 Refactor`. Your PR is almost certain to be one of `🐛 Bug Fixes` or `🚀 Features`, but don't worry too much about
-getting it exactly right, we'll tell you if a change is needed.
+## Contributing to the UI
 
-To determine the relevant component, consult [CHANGELOG](CHANGELOG.md) and pick whichever one you see that seems the
-closest match.
+The UI is a React 19 + TypeScript + Vite app located in `ui/`. It mirrors the `ckms` CLI — every CLI feature should
+have a corresponding UI action.
 
-You do not need to include the link at the end of the summary that appears in CHANGELOG.md, those are generated
-automatically by the changelog-building process.
+For new features, open an issue first describing the use case and approach - A Cosmian KMS collaborator will review it and might assist you in coding the feature if it's accepted. Bug fixes can go straight to a PR.
 
-### Cosmian KMS UI
-
-How you contribute to the UI depends on what you want to contribute. If that is a new feature, please submit an
-informational issue first. That issue should include a short description of the proposed feature, the use case, the
-approach you're taking, and the tests that would be written. A mockup is optional but encouraged.
-
-Bug fixes are welcome in PRs but existing tests must pass and updated logic should be handled in new tests. You needn't
-submit an issue first to fix bugs.
-
-Keep in mind that the UI should be consistent with other areas of Cosmian KMS. The UI should be user-centered,
-informative, and include edge cases and errors— including accommodations for users who may not have permissions to view
-or interact with your feature. If you are not comfortable with UI design, a Cosmian designer can take a look at your
-work— just be aware that this might mean it will add some time to the PR process.
-
-Finally, in your code, try to avoid logic-heavy templates (when possible, calculate values in the .js file instead of
-.hbs) and web framework anti-patterns. And most of all, if you have any questions, please ask!
+All three test layers must pass before merging (E2E Playwright, Vitest integration, Vitest unit). See
+[§8 Web UI & Playwright E2E tests](AGENTS.md#8-web-ui--playwright-e2e-tests) in AGENTS.md for how to run them.
 
 ## Setting up Rust to work on Cosmian KMS
 
@@ -119,8 +115,16 @@ If you have never worked with Rust before, you will have to complete the followi
 3. Install required components: `rustup component add rustfmt clippy --toolchain 1.90.0`
 4. Build the project: `cargo build --release`
 
-For detailed development setup including Nix-based reproducible builds, please refer to the [README](README.md) and
-the build instructions in [.github/copilot-instructions.md](.github/copilot-instructions.md).
+For build commands and local setup, see [Quick start](README.md#-quick-start) in the README. For Nix-based
+reproducible builds and CI, see [§1 Build & test cheatsheet](AGENTS.md#1-build--test-cheatsheet) and
+[§13 Nix packaging](AGENTS.md#13-nix-packaging) in AGENTS.md.
+
+If you are using an AI coding assistant that does not natively support `AGENTS.md` (e.g. Claude Code, at the time of
+writing), create a symbolic link so it picks up the agent instructions automatically:
+
+```sh
+ln -s AGENTS.md CLAUDE.md
+```
 
 ## Testing
 
@@ -131,8 +135,8 @@ Before submitting a pull request, please ensure that:
 • Your code passes clippy lints: `cargo clippy --workspace --all-targets --all-features`
 • If you've added new functionality, include appropriate unit and/or integration tests
 
-For database-specific testing, you may need to set up local database instances. See the testing section in the
-[build instructions](.github/copilot-instructions.md) for more details.
+For database-specific testing, you may need to set up local database instances. See
+[§1 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
 
 ## Contributor License Agreement
 

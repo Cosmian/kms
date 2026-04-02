@@ -122,7 +122,3 @@ export function applyBrandingToDocument(branding: Branding) {
         document.head.appendChild(link);
     }
 }
-
-function getDefaultBranding(): Branding {
-    return DEFAULT_BRANDING;
-}

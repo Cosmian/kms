@@ -4,16 +4,16 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     plugins: [react(), tailwindcss()],
-    server: {
-        deps: {
-            inline: ["react-router", "react-router-dom"],
-        },
-    },
     test: {
+        server: {
+            deps: {
+                inline: ["react-router", "react-router-dom"],
+            },
+        },
         environment: "jsdom",
         testTimeout: 15_000,
         hookTimeout: 60_000,
-        setupFiles: ["./tests/unit/setup.ts"],
-        include: ["./tests/unit/**/*.test.{ts,tsx}"],
+        setupFiles: ["./unit/setup.ts"],
+        include: ["./unit/**/*.test.{ts,tsx}"],
     },
 });

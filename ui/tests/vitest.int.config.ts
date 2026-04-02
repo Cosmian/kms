@@ -4,14 +4,14 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     plugins: [react(), tailwindcss()],
-    server: {
-        deps: {
-            inline: ["react-router", "react-router-dom"],
-        },
-    },
     test: {
+        server: {
+            deps: {
+                inline: ["react-router", "react-router-dom"],
+            },
+        },
         environment: "node",
-        include: ["./tests/integration/**/*.test.ts"],
+        include: ["./integration/**/*.test.ts"],
         testTimeout: 120_000,
         // The beforeAll hook in each integration test waits up to 120 s for the
         // KMS server to become ready (waitForKmsServer) and then initialises the

@@ -3,7 +3,11 @@ import moment from "moment";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
-import { get_crypto_algorithms, modify_attribute_ttlv_request, parse_modify_attribute_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import {
+    get_crypto_algorithms,
+    modify_attribute_ttlv_request,
+    parse_modify_attribute_ttlv_response,
+} from "../../wasm/pkg/cosmian_kms_client_wasm";
 
 const { Title } = Typography;
 const { Option } = Select;

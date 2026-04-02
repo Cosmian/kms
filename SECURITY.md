@@ -1,5 +1,19 @@
 # Security Policy
 
+- [Security Policy](#security-policy)
+  - [Reporting a Vulnerability](#reporting-a-vulnerability)
+    - [Private Reporting](#private-reporting)
+    - [What to Include](#what-to-include)
+    - [Response Timeline](#response-timeline)
+  - [Known Security Advisories](#known-security-advisories)
+    - [Advisory Details](#advisory-details)
+  - [Security Best Practices](#security-best-practices)
+  - [FIPS Compliance](#fips-compliance)
+  - [Security Audits](#security-audits)
+  - [Contact](#contact)
+
+---
+
 ## Reporting a Vulnerability
 
 We take the security of Cosmian KMS seriously. If you discover a security vulnerability, please report it responsibly by following these steps:
