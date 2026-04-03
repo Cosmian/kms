@@ -467,7 +467,7 @@ Required behavior for any AI agent:
 
 ### Integration documentation alignment rules
 
-The integrations section is the most commonly extended area. Keep these three views in sync at all times:
+The integrations section is the most commonly extended area. Keep these four views in sync at all times:
 
 **Source of truth for navigation structure**: `documentation/mkdocs.yml`
 
@@ -481,10 +481,12 @@ The integrations section is the most commonly extended area. Keep these three vi
     - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
 - Databases: `documentation/docs/integrations/databases/`
     - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md, snowflake_native_app/
-- Disk encryption: `documentation/docs/integrations/disk_encryption/`
-    - veracrypt.md, luks.md, cryhod.md
-- Other integrations: `documentation/docs/integrations/`
-    - openssh.md, pykmip.md, smime.md, synology_dsm.md, vcenter.md, user_defined_function_for_pyspark_databricks_in_python/
+- Storage: `documentation/docs/integrations/storage/`
+    - vcenter.md, synology_dsm.md, veeam.md, user_defined_function_for_pyspark_databricks_in_python/
+    - Disk encryption: `documentation/docs/integrations/disk_encryption/`
+        - veracrypt.md, luks.md, cryhod.md
+- Other: `documentation/docs/integrations/`
+    - openssh.md, pykmip.md, smime.md
 
 **README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
 
@@ -492,8 +494,9 @@ The integrations section is the most commonly extended area. Keep these three vi
 |---|---|---|
 | ☁️ Cloud Provider — External Key Management | `Cloud providers:` | `integrations/cloud_providers/` |
 | 🗄️ Database Integrations | `Databases:` | `integrations/databases/` |
-| 💿 Disk Encryption | `Disk encryption:` | `integrations/disk_encryption/` |
-| 💾 Storage & Other Integrations | flat items under `Integrations:` | `integrations/` root |
+| 💿 Disk Encryption | `Disk encryption:` (under `Storage:`) | `integrations/disk_encryption/` |
+| 💾 Storage Integrations | `Storage:` | `integrations/storage/` |
+| 🔗 Other Integrations | `Other:` | `integrations/` root |
 
 **When adding a new integration**:
 
@@ -501,5 +504,7 @@ The integrations section is the most commonly extended area. Keep these three vi
 2. Add the nav entry in `documentation/mkdocs.yml` under the correct group.
 3. Add a row to the matching README table with a correct relative link starting with `./documentation/docs/integrations/...`.
 4. README links must use the full path relative to repo root (e.g. `./documentation/docs/integrations/databases/ms_sql_server.md`), not shortened or incorrect paths.
+
+**documentation/docs/index.md** should not be updated with new integrations; it is a high-level overview and the README is the main entry point for users to discover integrations.
 
 **Never** put an integration in a different category in README than it appears in mkdocs.yml, or leave it out of the README table if it has a mkdocs page.

@@ -97,18 +97,21 @@ nav:
           - MySQL Enterprise Edition: integrations/databases/mysql.md
           - PostgreSQL Percona Database: integrations/databases/percona.md
           - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
-          - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
           - Oracle Database TDE: integrations/databases/oracle_tde.md
       - Disk encryption:
           - Veracrypt: integrations/disk_encryption/veracrypt.md
           - LUKS: integrations/disk_encryption/luks.md
           - Cryhod: integrations/disk_encryption/cryhod.md
-      - OpenSSH: integrations/openssh.md
-      - PyKMIP: integrations/pykmip.md
-      - Synology DSM (NAS volume encryption): integrations/synology_dsm.md
-      - S/MIME Email encryption: integrations/smime.md
-      - User Defined Function for PySpark, Databricks,... in Python: integrations/user_defined_function_for_pyspark_databricks_in_python/index.md
-      - VMware vCenter: integrations/vcenter.md
+      - Storage:
+          - VMware vCenter: integrations/storage/vcenter.md
+          - Synology DSM (NAS volume encryption): integrations/storage/synology_dsm.md
+          - Veeam Backup & Replication: integrations/storage/veeam.md
+          - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
+          - User Defined Function for PySpark, Databricks,... in Python: integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md
+      - Other:
+          - OpenSSH: integrations/openssh.md
+          - PyKMIP: integrations/pykmip.md
+          - S/MIME Email encryption: integrations/smime.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md

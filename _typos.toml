@@ -1,4 +1,5 @@
 [default.extend-words]
+Veeam = "Veeam"
 GOST = "GOST"
 vas = "vas"
 passin = "passin"

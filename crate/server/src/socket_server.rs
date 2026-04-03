@@ -431,5 +431,13 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
         "socket server",
     )?;
 
+    // OpenSSL requires a session ID context when both client certificate verification
+    // and TLS session caching are enabled (the default). Without it, session
+    // resumption attempts fail with ssl_get_prev_session:session id context
+    // uninitialized (error:0A000115).
+    builder
+        .set_session_id_context(b"cosmian_kms_socket")
+        .context("socket server: failed to set TLS session ID context")?;
+
     Ok(builder.build())
 }

@@ -41,7 +41,7 @@ Key performance factors include:
 - Algorithm selection based on security requirements
 - Potential use of deterministic encryption (like AES-GCM-SIV) for performance-critical applications
 
-Check the [encryption and decryption a scale section](../../use_cases/encrypting_and_decrypting_at_scale.md) for details.
+Check the [encryption and decryption a scale section](../../../use_cases/encrypting_and_decrypting_at_scale.md) for details.
 
 ## Getting Started
 
