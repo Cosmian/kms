@@ -1,5 +1,9 @@
 # Veeam Backup KMIP Integration
 
+## Documentation
+
+- **Reorganize storage integration docs**: move `vcenter.md`, `synology_dsm.md`, `veeam.md`, `openssh.md`, `pykmip.md`, `smime.md`, `user_defined_function_for_pyspark_databricks_in_python/`, and `disk_encryption/` from `documentation/docs/integrations/` root into the dedicated `documentation/docs/integrations/storage/` subfolder; update `mkdocs.yml`, `README.md`, `documentation/docs/index.md`, and `CLAUDE.md` accordingly ([#874](https://github.com/Cosmian/kms/pull/874))
+
 ## Bug Fixes
 
 ### KMIP Socket Server

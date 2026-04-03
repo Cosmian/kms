@@ -15,7 +15,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/cloud_providers/aws/xks.md), [Azure EKM](./documentation/docs/integrations/cloud_providers/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md).
 - **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md), and [Snowflake Native App](./documentation/docs/integrations/databases/snowflake_native_app/index.md).
 - **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
-- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/synology_dsm.md), [Veeam Backup & Replication](./documentation/docs/integrations/veeam.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/user_defined_function_for_pyspark_databricks_in_python/index.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), and [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
 - **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), and [OpenTelemetry integration](./documentation/docs/configuration/logging.md).
@@ -209,17 +209,22 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | LUKS      | Linux disk encryption via PKCS#11 ([docs](./documentation/docs/integrations/disk_encryption/luks.md))                   | ✅      |
 | Cryhod    | Disk encryption ([docs](./documentation/docs/integrations/disk_encryption/cryhod.md))                                    | ✅      |
 
-### 💾 Storage & Other Integrations
+### 💾 Storage Integrations
 
 | Product                | Integration                                                                                                                                                          | Status |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/integrations/vcenter.md))                                                                                            | ✅      |
-| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/synology_dsm.md))                                                                           | ✅      |
-| Veeam Backup           | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/veeam.md))        | ✅      |
-| OpenSSH                | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                                                                              | ✅      |
-| S/MIME                 | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                                                                                | ✅      |
-| Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/user_defined_function_for_pyspark_databricks_in_python/index.md))             | ✅      |
-| PyKMIP                 | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md))                                                       | ✅      |
+| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/integrations/storage/vcenter.md))                                                                                            | ✅      |
+| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/storage/synology_dsm.md))                                                                           | ✅      |
+| Veeam Backup           | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/storage/veeam.md))                                                                        | ✅      |
+| Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md))             | ✅      |
+
+### 🔗 Other Integrations
+
+| Product  | Integration                                                                                                                  | Status |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- | ------ |
+| OpenSSH  | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                                     | ✅      |
+| S/MIME   | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                                        | ✅      |
+| PyKMIP   | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md))               | ✅      |
 
 ---
 

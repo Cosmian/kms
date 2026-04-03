@@ -149,46 +149,46 @@ systemctl start cosmian_kms
 
 ### Step 1: Go on your vCenter UI and add a Key Provider
 
-![Step 1 – Go on vCenter configuration and set KMS](images/vcenter-step01.png)
+![Step 1 – Go on vCenter configuration and set KMS](../images/vcenter-step01.png)
 
 ### Step 2: Add new Standard KMS Provider
 
-![Step 2 – Add KMS provider in vCenter](images/vcenter-step02.png)
+![Step 2 – Add KMS provider in vCenter](../images/vcenter-step02.png)
 
 ### Step 3: Set up your Standard Key Provider
 
-![Step 3 - Set your Cosmian KMS ](images/vcenter-step03.png)
+![Step 3 - Set your Cosmian KMS ](../images/vcenter-step03.png)
 
 ### Step 4: Trust the newly added Cosmian KMS
 
-![Step 4 - Set your Cosmian KMS ](images/vcenter-step04.png)
+![Step 4 - Set your Cosmian KMS ](../images/vcenter-step04.png)
 
 ### Step 5: Establish Trust with the Cosmian KMS
 
-![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_1.png)
+![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_1.png)
 
 ---
 
-![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_2.png)
+![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_2.png)
 
 ---
-![Step 5 - Set your Cosmian KMS ](images/vcenter-step05_3.png)
+![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_3.png)
 
 ### Step 6: Go on the KMS server and get .crt and .key certificates
 
-![Step 6 - Get KMS certificates ](images/vcenter-step06.png)
+![Step 6 - Get KMS certificates ](../images/vcenter-step06.png)
 
 ### Step 7: Upload KMS Credentials and establish trust
 
-![Step 7 - Upload KMS Credentials ](images/vcenter-step07.png)
+![Step 7 - Upload KMS Credentials ](../images/vcenter-step07.png)
 
 ### Step 8: Your KMS is connected
 
-![Step 8 - Set your Cosmian KMS ](images/vcenter-step08.png)
+![Step 8 - Set your Cosmian KMS ](../images/vcenter-step08.png)
 
 ### Bonus: Encrypt your Virtual Machine
 
-![Step 9 – Final verification screen](images/vcenter-step09.png)
+![Step 9 – Final verification screen](../images/vcenter-step09.png)
 
 ---
 
