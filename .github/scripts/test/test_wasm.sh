@@ -73,22 +73,39 @@ ensure_pnpm() {
     echo "${v%%.*}"
   }
 
+  # The lock file uses pnpm v10 format (lockfileVersion 9.0); pnpm v9 silently
+  # skips optional platform-specific bindings (e.g. @oxc-parser/binding-linux-x64-gnu)
+  # which causes knip / eslint to fail on Linux CI.  Require pnpm >= 10.
   pnpm_major="$(pnpm_major_version)"
-  if [ "$pnpm_major" -ge 9 ]; then
+  if [ "$pnpm_major" -ge 10 ]; then
     return 0
   fi
 
-  if command -v corepack >/dev/null 2>&1; then
+  # In a nix-shell the system pnpm comes from a read-only store; corepack cannot
+  # install shims there and npm -g may also be read-only.  Install pnpm@10 into a
+  # writable temp directory and prepend it to PATH.
+  if command -v npm >/dev/null 2>&1; then
+    local _pnpm_tmp
+    _pnpm_tmp="$(mktemp -d)"
+    npm install "pnpm@10" --prefix "$_pnpm_tmp" --no-save --quiet >/dev/null 2>&1 || true
+    if [ -f "$_pnpm_tmp/node_modules/.bin/pnpm" ]; then
+      export PATH="$_pnpm_tmp/node_modules/.bin:$PATH"
+    fi
+  fi
+
+  # corepack is a secondary fallback (may fail in read-only nix environments)
+  pnpm_major="$(pnpm_major_version)"
+  if [ "$pnpm_major" -lt 10 ] && command -v corepack >/dev/null 2>&1; then
     corepack enable >/dev/null 2>&1 || true
-    corepack prepare pnpm@9 --activate >/dev/null 2>&1 || true
+    corepack prepare pnpm@10 --activate >/dev/null 2>&1 || true
   fi
 
   pnpm_major="$(pnpm_major_version)"
-  if [ "$pnpm_major" -ge 9 ]; then
+  if [ "$pnpm_major" -ge 10 ]; then
     return 0
   fi
 
-  echo "Error: pnpm >= 9 not found. Install pnpm or enable corepack (Node.js)" >&2
+  echo "Error: pnpm >= 10 not found (lock file uses pnpm v10 format). Install pnpm@10 or enable corepack (Node.js)" >&2
   return 1
 }
 
