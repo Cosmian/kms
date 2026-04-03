@@ -28,7 +28,7 @@ with Findex offers post-quantum resistance on encrypted data and encrypted index
 - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex is the database selected
-to [run the Cosmian KMS in the cloud or any other zero-trust environment](installation/marketplace_guide.md).
+to [run the Cosmian KMS in the cloud or any other zero-trust environment](../installation/marketplace_guide.md).
 
 ## Configuring the database
 

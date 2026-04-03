@@ -17,7 +17,7 @@ This document explains how to install and configure the Cosmian EKM SQL Server p
 | Windows Server 2016+ or Windows 10/11 | x64 |
 | SQL Server 2016+ (any edition) with EKM support | Standard or Enterprise; Express does not support EKM |
 | Cosmian KMS 5.x | Must run on the same machine (or be network-reachable) |
-| Signed `cosmian_ekm_sql_server.dll` | See [BUILD.md](BUILD.md) |
+| Signed `cosmian_ekm_sql_server.dll` | See the [KMS repository](https://github.com/Cosmian/kms) for build instructions |
 | PowerShell 5.1 (elevated) | For the setup scripts |
 | `sqlcmd` on the system `PATH` | Part of SQL Server Tools or installable standalone |
 

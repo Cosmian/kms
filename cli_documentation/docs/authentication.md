@@ -292,4 +292,4 @@ exclusion_list = ["kms-host"]
 - **Redirect Errors**: Check that your identity provider allows the redirect URL
 - **Missing Email Claim**: Verify your identity provider includes the email claim in tokens
 
-For more details about PKCE authentication, see the [PKCE Authentication Guide](../key_management_system/pkce_authentication.md).
+For more details about PKCE authentication, see the [PKCE Authentication Guide](../key_management_system/configuration/pkce_authentication.md).

@@ -28,7 +28,7 @@ The Confidential KMS is available as a ready-to-deploy product from the [AWS Mar
 
 ### HSM
 
-The HSM is responsible for storing the Master keys and securing the Cosmian KMS keys. It is deployed in the customer premises or offered as a managed service by Atos. See the [HSM integration documentation](../hsms/index.md) for more details.
+The HSM is responsible for storing the Master keys and securing the Cosmian KMS keys. It is deployed in the customer premises or offered as a managed service by Atos. See the [HSM integration documentation](../../../hsm_support/introduction/index.md) for more details.
 
 ## Deployment
 

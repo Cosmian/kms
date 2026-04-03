@@ -9,7 +9,7 @@ Read-Only attributes SHALL NOT be modified using this operation.
 
 ### Implementation
 
-This operation can be applied to all [supported objects](./objects.md).
+This operation can be applied to all [supported objects](../objects.md).
 
 #### Supported attributes
 
@@ -42,7 +42,7 @@ The following attributes are **read-only** and SHALL NOT be modified. Any attemp
 
 ### Example - Modify the cryptographic length of a symmetric key
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../../kms_clients/index.md) command:
 
 ```bash
   ckms sym keys create my_symmetric_key

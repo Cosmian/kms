@@ -36,7 +36,7 @@ To run a KMS where the database will survive restarts, run:
       ```
 
 Please note that if you want to use the KMIP wire protocol, you need to configure TLS and the socket server
-using the [server configuration file](./server_configuration_file.md) first.
+using the [server configuration file](./configuration/server_configuration_file.md) first.
 
 If you do not have Docker available, install a Cosmian KMS server as described
 in [installation guide](./installation/installation_getting_started.md):
@@ -64,7 +64,6 @@ You can then easily manage the server:
 
       ```sh
       ckms sym encrypt --tag my-file-key --output-file image.enc image.png
-
       The encrypted file is available at "image.enc"
       ```
 
@@ -72,6 +71,5 @@ You can then easily manage the server:
 
       ```sh
       ckms sym decrypt --tag my-file-key --output-file image2.png image.enc
-
       The decrypted file is available at "image2.png"
       ```

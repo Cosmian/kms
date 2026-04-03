@@ -22,7 +22,7 @@ response header.
 
 #### Implementation
 
-To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../algorithms.md).
+To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 #### Example - AES GCM encryption
 

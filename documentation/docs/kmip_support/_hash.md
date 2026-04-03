@@ -21,7 +21,7 @@ The Cosmian KMS server supports the following hashing algorithms:
 - SHA384
 - SHA512
 
-For the complete list of supported hashing algorithms, please check the [algorithms page](../algorithms.md).
+For the complete list of supported hashing algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 #### Example - Simple hash
 

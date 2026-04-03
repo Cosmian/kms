@@ -4,7 +4,7 @@ Follow the [Google documentation](https://support.google.com/a/answer/13069736?h
 
 The `cosmian` command line interface (CLI) simplifies the setup of S/MIME keys and certificates for users.
 
-After completing the setup, update your [KMS CLI](../../kms_clients/configuration.md#example-with-smime-gmail-service-account-configuration-for-kms-server) with the necessary information for the service account you created for the Gmail API.
+After completing the setup, update your [KMS CLI](../../../../kms_clients/configuration.md#smime-gmail-service-account-configuration-for-kms-server) with the necessary information for the service account you created for the Gmail API.
 
 ## Choosing the Certificate Authority
 
@@ -33,9 +33,9 @@ This CA will issue your users certificates:
         The Google Root CA is actually the following chain (root CA + intermediate CA + any leaf public certificates).
         Allow a few hours for Google to complete the provisioning.
 
-        Build your Google Root CA following those steps: [Exporting and viewing](../pki/smime.md#exporting-and-viewing) and do not forget to export the [Google expected root CA](../pki/smime.md#exporting-for-google-cse-smime)
+        Build your Google Root CA following those steps: [Exporting and viewing](../../smime.md#exporting-and-viewing) and do not forget to export the [Google expected root CA](../../smime.md#exporting-for-google-cse-smime)
 
-    - that you do not have, in that case follow [those instructions to generate your own CA chain](../pki/smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) and upload the Google Root CA in admin.google.com.
+        - that you do not have, in that case follow [those instructions to generate your own CA chain](../../smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) and upload the Google Root CA in admin.google.com.
 
 ### Managing administrator access rights
 
@@ -101,7 +101,7 @@ ckms google identities insert \
     --user-id user@your_organization.com CREATED_KEYPAIR_ID
 ```
 
-You can manage key-pairs (get, list, enable, disable, obliterate) and identities (get, list, delete, patch) using the other available commands in the `cosmian` [commands documentation](../../kms_clients/cli/main_commands.md).
+You can manage key-pairs (get, list, enable, disable, obliterate) and identities (get, list, delete, patch) using the other available commands in the `ckms` [commands documentation](../../../../kms_clients/cli/main_commands.md).
 
 Note: It may take a few hours for Google to propagate the uploaded elements, after which users can begin using S/MIME for secure email exchanges.
 

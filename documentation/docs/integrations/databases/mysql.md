@@ -139,7 +139,7 @@ For mutual TLS authentication:
 
 #### 1.1 Deploy Cosmian KMS Server
 
-Choose your Linux distribution and refer to [installation guide](./installation/installation_getting_started.md)
+Choose your Linux distribution and refer to [installation guide](../../installation/installation_getting_started.md)
 
 Verify the installed version and configuration file location:
 

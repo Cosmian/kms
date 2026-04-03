@@ -14,13 +14,13 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
 
     - A Google Workspace account
     - A Certificate Authority (CA) [compliant with Gmail](https://support.google.com/a/answer/7448393) to generate the certificates for the users
-    - An Identity Provider (IdP) (in this tutorial the [Google Identity Provider](./configuring-the-well-known-file-and-server.md#using-google-as-an-identity-provider))
-    - The [Cosmian Key Management Server](../installation/marketplace_guide.md) behind a `Nginx` server:
+    - An Identity Provider (IdP) (in this tutorial the [Google Identity Provider](../configuring-the-well-known-file-and-server.md#using-google-as-an-identity-provider))
+    - The [Cosmian Key Management Server](../../../../installation/marketplace_guide.md) behind a `Nginx` server:
         - exposing a valid TLS certificate
-        - and serving the [`.well-known`](./configuring-the-well-known-file-and-server.md) file used by the Identity Provider
-    - The [KMS CLI](../../kms_clients/index.md)
+        - and serving the [`.well-known`](../configuring-the-well-known-file-and-server.md) file used by the Identity Provider
+    - The [KMS CLI](../../../../../kms_clients/index.md)
         - to generate the [Google CSE key](#creating-google_cse-key) in the Cosmian KMS with correct access rights
-        - to generate the [Gmail users keys](configuring_gmail_cse.md#create-user-key-pair)
+        - to generate the [Gmail users keys](../configuring_gmail_cse.md#create-user-key-pair)
 
 ## Choosing the Certificate Authority
 
@@ -30,11 +30,11 @@ First you need an intermediate CA (Certificate Authority) that is trusted by Goo
 This CA will issue your users certificates:
 
 - either your CA is one of the Google recommended CA, follow this [page](https://support.google.com/a/answer/7448393) to make sure it is (note that Actalis can provide CA certificates for free).
-In that case, your users S/MIME certificates will be issued directly from your CA and you will need to import them one by one using [KMS CLI](configuring_gmail_cse.md#create-user-key-pair)
+In that case, your users S/MIME certificates will be issued directly from your CA and you will need to import them one by one using [KMS CLI](../configuring_gmail_cse.md#create-user-key-pair)
 - either this is a custom CA:
     - that you already have (remember that this custom CA must have the expected Google X509 extensions).
   You will have to upload the full CA chain in admin.google.com->Apps/Google Workspace/Settings for Gmail/User Settings/S/MIME (and wait for provisioning to be fully done, few hours expected).
-    - that you do not have, in that case read [this page](../pki/smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) to generate your own CA and upload the full CA chain in admin.google.com.
+    - that you do not have, in that case read [this page](../../../smime.md#creating-an-smime-certificate-authority-with-a-root-and-intermediate-ca) to generate your own CA and upload the full CA chain in admin.google.com.
 
 ### Actalis CA
 
@@ -71,7 +71,7 @@ To configure a `.well-known` file, you need to:
 
 2. Set up a server that serves the file at the URL shown in the image above
 
-Instructions are provided in the [Configuring the `.well-known` file](./configuring-the-well-known-file-and-server.md) section
+Instructions are provided in the [Configuring the `.well-known` file](../configuring-the-well-known-file-and-server.md) section
 
 Once this is complete, the screen on refresh should turn to this:
 
@@ -141,7 +141,7 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
-Using the [KMS CLI](../../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../../kms_clients/authentication.md#oauth2oidc-configuration).
+Using the [KMS CLI](../../../../../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../../../../../kms_clients/authentication.md#oauth2oidc-authentication).
 
 !!! important
     Concerning the KMS CLI, you will have to log in the first time you use it.
@@ -173,7 +173,7 @@ For more information on this configuration, refer to [Google documentation](http
 
 Cosmian KMS supports this feature, and to enable it:
 
-- Add the identity provider's information in the server-side [Cosmian KMS configuration](../authentication.md)
+- Add the identity provider's information in the server-side [Cosmian KMS configuration](../../../../configuration/authentication.md)
 - Ensure that external users can access the Google CSE symmetric key
 
 ## User experience

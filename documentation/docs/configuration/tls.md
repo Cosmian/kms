@@ -9,7 +9,7 @@ It also serves the web UI on the `/ui` endpoint.
 The HTTP server is always started, even if the TLS configuration is not provided.
 
 The KMS server should be started using HTTPS when running in a zero-trust environment.
-Check the [running in a zero-trust environment](installation/marketplace_guide.md) section for more information.
+Check the [running in a zero-trust environment](../installation/marketplace_guide.md) section for more information.
 
 To enable TLS, one can provide certificates on the command line interface.
 

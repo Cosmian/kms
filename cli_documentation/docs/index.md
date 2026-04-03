@@ -26,7 +26,7 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
     See below for installation instructions.
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
-{!installation.md!}
+{!kms_clients/installation.md!}
 
 ## Configuration
 
@@ -35,4 +35,4 @@ To communicate with the KMS, the clients `ckms` expect the same configuration fi
 ## Usage
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
-{!usage.md!}
+{!kms_clients/usage.md!}

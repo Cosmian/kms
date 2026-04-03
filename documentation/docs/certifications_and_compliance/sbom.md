@@ -34,7 +34,7 @@ Each output directory contains:
 | `meta.json` | JSON | Build metadata (variant, link, counts, timestamps) |
 
 The default FIPS static server SBOM is at
-[`sbom/server/fips/static/bom.cdx.json`](../../../../sbom/server/fips/static/bom.cdx.json).
+[`sbom/server/fips/static/bom.cdx.json`](../../sbom/server/fips/static/bom.cdx.json).
 
 ## Vulnerability scanning
 
@@ -63,7 +63,7 @@ bash .github/scripts/nix.sh sbom --target server --variant fips --link static
 bash .github/scripts/nix.sh sbom --target openssl_3_6_0
 ```
 
-See [`sbom/README.md`](../../../../sbom/README.md) for the full regeneration guide and usage
+See [`sbom/README.md`](../../sbom/README.md) for the full regeneration guide and usage
 examples (Dependency-Track upload, `jq` queries, vulnerability review).
 
 ## Standards & references
