@@ -147,22 +147,61 @@ repos:
       - id: nightly-cargo-format
       - id: cargo-machete
 
-  - repo: https://github.com/EmbarkStudios/cargo-deny
-    rev: 0.18.2
+  - repo: local
     hooks:
       - id: cargo-deny
-        args: [--all-features, check]
+        name: cargo deny check
+        entry: cargo deny check
+        language: system
+        pass_filenames: false
+        always_run: true
         stages: [manual]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
+      - id: docker-compose-up
       - id: clippy-all-targets-all-features
       - id: clippy-all-targets
-      - id: docker-compose-up
-
+      
   - repo: local
     hooks:
+      - id: renew-server-doc
+        name: renew server docs (CLI help + configuration file)
+        description: |
+          Build cosmian_kms (non-fips) and regenerate:
+            - documentation/docs/configuration/server_cli.md from --help
+            - documentation/docs/configuration/server_configuration_file.md from --print-default-config
+            - pkg/kms.toml and crate/server/kms_template.toml
+        entry: bash .github/scripts/docs/renew_server_doc.sh
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cbom
+        name: Release - generate CBOM
+        entry: bash .github/scripts/release/generate_cbom.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: release-update-readme-kmip
+        name: Release - update README KMIP table
+        entry: python3 .github/scripts/docs/update_readme_kmip.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
+      - id: release-git-cliff
+        name: Release - update CHANGELOG with git cliff
+        entry: bash .github/scripts/release/git_cliff.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
       - id: renew-ckms-markdown
         name: renew ckms markdown docs
         description: |
@@ -173,14 +212,14 @@ repos:
         types: [rust]
         pass_filenames: false
 
-      # Remove folders result*
-      - id: clean-result-folders
-        name: Clean result* folders
-        entry: bash .github/scripts/release/clean_result.sh
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
+      # # Remove folders result*
+      # - id: clean-result-folders
+      #   name: Clean result* folders
+      #   entry: bash .github/scripts/release/clean_result.sh
+      #   language: system
+      #   types: [rust]
+      #   pass_filenames: false
+      #   stages: [manual]
 
       - id: pnpm-ui-format
         name: pnpm ui format
@@ -226,89 +265,21 @@ repos:
         pass_filenames: false
         stages: [manual]
 
-      - id: nix-redis-cargo-test-non-fips
-        name: Nix cargo test (redis non-fips)
-        entry: bash .github/scripts/nix.sh --variant non-fips test redis
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
-
-      - id: nix-cargo-test-non-fips
-        name: Nix cargo test (sqlite non-fips)
-        entry: bash .github/scripts/nix.sh --variant non-fips test redis
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
-
-      - id: kms-server-package
-        name: Nix KMS server non-fips packaging
-        entry: bash .github/scripts/nix.sh --variant non-fips package
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [manual]
-
-      - id: nix-build-ui-fips
-        name: Nix build UI (FIPS)
-        entry: nix-build -A ui-fips
+      - id: nix-build-all
+        name: Nix build all derivations (ui → cli → server)
+        entry: bash .github/scripts/release/nix_build_update_hash.sh
         language: system
         pass_filenames: false
         always_run: true
         stages: [manual]
 
-      - id: nix-build-ui-non-fips
-        name: Nix build UI (non-FIPS)
-        entry: nix-build -A ui-non-fips
+      - id: release-docker-build-ui
+        name: Release - docker compose up + build UI + docker compose down
+        entry: bash .github/scripts/release/build_ui.sh
         language: system
         pass_filenames: false
         always_run: true
         stages: [manual]
-
-      - id: nix-build-kms-cli-fips-static
-        name: Nix build KMS CLI (FIPS static OpenSSL)
-        entry: nix-build -A kms-cli-fips-static-openssl
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: nix-build-kms-cli-non-fips-dynamic
-        name: Nix build KMS CLI (non-FIPS dynamic OpenSSL)
-        entry: nix-build -A kms-cli-non-fips-dynamic-openssl
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: nix-build-kms-server-fips-static
-        name: Nix build KMS server (FIPS static OpenSSL)
-        entry: nix-build -A kms-server-fips-static-openssl
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: nix-build-kms-server-non-fips-dynamic
-        name: Nix build KMS server (non-FIPS dynamic OpenSSL)
-        entry: nix-build -A kms-server-non-fips-dynamic-openssl
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: renew-server-doc
-        name: renew server docs (CLI help + configuration file)
-        description: |
-          Build cosmian_kms (non-fips) and regenerate:
-            - documentation/docs/configuration/server_cli.md from --help
-            - documentation/docs/configuration/server_configuration_file.md from --print-default-config
-            - pkg/kms.toml and crate/server/kms_template.toml
-        entry: bash .github/scripts/docs/renew_server_doc.sh
-        language: system
-        types: [rust]
-        pass_filenames: false
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
@@ -316,6 +287,7 @@ repos:
       - id: nightly-clippy-autofix-unreachable-pub
       - id: nightly-clippy-autofix-all-targets-all-features
       - id: nightly-clippy-autofix-all-targets
+
       - id: dprint-toml-fix
         stages: [manual]
       - id: cargo-upgrade

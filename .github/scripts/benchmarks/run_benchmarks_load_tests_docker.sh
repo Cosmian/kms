@@ -234,10 +234,47 @@ cargo run -p ckms ${CKMS_CARGO_ARGS_STR} -- bench ${bench_args[*]}
 ${bench_md}
 EOF
     echo "[${version}] Written ${out_file}"
-    # Copy HTML report if the HTML bench run succeeded
+    # Copy HTML report and its chart assets if the HTML bench run succeeded.
+    # Criterion emits an index.html that references sibling SVG files; copying
+    # only index.html breaks Throughput/Latency charts.
     local out_html="${out_file%.md}.html"
     if [[ ${html_bench_status} -eq 0 && -f target/criterion/load-report/index.html ]]; then
+      local out_assets_dir="${out_file%.md}-assets"
+      local out_assets_basename
+      out_assets_basename="$(basename "${out_assets_dir}")"
+
+      rm -rf "${out_assets_dir}"
+      mkdir -p "${out_assets_dir}"
+
       cp target/criterion/load-report/index.html "${out_html}"
+
+      # Copy all sibling files (SVG, CSS, JS, etc.) except index.html.
+      find target/criterion/load-report -maxdepth 1 -type f ! -name 'index.html' -exec cp {} "${out_assets_dir}/" \;
+
+      # Rebase relative src/href links to the version-specific asset directory.
+      python3 - "${out_html}" "${out_assets_basename}" <<'PYTHON_EOF'
+import re
+import sys
+from pathlib import Path
+
+html_path = Path(sys.argv[1])
+assets_dir = sys.argv[2]
+content = html_path.read_text(encoding="utf-8")
+
+def rewrite(match: re.Match[str]) -> str:
+    prefix, url, suffix = match.group(1), match.group(2), match.group(3)
+    # Keep absolute/special URLs untouched.
+    if (
+        url.startswith(("http://", "https://", "data:", "mailto:", "#", "/"))
+        or "//" in url
+    ):
+        return match.group(0)
+    return f"{prefix}{assets_dir}/{url}{suffix}"
+
+content = re.sub(r'(\b(?:src|href)=["\'])([^"\']+)(["\'])', rewrite, content)
+html_path.write_text(content, encoding="utf-8")
+PYTHON_EOF
+
       echo "[${version}] Written ${out_html}"
     else
       echo "[${version}] WARNING: HTML load test report not generated (gnuplot may be missing)"

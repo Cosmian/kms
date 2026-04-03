@@ -91,7 +91,8 @@ if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
 fi
 
 echo "==> Building KMS server binary …"
-(cd .. && cargo build -p cosmian_kms_server --bin cosmian_kms "$CARGO_FEATURES")
+# shellcheck disable=SC2086
+(cd .. && cargo build -p cosmian_kms_server --bin cosmian_kms $CARGO_FEATURES)
 
 KMS_SQLITE_DIR="$(mktemp -d)"
 echo "==> Starting KMS server (port 9998, sqlite=${KMS_SQLITE_DIR}) …"
