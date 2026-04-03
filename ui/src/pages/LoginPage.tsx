@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useBranding } from "../contexts/useBranding";
+import { AuthMethod, getNoTTLVRequest } from "../utils/utils";
 
 interface LoginProps {
     auth: boolean;
@@ -70,9 +71,9 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                         <Alert
                             type="error"
                             showIcon
-                            message="Certificate authentication failed"
+                            message="CERT identity verification failed"
                             description={certError}
-                            className="text-left mb-4"
+                            className="text-left mb-8"
                         />
                     )}
                     {isLoading ? (

@@ -128,15 +128,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {authMethod === "None" && (
                             <Alert
-                                type="error"
+                                type="warning"
                                 showIcon
                                 banner
                                 className="mb-4"
-                                message={<span className="text-red-900 font-bold">Authentication is disabled on this KMS server</span>}
+                                message={<span className="text-yellow-900 font-bold">Authentication is disabled on this KMS server</span>}
                                 description={
-                                    <span className="text-red-900">
-                                        This server was started without any authentication configured. Anyone with network access can read
-                                        all keys and data. Creating or importing cryptographic keys is disabled.
+                                    <span className="text-yellow-900">
+                                        This KMS server was started without any authentication method configured. Anyone with network access
+                                        can read all keys and data. Creating or importing cryptographic keys is disabled.
                                     </span>
                                 }
                             />

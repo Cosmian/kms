@@ -72,7 +72,6 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
             let method: AuthMethod | null = null;
             try {
                 method = await fetchAuthMethod(serverUrl);
-                setAuthMethod(method);
             } catch {
                 /* ignore */
             }
