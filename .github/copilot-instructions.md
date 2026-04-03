@@ -1,5 +1,7 @@
 # Cosmian KMS — AI Agent Instructions
 
+> **Canonical file**: `.github/copilot-instructions.md` — `CLAUDE.md` and `AGENTS.md` at the repo root are symlinks to this file. **Always edit this file directly.**
+
 > **Purpose of this file**: This is the single source of truth for any AI agent
 > (Copilot, Cursor, Cline, Claude Code, etc.) working on the Cosmian KMS codebase. It
 > explains project structure, build commands, CI workflows, coding conventions,
@@ -444,14 +446,16 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
 ## 14. Common issues
 
-| Symptom                                         | Cause                                         | Fix                                                                                                          |
-| ----------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Usage mask errors (`Encrypt`, `Sign` denied)    | Key missing required `CryptographicUsageMask` | Check the object's attributes                                                                                |
-| `legacy.so` / `fips.so` not found               | `OPENSSL_MODULES` not set                     | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
-| Stale Nix vendor hashes                         | `Cargo.lock` or version changed               | Regenerate all four hash files (see §13)                                                                     |
-| `gh` command hangs                              | Interactive pager opened                      | Use `GH_PAGER=cat gh ...`                                                                                    |
-| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright              | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
-| TypeScript unused-variable error in UI tests    | `noUnusedLocals: true` in tsconfig            | Remove the variable or prefix with `_`                                                                       |
+| Symptom                                                      | Cause                                                                                                      | Fix                                                                                                          |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Usage mask errors (`Encrypt`, `Sign` denied)                 | Key missing required `CryptographicUsageMask`                                                              | Check the object's attributes                                                                                |
+| `legacy.so` / `fips.so` not found                            | `OPENSSL_MODULES` not set                                                                                  | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
+| Stale Nix vendor hashes                                      | `Cargo.lock` or version changed                                                                            | Regenerate all four hash files (see §13)                                                                     |
+| `gh` command hangs                                           | Interactive pager opened                                                                                   | Use `GH_PAGER=cat gh ...`                                                                                    |
+| Playwright `toHaveText` type error with `exact`              | Unsupported option in Playwright                                                                           | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
+| TypeScript unused-variable error in UI tests                 | `noUnusedLocals: true` in tsconfig                                                                         | Remove the variable or prefix with `_`                                                                       |
+| Server starts but serves plain HTTP despite `[tls]` config   | `tls_p12_file`/`tls_p12_password` are `#[cfg(feature = "non-fips")]` — silently ignored in FIPS builds    | Use `tls_cert_file` + `tls_key_file` (PEM); extract from P12 with `openssl pkcs12`                          |
+| Auth0 logout shows "Oops, something went wrong"              | `returnTo` URL not in Auth0 app's Allowed Logout URLs                                                      | Add `<kms_public_url>/ui/login` in Auth0 dashboard → Applications → Settings → Allowed Logout URLs          |
 
 ---
 
