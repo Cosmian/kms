@@ -5,6 +5,20 @@ built as a static web application and served by the KMS server.
 
 ---
 
+## Architecture
+
+The `src` directory is organized like follows:
+
+- **`assets/`**: Static files like images and SVGs.
+- **`components/`**: Reusable UI elements, subdivided into `common/` (generic elements) and `layout/` (structural elements like headers and sidebars).
+- **`contexts/`**: React Context providers for global state management (e.g., Auth, Branding).
+- **`pages/`**: Top-level standalone page components (e.g., Login, Not Found).
+- **`utils/`**: Shared helper functions and API utilities.
+- **`actions/`**: Feature-specific UI modules, grouped by cryptographic domain (e.g., `Access/`, `Certificates/`, `RSA/`, `Symmetric/`, etc.).
+- **`wasm/`**: WebAssembly binding logic.
+
+---
+
 ## Prerequisites
 
 | Component | Required Version |

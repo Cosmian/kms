@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import RsaSign from "../../../src/RsaSign";
+import RsaSign from "../../../src/actions/RSA/RsaSign";
 import { smokeRender } from "../test-utils";
 
 test("renders RsaSign", () => {

@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import ECVerify from "../../../src/ECVerify";
+import ECVerify from "../../../src/actions/EC/ECVerify";
 import { smokeRender } from "../test-utils";
 
 test("renders ECVerify", () => {

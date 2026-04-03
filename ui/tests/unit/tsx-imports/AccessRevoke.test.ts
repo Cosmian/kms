@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import AccessRevoke from "../../../src/AccessRevoke";
+import AccessRevoke from "../../../src/actions/Access/AccessRevoke";
 import { smokeRender } from "../test-utils";
 
 test("renders AccessRevoke", () => {

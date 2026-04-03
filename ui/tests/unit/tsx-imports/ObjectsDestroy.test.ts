@@ -1,7 +1,7 @@
 import React from "react";
 import { expect, test } from "vitest";
 
-import ObjectsDestroy from "../../../src/ObjectsDestroy";
+import ObjectsDestroy from "../../../src/actions/Objects/ObjectsDestroy";
 import { smokeRender } from "../test-utils";
 
 test("renders ObjectsDestroy form", () => {

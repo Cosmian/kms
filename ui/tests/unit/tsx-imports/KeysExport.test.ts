@@ -1,7 +1,7 @@
 import React from "react";
 import { expect, test } from "vitest";
 
-import KeysExport from "../../../src/KeysExport";
+import KeysExport from "../../../src/actions/Keys/KeysExport";
 import { smokeRender } from "../test-utils";
 
 test("renders KeysExport form", () => {

@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import AttributeSet from "../../../src/AttributeSet";
+import AttributeSet from "../../../src/actions/Attributes/AttributeSet";
 import { smokeRender } from "../test-utils";
 
 test("renders AttributeSet", () => {

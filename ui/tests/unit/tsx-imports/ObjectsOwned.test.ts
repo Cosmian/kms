@@ -1,7 +1,7 @@
 import React from "react";
 import { expect, test } from "vitest";
 
-import ObjectsOwned from "../../../src/ObjectsOwned";
+import ObjectsOwned from "../../../src/actions/Objects/ObjectsOwned";
 import { smokeRender } from "../test-utils";
 
 test("renders ObjectsOwned", () => {

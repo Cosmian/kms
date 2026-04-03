@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import AccessGrant from "../../../src/AccessGrant";
+import AccessGrant from "../../../src/actions/Access/AccessGrant";
 import { smokeRender } from "../test-utils";
 
 test("renders AccessGrant", () => {

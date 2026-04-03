@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { base64UrlEncode, buildAzureByokContent, buildAzureByokObject, getAzureByokFilename, getTags } from "../../src/azureByok";
-import { azureKekKeyUsage, azureKekTags } from "../../src/azureKek";
+import { base64UrlEncode, buildAzureByokContent, buildAzureByokObject, getAzureByokFilename, getTags } from "../../src/utils/azureByok";
+import { azureKekKeyUsage, azureKekTags } from "../../src/utils/azureKek";
 
 describe("Azure BYOK helpers", () => {
     test("base64UrlEncode is url-safe and unpadded", () => {

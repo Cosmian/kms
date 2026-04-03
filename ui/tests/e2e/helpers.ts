@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 /** Timeout (ms) used when waiting for the UI to finish loading WASM/React data. */
 export const UI_READY_TIMEOUT = 15_000;
-export const UI_RESPONSE_TIMEOUT = 60_000;
+const UI_RESPONSE_TIMEOUT = 60_000;
 
 /** Extract the first UUID (v4 / v1) from an arbitrary text string. */
 export function extractUuid(text: string): string | null {

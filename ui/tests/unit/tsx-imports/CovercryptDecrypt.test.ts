@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import CovercryptDecrypt from "../../../src/CovercryptDecrypt";
+import CovercryptDecrypt from "../../../src/actions/Covercrypt/CovercryptDecrypt";
 import { smokeRender } from "../test-utils";
 
 test("renders CovercryptDecrypt", () => {
