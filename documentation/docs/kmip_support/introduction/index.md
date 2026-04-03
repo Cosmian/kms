@@ -12,7 +12,7 @@ and encryption clients.
 
 - **JSON Protocol**: Available on port 9998 via REST POST
     - Optional TLS security
-    - Multiple [authentication mechanisms](../authentication.md) supported
+    - Multiple [authentication mechanisms](../../configuration/authentication.md) supported
     - Endpoints:
         - `/kmip`: Handles KMIP 1.x and 2.x `RequestMessage`
         - `/kmip/2_1`: Specifically for KMIP 2.1 `RequestMessage` or operations like `Create`, `Encrypt`, `Decrypt`,

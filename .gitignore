@@ -1,45 +1,60 @@
+# Rust / Cargo
 target/
 .cargo_check/
-.history/
-*.swp
-TODO.md
-data/html
+rustc-ice*.txt
+crate/server/Cargo.toml.bak
+vendor/
+
+# Security / Secrets
 data/keys
 .env
-.venv/
+
+# Runtime Artifacts / Local Data
+data/html
+crate/cli/*.sqlite
+http_cache.sqlite
+**/*cosmian-kms*
+**/*cosmian-kms/sqlite-data*
 **/data/private
 **/data/public
 **/data/shared
-crate/cli/*.sqlite
-.DS_Store
-._*
-.idea/
-rustc-ice*.txt
-node_modules/
-# this directory may contain sqlite data when the KMS is launched locally
-**/*cosmian-kms*
-**/*__pycache__*
-run.sh
-.aider/
+result*
+sbom.*
+resources/cli.zip
 .cache
-.local
+
+# HSM / Crypto Libraries
 .openssl
 resources/tarballs/openssl-3.1.2.tar.gz
 .utimaco
 .softhsm2*
 *.xz*
-result
-result-*
-crate/server/Cargo.toml.bak
+
+# UI / Node
+node_modules/
 crate/server/ui*
 ui_non_fips/
-vendor/
-http_cache.sqlite
-sbom/*
-resources/cli.zip
-.claude
 ui/test-results
-._*
 
-# On windows, ignore the vcpkg installed OpenSSL directory
+# OS / IDE / AI Tools
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+.history/
+.aider/
+.claude
+.agent/
+.agents/
+QWEN.md
+
+# Misc
+TODO.md
+.venv/
+.local
+**/*__pycache__*
+run.sh
+
+# Windows (vcpkg OpenSSL)
 vcpkg_installed/

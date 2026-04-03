@@ -1,7 +1,7 @@
 import React from "react";
 import { expect, test } from "vitest";
 
-import MainLayout from "../../../src/MainLayout";
+import MainLayout from "../../../src/components/layout/MainLayout";
 import { smokeRender } from "../test-utils";
 
 test("renders MainLayout with an Outlet child", () => {

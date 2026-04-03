@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import AzureExportByok from "../../../src/AzureExportByok";
+import AzureExportByok from "../../../src/actions/CloudProviders/AzureExportByok";
 import { smokeRender } from "../test-utils";
 
 test("renders AzureExportByok", () => {

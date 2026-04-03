@@ -1,11 +1,11 @@
 # Cosmian KMS — AI Agent Instructions
 
 > **Purpose of this file**: This is the single source of truth for any AI agent
-> (Copilot, Cursor, Cline, etc.) working on the Cosmian KMS codebase. It
+> (Copilot, Cursor, Cline, Claude Code, etc.) working on the Cosmian KMS codebase. It
 > explains project structure, build commands, CI workflows, coding conventions,
 > and troubleshooting steps so the agent can act autonomously and correctly.
 
-Cosmian KMS is a high-performance, open-source **FIPS 140-3** compliant Key
+Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
@@ -82,10 +82,18 @@ crate/
   cli/              cosmian_kms_cli            — CLI client binary
   clients/
     ckms/           ckms                       — CLI command tree (subcommands live here)
-    pkcs11/                                    — PKCS#11 client
+    pkcs11/
+      module/       cosmian_pkcs11_module      — PKCS#11 module implementation
+      provider/     cosmian_pkcs11             — PKCS#11 provider binary
   client_utils/     cosmian_kms_client_utils   — shared client helpers
   crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
-  hsm/              HSM PKCS#11 loaders (softhsm2, utimaco, proteccio, crypt2pay, smartcardhsm)
+  hsm/
+    base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
+    softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
+    utimaco/        utimaco_pkcs11_loader      — Utimaco
+    proteccio/      proteccio_pkcs11_loader    — Proteccio
+    crypt2pay/      crypt2pay_pkcs11_loader    — Crypt2Pay
+    smartcardhsm/   smartcardhsm_pkcs11_loader — SmartCard HSM
   interfaces/       cosmian_kms_interfaces     — Database/HSM traits
   kmip/             cosmian_kmip               — KMIP 2.1 protocol types
   kmip-derive/      kmip-derive                — proc-macros for KMIP serialisation
@@ -96,10 +104,15 @@ crate/
   wasm/             cosmian_kms_client_wasm    — WASM client for the web UI
 
 .github/            CI workflows (.github/workflows/) and helper scripts (.github/scripts/)
+cbom/               Cryptographic Bill of Materials (CBOM)
+cli_documentation/  CLI-specific MkDocs documentation (separate MkDocs site)
 documentation/      MkDocs documentation source
+monitoring/         Grafana / Prometheus / OTLP monitoring stack
 nix/                Nix build expressions and expected vendor hashes
 pkg/                deb/rpm service files and configs
 resources/          Server config templates
+sbom/               Software Bill of Materials (SBOM)
+scripts/            Project scripts
 test_data/          Test fixtures (submodule)
 ui/                 Web UI source (React + Vite + Playwright E2E tests)
 ui_non_fips/        Pre-built non-FIPS web UI bundle (committed)
@@ -119,7 +132,7 @@ crate/server/src/routes/kmip.rs               — Actix-web handler, deserialise
 crate/server/src/core/operations/dispatch.rs  — matches TTLV tag → operation function
   │
   ▼
-crate/server/src/core/operations/<op>.rs      — one file per KMIP operation (41 total)
+crate/server/src/core/operations/<op>.rs      — one file per KMIP operation
   │
   ▼
 crate/server/src/core/kms/mod.rs              — KMS struct (params, database, crypto_oracles, HSM)
@@ -171,6 +184,9 @@ When you need to change something, start here:
 |---|---|---|
 | *(none / fips)* | **on** | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider |
 | `non-fips` | off | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
+| `interop` | **on** | Enables extra KMIP interoperability test operations (on by default; do not disable in tests) |
+| `insecure` | off | Skips OAuth token expiration check and allows self-signed TLS — **dev/test only** |
+| `timeout` | off | Makes the server binary expire at a compile-time-chosen date |
 
 Use `--features non-fips` to enable all non-approved algorithms.
 
@@ -286,6 +302,16 @@ Update ui/tests/e2e/README.md according to ui/tests/e2e/ tests.
 - `ui/tsconfig.node.json` — TypeScript config for Playwright / Vite config files
 - `ui/tsconfig.app.json` — TypeScript config for the React app (`noUnusedLocals: true`, `strict: true`)
 
+### UI test layers
+
+The UI has three test layers — all must pass before merging:
+
+| Layer | Runner | Location | Config |
+|---|---|---|---|
+| E2E | Playwright | `ui/tests/e2e/` | `ui/playwright.config.ts` |
+| Integration | Vitest | `ui/tests/integration/` | `ui/tests/vitest.int.config.ts` |
+| Unit | Vitest | `ui/tests/unit/` | `ui/tests/vitest.unit.config.ts` |
+
 ### UI test conventions
 
 - Use `data-testid` attributes to locate elements (e.g. `[data-testid="submit-btn"]`).
@@ -293,44 +319,50 @@ Update ui/tests/e2e/README.md according to ui/tests/e2e/ tests.
 - Use regex-based assertions (not `{ exact: true }`) with `toHaveText()` — Playwright's `toHaveText` does not support an `exact` option.
 - E2E timeouts are generous (60 s for responses) because CI runs 10 parallel workers against one KMS server.
 
+### UI actions structure
+
+`ui/src/actions/` contains 14 feature modules, each mapping to a group of KMIP operations.
+When adding a new UI feature, add it under the matching module (or create a new one):
+
+```text
+ui/src/actions/
+  Access/         — Grant, List, Obtained, Revoke permissions
+  Attributes/     — Delete, Get, Modify, Set object attributes
+  Certificates/   — Certify, Decrypt, Encrypt, Export, Import, Validate
+  CloudProviders/ — AWS / Azure key export and import (KEK/BYOK)
+  Covercrypt/     — Covercrypt encrypt, decrypt, master key, user key
+  EC/             — Elliptic Curve key creation, encrypt/decrypt, sign/verify
+  Keys/           — CSE info, derive key, export, import, symmetric key creation
+  MAC/            — Compute and Verify message authentication codes
+  Objects/        — Destroy, list owned, revoke, opaque objects, secret data
+  PQC/            — Post-quantum encapsulate/decapsulate, sign/verify
+  RSA/            — RSA key creation, encrypt/decrypt, sign/verify
+  Symmetric/      — Symmetric encrypt, decrypt, hash
+```
+
 ---
 
 ## 9. GitHub CLI — reading issues, PRs, and CI failures
 
 **Always use `GH_PAGER=cat`** to prevent `gh` from spawning an interactive pager
-(which hangs in non-interactive terminal sessions):
+(which hangs in non-interactive terminal sessions). The repository is `Cosmian/kms`.
 
 ```bash
-# View an issue
 GH_PAGER=cat gh issue view <number> --repo Cosmian/kms
-
-# View a pull request (description, status checks, review state)
 GH_PAGER=cat gh pr view <number> --repo Cosmian/kms
-
-# View PR diff
 GH_PAGER=cat gh pr diff <number> --repo Cosmian/kms
-
-# List recent PR checks / CI status
 GH_PAGER=cat gh pr checks <number> --repo Cosmian/kms
-
-# View a specific CI run's logs (find run ID from `gh pr checks` output)
 GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
-
-# List recent workflow runs
 GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
-
-# Read CI failure logs for a specific job
-GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 ```
 
 ### Investigating a CI failure — step by step
 
-1. **Get the failing checks**: `GH_PAGER=cat gh pr checks <pr-number> --repo Cosmian/kms`
+1. **Get failing checks**: `GH_PAGER=cat gh pr checks <pr-number> --repo Cosmian/kms`
 2. **Find the failed run ID** from the output (look for ✗ / fail status).
 3. **Read failed logs**: `GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed`
-4. **Identify the root cause** in the log output (compiler error, test assertion, timeout, etc.).
-5. **Reproduce locally** using the matching `nix.sh` command, e.g.:
-   `bash .github/scripts/nix.sh --variant non-fips test sqlite`
+4. **Identify the root cause** (compiler error, test assertion, timeout, Nix hash mismatch, etc.).
+5. **Reproduce locally**: `bash .github/scripts/nix.sh --variant non-fips test sqlite`
 6. **Fix, commit, push** — CI will re-run automatically on the PR.
 
 ---
@@ -340,8 +372,7 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --job <job-id> --log
 - **Function length**: keep functions under 100 lines; extract helpers for longer ones.
 - **Imports**: Rust `use` statements go at the top of each file, never inline.
 - **Error handling**: never ignore or skip errors in tests or builds — investigate and fix.
-- **CHANGELOG**: update `CHANGELOG.md` for every user-visible change. Add a single-line entry
-  in the top section (the next-release block). Follow the formatting and style of existing entries.
+- **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see §11 for details).
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code or add
   unrelated improvements alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`,
@@ -396,6 +427,13 @@ echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
 
 Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
+> **AI agent note — expected CI failure after new dependencies**: Whenever a new
+> Rust dependency (`Cargo.lock` change) or UI dependency (`ui/pnpm-lock.yaml` change)
+> is added, the Nix vendor hashes become stale and **the first CI run will always fail
+> with a hash mismatch**. This is expected and not a bug. After the first failure,
+> retrieve the correct hash from the CI log and update `nix/expected-hashes/`.
+> Always remind the user to regenerate Nix hashes after adding any dependency.
+
 ---
 
 ## 14. Common issues
@@ -426,3 +464,47 @@ Required behavior for any AI agent:
 3. Update `README.md` with a brief summary (not full details) and links to the detailed docs.
 4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
 5. Avoid duplicating full documentation in `README.md`; keep README content short and navigational.
+
+### Integration documentation alignment rules
+
+The integrations section is the most commonly extended area. Keep these four views in sync at all times:
+
+**Source of truth for navigation structure**: `documentation/mkdocs.yml`
+
+**Canonical integration file paths**:
+
+- Cloud providers: `documentation/docs/integrations/cloud_providers/<provider>/`
+    - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
+    - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
+    - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
+    - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
+    - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
+- Databases: `documentation/docs/integrations/databases/`
+    - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md, snowflake_native_app/
+- Storage: `documentation/docs/integrations/storage/`
+    - vcenter.md, synology_dsm.md, veeam.md, user_defined_function_for_pyspark_databricks_in_python/
+    - Disk encryption: `documentation/docs/integrations/disk_encryption/`
+        - veracrypt.md, luks.md, cryhod.md
+- Other: `documentation/docs/integrations/`
+    - openssh.md, pykmip.md, smime.md
+
+**README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
+
+| README section | mkdocs.yml grouping | Files location |
+|---|---|---|
+| ☁️ Cloud Provider — External Key Management | `Cloud providers:` | `integrations/cloud_providers/` |
+| 🗄️ Database Integrations | `Databases:` | `integrations/databases/` |
+| 💿 Disk Encryption | `Disk encryption:` (under `Storage:`) | `integrations/disk_encryption/` |
+| 💾 Storage Integrations | `Storage:` | `integrations/storage/` |
+| 🔗 Other Integrations | `Other:` | `integrations/` root |
+
+**When adding a new integration**:
+
+1. Add the doc file under the correct `documentation/docs/integrations/` subdirectory.
+2. Add the nav entry in `documentation/mkdocs.yml` under the correct group.
+3. Add a row to the matching README table with a correct relative link starting with `./documentation/docs/integrations/...`.
+4. README links must use the full path relative to repo root (e.g. `./documentation/docs/integrations/databases/ms_sql_server.md`), not shortened or incorrect paths.
+
+**documentation/docs/index.md** should not be updated with new integrations; it is a high-level overview and the README is the main entry point for users to discover integrations.
+
+**Never** put an integration in a different category in README than it appears in mkdocs.yml, or leave it out of the README table if it has a mkdocs page.

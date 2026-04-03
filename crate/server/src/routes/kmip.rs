@@ -602,6 +602,43 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
         }
     }
 
+    // KMIP 1.x interoperability for asymmetric keys:
+    // Some KMIP 1.x clients (e.g. Veeam Backup) do not support attributes
+    // embedded inside KeyValue for asymmetric keys (PublicKey / PrivateKey).
+    // In particular, the Link attribute (which contains a Structure-typed
+    // AttributeValue) and other object-metadata attributes inside KeyValue
+    // cause KMIP decode errors. Strip all KeyValue attributes for asymmetric
+    // keys so that only the key material is returned — cryptographic metadata
+    // (algorithm, length) is already present at the KeyBlock level.
+    if major == 1 {
+        for batch_item in &mut response.batch_item {
+            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+                continue;
+            };
+            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) =
+                item.response_payload.as_mut()
+            {
+                match &gr.object {
+                    cosmian_kmip::kmip_1_4::kmip_objects::Object::PublicKey(_)
+                    | cosmian_kmip::kmip_1_4::kmip_objects::Object::PrivateKey(_) => {
+                        if let Ok(kb) = gr.object.key_block_mut() {
+                            if let Some(
+                                cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
+                                    attribute,
+                                    ..
+                                },
+                            ) = kb.key_value.as_mut()
+                            {
+                                *attribute = None;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     // KMIP 1.0 interoperability: the Fresh attribute does not exist in KMIP 1.0.
     // Our internal models are KMIP 1.4/2.1, so strip it from any 1.0 response.
     if major == 1 && minor == 0 {

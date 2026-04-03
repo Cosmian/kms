@@ -6,7 +6,7 @@
  * `ALL_ROUTES` to run a single navigation pass across the entire application.
  */
 
-export interface Route {
+interface Route {
     /** Human-readable label used as part of the Playwright test name. */
     name: string;
     /** URL path relative to the Playwright baseURL (starts with /ui). */
@@ -21,7 +21,7 @@ export interface Route {
 }
 
 // ── Symmetric Key routes ─────────────────────────────────────────────────────
-export const SYM_KEY_ROUTES: Route[] = [
+const SYM_KEY_ROUTES: Route[] = [
     { name: "create", path: "/ui/sym/keys/create" },
     { name: "export", path: "/ui/sym/keys/export" },
     { name: "import", path: "/ui/sym/keys/import" },
@@ -32,7 +32,7 @@ export const SYM_KEY_ROUTES: Route[] = [
 ];
 
 // ── RSA Key routes ───────────────────────────────────────────────────────────
-export const RSA_KEY_ROUTES: Route[] = [
+const RSA_KEY_ROUTES: Route[] = [
     { name: "create", path: "/ui/rsa/keys/create" },
     { name: "export", path: "/ui/rsa/keys/export" },
     { name: "import", path: "/ui/rsa/keys/import" },
@@ -45,7 +45,7 @@ export const RSA_KEY_ROUTES: Route[] = [
 ];
 
 // ── EC Key routes ────────────────────────────────────────────────────────────
-export const EC_KEY_ROUTES: Route[] = [
+const EC_KEY_ROUTES: Route[] = [
     { name: "create", path: "/ui/ec/keys/create" },
     { name: "export", path: "/ui/ec/keys/export" },
     { name: "import", path: "/ui/ec/keys/import" },
@@ -58,7 +58,7 @@ export const EC_KEY_ROUTES: Route[] = [
 ];
 
 // ── PQC Key routes ───────────────────────────────────────────────────────────
-export const PQC_KEY_ROUTES: Route[] = [
+const PQC_KEY_ROUTES: Route[] = [
     { name: "create", path: "/ui/pqc/keys/create" },
     { name: "export", path: "/ui/pqc/keys/export" },
     { name: "import", path: "/ui/pqc/keys/import" },
@@ -71,7 +71,7 @@ export const PQC_KEY_ROUTES: Route[] = [
 ];
 
 // ── Covercrypt Key routes ────────────────────────────────────────────────────
-export const CC_KEY_ROUTES: Route[] = [
+const CC_KEY_ROUTES: Route[] = [
     { name: "create master key pair", path: "/ui/cc/keys/create-master-key-pair" },
     { name: "create user key", path: "/ui/cc/keys/create-user-key" },
     { name: "export", path: "/ui/cc/keys/export" },
@@ -95,7 +95,7 @@ export const CERT_ROUTES: Route[] = [
 ];
 
 // ── Opaque Object routes ─────────────────────────────────────────────────────
-export const OPAQUE_ROUTES: Route[] = [
+const OPAQUE_ROUTES: Route[] = [
     { name: "create", path: "/ui/opaque-object/create" },
     { name: "export", path: "/ui/opaque-object/export" },
     { name: "import", path: "/ui/opaque-object/import" },
@@ -104,7 +104,7 @@ export const OPAQUE_ROUTES: Route[] = [
 ];
 
 // ── Attributes routes ────────────────────────────────────────────────────────
-export const ATTRIBUTES_ROUTES: Route[] = [
+const ATTRIBUTES_ROUTES: Route[] = [
     { name: "get", path: "/ui/attributes/get" },
     { name: "set", path: "/ui/attributes/set" },
     { name: "modify", path: "/ui/attributes/modify" },
@@ -112,7 +112,7 @@ export const ATTRIBUTES_ROUTES: Route[] = [
 ];
 
 // ── Access Rights routes ─────────────────────────────────────────────────────
-export const ACCESS_RIGHTS_ROUTES: Route[] = [
+const ACCESS_RIGHTS_ROUTES: Route[] = [
     { name: "grant", path: "/ui/access-rights/grant" },
     { name: "revoke", path: "/ui/access-rights/revoke" },
     { name: "list", path: "/ui/access-rights/list" },
@@ -134,16 +134,16 @@ export const AWS_ROUTES: Route[] = [
 ];
 
 // ── Derive Key route ─────────────────────────────────────────────────────
-export const DERIVE_KEY_ROUTE: Route[] = [{ name: "derive key", path: "/ui/derive-key" }];
+const DERIVE_KEY_ROUTE: Route[] = [{ name: "derive key", path: "/ui/derive-key" }];
 
 // ── Standalone page routes ───────────────────────────────────────────────────
 // Google CSE is an info page that shows a heading but has no submit button.
-export const GOOGLE_CSE_ROUTES: Route[] = [{ name: "Google CSE", path: "/ui/google-cse", locator: "h1" }];
+const GOOGLE_CSE_ROUTES: Route[] = [{ name: "Google CSE", path: "/ui/google-cse", locator: "h1" }];
 
-export const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
+const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
 
 // ── MAC routes ───────────────────────────────────────────────────────────────
-export const MAC_ROUTES: Route[] = [
+const MAC_ROUTES: Route[] = [
     { name: "compute", path: "/ui/mac/compute" },
     { name: "verify", path: "/ui/mac/verify" },
 ];

@@ -127,7 +127,7 @@ The one HSM-specific restriction is **creation and destruction**: only users lis
 or destroy objects directly in the HSM. All other operations (`Encrypt`, `Decrypt`, `Get`, etc.) follow
 the standard KMS access rights model and can be delegated to any authenticated user via `grant`.
 
-See the [HSM operations](hsms/hsm_operations.md) page for details on HSM admin configuration.
+See the [HSM operations](../hsm_support/hsm_operations.md) page for details on HSM admin configuration.
 
 ## Authentication vs. authorization
 

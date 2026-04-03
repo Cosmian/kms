@@ -9,7 +9,7 @@ The KMS scales efficiently through:
 
 - **Vertical scaling**: Adding CPUs on the same machine
 - **Horizontal scaling**: Deploying across multiple machines with load balancing
-- **High availability**: Support for [high-availability configuration](./installation/high_availability_mode.md)
+- **High availability**: Support for [high-availability configuration](../installation/high_availability_mode.md)
 
 ## Performance Considerations
 
@@ -17,7 +17,7 @@ Cryptographic operations themselves are rarely the bottleneck. The key factors a
 
 1. **Network latency**: Minimizing the distance between the KMS and client applications
 2. **CPU resources**: Allocating sufficient processing power for concurrent operations
-3. **Database performance**: Using optimized [database configurations](./database.md)
+3. **Database performance**: Using optimized [database configurations](../configuration/database.md)
 
 ## Deployment Architecture
 
@@ -45,13 +45,13 @@ less trusted environments.
 
 To maintain strong security while preserving performance, Cosmian KMS can be backed by Hardware Security Modules (HSMs):
 
-- HSM integration details are explained in the [HSM support section](./hsms/index.md)
+- HSM integration details are explained in the [HSM support section](../hsm_support/introduction/index.md)
 - HSM master keys wrap all application keys handled by the KMS
 - This protects keys at rest while only exposing the cleartext application keys in memory cache; the cache expiration
   delay is configurable
-- Supported HSMs include [Trustway Proteccio](./hsms/proteccio.md) and [Utimaco](./hsms/utimaco.md)
+- Supported HSMs include [Trustway Proteccio](../hsm_support/proteccio.md) and [Utimaco](../hsm_support/utimaco.md)
 
-For additional security details, see the [FIPS 140-3 compliance](./fips.md) and [zeroization](./zeroization.md)
+For additional security details, see the [FIPS 140-3 compliance](../certifications_and_compliance/fips.md) and [zeroization](../certifications_and_compliance/zeroization.md)
 documentation.
 
 ### Additional Protection in Public Clouds
@@ -67,5 +67,5 @@ the [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/).
 For practical examples of integrating the KMS for high-volume operations, see:
 
 - [Client-side and application-level encryption](./client_side_and_application_level_encryption.md)
-- [Google Workspace Client-Side Encryption](./google_cse/index.md)
-- [Microsoft Double Key Encryption](./ms_dke/index.md)
+- [Google Workspace Client-Side Encryption](../integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
+- [Microsoft Double Key Encryption](../integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)

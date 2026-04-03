@@ -1,0 +1,16 @@
+# Cosmian EKM provider for SQL Server — example configuration
+#
+# Place this file at: C:\ProgramData\Cosmian\EKM\config.toml
+# Refer to ms_sql_server.md for field descriptions and setup steps.
+
+max_age_seconds = 1800
+stale_collector_period_seconds = 120
+
+[kms]
+server_url = "https://localhost:9998"
+accept_invalid_certs = false          # set true only for local dev
+
+[[kms.certificates]]
+username = "admin"
+client_cert = 'C:\ProgramData\Cosmian\EKM\admin.cert.pem'
+client_key  = 'C:\ProgramData\Cosmian\EKM\admin.key.pem'

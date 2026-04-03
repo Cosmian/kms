@@ -80,7 +80,7 @@ hostname = "0.0.0.0"
 ### Override the default configuration
 
 The default configuration can be overridden remotely by using the
-[Cosmian VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli)
+[Cosmian VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine)
 without any SSH connection.
 
 It is safe to provide secrets (such as passwords) in
@@ -88,7 +88,7 @@ the configuration file because this file is going to be stored in the encrypted
 folder (LUKS) of the Cosmian VM KMS (which is mounted by default on `/var/lib/cosmian_vm/data`).
 
 Cosmian VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker).
-Please follow the [installation instructions](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli).
+Please follow the [installation instructions](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine).
 
 Then proceed as follows:
 
@@ -146,7 +146,7 @@ journalctl -u cosmian_vm_agent
 
 ```console
 $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
-"5.19.0"
+"5.20.0"
 ```
 
 !!! info "Why `--allow-insecure-tls` and `--insecure` flags?"

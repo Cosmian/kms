@@ -104,7 +104,7 @@ The logs are available in `[C2P_DIR]/logs/c2p.trc`.
 
 ## KMS Configuration
 
-When using the [TOML configuration file](../server_configuration_file.md#toml-configuration-file), enable HSM support by setting these parameters:
+When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), enable HSM support by setting these parameters:
 
 ```toml
 hsm_model = "crypt2pay"

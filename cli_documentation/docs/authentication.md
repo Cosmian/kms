@@ -24,10 +24,33 @@ The CLI supports multiple authentication methods for the KMS:
 |--------|------------------------|----------|
 | None (Default) | Only `server_url` | Development environments |
 | Access Token | `access_token` | Simple API token authentication |
-| TLS Client Certificate (PEM) | `ssl_client_pem_cert_path`, `ssl_client_pem_key_path` | Certificate-based auth — FIPS-compatible |
-| TLS Client Certificate (PKCS#12) | `ssl_client_pkcs12_path`, `ssl_client_pkcs12_password` | Certificate-based auth — non-FIPS only |
+| TLS Client Certificate (PEM) | `tls_client_pem_cert_path`, `tls_client_pem_key_path` | Certificate-based auth — FIPS-compatible |
+| TLS Client Certificate (PKCS#12) | `tls_client_pkcs12_path`, `tls_client_pkcs12_password` | Certificate-based auth — non-FIPS only |
 | OAuth2/OIDC | `oauth2_conf` section | SSO with identity providers |
 | Database Secret | `database_secret` | Encrypted database access |
+
+## Authenticating Using a Bearer / Access Token
+
+When the KMS server is configured with JWT/OIDC authentication, the CLI can authenticate
+using a static bearer token (e.g., a short-lived JWT obtained from your identity provider)
+set directly in the configuration file.
+
+```toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+
+# JWT bearer token sent in the Authorization: Bearer <token> header.
+# Obtain from your identity provider (Google, Azure AD, Keycloak, …) or
+# from ckms login after configuring the oauth2_conf section.
+access_token = "<JWT_BEARER_TOKEN>"
+```
+
+> See [`test_data/configs/ckms_jwt.toml`](https://github.com/Cosmian/test_data/blob/main/configs/ckms_jwt.toml)
+> for a full example combining `access_token`, `oauth2_conf`, and `database_secret`.
+
+When the server enforces an API token (a symmetric key registered server-side via
+`api_token_id`), set the same value as `access_token` in the CLI config — the CLI
+sends it as a bearer token and the server validates it against the registered key ID.
 
 ## Authenticating Using TLS Client Certificates
 
@@ -41,24 +64,35 @@ This format works in both FIPS and non-FIPS builds.
 
 ```toml
 [http_config]
-server_url = "https://kms.acme.com:9999"
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
 
-# Client certificate in PEM format (leaf, optionally with chain)
-ssl_client_pem_cert_path = "/path/to/client.crt"
+# Path to the client certificate in PEM format (.crt or .pem).
+# The file may contain a single leaf certificate or a full chain (leaf + intermediates).
+tls_client_pem_cert_path = "/path/to/client.crt"
 
-# Client private key in PEM format (PKCS#8 or traditional RSA/EC)
-ssl_client_pem_key_path = "/path/to/client.key"
+# Path to the client private key in PEM format (.key or .pem).
+# Supported formats: PKCS#8 (-----BEGIN PRIVATE KEY-----) and traditional RSA/EC.
+tls_client_pem_key_path = "/path/to/client.key"
 ```
+
+> Full example: [`test_data/configs/client/pem_cert_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pem_cert_auth.toml)
 
 Combined with a bearer token (multi-factor authentication):
 
 ```toml
 [http_config]
-server_url = "https://kms.acme.com:9999"
-ssl_client_pem_cert_path = "/path/to/client.crt"
-ssl_client_pem_key_path  = "/path/to/client.key"
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
+tls_client_pem_cert_path = "/path/to/client.crt"
+tls_client_pem_key_path = "/path/to/client.key"
+
+# JWT bearer token sent in the Authorization: Bearer <token> header.
+# Obtain from your identity provider (Google, Azure AD, Keycloak, …).
 access_token = "<JWT_BEARER_TOKEN>"
 ```
+
+> Full example: [`test_data/configs/client/pem_cert_and_token_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pem_cert_and_token_auth.toml)
 
 ### PKCS#12 format (non-FIPS only)
 
@@ -66,10 +100,18 @@ Provide the certificate and private key bundled in a single PKCS#12 file (`.p12`
 
 ```toml
 [http_config]
-server_url = "https://kms.acme.com:9999"
-ssl_client_pkcs12_path = "/path/to/client.p12"
-ssl_client_pkcs12_password = "pkcs12_password"
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
+
+# Path to the PKCS#12 bundle containing the client certificate and private key.
+tls_client_pkcs12_path = "/path/to/client.p12"
+
+# Password to decrypt the PKCS#12 bundle.
+# Leave absent or set to "" if the bundle has no password.
+tls_client_pkcs12_password = "changeit"
 ```
+
+> Full example: [`test_data/configs/client/pkcs12_cert_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pkcs12_cert_auth.toml)
 
 ### Using the `ckms configure` wizard
 
@@ -292,4 +334,4 @@ exclusion_list = ["kms-host"]
 - **Redirect Errors**: Check that your identity provider allows the redirect URL
 - **Missing Email Claim**: Verify your identity provider includes the email claim in tokens
 
-For more details about PKCE authentication, see the [PKCE Authentication Guide](../key_management_system/pkce_authentication.md).
+For more details about PKCE authentication, see the [PKCE Authentication Guide](../key_management_system/configuration/pkce_authentication.md).

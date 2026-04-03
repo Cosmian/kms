@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import ECSign from "../../../src/ECSign";
+import ECSign from "../../../src/actions/EC/ECSign";
 import { smokeRender } from "../test-utils";
 
 test("renders ECSign", () => {

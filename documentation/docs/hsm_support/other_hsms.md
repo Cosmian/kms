@@ -20,7 +20,7 @@ Multiple slots can be used at the same time.
 
 #### Configuration via config file
 
-When using the [TOML configuration file](../server_configuration_file.md#toml-configuration-file), enable HSM support by
+When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), enable HSM support by
 setting these parameters:
 
 ```toml

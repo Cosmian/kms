@@ -12,10 +12,10 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 The **Cosmian KMS** presents some unique features, such as:
 
 - **Use cases**: [large-scale encryption/decryption](./documentation/docs/use_cases/encrypting_and_decrypting_at_scale.md) and [client-side/application-level encryption](./documentation/docs/use_cases/client_side_and_application_level_encryption.md), with support for signature at scale (including secp256k1 in non-FIPS mode).
-- **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/aws/xks.md), [Azure EKM](./documentation/docs/integrations/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/microsoft_365_double_key_encryption_dke/index.md).
+- **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/cloud_providers/aws/xks.md), [Azure EKM](./documentation/docs/integrations/cloud_providers/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md).
 - **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md), and [Snowflake Native App](./documentation/docs/integrations/databases/snowflake_native_app/index.md).
 - **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
-- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/synology_dsm.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/user_defined_function_for_pyspark_databricks_in_python/index.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md), [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), and [PySpark/Databricks Python UDF](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), and [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
 - **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), and [OpenTelemetry integration](./documentation/docs/configuration/logging.md).
@@ -30,7 +30,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.19.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.20.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -102,13 +102,13 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - FIPS 140-3 mode on by default; switch to `--features non-fips` for extended algorithms.
 - Reproducible builds via Nix; release artifacts ship with SHA-256 checksums.
 - Software Bill of Materials (SBOM) and vulnerability reports for server and CLI (`ckms`):
-    - CycloneDX (server): [`sbom/server/fips/static/bom.cdx.json`](sbom/server/fips/static/bom.cdx.json)
-    - SPDX (server): [`sbom/server/fips/static/bom.spdx.json`](sbom/server/fips/static/bom.spdx.json)
-    - Vulnerabilities (server): [`sbom/server/fips/static/vulns.csv`](sbom/server/fips/static/vulns.csv)
-    - CycloneDX (ckms CLI): [`sbom/ckms/fips/static/bom.cdx.json`](sbom/ckms/fips/static/bom.cdx.json)
-    - Overview: [`sbom/README.md`](sbom/README.md)
-- Cryptography Bill of Materials (CBOM): full inventory of cryptographic assets (algorithms, libraries, parameters) in CycloneDX 1.6 format.
-    - [`cbom/cbom.cdx.json`](cbom/cbom.cdx.json) — generated by `.github/scripts/sbom/generate_cbom.py`
+      - CycloneDX (server): [`sbom/server/fips/static/bom.cdx.json`](sbom/server/fips/static/bom.cdx.json)
+      - SPDX (server): [`sbom/server/fips/static/bom.spdx.json`](sbom/server/fips/static/bom.spdx.json)
+      - Vulnerabilities (server): [`sbom/server/fips/static/vulns.csv`](sbom/server/fips/static/vulns.csv)
+      - CycloneDX (ckms CLI): [`sbom/ckms/fips/static/bom.cdx.json`](sbom/ckms/fips/static/bom.cdx.json)
+      - Overview: [`sbom/README.md`](sbom/README.md)
+    - Cryptography Bill of Materials (CBOM): full inventory of cryptographic assets (algorithms, libraries, parameters) in CycloneDX 1.6 format.
+        - [`cbom/cbom.cdx.json`](cbom/cbom.cdx.json) — generated by `.github/scripts/sbom/generate_cbom.py`
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](monitoring/OTLP_METRICS.md).
 
@@ -151,7 +151,7 @@ AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service 
 
 | Delegation model     | Description                                                                                                                                                                                                                                                                  | Status |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| **XKS** (live proxy) | Key material never enters AWS; every encrypt/decrypt is proxied to Cosmian KMS — covers all AWS services that support KMS encryption (S3, EBS, RDS, DynamoDB, Secrets Manager, SQS, SNS, Redshift, OpenSearch, EMR, Glue, Lambda…) — [docs](./documentation/docs/aws/xks.md) | ✅      |
+| **XKS** (live proxy) | Key material never enters AWS; every encrypt/decrypt is proxied to Cosmian KMS — covers all AWS services that support KMS encryption (S3, EBS, RDS, DynamoDB, Secrets Manager, SQS, SNS, Redshift, OpenSearch, EMR, Glue, Lambda…) — [docs](./documentation/docs/integrations/cloud_providers/aws/xks.md) | ✅      |
 | **BYOK**             | Key material generated by you and imported once into AWS KMS; AWS holds a copy                                                                                                                                                                                               | ✅      |
 | **CMK**              | Key generated and stored inside AWS KMS; you control lifecycle only                                                                                                                                                                                                          | 🚧      |
 
@@ -161,7 +161,7 @@ Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service in
 
 | Delegation model     | Description                                                                                                                                                                                                                                      | Status |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| **EKM** (live proxy) | Key material never leaves Cosmian KMS; Azure services proxy encrypt/decrypt operations to Cosmian KMS via mTLS — [docs](./documentation/docs/azure/ekm/ekm.md)                                                                                   | ✅      |
+| **EKM** (live proxy) | Key material never leaves Cosmian KMS; Azure services proxy encrypt/decrypt operations to Cosmian KMS via mTLS — [docs](./documentation/docs/integrations/cloud_providers/azure/ekm.md)                                                                                   | ✅      |
 | **DKE** (live proxy) | Key material never leaves Cosmian KMS; M365 / Purview requires both your key and Microsoft's key to decrypt                                                                                                                                      | ✅      |
 | **BYOK**             | Key material generated by you, imported once into Azure Key Vault; Azure holds a copy — applies to Azure Information Protection (AIP)                                                                                                            | ✅      |
 | **BYOK / CMK**       | Key imported or generated inside Azure Key Vault; applies to all remaining Azure data services (Storage, Disk Encryption, SQL/Managed Instance TDE, Cosmos DB, Synapse, Databricks, Container Registry, Monitor, Service Bus, ASK etcd, Backup…) | ✅      |
@@ -174,8 +174,8 @@ GCP EKM is a **single proxy gateway** — like AWS XKS, implementing EKM once co
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | **EKM** (live proxy)           | Key material never enters GCP; every encrypt/decrypt is proxied to Cosmian KMS — covers all CMEK-capable GCP services                                   | ✅      |
 | **Workspace CSE** (live proxy) | Google Workspace Client-Side Encryption; keys held exclusively in Cosmian KMS                                                                           | ✅      |
-| **CSEK**                       | Customer-Supplied Encryption Key: symmetric key generated in Cosmian KMS, wrapped with Google's CSEK certificate and supplied per-request — [docs](./documentation/docs/google_gcp/csek.md) | ✅      |
-| **BYOK / CMEK**                | Key material generated in Cosmian KMS, wrapped with Google's import wrapping key, and imported into Cloud KMS — [docs](./documentation/docs/google_gcp/cmek.md)                           | ✅      |
+| **CSEK**                       | Customer-Supplied Encryption Key: symmetric key generated in Cosmian KMS, wrapped with Google's CSEK certificate and supplied per-request — [docs](./documentation/docs/integrations/cloud_providers/google_gcp/csek.md) | ✅      |
+| **BYOK / CMEK**                | Key material generated in Cosmian KMS, wrapped with Google's import wrapping key, and imported into Cloud KMS — [docs](./documentation/docs/integrations/cloud_providers/google_gcp/cmek.md)                           | ✅      |
 | **CMK**                        | Key generated and stored in Cloud KMS; you control lifecycle only                                                                                       | 🚧      |
 
 #### Oracle Cloud Infrastructure (OCI)
@@ -192,25 +192,39 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 ### 🗄️ Database Integrations
 
-| Product            | Integration                                               | Status |
-| ------------------ | --------------------------------------------------------- | ------ |
-| Oracle DB          | TDE via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/oracle/tde/)) | ✅      |
-| MongoDB            | CSFLE / Queryable Encryption via KMIP                     | ✅      |
-| MySQL Enterprise   | TDE via KMIP ([docs](./documentation/docs/mysql.md))      | ✅      |
-| Percona PostgreSQL | TDE via KMIP ([docs](./documentation/docs/percona.md))    | ✅      |
-| HashCorp Vault     | Key transit / secrets engine via KMIP                     | 🚧      |
-| CockroachDB        | TDE via KMIP                                              | 🚧      |
+| Product             | Integration                                                                                                                                                                           | Status |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Oracle Database     | TDE via PKCS#11 ([docs](./documentation/docs/integrations/databases/oracle_tde.md))                                                                                                  | ✅      |
+| MongoDB             | CSFLE / Queryable Encryption via KMIP ([docs](./documentation/docs/integrations/databases/mongodb.md))                                                                                | ✅      |
+| MySQL Enterprise    | TDE via KMIP ([docs](./documentation/docs/integrations/databases/mysql.md))                                                                                                          | ✅      |
+| Percona PostgreSQL  | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                                                                                        | ✅      |
+| Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md))                                                                    | ✅      |
+| Snowflake           | Native App — column-level encryption via KMIP ([docs](./documentation/docs/integrations/databases/snowflake_native_app/index.md))                                                    | ✅      |
 
-### 💾 Storage & Data Platform Integrations
+### 💿 Disk Encryption
 
-| Product                | Integration                                                                                          | Status |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- | ------ |
-| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/vcenter.md))                                         | ✅      |
-| VeraCrypt              | Virtual disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/veracrypt/)) | ✅      |
-| LUKS                   | Linux disk encryption via PKCS#11 ([docs](https://docs.cosmian.com/cosmian_cli/pkcs11/luks/))        | ✅      |
-| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/synology_dsm.md))                         | ✅      |
-| Snowflake              | UDF-based column encryption ([docs](./documentation/docs/snowflake/index.md))                        | ✅      |
-| Big Data / Python UDFs | Bulk encrypt/decrypt ([docs](./documentation/docs/python_udf/index.md))                              | ✅      |
+| Product   | Integration                                                                                                               | Status |
+| --------- | ------------------------------------------------------------------------------------------------------------------------- | ------ |
+| VeraCrypt | Virtual disk encryption via PKCS#11 ([docs](./documentation/docs/integrations/disk_encryption/veracrypt.md))             | ✅      |
+| LUKS      | Linux disk encryption via PKCS#11 ([docs](./documentation/docs/integrations/disk_encryption/luks.md))                   | ✅      |
+| Cryhod    | Disk encryption ([docs](./documentation/docs/integrations/disk_encryption/cryhod.md))                                    | ✅      |
+
+### 💾 Storage Integrations
+
+| Product                | Integration                                                                                                                                                          | Status |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/integrations/storage/vcenter.md))                                                                                            | ✅      |
+| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/storage/synology_dsm.md))                                                                           | ✅      |
+| Veeam Backup           | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/storage/veeam.md))                                                                        | ✅      |
+| Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md))             | ✅      |
+
+### 🔗 Other Integrations
+
+| Product  | Integration                                                                                                                  | Status |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- | ------ |
+| OpenSSH  | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                                     | ✅      |
+| S/MIME   | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                                        | ✅      |
+| PyKMIP   | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md))               | ✅      |
 
 ---
 

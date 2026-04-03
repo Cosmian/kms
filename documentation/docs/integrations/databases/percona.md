@@ -10,10 +10,10 @@ This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` e
 
 Before starting, ensure you have:
 
-- PostgreSQL 17 [Percona Server for PostgreSQL 17.x or later](1)
+- PostgreSQL 17 [Percona Server for PostgreSQL 17.x or later][1]
 - `pg_tde` extension installed
 - Access to a running Cosmian KMS server
-- Appropriate SSL certificates for KMIP communication [TLS 1.2+](2)
+- Appropriate SSL certificates for KMIP communication [TLS 1.2+][2]
 
 ---
 
@@ -212,7 +212,7 @@ SHOW pg_tde.inherit_global_providers;
 |-----------|--------|---------|
 | Tables `USING tde_heap` | ✓ Encrypted | Complete row data, all columns[3] |
 | Index on TDE tables | ✓ Encrypted | B-trees, Hash, GiST, GIN, BRIN, etc.[3] |
-| TOAST tables | ✓ Encrypted | Compressed/out-of-page data [e.g. long TEXT](3) |
+| TOAST tables | ✓ Encrypted | Compressed/out-of-page data [e.g. long TEXT][3] |
 | Sequences (TDE tables) | ✓ Encrypted | Related to encrypted tables[3] |
 | Temporary tables (TDE) | ✓ Encrypted | Temporary tables for TDE data operations[3] |
 
@@ -220,7 +220,7 @@ SHOW pg_tde.inherit_global_providers;
 
 | Component | With `pg_tde.wal_encrypt = on` | Details |
 |-----------|--------------------------------|---------|
-| WAL (Write-Ahead Log) | ✓ Encrypted | Transaction logs [GA status since v17.5.3](4) |
+| WAL (Write-Ahead Log) | ✓ Encrypted | Transaction logs [GA status since v17.5.3][4] |
 | WAL before images | ✓ Encrypted | Row states before modification[4] |
 | WAL after images | ✓ Encrypted | Row states after modification[4] |
 
@@ -278,7 +278,7 @@ flowchart TB
 | **Generation** | Automatic when `CREATE TABLE ... USING tde_heap`[3] |
 | **Identifier** | Unique OID (Object Identifier) per relation[3] |
 | **Location** | `$PGDATA/pg_tde/<database_oid>/`[3] |
-| **File** | `<relation_oid>.key` [binary, encrypted](3) |
+| **File** | `<relation_oid>.key` [binary, encrypted][3] |
 | **Visibility** | Not readable directly without Principal Key[3] |
 | **Rotation** | Via `VACUUM FULL`, `ALTER TABLE SET ACCESS METHOD`, or `CREATE TABLE AS SELECT`[3] |
 
@@ -303,8 +303,8 @@ $PGDATA/pg_tde/
 
 | Aspect | Detail | Recommendation |
 |--------|--------|-----------------|
-| **File Permissions** | Inherited from `$PGDATA` [pg:pg 700](3) | ✓ Good, ensure root cannot read |
-| **Backup Protection** | DEK files copied with backup [remain encrypted](3) | ✓ Safe for off-site storage |
+| **File Permissions** | Inherited from `$PGDATA` [pg:pg 700][3] | ✓ Good, ensure root cannot read |
+| **Backup Protection** | DEK files copied with backup [remain encrypted][3] | ✓ Safe for off-site storage |
 | **RAM Cache** | Principal Key and DEKs decrypted in RAM[3] | ⚠️ Protect with: lock_memory, disable core dumps |
 | **Swap Memory** | Keys can be paged to swap[3] | ⚠️ Use encrypted swap (dm-crypt, zswap) |
 
@@ -723,7 +723,6 @@ postgresql:
     shared_preload_libraries: pg_tde
     pg_tde.wal_encrypt: on
     pg_tde.enforce_encryption: on
-
     # Archive settings
     archive_mode: on
     archive_command: "pg_tde_archive_decrypt %f %p | pgbackrest archive-push %p"
@@ -788,11 +787,16 @@ postgresql:
 
 ### References
 
-- [Percona pg_tde Documentation][https://percona.github.io/pg_tde/main/](1)
-- [Cosmian KMS KMIP Support][https://docs.cosmian.com/key_management_system/kmip/](2)
-- [Percona pg_tde Architecture][https://docs.percona.com/pg-tde/architecture/architecture.html](3)
-- [Percona WAL Encryption Blog (2025-09-01)][https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/](4)
-- [Percona pg_tde Limitations][https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools](5)
+- [Percona pg_tde Documentation](https://percona.github.io/pg_tde/main/)
+- [Cosmian KMS KMIP Support](https://docs.cosmian.com/key_management_system/kmip/)
+- [Percona pg_tde Architecture](https://docs.percona.com/pg-tde/architecture/architecture.html)
+- [Percona WAL Encryption Blog (2025-09-01)](https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/)
+- [Percona pg_tde Limitations](https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools)
+
+[1]: https://percona.github.io/pg_tde/main/
+[2]: https://docs.cosmian.com/key_management_system/kmip/
+[3]: https://docs.percona.com/pg-tde/architecture/architecture.html
+[4]: https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/
 
 ---
 

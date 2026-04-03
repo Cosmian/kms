@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import ECDecrypt from "../../../src/ECDecrypt";
+import ECDecrypt from "../../../src/actions/EC/ECDecrypt";
 import { smokeRender } from "../test-utils";
 
 test("renders ECDecrypt", () => {

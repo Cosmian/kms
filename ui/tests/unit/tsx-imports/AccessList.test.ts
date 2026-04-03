@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import AccessList from "../../../src/AccessList";
+import AccessList from "../../../src/actions/Access/AccessList";
 import { smokeRender } from "../test-utils";
 
 test("renders AccessList", () => {

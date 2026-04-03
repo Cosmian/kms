@@ -129,7 +129,7 @@ async fn parse_jwks(
 ) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
-    let mut client = Client::builder();
+    let mut client = Client::builder().timeout(std::time::Duration::from_secs(30));
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {
@@ -198,4 +198,107 @@ async fn parse_jwks(
         kms_error!("Failed to reconstruct JWKS from array of JWK at `{jwks_uri}`: {e}: {jwks:#?}")
     })?;
     Ok((jwks_uri.clone(), jwks))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use super::*;
+
+    // RFC 7517 Appendix A.1 — RSA public key used as a stable test fixture.
+    const SAMPLE_RSA_JWK_KID: &str = "test-key-rfc7517";
+    const SAMPLE_JWKS: &str = r#"{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"test-key-rfc7517","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhmstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"}]}"#;
+
+    /// Spawn an async one-shot HTTP/1.1 server on a random port.
+    ///
+    /// The server runs as a `tokio::spawn` task on the **same** event-loop as
+    /// the test, avoiding the race between a std-thread and the tokio runtime
+    /// (which causes `hyper::Error(UnexpectedMessage)` when the server writes a
+    /// response before the client has sent the request).
+    ///
+    /// The server reads the incoming request (to drain the socket buffer) and
+    /// then writes a complete HTTP/1.1 response with the provided `body`.
+    async fn one_shot_http_server(body: &'static str) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0_u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap(); // drain HTTP request headers
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        port
+    }
+
+    /// A valid JWKS with a single RFC 7517 RSA key is fetched and parsed correctly.
+    #[actix_web::test]
+    async fn test_parse_jwks_valid_rsa_key() {
+        let port = one_shot_http_server(SAMPLE_JWKS).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+
+        assert_eq!(res_url, url);
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(
+            jwks.keys.first().and_then(|k| k.common.key_id.as_deref()),
+            Some(SAMPLE_RSA_JWK_KID)
+        );
+    }
+
+    /// A response without the "keys" field returns an error.
+    #[actix_web::test]
+    async fn test_parse_jwks_missing_keys_field() {
+        let port = one_shot_http_server(r#"{"not_keys": []}"#).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let err = parse_jwks(&url, &None).await.unwrap_err();
+
+        assert!(
+            err.to_string().contains("JSON key 'keys' not found"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A response with an empty "keys" array returns an error.
+    #[actix_web::test]
+    async fn test_parse_jwks_empty_keys_array() {
+        let port = one_shot_http_server(r#"{"keys": []}"#).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let err = parse_jwks(&url, &None).await.unwrap_err();
+
+        assert!(
+            err.to_string().contains("No valid JWK found"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Invalid JWK entries in the array are silently skipped;
+    /// the function succeeds as long as at least one valid entry remains.
+    #[actix_web::test]
+    async fn test_parse_jwks_skips_invalid_keys_keeps_valid() {
+        const MIXED_JWKS: &str = r#"{"keys":[{"invalid":"key"},{"kty":"RSA","use":"sig","kid":"valid-key","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhmstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"RS256"}]}"#;
+        let port = one_shot_http_server(MIXED_JWKS).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let (_, jwks) = parse_jwks(&url, &None).await.unwrap();
+
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(
+            jwks.keys.first().and_then(|k| k.common.key_id.as_deref()),
+            Some("valid-key")
+        );
+    }
 }

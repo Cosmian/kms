@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import CovercryptUserKey from "../../../src/CovercryptUserKey";
+import CovercryptUserKey from "../../../src/actions/Covercrypt/CovercryptUserKey";
 import { smokeRender } from "../test-utils";
 
 test("renders CovercryptUserKey", () => {

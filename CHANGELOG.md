@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.20.0] - 2026-04-03
+
+### 🚀 Features
+
+#### Support Veeam Backup via KMIP 1.x Protocol
+
+- **`KmipUnexpectedTagException` when Veeam Backup decodes a `Get` response for an asymmetric key**: Cosmian KMS was embedding all object-metadata attributes (including `Link`, `UniqueIdentifier`, `State`, `Name`, etc.) inside the `KeyValue` structure of the returned key object. KMIP 1.x clients such as Veeam Backup do not expect these non-cryptographic attributes inside `KeyValue` and fail with `Unexpected Tag 66, expected Attribute`. Fixed by stripping all embedded `KeyValue` attributes for `PublicKey` and `PrivateKey` objects in KMIP 1.x `Get` responses (`perform_response_tweaks` in `routes/kmip.rs`). Cryptographic metadata (algorithm, length) is still exposed at the `KeyBlock` level.
+
+### 📚 Documentation
+
+- **Fix CLI authentication docs**: correct wrong field names (`ssl_client_pem_cert_path` / `ssl_client_pkcs12_path` → `tls_client_*`), add dedicated bearer/access-token section, and link each TOML example to the corresponding `test_data/configs/client/*.toml` reference file in `cli_documentation/docs/authentication.md` ([#895](https://github.com/Cosmian/kms/issues/895))
+- **Reorganize storage integration docs**: move `vcenter.md`, `synology_dsm.md`, `veeam.md`, `openssh.md`, `pykmip.md`, `smime.md`, `user_defined_function_for_pyspark_databricks_in_python/`, and `disk_encryption/` from `documentation/docs/integrations/` root into the dedicated `documentation/docs/integrations/storage/` subfolder; update `mkdocs.yml`, `README.md`, `documentation/docs/index.md`, and `CLAUDE.md` accordingly ([#874](https://github.com/Cosmian/kms/pull/874))
+- Align README.md with documentation/docs
+- Fix refactor and dead links (#898)
+
+### 🐛 Bug Fixes
+
+### KMIP Socket Server
+
+- **TLS session resumption failure with mTLS clients**: the TCP socket server (`cosmian_kms_server::socket_server`) was missing a call to `SSL_CTX_set_session_id_context`. When client certificate verification (`SSL_VERIFY_PEER`) is enabled alongside the default TLS session cache, OpenSSL requires a session ID context to be set; without it any session-resumption attempt aborts with `error:0A000115:SSL routines:ssl_get_prev_session:session id context uninitialized`. Fixed by calling `builder.set_session_id_context(b"cosmian_kms_socket")` in `create_openssl_acceptor` before building the acceptor.
+
+### ⚙️ Miscellaneous Tasks
+
+- Refactoring + deduplicate of the UI codebase (#737)
+
 ## [5.19.0] - 2026-04-01
 
 ### 🚀 Features
@@ -175,30 +200,6 @@ CLI: `--hsm-admin alice --hsm-admin bob`; env: `KMS_HSM_ADMIN=alice,bob`.
 JWT validation: complete migration from `alcoholic_jwt` to `jsonwebtoken` in server middleware,
 adding support for multiple algorithms (RS256, ES256, ...).
 Update the documentation, Google CSE routes, and OIDC UI auth flow; updated Google CSE tests accordingly.
-
-#### OpenSSH PKCS#11 integration (`ssh-auth` tag)
-
-SSH key pairs tagged with `ssh-auth` in the KMS are now automatically exposed by
-`libcosmian_pkcs11.so` as OpenSSH identity keys. The private key never leaves the KMS: every
-`C_Sign` call is forwarded to the KMS Sign API and only the signature is returned to the SSH
-client.
-
-- **Remote signing**: `Pkcs11PrivateKey::sign()` now delegates to the KMS via `KmsClient::sign()`.
-  Supported mechanisms: `CKM_ECDSA` (NIST P-256/P-384), `CKM_EDDSA` (Ed25519, non-FIPS),
-  `CKM_RSA_PKCS` (RSA-2048/4096), `CKM_RSA_PKCS_*` (RSA with SHA-1/256/384/512), and
-  `CKM_RSA_PKCS_PSS`.
-- **Key discovery**: `find_all_private_keys()` and `find_all_public_keys()` now query both the
-  `disk-encryption` tag (existing) and the new `ssh-auth` tag. The tag name is overridable via
-  the `COSMIAN_PKCS11_SSH_KEY_TAG` environment variable.
-- **EC public-key SPKI parsing**: `Pkcs11PublicKey::try_from_kms_object()` now correctly
-  identifies ECDSA keys by inspecting the curve OID in the SPKI `AlgorithmIdentifier` parameters
-  (`id-ecPublicKey` OID `1.2.840.10045.2.1`) rather than the algorithm OID.
-- **EdDSA / `CKM_EDDSA`**: new `SignatureAlgorithm::EdDsa` variant and `Mechanism::EdDsa`
-  (`CKM_EDDSA = 0x1057`) added to the PKCS#11 provider.
-- **Integration tests**: `test_ssh_rsa_sign`, `test_ssh_ecdsa_p256_sign`, and
-  `test_ssh_key_discovery` added to the provider test suite.
-- **Documentation**: new `cli_documentation/docs/pkcs11/openssh.md` guide covering key creation,
-  public-key export, SSH client configuration, supported algorithms, and troubleshooting.
 
 #### HMAC-SHA-1 and HMAC-SHA-224 Support ([#786](https://github.com/Cosmian/kms/issues/786)) ([#797](https://github.com/Cosmian/kms/pull/797))
 

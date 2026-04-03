@@ -3,8 +3,8 @@
   "build": {
     "variant": "fips",
     "derivation": "kms-server-fips-static-openssl",
-    "output_path": "/nix/store/ayiadr30dw859cjf3zxb02w05brwdn5n-cosmian-kms-server-5.19.0",
-    "timestamp": "2026-04-01T11:18:08Z",
+    "output_path": "/nix/store/2d7bm5xp8y5m96b9g5q9psh2p41ildnq-cosmian-kms-server-5.20.0",
+    "timestamp": "2026-04-03T10:56:55Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.7.4"

@@ -86,7 +86,7 @@ SystemCallFilter=~ptrace
 
 # Hardening: Network restrictions
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-IPAddressDeny=any
+IPAddressAllow=any
 IPAddressAllow=localhost
 IPAddressAllow=10.0.0.0/8
 IPAddressAllow=172.16.0.0/12

@@ -26,7 +26,7 @@ installation with the `p11tool2` utility, by running, for instance,
 
 At least one slot and its corresponding password must be configured. Any slot and any number of slots may be used.
 
-When using the [TOML configuration file](../server_configuration_file.md#toml-configuration-file), the HSM support is enabled by configuring these 4 parameters:
+When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), the HSM support is enabled by configuring these 4 parameters:
 
 ```toml
 hsm_model = "utimaco"

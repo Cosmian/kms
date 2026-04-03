@@ -17,7 +17,7 @@ and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://gi
 ## Main use case and benefits
 
 Aside from providing a single interface to manage both KMS and HSM keys, the main use case for HSM support is to host keys in the KMS that
-are [wrapped by keys stored in the HSM](./hsm_operations.md/#creating-a-kms-key-wrapped-by-an-hsm-key).
+are [wrapped by keys stored in the HSM](../hsm_operations.md#creating-a-kms-key-wrapped-by-an-hsm-key).
 
 This combination provides the best of both worlds:
 
