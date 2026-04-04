@@ -117,7 +117,7 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = { workspace = true }
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.20.0" }
+cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.20.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.20.0" }
 native-tls = { workspace = true }
 pem = { workspace = true }

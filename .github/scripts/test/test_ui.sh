@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../common.sh"
 
 REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
-WASM_CRATE="${REPO_ROOT}/crate/wasm"
+WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
 UI_DIR="${REPO_ROOT}/ui"
 
 init_build_env "$@"

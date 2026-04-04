@@ -1,4 +1,4 @@
-use ckms::reexport::cosmian_kms_cli::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_pkcs11_module::{ModuleError, ModuleResult, traits::DataObject};
 use sha3::Digest;
 use zeroize::{Zeroize, Zeroizing};

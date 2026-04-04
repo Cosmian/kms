@@ -8,7 +8,7 @@ pub mod proxy_config;
 pub use commands::{Cli, CliCommands, ckms_main};
 
 pub mod reexport {
-    pub use cosmian_kms_cli;
+    pub use cosmian_kms_cli_actions;
 }
 
 #[cfg(all(test, feature = "non-fips"))]

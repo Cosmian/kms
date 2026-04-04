@@ -1,6 +1,6 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
-use ckms::reexport::cosmian_kms_cli::reexport::{
+use ckms::reexport::cosmian_kms_cli_actions::reexport::{
     cosmian_kmip::{KmipError, kmip_0::kmip_types::ErrorReason},
     cosmian_kms_client::KmsClientError,
 };

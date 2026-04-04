@@ -79,13 +79,15 @@ Do not use either SKIP environment variable to bypass pre-commit hooks.
 ```text
 crate/
   access/           cosmian_kms_access         — access-control utilities
-  cli/              cosmian_kms_cli            — CLI client binary
   clients/
-    ckms/           ckms                       — CLI command tree (subcommands live here)
+    clap/           cosmian_kms_cli_actions    — CLI actions library (clap commands)
+    client/         cosmian_kms_client         — HTTP client library
+    client_utils/   cosmian_kms_client_utils   — shared client helpers
+    ckms/           ckms                       — CLI binary (subcommands live here)
     pkcs11/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
-  client_utils/     cosmian_kms_client_utils   — shared client helpers
+    wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
   crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
@@ -97,11 +99,9 @@ crate/
   interfaces/       cosmian_kms_interfaces     — Database/HSM traits
   kmip/             cosmian_kmip               — KMIP 2.1 protocol types
   kmip-derive/      kmip-derive                — proc-macros for KMIP serialisation
-  kms_client/       cosmian_kms_client         — HTTP client library
   server/           cosmian_kms_server         — server binary + lib (main codebase)
   server_database/  cosmian_kms_server_database — DB backends (SQLite, PostgreSQL, Redis-findex)
   test_kms_server/  test_kms_server            — in-process test server helper
-  wasm/             cosmian_kms_client_wasm    — WASM client for the web UI
 
 .github/            CI workflows (.github/workflows/) and helper scripts (.github/scripts/)
 cbom/               Cryptographic Bill of Materials (CBOM)
@@ -170,8 +170,9 @@ When you need to change something, start here:
 | Crypto primitives | `crate/crypto/src/` |
 | OpenSSL build script | `crate/crypto/build.rs` |
 | DB backend implementations | `crate/server_database/src/` |
-| CLI commands | `crate/clients/ckms/src/` |
-| WASM bindings | `crate/wasm/src/` |
+| CLI actions (clap commands) | `crate/clients/clap/src/` |
+| CLI binary entry point | `crate/clients/ckms/src/` |
+| WASM bindings | `crate/clients/wasm/src/` |
 | Web UI source | `ui/src/` |
 | E2E tests (Playwright) | `ui/tests/e2e/` |
 | E2E test helpers | `ui/tests/e2e/helpers.ts` |
@@ -283,7 +284,7 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 ### E2E test flow (`test_ui.sh`)
 
 1. Build WASM: `wasm-pack build --target web --features non-fips`
-2. Copy `crate/wasm/pkg/` → `ui/src/wasm/pkg/`
+2. Copy `crate/clients/wasm/pkg/` → `ui/src/wasm/pkg/`
 3. Install deps: `pnpm install --frozen-lockfile`
 4. Build UI: `VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build` (runs `tsc -b && vite build`)
 5. Install Playwright browser: `pnpm exec playwright install chromium`

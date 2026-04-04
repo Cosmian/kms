@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cosmian_config_utils::{ConfigUtils, location};
-use cosmian_kms_cli::reexport::cosmian_kms_client::KmsClientConfig;
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientConfig;
 use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
 
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_toml_roundtrip_with_cert_auth() {
-        use cosmian_kms_cli::reexport::cosmian_kms_client::{
+        use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
             KmsClientConfig, reexport::cosmian_http_client::HttpClientConfig,
         };
 
