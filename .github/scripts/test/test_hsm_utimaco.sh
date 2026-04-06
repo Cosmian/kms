@@ -112,7 +112,7 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
     TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" \
     TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
-    cargo test -p cosmian_kms_cli \
+    cargo test -p cosmian_kms_cli_actions \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- --nocapture kmip_2_1_xml_pkcs11_m_1_21 --ignored
 
@@ -127,7 +127,7 @@ if [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT
     TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" \
     TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
     TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
-    cargo test -p cosmian_kms_cli \
+    cargo test -p cosmian_kms_cli_actions \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- --nocapture hsm_google_cse --ignored
 else

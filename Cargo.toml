@@ -8,10 +8,10 @@ members = [
   # Common crates
   "crate/kmip",
   # Client crates
-  "crate/client_utils",
-  "crate/kms_client",
-  "crate/wasm",
-  "crate/cli",
+  "crate/clients/client_utils",
+  "crate/clients/client",
+  "crate/clients/wasm",
+  "crate/clients/clap",
   "crate/clients/ckms",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",

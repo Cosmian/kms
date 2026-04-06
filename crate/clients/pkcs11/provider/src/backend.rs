@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ckms::reexport::cosmian_kms_cli::reexport::{
+use ckms::reexport::cosmian_kms_cli_actions::reexport::{
     cosmian_kmip::kmip_2_1::{
         extra::tagging::{
             SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY,

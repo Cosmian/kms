@@ -42,18 +42,18 @@ if ! command -v wasm-pack >/dev/null 2>&1 || ! wasm-pack --version 2>/dev/null |
 fi
 
 # Build WASM component
-cd crate/wasm
+cd crate/clients/wasm
 # shellcheck disable=SC2086
 wasm-pack build --target web --release $CARGO_FEATURES
 
 # Copy WASM artifacts to UI directory
-WASM_DIR="../../ui/src/wasm/"
+WASM_DIR="../../../ui/src/wasm/"
 rm -rf "$WASM_DIR"
 mkdir -p "$WASM_DIR"
 cp -R pkg "$WASM_DIR"
 
 # Build UI
-cd ../../ui # current path: ./ui
+cd ../../../ui # current path: ./ui
 rm -rf node_modules
 
 if ! command -v pnpm >/dev/null 2>&1; then

@@ -40,13 +40,15 @@ node_major_version() {
   echo "${v%%.*}"
 }
 
-# wasm-bindgen-test-runner and the UI toolchain require a reasonably modern Node.
-# If an old Node is active (e.g. via nvm), prefer running inside nix-shell.
+# wasm-bindgen-test-runner 0.2.108 crashes with V8 fatal errors on Node < 22
+# (tested: Node 18 hits a null-pointer dereference inside WebAssembly.instantiate).
+# If an old Node is active (e.g. via nvm/system apt), prefer running inside nix-shell
+# which provides Node 22.
 if [ "${IN_NIX_NODE_SHELL:-0}" != "1" ]; then
   node_major="$(node_major_version)"
-  if [ "$node_major" -gt 0 ] && [ "$node_major" -lt 18 ] && command -v nix-shell >/dev/null 2>&1; then
+  if [ "$node_major" -gt 0 ] && [ "$node_major" -lt 22 ] && command -v nix-shell >/dev/null 2>&1; then
     printf -v quoted_args '%q ' "$@"
-    WITH_WASM=1 exec nix-shell "$REPO_ROOT/shell.nix" --run "cd '$REPO_ROOT' && IN_NIX_NODE_SHELL=1 bash .github/scripts/test_wasm.sh ${quoted_args}"
+    WITH_WASM=1 exec nix-shell "$REPO_ROOT/shell.nix" --run "cd '$REPO_ROOT' && IN_NIX_NODE_SHELL=1 bash .github/scripts/test/test_wasm.sh ${quoted_args}"
   fi
 fi
 
@@ -129,7 +131,7 @@ run_ui() {
 # accept -F or -Wl,-F arguments and aborts with "unknown argument".
 run_wasm_pack() {
   (
-    cd crate/wasm
+    cd crate/clients/wasm
     unset OPENSSL_CONF OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
     # Strip macOS framework linker flags from RUSTFLAGS (-C link-arg=-F<path> and
     # -C link-arg=-Wl,-F,<path>) while preserving all other flags (e.g. --cfg wasm_test_browser).
@@ -151,7 +153,7 @@ run_wasm_pack() {
 if ! command -v wasm-pack >/dev/null 2>&1; then
   if command -v nix-shell >/dev/null 2>&1; then
     printf -v quoted_args '%q ' "$@"
-    WITH_WASM=1 exec nix-shell "$REPO_ROOT/shell.nix" --run "cd '$REPO_ROOT' && IN_NIX_NODE_SHELL=1 bash .github/scripts/test_wasm.sh ${quoted_args}"
+    WITH_WASM=1 exec nix-shell "$REPO_ROOT/shell.nix" --run "cd '$REPO_ROOT' && IN_NIX_NODE_SHELL=1 bash .github/scripts/test/test_wasm.sh ${quoted_args}"
   fi
   echo "Error: wasm-pack not available (expected nix-shell or cargo-installed wasm-pack)." >&2
   exit 1
@@ -182,7 +184,7 @@ run_wasm_pack build --target web "${FEATURES_FLAG[@]}"
 WASM_DIR="ui/src/wasm"
 rm -rf "$WASM_DIR"
 mkdir -p "$WASM_DIR"
-cp -R crate/wasm/pkg "$WASM_DIR/"
+cp -R crate/clients/wasm/pkg "$WASM_DIR/"
 
 # Some tools (notably Vite/Vitest) may require a "main" field to resolve directory imports
 # like `import init from "./wasm/pkg"`. wasm-pack emits "module" but not always "main".

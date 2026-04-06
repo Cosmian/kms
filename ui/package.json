@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build:wasm": "cd .. && wasm-pack build crate/wasm --target web --release --features non-fips && node ui/scripts/sync-wasm.mjs",
+        "build:wasm": "cd .. && wasm-pack build crate/clients/wasm --target web --release --features non-fips && node ui/scripts/sync-wasm.mjs",
         "build": "tsc -b && vite build",
         "preview": "vite preview",
         "lint": "eslint . --fix",

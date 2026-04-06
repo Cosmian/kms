@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use ckms::{
     config::{CKMS_CONF_ENV, ClientConfig},
-    reexport::cosmian_kms_cli::reexport::{
+    reexport::cosmian_kms_cli_actions::reexport::{
         cosmian_kmip::kmip_2_1::{
             extra::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,

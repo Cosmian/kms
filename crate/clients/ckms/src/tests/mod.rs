@@ -19,7 +19,33 @@ use crate::config::ClientConfig;
 static SAVE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
 mod ensure_binary;
-pub(crate) mod kms;
+
+#[cfg(feature = "non-fips")]
+mod access;
+mod attributes;
+#[cfg(not(target_os = "windows"))]
+#[cfg(feature = "non-fips")]
+mod auth_tests;
+mod certificates;
+#[cfg(feature = "non-fips")]
+mod cover_crypt;
+mod custom_headers_tests;
+mod derive_key;
+mod elliptic_curve;
+mod forward_proxy_tests;
+mod google_cmd;
+mod hash;
+mod hsm;
+mod login_tests;
+mod mac;
+#[cfg(feature = "non-fips")]
+mod pqc;
+mod rsa;
+mod secret_data;
+mod shared;
+mod symmetric;
+pub(crate) mod utils;
+mod vendor_id;
 
 // Re-export the ensure function for all tests to use
 pub(crate) use ensure_binary::ensure_ckms_binary;
@@ -61,7 +87,7 @@ pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
     // multiple test threads concurrently call this function for the same port.
     // The process ID is embedded in the filename to prevent cross-process
     // conflicts when `cargo test --workspace --lib` runs multiple test binaries
-    // concurrently (e.g., ckms + cosmian_kms_cli both using port 9999).
+    // concurrently (e.g., ckms + cosmian_kms_cli_actions both using port 9999).
     let _guard = SAVE_CONFIG_LOCK.lock().expect("SAVE_CONFIG_LOCK poisoned");
     let pid = std::process::id();
 

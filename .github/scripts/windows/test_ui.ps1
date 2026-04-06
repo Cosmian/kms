@@ -21,7 +21,7 @@ $ErrorActionPreference = "Stop"
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 $RepoRoot = (Get-Item (Join-Path (Join-Path (Join-Path $PSScriptRoot "..") "..") "..")).FullName
-$WasmCrate = Join-Path (Join-Path $RepoRoot "crate") "wasm"
+$WasmCrate = Join-Path (Join-Path (Join-Path $RepoRoot "crate") "clients") "wasm"
 $UiDir = Join-Path $RepoRoot "ui"
 
 # ── Detect pnpm / npm ─────────────────────────────────────────────────────────

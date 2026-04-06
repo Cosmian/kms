@@ -288,7 +288,7 @@ get_repo_root() {
 
 # Setup concise logging for tests unless caller overrides RUST_LOG
 setup_test_logging() {
-  : "${RUST_LOG:=cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error}"
+  : "${RUST_LOG:=cosmian_kms_cli_actions=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error}"
   export RUST_LOG
 }
 

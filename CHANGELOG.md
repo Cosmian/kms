@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### ⚙️ Miscellaneous Tasks
+
+- **Workspace reorganization**: move `crate/kms_client` → `crate/clients/client`; flatten `crate/clients/ckms/src/tests/kms/`, `crate/clients/clap/src/actions/kms/`, and `crate/clients/clap/src/tests/kms/` one level up; remove now-empty `kms/` subdirectories
+
 ## [5.20.0] - 2026-04-03
 
 ### 🚀 Features

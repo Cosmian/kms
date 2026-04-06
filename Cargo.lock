@@ -803,7 +803,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
- "cosmian_kms_cli",
+ "cosmian_kms_cli_actions",
  "cosmian_logger",
  "csv",
  "der",
@@ -1100,7 +1100,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_kms_cli"
+name = "cosmian_kms_cli_actions"
 version = "5.20.0"
 dependencies = [
  "assert_cmd",
