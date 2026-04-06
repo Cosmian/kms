@@ -20,15 +20,27 @@ MAX_RETRIES=3
 OS="linux"
 [[ "$(uname -s)" == "Darwin" ]] && OS="darwin"
 
-# Ordered list of derivations to build: ui first, then cli, then server.
-ALL_ATTRS=(
-  ui-fips
-  ui-non-fips
-  kms-cli-fips-static-openssl
-  kms-cli-non-fips-dynamic-openssl
-  kms-server-fips-static-openssl
-  kms-server-non-fips-dynamic-openssl
-)
+# Ordered list of derivations to build, split by platform:
+#   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
+#   macOS  — only UI (for ui.pnpm.darwin) + CLI (for cli.vendor.*.darwin)
+#             server derivations are Linux-only and must NOT run on macOS.
+if [[ "$OS" == "darwin" ]]; then
+  ALL_ATTRS=(
+    ui-fips
+    ui-non-fips
+    kms-cli-fips-static-openssl
+    kms-cli-non-fips-dynamic-openssl
+  )
+else
+  ALL_ATTRS=(
+    ui-fips
+    ui-non-fips
+    kms-cli-fips-static-openssl
+    kms-cli-non-fips-dynamic-openssl
+    kms-server-fips-static-openssl
+    kms-server-non-fips-dynamic-openssl
+  )
+fi
 
 # ── hash-file mapping ─────────────────────────────────────────────────────────
 # Map a Nix derivation name + the -A attribute to the expected-hash file it controls.
@@ -41,9 +53,12 @@ drv_to_hash_file() {
     echo "$EXPECTED_DIR/ui.pnpm.${OS}.sha256"; return
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
+    # ui.vendor.*.sha256 are Linux-only; skip on macOS to avoid overwriting them.
+    [[ "$OS" != "linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.non-fips.sha256"; return
   fi
   if [[ "$drv_name" =~ ui-wasm-fips.*vendor ]]; then
+    [[ "$OS" != "linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.fips.sha256"; return
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
@@ -55,6 +70,8 @@ drv_to_hash_file() {
     echo "$EXPECTED_DIR/cli.vendor.${link}.darwin.sha256"; return
   fi
   if [[ "$drv_name" =~ (kms-server|server).*vendor ]]; then
+    # server.vendor.*.sha256 are Linux-only; skip on macOS.
+    [[ "$OS" != "linux" ]] && echo "" && return
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
     echo "$EXPECTED_DIR/server.vendor.${link}.sha256"; return

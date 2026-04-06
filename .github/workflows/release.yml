@@ -1,0 +1,559 @@
+---
+name: Release
+
+# Fully automated release workflow.
+#
+# What it does:
+#   1. Validates semver inputs and checks the release branch does not exist yet.
+#   2. Creates "release/<new_version>" from develop (matching the git-flow model).
+#   3. Runs the version-bump script (.github/scripts/release/release.sh).
+#   4. Commits the bumped versions on the release branch and pushes it.
+#   5. Regenerates the CBOM (cbom/cbom.cdx.json) via generate_cbom.sh.
+#   6. Runs `nix_build_update_hash.sh` on BOTH Linux and macOS runners in
+#      parallel to recompute all Nix vendor hashes (Linux writes server +
+#      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
+#      and commits the results.
+#   7. Dispatches pr.yml on the release branch to trigger the packaging CI,
+#      then polls until that run completes (the packaging CI publishes SBOMs
+#      to package.cosmian.com at last_build/release/<new_version>).
+#   8. Retrieves the generated SBOMs from package.cosmian.com and commits them.
+#   9. Git-flow finalisation (mirrors `git flow release finish`):
+#        a. Merges release/<new_version> into main (--no-ff).
+#        b. Creates the annotated tag X.Y.Z on main's merge commit.
+#           (conventional git-flow always tags the main merge commit, not the
+#            release branch — this also triggers pr.yml on:push:tags which
+#            builds the final packages and creates the GitHub Release)
+#        c. Merges release/<new_version> into develop (syncs version bump back).
+#        d. Deletes the release branch.
+#
+# Prerequisites (repository secrets):
+#   PAT_TOKEN — Personal Access Token with `repo` + `workflow` scopes.
+#               Required so that commits and tag pushes made by this workflow
+#               re-trigger other workflows (GITHUB_TOKEN pushes do not).
+#
+# Retry / recovery:
+#   Re-dispatching with the same inputs is safe as long as the tag has NOT
+#   been pushed yet:
+#   - `prepare` hard-stops if the tag already exists (tags are permanent and
+#     will NEVER be deleted by this workflow).
+#   - `prepare` deletes the release branch if it exists, then recreates it
+#     from scratch (clean-slate retry for jobs 1-4).
+#   - If the tag was already pushed (sync-branches got past the tagging step
+#     but then failed), re-dispatch is still safe: sync-branches is fully
+#     idempotent and skips steps that already succeeded (checks Cargo.toml
+#     version on main/develop and tag existence before acting).
+#
+# Inputs:
+#   old_version — current version in Cargo.toml (e.g. 5.19.0)
+#   new_version — version to release (e.g. 5.20.0)
+
+on:
+  workflow_dispatch:
+    inputs:
+      old_version:
+        description: Current version in Cargo.toml
+        required: true
+        type: string
+      new_version:
+        description: New version to release
+        required: true
+        type: string
+
+# Only one release can run at a time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1 — Validate inputs, create the release branch, bump versions
+  # ─────────────────────────────────────────────────────────────────────────────
+  prepare:
+    name: Prepare release branch & bump versions
+    runs-on: ubuntu-latest
+    outputs:
+      release_branch: ${{ steps.vars.outputs.release_branch }}
+
+    steps:
+      - name: Validate semver format
+        run: |
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if ! [[ "${{ inputs.old_version }}" =~ $semver_re ]]; then
+            echo "ERROR: old_version '${{ inputs.old_version }}' is not valid semver X.Y.Z" >&2
+            exit 1
+          fi
+          if ! [[ "${{ inputs.new_version }}" =~ $semver_re ]]; then
+            echo "ERROR: new_version '${{ inputs.new_version }}' is not valid semver X.Y.Z" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.old_version }}" = "${{ inputs.new_version }}" ]; then
+            echo "ERROR: old_version and new_version are identical" >&2
+            exit 1
+          fi
+
+      # Use PAT_TOKEN so commits and tag pushes re-trigger other workflows.
+      - uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate old_version matches Cargo.toml
+        run: |
+          actual=$(grep -A 20 '^\[workspace\.package\]' Cargo.toml \
+            | grep '^version' | head -1 \
+            | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ "$actual" = "${{ inputs.old_version }}" ]; then
+            echo "develop is at $actual — OK."
+          elif [ "$actual" = "${{ inputs.new_version }}" ]; then
+            echo "NOTE: develop is already at ${{ inputs.new_version }}." \
+                 "A previous run already merged the version bump into develop." \
+                 "The version-bump step will be a no-op; continuing."
+          else
+            echo "ERROR: old_version '${{ inputs.old_version }}' does not match" \
+                 "workspace Cargo.toml version '$actual'" >&2
+            exit 1
+          fi
+
+      - name: Clean up any pre-existing state for this version
+        run: |
+          set -euo pipefail
+          BRANCH="release/${{ inputs.new_version }}"
+          TAG="${{ inputs.new_version }}"
+
+          # Hard-stop if the tag already exists: a tag on main is the proof
+          # that at least the merge + tagging step already succeeded.
+          # The workflow NEVER deletes tags — they are permanent release
+          # identifiers that cannot be reconstructed safely.
+          # If sync-branches failed AFTER tagging, re-run the workflow: the
+          # sync-branches idempotency guards will skip the merge + tag that
+          # already happened and only retry the remaining steps.
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "ERROR: Tag '$TAG' already exists on origin." >&2
+            echo "       The release tag is permanent and will never be deleted" \
+                 "by this workflow." >&2
+            echo "       If sync-branches failed after tagging, re-run the" \
+                 "workflow — the idempotency guards will skip completed steps." >&2
+            exit 1
+          fi
+
+          # Delete the release branch so we can start fresh (enables clean retry).
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "WARNING: Branch '$BRANCH' already exists — deleting for clean retry."
+            git push origin --delete "$BRANCH"
+          fi
+
+      - name: Set output variables
+        id: vars
+        run: echo "release_branch=release/${{ inputs.new_version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release branch from develop
+        run: |
+          git checkout -b "release/${{ inputs.new_version }}"
+
+      - name: Run version-bump script
+        run: |
+          # release.sh performs sed-based substitutions across all Cargo.toml
+          # and other versioned files.  The --ci flag skips the pre-commit
+          # hooks section (nix-build-all, cbom, release-docker-build-ui) since
+          # those are handled by dedicated jobs in this workflow.
+          bash .github/scripts/release/release.sh \
+            "${{ inputs.old_version }}" \
+            "${{ inputs.new_version }}" \
+            --ci
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+
+      - name: Regenerate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Regenerate CBOM
+        run: |
+          # generate_cbom.sh runs cargo metadata (non-fips) + a Python scan of
+          # the source tree and emits cbom/cbom.cdx.json.  No Nix required.
+          pip install cyclonedx-bom --quiet
+          bash .github/scripts/release/generate_cbom.sh
+
+      - name: Commit version bump and push release branch
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            # No diff: either old_version is wrong, or develop was already at
+            # new_version (previous run merged it back). Distinguish the two.
+            CURRENT=$(grep -A 20 '^\[workspace\.package\]' Cargo.toml \
+              | grep '^version' | head -1 \
+              | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+            if [ "$CURRENT" = "${{ inputs.new_version }}" ]; then
+              echo "NOTE: version already at ${{ inputs.new_version }} — version bump"
+              echo "      was a no-op (develop already merged in a previous run)."
+              echo "      Pushing branch as-is and continuing."
+            else
+              echo "ERROR: Nothing changed after version bump. Check that" \
+                   "old_version='${{ inputs.old_version }}' is correct." >&2
+              exit 1
+            fi
+          else
+            git commit -m "build: release ${{ inputs.new_version }}"
+          fi
+          git push origin "release/${{ inputs.new_version }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2 — Recompute Nix vendor hashes (matrix: Linux + macOS)
+  #
+  # Hash files split by platform:
+  #   Linux  : server.vendor.{static,dynamic}.sha256
+  #             cli.vendor.linux.sha256
+  #             ui.vendor.{fips,non-fips}.sha256
+  #             ui.pnpm.linux.sha256
+  #   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
+  #             ui.pnpm.darwin.sha256
+  #
+  # The two sets are disjoint, so both runners can commit concurrently without
+  # conflicts.  Each job pulls the latest HEAD before pushing.
+  # ─────────────────────────────────────────────────────────────────────────────
+  update-nix-hashes:
+    name: Update Nix vendor hashes (${{ matrix.runner }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-15]
+
+    steps:
+      - name: Nix installation
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            connect-timeout = 15
+            stalled-download-timeout = 15
+            narinfo-cache-negative-ttl = 0
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.release_branch }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Warm Nix store
+        run: |
+          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u \
+          | while read -r url; do
+            dest="/tmp/$(basename "$url")"
+            fallback=$(echo "$url" | sed \
+              's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
+            echo "Downloading $(basename "$url") …"
+            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
+              echo "Mirror failed, falling back to GitHub …"
+              curl --retry 5 --retry-delay 10 --retry-max-time 300 \
+                   --retry-all-errors -fsSL -o "$dest" "$fallback"
+            fi
+            echo "Injecting into Nix store …"
+            nix-prefetch-url --unpack --name source "file://$dest"
+            rm -f "$dest"
+          done
+
+      - name: Recompute all Nix vendor hashes
+        run: bash .github/scripts/release/nix_build_update_hash.sh
+
+      - name: Commit updated Nix hashes
+        run: |
+          git add nix/expected-hashes/
+          if git diff --cached --quiet; then
+            echo "Nix hashes are already up-to-date, nothing to commit."
+          else
+            # Pull first to avoid non-fast-forward rejection if the other
+            # platform job committed concurrently (the two file sets are
+            # disjoint so rebase always succeeds cleanly).
+            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
+            git commit -m "build: update Nix vendor hashes (${{ runner.os }}) for ${{ inputs.new_version }}"
+            git push origin "${{ needs.prepare.outputs.release_branch }}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3 — Trigger packaging CI on the release branch and wait for completion
+  #
+  # pr.yml supports `workflow_dispatch` which allows us to trigger it on an
+  # arbitrary ref.  This makes packaging run (including the publish-sbom jobs
+  # that upload to package.cosmian.com) without requiring an open PR.
+  #
+  # The SBOMs are published at:
+  #   package.cosmian.com/kms/last_build/release/<new_version>/sbom/
+  # ─────────────────────────────────────────────────────────────────────────────
+  trigger-packaging:
+    name: Trigger & await packaging CI
+    needs: [prepare, update-nix-hashes]
+    # update-nix-hashes is a matrix job; GitHub waits for ALL instances before
+    # starting trigger-packaging.
+    runs-on: ubuntu-latest
+    outputs:
+      packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
+
+    steps:
+      - name: Dispatch pr.yml on the release branch
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          BRANCH: ${{ needs.prepare.outputs.release_branch }}
+        run: |
+          set -euo pipefail
+
+          echo "Dispatching pr.yml on branch '$BRANCH'…"
+
+          # Capture the timestamp before dispatch so we can find the new run
+          BEFORE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          gh workflow run pr.yml \
+            --repo Cosmian/kms \
+            --ref "$BRANCH"
+
+          # Wait a few seconds for the run to register in the API
+          sleep 10
+
+          # Find the run that was created after our dispatch timestamp
+          RUN_ID=$(GH_PAGER=cat gh run list \
+            --repo Cosmian/kms \
+            --branch "$BRANCH" \
+            --workflow pr.yml \
+            --limit 5 \
+            --json databaseId,createdAt \
+            --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty")
+
+          if [ -z "${RUN_ID:-}" ] || [ "$RUN_ID" = "null" ]; then
+            echo "ERROR: Could not find the dispatched pr.yml run." >&2
+            exit 1
+          fi
+
+          echo "Dispatched run ID: $RUN_ID"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for packaging run to complete
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for packaging run $RUN_ID to complete…"
+          echo "  (packaging takes 40-70 min; timeout set to 120 min)"
+
+          MAX_WAIT=7200
+          INTERVAL=60
+          elapsed=0
+
+          while true; do
+            STATUS=$(GH_PAGER=cat gh run view "$RUN_ID" \
+              --repo Cosmian/kms \
+              --json status,conclusion \
+              --jq '.status')
+            CONCLUSION=$(GH_PAGER=cat gh run view "$RUN_ID" \
+              --repo Cosmian/kms \
+              --json status,conclusion \
+              --jq '.conclusion // empty')
+
+            echo "  $(date -u +"%H:%M:%SZ") — Run $RUN_ID: status=$STATUS conclusion=${CONCLUSION:-pending}"
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "Packaging run $RUN_ID completed successfully."
+                break
+              else
+                echo "ERROR: Packaging run $RUN_ID finished with conclusion '$CONCLUSION'." >&2
+                echo "       Review: https://github.com/Cosmian/kms/actions/runs/$RUN_ID" >&2
+                echo "       Fix the packaging failure and re-run this release workflow." >&2
+                exit 1
+              fi
+            fi
+
+            if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+              echo "ERROR: Timed out waiting for packaging CI after ${MAX_WAIT}s." >&2
+              exit 1
+            fi
+
+            sleep "$INTERVAL"
+            elapsed=$((elapsed + INTERVAL))
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 4 — Retrieve SBOMs and commit them to the release branch
+  # ─────────────────────────────────────────────────────────────────────────────
+  commit-sbom:
+    name: Retrieve & commit SBOM
+    needs: [prepare, trigger-packaging]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.release_branch }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Retrieve SBOMs from package.cosmian.com
+        run: |
+          # The packaging CI publishes SBOMs under:
+          #   last_build/release/<version>/sbom/
+          bash .github/scripts/nix.sh sbom --retrieve \
+            --branch "last_build/${{ needs.prepare.outputs.release_branch }}"
+
+      - name: Commit SBOMs
+        run: |
+          git add sbom/
+          if git diff --cached --quiet; then
+            echo "SBOMs are already committed – nothing to do."
+          else
+            git commit -m "build: add SBOM reports for ${{ inputs.new_version }}"
+            git push origin "${{ needs.prepare.outputs.release_branch }}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 5 — Git-flow finalisation: merge into main, tag, merge into develop
+  #
+  # Conventional git-flow: `git flow release finish X.Y.Z`
+  #   1. Merge release/<version> into main  (--no-ff)
+  #   2. Create the annotated tag on the resulting main merge commit
+  #      (git-flow always tags main, never the release branch)
+  #      The tag push triggers pr.yml (on:push:tags) which builds the final
+  #      packages and creates the GitHub Release.
+  #   3. Merge release/<version> into develop  (--no-ff, syncs version bump)
+  #   4. Delete the release branch
+  # ─────────────────────────────────────────────────────────────────────────────
+  sync-branches:
+    name: git-flow release finish ${{ inputs.new_version }}
+    needs: [prepare, trigger-packaging, commit-sbom]
+    runs-on: ubuntu-latest
+
+    steps:
+      # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge release branch into main
+        run: |
+          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
+          TAG="${{ inputs.new_version }}"
+
+          git fetch origin main "$RELEASE_BRANCH"
+          git reset --hard origin/main
+
+          # Idempotency: skip if main already carries the new version.
+          # (Happens when retrying after this step succeeded but a later step
+          # failed in a previous run.)
+          MAIN_VERSION=$(git show origin/main:Cargo.toml \
+            | grep -A 20 '^\[workspace\.package\]' | grep '^version' | head -1 \
+            | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ "$MAIN_VERSION" = "$TAG" ]; then
+            echo "main is already at $TAG — merge already done in a previous run, skipping."
+          else
+            # --no-ff creates an explicit merge commit on main for visibility.
+            git merge --no-ff "origin/$RELEASE_BRANCH" \
+              -m "build: merge $RELEASE_BRANCH into main"
+            git push origin main
+            echo "Merged '$RELEASE_BRANCH' into 'main'."
+          fi
+
+      - name: Create and push annotated tag on main
+        run: |
+          TAG="${{ inputs.new_version }}"
+
+          # Idempotency: skip if the tag was already pushed.
+          # (Happens when retrying after the tag was pushed but a later step
+          # failed in a previous run.)
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "Tag '$TAG' already exists — skipping."
+          else
+            # Ensure we are on the latest main HEAD before tagging.
+            git fetch origin main
+            git reset --hard origin/main
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Tag '$TAG' pushed on main."
+            echo "pr.yml (on:push:tags) will now build and publish the release."
+          fi
+
+      - name: Merge release branch into develop
+        run: |
+          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
+          TAG="${{ inputs.new_version }}"
+
+          git fetch origin develop "$RELEASE_BRANCH"
+          git checkout develop
+          git reset --hard origin/develop
+
+          # Idempotency: skip if develop already carries the new version.
+          # (Happens when retrying after this step succeeded but branch
+          # deletion failed in a previous run.)
+          DEVELOP_VERSION=$(git show origin/develop:Cargo.toml \
+            | grep -A 20 '^\[workspace\.package\]' | grep '^version' | head -1 \
+            | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          if [ "$DEVELOP_VERSION" = "$TAG" ]; then
+            echo "develop is already at $TAG — merge already done in a previous run, skipping."
+          else
+            # --no-ff keeps the merge commit visible in develop history.
+            git merge --no-ff "origin/$RELEASE_BRANCH" \
+              -m "build: merge $RELEASE_BRANCH into develop"
+            git push origin develop
+            echo "Merged '$RELEASE_BRANCH' into 'develop'."
+          fi
+
+      - name: Delete release branch
+        run: |
+          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
+          # Idempotency: skip if already deleted (previous run deleted it but
+          # then failed in the workflow summary step, for example).
+          if git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git push origin --delete "$RELEASE_BRANCH"
+            echo "Deleted remote branch '$RELEASE_BRANCH'."
+          else
+            echo "Branch '$RELEASE_BRANCH' already deleted — nothing to do."
+          fi
+
+      - name: Workflow summary
+        env:
+          NEW_VERSION: ${{ inputs.new_version }}
+          OLD_VERSION: ${{ inputs.old_version }}
+          PKG_RUN_ID: ${{ needs.trigger-packaging.outputs.packaging_run_id }}
+        run: |
+          printf '## Release %s — all automated steps complete\n\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf '| Step | Details |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '|------|---------|\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| Branch | `release/%s` from `develop`, merged into `main` & `develop`, deleted |\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf '| Version bump | `%s` → `%s` |\n' "$OLD_VERSION" "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf '| Nix hashes | Updated and committed |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| Packaging CI | Run [#%s](https://github.com/Cosmian/kms/actions/runs/%s) ✅ |\n' \
+            "$PKG_RUN_ID" "$PKG_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          printf '| SBOMs | Retrieved and committed |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| Tag | `%s` on `main` merge commit |\n\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf 'The `pr.yml` on-tag pipeline is building the final packages and GitHub Release.\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '### Remaining manual step\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Once the tag pipeline completes, update the GitHub Release notes at:\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'https://github.com/Cosmian/kms/releases/tag/%s\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"

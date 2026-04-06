@@ -9,6 +9,7 @@ flowchart LR
     subgraph entry["Entry Point Workflows"]
         main["main.yml<br/>(Push CI)<br/><br/>Triggers:<br/>· Push<br/>· Schedule<br/>· Manual"]
         pr["pr.yml<br/>(PR CI)<br/><br/>Triggers:<br/>· Tags<br/>· Pull Requests<br/>· Schedule<br/>· Manual"]
+        release["release.yml<br/>(Automated Release)<br/><br/>Triggers:<br/>· Manual (workflow_dispatch)<br/>  with old_version + new_version"]
         cleanup["github_cache_cleanup.yml<br/><br/>Triggers:<br/>· Manual (workflow_dispatch)"]
     end
 ```
@@ -169,12 +170,12 @@ flowchart TB
 
 ### Packaging Matrix Visualization
 
-| Runner          | FIPS         | Non-FIPS     | Output        |
-|-----------------|:------------:|:------------:|---------------|
-| ubuntu-24.04    | ✓ (S+D)      | ✓ (S+D)      | .deb, .rpm    |
-| ubuntu-24.04-arm | ✓ (S+D)     | ✓ (S+D)      | .deb, .rpm    |
-| macos-15        | ✗            | ✓ (S+D)      | .dmg          |
-| windows-2022    | ✓ (DLLs)     | ✓            | .exe          |
+| Runner           | FIPS         | Non-FIPS     | Output        |
+|------------------|:------------:|:------------:|---------------|
+| ubuntu-24.04     | ✓ (S+D)      | ✓ (S+D)      | .deb, .rpm    |
+| ubuntu-24.04-arm | ✓ (S+D)      | ✓ (S+D)      | .deb, .rpm    |
+| macos-15         | ✗            | ✓ (S+D)      | .dmg          |
+| windows-2022     | ✓ (DLLs)     | ✓            | .exe          |
 
 > Note: (S+D) = Static and Dynamic linking variants
 
@@ -381,6 +382,7 @@ flowchart TB
 | ------------------------ | :-----: | :---: | :-----: | :---------: | :----: |
 | main.yml (Push CI)       |   ✓     |   -   |    -    |  ✓ (daily)  |   ✓    |
 | pr.yml (PR CI)           |   -     |   ✓   |    ✓    |  ✓ (daily)  |   ✓    |
+| release.yml (Release)    |   -     |   -   |    -    |      -      |   ✓    |
 | main_base.yml            |   -     |   -   |    -    |      -      | via WC |
 | packaging.yml            |   -     |   -   |    -    |      -      | ✓, WC  |
 | packaging-docker.yml     |   -     |   -   |    -    |      -      | ✓, WC  |
@@ -406,7 +408,7 @@ flowchart TB
 - **GPG_SIGNING_KEY**: Package signing
 - **GPG_SIGNING_KEY_PASSPHRASE**: Package signing
 - **CRATES_IO**: Cargo publish token
-- **PAT_TOKEN**: Public documentation deployment
+- **PAT_TOKEN**: Public documentation deployment and release automation
 
 ### HSM Secrets
 
