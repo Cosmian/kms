@@ -68,7 +68,10 @@ let
     else
       pkgs.rustPlatform;
 
-  # Build a matching wasm-bindgen-cli to the version used by the crates
+  # Build a matching wasm-bindgen-cli to the version used by the crates.
+  # This version MUST match the exact `wasm-bindgen` pin in
+  # crate/clients/wasm/Cargo.toml.  If you upgrade either one, update both
+  # (and regenerate src sha256 + cargoHash below via nix-prefetch-url).
   wasmBindgenCli = rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
     version = "0.2.108";
