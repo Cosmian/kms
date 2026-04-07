@@ -46,7 +46,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                 setIsLoading(false);
             }
         } else {
-            navigate("locate");
+            navigate("/locate");
         }
     };
 

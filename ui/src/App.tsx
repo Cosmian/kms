@@ -231,8 +231,8 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                 </>
             ) : (
                 <>
-                    <Route index element={<Navigate to="locate" replace />} />
-                    <Route path="/login" element={<Navigate to="locate" replace />} />
+                    <Route index element={<Navigate to="/locate" replace />} />
+                    <Route path="/login" element={<Navigate to="/locate" replace />} />
                     <Route
                         path="/"
                         element={
