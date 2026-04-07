@@ -42,19 +42,10 @@ export function extractAllUuids(text: string): string[] {
  * Navigate to a page and wait for it to be fully idle (WASM, React effects,
  * Ant Design initialisation).  All async hooks that populate dropdowns from
  * WASM resolve during `networkidle`.
- *
- * After `networkidle` we additionally wait for MainLayout's server-info loading
- * spinner to disappear.  The spinner blocks `<Outlet />` rendering, so page
- * elements (submit buttons, form inputs) are absent from the DOM until it goes.
- * `networkidle` can fire in the gap between `fetchAuthMethod` completing and
- * `fetchServerInfo` starting (React re-render + paint), causing false-ready
- * signals.  If the spinner was never rendered the locator is already "detached"
- * and this resolves immediately.
  */
 export async function gotoAndWait(page: Page, path: string): Promise<void> {
     await page.goto(path);
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
-    await page.locator("#main-content .ant-spin-spinning").waitFor({ state: "detached", timeout: UI_READY_TIMEOUT });
 }
 
 /**
@@ -312,11 +303,8 @@ export async function selectMultipleOptions(page: Page, cssSelector: string, opt
  */
 export async function createSymKey(page: Page): Promise<string> {
     await gotoAndWait(page, "/ui/sym/keys/create");
-    // The algorithm Select is populated by WASM; wait until the option element
-    // is attached to the DOM before asserting it has a non-empty value.
-    const algorithmSelect = page.locator(".ant-select-selection-item").first();
-    await algorithmSelect.waitFor({ state: "attached", timeout: UI_READY_TIMEOUT });
-    await expect(algorithmSelect).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    // The algorithm Select is populated by WASM; wait until it shows a value.
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/has been created/i);
     const id = extractUuid(text);
@@ -380,7 +368,6 @@ export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{
  */
 export async function uploadFile(page: Page, filePath: string): Promise<void> {
     const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.waitFor({ state: "attached", timeout: UI_READY_TIMEOUT });
     await fileInput.setInputFiles(filePath);
 }
 

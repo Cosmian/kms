@@ -20,7 +20,7 @@
  *    (guaranteed by test_ui.sh which injects this into the generated config).
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
+import { gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 /** KMS REST endpoint used for direct KMIP calls (bypasses the UI). */
 const KMS_URL = "http://127.0.0.1:9998";
@@ -73,7 +73,6 @@ test.describe("Vendor identification", () => {
         });
 
         // ── 3. Select "Generate New Keypair" and fill the subject name ────────
-        await page.getByText("4. Generate New Keypair").waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
         await page.getByText("4. Generate New Keypair").click();
         const subjectInput = page.locator('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]');
         await subjectInput.waitFor({ state: "visible", timeout: 10_000 });
