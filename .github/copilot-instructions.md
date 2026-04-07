@@ -161,23 +161,23 @@ When you need to change something, start here:
 | Intent                      | File(s)                                           |
 | --------------------------- | ------------------------------------------------- |
 | Add/change a KMIP operation | `crate/server/src/core/operations/<operation>.rs` |
-| KMIP operation dispatcher | `crate/server/src/core/operations/dispatch.rs` |
-| KMS struct definition | `crate/server/src/core/kms/mod.rs` |
-| Server config & CLI flags | `crate/server/src/config/` |
-| Server startup | `crate/server/src/start_kms_server.rs` |
-| OpenSSL provider init | `crate/server/src/openssl_providers.rs` |
-| HTTP routes | `crate/server/src/routes/` |
-| Middlewares (auth, logging) | `crate/server/src/middlewares/` |
-| KMIP protocol types | `crate/kmip/src/` |
-| Crypto primitives | `crate/crypto/src/` |
-| OpenSSL build script | `crate/crypto/build.rs` |
-| DB backend implementations | `crate/server_database/src/` |
-| CLI actions (clap commands) | `crate/clients/clap/src/` |
-| CLI binary entry point | `crate/clients/ckms/src/` |
-| WASM bindings | `crate/clients/wasm/src/` |
-| Web UI source | `ui/src/` |
-| E2E tests (Playwright) | `ui/tests/e2e/` |
-| E2E test helpers | `ui/tests/e2e/helpers.ts` |
+| KMIP operation dispatcher   | `crate/server/src/core/operations/dispatch.rs`    |
+| KMS struct definition       | `crate/server/src/core/kms/mod.rs`                |
+| Server config & CLI flags   | `crate/server/src/config/`                        |
+| Server startup              | `crate/server/src/start_kms_server.rs`            |
+| OpenSSL provider init       | `crate/server/src/openssl_providers.rs`           |
+| HTTP routes                 | `crate/server/src/routes/`                        |
+| Middlewares (auth, logging) | `crate/server/src/middlewares/`                   |
+| KMIP protocol types         | `crate/kmip/src/`                                 |
+| Crypto primitives           | `crate/crypto/src/`                               |
+| OpenSSL build script        | `crate/crypto/build.rs`                           |
+| DB backend implementations  | `crate/server_database/src/`                      |
+| CLI actions (clap commands) | `crate/clients/clap/src/`                         |
+| CLI binary entry point      | `crate/clients/ckms/src/`                         |
+| WASM bindings               | `crate/clients/wasm/src/`                         |
+| Web UI source               | `ui/src/`                                         |
+| E2E tests (Playwright)      | `ui/tests/e2e/`                                   |
+| E2E test helpers            | `ui/tests/e2e/helpers.ts`                         |
 
 ---
 
@@ -435,27 +435,49 @@ echo "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" \
 
 Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
-> **AI agent note — expected CI failure after new dependencies**: Whenever a new
-> Rust dependency (`Cargo.lock` change) or UI dependency (`ui/pnpm-lock.yaml` change)
-> is added, the Nix vendor hashes become stale and **the first CI run will always fail
-> with a hash mismatch**. This is expected and not a bug. After the first failure,
-> retrieve the correct hash from the CI log and update `nix/expected-hashes/`.
+> **AI agent note — Nix hash mismatch: verify before updating**
+>
+> When CI reports a hash mismatch in `nix/expected-hashes/`, **do not immediately
+> update the hash**. First ask: does this PR actually need a dependency change?
+>
+> **Step 1 — check whether the lock file legitimately changed:**
+>
+> - Run `git diff develop -- Cargo.lock ui/pnpm-lock.yaml` (or against the base branch).
+> - If there is no diff, the hash should not have changed; investigate why CI is
+>   failing (e.g. a stale cache or an unrelated branch divergence).
+> - If there is a diff, confirm it is intentional: is it a dependency that this PR
+>   actually needs, or was it accidentally introduced (e.g. by running
+>   `cargo update` / `pnpm install` locally and committing the result)?
+>
+> **Step 2 — if the dependency change is unintentional, revert it:**
+>
+> - Restore the lock file from the base branch:
+>   `git checkout develop -- Cargo.lock` or `git checkout develop -- ui/pnpm-lock.yaml`
+> - Also revert the matching entry in `Cargo.toml` / `package.json` if a version
+>   specifier was bumped.
+> - Warn the user: the hash must stay as-is because no dependency was added.
+>
+> **Step 3 — only if the dependency change is intentional, update the hash:**
+> Whenever a new Rust dependency (`Cargo.lock` change) or UI dependency
+> (`ui/pnpm-lock.yaml` change) is genuinely added, the Nix vendor hashes become
+> stale and the first CI run will fail with a hash mismatch. Retrieve the correct
+> hash from the CI log (`got: sha256-...`) and update `nix/expected-hashes/`.
 > Always remind the user to regenerate Nix hashes after adding any dependency.
 
 ---
 
 ## 14. Common issues
 
-| Symptom                                                      | Cause                                                                                                      | Fix                                                                                                          |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Usage mask errors (`Encrypt`, `Sign` denied)                 | Key missing required `CryptographicUsageMask`                                                              | Check the object's attributes                                                                                |
-| `legacy.so` / `fips.so` not found                            | `OPENSSL_MODULES` not set                                                                                  | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
-| Stale Nix vendor hashes                                      | `Cargo.lock` or version changed                                                                            | Regenerate all four hash files (see §13)                                                                     |
-| `gh` command hangs                                           | Interactive pager opened                                                                                   | Use `GH_PAGER=cat gh ...`                                                                                    |
-| Playwright `toHaveText` type error with `exact`              | Unsupported option in Playwright                                                                           | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
-| TypeScript unused-variable error in UI tests                 | `noUnusedLocals: true` in tsconfig                                                                         | Remove the variable or prefix with `_`                                                                       |
-| Server starts but serves plain HTTP despite `[tls]` config   | `tls_p12_file`/`tls_p12_password` are `#[cfg(feature = "non-fips")]` — silently ignored in FIPS builds    | Use `tls_cert_file` + `tls_key_file` (PEM); extract from P12 with `openssl pkcs12`                          |
-| Auth0 logout shows "Oops, something went wrong"              | `returnTo` URL not in Auth0 app's Allowed Logout URLs                                                      | Add `<kms_public_url>/ui/login` in Auth0 dashboard → Applications → Settings → Allowed Logout URLs          |
+| Symptom                                                    | Cause                                                                                                  | Fix                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Usage mask errors (`Encrypt`, `Sign` denied)               | Key missing required `CryptographicUsageMask`                                                          | Check the object's attributes                                                                                |
+| `legacy.so` / `fips.so` not found                          | `OPENSSL_MODULES` not set                                                                              | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
+| Stale Nix vendor hashes                                    | `Cargo.lock` or version changed                                                                        | Regenerate all four hash files (see §13)                                                                     |
+| `gh` command hangs                                         | Interactive pager opened                                                                               | Use `GH_PAGER=cat gh ...`                                                                                    |
+| Playwright `toHaveText` type error with `exact`            | Unsupported option in Playwright                                                                       | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
+| TypeScript unused-variable error in UI tests               | `noUnusedLocals: true` in tsconfig                                                                     | Remove the variable or prefix with `_`                                                                       |
+| Server starts but serves plain HTTP despite `[tls]` config | `tls_p12_file`/`tls_p12_password` are `#[cfg(feature = "non-fips")]` — silently ignored in FIPS builds | Use `tls_cert_file` + `tls_key_file` (PEM); extract from P12 with `openssl pkcs12`                           |
+| Auth0 logout shows "Oops, something went wrong"            | `returnTo` URL not in Auth0 app's Allowed Logout URLs                                                  | Add `<kms_public_url>/ui/login` in Auth0 dashboard → Applications → Settings → Allowed Logout URLs           |
 
 ---
 
@@ -484,19 +506,19 @@ The integrations section is the most commonly extended area. Keep these four vie
 **Canonical integration file paths**:
 
 - Cloud providers: `documentation/docs/integrations/cloud_providers/<provider>/`
-    - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
-    - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
-    - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
-    - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
-    - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
+  - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
+  - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
+  - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
+  - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
+  - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
 - Databases: `documentation/docs/integrations/databases/`
-    - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md, snowflake_native_app/
+  - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md, snowflake_native_app/
 - Storage: `documentation/docs/integrations/storage/`
-    - vcenter.md, synology_dsm.md, veeam.md, user_defined_function_for_pyspark_databricks_in_python/
-    - Disk encryption: `documentation/docs/integrations/disk_encryption/`
-        - veracrypt.md, luks.md, cryhod.md
+  - vcenter.md, synology_dsm.md, veeam.md, user_defined_function_for_pyspark_databricks_in_python/
+  - Disk encryption: `documentation/docs/integrations/disk_encryption/`
+    - veracrypt.md, luks.md, cryhod.md
 - Other: `documentation/docs/integrations/`
-    - openssh.md, pykmip.md, smime.md
+  - openssh.md, pykmip.md, smime.md
 
 **README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
 

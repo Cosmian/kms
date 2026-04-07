@@ -54,9 +54,7 @@ export function extractAllUuids(text: string): string[] {
 export async function gotoAndWait(page: Page, path: string): Promise<void> {
     await page.goto(path);
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
-    await page
-        .locator("#main-content .ant-spin-spinning")
-        .waitFor({ state: "detached", timeout: UI_READY_TIMEOUT });
+    await page.locator("#main-content .ant-spin-spinning").waitFor({ state: "detached", timeout: UI_READY_TIMEOUT });
 }
 
 /**
