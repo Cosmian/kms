@@ -12,10 +12,6 @@ fi
 export OVPN_CONF="${OVPN_CONF}"
 echo "$OVPN_CONF" > /tmp/openvpn.ovpn
 sudo openvpn --config /tmp/openvpn.ovpn > /tmp/vpn.log 2>&1 &
-OPENVPN_PID=$!
-
-# Clean up OpenVPN process on exit
-trap "sudo kill $OPENVPN_PID 2>/dev/null || true" EXIT
 
 sleep 10
 
