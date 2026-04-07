@@ -172,8 +172,8 @@ jobs:
         with:
           toolchain: 1.90.0
 
-      - name: Regenerate Cargo.lock
-        run: cargo generate-lockfile
+      - name: Update Cargo.lock
+        run: cargo build --workspace
 
       - name: Regenerate CBOM
         run: |
