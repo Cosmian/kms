@@ -101,7 +101,7 @@ build_attr() {
     echo "$output"
 
     # Parse hash mismatches
-    local last_drv="" updated=0
+    local last_drv="" updated=0 skipped=0
     while IFS= read -r line; do
       if [[ "$line" =~ hash\ mismatch\ in\ fixed-output\ derivation.*\'(/nix/store/[^\']+)\' ]]; then
         local drv_path="${BASH_REMATCH[1]}"
@@ -118,6 +118,9 @@ build_attr() {
             echo "    Updating $(basename "$target_file"): $got_hash"
             echo "$got_hash" > "$target_file"
             updated=$((updated + 1))
+          else
+            echo "    Skipping (managed by peer OS runner): $last_drv"
+            skipped=$((skipped + 1))
           fi
           last_drv=""
         fi
@@ -127,6 +130,14 @@ build_attr() {
     if [[ "$updated" -gt 0 && "$attempt" -lt "$MAX_RETRIES" ]]; then
       echo "==> Updated ${updated} hash file(s), retrying..."
       continue
+    fi
+
+    # All remaining failures are hash files owned by the peer OS runner (e.g.
+    # ui.vendor.*.sha256 on macOS, or ui.pnpm.darwin.sha256 on Linux).  Those
+    # will be fixed by the other matrix job; this runner is done.
+    if [[ "$updated" -eq 0 && "$skipped" -gt 0 ]]; then
+      echo "==> ${skipped} hash mismatch(es) are managed by the peer OS runner — skipping."
+      return 0
     fi
 
     echo "ERROR: nix-build -A ${attr} failed after ${attempt} attempt(s)." >&2
