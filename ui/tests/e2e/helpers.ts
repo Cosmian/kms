@@ -42,10 +42,21 @@ export function extractAllUuids(text: string): string[] {
  * Navigate to a page and wait for it to be fully idle (WASM, React effects,
  * Ant Design initialisation).  All async hooks that populate dropdowns from
  * WASM resolve during `networkidle`.
+ *
+ * After `networkidle` we additionally wait for MainLayout's server-info loading
+ * spinner to disappear.  The spinner blocks `<Outlet />` rendering, so page
+ * elements (submit buttons, form inputs) are absent from the DOM until it goes.
+ * `networkidle` can fire in the gap between `fetchAuthMethod` completing and
+ * `fetchServerInfo` starting (React re-render + paint), causing false-ready
+ * signals.  If the spinner was never rendered the locator is already "detached"
+ * and this resolves immediately.
  */
 export async function gotoAndWait(page: Page, path: string): Promise<void> {
     await page.goto(path);
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await page
+        .locator("#main-content .ant-spin-spinning")
+        .waitFor({ state: "detached", timeout: UI_READY_TIMEOUT });
 }
 
 /**

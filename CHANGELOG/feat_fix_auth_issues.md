@@ -12,6 +12,7 @@
 
 ### Web UI
 
+- **E2E test race condition on page load**: fixed a race condition where `isAuthLoading` was initialized to `false`, causing the first React render to briefly show the "Cannot connect to KMS server" error page (which has no `submit-btn`); Playwright's `networkidle` could fire during this flash, causing sitemap tests to fail non-deterministically (notably PQC destroy and verify). Initializing `isAuthLoading` to `true` ensures the first render returns an empty fragment until the auth check completes.
 - **Dev setup login crash**: fixed a crash in the development setup where the KMS was unable to complete the login flow despite valid credentials
 - **OAuth interface fixes**: multiple fixes to the OAuth/OIDC interface, mostly affecting development-only scenarios
 - **Removed misleading "JWT is enabled" message** from the UI
