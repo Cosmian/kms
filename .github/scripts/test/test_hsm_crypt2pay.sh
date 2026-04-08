@@ -9,7 +9,7 @@ if ! command -v openvpn >/dev/null 2>&1; then
     sudo apt-get install -y openvpn
 fi
 
-export OVPN_CONF="${OVPN_CONF}"
+: "${OVPN_CONF:?OVPN_CONF not set}"
 echo "$OVPN_CONF" | sudo tee /tmp/openvpn.ovpn > /dev/null
 
 sudo touch /tmp/vpn.log
