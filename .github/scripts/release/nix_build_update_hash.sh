@@ -10,24 +10,25 @@
 # Usage:
 #   nix_build_update_hash.sh              # build all derivations
 #   nix_build_update_hash.sh -A <attr>   # build one specific derivation
-set -euo pipefail
+set -xeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 EXPECTED_DIR="$REPO_ROOT/nix/expected-hashes"
 MAX_RETRIES=3
 
-OS="linux"
-[[ "$(uname -s)" == "Darwin" ]] && OS="darwin"
+OS="$(uname -s)"
 
 # Ordered list of derivations to build, split by platform:
 #   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
-#   macOS  — only UI (for ui.pnpm.darwin) + CLI (for cli.vendor.*.darwin)
+#   macOS  — only CLI (for cli.vendor.*.darwin)
+#             ui-fips/ui-non-fips are excluded: their vendor hashes are
+#             Linux-only and building them on macOS always fails at the
+#             vendor hash step.  The ui.pnpm.darwin.sha256 is not updated
+#             by this workflow and must be refreshed manually when needed.
 #             server derivations are Linux-only and must NOT run on macOS.
-if [[ "$OS" == "darwin" ]]; then
+if [[ "$OS" == "Darwin" ]]; then
   ALL_ATTRS=(
-    ui-fips
-    ui-non-fips
     kms-cli-fips-static-openssl
     kms-cli-non-fips-dynamic-openssl
   )
@@ -54,15 +55,15 @@ drv_to_hash_file() {
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
     # ui.vendor.*.sha256 are Linux-only; skip on macOS to avoid overwriting them.
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.non-fips.sha256"; return
   fi
   if [[ "$drv_name" =~ ui-wasm-fips.*vendor ]]; then
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.fips.sha256"; return
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
-    if [[ "$OS" == "linux" ]]; then
+    if [[ "$OS" == "Linux" ]]; then
       echo "$EXPECTED_DIR/cli.vendor.linux.sha256"; return
     fi
     local link="static"
@@ -71,7 +72,7 @@ drv_to_hash_file() {
   fi
   if [[ "$drv_name" =~ (kms-server|server).*vendor ]]; then
     # server.vendor.*.sha256 are Linux-only; skip on macOS.
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
     echo "$EXPECTED_DIR/server.vendor.${link}.sha256"; return
@@ -100,13 +101,20 @@ build_attr() {
 
     echo "$output"
 
+    # Strip ANSI color codes so regexes work reliably on both Linux and macOS
+    # (macOS Nix may emit color escapes that confuse bash's =~ operator).
+    local output_plain
+    output_plain=$(printf '%s\n' "$output" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
+
     # Parse hash mismatches
-    local last_drv="" updated=0
+    local last_drv="" updated=0 skipped=0
     while IFS= read -r line; do
-      if [[ "$line" =~ hash\ mismatch\ in\ fixed-output\ derivation.*\'(/nix/store/[^\']+)\' ]]; then
-        local drv_path="${BASH_REMATCH[1]}"
-        last_drv="${drv_path##*/}"
-        last_drv="${last_drv%.drv}"
+      if [[ "$line" == *"hash mismatch in fixed-output derivation"* ]]; then
+        # Extract /nix/store/...drv without relying on specific quote characters
+        if [[ "$line" =~ (/nix/store/[A-Za-z0-9.+_-]+\.drv) ]]; then
+          last_drv="${BASH_REMATCH[1]##*/}"
+          last_drv="${last_drv%.drv}"
+        fi
         continue
       fi
       if [[ "$line" == *"got:"* ]] && [[ "$line" =~ (sha256-[A-Za-z0-9+/=]+) ]]; then
@@ -118,15 +126,26 @@ build_attr() {
             echo "    Updating $(basename "$target_file"): $got_hash"
             echo "$got_hash" > "$target_file"
             updated=$((updated + 1))
+          else
+            echo "    Skipping (managed by peer OS runner): $last_drv"
+            skipped=$((skipped + 1))
           fi
           last_drv=""
         fi
       fi
-    done <<<"$output"
+    done <<<"$output_plain"
 
     if [[ "$updated" -gt 0 && "$attempt" -lt "$MAX_RETRIES" ]]; then
       echo "==> Updated ${updated} hash file(s), retrying..."
       continue
+    fi
+
+    # All remaining failures are hash files owned by the peer OS runner (e.g.
+    # ui.vendor.*.sha256 on macOS, or ui.pnpm.darwin.sha256 on Linux).  Those
+    # will be fixed by the other matrix job; this runner is done.
+    if [[ "$updated" -eq 0 && "$skipped" -gt 0 ]]; then
+      echo "==> ${skipped} hash mismatch(es) are managed by the peer OS runner — skipping."
+      return 0
     fi
 
     echo "ERROR: nix-build -A ${attr} failed after ${attempt} attempt(s)." >&2

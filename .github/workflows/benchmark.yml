@@ -31,6 +31,9 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - name: Clean workspace (fix self-hosted runner permission issues)
+        run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive

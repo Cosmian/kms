@@ -172,8 +172,8 @@ jobs:
         with:
           toolchain: 1.90.0
 
-      - name: Regenerate Cargo.lock
-        run: cargo generate-lockfile
+      - name: Update Cargo.lock
+        run: cargo build --workspace
 
       - name: Regenerate CBOM
         run: |
@@ -276,11 +276,11 @@ jobs:
           if git diff --cached --quiet; then
             echo "Nix hashes are already up-to-date, nothing to commit."
           else
-            # Pull first to avoid non-fast-forward rejection if the other
-            # platform job committed concurrently (the two file sets are
-            # disjoint so rebase always succeeds cleanly).
-            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
             git commit -m "build: update Nix vendor hashes (${{ runner.os }}) for ${{ inputs.new_version }}"
+            # Pull after committing to avoid "index contains uncommitted changes"
+            # error. The two platform jobs touch disjoint file sets so rebase
+            # always succeeds cleanly.
+            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
             git push origin "${{ needs.prepare.outputs.release_branch }}"
           fi
 
