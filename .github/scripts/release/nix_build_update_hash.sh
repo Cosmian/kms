@@ -26,8 +26,6 @@ OS="linux"
 #             server derivations are Linux-only and must NOT run on macOS.
 if [[ "$OS" == "darwin" ]]; then
   ALL_ATTRS=(
-    ui-fips
-    ui-non-fips
     kms-cli-fips-static-openssl
     kms-cli-non-fips-dynamic-openssl
   )
