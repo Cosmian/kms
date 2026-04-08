@@ -17,8 +17,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 EXPECTED_DIR="$REPO_ROOT/nix/expected-hashes"
 MAX_RETRIES=3
 
-OS="linux"
-[[ "$(uname -s)" == "Darwin" ]] && OS="darwin"
+OS="$(uname -s)"
 
 # Ordered list of derivations to build, split by platform:
 #   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
@@ -28,7 +27,7 @@ OS="linux"
 #             vendor hash step.  The ui.pnpm.darwin.sha256 is not updated
 #             by this workflow and must be refreshed manually when needed.
 #             server derivations are Linux-only and must NOT run on macOS.
-if [[ "$OS" == "darwin" ]]; then
+if [[ "$OS" == "Darwin" ]]; then
   ALL_ATTRS=(
     kms-cli-fips-static-openssl
     kms-cli-non-fips-dynamic-openssl
@@ -56,15 +55,15 @@ drv_to_hash_file() {
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
     # ui.vendor.*.sha256 are Linux-only; skip on macOS to avoid overwriting them.
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.non-fips.sha256"; return
   fi
   if [[ "$drv_name" =~ ui-wasm-fips.*vendor ]]; then
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.fips.sha256"; return
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
-    if [[ "$OS" == "linux" ]]; then
+    if [[ "$OS" == "Linux" ]]; then
       echo "$EXPECTED_DIR/cli.vendor.linux.sha256"; return
     fi
     local link="static"
@@ -73,7 +72,7 @@ drv_to_hash_file() {
   fi
   if [[ "$drv_name" =~ (kms-server|server).*vendor ]]; then
     # server.vendor.*.sha256 are Linux-only; skip on macOS.
-    [[ "$OS" != "linux" ]] && echo "" && return
+    [[ "$OS" != "Linux" ]] && echo "" && return
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
     echo "$EXPECTED_DIR/server.vendor.${link}.sha256"; return
@@ -102,8 +101,8 @@ build_attr() {
 
     echo "$output"
 
-    # Strip ANSI colour codes so regexes work reliably on both Linux and macOS
-    # (macOS Nix may emit colour escapes that confuse bash's =~ operator).
+    # Strip ANSI color codes so regexes work reliably on both Linux and macOS
+    # (macOS Nix may emit color escapes that confuse bash's =~ operator).
     local output_plain
     output_plain=$(printf '%s\n' "$output" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
 
