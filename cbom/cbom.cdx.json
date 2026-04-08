@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:971d335f-600b-4055-a6f3-a20fca8a7b9a",
+  "serialNumber": "urn:uuid:b0d6ebe6-7310-43a1-9b08-3deb8e91cc36",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-04-03T08:09:33Z",
+    "timestamp": "2026-04-08T20:23:19Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.20.0",
+      "version": "5.20.1",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
