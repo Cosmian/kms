@@ -107,5 +107,12 @@
     }
   ],
   "sqltools.useNodeRuntime": true,
-  "rust-analyzer.cargo.features": ["non-fips"]
+  "rust-analyzer.cargo.features": [
+    "non-fips"
+  ],
+  "files.readonlyInclude": {
+    "**/.cargo/registry/src/**/*.rs": true,
+    "**/.cargo/git/checkouts/**/*.rs": true,
+    "**/lib/rustlib/src/rust/library/**/*.rs": true,
+  },
 }
