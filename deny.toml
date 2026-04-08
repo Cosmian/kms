@@ -103,7 +103,7 @@ allow = [
   "Unicode-3.0",
   "CC0-1.0",
   "BUSL-1.1",
-  "GPL-3.0-or-later", # legacy dependency note
+  "GPL-3.0-or-later",               # legacy dependency note
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -158,7 +158,7 @@ registries = [
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "allow"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates
@@ -184,8 +184,6 @@ allow = [
 ]
 # List of crates to deny
 deny = [
-
-
   # "ansi_term@0.11.0",
   # { crate = "ansi_term@0.11.0", reason = "you can specify a reason it is banned" },
   # Wrapper crates can optionally be specified to allow the crate when it
@@ -259,11 +257,3 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
 allow-git = []
-
-[sources.allow-org]
-# 1 or more github.com organizations to allow git sources for
-github = [""]
-# 1 or more gitlab.com organizations to allow git sources for
-gitlab = [""]
-# 1 or more bitbucket.org organizations to allow git sources for
-bitbucket = [""]

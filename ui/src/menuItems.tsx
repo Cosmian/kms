@@ -1,16 +1,13 @@
 import {
     AmazonOutlined,
-    ApartmentOutlined,
     AuditOutlined,
     CloudOutlined,
-    ExperimentOutlined,
     EyeInvisibleOutlined,
     ForkOutlined,
     GoogleOutlined,
     InboxOutlined,
     LockOutlined,
     SafetyCertificateOutlined,
-    SafetyOutlined,
     SearchOutlined,
     SolutionOutlined,
     TeamOutlined,
@@ -40,7 +37,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "sym",
         label: "Symmetric",
-        icon: <SafetyOutlined />,
+        icon: <SafetyCertificateOutlined />,
         collapsedlabel: "SYM",
         children: [
             {
@@ -62,7 +59,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "rsa",
         label: "RSA",
-        icon: <LockOutlined />,
+        icon: <SafetyCertificateOutlined />,
         collapsedlabel: "RSA",
         children: [
             {
@@ -85,7 +82,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "ec",
         label: "Elliptic Curve",
-        icon: <ApartmentOutlined />,
+        icon: <SafetyCertificateOutlined />,
         collapsedlabel: "EC",
         children: [
             {
@@ -109,7 +106,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "pqc",
         label: "__PQC_LABEL__",
-        icon: <ExperimentOutlined />,
+        icon: <SafetyCertificateOutlined />,
         collapsedlabel: "PQC",
         children: [
             {
@@ -140,9 +137,46 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "fpe",
+        label: "FPE",
+        icon: <LockOutlined />,
+        collapsedlabel: "FPE",
+        children: [
+            {
+                key: "fpe/keys",
+                label: "Keys",
+                children: [
+                    { key: "fpe/keys/create", label: "Create" },
+                    { key: "fpe/keys/export", label: "Export" },
+                    { key: "fpe/keys/import", label: "Import" },
+                    { key: "fpe/keys/revoke", label: "Revoke" },
+                    { key: "fpe/keys/destroy", label: "Destroy" },
+                ],
+            },
+            { key: "fpe/encrypt", label: "Encrypt" },
+            { key: "fpe/decrypt", label: "Decrypt" },
+        ],
+    },
+    {
+        key: "tokenize",
+        label: "Anonymize",
+        icon: <EyeInvisibleOutlined />,
+        collapsedlabel: "Anon",
+        children: [
+            { key: "tokenize/hash", label: "Hash" },
+            { key: "tokenize/noise", label: "Add Noise" },
+            { key: "tokenize/word-mask", label: "Word Mask" },
+            { key: "tokenize/word-tokenize", label: "Word Tokenize" },
+            { key: "tokenize/word-pattern-mask", label: "Pattern Mask" },
+            { key: "tokenize/aggregate-number", label: "Aggregate Number" },
+            { key: "tokenize/aggregate-date", label: "Aggregate Date" },
+            { key: "tokenize/scale-number", label: "Scale Number" },
+        ],
+    },
+    {
         key: "sd",
         label: "Secret Data",
-        icon: <EyeInvisibleOutlined />,
+        icon: <LockOutlined />,
         collapsedlabel: "SD",
         children: [
             { key: "secret-data/create", label: "Create" },
@@ -281,9 +315,9 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
 
     let menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
 
-    // Hide PQC and MAC in FIPS mode (not approved / not available in FIPS build)
+    // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac");
+        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last

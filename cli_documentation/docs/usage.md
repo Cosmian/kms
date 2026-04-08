@@ -16,7 +16,9 @@ Commands:
   aws            Support for AWS specific interactions
   bench          Run benchmarks using criterion for statistical analysis.
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  fpe            Manage FPE keys and perform FPE encryption/decryption through KMIP Encrypt/Decrypt
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
+  tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES

@@ -50,6 +50,7 @@ ui/test-results
 .agents/
 .qwen/
 QWEN.md
+.qwen/
 
 # Misc
 TODO.md

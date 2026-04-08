@@ -9,37 +9,40 @@ import AttributeDeleteForm from "./actions/Attributes/AttributeDelete";
 import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
 import AttributeSetForm from "./actions/Attributes/AttributeSet";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import ExportAzureBYOKForm from "./actions/CloudProviders/AzureExportByok";
-import ImportAzureKekForm from "./actions/CloudProviders/AzureImportKek";
 import CertificateCertifyForm from "./actions/Certificates/CertificateCertify";
 import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
+import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
+import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
+import ExportAzureBYOKForm from "./actions/CloudProviders/AzureExportByok";
+import ImportAzureKekForm from "./actions/CloudProviders/AzureImportKek";
 import CCDecryptForm from "./actions/Covercrypt/CovercryptDecrypt";
 import CCEncryptForm from "./actions/Covercrypt/CovercryptEncrypt";
 import CovercryptMasterKeyForm from "./actions/Covercrypt/CovercryptMasterKey";
 import CovercryptUserKeyForm from "./actions/Covercrypt/CovercryptUserKey";
-import CseInfo from "./actions/Keys/CseInfo";
 import ECDecryptForm from "./actions/EC/ECDecrypt";
 import ECEncryptForm from "./actions/EC/ECEncrypt";
 import ECKeyCreateForm from "./actions/EC/ECKeysCreate";
 import ECSignForm from "./actions/EC/ECSign";
 import ECVerifyForm from "./actions/EC/ECVerify";
+import FpeDecryptForm from "./actions/FPE/FpeDecrypt";
+import FpeEncryptForm from "./actions/FPE/FpeEncrypt";
+import FpeKeyCreateForm from "./actions/FPE/FpeKeysCreate";
+import CseInfo from "./actions/Keys/CseInfo";
+import DeriveKeyForm from "./actions/Keys/DeriveKey";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
+import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
-import LocateForm from "./components/common/Locate";
-import LoginPage from "./pages/LoginPage";
-import MainLayout from "./components/layout/MainLayout";
-import NotFoundPage from "./pages/NotFoundPage";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
 import RevokeForm from "./actions/Objects/ObjectsRevoke";
 import OpaqueObjectForm from "./actions/Objects/OpaqueObject";
+import SecretDataCreateForm from "./actions/Objects/SecretDataCreate";
 import PqcDecapsulateForm from "./actions/PQC/PqcDecapsulate";
 import PqcEncapsulateForm from "./actions/PQC/PqcEncapsulate";
 import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
@@ -50,17 +53,26 @@ import RsaEncryptForm from "./actions/RSA/RsaEncrypt";
 import RsaKeyCreateForm from "./actions/RSA/RsaKeysCreate";
 import RsaSignForm from "./actions/RSA/RsaSign";
 import RsaVerifyForm from "./actions/RSA/RsaVerify";
-import SecretDataCreateForm from "./actions/Objects/SecretDataCreate";
-import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import SymmetricDecryptForm from "./actions/Symmetric/SymmetricDecrypt";
 import SymmetricEncryptForm from "./actions/Symmetric/SymmetricEncrypt";
 import SymmetricHashForm from "./actions/Symmetric/SymmetricHash";
+import TokenizeAggregateDate from "./actions/Tokenize/TokenizeAggregateDate";
+import TokenizeAggregateNumber from "./actions/Tokenize/TokenizeAggregateNumber";
+import TokenizeHash from "./actions/Tokenize/TokenizeHash";
+import TokenizeNoise from "./actions/Tokenize/TokenizeNoise";
+import TokenizeScaleNumber from "./actions/Tokenize/TokenizeScaleNumber";
+import TokenizeWordMask from "./actions/Tokenize/TokenizeWordMask";
+import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask";
+import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
+import LocateForm from "./components/common/Locate";
+import MainLayout from "./components/layout/MainLayout";
+import { AuthProvider } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/useAuth";
 import { useBranding } from "./contexts/useBranding";
+import LoginPage from "./pages/LoginPage";
+import NotFoundPage from "./pages/NotFoundPage";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
-import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
-import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
-import DeriveKeyForm from "./actions/Keys/DeriveKey";
 
 type AppContentProps = {
     isDarkMode: boolean;
@@ -77,8 +89,9 @@ const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.has(host);
 
 const resolveServerUrl = (): string => {
     const configuredUrl = (import.meta.env.VITE_KMS_URL as string | undefined)?.trim();
+    const isDevMode = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === "true";
     const defaultDevUrl = `${window.location.protocol}//${window.location.hostname}:9998`;
-    const fallbackUrl = import.meta.env.DEV ? defaultDevUrl : window.location.origin;
+    const fallbackUrl = isDevMode ? defaultDevUrl : window.location.origin;
     const candidate = configuredUrl && configuredUrl.length > 0 ? configuredUrl : fallbackUrl;
 
     try {
@@ -292,6 +305,15 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="compute" element={<MacComputeForm />} />
                             <Route path="verify" element={<MacVerifyForm />} />
                         </Route>
+                        <Route path="fpe">
+                            <Route path="keys/create" element={<FpeKeyCreateForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
+                            <Route path="encrypt" element={<FpeEncryptForm />} />
+                            <Route path="decrypt" element={<FpeDecryptForm />} />
+                        </Route>
                         {branding.enableCovercrypt !== false && (
                             <Route path="cc">
                                 <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
@@ -351,6 +373,16 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
                         <Route path="google-cse" element={<CseInfo />} />
+                        <Route path="tokenize">
+                            <Route path="hash" element={<TokenizeHash />} />
+                            <Route path="noise" element={<TokenizeNoise />} />
+                            <Route path="word-mask" element={<TokenizeWordMask />} />
+                            <Route path="word-tokenize" element={<TokenizeWordTokenize />} />
+                            <Route path="word-pattern-mask" element={<TokenizeWordPatternMask />} />
+                            <Route path="aggregate-number" element={<TokenizeAggregateNumber />} />
+                            <Route path="aggregate-date" element={<TokenizeAggregateDate />} />
+                            <Route path="scale-number" element={<TokenizeScaleNumber />} />
+                        </Route>
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </>

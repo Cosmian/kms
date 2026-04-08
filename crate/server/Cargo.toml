@@ -44,6 +44,7 @@ timeout = []
 # Enable extra cryptographic mechanisms which are non-FIPS compliant.
 non-fips = [
   "cosmian_kms_client_utils/non-fips",
+  "cosmian_kms_crypto/non-fips",
   "cosmian_kms_server_database/non-fips",
 ]
 # Enable interop test operations (should only be used for testing)
