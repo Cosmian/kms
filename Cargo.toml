@@ -180,6 +180,13 @@ lru = "0.16"
 native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
+aes = "0.8"
+cbc = { version = "0.1", default-features = false }
+cipher = "0.4"
+itertools = "0.10"
+libm = "0.2"
+num-bigint = { version = "0.4", default-features = false }
+num-integer = { version = "0.1", default-features = false }
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }

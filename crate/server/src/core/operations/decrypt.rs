@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
         DecryptionSystem, cover_crypt::decryption::CovercryptDecryption,
-        elliptic_curves::ecies::ecies_decrypt, rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
+        elliptic_curves::ecies::ecies_decrypt, fpe::decrypt_fpe,
+        rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
     },
     reexport::cosmian_cover_crypt::api::Covercrypt,
 };
@@ -499,6 +500,42 @@ fn decrypt_single_with_symmetric_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    #[cfg(feature = "non-fips")]
+    {
+        let key_block = owm.object().key_block()?;
+        let cryptographic_algorithm = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| cp.cryptographic_algorithm)
+            .or_else(|| {
+                owm.attributes()
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| cp.cryptographic_algorithm)
+            })
+            .or_else(|| key_block.cryptographic_algorithm().copied())
+            .unwrap_or(CryptographicAlgorithm::AES);
+        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+            let ciphertext = request.data.as_ref().ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Decrypt single with symmetric key: data to decrypt must be provided"
+                        .to_owned(),
+                )
+            })?;
+            let plaintext = decrypt_fpe(
+                &key_block.key_bytes()?,
+                ciphertext,
+                request.authenticated_encryption_additional_data.as_deref(),
+                request.i_v_counter_nonce.as_deref(),
+            )
+            .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
+            return Ok(Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                data: Some(plaintext.into()),
+                correlation_value: request.correlation_value.clone(),
+            }));
+        }
+    }
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),

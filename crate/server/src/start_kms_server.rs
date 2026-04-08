@@ -45,6 +45,8 @@ use openssl::{
 };
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
+#[cfg(feature = "non-fips")]
+use crate::routes::tokenize;
 use crate::{
     config::{IdpAuthConfig, ServerParams, TlsParams},
     core::KMS,
@@ -905,6 +907,27 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             app = app.service(azure_ekm_scope);
         }
 
+        #[cfg(feature = "non-fips")]
+        {
+            let tokenize_scope = web::scope("/tokenize")
+                .wrap(Condition::new(
+                    use_jwt_auth || use_cert_auth || use_api_token_auth,
+                    EnsureAuth::new(
+                        kms_server_for_http.clone(),
+                        use_cert_auth,
+                    ),
+                ))
+                .service(tokenize::hash)
+                .service(tokenize::noise)
+                .service(tokenize::word_mask)
+                .service(tokenize::word_tokenize)
+                .service(tokenize::word_pattern_mask)
+                .service(tokenize::aggregate_number)
+                .service(tokenize::aggregate_date)
+                .service(tokenize::scale_number);
+            app = app.service(tokenize_scope);
+        }
+
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if kms_server_for_http.params.ui_enable && ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
@@ -1027,9 +1050,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::grant_access)
             .service(access::revoke_access)
             .service(access::get_create_access)
-            .service(access::get_privileged_access)
-            .service(
-                web::resource("/download-cli")
+            .service(access::get_privileged_access);
+
+        let default_scope = default_scope.service(
+            web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
             );

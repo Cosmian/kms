@@ -101,6 +101,7 @@ impl KMS {
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
+            | CryptographicAlgorithm::FPE_FF1
             | CryptographicAlgorithm::ChaCha20
             | CryptographicAlgorithm::ChaCha20Poly1305
             | CryptographicAlgorithm::HMACSHA1
@@ -118,50 +119,58 @@ impl KMS {
                 match attributes.key_format_type {
                     None | Some(KeyFormatType::TransparentSymmetricKey) => {
                         // determine the key length in bytes
-                        let key_len: usize = if *cryptographic_algorithm
-                            == CryptographicAlgorithm::THREE_DES
-                        {
-                            // KMIP specifies effective key lengths (112 or 168). Raw bytes include parity bits.
-                            let effective_bits =
-                                attributes.cryptographic_length.ok_or_else(|| {
-                                    KmsError::InvalidRequest(
-                                        "cryptographic_length must be provided for THREE_DES keys"
-                                            .to_owned(),
-                                    )
-                                })?;
-                            if !matches!(effective_bits, 112 | 168) {
-                                return Err(KmsError::InvalidRequest(format!(
-                                    "unsupported THREE_DES cryptographic_length: {effective_bits} (expected 112 or 168)"
-                                )));
+                        let key_len: usize = match cryptographic_algorithm {
+                            CryptographicAlgorithm::FPE_FF1 => {
+                                let effective_bits = attributes.cryptographic_length.unwrap_or(256);
+                                if effective_bits != 256 {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "unsupported FPE_FF1 cryptographic_length: {effective_bits} (expected 256)"
+                                    )));
+                                }
+                                32
                             }
-                            let blocks = effective_bits / 56; // 56 effective bits per DES key (7 bits * 8 bytes with parity)
-                            usize::try_from(blocks * 8).map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "blocks computation overflow: {e}"
-                                ))
-                            })? // bytes including parity bits
-                        } else {
-                            // Defend against resource-exhaustion attacks: reject requests for
-                            // unreasonably large symmetric keys.  The largest legitimate key
-                            // in this server is an AES-256-XTS key at 512 bits (two 256-bit
-                            // halves).  We cap at 8192 bits (1 KB) — vastly more than any
-                            // standard algorithm needs, yet still blocks 128 MB+ DoS requests.
-                            // Also require a minimum of 8 bits so the key material is non-empty.
-                            const MAX_SYMMETRIC_KEY_BITS: i32 = 8192;
-                            const MIN_SYMMETRIC_KEY_BITS: i32 = 8;
-                            let bits = attributes.cryptographic_length.unwrap_or_else(|| {
-                                i32::try_from(AES_256_GCM_KEY_LENGTH * 8).unwrap_or(256)
-                            });
-                            if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS).contains(&bits) {
-                                return Err(KmsError::InvalidRequest(format!(
-                                    "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
-                                )));
+                            CryptographicAlgorithm::THREE_DES => {
+                                // KMIP specifies effective key lengths (112 or 168). Raw bytes include parity bits.
+                                let effective_bits = attributes.cryptographic_length.ok_or_else(|| {
+                                KmsError::InvalidRequest(
+                                    "cryptographic_length must be provided for THREE_DES keys".to_owned(),
+                                )
+                            })?;
+                                if !matches!(effective_bits, 112 | 168) {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "unsupported THREE_DES cryptographic_length: {effective_bits} (expected 112 or 168)"
+                                    )));
+                                }
+                                let blocks = effective_bits / 56; // 56 effective bits per DES key (7 bits * 8 bytes with parity)
+                                usize::try_from(blocks * 8).map_err(|e| {
+                                    KmsError::InvalidRequest(format!(
+                                        "blocks computation overflow: {e}"
+                                    ))
+                                })? // bytes including parity bits
                             }
-                            usize::try_from(bits / 8).map_err(|e| {
-                                KmsError::InvalidRequest(format!(
-                                    "key length conversion error: {e}"
-                                ))
-                            })?
+                            _ => {
+                                // Defend against resource-exhaustion attacks: reject requests for
+                                // unreasonably large symmetric keys.  The largest legitimate key
+                                // in this server is an AES-256-XTS key at 512 bits (two 256-bit
+                                // halves).  We cap at 8192 bits (1 KB) — vastly more than any
+                                // standard algorithm needs, yet still blocks 128 MB+ DoS requests.
+                                // Also require a minimum of 8 bits so the key material is non-empty.
+                                const MAX_SYMMETRIC_KEY_BITS: i32 = 8192;
+                                const MIN_SYMMETRIC_KEY_BITS: i32 = 8;
+                                let bits = attributes.cryptographic_length.unwrap_or_else(|| {
+                                    i32::try_from(AES_256_GCM_KEY_LENGTH * 8).unwrap_or(256)
+                                });
+                                if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS).contains(&bits) {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
+                                    )));
+                                }
+                                usize::try_from(bits / 8).map_err(|e| {
+                                    KmsError::InvalidRequest(format!(
+                                        "key length conversion error: {e}"
+                                    ))
+                                })?
+                            }
                         };
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
@@ -173,7 +182,10 @@ impl KMS {
                         )?;
                         let attributes = object.attributes()?;
                         debug!("Created symmetric key with attributes: {}", attributes);
-                        let tags = attributes.get_tags(vendor_id);
+                        let mut tags = attributes.get_tags(vendor_id);
+                        if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+                            tags.insert("fpe-ff1".to_owned());
+                        }
                         let uid = attributes
                             .unique_identifier
                             .as_ref()
