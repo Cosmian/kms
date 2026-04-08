@@ -27,6 +27,8 @@ pub mod health;
 pub mod kmip;
 pub mod ms_dke;
 pub mod root_redirect;
+#[cfg(feature = "non-fips")]
+pub(crate) mod tokenize;
 pub mod swagger;
 pub mod ui_auth;
 mod utils;
