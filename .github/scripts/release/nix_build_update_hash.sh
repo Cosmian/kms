@@ -100,13 +100,20 @@ build_attr() {
 
     echo "$output"
 
+    # Strip ANSI colour codes so regexes work reliably on both Linux and macOS
+    # (macOS Nix may emit colour escapes that confuse bash's =~ operator).
+    local output_plain
+    output_plain=$(printf '%s\n' "$output" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
+
     # Parse hash mismatches
     local last_drv="" updated=0 skipped=0
     while IFS= read -r line; do
-      if [[ "$line" =~ hash\ mismatch\ in\ fixed-output\ derivation.*\'(/nix/store/[^\']+)\' ]]; then
-        local drv_path="${BASH_REMATCH[1]}"
-        last_drv="${drv_path##*/}"
-        last_drv="${last_drv%.drv}"
+      if [[ "$line" == *"hash mismatch in fixed-output derivation"* ]]; then
+        # Extract /nix/store/...drv without relying on specific quote characters
+        if [[ "$line" =~ (/nix/store/[A-Za-z0-9.+_-]+\.drv) ]]; then
+          last_drv="${BASH_REMATCH[1]##*/}"
+          last_drv="${last_drv%.drv}"
+        fi
         continue
       fi
       if [[ "$line" == *"got:"* ]] && [[ "$line" =~ (sha256-[A-Za-z0-9+/=]+) ]]; then
@@ -125,7 +132,7 @@ build_attr() {
           last_drv=""
         fi
       fi
-    done <<<"$output"
+    done <<<"$output_plain"
 
     if [[ "$updated" -gt 0 && "$attempt" -lt "$MAX_RETRIES" ]]; then
       echo "==> Updated ${updated} hash file(s), retrying..."
