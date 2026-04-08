@@ -57,7 +57,7 @@ The WASM package is built automatically as part of `pnpm run build` (see below).
 To build it manually:
 
 ```bash
-cd crate/wasm
+cd crate/clients/wasm
 wasm-pack build --target web --release --features non-fips
 ```
 
@@ -92,7 +92,7 @@ pnpm run build
 
 This command automatically:
 
-1. Builds the WASM package from `crate/wasm` via `wasm-pack`
+1. Builds the WASM package from `crate/clients/wasm` via `wasm-pack`
 2. Copies the generated `pkg` into `ui/src/wasm/pkg`
 3. Runs the Vite production build
 
@@ -136,7 +136,7 @@ bash .github/scripts/nix.sh --variant non-fips test ui
 1. Build the WASM package and the UI:
 
     ```bash
-    cd crate/wasm
+    cd crate/clients/wasm
     wasm-pack build --target web --release --features non-fips
     cd ../../ui
     VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build

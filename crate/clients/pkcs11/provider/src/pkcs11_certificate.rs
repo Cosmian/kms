@@ -1,4 +1,4 @@
-use ckms::reexport::cosmian_kms_cli::reexport::cosmian_kmip::{
+use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CertificateType,
     kmip_2_1::{self, kmip_objects::Object, kmip_types::LinkType},
 };

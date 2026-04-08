@@ -67,14 +67,6 @@ jobs:
           fi
           cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
 
-  cargo-publish:
-    name: Cargo Publish Workspace
-    uses: ./.github/workflows/cargo-publish.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-    secrets:
-      token: ${{ secrets.CRATES_IO }}
-
   test: # Run all tests
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')

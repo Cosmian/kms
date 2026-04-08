@@ -38,7 +38,28 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
+/// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
+/// environment variable that is set *before* the test helpers clear it, then assigns it
+/// to the server's `proxy_params` so that server-side outbound requests (e.g. CRL fetches)
+/// are routed through the configured corporate proxy.
+pub(crate) fn https_clap_config_with_external_proxy() -> ClapConfig {
+    // Capture proxy URL before disable_proxies_for_tests() removes it from the environment.
+    let proxy_url = std::env::var("HTTPS_PROXY")
+        .ok()
+        .or_else(|| std::env::var("https_proxy").ok())
+        .or_else(|| std::env::var("HTTP_PROXY").ok())
+        .or_else(|| std::env::var("http_proxy").ok());
+    let mut config = https_clap_config_opts(None);
+    if let Some(url) = proxy_url {
+        config.proxy.proxy_url = Some(url);
+    }
+    config
+}
+
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
+    // Ensure local test traffic bypasses any corporate proxy
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
     let sqlite_path = get_tmp_sqlite_path();
 
     // In FIPS mode, disable TLS with P12 certificates since PKCS12KDF is not FIPS-approved
@@ -79,6 +100,60 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             google_cse_migration_key: None,
         },
         ..Default::default()
+    }
+}
+
+/// Ensure localhost bypasses any corporate proxy for tests.
+fn ensure_no_proxy_for_localhost() {
+    let has_http_proxy = std::env::var_os("HTTP_PROXY").is_some()
+        || std::env::var_os("http_proxy").is_some()
+        || std::env::var_os("HTTPS_PROXY").is_some()
+        || std::env::var_os("https_proxy").is_some();
+
+    if !has_http_proxy {
+        return;
+    }
+
+    let existing = std::env::var("NO_PROXY")
+        .ok()
+        .or_else(|| std::env::var("no_proxy").ok())
+        .unwrap_or_default();
+
+    let required = ["localhost", "127.0.0.1", "::1"];
+    let mut parts: Vec<String> = existing
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    for &r in &required {
+        if !parts.iter().any(|p| p.eq_ignore_ascii_case(r)) {
+            parts.push(r.to_owned());
+        }
+    }
+
+    let updated = parts.join(",");
+    // Set both uppercase and lowercase to cover different libraries' expectations
+    unsafe {
+        std::env::set_var("NO_PROXY", &updated);
+        std::env::set_var("no_proxy", &updated);
+    }
+}
+
+/// Clear proxy env vars for the test process so localhost traffic is never proxied.
+fn disable_proxies_for_tests() {
+    let has_proxy = std::env::var_os("HTTP_PROXY").is_some()
+        || std::env::var_os("http_proxy").is_some()
+        || std::env::var_os("HTTPS_PROXY").is_some()
+        || std::env::var_os("https_proxy").is_some();
+    if !has_proxy {
+        return;
+    }
+    unsafe {
+        std::env::remove_var("HTTP_PROXY");
+        std::env::remove_var("http_proxy");
+        std::env::remove_var("HTTPS_PROXY");
+        std::env::remove_var("https_proxy");
     }
 }
 

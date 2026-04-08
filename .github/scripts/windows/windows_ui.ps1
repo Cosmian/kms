@@ -21,7 +21,7 @@ function Build-UI {
 
     # Build WASM package
     Write-Host "Building WASM package..."
-    Push-Location crate\wasm
+    Push-Location crate\clients\wasm
 
     try {
         # Set the linker for WASM target (Windows uses rust-lld)
@@ -42,7 +42,7 @@ function Build-UI {
         New-Item -ItemType Directory -Path pkg | Out-Null
 
         # Use wasm-bindgen to generate JavaScript bindings
-        $wasmPath = "..\..\target\wasm32-unknown-unknown\release\cosmian_kms_client_wasm.wasm"
+        $wasmPath = "..\..\..\target\wasm32-unknown-unknown\release\cosmian_kms_client_wasm.wasm"
         if (-not (Test-Path $wasmPath)) {
             Write-Error "WASM binary not found at: $wasmPath"
             exit 1
@@ -57,7 +57,7 @@ function Build-UI {
 {
   "name": "cosmian_kms_client_wasm",
   "type": "module",
-  "version": "5.20.0",
+  "version": "5.20.1",
   "main": "cosmian_kms_client_wasm.js",
   "types": "cosmian_kms_client_wasm.d.ts"
 }
@@ -93,7 +93,7 @@ function Build-UI {
     }
     New-Item -ItemType Directory -Path $wasmPkgDir -Force | Out-Null
 
-    Copy-Item -Recurse -Force "crate\wasm\pkg\*" $wasmPkgDir
+    Copy-Item -Recurse -Force "crate\clients\wasm\pkg\*" $wasmPkgDir
 
     # Verify copy succeeded
     if (-not (Test-Path "$wasmPkgDir\cosmian_kms_client_wasm_bg.wasm")) {

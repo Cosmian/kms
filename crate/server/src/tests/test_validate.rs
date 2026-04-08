@@ -14,20 +14,13 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::debug;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, error::KmsError,
+    tests::test_utils::https_clap_config_with_external_proxy,
 };
 
-#[ignore = "Requires network access to perform certificate validation"]
+#[ignore = "Requires network access to perform certificate validation since CRL is fetched from https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem"]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
-    // Skip this test in Nix sandbox (no network access)
-    if option_env!("IN_NIX_SHELL").is_some() || std::env::var("IN_NIX_SHELL").is_ok() {
-        eprintln!(
-            "Skipping test_validate_with_certificates_bytes: running in Nix sandbox without network access"
-        );
-        return Ok(());
-    }
-
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =
@@ -39,7 +32,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     let leaf1_cert = fs::read(leaf1_path)?;
     let leaf2_cert = fs::read(leaf2_path)?;
 
-    let clap_config = https_clap_config();
+    let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     let request = Validate {
@@ -116,17 +109,9 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
     Ok(())
 }
 
-#[ignore = "Requires network access to perform certificate validation"]
+#[ignore = "Requires network access to perform certificate validation since CRL is fetched from https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem"]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
-    // Skip this test in Nix sandbox (no network access)
-    if option_env!("IN_NIX_SHELL").is_some() || std::env::var("IN_NIX_SHELL").is_ok() {
-        eprintln!(
-            "Skipping test_validate_with_certificates_ids: running in Nix sandbox without network access"
-        );
-        return Ok(());
-    }
-
     cosmian_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =
@@ -139,7 +124,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
     let leaf1_cert = fs::read(leaf1_path)?;
     let leaf2_cert = fs::read(leaf2_path)?;
 
-    let clap_config = https_clap_config();
+    let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
     // add certificates to kms

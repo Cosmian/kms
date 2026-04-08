@@ -5,6 +5,14 @@ set -ex
 OLD_VERSION="$1"
 NEW_VERSION="$2"
 
+# When --ci is passed as a third argument, skip the pre-commit hooks section.
+# The CI workflow handles those checks (Nix hash updates, SBOM, UI build) as
+# dedicated jobs with the appropriate environments.
+CI_MODE=false
+if [ "${3:-}" = "--ci" ]; then
+  CI_MODE=true
+fi
+
 # Use SED_BINARY from environment if set, otherwise default to 'sed'
 # On MacOS - install gnu-sed with brew
 if command -v gsed >/dev/null 2>&1; then
@@ -21,11 +29,11 @@ fi
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" Cargo.toml
 # Subcrates
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/access/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/cli/Cargo.toml
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/clap/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/ckms/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/pkcs11/module/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/pkcs11/provider/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/client_utils/Cargo.toml
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/client_utils/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/crypto/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/hsm/base_hsm/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/hsm/crypt2pay/Cargo.toml
@@ -35,11 +43,11 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/hsm/sof
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/hsm/utimaco/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/interfaces/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/kmip/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/kms_client/Cargo.toml
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/client/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/server/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/server_database/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/test_kms_server/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/wasm/Cargo.toml
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/wasm/Cargo.toml
 
 # Other files
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/scripts/nix.sh
@@ -60,6 +68,17 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" cli_documenta
 
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" README.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copilot-instructions.md
+
+# Skip all pre-commit hooks when running in CI mode.
+# The workflow handles each concern as a dedicated job:
+#   - Nix hash updates  : the `update-nix-hashes` CI job
+#   - SBOM / CBOM       : the `commit-sbom` CI job
+#   - Full lint pass    : the regular CI pipeline that is already triggered
+#                         by the branch push
+if [ "$CI_MODE" = "true" ]; then
+  echo "CI mode: skipping pre-commit hooks (handled by dedicated CI jobs)"
+  exit 0
+fi
 
 # pre-commit run -a --hook-stage manual release-git-cliff
 pre-commit run -a --hook-stage manual cbom || true

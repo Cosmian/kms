@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_config_utils::ConfigUtils;
-use cosmian_kms_cli::{
-    actions::kms::actions::KmsActions,
+use cosmian_kms_cli_actions::{
+    actions::kms_actions::KmsActions,
     reexport::cosmian_kms_client::{
         GmailApiConf, KmsClient,
         reexport::cosmian_http_client::{HttpClientConfig, ProxyParams},

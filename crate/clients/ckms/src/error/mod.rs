@@ -4,9 +4,9 @@ use std::str::Utf8Error;
 use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_cli::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt;
-use cosmian_kms_cli::{
-    actions::kms::google::GoogleApiError,
+use cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt;
+use cosmian_kms_cli_actions::{
+    actions::google::GoogleApiError,
     error::KmsCliError,
     reexport::{
         cosmian_kms_client::{

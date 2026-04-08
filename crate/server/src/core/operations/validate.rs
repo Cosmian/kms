@@ -21,6 +21,7 @@ use openssl::{
 };
 
 use crate::{
+    config::ProxyParams,
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
     error::KmsError,
     result::KResult,
@@ -130,7 +131,7 @@ pub(crate) async fn validate_operation(
 
     verify_chain_signature(&certificates)?;
     validate_chain_date(&certificates, &request.validity_time)?;
-    verify_crls(certificates).await?;
+    verify_crls(certificates, kms.params.proxy_params.as_ref()).await?;
 
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,
@@ -433,7 +434,10 @@ enum UriType {
 /// - There is an error in retrieving the CRL from a URL.
 /// - There is an error in reading the CRL from a file path.
 /// ```
-async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>>> {
+async fn get_crl_bytes(
+    uri_list: Vec<String>,
+    proxy_params: Option<&ProxyParams>,
+) -> KResult<HashMap<String, Vec<u8>>> {
     trace!("get_crl_bytes: entering: uri_list: {uri_list:?}");
 
     let mut result = HashMap::new();
@@ -470,7 +474,49 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
                     continue;
                 }
 
-                let response = reqwest::Client::new().get(&url).send().await?;
+                let mut client_builder = reqwest::Client::builder();
+                if let Some(proxy_params) = proxy_params {
+                    let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
+                        KmsError::Certificate(format!(
+                            "Failed to configure the HTTPS proxy for CRL fetch: {e}"
+                        ))
+                    })?;
+                    if let Some(ref username) = proxy_params.basic_auth_username {
+                        proxy = proxy.basic_auth(
+                            username,
+                            proxy_params
+                                .basic_auth_password
+                                .as_deref()
+                                .unwrap_or_default(),
+                        );
+                    } else if let Some(ref custom_auth_header) = proxy_params.custom_auth_header {
+                        proxy = proxy.custom_http_auth(
+                            reqwest::header::HeaderValue::from_str(custom_auth_header).map_err(
+                                |e| {
+                                    KmsError::Certificate(format!(
+                                        "Failed to set custom HTTP auth header for CRL fetch: {e}"
+                                    ))
+                                },
+                            )?,
+                        );
+                    }
+                    if !proxy_params.exclusion_list.is_empty() {
+                        proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
+                            &proxy_params.exclusion_list.join(","),
+                        ));
+                    }
+                    client_builder = client_builder.proxy(proxy);
+                }
+                let response = client_builder
+                    .build()
+                    .map_err(|e| {
+                        KmsError::Certificate(format!(
+                            "Failed to build reqwest client for CRL fetch: {e}"
+                        ))
+                    })?
+                    .get(&url)
+                    .send()
+                    .await?;
                 debug!("after getting CRL: url: {url}");
                 if response.status().is_success() {
                     let crl_bytes =
@@ -545,7 +591,10 @@ async fn get_crl_bytes(uri_list: Vec<String>) -> KResult<HashMap<String, Vec<u8>
 /// * If the CRL signature is invalid.
 /// * If there is an issue fetching the CRL bytes from the URIs.
 /// ```
-pub(crate) async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndicator> {
+pub(crate) async fn verify_crls(
+    certificates: Vec<X509>,
+    proxy_params: Option<&ProxyParams>,
+) -> KResult<ValidityIndicator> {
     let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
@@ -590,7 +639,7 @@ pub(crate) async fn verify_crls(certificates: Vec<X509>) -> KResult<ValidityIndi
                 }
             }
 
-            current_crls = get_crl_bytes(uri_list).await?;
+            current_crls = get_crl_bytes(uri_list, proxy_params).await?;
 
             // Test if certificate is in current CRLs
             //

@@ -2,7 +2,7 @@ use std::{fmt, path::PathBuf, sync::OnceLock, vec};
 
 use ckms::{
     config::ClientConfig,
-    reexport::cosmian_kms_cli::reexport::{
+    reexport::cosmian_kms_cli_actions::reexport::{
         cosmian_kmip::{
             self,
             kmip_0::kmip_types::{

@@ -28,7 +28,7 @@ workspace = true
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_cli/non-fips", "test_kms_server/non-fips"]
+non-fips = ["cosmian_kms_cli_actions/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -42,7 +42,7 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_config_utils = { workspace = true }
-cosmian_kms_cli = { path = "../../cli", version = "5.20.0" }
+cosmian_kms_cli_actions = { path = "../clap", version = "5.20.1" }
 cosmian_logger = { workspace = true }
 csv = "1.3"
 der = { workspace = true, features = ["pem"] }

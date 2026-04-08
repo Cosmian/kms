@@ -20,12 +20,18 @@ jobs:
     uses: ./.github/workflows/packaging-docker.yml
     with:
       toolchain: 1.90.0
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
 
   packages:
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
 
     strategy:
       fail-fast: false
@@ -103,7 +109,10 @@ jobs:
           if-no-files-found: error
 
   publish-release:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
 
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
@@ -216,7 +225,10 @@ jobs:
             ./nix/signing-keys/cosmian-kms-public.asc
 
   publish-sbom:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
 
     name: Publish SBOM ${{ matrix.features }}-${{ matrix.link }}
     needs: packages
@@ -266,6 +278,13 @@ jobs:
               sbom/${target}/${{ matrix.features }}/${{ matrix.link }}/* \
               cosmian@package.cosmian.com:"${remote_dir}/"
           done
+
+  cargo-publish:
+    uses: ./.github/workflows/cargo-publish.yml
+    with:
+      toolchain: 1.90.0
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
 
   tests:
     needs: packages

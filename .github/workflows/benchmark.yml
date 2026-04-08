@@ -31,6 +31,9 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - name: Clean workspace (fix self-hosted runner permission issues)
+        run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -40,12 +43,12 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install dependencies (jq, bc)
+      - name: Install dependencies (jq, bc, OpenSSL)
         run: |
           if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq jq bc curl
+            sudo apt-get update -qq && sudo apt-get install -y -qq jq bc curl pkg-config libssl-dev
           elif command -v brew >/dev/null 2>&1; then
-            brew install jq bc
+            brew install jq bc openssl pkg-config
           fi
 
       - name: Run benchmark regression analysis

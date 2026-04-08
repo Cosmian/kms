@@ -288,7 +288,7 @@ get_repo_root() {
 
 # Setup concise logging for tests unless caller overrides RUST_LOG
 setup_test_logging() {
-  : "${RUST_LOG:=cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error}"
+  : "${RUST_LOG:=cosmian_kms_cli_actions=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error}"
   export RUST_LOG
 }
 
@@ -380,6 +380,19 @@ _run_workspace_tests() {
   fi
 
   cargo test "${cargo_test_args[@]}"
+
+  # Run the network-dependent certificate validation tests (marked #[ignore]) for all DB
+  # backends.  For postgresql/mysql/redis-findex these tests were already included in the
+  # --ignored run above; for sqlite they need an explicit additional invocation.
+  if [ "$KMS_TEST_DB" = "sqlite" ]; then
+    local -a cargo_test_validate_args
+    cargo_test_validate_args=(--workspace --lib)
+    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+      cargo_test_validate_args+=("${FEATURES_FLAG[@]}")
+    fi
+    cargo_test_validate_args+=(-- --nocapture --ignored test_validate_with_certificates)
+    cargo test "${cargo_test_validate_args[@]}"
+  fi
 
   # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
   # For sqlite, skip this step since all non-ignored tests already ran above
