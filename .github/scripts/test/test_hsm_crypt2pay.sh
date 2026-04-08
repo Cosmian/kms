@@ -10,10 +10,10 @@ if ! command -v openvpn >/dev/null 2>&1; then
 fi
 
 export OVPN_CONF="${OVPN_CONF}"
-echo "$OVPN_CONF" > /tmp/openvpn.ovpn
-sudo openvpn --config /tmp/openvpn.ovpn > /tmp/vpn.log 2>&1 &
+echo "$OVPN_CONF" | sudo tee /tmp/openvpn.ovpn > /dev/null
+sudo openvpn --config /tmp/openvpn.ovpn 2>&1 | sudo tee /tmp/vpn.log > /dev/null &
 
-sleep 10
+#sleep 10
 
 echo "VPN logs:"
 tail -n 50 /tmp/vpn.log
