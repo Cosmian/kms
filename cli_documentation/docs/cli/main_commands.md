@@ -60,6 +60,8 @@ Possible values:  `"true", "false"`
 
 **`ec`** [[10]](#10-ckms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
+**`fpe`** [[FPE]](#fpe-commands)  Manage FPE-FF1 keys. Encrypt and decrypt text, integer, and floating-point values
+
 **`google`** [[11]](#11-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
 **`locate`** [[12]](#12-ckms-locate)  Locate cryptographic objects inside the KMS
@@ -87,6 +89,26 @@ Possible values:  `"true", "false"`
 **`markdown`** [[23]](#23-ckms-markdown)  Regenerate the CLI documentation in Markdown format
 
 **`configure`** [[24]](#24-ckms-configure)  Configure the KMS CLI (create ckms.toml)
+
+---
+
+## FPE Commands
+
+Manage FF1 format-preserving encryption through the KMIP `Encrypt` and `Decrypt` operations.
+
+### Usage
+`ckms fpe <subcommand>`
+
+### Subcommands
+
+**`keys create`** Create a 256-bit `FPE_FF1` symmetric key
+
+**`encrypt`** Encrypt text, integer, or floating-point input while preserving its format
+
+**`decrypt`** Decrypt text, integer, or floating-point input while preserving its format
+
+Use `--type text|integer|float`, `--alphabet`, and `--tweak` to select the FF1 mode and metadata
+that are forwarded to KMIP.
 
 ---
 

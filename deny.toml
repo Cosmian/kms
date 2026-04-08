@@ -72,6 +72,7 @@ ignore = [
   { id = "RUSTSEC-2025-0009", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2025-0010", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
+  { id = "RUSTSEC-2026-0097", reason = "rand 0.8.5 (transitive via cookie, jsonwebtoken, num-bigint-dig): unsoundness requires BOTH 'log' AND 'thread_rng' features enabled simultaneously. These features are not enabled in our build. Upgrading would require cookie 0.18+ (incompatible with actix-web 4.13) and num-bigint-dig updates. This will resolve when ecosystem dependencies upgrade independently." },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
@@ -103,7 +104,7 @@ allow = [
   "Unicode-3.0",
   "CC0-1.0",
   "BUSL-1.1",
-  "GPL-3.0-or-later", # legacy dependency note
+  "GPL-3.0-or-later",               # legacy dependency note
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

@@ -1,6 +1,6 @@
 # Cosmian KMS — AI Agent Instructions
 
-> **Purpose of this file**: This is the single source of truth for any AI agent
+> **Purpose of this file**: This is the cannonical instructions file for any AI agent
 > (Copilot, Cursor, Cline, Claude Code, etc.) working on the Cosmian KMS codebase. It
 > explains project structure, build commands, CI workflows, coding conventions,
 > and troubleshooting steps so the agent can act autonomously and correctly.
@@ -37,23 +37,23 @@ curl -s -X POST -H "Content-Type: application/json" -d '{}' http://localhost:999
 
 ### Cargo aliases (`.cargo/config.toml`)
 
-| Alias | Expands to |
-|---|---|
-| `format` | `fmt --all -- --check` |
-| `build-all` | `build --workspace --all-targets --all-features --bins` |
-| `test-fips` | `test --lib --workspace` |
-| `test-non-fips` | `test --lib --workspace --features non-fips` |
-| `clippy-all` | `clippy --workspace --all-targets --all-features -- -D warnings` |
+| Alias           | Expands to                                                       |
+| --------------- | ---------------------------------------------------------------- |
+| `format`        | `fmt --all -- --check`                                           |
+| `build-all`     | `build --workspace --all-targets --all-features --bins`          |
+| `test-fips`     | `test --lib --workspace`                                         |
+| `test-non-fips` | `test --lib --workspace --features non-fips`                     |
+| `clippy-all`    | `clippy --workspace --all-targets --all-features -- -D warnings` |
 
 ### Database test environment
 
 Start backends with `docker compose up -d`, then set:
 
-| Variable | Value |
-|---|---|
+| Variable           | Value                                     |
+| ------------------ | ----------------------------------------- |
 | `KMS_POSTGRES_URL` | `postgresql://kms:kms@127.0.0.1:5432/kms` |
-| `KMS_MYSQL_URL` | `mysql://kms:kms@localhost:3306/kms` |
-| `KMS_SQLITE_PATH` | `data/shared` |
+| `KMS_MYSQL_URL`    | `mysql://kms:kms@localhost:3306/kms`      |
+| `KMS_SQLITE_PATH`  | `data/shared`                             |
 
 > MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
@@ -143,10 +143,10 @@ crate/server/src/core/kms/mod.rs              — KMS struct (params, database, 
 
 Enterprise routes:
 
-- `crate/server/src/routes/aws_xks/`   — AWS XKS
+- `crate/server/src/routes/aws_xks/` — AWS XKS
 - `crate/server/src/routes/azure_ekm/` — Azure EKM
 - `crate/server/src/routes/google_cse/` — Google CSE
-- `crate/server/src/routes/ms_dke/`    — Microsoft DKE
+- `crate/server/src/routes/ms_dke/` — Microsoft DKE
 
 You must always verify that changes related to KMIP protocol are compliant with KMIP specifications (HTML files found in crate/kmip/src)
 
@@ -156,8 +156,8 @@ You must always verify that changes related to KMIP protocol are compliant with 
 
 When you need to change something, start here:
 
-| Intent | File(s) |
-|---|---|
+| Intent                      | File(s)                                           |
+| --------------------------- | ------------------------------------------------- |
 | Add/change a KMIP operation | `crate/server/src/core/operations/<operation>.rs` |
 | KMIP operation dispatcher | `crate/server/src/core/operations/dispatch.rs` |
 | KMS struct definition | `crate/server/src/core/kms/mod.rs` |
@@ -181,13 +181,13 @@ When you need to change something, start here:
 
 ## 5. Feature flags
 
-| Flag | Default | Effect |
-|---|---|---|
-| *(none / fips)* | **on** | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider |
-| `non-fips` | off | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS |
-| `interop` | **on** | Enables extra KMIP interoperability test operations (on by default; do not disable in tests) |
-| `insecure` | off | Skips OAuth token expiration check and allows self-signed TLS — **dev/test only** |
-| `timeout` | off | Makes the server binary expire at a compile-time-chosen date |
+| Flag            | Default | Effect                                                                                       |
+| --------------- | ------- | -------------------------------------------------------------------------------------------- |
+| _(none / fips)_ | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider                          |
+| `non-fips`      | off     | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS                   |
+| `interop`       | **on**  | Enables extra KMIP interoperability test operations (on by default; do not disable in tests) |
+| `insecure`      | off     | Skips OAuth token expiration check and allows self-signed TLS — **dev/test only**            |
+| `timeout`       | off     | Makes the server binary expire at a compile-time-chosen date                                 |
 
 Use `--features non-fips` to enable all non-approved algorithms.
 
@@ -224,23 +224,23 @@ bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] CO
 
 ### Test types (`nix.sh test <type>`)
 
-| Type | FIPS? | Script | Notes |
-|---|---|---|---|
-| `sqlite` | yes | `test_sqlite.sh` | Default DB backend |
-| `psql` | yes | `test_psql.sh` | Requires PostgreSQL |
-| `mysql` | yes | `test_mysql.sh` | Disabled in CI |
-| `percona` | yes | `test_percona.sh` | Percona XtraDB |
-| `mariadb` | yes | `test_maria.sh` | MariaDB |
-| `wasm` | yes | `test_wasm.sh` | WASM package build + tests |
-| `google_cse` | yes | `test_google_cse.sh` | Requires OAuth creds |
-| `gcp_cmek` | yes | `test_gcp_cmek.sh` | GCP CMEK wrapping |
-| `otel_export` | yes | `test_otel_export.sh` | OpenTelemetry metrics |
-| `hsm [backend]` | yes | `test_hsm_*.sh` | softhsm2 / utimaco / proteccio / all |
-| `redis` | **no** | `test_redis.sh` | Redis-findex (non-FIPS only) |
-| `pykmip` | **no** | `test_pykmip.sh` | PyKMIP + Synology DSM |
-| `aws_xks` | **no** | `aws_xks_test.sh` | AWS XKS |
-| `azure_ekm` | **no** | `azure_ekm_test.sh` | Azure EKM |
-| `ui` | **no** | `test_ui.sh` | Playwright E2E (see §8) |
+| Type            | FIPS?  | Script                | Notes                                |
+| --------------- | ------ | --------------------- | ------------------------------------ |
+| `sqlite`        | yes    | `test_sqlite.sh`      | Default DB backend                   |
+| `psql`          | yes    | `test_psql.sh`        | Requires PostgreSQL                  |
+| `mysql`         | yes    | `test_mysql.sh`       | Disabled in CI                       |
+| `percona`       | yes    | `test_percona.sh`     | Percona XtraDB                       |
+| `mariadb`       | yes    | `test_maria.sh`       | MariaDB                              |
+| `wasm`          | yes    | `test_wasm.sh`        | WASM package build + tests           |
+| `google_cse`    | yes    | `test_google_cse.sh`  | Requires OAuth creds                 |
+| `gcp_cmek`      | yes    | `test_gcp_cmek.sh`    | GCP CMEK wrapping                    |
+| `otel_export`   | yes    | `test_otel_export.sh` | OpenTelemetry metrics                |
+| `hsm [backend]` | yes    | `test_hsm_*.sh`       | softhsm2 / utimaco / proteccio / all |
+| `redis`         | **no** | `test_redis.sh`       | Redis-findex (non-FIPS only)         |
+| `pykmip`        | **no** | `test_pykmip.sh`      | PyKMIP + Synology DSM                |
+| `aws_xks`       | **no** | `aws_xks_test.sh`     | AWS XKS                              |
+| `azure_ekm`     | **no** | `azure_ekm_test.sh`   | Azure EKM                            |
+| `ui`            | **no** | `test_ui.sh`          | Playwright E2E (see §8)              |
 
 ### Package types (`nix.sh package [type]`)
 
@@ -254,14 +254,14 @@ bash .github/scripts/nix.sh docker --variant non-fips --load --test
 
 ### Workflow files
 
-| Workflow | Purpose |
-|---|---|
+| Workflow                     | Purpose                                                              |
+| ---------------------------- | -------------------------------------------------------------------- |
 | `main.yml` → `main_base.yml` | Push/PR trigger; runs clippy, cargo-deny, cargo-test, test_all, docs |
-| `test_all.yml` | Nix-based test matrix: 15 types × 2 variants + HSM matrix |
-| `packaging.yml` | Multi-platform packaging (Linux/ARM/macOS), GPG-signed |
-| `packaging-docker.yml` | Docker image builds (fips + non-fips) |
-| `test_windows.yml` | Windows-only build + test |
-| `build_windows.yml` | Windows server + UI builder |
+| `test_all.yml`               | Nix-based test matrix: 15 types × 2 variants + HSM matrix            |
+| `packaging.yml`              | Multi-platform packaging (Linux/ARM/macOS), GPG-signed               |
+| `packaging-docker.yml`       | Docker image builds (fips + non-fips)                                |
+| `test_windows.yml`           | Windows-only build + test                                            |
+| `build_windows.yml`          | Windows server + UI builder                                          |
 
 ---
 
@@ -307,11 +307,11 @@ Update ui/tests/e2e/README.md according to ui/tests/e2e/ tests.
 
 The UI has three test layers — all must pass before merging:
 
-| Layer | Runner | Location | Config |
-|---|---|---|---|
-| E2E | Playwright | `ui/tests/e2e/` | `ui/playwright.config.ts` |
-| Integration | Vitest | `ui/tests/integration/` | `ui/tests/vitest.int.config.ts` |
-| Unit | Vitest | `ui/tests/unit/` | `ui/tests/vitest.unit.config.ts` |
+| Layer       | Runner     | Location                | Config                           |
+| ----------- | ---------- | ----------------------- | -------------------------------- |
+| E2E         | Playwright | `ui/tests/e2e/`         | `ui/playwright.config.ts`        |
+| Integration | Vitest     | `ui/tests/integration/` | `ui/tests/vitest.int.config.ts`  |
+| Unit        | Vitest     | `ui/tests/unit/`        | `ui/tests/vitest.unit.config.ts` |
 
 ### UI test conventions
 
@@ -378,16 +378,28 @@ GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
   unrelated improvements alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`,
   `noUnusedParameters: true`. Fix all type errors before committing UI changes.
+- **Clippy `#[allow]` policy**: follow this decision tree for every new `#[allow(clippy::...)]`:
+  1. **Can it and SHOULD IT be fixed?** → Fix it. No allow needed.
+  2. **Cannot be fixed, but there is a code-specific reason to keep it** (e.g. variable names
+     mandated by a spec, an inherently lossy conversion with a proven safe invariant) →
+     Keep the allow and add a precise inline comment on the same or next line explaining
+     **why** the lint cannot be satisfied and why the code is correct despite it.
+  3. **Cannot be decided** → Report to the user; do not silently suppress.
 
 ---
 
 ## 11. Updating CHANGELOG.md
 
-For each change, add a **one-line summary** in `CHANGELOG/<branch_name_without_slashes>.md` that will be committed (replace in branch name `/` with `_`), except if the change is already described in it. Use the formatting style of existing entries and respect the existing sections convention (Features, Bug Fixes, Build, Refactor, Documentation, Testing, CI, Security). Under a CHANGELOG section, try regrouping by sub-feature or component if multiple entries relate to the same area (e.g. "KMIP operations", "Web UI", "PostgreSQL backend"). This helps maintain readability as the number of entries grows.
+> **IMPORTANT — file location**: Changes go in `CHANGELOG/<branch_name_without_slashes>.md`
+> (replace `/` with `_` in the branch name, e.g. branch `feature/foo` → `CHANGELOG/feature_foo.md`).
+> The **root `CHANGELOG.md` is generated by `git-cliff` and must NEVER be edited manually.**
+> If the branch-specific file does not exist yet, create it.
 
-In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG.md item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
+For each change, add a **one-line summary** in the branch-specific file, except if the change is already described in it. Use the formatting style of existing CHANGELOG entries and respect the sections convention: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`, `Security`. Under a section, try regrouping by sub-feature or component when multiple entries relate to the same area (e.g. "KMIP operations", "Web UI", "PostgreSQL backend").
 
-Finally, add at bottom of the file if not already exists, the as many "Closes #xxx" it requires to automatically close the related issues when the PR is merged.
+In addition, add when possible the GitHub PR or GitHub issue related and add on this CHANGELOG item at the EOL a link like this ([#XXX](https://github.com/Cosmian/kms/issues/XXX)) or ([#XXX](https://github.com/Cosmian/kms/pull/XXX)).
+
+Finally, add at the bottom of the file, if not already present, as many `Closes #xxx` lines as needed to automatically close the related issues when the PR is merged.
 
 ---
 
@@ -439,14 +451,14 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
 ## 14. Common issues
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Usage mask errors (`Encrypt`, `Sign` denied) | Key missing required `CryptographicUsageMask` | Check the object's attributes |
-| `legacy.so` / `fips.so` not found | `OPENSSL_MODULES` not set | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
-| Stale Nix vendor hashes | `Cargo.lock` or version changed | Regenerate all four hash files (see §13) |
-| `gh` command hangs | Interactive pager opened | Use `GH_PAGER=cat gh ...` |
-| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)` |
-| TypeScript unused-variable error in UI tests | `noUnusedLocals: true` in tsconfig | Remove the variable or prefix with `_` |
+| Symptom                                         | Cause                                         | Fix                                                                                                          |
+| ----------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Usage mask errors (`Encrypt`, `Sign` denied)    | Key missing required `CryptographicUsageMask` | Check the object's attributes                                                                                |
+| `legacy.so` / `fips.so` not found               | `OPENSSL_MODULES` not set                     | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
+| Stale Nix vendor hashes                         | `Cargo.lock` or version changed               | Regenerate all four hash files (see §13)                                                                     |
+| `gh` command hangs                              | Interactive pager opened                      | Use `GH_PAGER=cat gh ...`                                                                                    |
+| Playwright `toHaveText` type error with `exact` | Unsupported option in Playwright              | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
+| TypeScript unused-variable error in UI tests    | `noUnusedLocals: true` in tsconfig            | Remove the variable or prefix with `_`                                                                       |
 
 ---
 
@@ -465,6 +477,17 @@ Required behavior for any AI agent:
 3. Update `README.md` with a brief summary (not full details) and links to the detailed docs.
 4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
 5. Avoid duplicating full documentation in `README.md`; keep README content short and navigational.
+
+### Technical examples: sourcing rule
+
+Source technical examples in strict priority:
+
+1. **Copy-paste from test `assert_eq!` (or similar) in codebase** (highest priority)
+2. **Live KMS output** launch a debug instance and use it to produce the result
+3. **Mathematically derived** (applies only for deteministed operations)
+4. **User-provided** 
+
+**If none applies**: Leave example blank with placeholder `"<result>"` and report: "Example not sourced — could not find test assertion, live KMS output, derivation, or user value for: [description]". **Never invent examples**.
 
 ### Integration documentation alignment rules
 
@@ -491,13 +514,13 @@ The integrations section is the most commonly extended area. Keep these four vie
 
 **README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
 
-| README section | mkdocs.yml grouping | Files location |
-|---|---|---|
-| ☁️ Cloud Provider — External Key Management | `Cloud providers:` | `integrations/cloud_providers/` |
-| 🗄️ Database Integrations | `Databases:` | `integrations/databases/` |
-| 💿 Disk Encryption | `Disk encryption:` (under `Storage:`) | `integrations/disk_encryption/` |
-| 💾 Storage Integrations | `Storage:` | `integrations/storage/` |
-| 🔗 Other Integrations | `Other:` | `integrations/` root |
+| README section                              | mkdocs.yml grouping                   | Files location                  |
+| ------------------------------------------- | ------------------------------------- | ------------------------------- |
+| ☁️ Cloud Provider — External Key Management | `Cloud providers:`                    | `integrations/cloud_providers/` |
+| 🗄️ Database Integrations                    | `Databases:`                          | `integrations/databases/`       |
+| 💿 Disk Encryption                          | `Disk encryption:` (under `Storage:`) | `integrations/disk_encryption/` |
+| 💾 Storage Integrations                     | `Storage:`                            | `integrations/storage/`         |
+| 🔗 Other Integrations                       | `Other:`                              | `integrations/` root            |
 
 **When adding a new integration**:
 
