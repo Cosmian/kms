@@ -10,7 +10,7 @@
 # Usage:
 #   nix_build_update_hash.sh              # build all derivations
 #   nix_build_update_hash.sh -A <attr>   # build one specific derivation
-set -euo pipefail
+set -xeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
@@ -22,7 +22,11 @@ OS="linux"
 
 # Ordered list of derivations to build, split by platform:
 #   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
-#   macOS  — only UI (for ui.pnpm.darwin) + CLI (for cli.vendor.*.darwin)
+#   macOS  — only CLI (for cli.vendor.*.darwin)
+#             ui-fips/ui-non-fips are excluded: their vendor hashes are
+#             Linux-only and building them on macOS always fails at the
+#             vendor hash step.  The ui.pnpm.darwin.sha256 is not updated
+#             by this workflow and must be refreshed manually when needed.
 #             server derivations are Linux-only and must NOT run on macOS.
 if [[ "$OS" == "darwin" ]]; then
   ALL_ATTRS=(
