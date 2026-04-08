@@ -11,17 +11,31 @@ fi
 
 export OVPN_CONF="${OVPN_CONF}"
 echo "$OVPN_CONF" | sudo tee /tmp/openvpn.ovpn > /dev/null
-sudo openvpn --config /tmp/openvpn.ovpn 2>&1 | sudo tee /tmp/vpn.log > /dev/null &
 
-sleep 10
+sudo touch /tmp/vpn.log
 
-echo "VPN logs:"
+sudo openvpn --config /tmp/openvpn.ovpn \
+  --log /tmp/vpn.log \
+  --daemon
+
+echo "Attente de la connexion VPN..."
+
+for _i in {1..30}; do
+  if grep -q "Initialization Sequence Completed" /tmp/vpn.log; then
+    echo "VPN connecté ✅"
+    break
+  fi
+  sleep 1
+done
+
+if ! grep -q "Initialization Sequence Completed" /tmp/vpn.log; then
+  echo "❌ VPN non connecté"
+  cat /tmp/vpn.log
+  exit 1
+fi
+
+echo "Logs VPN:"
 tail -n 50 /tmp/vpn.log
-
-echo "IP :"
-curl -s https://ifconfig.me || echo "Impossible de récupérer l'IP publique"
-
-echo "VPN connecté ✅"
 
 # Crypt2pay-only tests (Linux only)
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
