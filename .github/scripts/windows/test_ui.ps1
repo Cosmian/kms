@@ -4,11 +4,10 @@
 # Mirrors the Linux test_ui.sh, adapted for PowerShell / Windows CI:
 #   1.  Build the WASM package (non-fips, web target) using wasm-pack.
 #   2.  Copy the generated pkg\ into ui\src\wasm\pkg\.
-#   3.  Install JS dependencies and build the Vite bundle, baking the local
-#       KMS URL into the bundle via VITE_KMS_URL.
+#   3.  Install JS dependencies (no production build — dev server used for E2E).
 #   4.  Install Playwright's Chromium browser.
 #   5.  Start the KMS server in the background and wait for it to be ready.
-#   6.  Start `vite preview` in the background.
+#   6.  Start `vite` dev server in the background.
 #   7.  Run `pnpm run test:e2e` (Playwright).
 #
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
@@ -82,16 +81,7 @@ try {
     # Use --no-frozen-lockfile to avoid lock mismatch failures in CI
     Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile")
 
-    Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
-    $env:VITE_KMS_URL = "http://127.0.0.1:9998"
-    $env:VITE_DEV_MODE = "true"
-    try {
-        Invoke-Checked $pnpmCmd @("run", "build:vite")
-    }
-    finally {
-        Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
-        Remove-Item Env:VITE_DEV_MODE -ErrorAction SilentlyContinue
-    }
+    # No production build needed – the dev server is used for E2E tests.
 
     # ── 3. Install Playwright's Chromium browser ──────────────────────────────
     Write-Host "==> Installing Playwright Chromium browser ..." -ForegroundColor Cyan
@@ -181,29 +171,31 @@ if (-not $KmsReady) {
     throw "KMS did not become ready within 300 s"
 }
 
-# ── 5. Start Vite preview server ─────────────────────────────────────────────
+# ── 5. Start Vite dev server ─────────────────────────────────────────────────
 $PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
-Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -ForegroundColor Cyan
+Write-Host "==> Starting Vite dev server (port $PreviewPort) ..." -ForegroundColor Cyan
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"
+$env:VITE_KMS_URL = "http://127.0.0.1:9998"
+$env:VITE_DEV_MODE = "true"
 $PreviewProc = Start-Process -FilePath $pnpmStartExe `
-    -ArgumentList ($pnpmStartPrefix + @("preview", "--port", "$PreviewPort", "--host", "127.0.0.1")) `
+    -ArgumentList ($pnpmStartPrefix + @("exec", "vite", "--port", "$PreviewPort", "--host", "127.0.0.1")) `
     -PassThru -NoNewWindow -WorkingDirectory $UiDir `
     -RedirectStandardOutput $PreviewLogOut `
     -RedirectStandardError $PreviewLogErr
 
-Write-Host "==> Waiting for Vite preview to be ready ..." -ForegroundColor Cyan
+Write-Host "==> Waiting for Vite dev server to be ready ..." -ForegroundColor Cyan
 for ($i = 1; $i -le 60; $i++) {
     if ($PreviewProc.HasExited) {
-        Write-Host "Vite preview stdout:"; Get-Content $PreviewLogOut -ErrorAction SilentlyContinue
-        Write-Host "Vite preview stderr:"; Get-Content $PreviewLogErr -ErrorAction SilentlyContinue
-        throw "Vite preview process exited unexpectedly (exit code $($PreviewProc.ExitCode))"
+        Write-Host "Vite dev server stdout:"; Get-Content $PreviewLogOut -ErrorAction SilentlyContinue
+        Write-Host "Vite dev server stderr:"; Get-Content $PreviewLogErr -ErrorAction SilentlyContinue
+        throw "Vite dev server process exited unexpectedly (exit code $($PreviewProc.ExitCode))"
     }
     try {
         $resp = Invoke-WebRequest `
             -Uri "http://127.0.0.1:$PreviewPort/ui/" `
             -UseBasicParsing -ErrorAction SilentlyContinue
-        if ($null -ne $resp) { Write-Host "    Vite preview ready after ${i}s"; break }
+        if ($null -ne $resp) { Write-Host "    Vite dev server ready after ${i}s"; break }
     }
     catch { }
     Start-Sleep -Seconds 1
@@ -211,7 +203,7 @@ for ($i = 1; $i -le 60; $i++) {
         try { $KmsProc.Kill() } catch { }
         try { $PreviewProc.Kill() } catch { }
         Remove-Item -Recurse -Force -Path $SqliteDir -ErrorAction SilentlyContinue
-        throw "Vite preview did not become ready within 60 s"
+        throw "Vite dev server did not become ready within 60 s"
     }
 }
 
@@ -238,6 +230,8 @@ finally {
     Write-Host "==> Stopping servers ..." -ForegroundColor Cyan
     try { Stop-Process -Id $KmsProc.Id -Force -ErrorAction SilentlyContinue } catch { }
     try { $PreviewProc.Kill() } catch { }
+    Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:VITE_DEV_MODE -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force -Path $SqliteDir -ErrorAction SilentlyContinue
 }
 
