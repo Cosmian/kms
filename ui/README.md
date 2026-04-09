@@ -75,11 +75,14 @@ cd ui
 pnpm install
 ```
 
-Start the development server (builds WASM first):
+Start the development server (building wasm only once is usually enough):
 
 ```bash
+# pnpm run build:wasm
 pnpm run dev
 ```
+
+`dev` runs Vite in development mode with `VITE_DEV_MODE=true`, which skips the authentication gate so the full UI is accessible regardless of the KMS server's auth configuration. WASM must be built first — run `pnpm run build:wasm` once before starting the dev server if `ui/src/wasm/pkg/` does not exist yet.
 
 ---
 
@@ -90,29 +93,36 @@ cd ui
 pnpm run build
 ```
 
-This command automatically:
-
-1. Builds the WASM package from `crate/clients/wasm` via `wasm-pack`
-2. Copies the generated `pkg` into `ui/src/wasm/pkg`
-3. Runs the Vite production build
-
 The output is placed in `ui/dist/`. Copy its contents to the KMS server's static
 resources directory to serve the UI.
+
+If WASM is already built (e.g. by a CI step that handles WASM separately), you can
+skip the WASM step:
+
+```bash
+pnpm run build:vite
+```
 
 ---
 
 ## Running Tests
 
-### Unit and integration tests (Vitest)
+### Unit, integration and E2E tests:
 
 ```bash
 cd ui
-pnpm run test:unit
+pnpm run test
 ```
+
+Runs unit tests, integration tests, and E2E tests in sequence.
+
+To run a layer add the adequate subprocess suffix (`test:unit`, `test:integration`, `test:e2e`).
+
+The E2E suite exercises real browser flows against a locally running KMS server with no authentification configured (port 9998) and a Vite preview server (port 5173) **running in unrestricted DEV mode**. E2E tests can take a lot of time, only run when needed.
 
 ### WASM binding tests
 
-The recommended way uses Nix for a fully reproducible environment:
+WASM tests are particular and use Nix for a fully reproducible environment:
 
 ```bash
 # From the repo root:
@@ -121,8 +131,6 @@ bash .github/scripts/nix.sh --variant non-fips test wasm
 
 ### E2E tests (Playwright)
 
-The E2E suite exercises real browser flows against a locally running KMS server
-(port 9998) and a Vite preview server (port 5173).
 
 #### Recommended — reproducible Nix environment
 
@@ -136,11 +144,11 @@ bash .github/scripts/nix.sh --variant non-fips test ui
 1. Build the WASM package and the UI:
 
     ```bash
-    cd crate/clients/wasm
-    wasm-pack build --target web --release --features non-fips
-    cd ../../ui
-    VITE_KMS_URL=http://127.0.0.1:9998 pnpm run build
+    cd ui
+    VITE_KMS_URL=http://127.0.0.1:9998 VITE_DEV_MODE=true pnpm run build
     ```
+
+    This runs `build:wasm` (wasm-pack) and `build:vite` (tsc + Vite) in one step.
 
 2. Start the KMS server (separate terminal):
 
@@ -167,9 +175,19 @@ Playwright captures screenshots and traces on failure inside `ui/test-results/`.
 
 ---
 
-## Linting
+## Linting and Checks
+
+Run all checks (type-check, lint with auto-fix, format with auto-fix, dead-code detection):
 
 ```bash
 cd ui
-pnpm run lint
+pnpm run check
+```
+
+Or run individual checks:
+
+```bash
+pnpm run check:lint    # ESLint with --fix
+pnpm run check:format  # Prettier with --write
+pnpm run check:dedup   # Knip dead-code/unused exports
 ```

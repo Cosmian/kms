@@ -101,7 +101,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }}
                         />
                     )}
-                    <div className="flex items-center h-full" style={{ gap: "16px" }}>
+                    <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>
                         {downloadTarget && (
                             <Link to={downloadTarget} target="_blank">
                                 <Button type="primary" shape="round" icon={<DownloadOutlined />}>
