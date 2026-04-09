@@ -145,12 +145,7 @@ echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
 run_ui run_pnpm install --frozen-lockfile
 
-echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) …"
-(cd "${UI_DIR}" && {
-    chmod -R u+w dist >/dev/null 2>&1 || true
-    rm -rf dist >/dev/null 2>&1 || true
-})
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
+# No production build needed – the dev server is used for E2E tests.
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
@@ -251,34 +246,34 @@ env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
 
 echo "==> HSM test keys created."
 
-# ── 7. Start Vite preview server ────────────────────────────────────────────
-echo "==> Starting Vite preview server (port 5173) …"
+# ── 7. Start Vite dev server ────────────────────────────────────────────────
+echo "==> Starting Vite dev server (port 5173) …"
 VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm exec vite --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
-echo "==> Waiting for Vite preview to be ready …"
+echo "==> Waiting for Vite dev server to be ready …"
 for i in $(seq 1 60); do
     # Check if process is still alive
     if ! kill -0 "${PREVIEW_PID}" 2>/dev/null; then
-        echo "ERROR: Vite preview process (PID ${PREVIEW_PID}) exited unexpectedly after ${i}s" >&2
-        echo "--- Vite preview log ---"
+        echo "ERROR: Vite dev server process (PID ${PREVIEW_PID}) exited unexpectedly after ${i}s" >&2
+        echo "--- Vite dev server log ---"
         cat "${VITE_PREVIEW_LOG}" || true
-        echo "--- End Vite preview log ---"
+        echo "--- End Vite dev server log ---"
         exit 1
     fi
     # Use bash /dev/tcp instead of nc/curl to avoid OpenSSL initialisation
     # failures caused by the FIPS LD_PRELOAD bootstrap, and to avoid
     # relying on nc which is not in the Nix shell PATH.
     if (echo >/dev/tcp/127.0.0.1/5173) 2>/dev/null; then
-        echo "    Vite preview ready after ${i}s (port open)"
+        echo "    Vite dev server ready after ${i}s (port open)"
         break
     fi
     if [ "${i}" -eq 60 ]; then
-        echo "ERROR: Vite preview did not become ready within 60 s" >&2
-        echo "--- Vite preview log ---"
+        echo "ERROR: Vite dev server did not become ready within 60 s" >&2
+        echo "--- Vite dev server log ---"
         cat "${VITE_PREVIEW_LOG}" || true
-        echo "--- End Vite preview log ---"
+        echo "--- End Vite dev server log ---"
         exit 1
     fi
     sleep 1
