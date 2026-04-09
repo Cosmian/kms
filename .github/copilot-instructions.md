@@ -288,10 +288,10 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 1. Build WASM: `wasm-pack build --target web --features non-fips` (with macOS/FIPS env-var guards)
 2. Copy `crate/clients/wasm/pkg/` → `ui/src/wasm/pkg/`
 3. Install deps: `pnpm install --frozen-lockfile`
-4. No production build — the Vite dev server is used for E2E tests (avoids the `tsc -b && vite build` step)
+4. Build UI: `VITE_KMS_URL=http://127.0.0.1:9998 VITE_DEV_MODE=true pnpm run build:vite` (runs `tsc -b && vite build`)
 5. Install Playwright browser: `pnpm exec playwright install chromium`
 6. Start KMS server on port 9998 (SQLite, non-fips features)
-7. Start Vite dev server on port 5173 (`VITE_KMS_URL=http://127.0.0.1:9998 VITE_DEV_MODE=true pnpm exec vite --port 5173`)
+7. Start Vite preview on port 5173 (`pnpm exec vite preview --port 5173`)
 8. Run Playwright: `PLAYWRIGHT_WORKERS=10 pnpm run test:e2e`
 9. Parse KMS server logs for ERROR/WARN and report
 
