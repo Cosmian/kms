@@ -17,6 +17,10 @@ export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: strin
 };
 
 export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> => {
+    // Completely skip the fetch if we're in dev mode to avoid unncessary friction.
+    if (import.meta.env.VITE_DEV_MODE === "true") {
+        return "None";
+    }
     try {
         const kmsUrl = serverUrl + "/ui/auth_method";
         const response = await fetch(kmsUrl, {

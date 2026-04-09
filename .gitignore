@@ -47,6 +47,7 @@ ui/test-results
 .claude
 .agent/
 .agents/
+.qwen/
 QWEN.md
 
 # Misc

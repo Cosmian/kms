@@ -91,6 +91,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             <Layout.Header className="fixed w-full z-10 p-0 h-16 border-b flex items-center justify-between border-gray-300">
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
+                    {import.meta.env.VITE_DEV_MODE === "true" && (
+                        <Alert
+                            message="DEV unrestricted mode running"
+                            type="info"
+                            showIcon
+                            closable
+                            className="ml-4 py-0 px-3 text-sm leading-tight"
+                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }}
+                        />
+                    )}
                     <div className="flex items-center h-full" style={{ gap: "16px" }}>
                         {downloadTarget && (
                             <Link to={downloadTarget} target="_blank">

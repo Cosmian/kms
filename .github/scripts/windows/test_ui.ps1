@@ -82,13 +82,15 @@ try {
     # Use --no-frozen-lockfile to avoid lock mismatch failures in CI
     Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile")
 
-    Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) ..." -ForegroundColor Cyan
+    Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
     $env:VITE_KMS_URL = "http://127.0.0.1:9998"
+    $env:VITE_DEV_MODE = "true"
     try {
         Invoke-Checked $pnpmCmd @("run", "build")
     }
     finally {
         Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
+        Remove-Item Env:VITE_DEV_MODE -ErrorAction SilentlyContinue
     }
 
     # ── 3. Install Playwright's Chromium browser ──────────────────────────────
