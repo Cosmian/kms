@@ -182,6 +182,12 @@ jobs:
           pip install cyclonedx-bom --quiet
           bash .github/scripts/release/generate_cbom.sh
 
+      - name: Regenerate documentation
+        run: |
+          python3 .github/scripts/docs/update_readme_kmip.py
+          bash .github/scripts/docs/renew_server_doc.sh
+          bash .github/scripts/docs/renew_ckms_markdown.sh
+
       - name: Commit version bump and push release branch
         run: |
           git add -A
