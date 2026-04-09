@@ -10,6 +10,9 @@ export default defineConfig({
                 inline: ["react-router", "react-router-dom"],
             },
         },
+        env: {
+            VITE_DEV_MODE: "true",
+        },
         environment: "jsdom",
         testTimeout: 15_000,
         hookTimeout: 60_000,
