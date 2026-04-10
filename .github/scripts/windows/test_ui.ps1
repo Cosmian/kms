@@ -4,10 +4,11 @@
 # Mirrors the Linux test_ui.sh, adapted for PowerShell / Windows CI:
 #   1.  Build the WASM package (non-fips, web target) using wasm-pack.
 #   2.  Copy the generated pkg\ into ui\src\wasm\pkg\.
-#   3.  Install JS dependencies (no production build — dev server used for E2E).
+#   3.  Install JS dependencies and build the Vite bundle, baking the local
+#       KMS URL into the bundle via VITE_KMS_URL.
 #   4.  Install Playwright's Chromium browser.
 #   5.  Start the KMS server in the background and wait for it to be ready.
-#   6.  Start `vite` dev server in the background.
+#   6.  Start `vite preview` in the background.
 #   7.  Run `pnpm run test:e2e` (Playwright).
 #
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
@@ -85,7 +86,7 @@ try {
     $env:VITE_KMS_URL = "http://127.0.0.1:9998"
     $env:VITE_DEV_MODE = "true"
     try {
-        Invoke-Checked $pnpmCmd @("run", "build:vite")
+        Invoke-Checked $pnpmCmd @("run", "build")
     }
     finally {
         Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
@@ -186,7 +187,7 @@ Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -Foregroun
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"
 $PreviewProc = Start-Process -FilePath $pnpmStartExe `
-    -ArgumentList ($pnpmStartPrefix + @("exec", "vite", "preview", "--port", "$PreviewPort", "--host", "127.0.0.1")) `
+    -ArgumentList ($pnpmStartPrefix + @("preview", "--port", "$PreviewPort", "--host", "127.0.0.1")) `
     -PassThru -NoNewWindow -WorkingDirectory $UiDir `
     -RedirectStandardOutput $PreviewLogOut `
     -RedirectStandardError $PreviewLogErr
