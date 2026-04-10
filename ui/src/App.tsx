@@ -103,7 +103,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     const branding = useBranding();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(true);
-    const [authMethod, setAuthMethod] = useState<AuthMethod | undefined>(undefined);
+    const [authMethod, setAuthMethod] = useState<AuthMethod>(undefined);
     const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
     useEffect(() => {

@@ -125,6 +125,7 @@ for _i in $(seq 1 60); do
   sleep 1
 done
 
+pnpm run test:unit
 pnpm run check
 pnpm audit
 
