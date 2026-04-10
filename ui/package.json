@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "VITE_DEV_MODE=true vite",
+        "preview": "vite preview",
         "build": "pnpm run build:wasm && pnpm run build:vite",
         "build:wasm": "cd .. && wasm-pack build crate/clients/wasm --target web --release --features non-fips && node ui/scripts/sync-wasm.mjs",
         "build:vite": "tsc -b && vite build",
