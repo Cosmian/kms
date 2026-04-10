@@ -24,9 +24,9 @@ use pkcs11_sys::{
     CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED,
     CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR,
     CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_RANDOM_NO_RNG,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG,
     CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
-    CKR_TOKEN_WRITE_PROTECTED,
+    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN,
 };
 use thiserror::Error;
 
@@ -83,6 +83,10 @@ pub enum ModuleError {
     SlotIdInvalid(CK_SLOT_ID),
     #[error("token is write protected")]
     TokenWriteProtected,
+    #[error("PIN required or incorrect")]
+    PinRequired,
+    #[error("user not logged in")]
+    UserNotLoggedIn,
     // Other errors.
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
@@ -141,6 +145,8 @@ impl From<ModuleError> for CK_RV {
             ModuleError::SessionParallelNotSupported => CKR_SESSION_PARALLEL_NOT_SUPPORTED,
             ModuleError::SlotIdInvalid(_) => CKR_SLOT_ID_INVALID,
             ModuleError::TokenWriteProtected => CKR_TOKEN_WRITE_PROTECTED,
+            ModuleError::PinRequired => CKR_PIN_INCORRECT,
+            ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
 
             ModuleError::Backend(_)
             | ModuleError::AlgorithmNotSupported(_)

@@ -1,0 +1,306 @@
+################################################################################
+#  Oracle TDE + Cosmian KMS — Docker demo procedure
+#  All commands are run from the demo/ directory.
+################################################################################
+
+
+# ── STEP 1 — Prerequisites ────────────────────────────────────────────────────
+#
+# Download the CLI package from the Cosmian GitHub release page:
+#
+#   https://github.com/Cosmian/kms/releases/tag/5.18.0
+#
+# ⚠ Architecture matters: the .so inside the .deb must match the Oracle
+#   container architecture.  On macOS Apple Silicon (M1/M2/M3), Docker Desktop
+#   pulls ARM64 images by default, so you need the ARM64 package:
+#
+#   Linux x86-64 / Intel Mac / Windows x86-64:
+#     → cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb
+#
+#   macOS Apple Silicon (M1/M2/M3) — default when using Docker Desktop:
+#     → cosmian-kms-cli-non-fips-static-openssl_5.18.0_arm64.deb
+#
+# To confirm the Oracle container architecture before downloading, run:
+#     docker pull container-registry.oracle.com/database/free:latest-lite
+#     docker run --rm container-registry.oracle.com/database/free:latest-lite uname -m
+#   → "aarch64" needs arm64.deb, "x86_64" needs amd64.deb
+#
+# Place the downloaded .deb file in the demo/ directory.
+
+
+# ── STEP 2 — Extract libcosmian_pkcs11.so from the .deb ──────────────────────
+#
+# Unpack the Debian archive without installing it.
+# The .so is installed to /usr/local/lib/ inside the package.
+#
+# Replace <arch> with amd64 or arm64 to match your .deb filename.
+# On macOS, use ar + tar (dpkg-deb is not available):
+
+DEB=cosmian-kms-cli-non-fips-static-openssl_5.18.0_<arch>.deb   # ← set arch
+
+mkdir -p extracted
+cd extracted
+ar x ../$DEB
+tar xf data.tar.*
+cd ..
+
+# Copy the library to the demo working directory:
+cp extracted/usr/local/lib/libcosmian_pkcs11.so .
+
+
+# ── STEP 3 — Create the KMS client configuration ─────────────────────────────
+#
+# The PKCS#11 library uses this file to locate the KMS server.
+# Inside the Docker network, the KMS container is reachable as "kms" on port
+# 9998 (see the "kms" network alias in docker-compose.yml).
+
+cat > ckms.toml << 'EOF'
+[http_config]
+server_url = "http://kms:9998"
+EOF
+
+
+# ── STEP 4 — Prepare the KMS data directory ──────────────────────────────────
+#
+# docker-compose.yml mounts ./oracle/cosmian-kms into the KMS container
+# as its persistent SQLite data directory. Create it beforehand.
+
+mkdir -p oracle/cosmian-kms
+
+
+# ── STEP 5 — Start Docker services ───────────────────────────────────────────
+#
+# Starts two containers:
+#   • oracle      — Oracle Database 23ai Free (lite)
+#   • kms-oracle  — Cosmian KMS server (reachable as "kms" on the Docker network)
+#
+# Oracle takes ~2–3 minutes to initialise on the first run.
+
+docker compose up -d
+
+# Wait until the Oracle container reports healthy:
+echo "Waiting for Oracle to be ready (may take up to 3 minutes on first run)..."
+until docker inspect --format='{{.State.Health.Status}}' oracle 2>/dev/null | grep -q "healthy"; do
+  printf "."
+  sleep 10
+done
+echo ""
+echo "Oracle is healthy."
+
+
+# ── STEP 6 — Install the PKCS#11 library inside the Oracle container ─────────
+#
+# Copies the library and the KMS client config into the Oracle container,
+# then runs setup_cosmian_pkcs11.sh (as root) which:
+#   • moves libcosmian_pkcs11.so → /opt/oracle/extapi/64/hsm/Cosmian/
+#   • moves ckms.toml            → /home/oracle/.cosmian/ckms.toml
+#   • creates /etc/ORACLE/KEYSTORES/FREE with correct ownership
+
+docker cp libcosmian_pkcs11.so oracle:/home/oracle/
+docker cp ckms.toml oracle:/home/oracle/
+docker cp setup_cosmian_pkcs11.sh oracle:/home/oracle/
+docker exec -u root -i oracle bash -c \
+  "chmod +x /home/oracle/setup_cosmian_pkcs11.sh && /home/oracle/setup_cosmian_pkcs11.sh"
+
+
+# ── STEP 7 — Configure Oracle TDE to use the Cosmian KMS as HSM ──────────────
+#
+# run_sql_commands.sh executes the following SQL steps via sqlplus:
+#   1. ALTER SYSTEM SET WALLET_ROOT='.../libcosmian_pkcs11.so' SCOPE=SPFILE
+#      + SHUTDOWN IMMEDIATE / STARTUP
+#   2. ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM'
+#      + SHUTDOWN IMMEDIATE / STARTUP
+#   3. ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass
+#   4. ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass
+#   5. Display V$ENCRYPTION_WALLET and V$ENCRYPTION_KEYS to confirm success
+#
+# Note: "hsm_identity_pass" is a placeholder PIN — the Cosmian PKCS#11 library
+# ignores it; authentication is handled by the KMS server via ckms.toml.
+
+./run_sql_commands.sh
+
+
+# ── STEP 8 — Verify TDE encryption ───────────────────────────────────────────
+#
+# Open an interactive SQL*Plus session inside the Oracle container:
+
+docker exec -u oracle -it oracle sqlplus / as sysdba
+
+-- Create a table with a TDE-encrypted column:
+CREATE TABLE test_tde (name VARCHAR2(64) ENCRYPT);
+
+-- Insert sample rows:
+INSERT INTO test_tde (name) VALUES ('Thomas');
+INSERT INTO test_tde (name) VALUES ('Aurelie');
+INSERT INTO test_tde (name) VALUES ('Chris');
+COMMIT;
+
+-- Read data back (decrypted transparently by TDE via the Cosmian KMS):
+SELECT * FROM test_tde;
+
+-- Confirm the HSM wallet and master encryption key are active:
+COLUMN WRL_PARAMETER FORMAT A50
+SET LINES 200
+SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V$ENCRYPTION_WALLET;
+
+EXIT
+
+
+# ── Troubleshooting ───────────────────────────────────────────────────────────
+#
+# ORA-28353 / ORA-28376 "Cannot find PKCS#11 library"
+# → Architecture mismatch: check that you used the right .deb for the container
+#     docker exec oracle uname -m
+#   "aarch64" → arm64.deb,  "x86_64" → amd64.deb
+#
+# ORA-28353 "Failed to open wallet" (library loads but KMS unreachable)
+# → Check KMS connectivity from Oracle container:
+#     docker exec oracle bash -c "curl -s -o /dev/null -w '%{http_code}' http://kms:9998/kmip/2_1"
+# → Check PKCS#11 library log:
+#     docker exec oracle cat /home/oracle/.cosmian/cosmian-pkcs11.log
+
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+#
+# Stop and remove all containers + their volumes (wipes Oracle data and KMS DB):
+#   docker compose down -v
+
+
+
+# ── STEP 1 — Prerequisites ────────────────────────────────────────────────────
+#
+# Download the CLI package for Linux amd64 (non-FIPS, static, OpenSSL 3.6.0)
+# from https://package.cosmian.com/kms/5.18.0/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb:
+#
+#   https://github.com/Cosmian/kms/releases/tag/5.18.0
+#   → cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb
+#
+# Place the downloaded .deb file in the demo/ directory.
+
+
+# ── STEP 2 — Extract libcosmian_pkcs11.so from the .deb ──────────────────────
+#
+# Unpack the Debian archive without installing it.
+# The .so is installed to /usr/local/lib/ inside the package.
+#
+# On macOS, use ar + tar (no dpkg-deb available):
+#   mkdir -p extracted && cd extracted
+#   ar x ../cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb
+#   tar xf data.tar.*
+#   cd ..
+#
+# On Linux (dpkg-deb available):
+#   dpkg-deb -x cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb extracted/
+
+mkdir -p extracted
+cd extracted
+ar x ../cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb
+tar xf data.tar.*
+cd ..
+
+# Copy the library to the demo working directory:
+cp extracted/usr/local/lib/libcosmian_pkcs11.so .
+
+
+# ── STEP 3 — Create the KMS client configuration ─────────────────────────────
+#
+# The PKCS#11 library uses this file to locate the KMS server.
+# Inside the Docker network, the KMS container is reachable as "kms" on port
+# 9998 (see the "kms" network alias in docker-compose.yml).
+
+cat > ckms.toml << 'EOF'
+[http_config]
+server_url = "http://kms:9998"
+EOF
+
+
+# ── STEP 4 — Prepare the KMS data directory ──────────────────────────────────
+#
+# docker-compose.yml mounts ./oracle/cosmian-kms into the KMS container
+# as its persistent SQLite data directory. Create it beforehand.
+
+mkdir -p oracle/cosmian-kms
+
+
+# ── STEP 5 — Start Docker services ───────────────────────────────────────────
+#
+# Starts two containers:
+#   • oracle      — Oracle Database 23ai Free (lite)
+#   • kms-oracle  — Cosmian KMS server (reachable as "kms" on the Docker network)
+#
+# Oracle takes ~2–3 minutes to initialise on the first run.
+
+docker compose up -d
+
+# Wait until the Oracle container reports healthy:
+echo "Waiting for Oracle to be ready (may take up to 3 minutes on first run)..."
+until docker inspect --format='{{.State.Health.Status}}' oracle 2>/dev/null | grep -q "healthy"; do
+  printf "."
+  sleep 10
+done
+echo ""
+echo "Oracle is healthy."
+
+
+# ── STEP 6 — Install the PKCS#11 library inside the Oracle container ─────────
+#
+# Copies the library and the KMS client config into the Oracle container,
+# then runs setup_cosmian_pkcs11.sh (as root) which:
+#   • moves libcosmian_pkcs11.so → /opt/oracle/extapi/64/hsm/Cosmian/
+#   • moves ckms.toml            → /home/oracle/.cosmian/ckms.toml
+#   • creates /etc/ORACLE/KEYSTORES/FREE with correct ownership
+
+docker cp libcosmian_pkcs11.so oracle:/home/oracle/
+docker cp ckms.toml oracle:/home/oracle/
+docker cp setup_cosmian_pkcs11.sh oracle:/home/oracle/
+docker exec -u root -i oracle bash -c \
+  "chmod +x /home/oracle/setup_cosmian_pkcs11.sh && /home/oracle/setup_cosmian_pkcs11.sh"
+
+
+# ── STEP 7 — Configure Oracle TDE to use the Cosmian KMS as HSM ──────────────
+#
+# run_sql_commands.sh executes the following SQL steps via sqlplus:
+#   1. ALTER SYSTEM SET WALLET_ROOT='.../libcosmian_pkcs11.so' SCOPE=SPFILE
+#      + SHUTDOWN IMMEDIATE / STARTUP
+#   2. ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM'
+#      + SHUTDOWN IMMEDIATE / STARTUP
+#   3. ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass
+#   4. ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass
+#   5. Display V$ENCRYPTION_WALLET and V$ENCRYPTION_KEYS to confirm success
+#
+# Note: "hsm_identity_pass" is a placeholder PIN — the Cosmian PKCS#11 library
+# ignores it; authentication is handled by the KMS server via ckms.toml.
+
+./run_sql_commands.sh
+
+
+# ── STEP 8 — Verify TDE encryption ───────────────────────────────────────────
+#
+# Open an interactive SQL*Plus session inside the Oracle container:
+
+docker exec -u oracle -it oracle sqlplus / as sysdba
+
+-- Create a table with a TDE-encrypted column:
+CREATE TABLE test_tde (name VARCHAR2(64) ENCRYPT);
+
+-- Insert sample rows:
+INSERT INTO test_tde (name) VALUES ('Thomas');
+INSERT INTO test_tde (name) VALUES ('Aurelie');
+INSERT INTO test_tde (name) VALUES ('Chris');
+COMMIT;
+
+-- Read data back (decrypted transparently by TDE via the Cosmian KMS):
+SELECT * FROM test_tde;
+
+-- Confirm the HSM wallet and master encryption key are active:
+COLUMN WRL_PARAMETER FORMAT A50
+SET LINES 200
+SELECT WRL_TYPE, WRL_PARAMETER, WALLET_TYPE, STATUS FROM V$ENCRYPTION_WALLET;
+
+EXIT
+
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+#
+# Stop and remove all containers + their volumes (wipes Oracle data and KMS DB):
+#   docker compose down -v

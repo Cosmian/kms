@@ -661,8 +661,8 @@ sbom_retrieve() {
         echo ">>> ${t}/${v}/${l}:"
         for f in "${files[@]}"; do
           if curl --fail --silent --show-error \
-              --output "${local_dir}/${f}" \
-              "${remote_dir}/${f}" 2>/dev/null; then
+            --output "${local_dir}/${f}" \
+            "${remote_dir}/${f}" 2>/dev/null; then
             echo "    ${f} ✓"
             any_ok=1
           else
@@ -881,12 +881,12 @@ package_command() {
     ;;
   esac
   case "$PACKAGE_TYPE" in
-  "" | deb | rpm | dmg)
+  "" | deb | rpm | dmg | pkcs11-zip)
     :
     ;;
   *)
     echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2
-    echo "Valid types: deb, rpm, dmg or leave empty to build all" >&2
+    echo "Valid types: deb, rpm, dmg, pkcs11-zip or leave empty to build all" >&2
     usage
     ;;
   esac
@@ -1084,6 +1084,21 @@ package_command() {
             echo "Warning: DMG file not found in $REAL_OUT" >&2
           fi
           ;;
+        pkcs11-zip)
+          if [ "$(uname)" = "Linux" ]; then
+            PKCS11_ZIP_SCRIPT="$REPO_ROOT/.github/scripts/package/package_pkcs11_zip.sh"
+            [ -f "$PKCS11_ZIP_SCRIPT" ] || {
+              echo "Missing $PKCS11_ZIP_SCRIPT" >&2
+              exit 1
+            }
+            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl zip --run "bash '$PKCS11_ZIP_SCRIPT' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+            REAL_OUT="$REPO_ROOT/result-pkcs11-zip-$BUILD_VARIANT-$BUILD_LINK"
+            echo "Built pkcs11-zip ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+          else
+            echo "pkcs11-zip packaging is only supported on Linux in this flow." >&2
+            exit 1
+          fi
+          ;;
         *)
           echo "Skipping unsupported package type: $TYPE" >&2
           continue
@@ -1116,6 +1131,9 @@ package_command() {
             echo "$sum  $(basename "$dmg_file")" >"$dmg_file.sha256"
             echo "Wrote checksum: $dmg_file.sha256 ($sum)"
           fi
+          ;;
+        pkcs11-zip)
+          # Checksums are written by package_pkcs11_zip.sh itself; nothing to do here.
           ;;
         esac
       done

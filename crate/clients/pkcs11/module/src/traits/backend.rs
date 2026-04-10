@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use zeroize::Zeroizing;
 
 use super::{SignatureAlgorithm, SymmetricKey};
 use crate::{
-    ModuleResult,
+    ModuleError, ModuleResult,
     core::object::Object,
     traits::{
         Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
@@ -34,20 +34,71 @@ pub struct EncryptContext {
     pub iv: Option<Vec<u8>>,
 }
 
-static BACKEND: std::sync::OnceLock<Box<dyn Backend>> = std::sync::OnceLock::new();
+static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));
 
-/// Stores the backend for use in all calls to [`backend()`].
-/// Must be called before any PKCS#11 operation.  Subsequent calls are no-ops
-/// (the first registration wins); this is safe because the backend type is
-/// fixed per process, and calling modules always register the same backend.
+/// Stores (or replaces) the backend used by all PKCS#11 operations.
+/// Called by the provider at `C_GetFunctionList` (modes 0/1) or at
+/// `C_Login` time when OIDC-pin mode is active (mode 2).
 pub fn register_backend(backend: Box<dyn Backend>) {
-    // Ignore the Result: Err(T) means already set, which is acceptable.
-    drop(BACKEND.set(backend));
+    if let Ok(mut guard) = BACKEND.write() {
+        *guard = Some(Arc::from(backend));
+    }
 }
 
-#[expect(clippy::expect_used, clippy::missing_panics_doc)]
-pub fn backend() -> &'static dyn Backend {
-    BACKEND.get().expect("backend not initialized").as_ref()
+/// Clears the registered backend. Called by `C_Logout` when OIDC-pin mode is active.
+pub fn clear_backend() {
+    if let Ok(mut guard) = BACKEND.write() {
+        *guard = None;
+    }
+}
+
+/// Returns the currently registered backend.
+/// Returns [`ModuleError::UserNotLoggedIn`] when no backend is registered
+/// (i.e. before `C_GetFunctionList` or after `C_Logout` in OIDC-pin mode).
+pub fn backend() -> ModuleResult<Arc<dyn Backend>> {
+    let guard = BACKEND
+        .read()
+        .map_err(|e| ModuleError::Default(e.to_string()))?;
+    guard.clone().ok_or(ModuleError::UserNotLoggedIn)
+}
+
+// ── OIDC pin-as-access-token mode ────────────────────────────────────────
+
+static PKCS11_USE_PIN_AS_ACCESS_TOKEN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Registers whether `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`.
+/// Called once at `C_GetFunctionList` time when mode 2 is active.
+pub fn register_pin_mode(enabled: bool) {
+    let _ = PKCS11_USE_PIN_AS_ACCESS_TOKEN.set(enabled);
+}
+
+/// Returns `true` when the OIDC-pin mode is active: the `pPin` passed to
+/// `C_Login` is treated as a bearer token for every subsequent KMS request.
+pub fn use_pin_as_access_token() -> bool {
+    PKCS11_USE_PIN_AS_ACCESS_TOKEN
+        .get()
+        .copied()
+        .unwrap_or(false)
+}
+
+// ── Login callback (provider ↔ module bridge) ─────────────────────────────
+
+type LoginFn = Box<dyn Fn(&str) -> ModuleResult<()> + Send + Sync>;
+
+static LOGIN_FN: std::sync::OnceLock<LoginFn> = std::sync::OnceLock::new();
+
+/// Registers the login callback once at `C_GetFunctionList` time (mode 2 only).
+/// The closure receives the bearer token, builds an authenticated `KmsClient`,
+/// and calls `register_backend` to replace the pre-login stub.
+pub fn register_login_fn(f: LoginFn) {
+    drop(LOGIN_FN.set(f));
+}
+
+/// Invokes the registered login callback with `token`.
+/// Returns [`ModuleError::UserNotLoggedIn`] if no callback was registered.
+pub fn invoke_login_fn(token: &str) -> ModuleResult<()> {
+    let f = LOGIN_FN.get().ok_or(ModuleError::UserNotLoggedIn)?;
+    f(token)
 }
 
 pub trait Backend: Send + Sync {

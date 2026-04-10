@@ -9,11 +9,16 @@
 
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr};
 
+use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
 use cosmian_logger::{error, reexport::tracing::Level};
-use cosmian_pkcs11_module::{pkcs11::FUNC_LIST, traits::register_backend};
+use cosmian_pkcs11_module::{
+    ModuleError,
+    pkcs11::FUNC_LIST,
+    traits::{register_backend, register_login_fn, register_pin_mode},
+};
 use pkcs11_sys::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_FUNCTION_FAILED, CKR_OK};
 
-use crate::{kms_object::get_kms_client_with_path, logging::initialize_logging};
+use crate::{kms_object::get_kms_config, logging::initialize_logging};
 
 mod backend;
 mod error;
@@ -115,11 +120,11 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         })
     };
 
-    let kms_client = match get_kms_client_with_path(explicit_conf) {
-        Ok(client) => client,
+    let config = match get_kms_config(explicit_conf) {
+        Ok(c) => c,
         Err(e) => {
             error!(
-                "C_GetFunctionList: failed to instantiate KMS client: {}. \
+                "C_GetFunctionList: failed to load ckms.toml: {}. \
                  Check that ckms.toml exists alongside the DLL \
                  (C:\\opt\\oracle\\extapi\\64\\pkcs11\\ckms.toml), \
                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.",
@@ -128,7 +133,49 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
             return CKR_FUNCTION_FAILED;
         }
     };
-    register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
+
+    let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
+    if use_pin {
+        // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
+        // (C_GetTokenInfo etc.) work before C_Login, then register the login
+        // callback that replaces it with an authenticated backend at C_Login time.
+        let base_client = match KmsClient::new_with_config(config.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                error!(
+                    "C_GetFunctionList: failed to instantiate base KMS client: {}",
+                    e
+                );
+                return CKR_FUNCTION_FAILED;
+            }
+        };
+        register_backend(Box::new(backend::CliBackend::instantiate(base_client)));
+        register_pin_mode(true);
+        register_login_fn(Box::new(move |token: &str| {
+            let mut cfg = config.clone();
+            cfg.http_config.access_token = Some(token.to_owned());
+            let kms_client =
+                KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
+            register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
+            Ok(())
+        }));
+    } else {
+        // Modes 0 and 1 — no auth or static token/TLS cert: create KmsClient immediately.
+        let kms_client = match KmsClient::new_with_config(config) {
+            Ok(client) => client,
+            Err(e) => {
+                error!(
+                    "C_GetFunctionList: failed to instantiate KMS client: {}. \
+                     Check that ckms.toml exists alongside the DLL \
+                     (C:\\opt\\oracle\\extapi\\64\\pkcs11\\ckms.toml), \
+                     at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.",
+                    e
+                );
+                return CKR_FUNCTION_FAILED;
+            }
+        };
+        register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
+    }
     unsafe {
         FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
         *pp_function_list = addr_of_mut!(FUNC_LIST);

@@ -1256,6 +1256,7 @@ fn generate_owner_conf(
         gmail_api_conf,
         print_json: None,
         vendor_id: VENDOR_ID_COSMIAN.to_owned(),
+        pkcs11_use_pin_as_access_token: None,
     };
 
     Ok(conf)

@@ -1408,6 +1408,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_pkcs11_verify"
+version = "5.20.1"
+dependencies = [
+ "clap",
+ "libloading",
+ "pkcs11-sys",
+ "serial_test",
+ "test_kms_server",
+ "tokio",
+]
+
+[[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
