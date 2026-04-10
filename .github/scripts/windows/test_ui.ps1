@@ -86,7 +86,7 @@ try {
     $env:VITE_KMS_URL = "http://127.0.0.1:9998"
     $env:VITE_DEV_MODE = "true"
     try {
-        Invoke-Checked $pnpmCmd @("run", "build")
+        Invoke-Checked $pnpmCmd @("run", "build:vite")
     }
     finally {
         Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue

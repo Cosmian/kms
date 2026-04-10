@@ -148,9 +148,9 @@ function Build-UI {
         Write-Host "Installing dependencies with $packageManager..."
         & $packageManager install
 
-        # Build the UI
-        Write-Host "Running $packageManager build..."
-        & $packageManager run build
+        # Build the UI (WASM already built above; only run the Vite/tsc step)
+        Write-Host "Running $packageManager build:vite..."
+        & $packageManager run build:vite
 
         # Verify dist directory was created
         if (-not (Test-Path "dist")) {
