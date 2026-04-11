@@ -28,13 +28,14 @@ mod pin_auth {
     use std::{env, ffi::c_void, ptr};
 
     use libloading::Library;
-    use pkcs11_sys::{CK_FUNCTION_LIST, CKR_OK};
+    use pkcs11_sys::{CK_FUNCTION_LIST, CK_INVALID_HANDLE, CKR_OK};
     use serial_test::serial;
     use test_kms_server::{AUTH0_TOKEN, start_default_test_kms_server_with_jwt_auth};
     use tokio::runtime::Runtime;
 
     use crate::{
-        call_find_objects, call_get_function_list, call_get_slot_list, call_login,
+        call_decrypt_aes_cbc_pad, call_encrypt_aes_cbc_pad, call_find_objects,
+        call_generate_aes_key, call_get_function_list, call_get_slot_list, call_login,
         call_open_session, check_rv,
     };
 
@@ -162,6 +163,187 @@ mod pin_auth {
         std::fs::remove_file(&conf_file).ok();
         // Safety: restoring env to a clean state while still single-threaded
         // (holding the `serial` lock).
+        unsafe { env::remove_var("CKMS_CONF") };
+    }
+
+    /// Forward wallet migration: Oracle TDE software wallet → HSM wallet.
+    ///
+    /// Verifies that after `C_Login` the provider can:
+    /// 1. Accept `C_GenerateKey(CKM_AES_KEY_GEN, label="ORACLE.SECURITY.DB.…")` —
+    ///    the call that Oracle issues during `ADMINISTER KEY MANAGEMENT SET ENCRYPTION
+    ///    KEY … MIGRATE USING …`.
+    /// 2. Accept `C_EncryptInit` + `C_Encrypt` on the newly-created key — the
+    ///    call that re-wraps existing DEKs under the new HSM master key.
+    ///
+    /// The test would have failed before the fix that removed `CKF_WRITE_PROTECTED`
+    /// from `C_GetTokenInfo` (Oracle skips `C_GenerateKey` when that flag is set)
+    /// and before `CKM_AES_KEY_GEN` was added to `SUPPORTED_SIGNATURE_MECHANISMS`.
+    #[test]
+    #[serial]
+    #[allow(clippy::expect_used)]
+    fn test_pkcs11_migrate_software_to_hsm() {
+        // ── A: Start / reuse the JWT-auth test KMS server ───────────────────
+        let rt = Runtime::new().expect("tokio runtime");
+        let ctx = rt.block_on(async { start_default_test_kms_server_with_jwt_auth().await });
+        let port = ctx.server_port;
+
+        // ── B: Write a temporary mode-2 ckms.toml ───────────────────────────
+        let conf_content = format!(
+            "pkcs11_use_pin_as_access_token = true\n\n[http_config]\nserver_url = \
+             \"http://localhost:{port}\"\n"
+        );
+        let conf_file = std::env::temp_dir().join(format!(
+            "pkcs11_migrate_sw_hsm_test_{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&conf_file, &conf_content).expect("write temp conf file");
+        unsafe { env::set_var("CKMS_CONF", &conf_file) };
+
+        // ── C: Load cdylib and initialise ───────────────────────────────────
+        let lib_path = pkcs11_lib_path();
+        assert!(
+            lib_path.exists(),
+            "cdylib not found at {}",
+            lib_path.display()
+        );
+        let lib = unsafe { Library::new(&lib_path) }.expect("load cdylib");
+
+        let func_list_ptr = call_get_function_list(&lib).expect("C_GetFunctionList");
+        let func_list: &CK_FUNCTION_LIST = unsafe { &*func_list_ptr };
+
+        let c_initialize = func_list.C_Initialize.expect("C_Initialize");
+        let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
+        assert_eq!(rv, CKR_OK, "C_Initialize failed: {rv:#010X}");
+
+        let slot_id = call_get_slot_list(func_list).expect("C_GetSlotList");
+        let session = call_open_session(func_list, slot_id).expect("C_OpenSession");
+
+        // ── D: C_Login with the OIDC bearer token ───────────────────────────
+        call_login(func_list, session, AUTH0_TOKEN).expect("C_Login");
+
+        // ── E: C_GenerateKey — Oracle TDE master key label format ───────────
+        // This call previously returned CKR_TOKEN_WRITE_PROTECTED because
+        // CKF_WRITE_PROTECTED was set in C_GetTokenInfo.
+        let key_handle = call_generate_aes_key(
+            func_list,
+            session,
+            "ORACLE.SECURITY.DB.ENCRYPTION.MASTERKEY.TEST_MIGRATE",
+        )
+        .expect("C_GenerateKey must succeed — token must not be CKF_WRITE_PROTECTED");
+        assert_ne!(
+            key_handle, CK_INVALID_HANDLE,
+            "C_GenerateKey returned CK_INVALID_HANDLE"
+        );
+
+        // ── F: C_EncryptInit + C_Encrypt — simulate DEK wrapping ─────────────
+        let fake_dek = b"test_dek_material_16";
+        let ciphertext = call_encrypt_aes_cbc_pad(func_list, session, key_handle, fake_dek)
+            .expect("C_Encrypt must succeed with the generated AES-256 key");
+        assert!(
+            !ciphertext.is_empty(),
+            "C_Encrypt returned empty ciphertext"
+        );
+
+        // ── G: Teardown ───────────────────────────────────────────────────────
+        let c_close_session = func_list.C_CloseSession.expect("C_CloseSession");
+        let rv = unsafe { c_close_session(session) };
+        check_rv(rv, "C_CloseSession").expect("C_CloseSession");
+
+        let c_finalize = func_list.C_Finalize.expect("C_Finalize");
+        let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
+        check_rv(rv, "C_Finalize").expect("C_Finalize");
+
+        std::fs::remove_file(&conf_file).ok();
+        unsafe { env::remove_var("CKMS_CONF") };
+    }
+
+    /// Reverse wallet migration: Oracle TDE HSM wallet → software wallet.
+    ///
+    /// Verifies that after `C_GenerateKey` the provider can perform the
+    /// full encrypt-then-decrypt round-trip on the newly-created HSM master key.
+    ///
+    /// This mirrors what Oracle does during `ADMINISTER KEY MANAGEMENT SET
+    /// ENCRYPTION KEY … REVERSE MIGRATE USING …`:
+    /// - `C_DecryptInit` + `C_Decrypt` on the current HSM key to obtain the
+    ///   plaintext DEK, which Oracle then re-encrypts under the new software key.
+    #[test]
+    #[serial]
+    #[allow(clippy::expect_used)]
+    fn test_pkcs11_reverse_migrate_hsm_to_software() {
+        // ── A: Start / reuse the JWT-auth test KMS server ───────────────────
+        let rt = Runtime::new().expect("tokio runtime");
+        let ctx = rt.block_on(async { start_default_test_kms_server_with_jwt_auth().await });
+        let port = ctx.server_port;
+
+        // ── B: Write a temporary mode-2 ckms.toml ───────────────────────────
+        let conf_content = format!(
+            "pkcs11_use_pin_as_access_token = true\n\n[http_config]\nserver_url = \
+             \"http://localhost:{port}\"\n"
+        );
+        let conf_file = std::env::temp_dir().join(format!(
+            "pkcs11_reverse_migrate_test_{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&conf_file, &conf_content).expect("write temp conf file");
+        unsafe { env::set_var("CKMS_CONF", &conf_file) };
+
+        // ── C: Load cdylib and initialise ───────────────────────────────────
+        let lib_path = pkcs11_lib_path();
+        assert!(
+            lib_path.exists(),
+            "cdylib not found at {}",
+            lib_path.display()
+        );
+        let lib = unsafe { Library::new(&lib_path) }.expect("load cdylib");
+
+        let func_list_ptr = call_get_function_list(&lib).expect("C_GetFunctionList");
+        let func_list: &CK_FUNCTION_LIST = unsafe { &*func_list_ptr };
+
+        let c_initialize = func_list.C_Initialize.expect("C_Initialize");
+        let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
+        assert_eq!(rv, CKR_OK, "C_Initialize failed: {rv:#010X}");
+
+        let slot_id = call_get_slot_list(func_list).expect("C_GetSlotList");
+        let session = call_open_session(func_list, slot_id).expect("C_OpenSession");
+
+        // ── D: C_Login with the OIDC bearer token ───────────────────────────
+        call_login(func_list, session, AUTH0_TOKEN).expect("C_Login");
+
+        // ── E: C_GenerateKey — create the HSM master key ────────────────────
+        let key_handle = call_generate_aes_key(
+            func_list,
+            session,
+            "ORACLE.SECURITY.DB.ENCRYPTION.MASTERKEY.TEST_REVMIG",
+        )
+        .expect("C_GenerateKey");
+        assert_ne!(key_handle, CK_INVALID_HANDLE);
+
+        // ── F: Simulate reverse migration: wrap then unwrap a DEK ────────────
+        // During REVERSE MIGRATE, Oracle uses the HSM master key to decrypt
+        // the existing wrapped DEK so it can re-encrypt it under the new
+        // software key.  We simulate that with an encrypt-then-decrypt round-trip.
+        let original_dek = b"test_dek_16bytes!!";
+        let wrapped_dek = call_encrypt_aes_cbc_pad(func_list, session, key_handle, original_dek)
+            .expect("C_Encrypt (DEK wrapping)");
+        let recovered_dek = call_decrypt_aes_cbc_pad(func_list, session, key_handle, &wrapped_dek)
+            .expect("C_Decrypt (DEK unwrapping — reverse migration)");
+        assert_eq!(
+            recovered_dek.as_slice(),
+            original_dek.as_slice(),
+            "Decrypted DEK does not match original — HSM key cannot unwrap DEKs for reverse \
+             migration"
+        );
+
+        // ── G: Teardown ───────────────────────────────────────────────────────
+        let c_close_session = func_list.C_CloseSession.expect("C_CloseSession");
+        let rv = unsafe { c_close_session(session) };
+        check_rv(rv, "C_CloseSession").expect("C_CloseSession");
+
+        let c_finalize = func_list.C_Finalize.expect("C_Finalize");
+        let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
+        check_rv(rv, "C_Finalize").expect("C_Finalize");
+
+        std::fs::remove_file(&conf_file).ok();
         unsafe { env::remove_var("CKMS_CONF") };
     }
 }

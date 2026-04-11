@@ -445,6 +445,173 @@ The orchestration script `test_oracle_tde.ps1`:
      - Verifies the keystore and encryption key status
 4. Stops the KMS server process
 
+## Wallet Migration
+
+Oracle TDE supports migrating the master encryption key between a software wallet (file-based
+keystore) and the HSM wallet backed by `libcosmian_pkcs11.so`. Both directions are supported
+and are verified in CI by `.github/scripts/oracle/run_sql_commands.sh`.
+
+The library handles the underlying PKCS#11 calls automatically:
+
+- **Forward (Software → HSM)**: Oracle calls `C_GenerateKey(CKM_AES_KEY_GEN, label="ORACLE.SECURITY.DB.ENCRYPTION.MASTERKEY.…")` to create a new master key in the KMS, then `C_Encrypt` to re-wrap existing Data Encryption Keys (DEKs) under it.
+- **Reverse (HSM → Software)**: Oracle calls `C_Decrypt` on the existing HSM master key to unwrap the DEKs before re-encrypting them under the new software key.
+
+> **Configuration note**: In pure HSM mode, `WALLET_ROOT` points to the PKCS#11 library
+> file path (how Oracle 23ai locates the library). In hybrid or file-only modes,
+> `WALLET_ROOT` must be a **directory**; Oracle then auto-discovers the PKCS#11 library
+> from its standard extapi path (`/opt/oracle/extapi/64/hsm/<vendor>/lib<name>.so`).
+
+### Software Wallet → HSM Wallet (Forward Migration)
+
+1. Switch the database to hybrid keystores so both the software wallet and the HSM are open
+   simultaneously:
+
+    ```sql
+    ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=HSM|FILE" SCOPE = BOTH;
+    ```
+
+2. Open both keystores:
+
+    ```sql
+    -- Open the software wallet first
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY "<sw_password>" CONTAINER = ALL;
+    -- Open the HSM keystore (token is the OIDC bearer token when pkcs11_use_pin_as_access_token=true)
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY "<token>" CONTAINER = ALL;
+    ```
+
+3. Generate a new master key in the HSM and re-wrap all DEKs:
+
+    ```sql
+    ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY
+      IDENTIFIED BY "<token>"
+      MIGRATE USING "<sw_password>"
+      WITH BACKUP;
+    ```
+
+    When `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`,
+    `<token>` is the OIDC bearer token used for `C_Login`. Otherwise it is the
+    static `hsm_identity_pass` value from `ckms.toml`.
+
+4. Once migration is complete, close the software wallet and reconfigure to HSM-only:
+
+    ```sql
+    ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=HSM" SCOPE = BOTH;
+    ```
+
+#### Complete forward migration script
+
+```sql
+-- ── 1. Enable hybrid keystores (HSM primary, file secondary) ────────────────
+ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=HSM|FILE" SCOPE = BOTH;
+
+-- ── 2. Open the software wallet ─────────────────────────────────────────────
+ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
+  IDENTIFIED BY "<sw_password>"
+  CONTAINER = ALL;
+
+-- ── 3. Open the HSM keystore via the Cosmian PKCS#11 library ────────────────
+--       <token> = OIDC bearer token (pkcs11_use_pin_as_access_token = true)
+--               or the hsm_identity_pass value from ckms.toml
+ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
+  IDENTIFIED BY "<token>"
+  CONTAINER = ALL;
+
+-- ── 4. Generate a new TDE master key in the HSM and re-wrap all DEKs ────────
+--       Oracle calls C_GenerateKey → C_Encrypt internally.
+ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY
+  IDENTIFIED BY "<token>"
+  MIGRATE USING "<sw_password>"
+  WITH BACKUP;
+
+-- ── 5. Verify the keystore status ───────────────────────────────────────────
+SELECT * FROM V$ENCRYPTION_WALLET;
+SELECT KEY_ID, CREATION_TIME, ACTIVATING_DBNAME,
+       BACKED_UP, KEYSTORE_TYPE
+FROM   V$ENCRYPTION_KEYS
+ORDER BY CREATION_TIME DESC
+FETCH FIRST 5 ROWS ONLY;
+
+-- ── 6. Close the software wallet and switch to HSM-only ──────────────────────
+ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=HSM" SCOPE = BOTH;
+```
+
+### HSM Wallet → Software Wallet (Reverse Migration)
+
+1. Switch to hybrid mode (file primary, HSM secondary):
+
+    ```sql
+    ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE|HSM" SCOPE = BOTH;
+    ```
+
+2. Open both keystores:
+
+    ```sql
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY "<sw_password>" CONTAINER = ALL;
+    ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY "<token>" CONTAINER = ALL;
+    ```
+
+3. Create a new software master key and re-wrap all DEKs — Oracle uses the HSM key via
+   `C_Decrypt` to unwrap existing DEKs before encrypting them under the new software key:
+
+    ```sql
+    ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY
+      IDENTIFIED BY "<sw_password>"
+      REVERSE MIGRATE USING "<token>"
+      WITH BACKUP;
+    ```
+
+4. Switch to file-only keystore:
+
+    ```sql
+    ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE" SCOPE = BOTH;
+    ```
+
+#### Complete reverse migration script
+
+```sql
+-- ── 1. Enable hybrid keystores (file primary, HSM secondary) ────────────────
+ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE|HSM" SCOPE = BOTH;
+
+-- ── 2. Open the software wallet ─────────────────────────────────────────────
+ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
+  IDENTIFIED BY "<sw_password>"
+  CONTAINER = ALL;
+
+-- ── 3. Open the HSM keystore via the Cosmian PKCS#11 library ────────────────
+ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
+  IDENTIFIED BY "<token>"
+  CONTAINER = ALL;
+
+-- ── 4. Generate a new software master key and re-wrap all DEKs ───────────────
+--       Oracle calls C_Decrypt on the HSM key to unwrap existing DEKs, then
+--       re-encrypts them under the new software key.
+ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY
+  IDENTIFIED BY "<sw_password>"
+  REVERSE MIGRATE USING "<token>"
+  WITH BACKUP;
+
+-- ── 5. Verify the keystore status ───────────────────────────────────────────
+SELECT * FROM V$ENCRYPTION_WALLET;
+SELECT KEY_ID, CREATION_TIME, ACTIVATING_DBNAME,
+       BACKED_UP, KEYSTORE_TYPE
+FROM   V$ENCRYPTION_KEYS
+ORDER BY CREATION_TIME DESC
+FETCH FIRST 5 ROWS ONLY;
+
+-- ── 6. Close the HSM keystore and switch to file-only ────────────────────────
+ALTER SYSTEM SET TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE" SCOPE = BOTH;
+```
+
+### Auto-Login Wallet Variants
+
+If you use an auto-login software wallet (`KEYSTORE_CONFIGURATION=FILE` with
+`TYPE=AUTOLOGIN`), replace `IDENTIFIED BY "<sw_password>"` with `FORCE KEYSTORE` in the
+open commands. The MIGRATE / REVERSE MIGRATE syntax remains identical.
+
+> **Note**: The Cosmian PKCS#11 library was not writable (it reported `CKF_WRITE_PROTECTED`
+> in `C_GetTokenInfo`) prior to version 5.20. Starting from version 5.20 the flag is removed
+> so that `C_GenerateKey` is no longer blocked during forward migration.
+
 ## Multiple Wallets Handling with the Same Database
 
 Oracle TDE supports several multi-wallet configurations on a single database instance. The Cosmian PKCS#11 library is transparent to these layouts: every keystore operation that reaches the HSM is forwarded to the KMS server regardless of the number of active wallets.

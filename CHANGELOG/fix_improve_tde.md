@@ -8,6 +8,7 @@
 - Ship `cosmian_pkcs11_verify` in the `cosmian_pkcs11` provider standalone package (deb/rpm, all variants: static/dynamic × fips/non-fips) alongside `libcosmian_pkcs11.so`, as well as in the `ckms` full package and Windows/macOS installers
 - Replace standalone `cosmian_pkcs11` deb/rpm packaging with a signed cross-platform **ZIP archive** (`cosmian-pkcs11-<variant>-<link-suffix>_<version>_<os>-<arch>.zip`) containing `libcosmian_pkcs11.{so,dylib}`, `cosmian_pkcs11_verify`, and the public signing key; ZIP is built by `.github/scripts/package/package_pkcs11_zip.sh`, signed with GPG, and published to `package.cosmian.com` via the `pkcs11-zip` package type in the CI matrix
 - Add OIDC/JWT bearer-token authentication mode for `cosmian_pkcs11_verify`: passing `--token <JWT>` causes a `C_Login(CKU_USER, pin=<JWT>)` call after `C_OpenSession`, enabling verification of KMS servers configured with `pkcs11_use_pin_as_access_token = true`; the token may also be supplied via the `COSMIAN_PKCS11_TOKEN` environment variable
+- Support Oracle TDE wallet migration (software wallet ↔ HSM wallet): remove `CKF_WRITE_PROTECTED` from the token info flags in `C_GetTokenInfo` (Oracle checks this flag before calling `C_GenerateKey` during `ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY … MIGRATE`); add `CKM_AES_KEY_GEN`, `CKM_AES_CBC`, `CKM_AES_CBC_PAD` to the supported mechanism list; return correct flags in `C_GetMechanismInfo` (`CKF_GENERATE` for `CKM_AES_KEY_GEN`, `CKF_ENCRYPT | CKF_DECRYPT` for AES-CBC variants)
 
 ## Testing
 
@@ -15,6 +16,9 @@
 
 - Split `cosmian_pkcs11_verify` crate into `[lib]` + `[[bin]]` targets so that integration tests in `src/tests.rs` are discoverable by `cargo test --lib --workspace` (as used by `cargo test-non-fips`); all shared helper functions moved to `src/lib.rs` as `pub` items, binary entry point kept in `src/main.rs`
 - Add integration test `test_pkcs11_oidc_login_full_sequence` (feature-gated behind `non-fips`) exercising the full PKCS#11 sequence with OIDC/JWT authentication: starts an in-process KMS test server with JWT auth, dynamically loads `libcosmian_pkcs11.so`, calls `C_Login` with a real Auth0 token, and verifies that `C_FindObjects` enumerates KMS objects correctly
+- Add integration test `test_pkcs11_migrate_software_to_hsm` (non-fips): verifies that `C_GenerateKey(CKM_AES_KEY_GEN)` succeeds with an Oracle TDE master key label and that the resulting key handle can be used immediately for `C_Encrypt` — validates the forward migration path (software wallet → HSM wallet)
+- Add integration test `test_pkcs11_reverse_migrate_hsm_to_software` (non-fips): verifies a full AES-CBC-PAD encrypt/decrypt round-trip on a KMS-backed key, confirming that `C_Decrypt` can unwrap DEKs previously wrapped by the same HSM key — validates the reverse migration path (HSM wallet → software wallet)
+- Add loader helper functions `call_generate_aes_key`, `call_encrypt_aes_cbc_pad`, `call_decrypt_aes_cbc_pad` to `crate/clients/pkcs11/loader/src/lib.rs` for use in integration tests
 
 ## Documentation
 
@@ -25,3 +29,4 @@
 - Add "Environment Variables Used by `libcosmian_pkcs11`" reference table covering `CKMS_CONF`, `COSMIAN_PKCS11_LOGGING_LEVEL`, `COSMIAN_PKCS11_LOGGING_FOLDER`, `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG`, `COSMIAN_PKCS11_SSH_KEY_TAG`, `COSMIAN_PKCS11_IGNORE_SESSIONS`, with usage notes and a `cosmian_pkcs11_verify` quick-check example
 - Add "OIDC / JWT Keystore Authentication (Dynamic Token)" section documenting mode 2 (`pkcs11_use_pin_as_access_token = true`): three-mode comparison table (no auth / static token / OIDC dynamic), `ckms.toml` config, Oracle SQL example, wrapper script pattern, security properties, and `cosmian_pkcs11_verify --token` verification
 - Add "Verifying the library loads correctly" subsection with per-mode usage examples for `cosmian_pkcs11_verify` including `--token` for mode 2 and the expected output format for each scenario
+- Add "Wallet Migration" section documenting forward (software → HSM) and reverse (HSM → software) wallet migration: SQL commands, OIDC token usage during migration, auto-login wallet variants, and version note about the `CKF_WRITE_PROTECTED` fix

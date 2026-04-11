@@ -17,10 +17,11 @@ use std::{ffi::c_void, ptr};
 
 use libloading::{Library, Symbol};
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_OBJECT_CLASS,
-    CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE, CK_ULONG, CKA_CLASS,
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKO_SECRET_KEY, CKR_OK, CKU_USER,
+    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_KEY_TYPE,
+    CK_MECHANISM, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE,
+    CK_ULONG, CKA_CLASS, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN,
+    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKO_CERTIFICATE,
+    CKO_DATA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKR_OK, CKU_USER,
 };
 
 // ---------------------------------------------------------------------------
@@ -345,6 +346,191 @@ pub const fn ckr_name(rv: CK_RV) -> &'static str {
         401 => "CKR_CRYPTOKI_ALREADY_INITIALIZED",
         _ => "CKR_UNKNOWN",
     }
+}
+
+// ---------------------------------------------------------------------------
+// Oracle TDE migration helpers
+// ---------------------------------------------------------------------------
+
+/// Generate an AES-256 key in the token with the given label.
+///
+/// Calls `C_GenerateKey` with a `CKM_AES_KEY_GEN` mechanism and a minimal
+/// attribute template (`CKA_KEY_TYPE`, `CKA_LABEL`, `CKA_SENSITIVE`,
+/// `CKA_VALUE_LEN=32`, `CKA_EXTRACTABLE=CK_TRUE`).
+/// This mirrors what Oracle TDE does during `ADMINISTER KEY MANAGEMENT SET
+/// ENCRYPTION KEY ... MIGRATE`.
+pub fn call_generate_aes_key(
+    func_list: &CK_FUNCTION_LIST,
+    session: CK_SESSION_HANDLE,
+    label: &str,
+) -> Result<CK_OBJECT_HANDLE, String> {
+    let c_generate_key = func_list
+        .C_GenerateKey
+        .ok_or_else(|| "FAIL [C_GenerateKey]: not present in function list".to_owned())?;
+
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_KEY_GEN,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+
+    let key_type: CK_KEY_TYPE = CKK_AES;
+    let sensitive: CK_BBOOL = CK_TRUE;
+    let extractable: CK_BBOOL = CK_TRUE;
+    let value_len: CK_ULONG = 32; // AES-256
+    let label_len = CK_ULONG::try_from(label.len())
+        .map_err(|e| format!("FAIL [C_GenerateKey]: label length out of range: {e}"))?;
+    let key_type_len = CK_ULONG::try_from(std::mem::size_of::<CK_KEY_TYPE>())
+        .map_err(|e| format!("FAIL [C_GenerateKey]: size_of::<CK_KEY_TYPE> overflow: {e}"))?;
+    let bbool_len = CK_ULONG::try_from(std::mem::size_of::<CK_BBOOL>())
+        .map_err(|e| format!("FAIL [C_GenerateKey]: size_of::<CK_BBOOL> overflow: {e}"))?;
+    let ulong_len = CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())
+        .map_err(|e| format!("FAIL [C_GenerateKey]: size_of::<CK_ULONG> overflow: {e}"))?;
+
+    let mut template = [
+        CK_ATTRIBUTE {
+            type_: CKA_KEY_TYPE,
+            pValue: std::ptr::from_ref(&key_type).cast::<c_void>().cast_mut(),
+            ulValueLen: key_type_len,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: label.as_ptr().cast::<c_void>().cast_mut(),
+            ulValueLen: label_len,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_SENSITIVE,
+            pValue: std::ptr::from_ref(&sensitive).cast::<c_void>().cast_mut(),
+            ulValueLen: bbool_len,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_VALUE_LEN,
+            pValue: std::ptr::from_ref(&value_len).cast::<c_void>().cast_mut(),
+            ulValueLen: ulong_len,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_EXTRACTABLE,
+            pValue: std::ptr::from_ref(&extractable).cast::<c_void>().cast_mut(),
+            ulValueLen: bbool_len,
+        },
+    ];
+    let template_len = CK_ULONG::try_from(template.len())
+        .map_err(|e| format!("FAIL [C_GenerateKey]: template length overflow: {e}"))?;
+
+    let mut key_handle: CK_OBJECT_HANDLE = 0;
+    let rv = unsafe {
+        c_generate_key(
+            session,
+            &raw mut mechanism,
+            template.as_mut_ptr(),
+            template_len,
+            &raw mut key_handle,
+        )
+    };
+    check_rv(rv, "C_GenerateKey")?;
+    Ok(key_handle)
+}
+
+/// Encrypt `plaintext` using the AES-CBC-PAD mechanism with a zero 16-byte IV.
+///
+/// Calls `C_EncryptInit` followed by `C_Encrypt` using the supplied `key_handle`.
+/// This mirrors the DEK-wrapping step Oracle performs during wallet migration.
+pub fn call_encrypt_aes_cbc_pad(
+    func_list: &CK_FUNCTION_LIST,
+    session: CK_SESSION_HANDLE,
+    key_handle: CK_OBJECT_HANDLE,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, String> {
+    let c_encrypt_init = func_list
+        .C_EncryptInit
+        .ok_or_else(|| "FAIL [C_EncryptInit]: not present in function list".to_owned())?;
+    let c_encrypt = func_list
+        .C_Encrypt
+        .ok_or_else(|| "FAIL [C_Encrypt]: not present in function list".to_owned())?;
+
+    let mut iv = [0_u8; 16];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_CBC_PAD,
+        pParameter: iv.as_mut_ptr().cast::<c_void>(),
+        ulParameterLen: 16,
+    };
+
+    let rv = unsafe { c_encrypt_init(session, &raw mut mechanism, key_handle) };
+    check_rv(rv, "C_EncryptInit")?;
+
+    // Allocate a generous output buffer (input + 32 bytes covers any PKCS#7 padding).
+    let mut out_buf: Vec<u8> = vec![0_u8; plaintext.len() + 32];
+    let mut out_len = CK_ULONG::try_from(out_buf.len())
+        .map_err(|e| format!("FAIL [C_Encrypt]: output buffer length overflow: {e}"))?;
+    let plain_len = CK_ULONG::try_from(plaintext.len())
+        .map_err(|e| format!("FAIL [C_Encrypt]: plaintext length overflow: {e}"))?;
+
+    let rv = unsafe {
+        c_encrypt(
+            session,
+            plaintext.as_ptr().cast_mut(),
+            plain_len,
+            out_buf.as_mut_ptr(),
+            &raw mut out_len,
+        )
+    };
+    check_rv(rv, "C_Encrypt")?;
+
+    let final_len = usize::try_from(out_len)
+        .map_err(|e| format!("FAIL [C_Encrypt]: returned length overflow: {e}"))?;
+    out_buf.truncate(final_len);
+    Ok(out_buf)
+}
+
+/// Decrypt `ciphertext` using the AES-CBC-PAD mechanism with a zero 16-byte IV.
+///
+/// Calls `C_DecryptInit` followed by `C_Decrypt` using the supplied `key_handle`.
+/// This mirrors the DEK-unwrapping step Oracle performs during reverse wallet migration.
+pub fn call_decrypt_aes_cbc_pad(
+    func_list: &CK_FUNCTION_LIST,
+    session: CK_SESSION_HANDLE,
+    key_handle: CK_OBJECT_HANDLE,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, String> {
+    let c_decrypt_init = func_list
+        .C_DecryptInit
+        .ok_or_else(|| "FAIL [C_DecryptInit]: not present in function list".to_owned())?;
+    let c_decrypt = func_list
+        .C_Decrypt
+        .ok_or_else(|| "FAIL [C_Decrypt]: not present in function list".to_owned())?;
+
+    let mut iv = [0_u8; 16];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_CBC_PAD,
+        pParameter: iv.as_mut_ptr().cast::<c_void>(),
+        ulParameterLen: 16,
+    };
+
+    let rv = unsafe { c_decrypt_init(session, &raw mut mechanism, key_handle) };
+    check_rv(rv, "C_DecryptInit")?;
+
+    // Allocate output buffer equal to ciphertext length; plaintext is always shorter.
+    let mut out_buf: Vec<u8> = vec![0_u8; ciphertext.len()];
+    let mut out_len = CK_ULONG::try_from(out_buf.len())
+        .map_err(|e| format!("FAIL [C_Decrypt]: output buffer length overflow: {e}"))?;
+    let cipher_len = CK_ULONG::try_from(ciphertext.len())
+        .map_err(|e| format!("FAIL [C_Decrypt]: ciphertext length overflow: {e}"))?;
+
+    let rv = unsafe {
+        c_decrypt(
+            session,
+            ciphertext.as_ptr().cast_mut(),
+            cipher_len,
+            out_buf.as_mut_ptr(),
+            &raw mut out_len,
+        )
+    };
+    check_rv(rv, "C_Decrypt")?;
+
+    let final_len = usize::try_from(out_len)
+        .map_err(|e| format!("FAIL [C_Decrypt]: returned length overflow: {e}"))?;
+    out_buf.truncate(final_len);
+    Ok(out_buf)
 }
 
 #[cfg(test)]
