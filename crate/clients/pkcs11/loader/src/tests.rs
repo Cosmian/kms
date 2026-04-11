@@ -6,10 +6,13 @@
 //!
 //! The cdylib path is derived from `COSMIAN_PKCS11_LIB_DIR`, which is emitted
 //! as a compile-time env var by `build.rs` (computed from `OUT_DIR`).  The
-//! cdylib itself is built as a side-effect of the workspace build that runs
-//! before the tests: `cargo test-non-fips` = `cargo test --lib --workspace
-//! --features non-fips` builds ALL workspace members, including
-//! `cosmian_pkcs11` (cdylib).
+//! cdylib itself must be built **before** running these tests — it is NOT
+//! produced as a side-effect of `cargo test --lib --workspace` because Cargo
+//! compiles cdylib crates as test-executable targets (rlib ABI), not as the
+//! final `.so`/`.dylib`/`.dll` artifact.
+//!
+//! To prepare the cdylib, run:
+//!   cargo build -p cosmian_pkcs11 --features non-fips
 //!
 //! All tests in this module require the `non-fips` feature and are therefore
 //! compiled only when `cargo test --features non-fips` (or the `cargo

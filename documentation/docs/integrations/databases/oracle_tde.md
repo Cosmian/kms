@@ -57,15 +57,15 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.20.1_amd64.deb).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip).
 
 - Extract the package:
 
     ```bash
-    dpkg-deb -x cosmian-kms-cli-non-fips-static-openssl_5.20.1_amd64.deb extracted/
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip
     ```
 
-- Copy the PKCS#11 provider library from the `extracted/` directory to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
+- Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
 - Copy the configuration of the PKCS#11 provider library to `/usr/local/okv/hsm/generic/ckms.toml`
 - Override the OKV generic HSM configuration files:
 
@@ -137,11 +137,11 @@ graph TD
 
 1. **Install Cosmian PKCS#11 Library**
 
-    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.20.1_amd64.deb).
+    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip).
 
     ```bash
-    # Extract library from Linux package.
-    dpkg-deb -x cosmian-kms-cli-non-fips-static-openssl_5.20.1_amd64.deb extracted/
+    # Extract library from PKCS#11 ZIP package.
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip
 
     # Copy to Oracle's HSM directory
     mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/

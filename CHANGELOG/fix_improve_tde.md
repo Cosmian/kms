@@ -20,6 +20,12 @@
 - Add integration test `test_pkcs11_reverse_migrate_hsm_to_software` (non-fips): verifies a full AES-CBC-PAD encrypt/decrypt round-trip on a KMS-backed key, confirming that `C_Decrypt` can unwrap DEKs previously wrapped by the same HSM key — validates the reverse migration path (HSM wallet → software wallet)
 - Add loader helper functions `call_generate_aes_key`, `call_encrypt_aes_cbc_pad`, `call_decrypt_aes_cbc_pad` to `crate/clients/pkcs11/loader/src/lib.rs` for use in integration tests
 
+## CI
+
+- Fix PKCS#11 integration test failures: `cargo test --lib --workspace` does not produce cdylib artifacts; add explicit `cargo build -p cosmian_pkcs11 --features non-fips` step before workspace lib tests in `main_base.yml` (Linux/macOS), `cargo_test.ps1` (Windows), and `common.sh` `run_db_tests()` (Nix-based test scripts) so that `libcosmian_pkcs11.{so,dylib,dll}` exists at test time
+- Fix Oracle TDE migration test order in `run_sql_commands.sh`: reverse migration (HSM → SW) must precede forward migration (SW → HSM) because Oracle raises `ORA-28414` if you attempt to `SET KEY` in a file keystore while the active master key is in an external keystore; restructure as: REVERSE MIGRATE (test 1/2) then MIGRATE (test 2/2)
+- Update macOS Nix CLI vendor hash files (`cli.vendor.static.darwin.sha256`, `cli.vendor.dynamic.darwin.sha256`) to match the updated `Cargo.lock` after adding PKCS#11 loader dependencies
+
 ## Documentation
 
 ### Oracle TDE

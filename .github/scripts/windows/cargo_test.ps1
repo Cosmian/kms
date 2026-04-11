@@ -13,6 +13,16 @@ function TestProject
 
     # Tests are always run in debug mode (no --release flag)
 
+    # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration tests
+    # can dynamically load it at runtime.  `cargo test --lib` does not produce
+    # cdylib artifacts, so we build it explicitly before running the test suite.
+    cargo build -p cosmian_pkcs11 --features "non-fips"
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Error "Failed to build cosmian_pkcs11 cdylib with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+
     # Run lib tests for all workspace crates
     cargo test --lib --workspace --features "non-fips" -- --nocapture
     if ($LASTEXITCODE -ne 0)
