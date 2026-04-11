@@ -419,12 +419,20 @@ docker_command() {
   if [ "$DOCKER_LOAD" = true ]; then
     if command -v docker >/dev/null 2>&1; then
       echo "Loading image into Docker (from $REAL_OUT)…"
-      docker load <"$REAL_OUT"
+      LOAD_OUTPUT=$(docker load <"$REAL_OUT")
+      echo "$LOAD_OUTPUT"
+      # Extract the actual image name/tag from docker load output so it always
+      # matches what was loaded, even when reusing a cached tarball from an
+      # older build.
+      LOADED_IMAGE=$(printf '%s\n' "$LOAD_OUTPUT" \
+        | grep -oE 'Loaded image( ID)?: \S+' \
+        | awk '{print $NF}' | head -1)
+      export DOCKER_IMAGE_NAME="${LOADED_IMAGE:-cosmian-kms:${VERSION}-${DOCKER_VARIANT}}"
+      echo "Docker image available as: $DOCKER_IMAGE_NAME"
 
       # Run tests if requested
       if [ "$DOCKER_TEST" = true ]; then
         echo "Running Docker image tests..."
-        export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}"
         bash "$REPO_ROOT/.github/scripts/test/test_docker_image.sh"
       fi
     else
