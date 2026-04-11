@@ -24,6 +24,9 @@
 
 - Fix PKCS#11 integration test failures: `cargo test --lib --workspace` does not produce cdylib artifacts; add explicit `cargo build -p cosmian_pkcs11 --features non-fips` step before workspace lib tests in `main_base.yml` (Linux/macOS), `cargo_test.ps1` (Windows), and `common.sh` `run_db_tests()` (Nix-based test scripts) so that `libcosmian_pkcs11.{so,dylib,dll}` exists at test time
 - Fix Oracle TDE migration test order in `run_sql_commands.sh`: reverse migration (HSM → SW) must precede forward migration (SW → HSM) because Oracle raises `ORA-28414` if you attempt to `SET KEY` in a file keystore while the active master key is in an external keystore; restructure as: REVERSE MIGRATE (test 1/2) then MIGRATE (test 2/2)
+- Fix Oracle TDE `run_sql_commands.sh`: handle `ORA-28354` (wallet already open) as a non-fatal condition during `KEYSTORE OPEN` calls — Oracle auto-opens the active keystore on DB restart, so a subsequent explicit open returns exit code 194 which is now treated as success
+- Fix Oracle TDE `run_sql_commands.sh`: remove `WITH BACKUP` from the SW→HSM forward migration (`MIGRATE USING sw_keystore_pass`) — in `HSM|FILE` mode Oracle cannot create the backup keystore file and raises `ORA-46623`, which is avoided by omitting the clause (the backup is unnecessary at this stage since Migration test 1/2 already verified the reverse path)
+- Fix CI packaging: add `pkcs11-zip` to the default Linux package types in `nix.sh` (was `"deb rpm"`, now `"deb rpm pkcs11-zip"`) so that the `packages` job produces `result-pkcs11-zip-*` artifacts; previously the `pkcs11-zip` publish matrix jobs always failed with "No such file or directory" because no `pkcs11-zip` artifact was ever built
 - Update macOS Nix CLI vendor hash files (`cli.vendor.static.darwin.sha256`, `cli.vendor.dynamic.darwin.sha256`) to match the updated `Cargo.lock` after adding PKCS#11 loader dependencies
 
 ## Documentation

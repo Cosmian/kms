@@ -21,7 +21,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -169,7 +169,7 @@ _sign_zip() {
   local key_id_file="$keys_dir/key-id.txt"
 
   local require_signing="0"
-  [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ] && require_signing="1" || true
+  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then require_signing="1"; fi
 
   if [ ! -f "$key_id_file" ]; then
     if [ "$require_signing" = "1" ]; then

@@ -12,7 +12,7 @@
 //! final `.so`/`.dylib`/`.dll` artifact.
 //!
 //! To prepare the cdylib, run:
-//!   cargo build -p cosmian_pkcs11 --features non-fips
+//!   cargo build -p `cosmian_pkcs11` --features non-fips
 //!
 //! All tests in this module require the `non-fips` feature and are therefore
 //! compiled only when `cargo test --features non-fips` (or the `cargo

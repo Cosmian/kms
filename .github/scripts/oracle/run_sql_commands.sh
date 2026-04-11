@@ -162,7 +162,9 @@ open_keystore "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY sw_keys
 # Oracle calls C_GenerateKey(CKM_AES_KEY_GEN) on libcosmian_pkcs11.so to
 # create the new master key in the KMS, then C_Encrypt to re-wrap any DEKs.
 #
-run_sql "ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY IDENTIFIED BY hsm_identity_pass MIGRATE USING sw_keystore_pass WITH BACKUP;"
+# Note: WITH BACKUP is intentionally omitted for the SW→HSM forward migration.
+# In HSM|FILE mode Oracle cannot create the backup keystore file (ORA-46623).
+run_sql "ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY IDENTIFIED BY hsm_identity_pass MIGRATE USING sw_keystore_pass;"
 display_wallet
 
 # ── step 4/4: switch to HSM-only mode and open ───────────────────────────────

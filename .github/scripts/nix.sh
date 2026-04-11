@@ -931,7 +931,7 @@ package_command() {
     if [ "$(uname)" = "Darwin" ]; then
       TYPES="dmg"
     else
-      TYPES="deb rpm"
+      TYPES="deb rpm pkcs11-zip"
     fi
   else
     TYPES="$PACKAGE_TYPE"

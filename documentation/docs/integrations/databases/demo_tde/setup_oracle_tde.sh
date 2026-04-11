@@ -23,7 +23,7 @@ set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-KMS_VERSION="${1:-5.18.0}"
+KMS_VERSION="${1:-5.20.1}"
 KMS_VERSION="${KMS_VERSION#--version }"   # strip flag if passed as --version X
 
 ORACLE_IMAGE="container-registry.oracle.com/database/free:latest-lite"
