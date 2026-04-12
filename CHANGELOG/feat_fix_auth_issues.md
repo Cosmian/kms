@@ -25,3 +25,10 @@
 ## Documentation
 
 - **`configuration/ui.md`**: documented the five UI connection states and the Certificate Authentication (mTLS) setup
+
+## CI
+
+### Windows
+
+- **`test_ui.ps1`**: fix KMS log file paths — use `$RUNNER_TEMP` (with local fallback) and names `kms-stdout.log` / `kms-stderr.log` to match the `Upload logs on failure` workflow step so KMS server output is actually captured on failures
+- **`test_ui.ps1`**: use `--frozen-lockfile` for `pnpm install` (mirrors Linux `test_ui.sh`) to ensure reproducible builds without inadvertent package updates

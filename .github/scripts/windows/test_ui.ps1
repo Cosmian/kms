@@ -79,16 +79,20 @@ Copy-Item (Join-Path $PkgSrc "*") -Destination $PkgDst -Recurse -Force
 Write-Host "==> Installing UI dependencies ..." -ForegroundColor Cyan
 Push-Location $UiDir
 try {
-    # Use --no-frozen-lockfile to avoid lock mismatch failures in CI
-    Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile")
+    Invoke-Checked $pnpmCmd @("install", "--frozen-lockfile")
 
     Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
+    # Write a .env.production.local file so Vite picks up the variables even
+    # if the process-level env vars are not visible to the pnpm child process.
+    $EnvFile = Join-Path $UiDir ".env.production.local"
+    "VITE_KMS_URL=http://127.0.0.1:9998`nVITE_DEV_MODE=true" | Out-File -FilePath $EnvFile -Encoding utf8 -NoNewline
     $env:VITE_KMS_URL = "http://127.0.0.1:9998"
     $env:VITE_DEV_MODE = "true"
     try {
         Invoke-Checked $pnpmCmd @("run", "build:vite")
     }
     finally {
+        Remove-Item -Force $EnvFile -ErrorAction SilentlyContinue
         Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
         Remove-Item Env:VITE_DEV_MODE -ErrorAction SilentlyContinue
     }
@@ -129,8 +133,12 @@ if (-not (Test-Path $KmsBin)) {
 }
 
 Write-Host "==> Starting KMS server (non-fips, sqlite) ..." -ForegroundColor Cyan
-$KmsLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-e2e.log"
-$KmsLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-e2e.err"
+# Use RUNNER_TEMP when available (GitHub Actions) so that the paths match the
+# `path:` globs in the "Upload logs on failure" workflow step; fall back to
+# the system temp directory for local runs.
+$LogTempDir = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$KmsLogOut = Join-Path $LogTempDir "kms-stdout.log"
+$KmsLogErr = Join-Path $LogTempDir "kms-stderr.log"
 
 # Launch the pre-built binary directly — startup is near-instant.
 $oldRustLog = $env:RUST_LOG
