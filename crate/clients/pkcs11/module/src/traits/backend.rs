@@ -12,6 +12,9 @@ use crate::{
     },
 };
 
+// ── Internal: std::sync::atomic re-export ─────────────────────────────────
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[derive(Debug)]
 pub struct SignContext {
     pub algorithm: SignatureAlgorithm,
@@ -64,40 +67,53 @@ pub fn backend() -> ModuleResult<Arc<dyn Backend>> {
 
 // ── OIDC pin-as-access-token mode ────────────────────────────────────────
 
-static PKCS11_USE_PIN_AS_ACCESS_TOKEN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+/// Whether `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`.
+///
+/// Uses `AtomicBool` (not `OnceLock`) so that the value can be *updated* on
+/// each call to `C_GetFunctionList`.  On Windows the DLL is kept in memory by
+/// the Tokio background-I/O threads that live inside the static `RUNTIME`
+/// (in the provider crate).  A second `Library::new()` in a test therefore
+/// returns the **same DLL instance** with its static state intact, so every
+/// `register_*` helper must support repeated calls with fresh values.
+static PKCS11_USE_PIN_AS_ACCESS_TOKEN: AtomicBool = AtomicBool::new(false);
 
 /// Registers whether `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`.
-/// Called once at `C_GetFunctionList` time when mode 2 is active.
+/// Called at every `C_GetFunctionList` invocation (overwriting any previous value).
 pub fn register_pin_mode(enabled: bool) {
-    let _ = PKCS11_USE_PIN_AS_ACCESS_TOKEN.set(enabled);
+    PKCS11_USE_PIN_AS_ACCESS_TOKEN.store(enabled, Ordering::SeqCst);
 }
 
 /// Returns `true` when the OIDC-pin mode is active: the `pPin` passed to
 /// `C_Login` is treated as a bearer token for every subsequent KMS request.
 pub fn use_pin_as_access_token() -> bool {
-    PKCS11_USE_PIN_AS_ACCESS_TOKEN
-        .get()
-        .copied()
-        .unwrap_or(false)
+    PKCS11_USE_PIN_AS_ACCESS_TOKEN.load(Ordering::SeqCst)
 }
 
 // ── Login callback (provider ↔ module bridge) ─────────────────────────────
 
 type LoginFn = Box<dyn Fn(&str) -> ModuleResult<()> + Send + Sync>;
 
-static LOGIN_FN: std::sync::OnceLock<LoginFn> = std::sync::OnceLock::new();
+/// Login callback, wrapped in `RwLock<Option<…>>` so that it can be
+/// *replaced* on every `C_GetFunctionList` call (see the comment on
+/// `PKCS11_USE_PIN_AS_ACCESS_TOKEN` above for the rationale).
+static LOGIN_FN: LazyLock<RwLock<Option<LoginFn>>> = LazyLock::new(|| RwLock::new(None));
 
-/// Registers the login callback once at `C_GetFunctionList` time (mode 2 only).
+/// Registers (or replaces) the login callback at `C_GetFunctionList` time (mode 2 only).
 /// The closure receives the bearer token, builds an authenticated `KmsClient`,
 /// and calls `register_backend` to replace the pre-login stub.
 pub fn register_login_fn(f: LoginFn) {
-    drop(LOGIN_FN.set(f));
+    if let Ok(mut guard) = LOGIN_FN.write() {
+        *guard = Some(f);
+    }
 }
 
 /// Invokes the registered login callback with `token`.
 /// Returns [`ModuleError::UserNotLoggedIn`] if no callback was registered.
 pub fn invoke_login_fn(token: &str) -> ModuleResult<()> {
-    let f = LOGIN_FN.get().ok_or(ModuleError::UserNotLoggedIn)?;
+    let guard = LOGIN_FN
+        .read()
+        .map_err(|e| ModuleError::Default(e.to_string()))?;
+    let f = guard.as_ref().ok_or(ModuleError::UserNotLoggedIn)?;
     f(token)
 }
 
