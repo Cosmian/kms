@@ -107,7 +107,7 @@ pnpm run build:vite
 
 ## Running Tests
 
-### Unit, integration and E2E tests:
+### Unit, integration and E2E tests
 
 ```bash
 cd ui
@@ -118,7 +118,7 @@ Runs unit tests, integration tests, and E2E tests in sequence.
 
 To run a layer add the adequate subprocess suffix (`test:unit`, `test:integration`, `test:e2e`).
 
-The E2E suite exercises real browser flows against a locally running KMS server with no authentification configured (port 9998) and a Vite preview server (port 5173) **running in unrestricted DEV mode**. E2E tests can take a lot of time, only run when needed.
+The E2E suite exercises real browser flows against a locally running KMS server with no authentication configured (port 9998) and a Vite preview server (port 5173) **running in unrestricted DEV mode**. E2E tests can take a lot of time, only run when needed.
 
 ### WASM binding tests
 
@@ -130,7 +130,6 @@ bash .github/scripts/nix.sh --variant non-fips test wasm
 ```
 
 ### E2E tests (Playwright)
-
 
 #### Recommended — reproducible Nix environment
 

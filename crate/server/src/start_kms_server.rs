@@ -722,14 +722,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         )
     });
 
-    // Derive or generate key for actix session cookie encryption
-    // If session_salt is provided, derive a deterministic key for load-balanced setups
-    // Otherwise, generate a random key (for setups without UI or load balancing)
-    let secret_key: Key = if let Some(ref salt) = kms_server.params.ui_session_salt {
-        derive_session_key_from_url(&kms_public_url, salt)?
-    } else {
-        Key::generate()
-    };
+    // Derive the session cookie encryption key.
+    // - If ui_session_salt is set, derive a deterministic key from it (required for
+    //   load-balanced multi-instance setups where all nodes must share the same key).
+    // - Otherwise, derive a stable key from the public URL using a built-in default salt.
+    //   This prevents the "cookie failed cryptographic checks" warnings that occur when
+    //   a random key is regenerated on every restart, invalidating existing browser cookies.
+    //   For single-instance deployments this is sufficient; for multi-instance setups
+    //   ui_session_salt must be configured to ensure all nodes share the same key.
+    let effective_salt = kms_server
+        .params
+        .ui_session_salt
+        .as_deref()
+        .unwrap_or("cosmian_kms_default_ui_session_key_v1");
+    let secret_key: Key = derive_session_key_from_url(&kms_public_url, effective_salt)?;
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();

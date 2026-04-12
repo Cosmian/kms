@@ -374,6 +374,24 @@ graph LR
     B --> C[Verify KMIP requests use vendor ID]
 ```
 
+### auth-connection-states
+
+Tests the five UI connection states introduced in the auth overhaul:
+
+```mermaid
+graph LR
+    A[Load UI] --> B{VITE_DEV_MODE?}
+    B -->|true| C[DEV banner visible]
+    B -->|false + no auth| D[No-auth warning banner]
+    B -->|false + no server| E[Cannot connect error page]
+    A --> F["/login while authenticated, redirects to /locate"]
+    A --> G["/ index redirects to /locate"]
+    A --> H[Footer shows version + health]
+```
+
+Note: the "Cannot connect to KMS server" state (`authMethod === undefined`) requires
+a UI built without `VITE_DEV_MODE=true`; it is covered by unit tests instead.
+
 ### sitemap
 
 ```mermaid

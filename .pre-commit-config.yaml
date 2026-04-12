@@ -223,7 +223,14 @@ repos:
 
       - id: pnpm-ui-format
         name: pnpm ui format
-        entry: pnpm -C ui format
+        entry: pnpm -C ui check:format
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: pnpm-ui-lint
+        name: pnpm ui check:lint
+        entry: pnpm -C ui check:lint
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
