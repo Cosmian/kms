@@ -1,4 +1,4 @@
-import { ConfigProvider, theme } from "antd";
+import { ConfigProvider, Result, theme } from "antd";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AccessGrantForm from "./actions/Access/AccessGrant";
@@ -99,12 +99,12 @@ const resolveServerUrl = (): string => {
 };
 
 const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasmError }) => {
-    const { setServerUrl, setIdToken, setUserId } = useAuth();
+    const { serverUrl, setServerUrl, setIdToken, setUserId } = useAuth();
     const branding = useBranding();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isAuthLoading, setIsAuthLoading] = useState(false);
-    const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
-    const [loginError, setLoginError] = useState<undefined | string>(undefined);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
+    const [authMethod, setAuthMethod] = useState<AuthMethod>(undefined);
+    const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         setIsDarkMode(initialDarkMode == "true" ? true : false);
@@ -160,6 +160,34 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         setLoginError(`An error occurred while fetching server information: ${String(error)}`);
                     }
                 }
+            } else if (authMethod === "CERT") {
+                try {
+                    // /version succeeds without a cert; /access/create returns 401 without one
+                    await getNoTTLVRequest("/access/create", null, location);
+                    setIsAuthenticated(true);
+                } catch {
+                    // Cert failed — try JWT as fallback (both may be configured)
+                    const data = await fetchIdToken(location);
+                    if (data) {
+                        try {
+                            const version = await getNoTTLVRequest("/version", data.id_token, location);
+                            if (version) {
+                                // Valid JWT session found — switch to JWT mode
+                                setAuthMethod("JWT");
+                                setIdToken(data.id_token);
+                                setUserId(data.user_id);
+                                setIsAuthenticated(true);
+                                setLoginError(undefined);
+                            }
+                        } catch (error) {
+                            console.log("JWT fallback failed:", error);
+                            setIsAuthenticated(false);
+                        }
+                    } else {
+                        // No cert, no JWT — block access
+                        setIsAuthenticated(false);
+                    }
+                }
             }
             setIsAuthLoading(false);
         };
@@ -172,16 +200,39 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     if (isAuthLoading) {
         return <></>;
     }
+    // Error: couldn't reach server or determine auth method
+    if (authMethod === undefined) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <Result
+                    status="error"
+                    title={
+                        <div>
+                            <div>Cannot connect to KMS server</div>
+                        </div>
+                    }
+                    subTitle={
+                        <span>
+                            Could not reach Cosmian KMS server, please ensure it's running and is reachable at{" "}
+                            <strong>{serverUrl || "the expected address"}</strong>.
+                        </span>
+                    }
+                />
+            </div>
+        );
+    }
+
     return (
         <Routes>
-            {!isAuthenticated && authMethod === "JWT" ? (
+            {!isAuthenticated && (authMethod === "JWT" || authMethod === "CERT") ? (
                 <>
-                    <Route path="/login" element={<LoginPage auth={true} error={loginError} />} />
+                    <Route path="/login" element={<LoginPage auth={authMethod === "JWT"} authMethod={authMethod} error={loginError} />} />
                     <Route path="*" element={<Navigate to="/login" replace />} />
                 </>
             ) : (
                 <>
-                    <Route index element={<LoginPage auth={false} />} />
+                    <Route index element={<Navigate to="/locate" replace />} />
+                    <Route path="/login" element={<Navigate to="/locate" replace />} />
                     <Route
                         path="/"
                         element={

@@ -306,7 +306,7 @@ stdenv.mkDerivation {
     export default init;
     EOF
 
-      pnpm run build
+      pnpm run build:vite
 
       # Return to root directory after build
       cd ..

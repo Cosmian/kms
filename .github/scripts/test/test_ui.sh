@@ -145,12 +145,12 @@ echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
 run_ui run_pnpm install --frozen-lockfile
 
-echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) …"
+echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) …"
 (cd "${UI_DIR}" && {
     chmod -R u+w dist >/dev/null 2>&1 || true
     rm -rf dist >/dev/null 2>&1 || true
 })
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" pnpm run build)
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
@@ -254,7 +254,7 @@ echo "==> HSM test keys created."
 # ── 7. Start Vite preview server ────────────────────────────────────────────
 echo "==> Starting Vite preview server (port 5173) …"
 VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm exec vite preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
 echo "==> Waiting for Vite preview to be ready …"

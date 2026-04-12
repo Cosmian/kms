@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT";
+export type AuthMethod = "None" | "JWT" | "CERT" | undefined;
 
 export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: string; user_id: string } | null> => {
     try {
@@ -17,6 +17,10 @@ export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: strin
 };
 
 export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> => {
+    // Completely skip the fetch if we're in dev mode to avoid unnecessary friction.
+    if (import.meta.env.VITE_DEV_MODE === "true") {
+        return "None";
+    }
     try {
         const kmsUrl = serverUrl + "/ui/auth_method";
         const response = await fetch(kmsUrl, {
@@ -27,8 +31,9 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
 
         const data: { auth_method: AuthMethod } = await response.json();
         return data.auth_method;
-    } catch {
-        return "None";
+    } catch (error) {
+        console.error(error);
+        return undefined;
     }
 };
 

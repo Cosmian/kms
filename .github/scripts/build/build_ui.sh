@@ -125,8 +125,8 @@ for _i in $(seq 1 60); do
   sleep 1
 done
 
-pnpm run test
-pnpm run lint
+pnpm run test:unit
+pnpm run check
 pnpm audit
 
 # Deploy built UI to root
