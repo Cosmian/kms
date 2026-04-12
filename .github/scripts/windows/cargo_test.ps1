@@ -9,7 +9,6 @@ function TestProject
     rustup target add x86_64-pc-windows-msvc
 
     $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
-    Get-ChildItem -Recurse $env:OPENSSL_DIR
 
     # Tests are always run in debug mode (no --release flag)
 
@@ -23,11 +22,26 @@ function TestProject
         exit $LASTEXITCODE
     }
 
-    # Run lib tests for all workspace crates
-    cargo test --lib --workspace --features "non-fips" -- --nocapture
+    # Run lib tests for all workspace crates except cosmian_pkcs11_verify.
+    # The loader tests (cosmian_pkcs11_verify) dynamically load cosmian_pkcs11.dll
+    # and use a tokio multi-thread runtime inside the DLL.  When run concurrently
+    # with other workspace test binaries, a timing-dependent race between the
+    # DLL's background runtime threads and FreeLibrary() causes a
+    # STATUS_STACK_BUFFER_OVERRUN crash on Windows.  Running the loader tests in
+    # isolation (step below) avoids this entirely.
+    cargo test --lib --workspace --exclude cosmian_pkcs11_verify --features "non-fips" -- --nocapture
     if ($LASTEXITCODE -ne 0)
     {
         Write-Error "Workspace lib tests failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+
+    # Run the PKCS#11 loader tests alone to avoid the cross-binary interference
+    # described above.  These tests have been validated to pass in isolation.
+    cargo test --lib -p cosmian_pkcs11_verify --features "non-fips" -- --nocapture
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Error "cosmian_pkcs11_verify tests failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 
