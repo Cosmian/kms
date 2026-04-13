@@ -1210,21 +1210,32 @@ dependencies = [
 name = "cosmian_kms_crypto"
 version = "5.20.1"
 dependencies = [
+ "aes 0.8.4",
  "aes-gcm-siv",
  "aes-kw",
  "argon2",
  "base64 0.22.1",
+ "cbc",
+ "cipher 0.4.4",
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
  "cosmian_kmip",
  "cosmian_logger",
  "ctor",
  "hex",
+ "itertools 0.10.5",
  "k256",
+ "libm",
+ "num-bigint",
  "num-bigint-dig",
+ "num-integer",
+ "num-traits",
  "openssl",
  "openssl-sys",
  "p256",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_distr",
  "rust-ini",
  "serde",
  "serde_json",
@@ -1235,24 +1246,6 @@ dependencies = [
  "uuid",
  "x509-parser",
  "zeroize",
-]
-
-[[package]]
-name = "cosmian_kms_fpe"
-version = "0.1.0"
-dependencies = [
- "aes 0.8.4",
- "cbc",
- "cipher 0.4.4",
- "itertools 0.10.5",
- "libm",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rand_distr",
- "static_assertions",
 ]
 
 [[package]]
@@ -1287,7 +1280,6 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_kms_base_hsm",
  "cosmian_kms_client_utils",
- "cosmian_kms_fpe",
  "cosmian_kms_interfaces",
  "cosmian_kms_server_database",
  "cosmian_logger",
@@ -4742,12 +4734,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stringprep"
