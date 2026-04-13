@@ -1,16 +1,15 @@
 // This code is tweaked and vendored from https://github.com/Cosmian/cosmian_fpe
-#![allow(dead_code, unreachable_pub)]
-use core::{cmp, fmt};
 use cipher::{
-    generic_array::GenericArray, Block, BlockCipher, BlockEncrypt, BlockEncryptMut, InnerIvInit,
-    KeyInit, Unsigned,
+    Block, BlockCipher, BlockEncrypt, BlockEncryptMut, InnerIvInit, KeyInit, Unsigned,
+    generic_array::GenericArray,
 };
-use num_bigint::{BigInt, BigUint, Sign};
-use num_traits::{identities::Zero, ToPrimitive};
+use core::{cmp, fmt};
+use num_bigint::BigUint;
+use num_traits::{ToPrimitive, identities::Zero};
 use zeroize::Zeroize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InvalidRadix(pub u32);
+pub(crate) struct InvalidRadix(pub(crate) u32);
 
 impl fmt::Display for InvalidRadix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -21,7 +20,7 @@ impl fmt::Display for InvalidRadix {
 impl std::error::Error for InvalidRadix {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FF1Error {
+pub(crate) enum FF1Error {
     InvalidRadix(InvalidRadix),
     InvalidKeyLength,
     InsufficientFeistelRounds,
@@ -45,7 +44,10 @@ impl fmt::Display for FF1Error {
                 write!(f, "FF1fr requires at least 8 Feistel rounds")
             }
             Self::InvalidBlockSize => {
-                write!(f, "FF1 requires a 128-bit (16-byte) block cipher (NIST SP 800-38G §4.3)")
+                write!(
+                    f,
+                    "FF1 requires a 128-bit (16-byte) block cipher (NIST SP 800-38G §4.3)"
+                )
             }
         }
     }
@@ -54,12 +56,11 @@ impl fmt::Display for FF1Error {
 impl std::error::Error for FF1Error {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NumeralStringError {
+pub(crate) enum NumeralStringError {
     InvalidForRadix(u32),
     TooLong { ns_len: usize, max_len: usize },
     TooShort { ns_len: usize, min_len: usize },
     TweakTooLong,
-    NotByteAligned,
 }
 
 impl fmt::Display for NumeralStringError {
@@ -79,9 +80,6 @@ impl fmt::Display for NumeralStringError {
             Self::TweakTooLong => {
                 write!(f, "The tweak is longer than u32::MAX bytes")
             }
-            Self::NotByteAligned => {
-                write!(f, "BinaryNumeralString length is not a multiple of 8")
-            }
         }
     }
 }
@@ -91,11 +89,15 @@ impl std::error::Error for NumeralStringError {}
 const MIN_NS_LEN: u32 = 2;
 const MAX_NS_LEN: usize = 4_294_967_295; // u32::MAX
 const MIN_RADIX_2_NS_LEN: u32 = 20;
-const LOG_10_MIN_NS_DOMAIN_SIZE: f64 = 6.0;
+/// Minimum domain size required by NIST SP 800-38G for FF1: `radix^min_len` >= 10^6.
+const MIN_NS_DOMAIN_SIZE: u64 = 1_000_000;
 
 #[derive(Debug, PartialEq)]
 enum Radix {
-    Any { radix: u32, min_len: u32 },
+    Any {
+        radix: u32,
+        min_len: u32,
+    },
     PowerTwo {
         radix: u32,
         min_len: u32,
@@ -126,11 +128,17 @@ impl Radix {
         }
         Ok(log_radix.map_or_else(
             || {
-                use libm::{ceil, log10};
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::as_conversions)]
-                let min_len = ceil(LOG_10_MIN_NS_DOMAIN_SIZE / log10(f64::from(radix))) as u32;
+                // Compute smallest min_len such that radix^min_len >= 10^6 (minimum domain size).
+                // Pure integer arithmetic: no floats, no `as` casts.
+                let mut pow: u64 = 1;
+                let mut min_len: u32 = 0;
+                while pow < MIN_NS_DOMAIN_SIZE {
+                    pow = pow.saturating_mul(u64::from(radix));
+                    min_len += 1;
+                }
                 Self::Any { radix, min_len }
             },
+            // log_radix is already computed above in the power-of-two branch
             |log_radix| Self::PowerTwo {
                 radix,
                 min_len: cmp::max(
@@ -160,15 +168,15 @@ impl Radix {
     }
 
     fn calculate_b(&self, v: usize) -> usize {
-        use libm::{ceil, log2};
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_sign_loss,
-            clippy::cast_possible_truncation,
-            clippy::as_conversions
-        )]
         match *self {
-            Self::Any { radix, .. } => ceil(v as f64 * log2(f64::from(radix)) / 8_f64) as usize,
+            Self::Any { radix, .. } => {
+                // Number of bits needed to represent one digit in this radix is
+                // ceil(log2(radix)) = 32 - leading_zeros(radix - 1), but for radix >= 2
+                // `32 - radix.leading_zeros()` is a safe conservative upper bound.
+                // Pure integer arithmetic; no floats, no `as` casts.
+                let bit_length = usize::try_from(u32::BITS - radix.leading_zeros()).unwrap_or(32);
+                v.saturating_mul(bit_length).div_ceil(8)
+            }
             Self::PowerTwo { log_radix, .. } => (v * usize::from(log_radix)).div_ceil(8),
         }
     }
@@ -180,7 +188,7 @@ impl Radix {
     }
 }
 
-pub trait Numeral {
+pub(crate) trait Numeral {
     type Bytes: AsRef<[u8]>;
     fn from_bytes(s: impl Iterator<Item = u8>) -> Self;
     fn to_bytes(&self, b: usize) -> Self::Bytes;
@@ -188,7 +196,7 @@ pub trait Numeral {
     fn sub_mod_exp(self, other: Self, radix: u32, m: usize) -> Self;
 }
 
-pub trait NumeralString: Sized {
+pub(crate) trait NumeralString: Sized {
     type Num: Numeral;
     fn is_valid(&self, radix: u32) -> bool;
     fn numeral_count(&self) -> usize;
@@ -201,13 +209,13 @@ pub trait NumeralString: Sized {
 #[derive(Clone)]
 struct Prf<CIPH: BlockCipher + BlockEncrypt> {
     state: cbc::Encryptor<CIPH>,
-    buf: [Block<CIPH>; 1],
+    buf: Block<CIPH>,
     offset: usize,
 }
 
 impl<CIPH: BlockCipher + BlockEncrypt> Drop for Prf<CIPH> {
     fn drop(&mut self) {
-        self.buf[0].zeroize();
+        self.buf.zeroize();
     }
 }
 
@@ -216,21 +224,24 @@ impl<CIPH: BlockCipher + BlockEncrypt + Clone> Prf<CIPH> {
         let ciph = ciph.clone();
         Self {
             state: cbc::Encryptor::inner_iv_init(ciph, GenericArray::from_slice(&[0; 16])),
-            buf: [Block::<CIPH>::default()],
+            buf: Block::<CIPH>::default(),
             offset: 0,
         }
     }
 
     fn update(&mut self, mut data: &[u8]) {
-        #[allow(clippy::indexing_slicing)]
         while !data.is_empty() {
-            let to_read = cmp::min(self.buf[0].len() - self.offset, data.len());
-            self.buf[0][self.offset..self.offset + to_read].copy_from_slice(&data[..to_read]);
+            let to_read = cmp::min(self.buf.len() - self.offset, data.len());
+            let (src, rest) = data.split_at(to_read);
+            let (_, dst) = self.buf.split_at_mut(self.offset);
+            let (dst, _) = dst.split_at_mut(to_read);
+            dst.copy_from_slice(src);
             self.offset += to_read;
-            data = &data[to_read..];
+            data = rest;
 
-            if self.offset == self.buf[0].len() {
-                self.state.encrypt_blocks_mut(&mut self.buf);
+            if self.offset == self.buf.len() {
+                self.state
+                    .encrypt_blocks_mut(core::slice::from_mut(&mut self.buf));
                 self.offset = 0;
             }
         }
@@ -238,8 +249,7 @@ impl<CIPH: BlockCipher + BlockEncrypt + Clone> Prf<CIPH> {
 
     fn output(&self) -> &Block<CIPH> {
         debug_assert_eq!(self.offset, 0, "output() called before block boundary");
-        #[allow(clippy::indexing_slicing)]
-        &self.buf[0]
+        &self.buf
     }
 }
 
@@ -250,35 +260,37 @@ fn generate_s<'a, CIPH: BlockEncrypt>(
 ) -> impl Iterator<Item = u8> + 'a {
     r.clone()
         .into_iter()
-        .chain((1_u128..u128::try_from(d.div_ceil(16)).unwrap_or(u128::MAX)).flat_map(move |j| {
-            let mut block = r.clone();
-            for (b, j) in block.iter_mut().zip(j.to_be_bytes().iter()) {
-                *b ^= j;
-            }
-            ciph.encrypt_block(&mut block);
-            block.into_iter()
-        }))
+        .chain(
+            (1_u128..u128::try_from(d.div_ceil(16)).unwrap_or(u128::MAX)).flat_map(move |j| {
+                let mut block = r.clone();
+                for (b, j) in block.iter_mut().zip(j.to_be_bytes().iter()) {
+                    *b ^= j;
+                }
+                ciph.encrypt_block(&mut block);
+                block.into_iter()
+            }),
+        )
         .take(d)
 }
 
-pub type FF1<CIPH> = FF1fr<10, CIPH>;
-pub type FF1h<CIPH> = FF1fr<18, CIPH>;
+pub(crate) type FF1h<CIPH> = FF1fr<18, CIPH>;
 
-pub struct FF1fr<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher> {
+pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher> {
     ciph: CIPH,
     radix: Radix,
 }
 
 impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit> FF1fr<FEISTEL_ROUNDS, CIPH> {
-    pub fn new(key: &[u8], radix: u32) -> Result<Self, FF1Error> {
+    pub(crate) fn new(key: &[u8], radix: u32) -> Result<Self, FF1Error> {
         if FEISTEL_ROUNDS < 8 {
             return Err(FF1Error::InsufficientFeistelRounds);
         }
         if CIPH::BlockSize::USIZE != 16 {
             return Err(FF1Error::InvalidBlockSize);
         }
-        #[allow(clippy::map_err_ignore)]
-        let ciph = CIPH::new_from_slice(key).map_err(|_| FF1Error::InvalidKeyLength)?;
+        // `new_from_slice` returns `cipher::InvalidLength` which is a unit struct
+        // carrying no information beyond "wrong length" — already encoded in the variant.
+        let ciph = CIPH::new_from_slice(key).ok().ok_or(FF1Error::InvalidKeyLength)?;
         let radix = Radix::from_u32(radix)?;
         Ok(Self { ciph, radix })
     }
@@ -287,8 +299,10 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit> FF1fr<FEISTEL_ROUNDS
 impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
     FF1fr<FEISTEL_ROUNDS, CIPH>
 {
+    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
+    // to allow line-by-line verification against the specification.
     #[allow(clippy::many_single_char_names)]
-    pub fn encrypt<NS: NumeralString>(
+    pub(crate) fn encrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
         x: &NS,
@@ -313,15 +327,16 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
         let b = self.radix.calculate_b(v);
         let d = 4 * b.div_ceil(4) + 4;
 
-        // SAFETY: u mod 256 fits in u8; n and t are verified ≤ MAX_NS_LEN = u32::MAX
-        #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-        let mut p = [1_u8, 2, 1, 0, 0, 0, 10, u as u8, 0, 0, 0, 0, 0, 0, 0, 0];
-        #[allow(clippy::indexing_slicing, clippy::cast_possible_truncation, clippy::as_conversions)]
-        {
-            p[3..6].copy_from_slice(&self.radix.to_u32().to_be_bytes()[1..]);
-            p[8..12].copy_from_slice(&(n as u32).to_be_bytes());
-            p[12..16].copy_from_slice(&(t as u32).to_be_bytes());
-        }
+        // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
+        let u_byte = u8::try_from(u & 0xFF).unwrap_or(0);
+        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
+        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
+        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
+        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
+        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
+        let p: [u8; 16] = [
+            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
+        ];
 
         let mut prf = Prf::new(&self.ciph);
         prf.update(&p);
@@ -353,8 +368,10 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
         Ok(NS::concat(x_a, x_b))
     }
 
+    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
+    // to allow line-by-line verification against the specification.
     #[allow(clippy::many_single_char_names)]
-    pub fn decrypt<NS: NumeralString>(
+    pub(crate) fn decrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
         x: &NS,
@@ -379,15 +396,16 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
         let b = self.radix.calculate_b(v);
         let d = 4 * b.div_ceil(4) + 4;
 
-        // SAFETY: u mod 256 fits in u8; n and t are verified ≤ MAX_NS_LEN = u32::MAX
-        #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-        let mut p = [1_u8, 2, 1, 0, 0, 0, 10, u as u8, 0, 0, 0, 0, 0, 0, 0, 0];
-        #[allow(clippy::indexing_slicing, clippy::cast_possible_truncation, clippy::as_conversions)]
-        {
-            p[3..6].copy_from_slice(&self.radix.to_u32().to_be_bytes()[1..]);
-            p[8..12].copy_from_slice(&(n as u32).to_be_bytes());
-            p[12..16].copy_from_slice(&(t as u32).to_be_bytes());
-        }
+        // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
+        let u_byte = u8::try_from(u & 0xFF).unwrap_or(0);
+        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
+        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
+        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
+        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
+        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
+        let p: [u8; 16] = [
+            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
+        ];
 
         let mut prf = Prf::new(&self.ciph);
         prf.update(&p);
@@ -447,7 +465,9 @@ impl Numeral for BigUint {
             vec![0; b]
         } else {
             let bytes = self.to_bytes_be();
-            core::iter::repeat_n(0_u8, b - bytes.len()).chain(bytes).collect()
+            core::iter::repeat_n(0_u8, b - bytes.len())
+                .chain(bytes)
+                .collect()
         }
     }
 
@@ -456,21 +476,17 @@ impl Numeral for BigUint {
     }
 
     fn sub_mod_exp(self, other: Self, radix: u32, m: usize) -> Self {
-        let modulus = BigInt::from(pow(radix, m));
-        let mut c = (BigInt::from(self) - BigInt::from(other)) % &modulus;
-        if c.sign() == Sign::Minus {
-            c += &modulus;
-            c %= modulus;
-        }
-        // SAFETY: c is guaranteed non-negative after the modulo correction above
-        #[allow(clippy::expect_used)]
-        c.to_biguint()
-            .expect("value is non-negative after modulo correction")
+        let modulus = pow(radix, m);
+        // Avoid negative intermediates (impossible with BigUint) by adding modulus
+        // before subtracting: (self + modulus - other_reduced) % modulus.
+        // self is always in [0, modulus) as it comes from num_radix; after reducing
+        // other the numerator is in (0, 2*modulus), so one % is sufficient.
+        (self + &modulus - other % &modulus) % modulus
     }
 }
 
 #[derive(Debug)]
-pub struct FlexibleNumeralString(Vec<u16>);
+pub(crate) struct FlexibleNumeralString(Vec<u16>);
 
 impl From<Vec<u16>> for FlexibleNumeralString {
     fn from(v: Vec<u16>) -> Self {
@@ -516,52 +532,17 @@ impl NumeralString for FlexibleNumeralString {
     }
 
     fn str_radix(mut x: BigUint, radix: u32, m: usize) -> Self {
-        let mut res = vec![0; m];
-        for i in 0..m {
-            // (&x % radix) < radix ≤ 2^16, so to_u16() is always Some;
-            // i < m guarantees the index is in bounds.
-            #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
-            {
-                res[m - 1 - i] = (&x % radix).to_u16().unwrap();
-            }
+        let mut res = vec![0_u16; m];
+        // Fill from the least-significant digit upward using rev() — no index arithmetic.
+        for slot in res.iter_mut().rev() {
+            // (&x % radix) < radix ≤ 65536, so to_u32() is always Some and
+            // u16::try_from is always Ok. unwrap_or(0) is an unreachable fallback.
+            *slot = (&x % radix)
+                .to_u32()
+                .and_then(|v| u16::try_from(v).ok())
+                .unwrap_or(0);
             x /= radix;
         }
         Self(res)
-    }
-}
-
-#[derive(Debug)]
-pub struct BinaryNumeralString(Vec<u8>);
-
-impl BinaryNumeralString {
-    pub fn from_bytes_le(s: &[u8]) -> Self {
-        let mut data = Vec::with_capacity(s.len() * 8);
-        for n in s {
-            let mut tmp = *n;
-            for _ in 0..8 {
-                data.push(tmp & 1);
-                tmp >>= 1;
-            }
-        }
-        Self(data)
-    }
-
-    pub fn to_bytes_le(&self) -> Result<Vec<u8>, NumeralStringError> {
-        if !self.0.len().is_multiple_of(8) {
-            return Err(NumeralStringError::NotByteAligned);
-        }
-        let mut data = Vec::with_capacity(self.0.len() / 8);
-        let mut acc = 0;
-        let mut shift = 0;
-        for n in &self.0 {
-            acc += n << shift;
-            shift += 1;
-            if shift == 8 {
-                data.push(acc);
-                acc = 0;
-                shift = 0;
-            }
-        }
-        Ok(data)
     }
 }

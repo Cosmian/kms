@@ -1,10 +1,21 @@
-use core::fmt::Display;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum FPEError {
-    Generic(String),
-    FPE(String),
+    /// The alphabet or radix configuration is invalid.
+    #[error("Alphabet error: {0}")]
+    AlphabetError(String),
+    /// An FF1 operation (init, encrypt, decrypt) or value parsing failed.
+    #[error("FPE operation failed: {0}")]
+    OperationFailed(String),
+    /// A value, index, or length is outside the permitted range.
+    #[error("Out of bounds: {0}")]
+    OutOfBounds(String),
+    /// The key length does not match the required length.
+    #[error("Invalid key size {0}, expected: {1}")]
     KeySize(usize, usize),
+    /// A numeric type conversion failed.
+    #[error("Conversion error: {0}")]
     ConversionError(String),
 }
 
@@ -13,18 +24,3 @@ impl From<std::num::TryFromIntError> for FPEError {
         Self::ConversionError(value.to_string())
     }
 }
-
-impl Display for FPEError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Generic(err) => write!(f, "Anonymization error: {err}"),
-            Self::FPE(err) => write!(f, "FPE error: {err}"),
-            Self::KeySize(given, expected) => {
-                write!(f, "Invalid key size {given}, expected: {expected}")
-            }
-            Self::ConversionError(err) => write!(f, "Conversion error: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for FPEError {}

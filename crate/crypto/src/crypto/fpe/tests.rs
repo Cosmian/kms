@@ -1,4 +1,11 @@
-#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::unnecessary_wraps,
+    clippy::float_cmp,
+    clippy::needless_for_each
+)]
 use num_bigint::BigUint;
 use num_traits::{Num, ToPrimitive};
 use rand::{Rng, RngCore, SeedableRng, thread_rng};
@@ -32,7 +39,6 @@ fn alphabet_check(plaintext: &str, alphabet: &Alphabet, non_alphabet_chars: &str
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn)]
 fn test_doc_example() -> Result<(), FPEError> {
     let alphabet = Alphabet::alpha_lower(); //same as above
     let key = [0_u8; 32];
@@ -46,7 +52,6 @@ fn test_doc_example() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn, clippy::unnecessary_wraps, clippy::float_cmp)]
 fn test_readme_examples() -> Result<(), FPEError> {
     {
         let key = [0_u8; 32];
@@ -160,7 +165,6 @@ fn test_readme_examples() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn, clippy::needless_for_each, clippy::unnecessary_wraps)]
 fn fpe_ff1_credit_card_number() -> Result<(), FPEError> {
     let alphabet = Alphabet::numeric();
     [
@@ -174,7 +178,6 @@ fn fpe_ff1_credit_card_number() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn, clippy::needless_for_each, clippy::unnecessary_wraps)]
 fn fpe_ff1_names() -> Result<(), FPEError> {
     // alphanumeric test
     let mut alphabet = Alphabet::alpha();
@@ -229,7 +232,6 @@ fn fpe_ff1_names() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn)]
 fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
     for _ in 0..100 {
         let plaintext_len = thread_rng().gen_range(8..257);
@@ -244,7 +246,6 @@ fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
     Ok(())
 }
 
-#[allow(clippy::panic_in_result_fn)]
 fn fpe_number_u64_(radix: u32, min_length: usize) -> Result<(), FPEError> {
     let key = random_key();
     let mut rng = thread_rng();
@@ -265,14 +266,14 @@ fn fpe_number_u64_(radix: u32, min_length: usize) -> Result<(), FPEError> {
 #[test]
 fn fpe_number_u64() -> Result<(), FPEError> {
     for i in 2..=16 {
-        let min_length = super::ff1::radix_min_len(i).map_err(|e| FPEError::FPE(e.to_string()))?;
+        let min_length =
+            super::ff1::radix_min_len(i).map_err(|e| FPEError::OutOfBounds(e.to_string()))?;
         fpe_number_u64_(i, min_length)?;
     }
     Ok(())
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn)]
 fn fpe_number_big_uint() -> Result<(), FPEError> {
     let key = random_key();
     let mut rng = thread_rng();
@@ -295,7 +296,6 @@ fn fpe_number_big_uint() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn, clippy::float_cmp)]
 fn fpe_float() -> Result<(), FPEError> {
     let key = random_key();
     let mut rng = thread_rng();
@@ -309,7 +309,6 @@ fn fpe_float() -> Result<(), FPEError> {
 }
 
 #[test]
-#[allow(clippy::panic_in_result_fn, clippy::unnecessary_wraps)]
 fn test_negative_cases() -> Result<(), FPEError> {
     // Wrong key size: Alphabet::encrypt and decrypt should reject a 16-byte key
     let alphabet = Alphabet::alpha_lower();

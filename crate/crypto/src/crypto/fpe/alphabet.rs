@@ -9,14 +9,16 @@ use std::{collections::HashMap, fmt::Display};
 pub(crate) const RECOMMENDED_THRESHOLD: usize = 1_000_000;
 
 /// Minimum length of the plaintext for FPE to be secure.
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
-    clippy::as_conversions
-)]
-pub(crate) fn min_plaintext_length(alphabet_len: usize) -> usize {
-    ((RECOMMENDED_THRESHOLD as f64).log(alphabet_len as f64)).ceil() as usize
+///
+/// Returns the smallest `n` such that `alphabet_len^n >= RECOMMENDED_THRESHOLD`.
+pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
+    let (mut pow, mut n) = (1_usize, 0_usize);
+    // Shorter ways to write this exist, but this compressed loop is the cleanest way to benefit from as const function while complying to KMS's linting rules.
+    while pow < RECOMMENDED_THRESHOLD {
+        pow = pow.saturating_mul(alphabet_len);
+        n += 1;
+    }
+    n
 }
 
 /// The `Alphabet` structure contains information about the usable characters
@@ -54,7 +56,7 @@ impl TryFrom<&str> for Alphabet {
     fn try_from(alphabet: &str) -> Result<Self, Self::Error> {
         let chars = alphabet.chars().sorted().unique().collect_vec();
         if chars.len() < 2 || chars.len() >= 1 << 16 {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::AlphabetError(format!(
                 "Alphabet must contain between 2 and 2^16 characters. This alphabet contains {} \
                  characters",
                 chars.len()
@@ -108,9 +110,11 @@ impl Alphabet {
     }
 
     pub(crate) fn char_to_position(&self, c: char) -> Option<u16> {
-        // Safety: alphabet length is enforced to be < 2^16 in `try_from`
-        #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-        self.chars.binary_search(&c).ok().map(|pos| pos as u16)
+        // pos < self.chars.len() < 2^16 (enforced by TryFrom<&str>)
+        self.chars
+            .binary_search(&c)
+            .ok()
+            .and_then(|pos| u16::try_from(pos).ok())
     }
 
     pub(crate) fn char_from_position(&self, position: u16) -> Option<char> {
@@ -147,11 +151,13 @@ impl Alphabet {
                 *c
             } else {
                 let position = stripped_input.get(alphabet_idx).copied().ok_or_else(|| {
-                    FPEError::FPE("internal error: alphabet index out of bounds".to_owned())
+                    FPEError::OperationFailed(
+                        "internal error: alphabet index out of bounds".to_owned(),
+                    )
                 })?;
                 alphabet_idx += 1;
                 self.char_from_position(position).ok_or_else(|| {
-                    FPEError::FPE(format!(
+                    FPEError::OutOfBounds(format!(
                         "index {} out of bounds for alphabet of size {}",
                         position,
                         self.alphabet_len()
@@ -187,7 +193,7 @@ impl Alphabet {
         let (stripped_input, non_alphabet_chars) = self.rebase(plaintext);
 
         if stripped_input.len() < self.minimum_plaintext_length() {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::OutOfBounds(format!(
                 "The stripped input length of {} is too short. It should be at least {} given the \
                  alphabet length of {}.",
                 stripped_input.len(),
@@ -205,10 +211,10 @@ impl Alphabet {
             u32::try_from(self.alphabet_len())
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?,
         )
-        .map_err(|e| FPEError::FPE(format!("failed instantiating FF1: {e}")))?;
+        .map_err(|e| FPEError::OperationFailed(format!("failed instantiating FF1: {e}")))?;
         let ciphertext_ns = fpe_ff
             .encrypt(tweak, &FlexibleNumeralString::from(stripped_input))
-            .map_err(|e| FPEError::FPE(format!("FF1 encryption failed: {e}")))?;
+            .map_err(|e| FPEError::OperationFailed(format!("FF1 encryption failed: {e}")))?;
 
         let ciphertext = Vec::<u16>::from(ciphertext_ns);
 
@@ -247,10 +253,10 @@ impl Alphabet {
             u32::try_from(self.alphabet_len())
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?,
         )
-        .map_err(|e| FPEError::FPE(format!("failed instantiating FF1: {e}")))?;
+        .map_err(|e| FPEError::OperationFailed(format!("failed instantiating FF1: {e}")))?;
         let plaintext_ns = fpe_ff
             .decrypt(tweak, &FlexibleNumeralString::from(stripped_input))
-            .map_err(|e| FPEError::FPE(format!("FF1 decryption failed: {e}")))?;
+            .map_err(|e| FPEError::OperationFailed(format!("FF1 decryption failed: {e}")))?;
 
         let plaintext = Vec::<u16>::from(plaintext_ns);
 

@@ -40,7 +40,7 @@ impl Float {
         let ciphertext = self.number.encrypt_big(key, tweak, &big_uint)?;
         // Convert the encrypted BigUint to u64
         let num_bits = ciphertext.to_u64().ok_or_else(|| {
-            FPEError::FPE(format!(
+            FPEError::ConversionError(format!(
                 "Failed converting the ciphertext value: {ciphertext}, to a number of bits as an \
                  u64"
             ))
@@ -68,7 +68,7 @@ impl Float {
         let ciphertext = self.number.decrypt_big(key, tweak, &big_uint)?;
         // Convert the decrypted BigUint to u64
         let num_bits = ciphertext.to_u64().ok_or_else(|| {
-            FPEError::FPE(format!(
+            FPEError::ConversionError(format!(
                 "Failed converting the ciphertext value: {ciphertext}, to a number of bits as an \
                  u64"
             ))

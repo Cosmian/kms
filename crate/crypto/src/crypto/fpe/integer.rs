@@ -42,7 +42,7 @@ impl Integer {
     /// the calculation of the maximum value fails.
     pub fn instantiate(radix: u32, digits: usize) -> Result<Self, FPEError> {
         if !(2..=16).contains(&radix) {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::AlphabetError(format!(
                 "Radix must be between 2 and 16 inclusive, got {radix}"
             )));
         }
@@ -50,10 +50,10 @@ impl Integer {
         // Derive the minimum digit count from the FF1 algorithm's own constraint,
         // keeping a single source of truth instead of a duplicated lookup table.
         let min_digits =
-            super::ff1::radix_min_len(radix).map_err(|e| FPEError::FPE(e.to_string()))?;
+            super::ff1::radix_min_len(radix).map_err(|e| FPEError::OperationFailed(e.to_string()))?;
 
         if digits < min_digits {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::OutOfBounds(format!(
                 "Integer of digits must be at least {min_digits}, got {digits}"
             )));
         }
@@ -103,7 +103,7 @@ impl Integer {
     pub fn encrypt(&self, key: &[u8; 32], tweak: &[u8], value: u64) -> Result<u64, FPEError> {
         let ciphertext = self.encrypt_big(key, tweak, &BigUint::from(value))?;
         ciphertext.to_u64().ok_or_else(|| {
-            FPEError::FPE(format!(
+            FPEError::ConversionError(format!(
                 "failed converting the ciphertext value: {ciphertext}, to an u64"
             ))
         })
@@ -145,7 +145,7 @@ impl Integer {
         big_value: &BigUint,
     ) -> Result<BigUint, FPEError> {
         if big_value > &self.max_value {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::OutOfBounds(format!(
                 "the value: {} must be lower or equal to {}",
                 big_value, self.max_value
             )));
@@ -157,7 +157,7 @@ impl Integer {
         //encrypt
         let ciphertext = self.numeric_alphabet.encrypt(key, tweak, &str_value)?;
         let big_ciphertext = BigUint::from_str_radix(&ciphertext, self.radix)
-            .map_err(|e| FPEError::FPE(format!("failed generating the ciphertext value {e}")))?;
+            .map_err(|e| FPEError::OperationFailed(format!("failed generating the ciphertext value {e}")))?;
         Ok(big_ciphertext)
     }
 
@@ -185,7 +185,7 @@ impl Integer {
     pub fn decrypt(&self, key: &[u8; 32], tweak: &[u8], ciphertext: u64) -> Result<u64, FPEError> {
         let plaintext = self.decrypt_big(key, tweak, &BigUint::from(ciphertext))?;
         plaintext.to_u64().ok_or_else(|| {
-            FPEError::FPE(format!(
+            FPEError::ConversionError(format!(
                 "failed converting the plaintext value: {plaintext}, to an u64"
             ))
         })
@@ -235,7 +235,7 @@ impl Integer {
         big_ciphertext: &BigUint,
     ) -> Result<BigUint, FPEError> {
         if big_ciphertext > &self.max_value {
-            return Err(FPEError::FPE(format!(
+            return Err(FPEError::OutOfBounds(format!(
                 "the ciphertext value: {} must be lower or equal to {}",
                 big_ciphertext, self.max_value
             )));
@@ -246,7 +246,7 @@ impl Integer {
         let plaintext = self.numeric_alphabet.decrypt(key, tweak, &str_value)?;
 
         BigUint::from_str_radix(&plaintext, self.radix)
-            .map_err(|e| FPEError::FPE(format!("failed generating the plaintext value {e}")))
+            .map_err(|e| FPEError::OperationFailed(format!("failed generating the plaintext value {e}")))
     }
 
     /// The maximum value supported by this Integer
