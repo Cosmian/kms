@@ -1,4 +1,0 @@
-25:    web::{self, Data, JsonConfig, PayloadConfig},
-803:            .app_data(PayloadConfig::new(64 * 1024 * 1024))
-804:            .app_data(JsonConfig::default().limit(64 * 1024 * 1024));
-841:                .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))

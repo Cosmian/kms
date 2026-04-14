@@ -215,6 +215,7 @@ clear_database = true
 [http]
 hostname = "127.0.0.1"
 port = 9998
+cors_allowed_origins = ["http://127.0.0.1:5173"]
 HSMEOF
 
 echo "==> Starting KMS server with SoftHSM2 (port 9998) …"

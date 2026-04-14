@@ -73,6 +73,12 @@ where
                 let mut remaining = length;
                 while remaining > 0 {
                     let (item, item_length) = self.read_ttlv_inner::<TAG>(depth + 1)?;
+                    if item_length > remaining {
+                        return Err(TtlvError::from(format!(
+                            "TTLV Structure child length ({item_length}) exceeds remaining \
+                             parent length ({remaining}): malformed Structure"
+                        )));
+                    }
                     remaining -= item_length;
                     items.push(item);
                 }

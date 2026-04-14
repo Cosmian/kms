@@ -1,9 +1,0 @@
-warning: Feature js of package getrandom has been obsolete in version 0.4.2
-error: failed to select a version for `getrandom`.
-    ... required by package `cosmian_kms_client_wasm v5.20.1 (/tmp/cargo-outdatedeODMFY/crate/clients/wasm)`
-versions that meet the requirements `^0.4.2` are: 0.4.2
-
-the package `cosmian_kms_client_wasm` depends on `getrandom`, with features: `js` but `getrandom` does not have these features.
-
-
-failed to select a version for `getrandom` which could resolve this conflict

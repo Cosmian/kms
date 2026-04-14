@@ -129,7 +129,10 @@ async fn parse_jwks(
 ) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
-    let mut client = Client::builder().timeout(std::time::Duration::from_secs(30));
+    // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-2).
+    let mut client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none());
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {

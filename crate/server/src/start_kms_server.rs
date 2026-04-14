@@ -731,11 +731,18 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     //   a random key is regenerated on every restart, invalidating existing browser cookies.
     //   For single-instance deployments this is sufficient; for multi-instance setups
     //   ui_session_salt must be configured to ensure all nodes share the same key.
-    let effective_salt = kms_server
-        .params
-        .ui_session_salt
-        .as_deref()
-        .unwrap_or("cosmian_kms_default_ui_session_key_v1");
+    let effective_salt = kms_server.params.ui_session_salt.as_deref().unwrap_or_else(|| {
+        // A08-2: Warn operators that the session key is derived from a predictable default salt.
+        // In single-instance deployments this is acceptable; for production or multi-instance
+        // setups, configure `ui_session_salt` (or KMS_UI_SESSION_SALT) with a strong random value
+        // to prevent cookie forgery if the deployment URL is publicly known.
+        warn!(
+            "ui_session_salt is not configured — session cookie key is derived from a predictable \
+             default salt and the public URL. Set `ui_session_salt` in the KMS configuration for \
+             production deployments to prevent cookie forgery."
+        );
+        "cosmian_kms_default_ui_session_key_v1"
+    });
     let secret_key: Key = derive_session_key_from_url(&kms_public_url, effective_salt)?;
 
     // Clone kms_server for HttpServer closure
@@ -790,7 +797,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_path("/".to_owned())
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::None)
+                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
                     .cookie_secure(true)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),
@@ -991,11 +998,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 ApiTokenAuth::new(kms_server.clone()),
             ))
             .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
-            // CORS: KMIP is a server-to-server protocol; restrict to same-origin so that
-            // browsers cannot make unauthenticated cross-origin requests.
-            // Enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) have their own
-            // permissive CORS configuration where required by the integration contract.
-            .wrap(Cors::default())
+            // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
+            // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
+            // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
+            // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
+            .wrap({
+                let mut cors = Cors::default();
+                for origin in &kms_server_for_http.params.cors_allowed_origins {
+                    cors = cors.allowed_origin(origin.as_str());
+                }
+                cors
+            })
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(access::list_owned_objects)

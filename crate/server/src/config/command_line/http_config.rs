@@ -30,6 +30,18 @@ pub struct HttpConfig {
     /// Leave unset (default) to disable rate limiting.
     #[clap(long, env = "KMS_RATE_LIMIT_PER_SECOND", verbatim_doc_comment)]
     pub rate_limit_per_second: Option<u32>,
+
+    /// Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+    /// Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
+    /// port or host from the KMS server. In production, leave unset to restrict to same-origin
+    /// only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+    #[clap(
+        long,
+        env = "KMS_CORS_ALLOWED_ORIGINS",
+        value_delimiter = ',',
+        verbatim_doc_comment
+    )]
+    pub cors_allowed_origins: Option<Vec<String>>,
 }
 
 impl Display for HttpConfig {
@@ -40,6 +52,9 @@ impl Display for HttpConfig {
         }
         if let Some(rps) = self.rate_limit_per_second {
             write!(f, " (rate_limit: {rps}/s)")?;
+        }
+        if let Some(ref origins) = self.cors_allowed_origins {
+            write!(f, " (cors_allowed_origins: {})", origins.join(", "))?;
         }
         Ok(())
     }
@@ -58,6 +73,7 @@ impl Default for HttpConfig {
             hostname: DEFAULT_HOSTNAME.to_owned(),
             api_token_id: None,
             rate_limit_per_second: None,
+            cors_allowed_origins: None,
         }
     }
 }

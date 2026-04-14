@@ -31,5 +31,6 @@ pub fn configure_http() -> KResult<HttpConfig> {
         hostname,
         api_token_id: None,
         rate_limit_per_second: None,
+        cors_allowed_origins: None,
     })
 }

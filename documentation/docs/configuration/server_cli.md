@@ -259,6 +259,14 @@ Options:
 
           [env: KMS_RATE_LIMIT_PER_SECOND=]
 
+      --cors-allowed-origins <CORS_ALLOWED_ORIGINS>
+          Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+          Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
+          port or host from the KMS server. In production, leave unset to restrict to same-origin
+          only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+
+          [env: KMS_CORS_ALLOWED_ORIGINS=]
+
       --proxy-url <PROXY_URL>
           The proxy URL:
             - e.g., `https://secure.example` for an HTTP proxy

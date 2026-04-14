@@ -145,6 +145,16 @@ pub struct ServerParams {
     /// Burst is set to 3× this value. `None` disables rate limiting (default for tests and
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
+
+    /// Extra origins allowed to make cross-origin requests to the KMIP API.
+    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
+    /// UI E2E tests where the Vite dev server runs on a different port.
+    pub cors_allowed_origins: Vec<String>,
+
+    /// Maximum number of objects returned by a single Locate operation.
+    /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
+    /// applied automatically. Prevents unbounded DB queries and large response payloads.
+    pub max_locate_items: u32,
 }
 
 /// Represents the server parameters.
@@ -366,6 +376,8 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
+            cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
+            max_locate_items: 1000,
         };
 
         debug!("{res:#?}");
@@ -582,6 +594,8 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+        debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
+        debug_struct.field("max_locate_items", &self.max_locate_items);
 
         debug_struct.finish()
     }

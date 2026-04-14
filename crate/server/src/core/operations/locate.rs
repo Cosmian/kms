@@ -9,6 +9,12 @@ use cosmian_logger::trace;
 
 use crate::{core::KMS, result::KResult};
 
+/// Server-side cap on Locate result sets (A04-3 / EXT2-4).
+///
+/// Prevents unbounded database queries and oversized response payloads when a client
+/// omits `MaximumItems` or requests more objects than this threshold.
+const MAX_LOCATE_ITEMS: u32 = 1000;
+
 pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
@@ -93,13 +99,18 @@ pub(crate) async fn locate(
         uids
     };
 
-    // Respect `MaximumItems` only when explicitly provided. If absent, return
-    // all matches.
-    if let Some(mi) = request.maximum_items {
-        let max_items = usize::try_from(mi.max(0))?;
-        if uids.len() > max_items {
-            uids.truncate(max_items);
-        }
+    // Apply a server-side cap on result set size (A04-3 / EXT2-4).
+    // The effective limit is the smaller of: client-supplied MaximumItems (if any)
+    // and the server-side MAX_LOCATE_ITEMS constant.  When MaximumItems is absent
+    // the server cap is applied automatically to prevent unbounded DB result sets.
+    let server_cap = usize::try_from(MAX_LOCATE_ITEMS)?;
+    let effective_max = request.maximum_items.map_or(server_cap, |mi| {
+        usize::try_from(mi.max(0))
+            .unwrap_or(server_cap)
+            .min(server_cap)
+    });
+    if uids.len() > effective_max {
+        uids.truncate(effective_max);
     }
     trace!("UIDs count (post-truncate): {}", uids.len());
     let response = LocateResponse {

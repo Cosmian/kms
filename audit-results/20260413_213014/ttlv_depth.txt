@@ -1,9 +1,0 @@
-=== Binary TTLV parser (read_ttlv recursion) ===
-22:    pub fn read_ttlv<TAG: KmipTag>(&mut self) -> Result<(TTLV, usize), TtlvError> {
-
-=== XML TTLV parser (depth counter check) ===
-crate/kmip/src/ttlv/xml/parser.rs:169:    let mut depth: i32 = 0;
-crate/kmip/src/ttlv/xml/parser.rs:179:                    depth = 0; // depth relative to root
-crate/kmip/src/ttlv/xml/parser.rs:196:                    depth += 1;
-crate/kmip/src/ttlv/xml/parser.rs:267:                    depth -= 1;
-crate/kmip/src/ttlv/xml/parser.rs:268:                    if depth == 0 {
