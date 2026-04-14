@@ -1,0 +1,5 @@
+812:                .wrap(Cors::permissive())
+831:                .wrap(Cors::permissive())
+842:                .wrap(Cors::permissive())
+937:                .wrap(Cors::permissive())
+998:            .wrap(Cors::permissive())

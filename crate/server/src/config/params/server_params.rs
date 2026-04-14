@@ -140,6 +140,11 @@ pub struct ServerParams {
     pub kmip_policy: KmipPolicyParams,
 
     pub azure_ekm: AzureEkmConfig,
+
+    /// Steady-state requests per second allowed per source IP address.
+    /// Burst is set to 3× this value. `None` disables rate limiting (default for tests and
+    /// embedded deployments; production should set this to a positive value such as 100).
+    pub rate_limit_per_second: Option<u32>,
 }
 
 /// Represents the server parameters.
@@ -357,6 +362,10 @@ impl ServerParams {
                 },
             },
             azure_ekm: conf.azure_ekm_config,
+            // Use the value from the HTTP config; None means rate limiting is disabled.
+            // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
+            // to enable rate limiting in production deployments.
+            rate_limit_per_second: conf.http.rate_limit_per_second,
         };
 
         debug!("{res:#?}");
@@ -572,6 +581,7 @@ impl fmt::Debug for ServerParams {
 
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
+        debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
 
         debug_struct.finish()
     }

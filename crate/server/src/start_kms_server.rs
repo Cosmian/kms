@@ -14,6 +14,7 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
+use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
@@ -740,10 +741,43 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
+    // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
+    // The test-server helper leaves that field at `None` so parallel unit tests are never
+    // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
+    let rate_limit_enabled = kms_server.params.rate_limit_per_second.is_some();
+    let governor_conf = if let Some(rps) = kms_server.params.rate_limit_per_second {
+        GovernorConfigBuilder::default()
+            .requests_per_second(u64::from(rps))
+            .burst_size(rps.saturating_mul(3))
+            .finish()
+            .or_else(|| {
+                GovernorConfigBuilder::default()
+                    .requests_per_second(10)
+                    .burst_size(30)
+                    .finish()
+            })
+            .ok_or_else(|| {
+                KmsError::ServerError("Failed to build rate-limiter configuration".to_owned())
+            })?
+    } else {
+        // Placeholder config when rate limiting is disabled; permissive mode never
+        // blocks requests, and the Condition wrapper also ensures the middleware is
+        // never actually invoked.
+        GovernorConfigBuilder::default()
+            .permissive(true)
+            .finish()
+            .ok_or_else(|| {
+                KmsError::ServerError(
+                    "Failed to build placeholder rate-limiter configuration".to_owned(),
+                )
+            })?
+    };
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(Condition::new(rate_limit_enabled, Governor::new(&governor_conf)))
             .wrap(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
@@ -764,8 +798,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .build(),
             )
             .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
+            // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
+            // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
+            .app_data(PayloadConfig::new(64 * 1024 * 1024))
+            .app_data(JsonConfig::default().limit(64 * 1024 * 1024));
 
         if kms_server_for_http.params.kms_public_url.is_some()
             && kms_server_for_http.params.google_cse.google_cse_enable
@@ -955,11 +991,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 ApiTokenAuth::new(kms_server.clone()),
             ))
             .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
-            // Enable CORS for the application.
-            // Since Actix is running the middlewares in reverse order, it's important that the
-            // CORS middleware is the last one, so that the auth middlewares do not run on
-            // preflight (OPTION) requests.
-            .wrap(Cors::permissive())
+            // CORS: KMIP is a server-to-server protocol; restrict to same-origin so that
+            // browsers cannot make unauthenticated cross-origin requests.
+            // Enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) have their own
+            // permissive CORS configuration where required by the integration contract.
+            .wrap(Cors::default())
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(access::list_owned_objects)

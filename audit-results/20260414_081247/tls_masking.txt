@@ -1,0 +1,5 @@
+17:        requires = "tls_p12_password",
+22:    /// The password to open the PKCS#12 Certificates and Key file
+25:    pub tls_p12_password: Option<String>,
+80:                if self.tls_p12_password.is_some() {
+81:                    write!(f, "password: [****], ")?;

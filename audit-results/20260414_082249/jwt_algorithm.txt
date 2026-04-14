@@ -1,0 +1,3 @@
+204:            check_jwt_algorithm(header.alg)?;
+206:            let mut validation = Validation::new(header.alg);
+209:            validation.algorithms = vec![header.alg];

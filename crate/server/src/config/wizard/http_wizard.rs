@@ -30,5 +30,6 @@ pub fn configure_http() -> KResult<HttpConfig> {
         port,
         hostname,
         api_token_id: None,
+        rate_limit_per_second: None,
     })
 }

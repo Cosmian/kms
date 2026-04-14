@@ -1,0 +1,4 @@
+crate/server/src/core/operations/locate.rs:96:    // Respect `MaximumItems` only when explicitly provided. If absent, return
+crate/server/src/core/operations/locate.rs:99:        let max_items = usize::try_from(mi.max(0))?;
+crate/server/src/core/operations/locate.rs:100:        if uids.len() > max_items {
+crate/server/src/core/operations/locate.rs:101:            uids.truncate(max_items);

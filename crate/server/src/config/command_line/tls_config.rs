@@ -77,8 +77,8 @@ impl Display for TlsConfig {
         {
             if self.tls_p12_file.is_some() {
                 write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
-                if let Some(https_p12_password) = &self.tls_p12_password {
-                    write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+                if self.tls_p12_password.is_some() {
+                    write!(f, "password: [****], ")?;
                 }
                 return write!(
                     f,

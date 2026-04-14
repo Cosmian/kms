@@ -233,6 +233,7 @@ fn test_config_toml_round_trip_preserves_values() {
             port: 8443,
             hostname: "127.0.0.1".to_owned(),
             api_token_id: None,
+            rate_limit_per_second: None,
         },
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),

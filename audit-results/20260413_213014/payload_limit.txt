@@ -1,0 +1,4 @@
+24:    web::{self, Data, JsonConfig, PayloadConfig},
+767:            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+768:            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
+805:                .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))

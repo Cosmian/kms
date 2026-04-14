@@ -1,0 +1,18 @@
+11:use subtle::ConstantTimeEq;
+22:/// Fetches a symmetric key identified by `api_token_id` and returns it as a
+27:/// * `api_token_id` - The unique identifier for the symmetric key used as the API token
+32:async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
+36:        .retrieve_object(api_token_id)
+41:                format!("The symmetric key of unique identifier {api_token_id} could not be found"),
+48:            "The key for API token: {api_token_id} is not a symmetric key",
+55:            "The symmetric key for API token: {api_token_id} is not active",
+79:pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
+80:    let Some(api_token_id) = kms_server.params.api_token_id.clone() else {
+87:    trace!("Token authentication using this API token ID: {api_token_id}");
+90:    let api_token = get_api_token(kms_server, api_token_id.as_str()).await?;
+103:        "[api_token_auth] Authorization header received: {}",
+118:    let client_token = token_part.trim().to_lowercase();
+121:        "[api_token_auth] token preview (client/server): {}/{}",
+122:        client_token.chars().take(8).collect::<String>(),
+123:        api_token.chars().take(8).collect::<String>()
+128:    let tokens_match = client_token.as_bytes().ct_eq(api_token.as_bytes()).into();

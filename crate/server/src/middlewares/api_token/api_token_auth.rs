@@ -13,6 +13,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, error, trace};
+use subtle::ConstantTimeEq;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 
@@ -122,8 +123,10 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
         api_token.chars().take(8).collect::<String>()
     );
 
-    // Compare the client token with the stored token
-    if client_token == api_token.as_str() {
+    // Compare the client token with the stored token using constant-time comparison
+    // to prevent timing side-channel attacks.
+    let tokens_match = client_token.as_bytes().ct_eq(api_token.as_bytes()).into();
+    if tokens_match {
         debug!("Token authentication successful");
         Ok(())
     } else {

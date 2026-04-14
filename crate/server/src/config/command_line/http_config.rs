@@ -23,6 +23,13 @@ pub struct HttpConfig {
     /// An optional API token to use for authentication on the HTTP server.
     #[clap(long, env = "KMS_API_TOKEN", verbatim_doc_comment)]
     pub api_token_id: Option<String>,
+
+    /// Maximum number of requests per second per IP address allowed by the rate limiter.
+    /// When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+    /// Requests exceeding the limit receive HTTP 429 Too Many Requests.
+    /// Leave unset (default) to disable rate limiting.
+    #[clap(long, env = "KMS_RATE_LIMIT_PER_SECOND", verbatim_doc_comment)]
+    pub rate_limit_per_second: Option<u32>,
 }
 
 impl Display for HttpConfig {
@@ -30,6 +37,9 @@ impl Display for HttpConfig {
         write!(f, "http://{}:{}", self.hostname, self.port)?;
         if let Some(ref token) = self.api_token_id {
             write!(f, " (api_token: {token})")?;
+        }
+        if let Some(rps) = self.rate_limit_per_second {
+            write!(f, " (rate_limit: {rps}/s)")?;
         }
         Ok(())
     }
@@ -47,6 +57,7 @@ impl Default for HttpConfig {
             port: DEFAULT_PORT,
             hostname: DEFAULT_HOSTNAME.to_owned(),
             api_token_id: None,
+            rate_limit_per_second: None,
         }
     }
 }

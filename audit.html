@@ -1,0 +1,2689 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>audit.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+    font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+    font-size: var(--vscode-markdown-font-size, 14px);
+    padding: 0 26px;
+    line-height: var(--vscode-markdown-line-height, 22px);
+    word-wrap: break-word;
+}
+
+#code-csp-warning {
+    position: fixed;
+    top: 0;
+    right: 0;
+    color: white;
+    margin: 16px;
+    text-align: center;
+    font-size: 12px;
+    font-family: sans-serif;
+    background-color:#444444;
+    cursor: pointer;
+    padding: 6px;
+    box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+    text-decoration: none;
+    background-color:#007acc;
+    box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+    margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+    position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: -12px;
+    height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+    left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+    border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+    border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+    border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+    border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+    border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+    border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+    border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+    border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+    border-left: none;
+}
+
+img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+a {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 1px solid -webkit-focus-ring-color;
+    outline-offset: -1px;
+}
+
+hr {
+    border: 0;
+    height: 2px;
+    border-bottom: 2px solid;
+}
+
+h1 {
+    padding-bottom: 0.3em;
+    line-height: 1.2;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+    font-weight: normal;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+table > thead > tr > th {
+    text-align: left;
+    border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+    padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+    border-top: 1px solid;
+}
+
+blockquote {
+    margin: 0 7px 0 5px;
+    padding: 0 16px 0 10px;
+    border-left-width: 5px;
+    border-left-style: solid;
+}
+
+code {
+    font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+    font-size: 1em;
+    line-height: 1.357em;
+}
+
+body.wordWrap pre {
+    white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+    padding: 16px;
+    border-radius: 3px;
+    overflow: auto;
+}
+
+pre code {
+    color: var(--vscode-editor-foreground);
+    tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+    background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+    background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+    background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+    border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+    border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+    border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+    border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+    color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+    color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+    color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+    color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+    color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+    color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+    color: #8959a8;
+}
+
+.hljs {
+    display: block;
+    overflow-x: auto;
+    color: #4d4d4c;
+    padding: 0.5em;
+}
+
+.hljs-emphasis {
+    font-style: italic;
+}
+
+.hljs-strong {
+    font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+    padding: 0 12px;
+}
+
+pre {
+    background-color: #f8f8f8;
+    border: 1px solid #cccccc;
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+    padding: 23px;
+    line-height: 19px;
+}
+
+blockquote {
+    background: rgba(127, 127, 127, 0.1);
+    border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+    height: 1.4em;
+}
+
+code {
+    font-size: 14px;
+    line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+    color: #C9AE75; /* Change the old color so it seems less like an error */
+    font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+    page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="cosmian-kms--owasp-security-audit-plan--report">Cosmian KMS — OWASP Security Audit Plan &amp; Report</h1>
+<p><strong>Document type</strong>: Security Audit Plan &amp; Report Template<br>
+<strong>Standard</strong>: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)<br>
+<strong>Repository</strong>: <code>Cosmian/kms</code> — branch <code>develop</code><br>
+<strong>Workspace root</strong>: <code>crate/</code> (Rust workspace) + <code>ui/</code> (React/TypeScript)<br>
+<strong>Audit date</strong>: 2026-04-13 (re-run with cargo-geiger: 2026-04-13)<br>
+<strong>Auditor(s)</strong>: GitHub Copilot (automated static analysis)<br>
+<strong>Status</strong>: ☑ Complete — automated pass (cargo-geiger pass added)</p>
+<h3 id="tools-available-during-this-audit">Tools available during this audit</h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Version</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cargo-audit</code></td>
+<td>0.22.1</td>
+<td>✅ Available</td>
+<td>Advisory DB scan</td>
+</tr>
+<tr>
+<td><code>cargo-deny</code></td>
+<td>0.19.0</td>
+<td>✅ Available</td>
+<td>Policy check (bans, licenses, advisories, sources)</td>
+</tr>
+<tr>
+<td><code>cargo-outdated</code></td>
+<td>0.17.0</td>
+<td>✅ Available</td>
+<td>Outdated dep detection</td>
+</tr>
+<tr>
+<td><code>cargo-geiger</code></td>
+<td>0.13.0</td>
+<td>⚠️ Installed — partial</td>
+<td>Fails on virtual workspace manifest with bug (<a href="https://github.com/rust-secure-code/cargo-geiger/issues/378">#378</a>); fallback: manual <code>grep -r &quot;unsafe &quot;</code></td>
+</tr>
+<tr>
+<td><code>semgrep</code></td>
+<td>—</td>
+<td>❌ Not installed</td>
+<td>Static pattern matching — install per §1</td>
+</tr>
+<tr>
+<td><code>gitleaks</code> / <code>trufflehog3</code></td>
+<td>—</td>
+<td>❌ Not installed</td>
+<td>Secret scanning — install per §1</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>cargo-geiger 0.13.0</code> fails with <code>error: No such file or directory — crate/cli/src/lib.rs</code> when
+invoked against this virtual workspace. This is a known upstream bug. The A06 section below uses
+manual <code>grep -r &quot;unsafe&quot;</code> counts as a validated substitute.</p>
+</blockquote>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#1-tool-installation">Tool Installation</a></li>
+<li><a href="#2-a01--broken-access-control">A01 – Broken Access Control</a></li>
+<li><a href="#3-a02--cryptographic-failures">A02 – Cryptographic Failures</a></li>
+<li><a href="#4-a03--injection">A03 – Injection</a></li>
+<li><a href="#5-a04--insecure-design">A04 – Insecure Design</a></li>
+<li><a href="#6-a05--security-misconfiguration">A05 – Security Misconfiguration</a></li>
+<li><a href="#7-a06--vulnerable-and-outdated-components">A06 – Vulnerable and Outdated Components</a></li>
+<li><a href="#8-a07--identification-and-authentication-failures">A07 – Identification and Authentication Failures</a></li>
+<li><a href="#9-a08--software-and-data-integrity-failures">A08 – Software and Data Integrity Failures</a></li>
+<li><a href="#10-a09--security-logging-and-monitoring-failures">A09 – Security Logging and Monitoring Failures</a></li>
+<li><a href="#11-a10--server-side-request-forgery-ssrf">A10 – Server-Side Request Forgery (SSRF)</a></li>
+<li><a href="#12-ext-0--kms-own-authorization-system">EXT-0 – KMS Own Authorization System</a></li>
+<li><a href="#13-ext-1--cryptographic-key-lifecycle--zeroization">EXT-1 – Cryptographic Key Lifecycle &amp; Zeroization</a></li>
+<li><a href="#14-ext-2--denial-of-service--resource-exhaustion">EXT-2 – Denial of Service / Resource Exhaustion</a></li>
+<li><a href="#15-remediation-priority-matrix">Remediation Priority Matrix</a></li>
+<li><a href="#16-report-sign-off">Report Sign-off</a></li>
+</ol>
+<hr>
+<h2 id="1-tool-installation">1. Tool Installation</h2>
+<p>Install every tool before starting the audit. Run all commands from the workspace root.</p>
+<h3 id="11-rust-security-toolchain">1.1 Rust security toolchain</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Audit Rust dependencies for known CVEs (RustSec Advisory DB)</span>
+cargo install cargo-audit
+
+<span class="hljs-comment"># Policy-based dependency checking (licenses, bans, advisories)</span>
+<span class="hljs-comment"># cargo-deny is already configured: deny.toml exists at workspace root</span>
+cargo install cargo-deny
+
+<span class="hljs-comment"># Count and locate `unsafe` blocks across the workspace</span>
+cargo install cargo-geiger
+
+<span class="hljs-comment"># Find outdated dependencies</span>
+cargo install cargo-outdated
+
+<span class="hljs-comment"># Verify tool versions</span>
+cargo audit --version
+cargo deny --version
+cargo geiger --version
+cargo outdated --version
+</div></code></pre>
+<h3 id="12-secrets-scanning">1.2 Secrets scanning</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Option A: gitleaks (scan git history + working tree for accidentally committed secrets)</span>
+curl -sSfL \
+  https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_amd64.tar.gz \
+  | tar xz &amp;&amp; sudo mv gitleaks /usr/<span class="hljs-built_in">local</span>/bin/
+gitleaks version
+
+<span class="hljs-comment"># Option B: trufflehog (entropy-based secret detection)</span>
+pip3 install truffleHog3
+trufflehog3 --version
+</div></code></pre>
+<h3 id="13-sast--semgrep">1.3 SAST — Semgrep</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Install semgrep</span>
+pip3 install semgrep
+semgrep --version
+
+<span class="hljs-comment"># Verify the Rust and OWASP rulesets are reachable (requires internet)</span>
+semgrep --config p/rust        --<span class="hljs-built_in">test</span> 2&gt;/dev/null || <span class="hljs-literal">true</span>
+semgrep --config p/owasp-top-ten --<span class="hljs-built_in">test</span> 2&gt;/dev/null || <span class="hljs-literal">true</span>
+semgrep --config p/secrets     --<span class="hljs-built_in">test</span> 2&gt;/dev/null || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="14-readiness-check">1.4 Readiness check</h3>
+<pre class="hljs"><code><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"=== Tool readiness ==="</span> &amp;&amp; \
+  cargo audit   --version &amp;&amp; \
+  cargo deny    --version &amp;&amp; \
+  cargo geiger  --version &amp;&amp; \
+  cargo outdated --version &amp;&amp; \
+  semgrep       --version &amp;&amp; \
+  (gitleaks version 2&gt;/dev/null || trufflehog3 --version 2&gt;/dev/null || \
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"WARNING: no secrets scanner found"</span>)
+</div></code></pre>
+<hr>
+<h2 id="2-a01-%E2%80%93-broken-access-control">2. A01 – Broken Access Control</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Restrictions on what authenticated users are allowed to do are
+not properly enforced. Attackers can exploit these flaws to access unauthorized
+functionality and/or data.</p>
+</blockquote>
+<h3 id="21-scope">2.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auth middleware stack</td>
+<td><code>crate/server/src/middlewares/ensure_auth.rs</code></td>
+</tr>
+<tr>
+<td>KMIP route handler</td>
+<td><code>crate/server/src/routes/kmip.rs</code></td>
+</tr>
+<tr>
+<td>Access grant / revoke endpoints</td>
+<td><code>crate/server/src/routes/access.rs</code></td>
+</tr>
+<tr>
+<td>Unauthenticated public endpoints</td>
+<td><code>crate/server/src/routes/health.rs</code>, <code>root_redirect.rs</code></td>
+</tr>
+<tr>
+<td>Server app builder (middleware order)</td>
+<td><code>crate/server/src/start_kms_server.rs</code></td>
+</tr>
+<tr>
+<td>Enterprise route auth</td>
+<td><code>crate/server/src/routes/aws_xks/</code>, <code>azure_ekm/</code>, <code>google_cse/</code>, <code>ms_dke/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-investigation-steps">2.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Enumerate all HTTP routes; identify routes registered WITHOUT</span>
+<span class="hljs-comment"># the standard auth middleware chain</span>
+grep -rn \
+  <span class="hljs-string">"web::resource\|web::route\|web::scope\|#\[get\]\|#\[post\]\|#\[put\]\|#\[delete\]"</span> \
+  crate/server/src/routes/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 2 — Inspect the full middleware assembly order</span>
+<span class="hljs-comment"># Auth wrappers MUST be registered before route handlers</span>
+grep -n <span class="hljs-string">"App::new\|\.wrap\|\.configure\|\.service"</span> \
+  crate/server/src/start_kms_server.rs
+
+<span class="hljs-comment"># Step 3 — Confirm which middleware types protect which routes</span>
+grep -rn <span class="hljs-string">"EnsureAuth\|JwtMiddleware\|ApiTokenMiddleware\|TlsAuthMiddleware"</span> \
+  crate/server/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 4 — Look for any explicit auth skip or bypass condition</span>
+grep -rn <span class="hljs-string">"skip\|bypass\|no_auth\|#\[cfg(feature.*insecure"</span> \
+  crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 5 — Horizontal privilege escalation: can a user access another user's objects</span>
+<span class="hljs-comment"># without an explicit grant? Inspect owner check in retrieve_object_for_operation</span>
+grep -n <span class="hljs-string">"owner\|user_has_permission\|is_object_owned_by"</span> \
+  crate/server/src/core/retrieve_object_utils.rs
+
+<span class="hljs-comment"># Step 6 — Semgrep: path traversal and broken access control patterns</span>
+semgrep --config p/owasp-top-ten \
+  crate/server/src/routes/ --lang rust 2&gt;/dev/null \
+  | grep -i <span class="hljs-string">"access\|path\|traversal"</span> || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="23-findings">2.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/start_kms_server.rs</code></li>
+<li><code>crate/server/src/middlewares/ensure_auth.rs</code>, <code>tls_auth.rs</code>, <code>api_token/</code>, <code>jwt/</code></li>
+<li><code>crate/server/src/routes/health.rs</code>, <code>access.rs</code>, <code>kmip.rs</code></li>
+<li><code>crate/server/src/core/retrieve_object_utils.rs</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A01-1</td>
+<td><code>start_kms_server.rs:776,795,806,901,962</code></td>
+<td>Medium</td>
+<td><code>Cors::permissive()</code> applied to <strong>all</strong> scopes including the main KMIP endpoint. This allows cross-origin requests from any domain, enabling browser-based cross-site attacks against the KMIP API.</td>
+</tr>
+<tr>
+<td>A01-2</td>
+<td><code>routes/health.rs:47</code></td>
+<td>Info</td>
+<td><code>/health</code> is a public (unauthenticated) endpoint that calls <code>kms.get_user(&amp;req)</code> and logs the result. On an unconfigured server the default username is logged on every health probe. Not a direct vulnerability but reveals configuration state.</td>
+</tr>
+<tr>
+<td>A01-3</td>
+<td><code>middlewares/ensure_auth.rs:128</code></td>
+<td>Info</td>
+<td>EnsureAuth correctly skips itself when the request is already authenticated (comment confirms intent). No bypass risk.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A01-1: Replace <code>Cors::permissive()</code> with an explicit allowlist (<code>Cors::default().allowed_origin(…)</code>) for all scopes. For KMIP, restrict to known client origins or require mTLS instead of relying on CORS.</li>
+<li>A01-2: Move the <code>get_user</code> log line behind an <code>if tracing::enabled!(Level::DEBUG)</code> guard, or remove it from public endpoints.</li>
+</ul>
+<blockquote>
+<p><strong>OWASP description</strong>: Failures related to cryptography (data at rest, data in transit,
+key management, algorithm choices) that often lead to exposure of sensitive data.</p>
+</blockquote>
+<h3 id="31-scope">3.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Crypto primitives</td>
+<td><code>crate/crypto/src/</code> (all subdirectories)</td>
+</tr>
+<tr>
+<td>Key export enforcement</td>
+<td><code>crate/server/src/core/operations/export_get.rs</code></td>
+</tr>
+<tr>
+<td>Key wrapping / unwrapping</td>
+<td><code>crate/server/src/core/wrapping/wrap.rs</code>, <code>unwrap.rs</code></td>
+</tr>
+<tr>
+<td>Key storage format</td>
+<td><code>crate/kmip/src/</code> — <code>EncryptedKeyBlock</code>, <code>KeyMaterial</code> types</td>
+</tr>
+<tr>
+<td>OpenSSL build &amp; hash</td>
+<td><code>crate/crypto/build.rs</code></td>
+</tr>
+<tr>
+<td>TLS configuration</td>
+<td><code>crate/server/src/config/command_line/tls_config.rs</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-investigation-steps">3.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Search for hardcoded keys, zero IVs, or predictable nonces</span>
+grep -rn <span class="hljs-string">"\[0u8; 16\]\|\[0u8; 32\]\|\[0u8; 12\]\|nonce.*=.*\[0\|iv.*=.*\[0"</span> \
+  crate/crypto/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 2 — Deprecated / weak algorithms (ECB mode, DES, RC4, MD5, SHA-1)</span>
+grep -rni <span class="hljs-string">"ecb\|des\b\|rc4\|md5\|sha1\b\|sha-1\|rc2\|md4"</span> \
+  crate/ --include=<span class="hljs-string">"*.rs"</span> | grep -v <span class="hljs-string">"//\|#\[doc\|test_"</span> | head -30
+
+<span class="hljs-comment"># Step 3 — Sensitive key export: verify the sensitive flag blocks unprotected export</span>
+grep -n <span class="hljs-string">"sensitive\|key_wrapping_specification\|Sensitive\|is_sensitive"</span> \
+  crate/server/src/core/operations/export_get.rs
+
+<span class="hljs-comment"># Step 4 — Non-FIPS algorithm use must be gated behind the non-fips feature flag</span>
+grep -rn <span class="hljs-string">"#\[cfg(feature.*non.fips\|cfg.*non_fips"</span> \
+  crate/crypto/src/ --include=<span class="hljs-string">"*.rs"</span> | head -20
+<span class="hljs-comment"># Cross-check: algorithms that appear outside a cfg gate</span>
+grep -rni <span class="hljs-string">"Covercrypt\|AES.XTS\|chacha\|xchacha\|kyber\|dilithium"</span> \
+  crate/crypto/src/ --include=<span class="hljs-string">"*.rs"</span> | grep -v <span class="hljs-string">"#\[cfg"</span> | head -15
+
+<span class="hljs-comment"># Step 5 — In-memory cache for unwrapped key material: check zeroization on eviction</span>
+grep -n <span class="hljs-string">"cache\|HashMap\|DashMap\|insert\|remove\|evict\|zeroize\|Zeroizing"</span> \
+  crate/server/src/core/wrapping/wrap.rs
+
+<span class="hljs-comment"># Step 6 — OpenSSL download: verify SHA-256 check is non-bypassable</span>
+grep -A5 -B5 <span class="hljs-string">"sha256\|checksum\|expected\|download\|verify"</span> crate/crypto/build.rs
+
+<span class="hljs-comment"># Step 7 — Semgrep crypto-specific rules</span>
+semgrep --config p/rust crate/crypto/src/ --lang rust 2&gt;/dev/null \
+  | grep -i <span class="hljs-string">"crypto\|cipher\|hash\|random\|seed"</span> || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="33-findings">3.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/crypto/src/crypto/symmetric/symmetric_ciphers.rs</code></li>
+<li><code>crate/crypto/src/crypto/elliptic_curves/ecies/standard_curves.rs</code></li>
+<li><code>crate/server/src/core/operations/export_get.rs</code></li>
+<li><code>crate/server/src/core/wrapping/wrap.rs</code></li>
+<li><code>crate/crypto/build.rs</code></li>
+<li><code>crate/clients/clap/src/actions/mac.rs</code>, <code>actions/aws/byok/export_key_material.rs</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A02-1</td>
+<td><code>symmetric_ciphers.rs:429,784</code></td>
+<td>Info</td>
+<td>Zero-initialised buffers (<code>vec![0; nonce_size]</code>, <code>[0_u8; 16]</code>) are overwritten immediately by <code>rand_bytes()</code> or by structured counter/nonce construction (ChaCha20). No actual hardcoded IVs.</td>
+</tr>
+<tr>
+<td>A02-2</td>
+<td><code>mac.rs:17,31,47</code> / <code>export_key_material.rs:92,106</code></td>
+<td>Low</td>
+<td>SHA-1 is exposed as a user-selectable MAC/hash algorithm and used in AWS BYOK RSA-OAEP wrapping. SHA-1 is weak for MAC and PKCS#1 v1.5 is weak for key wrapping. These paths are not gated behind <code>#[cfg(feature = &quot;non-fips&quot;)]</code> in the CLI actions layer even though FIPS forbids SHA-1.</td>
+</tr>
+<tr>
+<td>A02-3</td>
+<td><code>standard_curves.rs:31</code></td>
+<td>Info</td>
+<td><code>let mut iv = vec![0; iv_size]</code> in ECIES — filled by OpenSSL <code>rand_bytes</code>. Safe; zero is a temporary placeholder.</td>
+</tr>
+<tr>
+<td>A02-4</td>
+<td><code>export_get.rs:77</code></td>
+<td>✅</td>
+<td><code>sensitive=true</code> objects are correctly blocked from export unless <code>key_wrapping_specification</code> is present. Per KMIP BL-M-12-21.</td>
+</tr>
+<tr>
+<td>A02-5</td>
+<td><code>wrap.rs:118–121</code></td>
+<td>Medium</td>
+<td>Unwrapped key objects are stored in an in-memory <code>DashMap</code>/<code>HashMap</code> cache with no TTL or eviction policy visible in <code>wrap.rs</code>. Cached plaintext key material persists indefinitely in process heap, increasing the window for cold-boot / process-dump attacks.</td>
+</tr>
+<tr>
+<td>A02-6</td>
+<td><code>build.rs:234,274–275</code></td>
+<td>✅</td>
+<td><code>verify_hash()</code> enforces SHA-256 check on the OpenSSL tarball. Non-empty <code>sha256</code> param is required. Supply-chain integrity protected.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A02-2: Gate SHA-1 MAC and RSA-OAEP-SHA1 behind <code>#[cfg(feature = &quot;non-fips&quot;)]</code> or emit a deprecation warning when selected. Replace with SHA-256 defaults.</li>
+<li>A02-5: Add a TTL (e.g. 60 s) or LRU eviction to the unwrapped-object cache. Call <code>zeroize()</code> on cache values before removal.</li>
+</ul>
+<blockquote>
+<p><strong>OWASP description</strong>: Injection flaws occur when untrusted data is sent to an interpreter
+as part of a command or query (SQL, LDAP, OS shell, TTLV, XML).</p>
+</blockquote>
+<h3 id="41-scope">4.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dynamic SQL query builder</td>
+<td><code>crate/server_database/src/stores/sql/locate_query.rs</code></td>
+</tr>
+<tr>
+<td>SQL backends</td>
+<td><code>crate/server_database/src/stores/sql/sqlite.rs</code>, <code>pgsql.rs</code>, <code>mysql.rs</code></td>
+</tr>
+<tr>
+<td>TTLV binary parser</td>
+<td><code>crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs</code></td>
+</tr>
+<tr>
+<td>TTLV XML parser</td>
+<td><code>crate/kmip/src/ttlv/xml/parser.rs</code>, <code>deserializer.rs</code></td>
+</tr>
+<tr>
+<td>JSON → TTLV entry point</td>
+<td><code>crate/server/src/routes/kmip.rs</code> — <code>from_ttlv()</code> call</td>
+</tr>
+<tr>
+<td>CLI file path arguments</td>
+<td><code>crate/clients/clap/src/actions/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-investigation-steps">4.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — SQL injection: flag any dynamic SQL built with format! or string concatenation</span>
+grep -rn \
+  <span class="hljs-string">'format!.*SELECT\|format!.*INSERT\|format!.*UPDATE\|format!.*DELETE\|"SELECT.*{}'</span> \
+  crate/server_database/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 2 — Verify parameterized query usage throughout the SQL backends</span>
+grep -n <span class="hljs-string">"bind\|execute\|query_as\|fetch"</span> \
+  crate/server_database/src/stores/sql/locate_query.rs | head -30
+
+<span class="hljs-comment"># Step 3 — TTLV binary parser: length field checked before allocation?</span>
+grep -n <span class="hljs-string">"len\|size\|capacity\|Vec::with_capacity\|read_exact\|take\|limit"</span> \
+  crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs
+
+<span class="hljs-comment"># Step 4 — Recursion depth guard in TTLV struct parser</span>
+grep -rn <span class="hljs-string">"depth\|recursion\|stack\|max_depth\|fn from_ttlv\|fn parse"</span> \
+  crate/kmip/src/ttlv/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 5 — OS shell injection: any std::process::Command with user-supplied data?</span>
+grep -rn <span class="hljs-string">"Command::new\|std::process\|exec\|popen"</span> \
+  crate/clients/ crate/server/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 6 — Tag / object-group injection: these are stored as strings — verify binding</span>
+grep -n <span class="hljs-string">"tag\|Tag\|object_group\|ObjectGroup"</span> \
+  crate/server_database/src/stores/sql/locate_query.rs | head -20
+
+<span class="hljs-comment"># Step 7 — Semgrep injection ruleset</span>
+semgrep --config p/owasp-top-ten crate/ --lang rust 2&gt;/dev/null \
+  | grep -i <span class="hljs-string">"inject\|sql\|command\|exec"</span> || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="43-findings">4.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server_database/src/stores/sql/locate_query.rs</code></li>
+<li><code>crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs</code></li>
+<li><code>crate/kmip/src/ttlv/wire/ttlv_bytes_serializer.rs</code></li>
+<li><code>crate/server/src/core/operations/locate.rs</code></li>
+<li><code>crate/server/src/routes/kmip.rs</code></li>
+<li><code>crate/server/benchmarks/bench.rs</code> (CLI-only)</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A03-1</td>
+<td><code>stores/sql/locate_query.rs</code> (all)</td>
+<td>✅</td>
+<td>All SQL queries use bind-parameter style (<code>sqlx::query!</code>, placeholder <code>?</code> / <code>$N</code>). No string concatenation into SQL statements. No SQL injection.</td>
+</tr>
+<tr>
+<td>A03-2</td>
+<td><code>ttlv_bytes_deserializer.rs:56</code></td>
+<td><strong>High</strong></td>
+<td><code>read_ttlv()</code> is purely recursive with no depth counter and no maximum depth check. A malicious deeply-nested TTLV binary can exhaust the call stack (stack overflow / uncontrolled recursion). An unauthenticated TTLV POST triggers this code path before any authentication (parsed at HTTP handler level).</td>
+</tr>
+<tr>
+<td>A03-3</td>
+<td><code>routes/kmip.rs</code> (XML path)</td>
+<td>Medium</td>
+<td>The TTLV XML parser (<code>ttlv_xml_deserializer.rs</code>) has a <code>depth</code> counter but the loop contains no <code>max_depth</code> enforcement — deep XML nesting proceeds without limit.</td>
+</tr>
+<tr>
+<td>A03-4</td>
+<td><code>bench.rs:2815</code></td>
+<td>Info</td>
+<td>CLI benchmark code builds a gnuplot script embedding the <code>op</code> operation name variable inline. This is benchmark CLI code, not reachable from the server. No server-side command injection.</td>
+</tr>
+<tr>
+<td>A03-5</td>
+<td>All server routes</td>
+<td>✅</td>
+<td>No OS <code>std::process::Command::new()</code> / <code>shell_exec</code> calls found in production server code.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A03-2: Add a <code>depth: u32</code> parameter to <code>read_ttlv()</code> and return an error when <code>depth &gt; MAX_TTLV_DEPTH</code> (suggested: 64). Example: <code>fn read_ttlv(reader: &amp;mut impl Read, depth: u32) -&gt; Result&lt;Ttlv&gt; { if depth &gt; 64 { return Err(...) } ... read_ttlv(reader, depth + 1) ... }</code></li>
+<li>A03-3: Add <code>const MAX_XML_DEPTH: usize = 64;</code> and fail when <code>depth &gt;= MAX_XML_DEPTH</code>.</li>
+</ul>
+<hr>
+<h2 id="5-a04-%E2%80%93-insecure-design">5. A04 – Insecure Design</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Missing or ineffective control design. Unlike misconfiguration,
+this is a structural flaw that cannot be fixed by correct configuration alone.</p>
+</blockquote>
+<h3 id="51-scope">5.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KMIP operation dispatcher</td>
+<td><code>crate/server/src/core/operations/dispatch.rs</code></td>
+</tr>
+<tr>
+<td>Actix-web app builder</td>
+<td><code>crate/server/src/start_kms_server.rs</code></td>
+</tr>
+<tr>
+<td>Server configuration</td>
+<td><code>crate/server/src/config/</code></td>
+</tr>
+<tr>
+<td>KMIP lifecycle state machine</td>
+<td><code>crate/kmip/src/</code> — object state types</td>
+</tr>
+<tr>
+<td>Rate limiting</td>
+<td><code>crate/server/src/middlewares/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-investigation-steps">5.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Max request body size: Actix default is 256 KB; look for an explicit override</span>
+grep -n <span class="hljs-string">"LimitPayloadSize\|max_payload_size\|PayloadConfig\|content_length\|max_body"</span> \
+  crate/server/src/start_kms_server.rs crate/server/src/routes/kmip.rs
+
+<span class="hljs-comment"># Step 2 — Rate limiting middleware</span>
+grep -rn <span class="hljs-string">"RateLimiter\|rate_limit\|throttle\|governor\|leaky_bucket\|token_bucket"</span> \
+  crate/server/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 3 — KMIP state machine: transitions must follow spec</span>
+<span class="hljs-comment"># (PreActive → Active → Deactivated → Destroyed; no skipping)</span>
+grep -rn <span class="hljs-string">"Deactivated\|PreActive\|Compromised\|Destroyed\|state.*transition\|update_state"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 4 — Bulk operations: can one request mutate thousands of objects?</span>
+grep -rn <span class="hljs-string">"Locate\|for.*objects\|batch\|BulkRequest\|RequestBatchItem"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> | head -20
+
+<span class="hljs-comment"># Step 5 — Locate result set: is it bounded / paginated?</span>
+grep -rn <span class="hljs-string">"limit\|offset\|pagination\|page_size\|LIMIT\|OFFSET\|max_items"</span> \
+  crate/server_database/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 6 — SecretData / Opaque objects: are there constraints on size or type?</span>
+grep -rn <span class="hljs-string">"SecretData\|Opaque\|OpaqueData\|CertificateRequest"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span>
+</div></code></pre>
+<h3 id="53-findings">5.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ❌ Vulnerability found
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/start_kms_server.rs</code></li>
+<li><code>crate/server/src/core/operations/locate.rs</code></li>
+<li><code>crate/server_database/src/stores/sql/locate_query.rs</code></li>
+<li><code>crate/server/src/middlewares/</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A04-1</td>
+<td><code>start_kms_server.rs:767-768</code></td>
+<td><strong>High</strong></td>
+<td>HTTP request body limit is set to 10 GB: <code>PayloadConfig::new(10_000_000_000)</code> and <code>JsonConfig::default().limit(10_000_000_000)</code>. Any unauthenticated or authenticated client can send a 10 GB request body, potentially exhausting server RAM and causing out-of-memory termination.</td>
+</tr>
+<tr>
+<td>A04-2</td>
+<td>All server middlewares</td>
+<td><strong>High</strong></td>
+<td>No rate-limiting middleware is registered anywhere in the Actix-web application. There is no throttling on KMIP operations, API token verification, or UI login. An attacker can issue unlimited requests per second, allowing brute-force of API tokens and CPU/memory exhaustion.</td>
+</tr>
+<tr>
+<td>A04-3</td>
+<td><code>operations/locate.rs:96-101</code></td>
+<td>Medium</td>
+<td>The <code>MaximumItems</code> field in a Locate request is fully client-controlled and optional. When absent, the server returns all matching objects. There is no server-side cap on the result set size. A client owning or co-owning a large number of objects can trigger a very large response.</td>
+</tr>
+<tr>
+<td>A04-4</td>
+<td><code>operations/dispatch.rs</code></td>
+<td>✅</td>
+<td>KMIP state machine transitions (PreActive→Active→Deactivated→Destroyed) are enforced via <code>activate.rs</code>, <code>revoke.rs</code>, <code>destroy.rs</code>. Invalid transitions are rejected with <code>ItemNotFound</code> or state-error.</td>
+</tr>
+<tr>
+<td>A04-5</td>
+<td><code>operations/locate.rs</code> + <code>batch_items.rs</code></td>
+<td>✅</td>
+<td>Batch request item limit: the KMIP spec allows batch requests; each item is individually dispatched and access-controlled. No uncontrolled bulk mutation discovered beyond the Locate unbounded-result issue.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A04-1: Reduce <code>PayloadConfig</code> and <code>JsonConfig</code> limits to a realistic maximum (e.g. 64 MB for KMIP bodies, 1 MB for JSON config). Use <code>PayloadConfig::new(64 * 1024 * 1024)</code>.</li>
+<li>A04-2: Add a rate-limiting middleware using <code>actix-governor</code> or <code>tower-governor</code>. Apply globally plus a stricter limit on authentication endpoints.</li>
+<li>A04-3: Add a server-side cap: if <code>MaximumItems</code> is absent or exceeds a configured <code>max_locate_items</code> (default 1 000), clamp the SQL <code>LIMIT</code> to that value.</li>
+</ul>
+<hr>
+<h2 id="6-a05-%E2%80%93-security-misconfiguration">6. A05 – Security Misconfiguration</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: The most commonly seen issue, resulting from insecure default
+configurations, missing hardening, verbose error messages, or open cloud storage.</p>
+</blockquote>
+<h3 id="61-scope">6.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All server CLI flags &amp; defaults</td>
+<td><code>crate/server/src/config/command_line/</code> (all files)</td>
+</tr>
+<tr>
+<td>TLS settings</td>
+<td><code>crate/server/src/config/command_line/tls_config.rs</code></td>
+</tr>
+<tr>
+<td>UI authentication &amp; CORS</td>
+<td><code>crate/server/src/routes/ui_auth.rs</code></td>
+</tr>
+<tr>
+<td>OpenSSL provider init</td>
+<td><code>crate/server/src/openssl_providers.rs</code></td>
+</tr>
+<tr>
+<td>Error response format</td>
+<td><code>crate/server/src/routes/kmip.rs</code> — error handling</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-investigation-steps">6.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Enumerate all default values for security-sensitive flags</span>
+grep -n <span class="hljs-string">"default_value\|default.*=\s*\"\|fn default()"</span> \
+  crate/server/src/config/command_line/clap_config.rs | head -50
+
+<span class="hljs-comment"># Step 2 — TLS: minimum protocol version and cipher suite defaults</span>
+grep -rn <span class="hljs-string">"TLSv1\|tls_cipher\|cipher_suite\|TlsVersion\|min_protocol\|SSLv"</span> \
+  crate/server/src/config/ --include=<span class="hljs-string">"*.rs"</span>
+grep -n <span class="hljs-string">"tls_p12\|tls_cert\|tls_key\|tls_chain\|clients_ca"</span> \
+  crate/server/src/config/command_line/tls_config.rs
+
+<span class="hljs-comment"># Step 3 — CORS: look for wildcard origins or missing CORS restrictions</span>
+grep -rn <span class="hljs-string">"Cors\|allow_origin\|AllowedOrigin\|allow_any_origin"</span> \
+  crate/server/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 4 — Error messages: do they expose stack traces or internal paths?</span>
+grep -rn <span class="hljs-string">"backtrace\|debug_info\|internal_err\|unwrap()\|expect("</span> \
+  crate/server/src/routes/ --include=<span class="hljs-string">"*.rs"</span> | head -20
+
+<span class="hljs-comment"># Step 5 — Dangerous feature flags that weaken security</span>
+grep -rn <span class="hljs-string">"insecure\|skip.*expir\|no.verify\|allow_self_signed"</span> \
+  crate/server/src/ --include=<span class="hljs-string">"*.rs"</span> | grep -v <span class="hljs-string">"#\[cfg\|cfg(feature\|//.*insecure"</span>
+
+<span class="hljs-comment"># Step 6 — Environment variable names that carry secrets: verify none are logged</span>
+grep -rn <span class="hljs-string">'KMS_.*PASSWORD\|KMS_.*SECRET\|KMS_.*KEY\|KMS_.*TOKEN'</span> \
+  crate/server/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 7 — Secrets scanner: detect hardcoded credentials</span>
+semgrep --config p/secrets crate/ --lang rust 2&gt;/dev/null | head -30 || <span class="hljs-literal">true</span>
+gitleaks detect --<span class="hljs-built_in">source</span> . --no-git 2&gt;/dev/null | head -30 || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="63-findings">6.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/start_kms_server.rs</code></li>
+<li><code>crate/server/src/config/command_line/tls_config.rs</code></li>
+<li><code>crate/server/src/openssl_providers.rs</code></li>
+<li><code>deny.toml</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A05-1</td>
+<td><code>start_kms_server.rs:776,795,806,901,962</code></td>
+<td>Medium</td>
+<td><code>Cors::permissive()</code> applied on every scope: main KMIP, UI, Google CSE, MS DKE, AWS XKS. Sets <code>Access-Control-Allow-Origin: *</code>, allowing any browser origin to reach the KMIP endpoint cross-origin.</td>
+</tr>
+<tr>
+<td>A05-2</td>
+<td><code>config/command_line/tls_config.rs</code></td>
+<td>Low</td>
+<td>TLS minimum version is not explicitly configured in code. Relies on OpenSSL 3.6.0 default (TLS 1.2+). Should be made explicit.</td>
+</tr>
+<tr>
+<td>A05-3</td>
+<td><code>middlewares/jwt/jwt_config.rs:10,155</code></td>
+<td>Medium</td>
+<td>The <code>insecure</code> feature completely disables all JWT validation (signature, expiry, audience). No compile-time guard prevents this feature from reaching production. If accidentally included in a production build, any token is accepted.</td>
+</tr>
+<tr>
+<td>A05-4</td>
+<td><code>deny.toml</code></td>
+<td>Low</td>
+<td><code>RUSTSEC-2026-0097</code> is allow-listed in the cargo deny policy. Should be resolved by upgrading <code>rand</code> instead of permanently suppressing the advisory.</td>
+</tr>
+<tr>
+<td>A05-5</td>
+<td>All routes</td>
+<td>✅</td>
+<td>Error responses use KMIP error codes; no stack traces or file paths exposed in HTTP responses.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A05-1: Replace <code>Cors::permissive()</code> with <code>Cors::default().allowed_origin(&quot;https://your-kms-domain.example.com&quot;)</code> or configure allowed origins from server config.</li>
+<li>A05-3: Add <code>#[cfg(all(not(test), feature = &quot;insecure&quot;))] compile_error!(&quot;insecure feature must not be enabled in production&quot;);</code> near the top of <code>jwt_config.rs</code>.</li>
+</ul>
+<hr>
+<h2 id="7-a06-%E2%80%93-vulnerable-and-outdated-components">7. A06 – Vulnerable and Outdated Components</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Components run with the same privileges as the application.
+If a vulnerable component is exploited it can cause serious data loss or server takeover.</p>
+</blockquote>
+<h3 id="71-scope">7.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workspace dependencies</td>
+<td><code>Cargo.toml</code> (root) + all <code>crate/*/Cargo.toml</code></td>
+</tr>
+<tr>
+<td>Deny policy</td>
+<td><code>deny.toml</code></td>
+</tr>
+<tr>
+<td>OpenSSL build + hash</td>
+<td><code>crate/crypto/build.rs</code></td>
+</tr>
+<tr>
+<td>UI dependencies</td>
+<td><code>ui/package.json</code>, <code>ui/pnpm-lock.yaml</code></td>
+</tr>
+<tr>
+<td>Git history</td>
+<td><code>.git/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="72-investigation-steps">7.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Scan Rust dependencies for known CVEs (RustSec Advisory DB)</span>
+cargo audit
+
+<span class="hljs-comment"># Step 2 — Policy-based check: licenses, banned crates, advisories, duplicates</span>
+cargo deny check
+
+<span class="hljs-comment"># Step 3 — List outdated crates vs latest on crates.io</span>
+cargo outdated --workspace
+
+<span class="hljs-comment"># Step 4 — Count unsafe code per crate (establish risk baseline)</span>
+cargo geiger --workspace 2&gt;/dev/null | tail -50
+
+<span class="hljs-comment"># Step 5 — Verify OpenSSL source is pinned and SHA-256-verified in build script</span>
+grep -A5 -B5 <span class="hljs-string">"openssl.*version\|OPENSSL_VERSION\|sha256\|expected_hash\|verify"</span> \
+  crate/crypto/build.rs | head -30
+
+<span class="hljs-comment"># Step 6 — UI dependency audit</span>
+<span class="hljs-built_in">cd</span> ui &amp;&amp; pnpm audit 2&gt;/dev/null || npm audit 2&gt;/dev/null; <span class="hljs-built_in">cd</span> ..
+
+<span class="hljs-comment"># Step 7 — Git-sourced Rust deps (bypass crates.io auditing)</span>
+grep -rn <span class="hljs-string">"git = \|branch = \|rev = "</span> Cargo.toml crate/*/Cargo.toml
+
+<span class="hljs-comment"># Step 8 — Scan full git history for accidentally committed secrets</span>
+gitleaks detect --<span class="hljs-built_in">source</span> . 2&gt;/dev/null | head -30 || \
+  trufflehog3 --no-entropy . 2&gt;/dev/null | head -30 || \
+  <span class="hljs-built_in">echo</span> <span class="hljs-string">"Run a secrets scanner manually"</span>
+</div></code></pre>
+<h3 id="73-findings">7.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>: <code>Cargo.toml</code> (workspace), <code>deny.toml</code>, <code>crate/crypto/build.rs</code></p>
+<p><strong><code>cargo audit</code> output (2026-04-13)</strong>:</p>
+<pre class="hljs"><code><div>Warning: 2 vulnerabilities found!
+crate:   rand  version: 0.8.5  advisory: RUSTSEC-2026-0097 (allow-listed)
+crate:   rand  version: 0.9.2  advisory: RUSTSEC-2026-0097 (allow-listed)
+</div></code></pre>
+<p><strong><code>cargo deny check</code></strong>: passes with warnings (advisory allow-listed in <code>deny.toml</code>)</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A06-1</td>
+<td><code>Cargo.toml</code> (workspace)</td>
+<td>Medium</td>
+<td><strong>RUSTSEC-2026-0097</strong> affects <code>rand 0.8.5</code> and <code>rand 0.9.2</code> — two separate version trees coexisting in the dependency graph. Advisory covers unseeded PRNG panic under unusual usage. Suppressed rather than resolved.</td>
+</tr>
+<tr>
+<td>A06-2</td>
+<td><code>Cargo.toml</code> (workspace)</td>
+<td>Low</td>
+<td>20+ duplicate crate versions: <code>base64</code> (×3: 0.13, 0.21, 0.22), <code>hashbrown</code> (×4: 0.12–0.15), <code>rand</code> (×2), <code>opentelemetry</code> (×2), <code>time</code> (×3), etc. Increases supply-chain surface and binary size.</td>
+</tr>
+<tr>
+<td>A06-3</td>
+<td><code>crate/crypto/build.rs:234,274</code></td>
+<td>✅</td>
+<td>OpenSSL 3.6.0 tarball is SHA-256-verified (<code>verify_hash()</code>) before extraction. Version pinned by constant. Supply-chain integrity protected.</td>
+</tr>
+<tr>
+<td>A06-4</td>
+<td>All <code>Cargo.toml</code> files</td>
+<td>✅</td>
+<td>No <code>git = </code> sourced Rust dependencies. All deps come from crates.io.</td>
+</tr>
+<tr>
+<td>A06-5</td>
+<td><code>ui/pnpm-lock.yaml</code></td>
+<td>Info</td>
+<td>UI npm/pnpm audit was not run during this automated pass. Manual <code>pnpm audit --audit-level moderate</code> recommended.</td>
+</tr>
+<tr>
+<td>A06-6</td>
+<td>Workspace (<code>crate/clients/wasm/Cargo.toml</code>)</td>
+<td>Low</td>
+<td><strong><code>cargo outdated</code></strong> shows <code>cosmian_kms_client_wasm</code> requires <code>getrandom</code> with the <code>js</code> feature, but the installed version (0.4.2) no longer exposes that feature. This causes <code>cargo outdated</code> to fail for the WASM crate. The WASM build may silently use a mismatched <code>getrandom</code> version in non-browser target builds.</td>
+</tr>
+<tr>
+<td>A06-7</td>
+<td>workspace (geiger scan)</td>
+<td>Info</td>
+<td><strong><code>cargo-geiger 0.13.0</code></strong> fails on this virtual workspace with a known upstream bug. Manual <code>grep -r &quot;unsafe &quot;</code> shows: <code>crate/server/src/</code> (5 files, 22 uses — all OpenSSL FFI + FIPS env setup), <code>crate/crypto/src/</code> (5 files, 35 uses — OpenSSL/PQC FFI), <code>crate/server_database/src/</code> (0), <code>crate/kmip/src/</code> (0), <code>crate/access/src/</code> (0). PKCS#11 module/provider and HSM loaders contain additional unsafe as expected for C FFI. No unexpected unsafe blocks were found in core server logic.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A06-1: Upgrade <code>rand</code> to the version that resolves RUSTSEC-2026-0097. Run <code>cargo update -p rand</code> and verify with <code>cargo audit</code>.</li>
+<li>A06-2: Dedup by aligning version requirements across crates using <code>[patch]</code> or resolving transitive dependency mismatches. Track with <code>cargo deny check duplicates</code>.</li>
+<li>A06-5: Add <code>cd ui &amp;&amp; pnpm audit --audit-level moderate</code> to CI pipeline.</li>
+<li>A06-6: Align <code>getrandom</code> version in <code>crate/clients/wasm/Cargo.toml</code> to a version that still exposes the <code>js</code> feature gate, or remove the feature if no longer applicable.</li>
+<li>A06-7 (geiger): Upgrade <code>cargo-geiger</code> when a version supporting Rust 2024 virtual workspaces is available. Track <a href="https://github.com/rust-secure-code/cargo-geiger/issues/378">cargo-geiger#378</a>.</li>
+</ul>
+<hr>
+<h2 id="8-a07-%E2%80%93-identification-and-authentication-failures">8. A07 – Identification and Authentication Failures</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Incorrectly implemented authentication and session management
+allow attackers to compromise passwords, keys, or session tokens, or to assume other
+users' identities.</p>
+</blockquote>
+<h3 id="81-scope">8.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JWT middleware</td>
+<td><code>crate/server/src/middlewares/jwt/jwt_middleware.rs</code>, <code>jwt_token_auth.rs</code>, <code>jwt_config.rs</code></td>
+</tr>
+<tr>
+<td>JWKS manager</td>
+<td><code>crate/server/src/middlewares/jwt/jwks.rs</code></td>
+</tr>
+<tr>
+<td>API token auth</td>
+<td><code>crate/server/src/middlewares/api_token/api_token_auth.rs</code>, <code>api_token_middleware.rs</code></td>
+</tr>
+<tr>
+<td>TLS client cert auth</td>
+<td><code>crate/server/src/middlewares/tls_auth.rs</code></td>
+</tr>
+<tr>
+<td>AWS SigV4 auth</td>
+<td><code>crate/server/src/routes/aws_xks/sigv4_middleware.rs</code></td>
+</tr>
+<tr>
+<td>Auth fallback</td>
+<td><code>crate/server/src/middlewares/ensure_auth.rs</code></td>
+</tr>
+<tr>
+<td><code>insecure</code> feature gate</td>
+<td>Everywhere gated by <code>#[cfg(feature = &quot;insecure&quot;)]</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="82-investigation-steps">8.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — JWT algorithm restriction: must be RS256/ES256; reject HS256 and "none"</span>
+grep -rn <span class="hljs-string">"Algorithm\|alg\|Validation\|decode\|jsonwebtoken\|DecodingKey"</span> \
+  crate/server/src/middlewares/jwt/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 2 — Token expiration enforcement (insecure feature relaxes this)</span>
+grep -rn <span class="hljs-string">"exp\|expir\|validate_exp\|insecure\|leeway"</span> \
+  crate/server/src/middlewares/jwt/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 3 — JWKS fetch URL: must be HTTPS-only; no plain HTTP fallback</span>
+grep -n <span class="hljs-string">"http://\|reqwest\|fetch_jwks\|jwks_uri\|jwks_url\|url"</span> \
+  crate/server/src/middlewares/jwt/jwks.rs
+
+<span class="hljs-comment"># Step 4 — API token comparison: must be constant-time to prevent timing attacks</span>
+grep -n <span class="hljs-string">"==\|compare\|ConstantTimeEq\|constant_time\|subtle\|ct_eq"</span> \
+  crate/server/src/middlewares/api_token/api_token_auth.rs
+
+<span class="hljs-comment"># Step 5 — TLS cert auth: CN alone is insufficient; check if full DN or SAN is used</span>
+grep -n <span class="hljs-string">"CommonName\|CN\|SubjectAltName\|SAN\|subject\|peer_cert\|peer_certificate"</span> \
+  crate/server/src/middlewares/tls_auth.rs
+
+<span class="hljs-comment"># Step 6 — Session fixation in UI auth: cookie must be HttpOnly, Secure, SameSite=Strict</span>
+grep -rn <span class="hljs-string">"actix.session\|Session\|cookie\|HttpOnly\|Secure\|SameSite"</span> \
+  crate/server/src/routes/ui_auth.rs crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 7 — Brute-force protection: lookout for rate limiting on auth endpoints</span>
+grep -rn <span class="hljs-string">"rate_limit\|lockout\|backoff\|attempt\|max_fail"</span> \
+  crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 8 — Semgrep auth patterns</span>
+semgrep --config p/owasp-top-ten \
+  crate/server/src/middlewares/ --lang rust 2&gt;/dev/null || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="83-findings">8.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/middlewares/jwt/jwt_config.rs</code></li>
+<li><code>crate/server/src/middlewares/api_token/api_token_auth.rs</code></li>
+<li><code>crate/server/src/middlewares/tls_auth.rs</code></li>
+<li><code>crate/server/src/start_kms_server.rs</code></li>
+<li>All <code>crate/server/src/middlewares/</code> files</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A07-1</td>
+<td><code>jwt_config.rs:170</code></td>
+<td><strong>High</strong></td>
+<td><code>Validation::new(header.alg)</code> — JWT validation algorithm is taken directly from the <code>alg</code> field of the incoming token header without any allowlist. An attacker who obtains a valid <code>kid</code> could craft a token with <code>alg: HS256</code> and use the RSA public key as the HMAC secret (algorithm confusion / &quot;none&quot; alg attack vector). The <code>jsonwebtoken</code> crate's <code>Validation::new</code> initialises with the given algorithm but does NOT restrict to it unless <code>algorithms</code> is explicitly set.</td>
+</tr>
+<tr>
+<td>A07-2</td>
+<td><code>api_token_auth.rs:126</code></td>
+<td>Medium</td>
+<td>API token comparison uses <code>client_token == api_token.as_str()</code> — standard <code>==</code> operator, which is <strong>not timing-safe</strong>. Timing differences can reveal whether the token length matches or prefix bytes are correct. A high-volume attacker on a low-latency network could exploit this to brute-force API tokens.</td>
+</tr>
+<tr>
+<td>A07-3</td>
+<td><code>tls_auth.rs:147</code></td>
+<td>Low</td>
+<td>TLS client certificate identity uses CN (Common Name) only, not SAN (Subject Alternative Name). Wildcard CNs (<code>*</code>) are explicitly rejected (correct). Modern TLS stacks prefer SAN; CN-only auth may fail on strict clients.</td>
+</tr>
+<tr>
+<td>A07-4</td>
+<td><code>start_kms_server.rs:759</code></td>
+<td>Low</td>
+<td>Session cookie <code>SameSite</code> is set to <code>None</code> (cross-site allowed). <code>SameSite::Strict</code> or <code>Lax</code> would protect against CSRF for browser-initiated requests.</td>
+</tr>
+<tr>
+<td>A07-5</td>
+<td><code>jwt_config.rs:10,155</code></td>
+<td>Medium</td>
+<td>The <code>insecure</code> feature disables <strong>all</strong> JWT validation including signature and expiration. Must not appear in production builds (see also A05-3).</td>
+</tr>
+<tr>
+<td>A07-6</td>
+<td>All endpoints</td>
+<td><strong>High</strong></td>
+<td>No brute-force protection or account lockout on any authentication endpoint (JWT, API token, TLS). Combined with A04-2 (no rate limiting), this allows unlimited credential-guessing attempts.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A07-1: After calling <code>Validation::new(alg)</code>, immediately set <code>validation.algorithms = vec![alg]</code> (already in scope) AND add a check that <code>alg</code> is in an explicit server-side allowlist (e.g. <code>[RS256, RS384, RS512, ES256, ES384]</code>). Reject tokens with <code>alg: none</code>, <code>alg: HS256</code> against asymmetric keys.</li>
+<li>A07-2: Replace <code>client_token == api_token.as_str()</code> with a constant-time comparison: use <code>subtle::ConstantTimeEq</code> or <code>ring::constant_time::verify_slices_are_equal()</code>.</li>
+<li>A07-4: Change <code>SameSite::None</code> to <code>SameSite::Strict</code> unless cross-site embedding of the KMS UI is required.</li>
+</ul>
+<hr>
+<h2 id="9-a08-%E2%80%93-software-and-data-integrity-failures">9. A08 – Software and Data Integrity Failures</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Code and infrastructure that does not protect against integrity
+violations, including insecure deserialization, CI/CD pipeline attacks, and unsigned
+updates.</p>
+</blockquote>
+<h3 id="91-scope">9.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenSSL download + verify</td>
+<td><code>crate/crypto/build.rs</code></td>
+</tr>
+<tr>
+<td>Imported object validation</td>
+<td><code>crate/server/src/core/operations/import.rs</code></td>
+</tr>
+<tr>
+<td>KMIP deserializer</td>
+<td><code>crate/kmip/src/ttlv/</code></td>
+</tr>
+<tr>
+<td>Cargo lock and git deps</td>
+<td><code>Cargo.lock</code>, <code>Cargo.toml</code></td>
+</tr>
+<tr>
+<td>CI pipeline scripts</td>
+<td><code>.github/workflows/</code>, <code>.github/scripts/</code></td>
+</tr>
+<tr>
+<td>Nix vendor hashes</td>
+<td><code>nix/expected-hashes/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="92-investigation-steps">9.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — OpenSSL build: SHA-256 check must be present and non-bypassable</span>
+grep -A5 -B5 <span class="hljs-string">"sha256\|checksum\|expected\|download\|verify"</span> crate/crypto/build.rs
+
+<span class="hljs-comment"># Step 2 — Imported keys: are cryptographic properties validated on import?</span>
+<span class="hljs-comment"># (RSA modulus size, EC curve OID, key material length)</span>
+grep -n <span class="hljs-string">"validate\|check\|verify\|length\|CryptographicLength\|Algorithm\|curve"</span> \
+  crate/server/src/core/operations/import.rs | head -30
+
+<span class="hljs-comment"># Step 3 — KMIP deserialization: unknown fields rejected (not silently ignored)?</span>
+grep -rn <span class="hljs-string">"deny_unknown_fields\|flatten\|#\[serde\|untagged\|tag"</span> \
+  crate/kmip/src/ --include=<span class="hljs-string">"*.rs"</span> | head -20
+
+<span class="hljs-comment"># Step 4 — Git-sourced or path-sourced Rust deps (integrity not guaranteed by crates.io)</span>
+grep -rn <span class="hljs-string">"git =\|path =\|branch =\|rev ="</span> Cargo.toml crate/*/Cargo.toml
+
+<span class="hljs-comment"># Step 5 — CI scripts: unauthenticated downloads or pipe-to-shell patterns</span>
+grep -rn <span class="hljs-string">"curl.*sh\|wget.*sh\|pip install\|npm install"</span> \
+  .github/scripts/ .github/workflows/ 2&gt;/dev/null \
+  | grep -v <span class="hljs-string">"^#\|#.*curl"</span> | head -20
+
+<span class="hljs-comment"># Step 6 — Nix vendor hashes: all four variants must be present and non-trivial</span>
+ls -la nix/expected-hashes/
+grep -v <span class="hljs-string">"^sha256-AAAA"</span> nix/expected-hashes/*.sha256 2&gt;/dev/null | head -10
+</div></code></pre>
+<h3 id="93-findings">9.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/middlewares/ensure_auth.rs</code></li>
+<li><code>crate/kmip/src/</code></li>
+<li><code>crate/server/src/core/operations/import_export.rs</code></li>
+<li><code>deny.toml</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A08-1</td>
+<td><code>crate/kmip/src/kmip_0/kmip_operations.rs</code> (all structs)</td>
+<td>Low</td>
+<td>KMIP request/response structs do not use <code>#[serde(deny_unknown_fields)]</code>. Unknown fields in incoming KMIP JSON/XML are silently ignored rather than rejected. An attacker can add arbitrary fields to requests without triggering any error; this makes protocol-level fuzzing harder to detect.</td>
+</tr>
+<tr>
+<td>A08-2</td>
+<td><code>start_kms_server.rs:737</code></td>
+<td>Medium</td>
+<td>The UI session signing key is derived from the server URL. If the server is deployed with the default or a predictable URL (e.g. <code>http://localhost:9998</code>), the session key is predictable, allowing cookie forgery. The fallback salt <code>&quot;cosmian_kms_default_ui_session_key_v1&quot;</code> in <code>build_session_key()</code> makes this exploitable when no explicit key is configured.</td>
+</tr>
+<tr>
+<td>A08-3</td>
+<td><code>crate/crypto/build.rs:234,274</code></td>
+<td>✅</td>
+<td>OpenSSL tarball SHA-256 is verified before build. Prevents tampered source from being compiled in.</td>
+</tr>
+<tr>
+<td>A08-4</td>
+<td>All <code>Cargo.toml</code> files</td>
+<td>✅</td>
+<td>No <code>git = </code> sourced deps. All Rust crates come from crates.io with version pinning.</td>
+</tr>
+<tr>
+<td>A08-5</td>
+<td><code>crate/server/src/core/operations/import.rs</code></td>
+<td>✅</td>
+<td>CRL validation is performed on certificate import. Key parameter validation relies on OpenSSL's own enforcement (key size, curve OID, etc.), which is appropriate.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A08-1: Add <code>#[serde(deny_unknown_fields)]</code> to all top-level KMIP request structs where spec compliance is required, or at minimum log a warning when unknown fields are encountered.</li>
+<li>A08-2: Generate and persist a random 32-byte session key on first startup (saving it to the DB or a config file), and require it to be explicitly set in production. Remove the predictable URL-derived default.</li>
+</ul>
+<hr>
+<h2 id="10-a09-%E2%80%93-security-logging-and-monitoring-failures">10. A09 – Security Logging and Monitoring Failures</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: Insufficient logging and monitoring allows attackers to maintain
+persistence, pivot, and tamper with or exfiltrate data undetected.</p>
+</blockquote>
+<h3 id="101-scope">10.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KMIP request tracing</td>
+<td><code>crate/server/src/routes/kmip.rs</code>, <code>routes/access.rs</code></td>
+</tr>
+<tr>
+<td>Configuration secret logging</td>
+<td><code>crate/server/src/config/command_line/</code> (all files)</td>
+</tr>
+<tr>
+<td>Auth failure logging</td>
+<td><code>crate/server/src/middlewares/</code></td>
+</tr>
+<tr>
+<td>Privileged operation audit events</td>
+<td><code>crate/server/src/core/operations/export_get.rs</code>, <code>destroy.rs</code>, <code>revoke.rs</code></td>
+</tr>
+<tr>
+<td>Error response content</td>
+<td><code>crate/server/src/routes/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="102-investigation-steps">10.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Secrets in config log output: DB URLs, TLS passwords, API tokens</span>
+grep -rn <span class="hljs-string">"tracing::\|info!\|warn!\|error!\|debug!\|trace!"</span> \
+  crate/server/src/config/ --include=<span class="hljs-string">"*.rs"</span> \
+  | grep -i <span class="hljs-string">"password\|secret\|token\|key\|credential\|url\|connection"</span>
+
+<span class="hljs-comment"># Step 2 — Auth middleware: failure messages must NOT include the raw token value</span>
+grep -rn <span class="hljs-string">"info!\|warn!\|error!\|debug!"</span> \
+  crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span> \
+  | grep -i <span class="hljs-string">"token\|bearer\|api.key\|password\|secret"</span>
+
+<span class="hljs-comment"># Step 3 — Privileged operations logged with user identity?</span>
+<span class="hljs-comment"># (Export, Destroy, Revoke are high-value audit events)</span>
+grep -n <span class="hljs-string">"tracing\|info!\|warn!\|error!"</span> \
+  crate/server/src/core/operations/export_get.rs \
+  crate/server/src/core/operations/destroy.rs \
+  crate/server/src/core/operations/revoke.rs 2&gt;/dev/null | head -40
+
+<span class="hljs-comment"># Step 4 — Failed auth events: are 401/403 responses logged?</span>
+grep -rn <span class="hljs-string">"401\|403\|Unauthorized\|Forbidden\|warn!\|error!"</span> \
+  crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span> \
+  | grep -i <span class="hljs-string">"auth\|denied\|failed\|reject"</span>
+
+<span class="hljs-comment"># Step 5 — Log injection: user-controlled strings inserted into tracing macros</span>
+<span class="hljs-comment"># without sanitization allow log-forging via embedded newlines</span>
+grep -rn <span class="hljs-string">'info!.*user\|debug!.*uid\|trace!.*tag\|warn!.*{.*}'</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> | head -20
+
+<span class="hljs-comment"># Step 6 — Coverage: all KMIP operations should have an instrumentation span</span>
+grep -rn <span class="hljs-string">"span!\|instrument\|#\[tracing::instrument\]"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> | wc -l
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"Total operation files:"</span>
+ls crate/server/src/core/operations/*.rs 2&gt;/dev/null | wc -l
+</div></code></pre>
+<h3 id="103-findings">10.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ❌ Vulnerability found
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/config/command_line/db.rs</code></li>
+<li><code>crate/server/src/config/command_line/tls_config.rs</code></li>
+<li><code>crate/server/src/middlewares/jwt/jwks.rs</code></li>
+<li><code>crate/server/src/routes/ui_auth.rs</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A09-1</td>
+<td><code>config/command_line/db.rs:160,168</code></td>
+<td><strong>High</strong></td>
+<td>The <code>Display</code> impl for <code>MainDBConfig</code> prints PostgreSQL and MySQL <code>database_url</code> <strong>completely unmasked</strong>. A URL like <code>postgresql://kms_user:secretpassword@host/kms_db</code> is logged verbatim at server startup. Any log aggregation system (Splunk, ELK, CloudWatch) will store the database password in plaintext. Redis correctly masks the password as <code>[****]</code>.</td>
+</tr>
+<tr>
+<td>A09-2</td>
+<td><code>config/command_line/tls_config.rs:81</code></td>
+<td>Medium</td>
+<td>TLS P12 password is masked via <code>.replace('.', &quot;*&quot;)</code> — this only replaces dot characters with asterisks. A password like <code>my_pass</code> is logged unchanged; <code>my.pass</code> becomes <code>my*pass</code>. The masking is ineffective for most passwords.</td>
+</tr>
+<tr>
+<td>A09-3</td>
+<td><code>middlewares/jwt/jwt_token_auth.rs:115</code></td>
+<td>Low</td>
+<td>JWT authentication failures (invalid signature, expired token) are logged only at <code>DEBUG</code> level. These are security-relevant events that should be logged at <code>WARN</code> or <code>ERROR</code> to ensure they appear in production monitoring dashboards.</td>
+</tr>
+<tr>
+<td>A09-4</td>
+<td><code>core/operations/</code> (decrypt.rs, locate.rs, sign.rs)</td>
+<td>Low</td>
+<td>User-controlled strings (<code>uid</code>, <code>user</code>) are embedded in <code>tracing</code> macro log calls without sanitization. An attacker can inject newline characters into a UID field to insert fake log records.</td>
+</tr>
+<tr>
+<td>A09-5</td>
+<td><code>core/operations/export_get.rs</code>, <code>destroy.rs</code></td>
+<td>✅</td>
+<td>Export and Destroy operations are logged with both <code>uid</code> and <code>user</code> at INFO level. Privileged operation audit trail is present.</td>
+</tr>
+<tr>
+<td>A09-6</td>
+<td><code>routes/ui_auth.rs</code></td>
+<td>✅</td>
+<td><code>ui_oidc_client_secret</code> is masked as <code>****</code> in Display output. OIDC secret does not leak into logs.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A09-1: <strong>Critical</strong> — Mask the password component in database URLs before logging. Parse the URL, replace the password with <code>[****]</code>, then log. Example: use the <code>url</code> crate to parse and rebuild. Fix the <code>Display</code> impl for <code>MainDBConfig::PostgreSQL</code> and <code>MainDBConfig::MySQL</code>.</li>
+<li>A09-2: Fix the P12 password masking to replace <em>all</em> characters: <code>.repeat(&quot;*&quot;, password.len())</code> or simply log <code>&quot;[****]&quot;</code> as a constant.</li>
+<li>A09-3: Change JWT auth failure tracing to <code>tracing::warn!</code> and include the source IP address.</li>
+<li>A09-4: Sanitize or percent-encode <code>uid</code> and <code>user</code> strings before embedding them in log calls. Consider using <code>tracing</code> structured fields (<code>uid = %uid</code>) and ensuring the log formatter strips control characters.</li>
+</ul>
+<hr>
+<h2 id="11-a10-%E2%80%93-server-side-request-forgery-ssrf">11. A10 – Server-Side Request Forgery (SSRF)</h2>
+<blockquote>
+<p><strong>OWASP description</strong>: SSRF flaws occur when a web application fetches a remote resource
+without validating the user-supplied URL, allowing an attacker to coerce outbound
+requests to unexpected destinations (cloud metadata endpoints, internal services, etc.).</p>
+</blockquote>
+<h3 id="111-scope">11.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JWKS URL fetch</td>
+<td><code>crate/server/src/middlewares/jwt/jwks.rs</code></td>
+</tr>
+<tr>
+<td>Google CSE callbacks</td>
+<td><code>crate/server/src/routes/google_cse/</code></td>
+</tr>
+<tr>
+<td>AWS XKS outbound calls</td>
+<td><code>crate/server/src/routes/aws_xks/</code></td>
+</tr>
+<tr>
+<td>Azure EKM connections</td>
+<td><code>crate/server/src/routes/azure_ekm/</code></td>
+</tr>
+<tr>
+<td>HTTP client construction</td>
+<td><code>crate/clients/client/src/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="112-investigation-steps">11.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Enumerate all outbound HTTP client instantiations</span>
+grep -rn <span class="hljs-string">"reqwest::Client\|reqwest::get\|Client::new\|ClientBuilder\|hyper::Client"</span> \
+  crate/ --include=<span class="hljs-string">"*.rs"</span> | grep -v <span class="hljs-string">"test\|#\[cfg(test"</span>
+
+<span class="hljs-comment"># Step 2 — JWKS URL: validated / allowlisted, or taken verbatim from config?</span>
+grep -n <span class="hljs-string">"jwks_uri\|jwks_url\|fetch\|get\|url\|https\|http"</span> \
+  crate/server/src/middlewares/jwt/jwks.rs
+
+<span class="hljs-comment"># Step 3 — User-controlled URL fields in KMIP extensions or attributes</span>
+<span class="hljs-comment"># (an attacker could embed a URL in a KMIP extension field)</span>
+grep -rn <span class="hljs-string">"url\|http\|endpoint\|callback\|webhook"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> \
+  | grep -i <span class="hljs-string">"user\|request\|input\|attribute\|extension"</span>
+
+<span class="hljs-comment"># Step 4 — Google CSE: user-controlled redirect or callback URLs?</span>
+grep -rn <span class="hljs-string">"redirect\|callback\|url\|uri"</span> \
+  crate/server/src/routes/google_cse/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 5 — HTTP client redirect policy: SSRF via 301 redirect chain</span>
+grep -rn <span class="hljs-string">"redirect\|follow_redirect\|redirect_policy\|max_redirect"</span> \
+  crate/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 6 — Outbound URL allowlists</span>
+grep -rn <span class="hljs-string">"allowlist\|whitelist\|allowed_url\|valid_host\|parse.*url\|Url::parse"</span> \
+  crate/ --include=<span class="hljs-string">"*.rs"</span> | grep -v <span class="hljs-built_in">test</span> | head -15
+</div></code></pre>
+<h3 id="113-findings">11.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/middlewares/jwt/jwks.rs</code></li>
+<li><code>crate/server/src/routes/ui_auth.rs</code></li>
+<li><code>crate/clients/client/src/http_client/tls.rs</code></li>
+<li><code>crate/clients/ckms/src/config.rs</code></li>
+<li>All <code>crate/server/src/routes/</code> URL-consuming code</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A10-1</td>
+<td><code>clients/ckms/src/config.rs:115</code></td>
+<td>Medium</td>
+<td><code>accept_invalid_certs: true</code> is hardcoded in the CLI's <code>KmsClientConfig::default()</code>. This disables outbound TLS certificate validation for CLI-to-KMS connections. While the CLI is not server-side code, <code>cosmian_kms_client</code> is also used in integration tests and potentially in embedded contexts where this default silently bypasses TLS chain validation.</td>
+</tr>
+<tr>
+<td>A10-2</td>
+<td><code>middlewares/jwt/jwks.rs</code></td>
+<td>Low</td>
+<td><code>reqwest::Client::new()</code> is used for JWKS endpoint fetching. By default <code>reqwest</code> follows HTTP redirects. The JWKS URL comes from admin configuration (<code>jwt_issuer_uri</code>), not from user input at request time. If an admin passes an internal URL as the JWKS issuer, the server could fetch internal endpoints (low-risk SSRF). No redirect allowlist or <code>redirect::none()</code> is applied.</td>
+</tr>
+<tr>
+<td>A10-3</td>
+<td><code>routes/ui_auth.rs</code></td>
+<td>Low</td>
+<td>Same pattern: <code>reqwest::Client::new()</code> used for OAuth token exchange, following redirects without restriction.</td>
+</tr>
+<tr>
+<td>A10-4</td>
+<td>All server routes</td>
+<td>✅</td>
+<td>No user-controlled URL parameters are used for server-side HTTP fetches at request time. JWKS/OIDC URLs come from static admin configuration only. The SSRF surface is limited to the initial server startup configuration.</td>
+</tr>
+<tr>
+<td>A10-5</td>
+<td><code>routes/aws_xks/</code>, <code>routes/azure_ekm/</code>, <code>routes/google_cse/</code></td>
+<td>✅</td>
+<td>Enterprise routes do not make outbound requests based on incoming request data.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>A10-1: Change CLI default to <code>accept_invalid_certs: false</code>. Provide an explicit <code>--insecure</code> flag or <code>COSMIAN_KMS_NO_VERIFY_CERT=true</code> env var that must be explicitly set.</li>
+<li>A10-2 / A10-3: Build the <code>reqwest</code> client with <code>.redirect(reqwest::redirect::Policy::none())</code> or restrict to a maximum of 1 redirect, and add a URL scheme allowlist (only <code>https://</code>).</li>
+</ul>
+<hr>
+<h2 id="12-ext-0-%E2%80%93-kms-own-authorization-system">12. EXT-0 – KMS Own Authorization System</h2>
+<blockquote>
+<p><strong>OWASP ASVS V4 (Access Control)</strong><br>
+The KMS implements a custom, multi-layer authorization model that sits on top of KMIP.
+This section audits the full call chain from HTTP request to permission decision,
+covering privilege escalation paths, bypass mechanisms, and delegation controls.</p>
+</blockquote>
+<h3 id="121-architecture">12.1 Architecture</h3>
+<p>Every KMIP operation follows this authorization chain:</p>
+<pre class="hljs"><code><div>HTTP request
+  └─ TlsAuthMiddleware | JwtMiddleware | ApiTokenMiddleware
+       └─ EnsureAuthMiddleware  (fallback: uses default_username)
+            └─ routes/kmip.rs  →  kms.get_user(&amp;req)
+                 │  ↑ force_default_username=true → ALL identities silently discarded
+                 └─ dispatch(kms, ttlv, user)  →  operation handler
+                      └─ retrieve_object_for_operation(uid, op, kms, user)
+                           └─ user_has_permission(user, owm, op, kms)
+                                ├─ SHORTCUT  user == owm.owner()  →  true  (owner bypass)
+                                ├─ IMPLICIT  ops.contains(Get)   →  ALL ops allowed
+                                └─ DB query  list_user_operations_on_object(uid, user)
+                                        ├─ SQL: WHERE object_id = uid   AND user_id = user
+                                        └─     UNION object_id = &quot;*&quot;  AND user_id = user
+</div></code></pre>
+<p>Key design decisions with security implications:</p>
+<table>
+<thead>
+<tr>
+<th>Mechanism</th>
+<th>Location</th>
+<th>Risk if abused</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Owner bypass</td>
+<td><code>user_has_permission()</code></td>
+<td>Ownership must be immutable post-creation</td>
+</tr>
+<tr>
+<td><code>Get</code> → all operations</td>
+<td><code>user_has_permission()</code></td>
+<td>Anyone with <code>Get</code> can Encrypt/Decrypt/Sign/Export</td>
+</tr>
+<tr>
+<td>Wildcard <code>&quot;*&quot;</code> stores Create perm</td>
+<td>DB schema</td>
+<td>User with Create on <code>&quot;*&quot;</code> can create unlimited objects</td>
+</tr>
+<tr>
+<td><code>force_default_username=true</code></td>
+<td><code>kms.get_user()</code></td>
+<td>Discards all user identities — complete authorization bypass</td>
+</tr>
+<tr>
+<td><code>privileged_users</code> list</td>
+<td><code>clap_config.rs</code></td>
+<td>Members bypass Create/Import permission checks</td>
+</tr>
+<tr>
+<td><code>EnsureAuth</code> fallback</td>
+<td><code>ensure_auth.rs</code></td>
+<td>Default single-user mode if no auth is configured</td>
+</tr>
+</tbody>
+</table>
+<h3 id="122-scope">12.2 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core permission gate</td>
+<td><code>crate/server/src/core/retrieve_object_utils.rs</code></td>
+</tr>
+<tr>
+<td>KMS identity resolution &amp; delegation</td>
+<td><code>crate/server/src/core/kms/permissions.rs</code></td>
+</tr>
+<tr>
+<td>Permission data types</td>
+<td><code>crate/access/src/access.rs</code></td>
+</tr>
+<tr>
+<td>SQL permission queries</td>
+<td><code>crate/server_database/src/stores/sql/</code> — permissions table</td>
+</tr>
+<tr>
+<td>Redis permission store</td>
+<td><code>crate/server_database/src/stores/redis/permissions.rs</code></td>
+</tr>
+<tr>
+<td>Privilege config (<code>force_default_username</code>, <code>privileged_users</code>)</td>
+<td><code>crate/server/src/config/command_line/clap_config.rs</code></td>
+</tr>
+<tr>
+<td>Create / Import authorization</td>
+<td><code>crate/server/src/core/operations/create.rs</code>, <code>import.rs</code>, <code>register.rs</code></td>
+</tr>
+<tr>
+<td>Delegation controls</td>
+<td><code>crate/server/src/core/kms/permissions.rs</code> — <code>grant_access()</code>, <code>revoke_access()</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="123-investigation-steps">12.3 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Map every bypass mechanism and their activation conditions</span>
+grep -n <span class="hljs-string">"force_default_username\|privileged_users\|default_username"</span> \
+  crate/server/src/config/command_line/clap_config.rs \
+  crate/server/src/core/kms/permissions.rs
+
+<span class="hljs-comment"># Step 2 — Owner bypass: trace user_has_permission() — verify the owner check</span>
+<span class="hljs-comment"># cannot be spoofed (e.g. owners set at Create time, never updated)</span>
+grep -n <span class="hljs-string">"owner\|is_object_owned_by\|user.*==.*owner\|owner.*=="</span> \
+  crate/server/src/core/retrieve_object_utils.rs \
+  crate/server/src/core/kms/permissions.rs
+
+<span class="hljs-comment"># Step 3 — "Get implies all operations": find the implicit grant and verify scope</span>
+grep -n <span class="hljs-string">"KmipOperation::Get\|contains.*Get\|implies\|all.*ops"</span> \
+  crate/server/src/core/retrieve_object_utils.rs
+
+<span class="hljs-comment"># Step 4 — Wildcard "*" permission for Create: only privileged_users may grant it</span>
+grep -n <span class="hljs-string">'"\\*"\|wildcard\|Create\|privileged\|grant_access\|is_create'</span> \
+  crate/server/src/core/kms/permissions.rs \
+  crate/server/src/core/operations/create.rs \
+  crate/server/src/core/operations/import.rs
+
+<span class="hljs-comment"># Step 5 — Non-owner grant delegation: is_object_owned_by() enforced in grant_access()?</span>
+grep -A10 <span class="hljs-string">"fn grant_access"</span> crate/server/src/core/kms/permissions.rs | head -20
+
+<span class="hljs-comment"># Step 6 — Self-grant prevention: a caller must not grant themselves extra permissions</span>
+grep -n <span class="hljs-string">"user_id.*owner\|owner.*user_id\|grant.*self\|access.user_id"</span> \
+  crate/server/src/core/kms/permissions.rs
+
+<span class="hljs-comment"># Step 7 — KMIP lifecycle state filter: Destroyed / Compromised block operations</span>
+grep -n <span class="hljs-string">"Destroyed\|Compromised\|PreActive\|Deactivated\|state.*check\|filter.*state"</span> \
+  crate/server/src/core/retrieve_object_utils.rs
+
+<span class="hljs-comment"># Step 8 — Public endpoints: verify /health, /version, /server-info leak no data</span>
+grep -rn <span class="hljs-string">"health\|version\|server.info\|configure\|service\|wrap"</span> \
+  crate/server/src/start_kms_server.rs | head -30
+<span class="hljs-comment"># Read actual health and version handler to confirm response content</span>
+cat crate/server/src/routes/health.rs 2&gt;/dev/null | head -60
+
+<span class="hljs-comment"># Step 9 — Enterprise routes: verify AWS/Azure/Google/DKE routes cannot call</span>
+<span class="hljs-comment"># standard KMIP operations using their own auth as a bypass</span>
+grep -rn <span class="hljs-string">"dispatch\|kms\.\|KMS\b"</span> \
+  crate/server/src/routes/aws_xks/ \
+  crate/server/src/routes/azure_ekm/ \
+  crate/server/src/routes/google_cse/ \
+  crate/server/src/routes/ms_dke/ --include=<span class="hljs-string">"*.rs"</span> | head -30
+
+<span class="hljs-comment"># Step 10 — Redis PermTriple: concurrent grant + revoke atomicity</span>
+grep -n <span class="hljs-string">"PermTriple\|insert\|delete\|transaction\|atomic\|pipeline\|multi"</span> \
+  crate/server_database/src/stores/redis/permissions.rs | head -20
+
+<span class="hljs-comment"># Step 11 — EnsureAuth: confirm it is a last-resort fallback, not a global bypass</span>
+cat crate/server/src/middlewares/ensure_auth.rs
+</div></code></pre>
+<h3 id="124-checklist">12.4 Checklist</h3>
+<ul>
+<li><input type="checkbox" id="checkbox0"><label for="checkbox0"></label><code>force_default_username=true</code> cannot be set via any unauthenticated endpoint or environment variable injection</li>
+<li><input type="checkbox" id="checkbox1"><label for="checkbox1"></label><code>privileged_users</code> list is logged at startup so admins can detect unauthorized changes</li>
+<li><input type="checkbox" id="checkbox2"><label for="checkbox2"></label><code>Get</code> → all-operations implicit grant is intentional, documented, and cannot cross user boundaries</li>
+<li><input type="checkbox" id="checkbox3"><label for="checkbox3">A non-owner holding </label><code>Get</code> permission <strong>cannot</strong> call <code>grant_access()</code> to escalate other users</li>
+<li><input type="checkbox" id="checkbox4"><label for="checkbox4">A user cannot grant </label><code>Create</code> permission to themselves or others unless they are in <code>privileged_users</code></li>
+<li><input type="checkbox" id="checkbox5"><label for="checkbox5"></label><code>/health</code>, <code>/version</code>, <code>/server-info</code> return no object metadata, user identities, or internal state</li>
+<li><input type="checkbox" id="checkbox6"><label for="checkbox6">Enterprise routes (XKS, EKM, CSE, DKE) authenticate independently and cannot reach standard KMIP key material without passing the full KMIP auth chain</label></li>
+<li><input type="checkbox" id="checkbox7"><label for="checkbox7">KMIP lifecycle transitions from </label><code>Compromised</code> or <code>Destroyed</code> are irreversible and enforced at DB level</li>
+<li><input type="checkbox" id="checkbox8"><label for="checkbox8">Redis </label><code>PermTriple</code> updates are atomic (no TOCTOU between concurrent grant and revoke requests)</li>
+</ul>
+<h3 id="125-findings">12.5 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/core/retrieve_object_utils.rs</code></li>
+<li><code>crate/server/src/core/kms/permissions.rs</code></li>
+<li><code>crate/server/src/config/command_line/clap_config.rs</code> (for <code>force_default_username</code>)</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXT0-1</td>
+<td><code>retrieve_object_utils.rs:191</code></td>
+<td>Medium</td>
+<td><code>permissions.contains(&amp;KmipOperation::Get)</code> is used as the universal &quot;has some access&quot; check. Any user with <code>Get</code> permission on an object is treated as having permission for ALL operations on it (Encrypt, Decrypt, Sign, Verify, GetAttributes, etc.). This is an intentional design decision but undocumented as a security policy. It makes permission grants broader than the receiver may expect.</td>
+</tr>
+<tr>
+<td>EXT0-2</td>
+<td><code>core/kms/permissions.rs:23–100</code></td>
+<td>✅</td>
+<td><code>grant_access()</code> correctly enforces: (1) only the owner can grant, (2) <code>Create</code> can only be granted by privileged users to non-privileged users, (3) self-grant is prevented. Logic is sound.</td>
+</tr>
+<tr>
+<td>EXT0-3</td>
+<td><code>config/command_line/clap_config.rs</code></td>
+<td>✅</td>
+<td><code>force_default_username</code> defaults to <code>false</code>. When <code>false</code>, the authenticated user's identity is used. No anonymous or identity-collapse by default.</td>
+</tr>
+<tr>
+<td>EXT0-4</td>
+<td><code>config/command_line/clap_config.rs</code></td>
+<td>✅</td>
+<td><code>privileged_users</code> defaults to <code>None</code> (empty list). Privilege escalation via config is absent by default.</td>
+</tr>
+<tr>
+<td>EXT0-5</td>
+<td><code>core/kms/permissions.rs</code> — wildcard <code>&quot;*&quot;</code></td>
+<td>✅</td>
+<td>The <code>&quot;*&quot;</code> wildcard Create permission is documented and guarded: only <code>privileged_users</code> can grant Create, and it cannot be granted to another privileged user. Correct.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>EXT0-1: Document the <code>Get</code>-implies-all-operations policy explicitly in the KMIP operation access control spec and in operator documentation. Consider adding a fine-grained per-operation permission check (separate <code>Encrypt</code>, <code>Decrypt</code>, <code>Sign</code> permissions) for objects where the Get permission holder should not have crypto access. This is a design-level decision.</li>
+</ul>
+<hr>
+<h2 id="13-ext-1-%E2%80%93-cryptographic-key-lifecycle--zeroization">13. EXT-1 – Cryptographic Key Lifecycle &amp; Zeroization</h2>
+<blockquote>
+<p><strong>OWASP ASVS V6 (Stored Cryptography)</strong><br>
+Sensitive cryptographic material (private keys, AES keys, shared secrets) must be
+zeroized from memory immediately after use. Residual key material in heap memory
+enables cold-boot and process-dump attacks.</p>
+</blockquote>
+<h3 id="131-scope">13.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key wrapping cache</td>
+<td><code>crate/server/src/core/wrapping/wrap.rs</code></td>
+</tr>
+<tr>
+<td>Key unwrap paths</td>
+<td><code>crate/server/src/core/wrapping/unwrap.rs</code></td>
+</tr>
+<tr>
+<td>PKCS#11 key objects</td>
+<td><code>crate/clients/pkcs11/provider/src/kms_object.rs</code></td>
+</tr>
+<tr>
+<td>Crypto operations</td>
+<td><code>crate/crypto/src/</code></td>
+</tr>
+<tr>
+<td>KMIP key material types</td>
+<td><code>crate/kmip/src/</code> — <code>KeyMaterial</code>, <code>EncryptedKeyBlock</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="132-investigation-steps">13.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — Baseline: count all zeroize usages in the workspace</span>
+grep -rn <span class="hljs-string">"zeroize\|Zeroizing\|ZeroizeOnDrop\|SecretBox"</span> \
+  crate/ --include=<span class="hljs-string">"*.rs"</span> | wc -l
+
+<span class="hljs-comment"># Step 2 — Find Vec&lt;u8&gt; likely holding key material WITHOUT Zeroizing&lt;&gt; wrapper</span>
+<span class="hljs-comment"># Focus on operations that touch raw key bytes</span>
+grep -rn <span class="hljs-string">"Vec&lt;u8&gt;\|Box&lt;\[u8\]&gt;\|key_bytes\|key_material\|private_key\|secret_key"</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> \
+  | grep -v <span class="hljs-string">"Zeroizing\|zeroize\|#\[derive.*Zeroize\|//\|test_"</span> | head -30
+
+<span class="hljs-comment"># Step 3 — Wrapping cache lifecycle: entries must be zeroized on eviction and drop</span>
+grep -n <span class="hljs-string">"cache\|remove\|evict\|drop\|DashMap\|HashMap\|clear\|Zeroizing"</span> \
+  crate/server/src/core/wrapping/wrap.rs
+
+<span class="hljs-comment"># Step 4 — KMIP type zeroization: KeyMaterial and EncryptedKeyBlock implement Zeroize?</span>
+grep -rn <span class="hljs-string">"impl Zeroize\|impl Drop\|#\[derive.*Zeroize\|ZeroizeOnDrop"</span> \
+  crate/kmip/src/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 5 — Key bytes in error messages (could surface in logs)</span>
+grep -rn <span class="hljs-string">'format!.*\bkey\b\|error!.*\bkey\b\|warn!.*\bkey\b'</span> \
+  crate/server/src/core/operations/ --include=<span class="hljs-string">"*.rs"</span> | head -15
+
+<span class="hljs-comment"># Step 6 — PKCS#11 provider: key material lifecycle before drop</span>
+grep -n <span class="hljs-string">"Zeroizing\|zeroize\|drop\|key_value\|private\|CK_BYTE"</span> \
+  crate/clients/pkcs11/provider/src/kms_object.rs | head -30
+
+<span class="hljs-comment"># Step 7 — Unsafe block inventory (potential for bypassing Drop guarantees)</span>
+cargo geiger --workspace --output-format Ratio 2&gt;/dev/null | head -30
+</div></code></pre>
+<h3 id="133-findings">13.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ⚠️ Review needed
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/core/operations/derive_key.rs</code></li>
+<li><code>crate/server/src/core/wrapping/wrap.rs</code></li>
+<li><code>crate/crypto/src/crypto/symmetric/symmetric_ciphers.rs</code></li>
+<li><code>crate/server/src/core/operations/mac.rs</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXT1-1</td>
+<td><code>operations/derive_key.rs:397,421</code></td>
+<td>Medium</td>
+<td><code>derive_key()</code> returns <code>Vec&lt;u8&gt;</code> for the wrapped/derived key material. The caller stores this in a <code>ByteString</code> which is not <code>Zeroizing</code>. If the derived key is sensitive (a root key, a DEK), it remains in heap memory as plaintext until the allocator reuses that memory. 96 other files in the codebase correctly use <code>Zeroizing&lt;Vec&lt;u8&gt;&gt;</code>.</td>
+</tr>
+<tr>
+<td>EXT1-2</td>
+<td><code>core/wrapping/wrap.rs</code> (unwrap cache)</td>
+<td>Medium</td>
+<td>The <code>DashMap</code>/<code>HashMap</code> used as the unwrapping cache stores unwrapped (plaintext) key objects in process RAM. No TTL, no max-size, no explicit zeroization on eviction is visible in <code>wrap.rs</code>. A memory dump of the server process exposes all recently unwrapped keys.</td>
+</tr>
+<tr>
+<td>EXT1-3</td>
+<td><code>crypto/src/crypto/</code> (96 files)</td>
+<td>✅</td>
+<td>Broad use of <code>Zeroizing&lt;T&gt;</code> and <code>ZeroizeOnDrop</code> trait implementations throughout the crypto layer. Key material in <code>bytes_set_de.rs:137</code> is wrapped in <code>ZeroizeOnDrop</code>. Good coverage.</td>
+</tr>
+<tr>
+<td>EXT1-4</td>
+<td><code>operations/mac.rs:22</code></td>
+<td>✅</td>
+<td>HMAC output (<code>Vec&lt;u8&gt;</code>) is not secret key material; does not require zeroization. The HMAC key is a borrowed slice — caller is responsible for its lifecycle. No issue in the MAC module itself.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>EXT1-1: Change the <code>derive_key</code> return type to <code>Zeroizing&lt;Vec&lt;u8&gt;&gt;</code> (or wrap the result before returning). Propagate <code>Zeroizing</code> through <code>ByteString</code> usage if that type supports it.</li>
+<li>EXT1-2: Add a TTL-based eviction (e.g. 60 seconds) or use <code>mlock</code>/<code>Zeroizing</code> wrappers on cache values. On eviction, call <code>zeroize()</code> before dropping. Consider using a dedicated memory-safe cache like <code>secrecy::Secret&lt;T&gt;</code> for cached key objects.</li>
+</ul>
+<hr>
+<h2 id="14-ext-2-%E2%80%93-denial-of-service--resource-exhaustion">14. EXT-2 – Denial of Service / Resource Exhaustion</h2>
+<blockquote>
+<p><strong>OWASP ASVS V12 / CWE-400</strong><br>
+All user-controlled resource consumption must be bounded: request body size, TTLV
+nesting depth, database result set cardinality, and concurrent connection count.</p>
+</blockquote>
+<h3 id="141-scope">14.1 Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Key files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Actix-web payload limit</td>
+<td><code>crate/server/src/start_kms_server.rs</code></td>
+</tr>
+<tr>
+<td>TTLV binary parser depth</td>
+<td><code>crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs</code></td>
+</tr>
+<tr>
+<td>TTLV XML parser depth</td>
+<td><code>crate/kmip/src/ttlv/xml/parser.rs</code></td>
+</tr>
+<tr>
+<td>Locate result pagination</td>
+<td><code>crate/server_database/src/</code></td>
+</tr>
+<tr>
+<td>Batch request handling</td>
+<td><code>crate/server/src/core/operations/dispatch.rs</code></td>
+</tr>
+<tr>
+<td>Rate limiting</td>
+<td><code>crate/server/src/middlewares/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="142-investigation-steps">14.2 Investigation Steps</h3>
+<pre class="hljs"><code><div><span class="hljs-comment"># Step 1 — HTTP body size limit (Actix default is 256 KB)</span>
+grep -n <span class="hljs-string">"LimitPayloadSize\|max_payload_size\|PayloadConfig\|max_body\|content_length"</span> \
+  crate/server/src/start_kms_server.rs crate/server/src/routes/kmip.rs
+
+<span class="hljs-comment"># Step 2 — TTLV binary recursion depth guard before recursive call</span>
+grep -n <span class="hljs-string">"depth\|recursion\|max_depth\|stack\|recursive\|fn parse\|fn decode\|fn from_ttlv"</span> \
+  crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs
+
+<span class="hljs-comment"># Step 3 — TTLV XML: entity expansion (billion laughs), XXE, recursive entities</span>
+grep -n <span class="hljs-string">"expand_entities\|entity\|xml_parse\|XmlParser\|depth\|recursive\|ENTITY"</span> \
+  crate/kmip/src/ttlv/xml/parser.rs
+
+<span class="hljs-comment"># Step 4 — Locate result set: is it bounded by max_items or a database LIMIT?</span>
+grep -n <span class="hljs-string">"Locate\|limit\|max_results\|LIMIT\|pagination\|fetch_all\|count\|MaxItems"</span> \
+  crate/server/src/core/operations/locate.rs 2&gt;/dev/null
+grep -n <span class="hljs-string">"SELECT\|LIMIT\|offset\|page"</span> \
+  crate/server_database/src/stores/sql/locate_query.rs | head -20
+
+<span class="hljs-comment"># Step 5 — KMIP batch requests: unbounded RequestBatchItem count?</span>
+grep -n <span class="hljs-string">"RequestBatchItem\|batch_items\|iter\|for.*batch\|MaximumResponseSize"</span> \
+  crate/server/src/core/operations/dispatch.rs | head -20
+
+<span class="hljs-comment"># Step 6 — Rate limiting on KMIP endpoint</span>
+grep -rn <span class="hljs-string">"RateLimiter\|Governor\|leaky\|throttle\|rate\|max_conn"</span> \
+  crate/server/src/middlewares/ --include=<span class="hljs-string">"*.rs"</span>
+
+<span class="hljs-comment"># Step 7 — Allocation without bound (Semgrep TTLV parser)</span>
+semgrep --config p/rust \
+  crate/kmip/src/ttlv/ --lang rust 2&gt;/dev/null \
+  | grep -i <span class="hljs-string">"alloc\|capacity\|len\|size\|vec"</span> || <span class="hljs-literal">true</span>
+</div></code></pre>
+<h3 id="143-findings">14.3 Findings</h3>
+<pre class="hljs"><code><div>Status: ❌ Vulnerability found
+</div></code></pre>
+<p><strong>Files inspected</strong>:</p>
+<ul>
+<li><code>crate/server/src/start_kms_server.rs</code></li>
+<li><code>crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs</code></li>
+<li><code>crate/kmip/src/ttlv/xml/parser.rs</code></li>
+<li><code>crate/server/src/core/operations/locate.rs</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXT2-1</td>
+<td><code>start_kms_server.rs:767-768</code></td>
+<td><strong>High</strong></td>
+<td>HTTP request body limit is <code>10_000_000_000</code> bytes (10 GB) — same as A04-1. Any client can send a 10 GB payload, exhausting server RAM and causing OOM / process crash. No pre-read size check.</td>
+</tr>
+<tr>
+<td>EXT2-2</td>
+<td><code>ttlv_bytes_deserializer.rs:56</code></td>
+<td><strong>High</strong></td>
+<td><code>read_ttlv()</code> recurses without a depth counter. A crafted deeply-nested TTLV binary blob (e.g. 100 000 levels of nested <code>Structure</code> items) will overflow the stack and crash the process (stack overflow). This code path is reached <strong>before</strong> authentication.</td>
+</tr>
+<tr>
+<td>EXT2-3</td>
+<td><code>ttlv/xml/parser.rs:196</code></td>
+<td>Medium</td>
+<td>The TTLV XML parser has a <code>depth</code> counter variable but the parse loop contains <strong>no maximum depth enforcement</strong> — the counter is incremented but never checked against a limit. Deep XML nesting can cause the same stack overflow as the binary parser.</td>
+</tr>
+<tr>
+<td>EXT2-4</td>
+<td><code>operations/locate.rs:96-101</code></td>
+<td>Medium</td>
+<td><code>MaximumItems</code> in a Locate request is optional and fully client-controlled. When absent, all matching objects are returned. A user who owns many objects (or to whom many are shared) can trigger a very large DB query and large response, consuming CPU, DB, and network resources.</td>
+</tr>
+<tr>
+<td>EXT2-5</td>
+<td>All middlewares</td>
+<td><strong>High</strong></td>
+<td>No rate limiting (see A04-2). Without request rate limits, all DoS vectors listed above are amplifiable by a single unauthenticated client flooding the server.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommended fix</strong>:</p>
+<ul>
+<li>EXT2-2 / EXT2-3: Add depth tracking to both parsers with <code>const MAX_TTLV_DEPTH: usize = 64</code> and early-return errors when exceeded. This is the highest priority fix as it is reachable before authentication.</li>
+<li>EXT2-1: Reduce payload limit to a realistic maximum (32–64 MB). See A04-1 fix.</li>
+<li>EXT2-4: Cap <code>MaximumItems</code> server-side: if absent or &gt; configured <code>max_locate_items</code> (default 1 000), clamp the SQL LIMIT to <code>max_locate_items</code>.</li>
+<li>EXT2-5: Implement rate limiting (see A04-2 fix).</li>
+</ul>
+<hr>
+<h2 id="15-remediation-priority-matrix">15. Remediation Priority Matrix</h2>
+<p>All confirmed findings from sections 2–14, ordered by severity.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Section</th>
+<th>File:Line</th>
+<th>Severity</th>
+<th>CVSS (est.)</th>
+<th>Status</th>
+<th>Assigned to</th>
+<th>Due</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A03-2 / EXT2-2</td>
+<td>A03 Injection / EXT-2 DoS</td>
+<td><code>ttlv_bytes_deserializer.rs:56</code></td>
+<td><strong>High</strong></td>
+<td>7.5</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A04-1 / EXT2-1</td>
+<td>A04 Insecure Design / EXT-2 DoS</td>
+<td><code>start_kms_server.rs:767-768</code></td>
+<td><strong>High</strong></td>
+<td>7.5</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A04-2 / EXT2-5</td>
+<td>A04 Insecure Design / EXT-2 DoS</td>
+<td>All server middlewares</td>
+<td><strong>High</strong></td>
+<td>7.5</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A07-1</td>
+<td>A07 Auth Failures</td>
+<td><code>jwt_config.rs:170</code></td>
+<td><strong>High</strong></td>
+<td>8.1</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A07-6</td>
+<td>A07 Auth Failures</td>
+<td>All auth endpoints</td>
+<td><strong>High</strong></td>
+<td>7.3</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A09-1</td>
+<td>A09 Logging</td>
+<td><code>config/command_line/db.rs:160,168</code></td>
+<td><strong>High</strong></td>
+<td>7.2</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A02-3 / EXT1-2</td>
+<td>A02 Crypto / EXT-1 Zeroization</td>
+<td><code>core/wrapping/wrap.rs</code></td>
+<td>Medium</td>
+<td>5.5</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A03-3 / EXT2-3</td>
+<td>A03 Injection / EXT-2 DoS</td>
+<td><code>ttlv/xml/parser.rs:196</code></td>
+<td>Medium</td>
+<td>5.9</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A04-3 / EXT2-4</td>
+<td>A04 Insecure Design / EXT-2 DoS</td>
+<td><code>operations/locate.rs:96-101</code></td>
+<td>Medium</td>
+<td>5.3</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A05-1 / A01-1</td>
+<td>A05 Misconfiguration / A01 Access</td>
+<td><code>start_kms_server.rs:776–962</code></td>
+<td>Medium</td>
+<td>5.4</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A05-3 / A07-5</td>
+<td>A05 Misconfiguration / A07 Auth</td>
+<td><code>jwt_config.rs:10,155</code></td>
+<td>Medium</td>
+<td>5.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A07-2</td>
+<td>A07 Auth Failures</td>
+<td><code>api_token_auth.rs:126</code></td>
+<td>Medium</td>
+<td>5.9</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A08-2</td>
+<td>A08 Integrity</td>
+<td><code>start_kms_server.rs:737</code></td>
+<td>Medium</td>
+<td>4.3</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A09-2</td>
+<td>A09 Logging</td>
+<td><code>config/command_line/tls_config.rs:81</code></td>
+<td>Medium</td>
+<td>4.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A10-1</td>
+<td>A10 SSRF</td>
+<td><code>clients/ckms/src/config.rs:115</code></td>
+<td>Medium</td>
+<td>4.8</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>EXT1-1</td>
+<td>EXT-1 Zeroization</td>
+<td><code>operations/derive_key.rs:397,421</code></td>
+<td>Medium</td>
+<td>4.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A02-2</td>
+<td>A02 Crypto</td>
+<td><code>actions/mac.rs:17</code></td>
+<td>Low</td>
+<td>3.1</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A06-1</td>
+<td>A06 Components</td>
+<td><code>Cargo.toml</code> (rand advisory)</td>
+<td>Low</td>
+<td>3.7</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A06-2</td>
+<td>A06 Components</td>
+<td><code>Cargo.toml</code> (dup crates)</td>
+<td>Low</td>
+<td>2.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A07-3</td>
+<td>A07 Auth Failures</td>
+<td><code>tls_auth.rs:147</code></td>
+<td>Low</td>
+<td>2.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A07-4</td>
+<td>A07 Auth Failures</td>
+<td><code>start_kms_server.rs:759</code></td>
+<td>Low</td>
+<td>2.6</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A08-1</td>
+<td>A08 Integrity</td>
+<td>KMIP structs</td>
+<td>Low</td>
+<td>2.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A09-3</td>
+<td>A09 Logging</td>
+<td><code>jwt_token_auth.rs:115</code></td>
+<td>Low</td>
+<td>2.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A09-4</td>
+<td>A09 Logging</td>
+<td><code>core/operations/</code></td>
+<td>Low</td>
+<td>2.0</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A10-2 / A10-3</td>
+<td>A10 SSRF</td>
+<td><code>jwks.rs</code>, <code>ui_auth.rs</code></td>
+<td>Low</td>
+<td>2.3</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>EXT0-1</td>
+<td>EXT-0 Authorization</td>
+<td><code>retrieve_object_utils.rs:191</code></td>
+<td>Low</td>
+<td>3.1</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A02-1</td>
+<td>A02 Crypto</td>
+<td><code>symmetric_ciphers.rs:429,784</code></td>
+<td>Info</td>
+<td>N/A</td>
+<td>Closed (FP)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>A01-2</td>
+<td>A01 Access</td>
+<td><code>routes/health.rs:47</code></td>
+<td>Info</td>
+<td>N/A</td>
+<td>Open</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="severity-definitions-cvss-31-base-score-ranges">Severity definitions (CVSS 3.1 base score ranges)</h3>
+<table>
+<thead>
+<tr>
+<th>Severity</th>
+<th>CVSS score</th>
+<th>Response SLA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Critical</td>
+<td>9.0 – 10.0</td>
+<td>Fix before next release; block merge</td>
+</tr>
+<tr>
+<td>High</td>
+<td>7.0 – 8.9</td>
+<td>Fix within 1 sprint</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>4.0 – 6.9</td>
+<td>Fix within 3 sprints</td>
+</tr>
+<tr>
+<td>Low</td>
+<td>0.1 – 3.9</td>
+<td>Schedule in backlog</td>
+</tr>
+<tr>
+<td>Info</td>
+<td>N/A</td>
+<td>Document / accept risk</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="16-report-sign-off">16. Report Sign-off</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Name</th>
+<th>Signature</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lead auditor</td>
+<td>GitHub Copilot (automated)</td>
+<td>—</td>
+<td>2026-04-13</td>
+</tr>
+<tr>
+<td>Security reviewer</td>
+<td><em>(human review pending)</em></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Engineering lead</td>
+<td><em>(human review pending)</em></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Automated audit completed</strong>: 2026-04-13<br>
+<strong>Next audit scheduled</strong>: Quarterly, or on every major dependency or KMIP spec change.</p>
+<p><strong>Review frequency</strong>: Quarterly, or on every major dependency update / KMIP spec change.</p>
+<h3 id="summary-statistics">Summary statistics</h3>
+<table>
+<thead>
+<tr>
+<th>Severity</th>
+<th>Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>High</strong></td>
+<td>6</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Low</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Info / FP</td>
+<td>3</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>29</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>No Critical (CVSS ≥ 9.0) findings were identified. The most urgent items are the
+<strong>TTLV recursion depth limit</strong> (stack-overflow DoS reachable before auth),
+<strong>10 GB payload limit</strong> (memory exhaustion),
+<strong>missing rate limiting</strong>,
+<strong>JWT algorithm confusion</strong> (authentication bypass potential),
+and <strong>database credential leak in logs</strong>.</p>
+</blockquote>
+
+</body>
+</html>

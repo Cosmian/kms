@@ -251,6 +251,14 @@ Options:
 
           [env: KMS_API_TOKEN=]
 
+      --rate-limit-per-second <RATE_LIMIT_PER_SECOND>
+          Maximum number of requests per second per IP address allowed by the rate limiter.
+          When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+          Requests exceeding the limit receive HTTP 429 Too Many Requests.
+          Leave unset (default) to disable rate limiting.
+
+          [env: KMS_RATE_LIMIT_PER_SECOND=]
+
       --proxy-url <PROXY_URL>
           The proxy URL:
             - e.g., `https://secure.example` for an HTTP proxy

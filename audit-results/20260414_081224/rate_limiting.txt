@@ -1,0 +1,17 @@
+crate/server/src/main.rs:197:                rate_limit_per_second: Some(100),
+crate/server/src/config/params/server_params.rs:147:    pub rate_limit_per_second: Option<u32>,
+crate/server/src/config/params/server_params.rs:366:            // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
+crate/server/src/config/params/server_params.rs:368:            rate_limit_per_second: conf.http.rate_limit_per_second,
+crate/server/src/config/params/server_params.rs:584:        debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+crate/server/src/config/wizard/tests.rs:236:            rate_limit_per_second: None,
+crate/server/src/config/wizard/http_wizard.rs:33:        rate_limit_per_second: None,
+crate/server/src/config/command_line/http_config.rs:32:    pub rate_limit_per_second: Option<u32>,
+crate/server/src/config/command_line/http_config.rs:41:        if let Some(rps) = self.rate_limit_per_second {
+crate/server/src/config/command_line/http_config.rs:42:            write!(f, " (rate_limit: {rps}/s)")?;
+crate/server/src/config/command_line/http_config.rs:60:            rate_limit_per_second: None,
+crate/server/src/start_kms_server.rs:17:use actix_governor::{Governor, GovernorConfigBuilder};
+crate/server/src/start_kms_server.rs:744:    // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
+crate/server/src/start_kms_server.rs:746:    // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
+crate/server/src/start_kms_server.rs:747:    let rate_limit_enabled = kms_server.params.rate_limit_per_second.is_some();
+crate/server/src/start_kms_server.rs:748:    let governor_conf = if let Some(rps) = kms_server.params.rate_limit_per_second {
+crate/server/src/start_kms_server.rs:780:            .wrap(Condition::new(rate_limit_enabled, Governor::new(&governor_conf)))
