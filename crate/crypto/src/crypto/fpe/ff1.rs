@@ -170,12 +170,16 @@ impl Radix {
     fn calculate_b(&self, v: usize) -> usize {
         match *self {
             Self::Any { radix, .. } => {
-                // Number of bits needed to represent one digit in this radix is
-                // ceil(log2(radix)) = 32 - leading_zeros(radix - 1), but for radix >= 2
-                // `32 - radix.leading_zeros()` is a safe conservative upper bound.
-                // Pure integer arithmetic; no floats, no `as` casts.
-                let bit_length = usize::try_from(u32::BITS - radix.leading_zeros()).unwrap_or(32);
-                v.saturating_mul(bit_length).div_ceil(8)
+                // NIST SP 800-38G §6.1 step 6: b = ⌈⌈v × log₂(radix)⌉ / 8⌉
+                // Use exact floating-point log2 to match the spec precisely.
+                #[allow(
+                    clippy::cast_precision_loss,
+                    clippy::cast_sign_loss,
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions
+                )]
+                let bit_count = (v as f64 * f64::from(radix).log2()).ceil() as usize;
+                bit_count.div_ceil(8)
             }
             Self::PowerTwo { log_radix, .. } => (v * usize::from(log_radix)).div_ceil(8),
         }
