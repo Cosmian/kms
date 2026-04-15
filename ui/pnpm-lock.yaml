@@ -3,6 +3,16 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
+  onlyBuiltDependencies:
+    - '@playwright/test'
+    - '@swc/core'
+    - bcrypt
+    - canvas
+    - esbuild
+    - nodegit
+    - playwright
+    - sharp
+    - sodium-native
 
 overrides:
   esbuild: ^0.25.10
