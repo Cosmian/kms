@@ -217,7 +217,7 @@ jobs:
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
