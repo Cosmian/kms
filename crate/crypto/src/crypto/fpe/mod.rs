@@ -1,5 +1,5 @@
 mod alphabet;
-pub use alphabet::Alphabet;
+pub use alphabet::{Alphabet, AlphabetPreset};
 
 pub(crate) mod ff1;
 

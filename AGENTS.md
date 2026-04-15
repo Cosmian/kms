@@ -378,6 +378,13 @@ GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
   unrelated improvements alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`,
   `noUnusedParameters: true`. Fix all type errors before committing UI changes.
+- **Clippy `#[allow]` policy**: follow this decision tree for every new `#[allow(clippy::...)]`:
+  1. **Can it and SHOULD IT be fixed?** → Fix it. No allow needed.
+  2. **Cannot be fixed, but there is a code-specific reason to keep it** (e.g. variable names
+     mandated by a spec, an inherently lossy conversion with a proven safe invariant) →
+     Keep the allow and add a precise inline comment on the same or next line explaining
+     **why** the lint cannot be satisfied and why the code is correct despite it.
+  3. **Cannot be decided** → Report to the user; do not silently suppress.
 
 ---
 

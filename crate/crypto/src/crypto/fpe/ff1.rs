@@ -294,7 +294,9 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit> FF1fr<FEISTEL_ROUNDS
         }
         // `new_from_slice` returns `cipher::InvalidLength` which is a unit struct
         // carrying no information beyond "wrong length" — already encoded in the variant.
-        let ciph = CIPH::new_from_slice(key).ok().ok_or(FF1Error::InvalidKeyLength)?;
+        let ciph = CIPH::new_from_slice(key)
+            .ok()
+            .ok_or(FF1Error::InvalidKeyLength)?;
         let radix = Radix::from_u32(radix)?;
         Ok(Self { ciph, radix })
     }

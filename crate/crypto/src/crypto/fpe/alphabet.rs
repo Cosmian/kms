@@ -21,6 +21,111 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
     n
 }
 
+// ── Built-in alphabet presets ─────────────────────────────────────────────────
+
+/// Built-in alphabet presets for AES-256 FF1 Format-Preserving Encryption.
+///
+/// Each variant corresponds to a predefined character set. To build a custom
+/// alphabet use [`Alphabet::try_from`] or [`Alphabet::from_preset_or_custom`].
+//
+// DEV NOTE (not shown in docs): When adding or renaming a preset, keep the
+// following in sync:
+//   • PRESET_NAMES array below (canonical name used by the HTTP API / CLI)
+//   • doc comments on the `alphabet` field in:
+//       crate/server/src/routes/tokenize.rs  – TokenizeEncryptRequest
+//                                            – TokenizeDecryptRequest
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlphabetPreset {
+    /// Digits 0–9
+    Numeric,
+    /// Hexadecimal digits 0–9 and a–f
+    Hexadecimal,
+    /// Lowercase ASCII letters a–z
+    AlphaLower,
+    /// Uppercase ASCII letters A–Z
+    AlphaUpper,
+    /// All ASCII letters a–z and A–Z
+    Alpha,
+    /// ASCII alphanumeric: 0–9, A–Z, a–z
+    AlphaNumeric,
+    /// CJK Unified Ideographs (U+4E00–U+9FFF)
+    Chinese,
+    /// Latin-1 and Latin-1 Supplement printable characters (supports French)
+    Latin1Sup,
+    /// Latin-1 Supplement alphanumeric characters only (supports French)
+    Latin1SupAlphanum,
+    /// First ~65 000 Unicode code points
+    Utf,
+    /// Full printable ASCII range 0x20–0x7E (space through tilde, 95 characters)
+    AsciiPrintable,
+    /// Base64 alphabet A-Za-z0-9+/ (64 characters). The padding character '=' is intentionally
+    /// omitted: it carries no entropy and is preserved verbatim as a non-alphabet character.
+    Base64,
+}
+
+impl AlphabetPreset {
+    /// Canonical name used in the HTTP API and on the command line.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Numeric => "numeric",
+            Self::Hexadecimal => "hexadecimal",
+            Self::AlphaLower => "alpha_lower",
+            Self::AlphaUpper => "alpha_upper",
+            Self::Alpha => "alpha",
+            Self::AlphaNumeric => "alpha_numeric",
+            Self::Chinese => "chinese",
+            Self::Latin1Sup => "latin1sup",
+            Self::Latin1SupAlphanum => "latin1sup_alphanum",
+            Self::Utf => "utf",
+            Self::AsciiPrintable => "ascii_printable",
+            Self::Base64 => "base64",
+        }
+    }
+
+    /// All preset names, in definition order.
+    pub const PRESET_NAMES: &'static [&'static str] = &[
+        "numeric",
+        "hexadecimal",
+        "alpha_lower",
+        "alpha_upper",
+        "alpha",
+        "alpha_numeric",
+        "chinese",
+        "latin1sup",
+        "latin1sup_alphanum",
+        "utf",
+        "ascii_printable",
+        "base64",
+    ];
+
+    /// Returns the preset matching `s`, or `None` if `s` is not a known preset name.
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "numeric" => Some(Self::Numeric),
+            "hexadecimal" => Some(Self::Hexadecimal),
+            "alpha_lower" => Some(Self::AlphaLower),
+            "alpha_upper" => Some(Self::AlphaUpper),
+            "alpha" => Some(Self::Alpha),
+            "alpha_numeric" => Some(Self::AlphaNumeric),
+            "chinese" => Some(Self::Chinese),
+            "latin1sup" => Some(Self::Latin1Sup),
+            "latin1sup_alphanum" => Some(Self::Latin1SupAlphanum),
+            "utf" => Some(Self::Utf),
+            "ascii_printable" => Some(Self::AsciiPrintable),
+            "base64" => Some(Self::Base64),
+            _ => None,
+        }
+    }
+}
+
+impl Display for AlphabetPreset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 /// The `Alphabet` structure contains information about the usable characters
 /// and the minimum plaintext length for FPE.
 ///
@@ -28,19 +133,10 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
 /// Smaller alphabets as small as 2 characters are technically possible but can
 /// be challenging to ensure security.
 ///
-/// Pre-defined alphabets are available:
-///  - `Alphabet::alpha()`
-///  - `Alphabet::alpha_lower()`
-///  - `Alphabet::alpha_upper()`
-///  - `Alphabet::numeric()`
-///  - `Alphabet::hexa_decimal()`
-///  - `Alphabet::alpha_numeric()`
-///  - `Alphabet::chinese()`
-///  - `Alphabet::latin1sup()`
-///  - `Alphabet::latin1sup_alphanum()`
-///
-/// To build your own, for example the hexadecimal alphabet,
-/// use `Alphabet::try_from("0123456789abcdef").unwrap()`
+/// Pre-defined alphabets are available via [`AlphabetPreset`]; convert a preset
+/// with [`Alphabet::from`] or use the convenience constructors such as
+/// [`Alphabet::numeric`]. To build a custom alphabet use [`Alphabet::try_from`],
+/// e.g. `Alphabet::try_from("0123456789abcdef").unwrap()`.
 ///
 /// See the `encrypt()` and `decrypt()` methods for usage
 #[derive(Debug, Clone)]
@@ -80,6 +176,18 @@ impl TryFrom<&String> for Alphabet {
 impl Alphabet {
     pub fn instantiate(alphabet: &str) -> Result<Self, FPEError> {
         Self::try_from(alphabet)
+    }
+
+    /// Resolves `s` as a preset name first, then falls back to treating `s` as
+    /// a raw character set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `s` is neither a known preset name nor a valid
+    /// character set (fewer than 2 or 2^16 or more unique characters).
+    pub fn from_preset_or_custom(s: &str) -> Result<Self, FPEError> {
+        AlphabetPreset::from_name(s)
+            .map_or_else(|| Self::try_from(s), |preset| Ok(Self::from(preset)))
     }
 
     fn extend_(&mut self, additional_characters: Vec<char>) {
@@ -270,78 +378,136 @@ impl Display for Alphabet {
     }
 }
 
-macro_rules! define_alphabet_constructors {
-    ($($name:ident => $alphabet:expr),+) => {
-        $(
-            impl Alphabet {
-                #[doc = "Creates an Alphabet with the given alphabet string: `"]
-                #[doc = $alphabet]
-                #[doc = "`."]
-                #[must_use] pub fn $name() -> Alphabet {
-                    Alphabet::try_from($alphabet).unwrap()
-                }
-            }
-        )+
+// ── Preset → Alphabet conversion ──────────────────────────────────────────────
+
+/// Builds an `Alphabet` from a preset character string.
+/// Preset strings are guaranteed to produce a valid alphabet (2 ≤ chars < 2^16).
+fn build_from_chars(s: &str) -> Alphabet {
+    let chars = s.chars().sorted().unique().collect_vec();
+    Alphabet {
+        min_text_length: min_plaintext_length(chars.len()),
+        chars,
     }
 }
 
-define_alphabet_constructors! {
-    numeric => "0123456789",
-    hexa_decimal => "0123456789abcdef",
-    alpha_lower => "abcdefghijklmnopqrstuvwxyz",
-    alpha_upper => "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    alpha => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    alpha_numeric => "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+impl From<AlphabetPreset> for Alphabet {
+    fn from(preset: AlphabetPreset) -> Self {
+        match preset {
+            AlphabetPreset::Numeric => build_from_chars("0123456789"),
+            AlphabetPreset::Hexadecimal => build_from_chars("0123456789abcdef"),
+            AlphabetPreset::AlphaLower => build_from_chars("abcdefghijklmnopqrstuvwxyz"),
+            AlphabetPreset::AlphaUpper => build_from_chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+            AlphabetPreset::Alpha => {
+                build_from_chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            }
+            AlphabetPreset::AlphaNumeric => {
+                build_from_chars("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            }
+            AlphabetPreset::Chinese => {
+                let chars = (0x4E00..=0x9FFF_u32)
+                    .filter_map(char::from_u32)
+                    .collect::<Vec<char>>();
+                Self {
+                    min_text_length: min_plaintext_length(chars.len()),
+                    chars,
+                }
+            }
+            AlphabetPreset::Latin1Sup => {
+                let chars = (0x0021..=0x007E_u32)
+                    .chain(0x00C0..=0x00FF)
+                    .filter_map(char::from_u32)
+                    .collect::<Vec<char>>();
+                Self {
+                    min_text_length: min_plaintext_length(chars.len()),
+                    chars,
+                }
+            }
+            AlphabetPreset::Latin1SupAlphanum => {
+                let chars = (0x0030..=0x0039_u32)
+                    .chain(0x0041..=0x005A)
+                    .chain(0x0061..=0x007A)
+                    .chain(0x00C0..=0x00FF)
+                    .filter_map(char::from_u32)
+                    .collect::<Vec<char>>();
+                Self {
+                    min_text_length: min_plaintext_length(chars.len()),
+                    chars,
+                }
+            }
+            AlphabetPreset::Utf => {
+                let chars = (0..=1 << 16_u32)
+                    .filter_map(char::from_u32)
+                    .collect::<Vec<char>>();
+                Self {
+                    min_text_length: min_plaintext_length(chars.len()),
+                    chars,
+                }
+            }
+            AlphabetPreset::AsciiPrintable => {
+                // 0x20 (space) through 0x7E (tilde) — 95 printable ASCII characters
+                build_from_chars(
+                    " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+                )
+            }
+            AlphabetPreset::Base64 => {
+                // RFC 4648 alphabet without the padding character '='
+                // '=' carries no entropy and is preserved verbatim via rebase/debase
+                build_from_chars("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+            }
+        }
+    }
 }
 
 impl Alphabet {
-    /// Creates an Alphabet with the first 63489 (~2^16) Unicode characters
-    pub fn utf() -> Self {
-        let chars = (0..=1 << 16_u32)
-            .filter_map(char::from_u32)
-            .collect::<Vec<char>>();
-        Self {
-            min_text_length: min_plaintext_length(chars.len()),
-            chars,
-        }
-    }
+    // ── Preset convenience constructors ──────────────────────────────────────
+    // Thin wrappers over `From<AlphabetPreset>` kept for backward compatibility.
 
-    /// Creates an Alphabet with the Chinese characters
+    #[must_use]
+    pub fn numeric() -> Self {
+        Self::from(AlphabetPreset::Numeric)
+    }
+    #[must_use]
+    pub fn hexadecimal() -> Self {
+        Self::from(AlphabetPreset::Hexadecimal)
+    }
+    #[must_use]
+    pub fn alpha_lower() -> Self {
+        Self::from(AlphabetPreset::AlphaLower)
+    }
+    #[must_use]
+    pub fn alpha_upper() -> Self {
+        Self::from(AlphabetPreset::AlphaUpper)
+    }
+    #[must_use]
+    pub fn alpha() -> Self {
+        Self::from(AlphabetPreset::Alpha)
+    }
+    #[must_use]
+    pub fn alpha_numeric() -> Self {
+        Self::from(AlphabetPreset::AlphaNumeric)
+    }
+    #[must_use]
     pub fn chinese() -> Self {
-        let chars = (0x4E00..=0x9FFF_u32)
-            .filter_map(char::from_u32)
-            .collect::<Vec<char>>();
-        Self {
-            min_text_length: min_plaintext_length(chars.len()),
-            chars,
-        }
+        Self::from(AlphabetPreset::Chinese)
     }
-
-    /// Creates an Alphabet with the latin-1 and latin1-supplement characters
-    /// (supports French)
+    #[must_use]
     pub fn latin1sup() -> Self {
-        let chars = (0x0021..=0x007E_u32)
-            .chain(0x00C0..=0x00FF)
-            .filter_map(char::from_u32)
-            .collect::<Vec<char>>();
-        Self {
-            min_text_length: min_plaintext_length(chars.len()),
-            chars,
-        }
+        Self::from(AlphabetPreset::Latin1Sup)
     }
-
-    /// Creates an Alphabet with the latin-1 and latin1-supplement characters
-    /// but without the non alphanumeric characters (supports French)
+    #[must_use]
     pub fn latin1sup_alphanum() -> Self {
-        let chars = (0x0030..=0x0039_u32)
-            .chain(0x0041..=0x005A)
-            .chain(0x0061..=0x007A)
-            .chain(0x00C0..=0x00FF)
-            .filter_map(char::from_u32)
-            .collect::<Vec<char>>();
-        Self {
-            min_text_length: min_plaintext_length(chars.len()),
-            chars,
-        }
+        Self::from(AlphabetPreset::Latin1SupAlphanum)
+    }
+    #[must_use]
+    pub fn utf() -> Self {
+        Self::from(AlphabetPreset::Utf)
+    }
+    #[must_use]
+    pub fn ascii_printable() -> Self {
+        Self::from(AlphabetPreset::AsciiPrintable)
+    }
+    #[must_use]
+    pub fn base64() -> Self {
+        Self::from(AlphabetPreset::Base64)
     }
 }

@@ -49,8 +49,8 @@ impl Integer {
 
         // Derive the minimum digit count from the FF1 algorithm's own constraint,
         // keeping a single source of truth instead of a duplicated lookup table.
-        let min_digits =
-            super::ff1::radix_min_len(radix).map_err(|e| FPEError::OperationFailed(e.to_string()))?;
+        let min_digits = super::ff1::radix_min_len(radix)
+            .map_err(|e| FPEError::OperationFailed(e.to_string()))?;
 
         if digits < min_digits {
             return Err(FPEError::OutOfBounds(format!(
@@ -156,8 +156,9 @@ impl Integer {
 
         //encrypt
         let ciphertext = self.numeric_alphabet.encrypt(key, tweak, &str_value)?;
-        let big_ciphertext = BigUint::from_str_radix(&ciphertext, self.radix)
-            .map_err(|e| FPEError::OperationFailed(format!("failed generating the ciphertext value {e}")))?;
+        let big_ciphertext = BigUint::from_str_radix(&ciphertext, self.radix).map_err(|e| {
+            FPEError::OperationFailed(format!("failed generating the ciphertext value {e}"))
+        })?;
         Ok(big_ciphertext)
     }
 
@@ -245,8 +246,9 @@ impl Integer {
         let str_value = format!("{:0>digits$}", big_ciphertext.to_str_radix(self.radix));
         let plaintext = self.numeric_alphabet.decrypt(key, tweak, &str_value)?;
 
-        BigUint::from_str_radix(&plaintext, self.radix)
-            .map_err(|e| FPEError::OperationFailed(format!("failed generating the plaintext value {e}")))
+        BigUint::from_str_radix(&plaintext, self.radix).map_err(|e| {
+            FPEError::OperationFailed(format!("failed generating the plaintext value {e}"))
+        })
     }
 
     /// The maximum value supported by this Integer

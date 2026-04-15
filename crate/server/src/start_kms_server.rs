@@ -44,6 +44,9 @@ use openssl::{
 };
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
 
+#[cfg(feature = "non-fips")]
+use crate::routes::tokenize;
+
 use crate::{
     config::{IdpAuthConfig, ServerParams, TlsParams},
     core::KMS,
@@ -968,9 +971,15 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::grant_access)
             .service(access::revoke_access)
             .service(access::get_create_access)
-            .service(access::get_privileged_access)
-            .service(
-                web::resource("/download-cli")
+            .service(access::get_privileged_access);
+
+        #[cfg(feature = "non-fips")]
+        let default_scope = default_scope
+            .service(tokenize::encrypt)
+            .service(tokenize::decrypt);
+
+        let default_scope = default_scope.service(
+            web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
             );
