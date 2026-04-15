@@ -1002,17 +1002,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
             // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
+            // When origins are configured, allow any method and header for those origins so that
+            // browser WASM clients (which use POST with Content-Type: application/octet-stream) can
+            // pass the CORS preflight check.  When no origins are configured, Cors::default() with
+            // no allowed origins effectively blocks all cross-origin requests (same-origin only).
             .wrap({
-                let mut cors = Cors::default();
+                let mut cors = Cors::default().allow_any_method().allow_any_header();
                 for origin in &kms_server_for_http.params.cors_allowed_origins {
                     cors = cors.allowed_origin(origin.as_str());
-                }
-                // `Cors::default()` starts with empty allowed_methods and allowed_headers sets,
-                // which blocks all cross-origin preflight checks even when an explicit origin is
-                // configured.  When the operator has opted into specific origins, allow any
-                // HTTP method and request header for those origins.
-                if !kms_server_for_http.params.cors_allowed_origins.is_empty() {
-                    cors = cors.allow_any_method().allow_any_header();
                 }
                 cors
             })
