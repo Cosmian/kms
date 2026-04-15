@@ -47,8 +47,8 @@ impl TokenizeCommands {
     /// Returns an error if the server request fails or the response is invalid.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Encrypt(action) => action.run(kms_rest_client).await,
-            Self::Decrypt(action) => action.run(kms_rest_client).await,
+            Self::Encrypt(action) => action.run(kms_rest_client).await.map(|_| ()),
+            Self::Decrypt(action) => action.run(kms_rest_client).await.map(|_| ()),
         }
     }
 }
@@ -109,7 +109,7 @@ impl TokenizeEncryptAction {
     /// # Errors
     ///
     /// Returns an error if the server request fails.
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<String> {
         let req = EncryptRequest {
             key_id: &self.key_id,
             plaintext: &self.plaintext,
@@ -122,7 +122,7 @@ impl TokenizeEncryptAction {
             .await?;
 
         Stdout::new(&resp.ciphertext).write()?;
-        Ok(())
+        Ok(resp.ciphertext)
     }
 }
 
@@ -154,7 +154,7 @@ impl TokenizeDecryptAction {
     /// # Errors
     ///
     /// Returns an error if the server request fails.
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<String> {
         let req = DecryptRequest {
             key_id: &self.key_id,
             ciphertext: &self.ciphertext,
@@ -167,6 +167,6 @@ impl TokenizeDecryptAction {
             .await?;
 
         Stdout::new(&resp.plaintext).write()?;
-        Ok(())
+        Ok(resp.plaintext)
     }
 }

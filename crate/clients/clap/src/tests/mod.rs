@@ -26,5 +26,7 @@ mod rsa;
 mod secret_data;
 mod shared;
 mod symmetric;
+#[cfg(feature = "non-fips")]
+mod tokenize;
 #[cfg(feature = "non-fips")] // Since KMIP test vectors use non-FIPS algorithms such as ChaCha20
 mod xml;
