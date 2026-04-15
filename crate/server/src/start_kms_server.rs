@@ -1004,10 +1004,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
             // When origins are configured, allow any method and header for those origins so that
             // browser WASM clients (which use POST with Content-Type: application/octet-stream) can
-            // pass the CORS preflight check.  When no origins are configured, Cors::default() with
-            // no allowed origins effectively blocks all cross-origin requests (same-origin only).
+            // pass the CORS preflight check and carry session cookies (`credentials: "include"`).
+            // When no origins are configured, Cors::default() with no allowed origins effectively
+            // blocks all cross-origin requests (same-origin only).
             .wrap({
-                let mut cors = Cors::default().allow_any_method().allow_any_header();
+                let mut cors = Cors::default()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .supports_credentials();
                 for origin in &kms_server_for_http.params.cors_allowed_origins {
                     cors = cors.allowed_origin(origin.as_str());
                 }
