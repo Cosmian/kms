@@ -47,6 +47,8 @@
 ### CORS — E2E Test Support
 
 - **CI fix**: Add `cors_allowed_origins` field to `HttpConfig` (env `KMS_CORS_ALLOWED_ORIGINS`, comma-separated) so the UI E2E test KMS instance can allow the Vite dev server origin (`http://127.0.0.1:5173`) without enabling permissive CORS in production.
+- **CI fix**: `Cors::default()` in actix-cors 0.6.5 starts with empty `allowed_methods` and `allowed_headers`, causing all CORS preflight method checks to fail even when an explicit origin is listed. Added `.allow_any_method().allow_any_header()` to the CORS builder when `cors_allowed_origins` is non-empty.
+- **CI fix (Windows)**: The Windows PowerShell UI E2E test script was starting the KMS without `--cors-allowed-origins`, causing identical `TypeError: Failed to fetch` failures in Chromium. Moved the Vite preview port selection before KMS startup and pass the origin to the KMS via `--cors-allowed-origins`.
 
 ### Audit
 

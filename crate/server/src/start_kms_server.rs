@@ -1007,6 +1007,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 for origin in &kms_server_for_http.params.cors_allowed_origins {
                     cors = cors.allowed_origin(origin.as_str());
                 }
+                // `Cors::default()` starts with empty allowed_methods and allowed_headers sets,
+                // which blocks all cross-origin preflight checks even when an explicit origin is
+                // configured.  When the operator has opted into specific origins, allow any
+                // HTTP method and request header for those origins.
+                if !kms_server_for_http.params.cors_allowed_origins.is_empty() {
+                    cors = cors.allow_any_method().allow_any_header();
+                }
                 cors
             })
             .service(kmip::kmip_2_1_json)

@@ -138,6 +138,10 @@ if (-not (Test-Path $KmsBin)) {
     throw "KMS binary not found after build: $KmsBin"
 }
 
+# ── 4a. Determine Vite preview port now so that the KMS can be started with ──
+#    the correct CORS origin before Vite is launched.
+$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
+
 Write-Host "==> Starting KMS server (non-fips, sqlite) ..." -ForegroundColor Cyan
 # Use RUNNER_TEMP when available (GitHub Actions) so that the paths match the
 # `path:` globs in the "Upload logs on failure" workflow step; fall back to
@@ -156,7 +160,8 @@ try {
         "--sqlite-path", $SqliteDir,
         "--hostname", "127.0.0.1",
         "--port", "9998",
-        "--vendor-identification", "test_vendor"
+        "--vendor-identification", "test_vendor",
+        "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $KmsLogOut `
@@ -202,7 +207,6 @@ if (-not $KmsReady) {
 }
 
 # ── 5. Start Vite preview server ─────────────────────────────────────────────
-$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -ForegroundColor Cyan
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"
