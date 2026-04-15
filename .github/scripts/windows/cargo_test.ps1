@@ -36,13 +36,30 @@ function TestProject
         exit $LASTEXITCODE
     }
 
-    # Run the PKCS#11 loader tests alone to avoid the cross-binary interference
-    # described above.  These tests have been validated to pass in isolation.
-    cargo test --lib -p cosmian_pkcs11_verify --features "non-fips" -- --nocapture
-    if ($LASTEXITCODE -ne 0)
+    # Run the PKCS#11 loader tests ONE AT A TIME in separate cargo invocations.
+    # When multiple tests share a process, each test loads then *unloads*
+    # cosmian_pkcs11.dll (Library::drop → FreeLibrary).  The DLL contains a
+    # static tokio multi-thread runtime; executing DLL_PROCESS_DETACH while
+    # background worker threads are still live causes STATUS_STACK_BUFFER_OVERRUN.
+    # Running each test in its own cargo process keeps the DLL alive only for that
+    # single test and avoids the race entirely.
+    $verifyTestNames = & cargo test --lib -p cosmian_pkcs11_verify --features "non-fips" -- --list 2>$null |
+        Where-Object { $_ -match ': test$' } |
+        ForEach-Object { ($_ -replace ': test$', '').Trim() }
+    if ($null -eq $verifyTestNames -or ($verifyTestNames -is [array] -and $verifyTestNames.Count -eq 0) -or ($verifyTestNames -is [string] -and $verifyTestNames.Length -eq 0))
     {
-        Write-Error "cosmian_pkcs11_verify tests failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
+        Write-Error "No cosmian_pkcs11_verify tests found (--list returned nothing)"
+        exit 1
+    }
+    foreach ($testName in @($verifyTestNames))
+    {
+        Write-Host "==> Running cosmian_pkcs11_verify: $testName" -ForegroundColor Cyan
+        cargo test --lib -p cosmian_pkcs11_verify --features "non-fips" -- "$testName" --exact --nocapture
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Error "cosmian_pkcs11_verify test '$testName' failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
     }
 
     # Run ckms crate tests explicitly (lib + integration)
