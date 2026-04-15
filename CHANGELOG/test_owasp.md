@@ -11,7 +11,7 @@
 
 - **EXT2-1/A04-1**: Reduce HTTP payload size limit from 10 GB to 64 MB (both `PayloadConfig` and `JsonConfig`) to prevent memory exhaustion `DoS`.
 - **EXT2-5/A04-2**: Add rate-limiting middleware (`actix-governor`) controlled by `KMS_RATE_LIMIT_PER_SECOND` / `rate_limit_per_second` config field; disabled by default, enabling operators to prevent brute-force and `DoS` attacks.
-- **A05-1/A01-1**: Replace `Cors::permissive()` on the main KMIP default scope with `Cors::default()` (same-origin only); enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) intentionally retain permissive CORS as required by their integration contracts.
+- **A05-1/A01-1**: Replace `Cors::permissive()` on the main KMIP default scope with `Cors::default()` restricted to explicitly configured origins (`cors_allowed_origins`); add `allow_any_method()`, `allow_any_header()`, and `supports_credentials()` so browser WASM UI clients can pass CORS preflight checks and carry session cookies; enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) intentionally retain permissive CORS as required by their integration contracts.
 
 ### Authentication
 
