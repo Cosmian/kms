@@ -79,7 +79,7 @@ Copy-Item (Join-Path $PkgSrc "*") -Destination $PkgDst -Recurse -Force
 Write-Host "==> Installing UI dependencies ..." -ForegroundColor Cyan
 Push-Location $UiDir
 try {
-    Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile", "--no-audit")
+    Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile")
 
     Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
     # Write a .env.production.local file so Vite picks up the variables even

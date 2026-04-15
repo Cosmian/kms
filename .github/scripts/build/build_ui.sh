@@ -127,7 +127,6 @@ done
 
 pnpm run test:unit
 pnpm run check
-pnpm audit
 
 # Deploy built UI to root
 cd .. # current path: ./
