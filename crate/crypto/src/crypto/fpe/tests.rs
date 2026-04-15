@@ -12,7 +12,7 @@ use rand::{Rng, RngCore, SeedableRng, thread_rng};
 use rand_chacha::ChaCha20Rng;
 use rand_distr::Alphanumeric;
 
-use super::{Alphabet, FPEError, Float, Integer, KEY_LENGTH};
+use super::{Alphabet, FPEError, Float, Integer, KEY_LENGTH, decrypt_fpe, encrypt_fpe};
 
 /// Generate a random key using a cryptographically
 /// secure random number generator that is suitable for use with FPE
@@ -161,6 +161,52 @@ fn test_readme_examples() -> Result<(), FPEError> {
         assert_eq!(123_456.789_f64, plaintext);
     }
 
+    Ok(())
+}
+
+#[test]
+fn test_kmip_fpe_text_roundtrip() -> Result<(), FPEError> {
+    let key = [0_u8; 32];
+    let tweak = b"unique tweak";
+    let plaintext = b"1234-5678-9012-3456";
+
+    let ciphertext = encrypt_fpe(&key, plaintext, Some(b"numeric"), Some(tweak))?;
+    assert_eq!(plaintext.len(), ciphertext.len());
+    assert_ne!(ciphertext, plaintext);
+
+    let decrypted = decrypt_fpe(&key, &ciphertext, Some(b"numeric"), Some(tweak))?;
+    assert_eq!(decrypted, plaintext);
+    Ok(())
+}
+
+#[test]
+fn test_kmip_fpe_integer_roundtrip() -> Result<(), FPEError> {
+    let key = [0_u8; 32];
+    let tweak = b"integer tweak";
+    let plaintext = b"123456";
+    let metadata = br#"{"type":"integer","alphabet":"numeric"}"#;
+
+    let ciphertext = encrypt_fpe(&key, plaintext, Some(metadata), Some(tweak))?;
+    assert_eq!(ciphertext.len(), plaintext.len());
+    assert_ne!(ciphertext, plaintext);
+
+    let decrypted = decrypt_fpe(&key, &ciphertext, Some(metadata), Some(tweak))?;
+    assert_eq!(decrypted, plaintext);
+    Ok(())
+}
+
+#[test]
+fn test_kmip_fpe_float_roundtrip() -> Result<(), FPEError> {
+    let key = [0_u8; 32];
+    let tweak = b"float tweak";
+    let plaintext = b"123456.789";
+    let metadata = br#"{"type":"float"}"#;
+
+    let ciphertext = encrypt_fpe(&key, plaintext, Some(metadata), Some(tweak))?;
+    assert_ne!(ciphertext, plaintext);
+
+    let decrypted = decrypt_fpe(&key, &ciphertext, Some(metadata), Some(tweak))?;
+    assert_eq!(decrypted, plaintext);
     Ok(())
 }
 

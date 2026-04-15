@@ -35,9 +35,7 @@ non-fips = [
   "dep:cbc",
   "dep:cipher",
   "dep:itertools",
-  "dep:libm",
   "dep:num-bigint",
-  "dep:num-integer",
   "dep:num-traits",
 ]
 
@@ -55,7 +53,6 @@ cosmian_logger = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true, optional = true }
 k256 = { version = "0.13", features = ["ecdsa"], optional = true }
-libm = { workspace = true, optional = true }
 num-bigint = { workspace = true, optional = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -66,7 +63,6 @@ num-bigint-dig = { workspace = true, features = [
 openssl = { workspace = true }
 openssl-sys = "0.9"
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
-num-integer = { workspace = true, optional = true }
 num-traits = { workspace = true, optional = true }
 rust-ini = "0.21"
 serde = { workspace = true }

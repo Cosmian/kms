@@ -3,6 +3,9 @@ pub use alphabet::{Alphabet, AlphabetPreset};
 
 pub(crate) mod ff1;
 
+mod kmip_fpe;
+pub use kmip_fpe::{decrypt_fpe, encrypt_fpe};
+
 mod integer;
 pub use integer::Integer;
 

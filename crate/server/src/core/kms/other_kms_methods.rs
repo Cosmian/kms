@@ -101,6 +101,7 @@ impl KMS {
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
+            | CryptographicAlgorithm::FPE_FF1
             | CryptographicAlgorithm::ChaCha20
             | CryptographicAlgorithm::ChaCha20Poly1305
             | CryptographicAlgorithm::HMACSHA1
@@ -119,6 +120,15 @@ impl KMS {
                     None | Some(KeyFormatType::TransparentSymmetricKey) => {
                         // determine the key length in bytes
                         let key_len: usize = match cryptographic_algorithm {
+                            CryptographicAlgorithm::FPE_FF1 => {
+                                let effective_bits = attributes.cryptographic_length.unwrap_or(256);
+                                if effective_bits != 256 {
+                                    return Err(KmsError::InvalidRequest(format!(
+                                        "unsupported FPE_FF1 cryptographic_length: {effective_bits} (expected 256)"
+                                    )));
+                                }
+                                32
+                            }
                             CryptographicAlgorithm::THREE_DES => {
                                 // KMIP specifies effective key lengths (112 or 168). Raw bytes include parity bits.
                                 let effective_bits = attributes.cryptographic_length.ok_or_else(|| {
@@ -154,7 +164,10 @@ impl KMS {
                         )?;
                         let attributes = object.attributes()?;
                         debug!("Created symmetric key with attributes: {}", attributes);
-                        let tags = attributes.get_tags(vendor_id);
+                        let mut tags = attributes.get_tags(vendor_id);
+                        if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+                            tags.insert("fpe-ff1".to_owned());
+                        }
                         let uid = attributes
                             .unique_identifier
                             .as_ref()
