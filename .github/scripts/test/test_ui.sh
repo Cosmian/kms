@@ -72,7 +72,7 @@ SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}/libsofthsm2.so
 _LD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${LD_LIBRARY_PATH:-}"
 _DYLD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${DYLD_LIBRARY_PATH:-}"
 
-# ── SoftHSM2 token initialisation ───────────────────────────────────────────
+# ── SoftHSM2 token initialization ───────────────────────────────────────────
 echo "========================================="
 echo "SoftHSM2 detected – initialising token"
 echo "========================================="
