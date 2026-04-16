@@ -3,8 +3,7 @@ use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 use rand::{CryptoRng, Rng};
 use rand_distr::{num_traits::Float, Distribution, Normal, Standard, StandardNormal, Uniform};
 
-use super::datetime_to_rfc3339;
-use crate::{ano_error, core::AnoError};
+use super::{AnoError, datetime_to_rfc3339};
 
 // Represent the different Noise methods.
 pub enum NoiseMethod<F>
@@ -60,8 +59,8 @@ impl<F: Float> Laplace<F> {
     /// * `beta` - The scale parameter of the Laplace distribution. Must be strictly positive.
     pub fn new(mean: F, beta: F) -> Result<Self, AnoError> {
         if beta <= F::zero() {
-            return Err(ano_error!(
-                "Laplace beta must be strictly positive (got a non-positive value)."
+            return Err(AnoError::AnonymizationError(
+                "Laplace beta must be strictly positive (got a non-positive value).".to_owned(),
             ));
         }
         Ok(Self { mean, beta })
@@ -121,8 +120,8 @@ where
     /// * `std_dev` - the standard deviation of the noise distribution.
     pub fn new_with_parameters(method_name: &str, mean: F, std_dev: F) -> Result<Self, AnoError> {
         if std_dev.is_zero() || std_dev.is_sign_negative() {
-            return Err(ano_error!(
-                "Standard Deviation must be greater than 0 to generate noise."
+            return Err(AnoError::AnonymizationError(
+                "Standard Deviation must be greater than 0 to generate noise.".to_owned(),
             ));
         }
 
@@ -133,11 +132,11 @@ where
                 // σ = β * sqrt(2)
                 let beta = std_dev
                     / F::from(2)
-                        .ok_or_else(|| ano_error!("Internal float conversion error."))?
+                        .ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?
                         .sqrt();
                 Ok(NoiseMethod::Laplace(Laplace::<F>::new(mean, beta)?))
             }
-            _ => Err(ano_error!("{method_name} is not a supported distribution.")),
+            _ => Err(AnoError::AnonymizationError(format!("{method_name} is not a supported distribution."))),
         }?;
         Ok(Self {
             method,
@@ -161,10 +160,10 @@ where
         max_bound: F,
     ) -> Result<Self, AnoError> {
         if min_bound >= max_bound {
-            return Err(ano_error!("Min bound must be inferior to Max bound."));
+            return Err(AnoError::AnonymizationError("Min bound must be inferior to Max bound.".to_owned()));
         }
 
-        let two = F::from(2).ok_or_else(|| ano_error!("Internal float conversion error."))?;
+        let two = F::from(2).ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?;
 
         // Select the appropriate distribution method
         let method = match method_name {
@@ -172,7 +171,7 @@ where
                 let mean = (max_bound + min_bound) / two;
                 // 5σ => 99.99994% of values will be in the bounds
                 let std_dev = (mean - min_bound)
-                    / F::from(5).ok_or_else(|| ano_error!("Internal float conversion error."))?;
+                    / F::from(5).ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?;
                 Ok(NoiseMethod::Gaussian(Normal::new(mean, std_dev)?))
             }
             "Laplace" => {
@@ -181,12 +180,12 @@ where
                 let beta = (mean - min_bound)
                     / -F::ln(
                         F::from(0.00005_f64)
-                            .ok_or_else(|| ano_error!("Internal float conversion error."))?,
+                            .ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?,
                     );
                 Ok(NoiseMethod::Laplace(Laplace::<F>::new(mean, beta)?))
             }
             "Uniform" => Ok(NoiseMethod::Uniform(Uniform::new(min_bound, max_bound))),
-            _ => Err(ano_error!("No supported distribution {}.", method_name)),
+            _ => Err(AnoError::AnonymizationError(format!("No supported distribution {method_name}."))),
         }?;
         Ok(Self {
             method,
@@ -227,11 +226,11 @@ where
         factors: &[F],
     ) -> Result<Vec<F>, AnoError> {
         if data.len() != factors.len() {
-            return Err(ano_error!(
+            return Err(AnoError::AnonymizationError(format!(
                 "data and factors must have the same length ({} vs {}).",
                 data.len(),
                 factors.len()
-            ));
+            )));
         }
         // Sample noise once and scale per entry
         let noise = self.method.sample(&mut self.rng);

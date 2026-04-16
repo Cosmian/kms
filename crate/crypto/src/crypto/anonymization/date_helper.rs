@@ -1,7 +1,6 @@
 use chrono::LocalResult;
 
 use super::AnoError;
-use crate::ano_error;
 
 pub enum TimeUnit {
     Second,
@@ -23,7 +22,9 @@ impl TryFrom<&str> for TimeUnit {
             "Day" => Ok(Self::Day),
             "Month" => Ok(Self::Month),
             "Year" => Ok(Self::Year),
-            _ => Err(ano_error!("Unknown time unit {}", value)),
+            _ => Err(AnoError::AnonymizationError(format!(
+                "Unknown time unit {value}"
+            ))),
         }
     }
 }
@@ -46,14 +47,12 @@ pub fn datetime_to_rfc3339(
     original_date: &str,
 ) -> Result<String, AnoError> {
     match date_time {
-        LocalResult::None => Err(ano_error!(
-            "Could not apply method on date `{}`.",
-            original_date
-        )),
+        LocalResult::None => Err(AnoError::AnonymizationError(format!(
+            "Could not apply method on date `{original_date}`."
+        ))),
         LocalResult::Single(date) => Ok(date.to_rfc3339()),
-        LocalResult::Ambiguous(_, _) => Err(ano_error!(
-            "Applying method on date `{}` lead to ambiguous result.",
-            original_date
-        )),
+        LocalResult::Ambiguous(_, _) => Err(AnoError::AnonymizationError(format!(
+            "Applying method on date `{original_date}` lead to ambiguous result."
+        ))),
     }
 }

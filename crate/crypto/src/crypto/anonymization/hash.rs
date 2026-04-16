@@ -1,10 +1,10 @@
 use argon2::Argon2;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use cosmian_crypto_core::reexport::tiny_keccak::{Hasher as _, Sha3};
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{ano_error, core::AnoError};
+use super::AnoError;
 
 // Available hashing methods
 #[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
@@ -28,10 +28,16 @@ impl HashMethod {
             "SHA2" => Ok(Self::SHA2(salt)),
             "SHA3" => Ok(Self::SHA3(salt)),
             "Argon2" => salt.map_or_else(
-                || Err(ano_error!("Argon2 requires a salt value.")),
+                || {
+                    Err(AnoError::AnonymizationError(
+                        "Argon2 requires a salt value.".to_owned(),
+                    ))
+                },
                 |salt| Ok(Self::Argon2(salt)),
             ),
-            _ => Err(ano_error!("Not a valid hash method specified.")),
+            _ => Err(AnoError::AnonymizationError(
+                "Not a valid hash method specified.".to_owned(),
+            )),
         }
     }
 }

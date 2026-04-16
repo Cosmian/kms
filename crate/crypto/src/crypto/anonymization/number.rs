@@ -1,8 +1,7 @@
 use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use rand_distr::num_traits::Pow;
 
-use super::{datetime_to_rfc3339, AnoError, TimeUnit};
-use crate::ano_error;
+use super::{AnoError, TimeUnit, datetime_to_rfc3339};
 
 /// The `NumberAggregator` is a data anonymization technique used to round
 /// sensitive measurements to the desired power of ten.
@@ -29,17 +28,17 @@ impl NumberAggregator {
     pub fn new(power_of_ten_exponent: i32) -> Result<Self, AnoError> {
         // exponent cannot be greater than 308 (https://doc.rust-lang.org/std/primitive.f64.html#associatedconstant.MAX_10_EXP)
         if power_of_ten_exponent > f64::MAX_10_EXP {
-            return Err(ano_error!(
+            return Err(AnoError::AnonymizationError(format!(
                 "Exponent must be lower than {}, given {power_of_ten_exponent}.",
                 f64::MAX_10_EXP,
-            ));
+            )));
         }
         // Prevent very negative exponents that would allocate huge strings in format!
         if power_of_ten_exponent < -(f64::MAX_10_EXP) {
-            return Err(ano_error!(
+            return Err(AnoError::AnonymizationError(format!(
                 "Exponent must be greater than {}, given {power_of_ten_exponent}.",
                 -(f64::MAX_10_EXP),
-            ));
+            )));
         }
         Ok(Self {
             power_of_ten_exponent,
@@ -166,10 +165,15 @@ impl NumberScaler {
     /// * `std_deviation`: The standard deviation of the data distribution. Must be non-zero.
     /// * `scale`: The scaling factor.
     /// * `translate`: The translation factor.
-    pub fn new(mean: f64, std_deviation: f64, scale: f64, translate: f64) -> Result<Self, AnoError> {
+    pub fn new(
+        mean: f64,
+        std_deviation: f64,
+        scale: f64,
+        translate: f64,
+    ) -> Result<Self, AnoError> {
         if std_deviation == 0.0 {
-            return Err(ano_error!(
-                "Standard deviation must be non-zero to avoid division by zero."
+            return Err(AnoError::AnonymizationError(
+                "Standard deviation must be non-zero to avoid division by zero.".to_owned(),
             ));
         }
         Ok(Self {
