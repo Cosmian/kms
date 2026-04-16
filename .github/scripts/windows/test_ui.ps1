@@ -176,8 +176,7 @@ for ($i = 1; $i -le 300; $i++) {
         throw "KMS server process exited unexpectedly (exit code $($KmsProc.ExitCode))"
     }
     try {
-        # In PS5.1 Invoke-WebRequest throws on non-2xx responses; in PS7+ it
-        # only throws on network errors when -SkipHttpErrorCheck is used.
+        # Both PS5.1 and PS7+ throw on non-2xx responses with -ErrorAction Stop.
         # Accept any HTTP response (including KMIP 422) as a sign of readiness.
         $null = Invoke-WebRequest `
             -Uri "http://127.0.0.1:9998/kmip/2_1" `
@@ -185,13 +184,14 @@ for ($i = 1; $i -le 300; $i++) {
             -UseBasicParsing -ErrorAction Stop
         $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
     }
-    catch [System.Net.WebException] {
-        # An HTTP error response (4xx/5xx) means the server IS up
+    catch {
+        # Any HTTP error response (4xx/5xx) means the server IS up.
+        # Works for both PS5.1 (System.Net.WebException) and
+        # PS7+ (Microsoft.PowerShell.Commands.HttpResponseException).
         if ($null -ne $_.Exception.Response) {
             $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
         }
     }
-    catch { }
     Start-Sleep -Seconds 1
 }
 if (-not $KmsReady) {
