@@ -32,7 +32,7 @@ run_ui() {
 }
 
 # Run pnpm with FIPS OpenSSL env vars stripped.
-# pnpm 9.x uses MD4 in createBase32Hash (depPathToFilename) which is blocked
+# pnpm uses MD4 in createBase32Hash (depPathToFilename) which is blocked
 # by the FIPS provider loaded via LD_PRELOAD in the Nix CI shell.
 # Stripping LD_PRELOAD/OPENSSL_CONF/OPENSSL_MODULES lets pnpm use the default
 # OpenSSL provider; cargo/KMS builds are unaffected.
@@ -42,7 +42,7 @@ run_pnpm() {
 
 ensure_pnpm() {
     if ! command -v pnpm &>/dev/null; then
-        npm install -g pnpm
+        npm install -g pnpm@10.17.1
     fi
 }
 
@@ -72,7 +72,7 @@ SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}/libsofthsm2.so
 _LD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${LD_LIBRARY_PATH:-}"
 _DYLD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${DYLD_LIBRARY_PATH:-}"
 
-# ── SoftHSM2 token initialisation ───────────────────────────────────────────
+# ── SoftHSM2 token initialization ───────────────────────────────────────────
 echo "========================================="
 echo "SoftHSM2 detected – initialising token"
 echo "========================================="

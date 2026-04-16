@@ -25,10 +25,10 @@ use zeroize::Zeroizing;
 
 use crate::{
     kms_object::{
-        get_kms_object, get_kms_object_attributes, get_kms_objects, get_kms_secret_data_objects,
-        key_algorithm_from_attributes, kms_decrypt, kms_destroy_object, kms_encrypt,
-        kms_import_object, kms_import_symmetric_key, kms_revoke_object, kms_sign,
-        locate_kms_objects,
+        get_kms_certificate_objects, get_kms_object, get_kms_object_attributes,
+        get_kms_secret_data_objects, key_algorithm_from_attributes, kms_decrypt,
+        kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
+        kms_revoke_object, kms_sign, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -74,6 +74,15 @@ impl CliBackend {
     /// Helper function to create a private key from an ID
     fn create_private_key_from_id(&self, id: &str) -> Option<Arc<dyn PrivateKey>> {
         let attributes = get_kms_object_attributes(&self.kms_rest_client, id).ok()?;
+        // Guard: reject non-PrivateKey KMIP objects (e.g. symmetric keys that share the
+        // disk-encryption tag) so they are never presented as CKO_PRIVATE_KEY handles.
+        if attributes.object_type != Some(ObjectType::PrivateKey) {
+            warn!(
+                "create_private_key_from_id: {id} has type {:?} (expected PrivateKey), skipping",
+                attributes.object_type
+            );
+            return None;
+        }
         let (key_size, algorithm) = match Self::get_key_size_and_algorithm(&attributes) {
             Ok(result) => result,
             Err(e) => {
@@ -94,6 +103,15 @@ impl CliBackend {
     /// Helper function to create a symmetric key from an ID
     fn create_symmetric_key_from_id(&self, id: &str) -> Option<Arc<dyn SymmetricKey>> {
         let attributes = get_kms_object_attributes(&self.kms_rest_client, id).ok()?;
+        // Guard: reject non-SymmetricKey KMIP objects so they are never presented as
+        // CKO_SECRET_KEY handles (e.g. private keys that accidentally share a user tag).
+        if attributes.object_type != Some(ObjectType::SymmetricKey) {
+            warn!(
+                "create_symmetric_key_from_id: {id} has type {:?} (expected SymmetricKey), skipping",
+                attributes.object_type
+            );
+            return None;
+        }
         let (key_size, algorithm) = match Self::get_key_size_and_algorithm(&attributes) {
             Ok(result) => result,
             Err(e) => {
@@ -234,10 +252,9 @@ impl Backend for CliBackend {
         trace!("find_all_certificates");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
-        let kms_objects = get_kms_objects(
+        let kms_objects = get_kms_certificate_objects(
             &self.kms_rest_client,
             &[disk_encryption_tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
-            Some(KeyFormatType::X509),
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
         for dao in kms_objects {
@@ -302,13 +319,11 @@ impl Backend for CliBackend {
 
     fn find_all_public_keys(&self) -> ModuleResult<Vec<Arc<dyn PublicKey>>> {
         trace!("find_all_public_keys");
-        let ssh_key_tag = std::env::var("COSMIAN_PKCS11_SSH_KEY_TAG")
-            .unwrap_or_else(|_| COSMIAN_PKCS11_SSH_KEY_TAG.to_owned());
-        let ids = locate_kms_objects(
-            &self.kms_rest_client,
-            &[ssh_key_tag, SYSTEM_TAG_PUBLIC_KEY.to_owned()],
-        )
-        .unwrap_or_default();
+        // Use the system tag alone so ALL public keys are visible regardless of user tags.
+        // The previous query ["ssh-auth", "_pk"] used AND semantics (HAVING COUNT = 2)
+        // and silently dropped any public key that did not also carry the "ssh-auth" tag.
+        let ids = locate_kms_objects(&self.kms_rest_client, &[SYSTEM_TAG_PUBLIC_KEY.to_owned()])
+            .unwrap_or_default();
         let mut public_keys = Vec::with_capacity(ids.len());
         for id in ids {
             let kms_object = match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)

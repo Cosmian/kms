@@ -13,6 +13,7 @@ members = [
   "crate/clients/wasm",
   "crate/clients/clap",
   "crate/clients/ckms",
+  "crate/clients/pkcs11/loader",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
   # Server crates
@@ -110,18 +111,18 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat" # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols" # Strip symbol tables for smaller binaries
-opt-level = "z" # Optimize for size while maintaining performance
-codegen-units = 1 # Single codegen unit: best optimization and determinism
-panic = "abort" # Smaller binaries, no unwinding tables
+lto = "fat"         # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols"   # Strip symbol tables for smaller binaries
+opt-level = "z"     # Optimize for size while maintaining performance
+codegen-units = 1   # Single codegen unit: best optimization and determinism
+panic = "abort"     # Smaller binaries, no unwinding tables
 incremental = false # Disable incremental compilation for determinism
-debug = 0 # No debug info (timestamps/paths)
+debug = 0           # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
 incremental = false
-panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
+panic = "abort"     # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]
@@ -148,12 +149,23 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-criterion = { version = "0.6", default-features = false, features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.6", default-features = false, features = [
+  "html_reports",
+  "async_tokio",
+] }
 cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
+cosmian_crypto_core = { version = "11.0", default-features = false, features = [
+  "ser",
+] }
 cosmian_logger = "0.5"
 der = { version = "0.7", default-features = false }
-dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
+dialoguer = { version = "0.11", default-features = false, features = [
+  "editor",
+  "fuzzy-select",
+  "history",
+  "password",
+  "completion",
+] }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }

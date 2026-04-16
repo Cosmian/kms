@@ -85,6 +85,11 @@ assets = [
     "755",
   ],
   [
+    "target/release/cosmian_pkcs11_verify",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
     "target/release/libcosmian_pkcs11.so",
     "usr/local/lib/",
     "555",
@@ -97,6 +102,11 @@ features = []
 assets = [
   [
     "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/cosmian_pkcs11_verify",
     "usr/local/bin/",
     "755",
   ],
@@ -114,6 +124,11 @@ depends = ""
 assets = [
   [
     "target/release/ckms",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
+    "target/release/cosmian_pkcs11_verify",
     "usr/local/bin/",
     "755",
   ],
@@ -160,6 +175,11 @@ assets = [
     "755",
   ],
   [
+    "target/release/cosmian_pkcs11_verify",
+    "usr/local/bin/",
+    "755",
+  ],
+  [
     "target/release/libcosmian_pkcs11.so",
     "usr/local/lib/",
     "555",
@@ -190,6 +210,7 @@ assets = [
 license = "BUSL-1.1"
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
 ]
 auto-req = "no" # do not try to discover .so dependencies
@@ -200,6 +221,7 @@ features = ["non-fips"]
 license = "BUSL-1.1"
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
 ]
 auto-req = "no"
@@ -211,6 +233,7 @@ license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
   { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
   { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
@@ -227,6 +250,7 @@ license = "BUSL-1.1"
 # Dynamic linking - ships with OpenSSL shared libraries for self-contained deployment
 assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
+  { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
   { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
   { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
@@ -264,6 +288,11 @@ target = "README.md"
 [[package.metadata.packager.resources]]
 src = "target/release/cosmian_pkcs11.dll"
 target = "cosmian_pkcs11.dll"
+
+# PKCS#11 verify diagnostic binary
+[[package.metadata.packager.resources]]
+src = "target/release/cosmian_pkcs11_verify.exe"
+target = "cosmian_pkcs11_verify.exe"
 
 [package.metadata.packager.nsis]
 display-language-selector = false

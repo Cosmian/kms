@@ -863,6 +863,13 @@ prepare_workspace() {
     echo "Placed libcosmian_pkcs11.so in workspace target directories"
   fi
 
+  CLI_PKCS11_VERIFY_OUT="$REAL_CLI/bin/cosmian_pkcs11_verify"
+  if [ -f "$CLI_PKCS11_VERIFY_OUT" ]; then
+    cp -f -v "$CLI_PKCS11_VERIFY_OUT" "target/release/cosmian_pkcs11_verify"
+    cp -f -v "$CLI_PKCS11_VERIFY_OUT" "target/$HOST_TRIPLE/release/cosmian_pkcs11_verify"
+    echo "Placed cosmian_pkcs11_verify in workspace target directories"
+  fi
+
   # For dynamic builds, patch the RPATH/RUNPATH to include a portable path
   # Use $ORIGIN so the binary can locate libs both when installed
   # at /usr/local/cosmian/lib and when extracted in smoke tests.

@@ -66,7 +66,7 @@ impl SymmetricKey for Pkcs11SymmetricKey {
 
     fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
         self.raw_bytes.get_or_fetch(|| {
-            let sk = backend().find_symmetric_key(SearchOptions::Id(self.remote_id.clone()))?;
+            let sk = backend()?.find_symmetric_key(SearchOptions::Id(self.remote_id.clone()))?;
             sk.raw_bytes()
         })
     }

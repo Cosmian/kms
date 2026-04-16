@@ -24,15 +24,18 @@ The `src` directory is organized like follows:
 | Component | Required Version |
 | --------- | ---------------- |
 | Node.js   | 22.x             |
-| pnpm      | 9.x              |
+| pnpm      | 10.17.1          |
 
-> These versions are pinned by the Nix derivation (`nodejs_22` + `pnpm_9`).
+> These versions are pinned: non-Nix environments use `pnpm@10.17.1` as declared
+> in the `"packageManager"` field in `package.json`. The Nix derivation uses
+> `nodejs_22` + `pnpm_9` (v9.12.3, latest available in the pinned nixpkgs; it
+> is compatible with lockfile format 9.0 used by both pnpm 9 and pnpm 10).
 
 Install pnpm via corepack (bundled with Node.js):
 
 ```bash
 corepack enable
-corepack prepare pnpm@latest --activate
+corepack prepare pnpm@10.17.1 --activate
 ```
 
 ---

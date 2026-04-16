@@ -24,7 +24,9 @@ use ckms::{
                 },
             },
         },
-        cosmian_kms_client::{ExportObjectParams, KmsClient, batch_export_objects, export_object},
+        cosmian_kms_client::{
+            ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
+        },
         cosmian_kms_crypto::reexport::cosmian_crypto_core::{
             CsRng,
             reexport::rand_core::{RngCore, SeedableRng},
@@ -114,9 +116,10 @@ pub(crate) struct KmsObject {
     pub other_tags: Vec<String>,
 }
 
-pub(crate) fn get_kms_client_with_path(conf_path: Option<PathBuf>) -> Pkcs11Result<KmsClient> {
-    let config = ClientConfig::load(conf_path)?;
-    Ok(KmsClient::new_with_config(config.kms_config)?)
+/// Load the `KmsClientConfig` from `ckms.toml` without creating a `KmsClient`.
+/// Used by `C_GetFunctionList` when OIDC-pin mode is active (mode 2).
+pub(crate) fn get_kms_config(conf_path: Option<PathBuf>) -> Pkcs11Result<KmsClientConfig> {
+    Ok(ClientConfig::load(conf_path)?.kms_config)
 }
 
 pub(crate) fn locate_kms_objects(
@@ -133,18 +136,6 @@ pub(crate) async fn locate_kms_objects_async(
     locate_objects(kms_rest_client, tags).await
 }
 
-pub(crate) fn get_kms_objects(
-    kms_rest_client: &KmsClient,
-    tags: &[String],
-    key_format_type: Option<KeyFormatType>,
-) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_objects_async(
-        kms_rest_client,
-        tags,
-        key_format_type,
-    ))
-}
-
 /// Locate and export only `SecretData` objects with the given tags.
 /// This is stricter than `get_kms_objects` because it adds an `ObjectType=SecretData`
 /// filter to the Locate request, preventing false matches with `SymmetricKey` objects that
@@ -154,6 +145,58 @@ pub(crate) fn get_kms_secret_data_objects(
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
     RUNTIME.block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
+}
+
+/// Locate and export only `Certificate` objects with the given tags.
+/// This adds an `ObjectType=Certificate` filter to the Locate request, preventing
+/// false matches with non-certificate objects (e.g. symmetric disk-encryption keys
+/// that share the same disk-encryption tag) which cannot be exported as X509 and
+/// would otherwise cause the entire batch export to fail with `CKR_GENERAL_ERROR`.
+pub(crate) fn get_kms_certificate_objects(
+    kms_rest_client: &KmsClient,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_certificate_objects_async(kms_rest_client, tags))
+}
+
+async fn get_kms_certificate_objects_async(
+    kms_rest_client: &KmsClient,
+    tags: &[String],
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let key_ids =
+        locate_objects_of_type(kms_rest_client, tags, Some(ObjectType::Certificate)).await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}",
+            tags
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::X509),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_certificate_objects_async: found {} Certificate objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        let other_tags = attributes
+            .get_tags(VENDOR_ID_COSMIAN)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
+            .collect::<Vec<String>>();
+        results.push(KmsObject {
+            remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
 }
 
 async fn get_kms_secret_data_objects_async(
@@ -196,6 +239,8 @@ async fn get_kms_secret_data_objects_async(
     Ok(results)
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 pub(crate) async fn get_kms_objects_async(
     kms_rest_client: &KmsClient,
     tags: &[String],

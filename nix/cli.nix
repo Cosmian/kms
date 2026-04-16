@@ -88,9 +88,16 @@ rustPlatform.buildRustPackage (
       echo "== cargo build cosmian_pkcs11 (release) =="
       cargo build --release -p cosmian_pkcs11 --no-default-features ${featuresFlag}
 
+      echo "== cargo build cosmian_pkcs11_verify (release) =="
+      cargo build --release -p cosmian_pkcs11_verify --no-default-features ${featuresFlag}
+
       ${mkRelinkSnippet ''
         echo "== Re-linking ckms with system dynamic linker: $DL =="
         cargo rustc --release -p ckms --bin ckms --no-default-features ${featuresFlag} \
+          -- -C link-arg=-Wl,--dynamic-linker,$DL
+
+        echo "== Re-linking cosmian_pkcs11_verify with system dynamic linker: $DL =="
+        cargo rustc --release -p cosmian_pkcs11_verify --bin cosmian_pkcs11_verify --no-default-features ${featuresFlag} \
           -- -C link-arg=-Wl,--dynamic-linker,$DL
 
         echo "== Re-linking libcosmian_pkcs11.so without Nix RPATH =="
@@ -103,6 +110,7 @@ rustPlatform.buildRustPackage (
     installPhase = ''
       mkdir -p "$out/bin" "$out/lib"
       cp "target/release/ckms" "$out/bin/"
+      cp "target/release/cosmian_pkcs11_verify" "$out/bin/"
       if [ "$(uname)" = "Linux" ]; then
         cp "target/release/libcosmian_pkcs11.so" "$out/lib/"
       elif [ "$(uname)" = "Darwin" ]; then
@@ -113,12 +121,13 @@ rustPlatform.buildRustPackage (
     installCheckPhase = ''
       runHook preInstallCheck
       [ -x "$out/bin/ckms" ] || { echo "ERROR: ckms not found"; exit 1; }
+      [ -x "$out/bin/cosmian_pkcs11_verify" ] || { echo "ERROR: cosmian_pkcs11_verify not found"; exit 1; }
       "$out/bin/ckms" --help >/dev/null 2>&1 || true
       if [ "$(uname)" = "Linux" ]; then
         [ -f "$out/lib/libcosmian_pkcs11.so" ] || { echo "ERROR: libcosmian_pkcs11.so not found"; exit 1; }
 
         # Check GLIBC version <= 2.28 (Linux only, RHEL 8 / Debian 10 / Ubuntu 18.04 compatibility)
-        for BIN in "$out/bin/ckms" "$out/lib/libcosmian_pkcs11.so"; do
+        for BIN in "$out/bin/ckms" "$out/bin/cosmian_pkcs11_verify" "$out/lib/libcosmian_pkcs11.so"; do
           MAX_VER=$(readelf -sW "$BIN" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
           [ -z "$MAX_VER" ] && continue
           [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {

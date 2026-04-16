@@ -3,6 +3,7 @@
     "private": true,
     "version": "5.20.1",
     "type": "module",
+    "packageManager": "pnpm@10.17.1",
     "scripts": {
         "dev": "VITE_DEV_MODE=true vite",
         "preview": "vite preview",

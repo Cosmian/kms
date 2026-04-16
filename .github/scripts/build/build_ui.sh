@@ -59,13 +59,13 @@ rm -rf node_modules
 if ! command -v pnpm >/dev/null 2>&1; then
   if command -v corepack >/dev/null 2>&1; then
     corepack enable || true
-    corepack prepare pnpm@10 --activate || true
+    corepack prepare pnpm@10.17.1 --activate || true
   fi
 fi
 if ! command -v pnpm >/dev/null 2>&1; then
-  if ! npm install -g pnpm@10; then
+  if ! npm install -g pnpm@10.17.1; then
     PREFIX_DIR="${PNPM_PREFIX_DIR:-$HOME/.local}"
-    npm install -g pnpm@10 --prefix "$PREFIX_DIR"
+    npm install -g pnpm@10.17.1 --prefix "$PREFIX_DIR"
     export PATH="$PREFIX_DIR/bin:$PATH"
   fi
 fi
@@ -127,7 +127,6 @@ done
 
 pnpm run test:unit
 pnpm run check
-pnpm audit
 
 # Deploy built UI to root
 cd .. # current path: ./

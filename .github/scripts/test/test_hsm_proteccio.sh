@@ -35,6 +35,7 @@ set -x
 # Setup Proteccio HSM client tools
 if ! source "$REPO_ROOT/.github/reusable_scripts/prepare_proteccio.sh"; then
   echo "Warning: Failed to source prepare_proteccio.sh, nethsmstatus may be failing. with return code $?."
+  exit 1
 fi
 
 # PROTECCIO integration test (KMS)

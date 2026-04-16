@@ -419,12 +419,20 @@ docker_command() {
   if [ "$DOCKER_LOAD" = true ]; then
     if command -v docker >/dev/null 2>&1; then
       echo "Loading image into Docker (from $REAL_OUT)…"
-      docker load <"$REAL_OUT"
+      LOAD_OUTPUT=$(docker load <"$REAL_OUT")
+      echo "$LOAD_OUTPUT"
+      # Extract the actual image name/tag from docker load output so it always
+      # matches what was loaded, even when reusing a cached tarball from an
+      # older build.
+      LOADED_IMAGE=$(printf '%s\n' "$LOAD_OUTPUT" \
+        | grep -oE 'Loaded image( ID)?: \S+' \
+        | awk '{print $NF}' | head -1)
+      export DOCKER_IMAGE_NAME="${LOADED_IMAGE:-cosmian-kms:${VERSION}-${DOCKER_VARIANT}}"
+      echo "Docker image available as: $DOCKER_IMAGE_NAME"
 
       # Run tests if requested
       if [ "$DOCKER_TEST" = true ]; then
         echo "Running Docker image tests..."
-        export DOCKER_IMAGE_NAME="cosmian-kms:${VERSION}-${DOCKER_VARIANT}"
         bash "$REPO_ROOT/.github/scripts/test/test_docker_image.sh"
       fi
     else
@@ -661,8 +669,8 @@ sbom_retrieve() {
         echo ">>> ${t}/${v}/${l}:"
         for f in "${files[@]}"; do
           if curl --fail --silent --show-error \
-              --output "${local_dir}/${f}" \
-              "${remote_dir}/${f}" 2>/dev/null; then
+            --output "${local_dir}/${f}" \
+            "${remote_dir}/${f}" 2>/dev/null; then
             echo "    ${f} ✓"
             any_ok=1
           else
@@ -881,12 +889,12 @@ package_command() {
     ;;
   esac
   case "$PACKAGE_TYPE" in
-  "" | deb | rpm | dmg)
+  "" | deb | rpm | dmg | pkcs11-zip)
     :
     ;;
   *)
     echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2
-    echo "Valid types: deb, rpm, dmg or leave empty to build all" >&2
+    echo "Valid types: deb, rpm, dmg, pkcs11-zip or leave empty to build all" >&2
     usage
     ;;
   esac
@@ -923,7 +931,7 @@ package_command() {
     if [ "$(uname)" = "Darwin" ]; then
       TYPES="dmg"
     else
-      TYPES="deb rpm"
+      TYPES="deb rpm pkcs11-zip"
     fi
   else
     TYPES="$PACKAGE_TYPE"
@@ -1084,6 +1092,21 @@ package_command() {
             echo "Warning: DMG file not found in $REAL_OUT" >&2
           fi
           ;;
+        pkcs11-zip)
+          if [ "$(uname)" = "Linux" ]; then
+            PKCS11_ZIP_SCRIPT="$REPO_ROOT/.github/scripts/package/package_pkcs11_zip.sh"
+            [ -f "$PKCS11_ZIP_SCRIPT" ] || {
+              echo "Missing $PKCS11_ZIP_SCRIPT" >&2
+              exit 1
+            }
+            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl zip --run "bash '$PKCS11_ZIP_SCRIPT' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+            REAL_OUT="$REPO_ROOT/result-pkcs11-zip-$BUILD_VARIANT-$BUILD_LINK"
+            echo "Built pkcs11-zip ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+          else
+            echo "pkcs11-zip packaging is only supported on Linux in this flow." >&2
+            exit 1
+          fi
+          ;;
         *)
           echo "Skipping unsupported package type: $TYPE" >&2
           continue
@@ -1116,6 +1139,9 @@ package_command() {
             echo "$sum  $(basename "$dmg_file")" >"$dmg_file.sha256"
             echo "Wrote checksum: $dmg_file.sha256 ($sum)"
           fi
+          ;;
+        pkcs11-zip)
+          # Checksums are written by package_pkcs11_zip.sh itself; nothing to do here.
           ;;
         esac
       done
