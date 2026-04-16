@@ -14,7 +14,7 @@
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
 #   • cargo / rustup  (with wasm32-unknown-unknown target)
 #   • wasm-pack       (cargo install wasm-pack --locked)
-#   • pnpm or npm     (pnpm/action-setup GitHub Action)
+#   • pnpm            (pnpm/action-setup GitHub Action)
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -24,8 +24,11 @@ $RepoRoot = (Get-Item (Join-Path (Join-Path (Join-Path $PSScriptRoot "..") "..")
 $WasmCrate = Join-Path (Join-Path (Join-Path $RepoRoot "crate") "clients") "wasm"
 $UiDir = Join-Path $RepoRoot "ui"
 
-# ── Detect pnpm / npm ─────────────────────────────────────────────────────────
-$pnpmCmd = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } else { "npm" }
+# ── Require pnpm ─────────────────────────────────────────────────────────────
+$pnpmCmd = "pnpm"
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    throw "pnpm not found on PATH. Install it via 'pnpm/action-setup' in the CI workflow or 'npm install -g pnpm' locally."
+}
 
 # Resolve the full .cmd path for use with Start-Process (Win32 requires a real executable)
 $pnpmExe = (Get-Command $pnpmCmd).Source
@@ -42,6 +45,9 @@ else {
 # ── Helper: run a command and throw on non-zero exit ─────────────────────────
 function Invoke-Checked {
     param([string]$Exe, [string[]]$Arguments)
+    # Use Continue so that stderr output from native commands (e.g. wasm-pack
+    # INFO messages) does not trigger a NativeCommandError under Stop mode.
+    $local:ErrorActionPreference = 'Continue'
     & $Exe @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Command '$Exe $Arguments' exited with code $LASTEXITCODE"
@@ -170,14 +176,20 @@ for ($i = 1; $i -le 300; $i++) {
         throw "KMS server process exited unexpectedly (exit code $($KmsProc.ExitCode))"
     }
     try {
-        # -SkipHttpErrorCheck (PS7+) returns the response object for any HTTP
-        # status code instead of throwing, so a KMIP 4xx validation error from
-        # a healthy server correctly signals readiness.
-        $resp = Invoke-WebRequest `
+        # In PS5.1 Invoke-WebRequest throws on non-2xx responses; in PS7+ it
+        # only throws on network errors when -SkipHttpErrorCheck is used.
+        # Accept any HTTP response (including KMIP 422) as a sign of readiness.
+        $null = Invoke-WebRequest `
             -Uri "http://127.0.0.1:9998/kmip/2_1" `
             -Method POST -Body "{}" -ContentType "application/json" `
-            -UseBasicParsing -SkipHttpErrorCheck -ErrorAction SilentlyContinue
-        if ($null -ne $resp) { $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break }
+            -UseBasicParsing -ErrorAction Stop
+        $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
+    }
+    catch [System.Net.WebException] {
+        # An HTTP error response (4xx/5xx) means the server IS up
+        if ($null -ne $_.Exception.Response) {
+            $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
+        }
     }
     catch { }
     Start-Sleep -Seconds 1
