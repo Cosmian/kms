@@ -26,13 +26,20 @@
 set -euo pipefail
 
 # ─── Colour helpers ───────────────────────────────────────────────────────────
-RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; CYAN=$'\e[36m'; RESET=$'\e[0m'
+RED=$'\e[31m'
+GREEN=$'\e[32m'
+YELLOW=$'\e[33m'
+CYAN=$'\e[36m'
+RESET=$'\e[0m'
 BOLD=$'\e[1m'
-info()  { echo "${CYAN}${BOLD}[INFO ]${RESET} $*"; }
-ok()    { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
-warn()  { echo "${YELLOW}${BOLD}[WARN ]${RESET} $*"; }
-fail()  { echo "${RED}${BOLD}[FAIL ]${RESET} $*"; }
-step()  { echo; echo "${BOLD}━━━  $*  ━━━${RESET}"; }
+info() { echo "${CYAN}${BOLD}[INFO ]${RESET} $*"; }
+ok() { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
+warn() { echo "${YELLOW}${BOLD}[WARN ]${RESET} $*"; }
+fail() { echo "${RED}${BOLD}[FAIL ]${RESET} $*"; }
+step() {
+  echo
+  echo "${BOLD}━━━  $*  ━━━${RESET}"
+}
 
 # ─── Arguments ────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,11 +58,27 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
-    --geiger)     RUN_GEIGER=true; shift ;;
-    --fail-on-warn) FAIL_ON_WARN=true; shift ;;
-    --help)       usage; exit 0 ;;
-    *) echo "Unknown option: $1"; usage; exit 1 ;;
+  --output-dir)
+    OUTPUT_DIR="$2"
+    shift 2
+    ;;
+  --geiger)
+    RUN_GEIGER=true
+    shift
+    ;;
+  --fail-on-warn)
+    FAIL_ON_WARN=true
+    shift
+    ;;
+  --help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $1"
+    usage
+    exit 1
+    ;;
   esac
 done
 
@@ -63,7 +86,7 @@ mkdir -p "$OUTPUT_DIR"
 cd "$REPO_ROOT"
 
 OVERALL_STATUS=0   # 0=pass, 1=fail
-declare -A RESULTS  # step -> PASS|WARN|FAIL
+declare -A RESULTS # step -> PASS|WARN|FAIL
 
 record() {
   local name="$1" status="$2"
@@ -95,8 +118,8 @@ check_or_install() {
   fi
 }
 
-check_or_install "cargo-audit"    "cargo install cargo-audit --locked"
-check_or_install "cargo-deny"     "cargo install cargo-deny --locked"
+check_or_install "cargo-audit" "cargo install cargo-audit --locked"
+check_or_install "cargo-deny" "cargo install cargo-deny --locked"
 check_or_install "cargo-outdated" "cargo install cargo-outdated --locked"
 
 if $RUN_GEIGER; then
@@ -301,9 +324,9 @@ grep -n "database_url\|fn fmt\|Display\|password\|\*\*\*\*" \
 # Look for unmasked database_url: the Display impl uses `url.as_str()` for postgresql/mysql
 # without masking the password. Detect pattern: write!(f, "postgresql: {}", ...database_url...)
 if grep -qE '"(postgresql|mysql): \{\}"' \
-    crate/server/src/config/command_line/db.rs 2>/dev/null || \
-   grep -A3 '"postgresql:' crate/server/src/config/command_line/db.rs 2>/dev/null | \
-   grep -q "database_url"; then
+  crate/server/src/config/command_line/db.rs 2>/dev/null ||
+  grep -A3 '"postgresql:' crate/server/src/config/command_line/db.rs 2>/dev/null |
+  grep -q "database_url"; then
   fail "A09-1: database_url printed unmasked in Display impl (postgresql/mysql). Credentials leak to logs."
   record "db-credential-masking" "FAIL"
 else
@@ -339,7 +362,7 @@ grep -n "Cors::permissive\|allow_any_origin\|allow_origin.*\*" \
 # Count permissive() occurrences that are NOT in the enterprise integration block:
 # An occurrence is "enterprise" if it appears on the same line that names the scope type
 # (google_cse_scope, ms_dke_scope, aws_xks_scope, azure_ekm_scope, auth_routes).
-CORS_COUNT=$(wc -l < "$CORS_OUT" 2>/dev/null || echo 0)
+CORS_COUNT=$(wc -l <"$CORS_OUT" 2>/dev/null || echo 0)
 # Detect whether Cors::permissive() is being used without Cors::default() on the main scope
 # The main default scope wraps with Cors::default(); any remaining permissive() are enterprise.
 MAIN_SCOPE_PERMISSIVE=$(grep -c "Cors::permissive" crate/server/src/start_kms_server.rs 2>/dev/null || true)
@@ -370,8 +393,8 @@ ZERO_OUT="$OUTPUT_DIR/zeroization.txt"
 
 # Detect bare Vec<u8> (or KResult<Vec<u8>>) as return types in key derivation functions
 # Use -F (fixed string) because angle brackets confuse grep option parsing
-if grep -qF "KResult<Vec<u8>>" "$ZERO_OUT" 2>/dev/null || \
-   grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
+if grep -qF "KResult<Vec<u8>>" "$ZERO_OUT" 2>/dev/null ||
+  grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
   warn "EXT1-1: derive_key helper(s) return bare Vec<u8> / KResult<Vec<u8>> for key material (not Zeroizing)."
   record "key-zeroization" "WARN"
 else
@@ -422,12 +445,12 @@ UNSAFE_OUT="$OUTPUT_DIR/unsafe_distribution.txt"
 
 # If cargo-geiger is available and --geiger was passed, try running it too
 if $RUN_GEIGER && command -v cargo-geiger &>/dev/null; then
-  echo "" >> "$UNSAFE_OUT"
-  echo "=== cargo-geiger output ===" >> "$UNSAFE_OUT"
+  echo "" >>"$UNSAFE_OUT"
+  echo "=== cargo-geiger output ===" >>"$UNSAFE_OUT"
   # Run from within server crate to avoid virtual workspace issue
-  (cd crate/server && cargo geiger --all-features 2>&1 | \
-    grep -v "^Failed\|^{\|emit\|Checking\|Compiling\|Finished" >> "$UNSAFE_OUT") || \
-    echo "cargo-geiger failed (known virtual workspace bug)" >> "$UNSAFE_OUT"
+  (cd crate/server && cargo geiger --all-features 2>&1 |
+    grep -v "^Failed\|^{\|emit\|Checking\|Compiling\|Finished" >>"$UNSAFE_OUT") ||
+    echo "cargo-geiger failed (known virtual workspace bug)" >>"$UNSAFE_OUT"
 fi
 
 ok "Unsafe distribution captured — see $UNSAFE_OUT"
@@ -545,7 +568,7 @@ if command -v gitleaks &>/dev/null; then
   fi
 else
   warn "gitleaks not installed. Skipping secret scan."
-  echo "(gitleaks not installed)" > "$SECRET_OUT"
+  echo "(gitleaks not installed)" >"$SECRET_OUT"
   record "secret-scan" "WARN"
 fi
 
@@ -555,7 +578,7 @@ step "21. semgrep OWASP ruleset (if available)"
 SEMGREP_OUT="$OUTPUT_DIR/semgrep.txt"
 if command -v semgrep &>/dev/null; then
   if semgrep --config p/owasp-top-ten crate/ --lang rust \
-       --output "$SEMGREP_OUT" --quiet 2>&1; then
+    --output "$SEMGREP_OUT" --quiet 2>&1; then
     SEMGREP_FINDINGS=$(grep -cE "^severity:" "$SEMGREP_OUT" 2>/dev/null) || SEMGREP_FINDINGS=0
     if [[ "$SEMGREP_FINDINGS" -gt 0 ]]; then
       warn "semgrep: $SEMGREP_FINDINGS finding(s). See $SEMGREP_OUT"
@@ -570,7 +593,7 @@ if command -v semgrep &>/dev/null; then
   fi
 else
   warn "semgrep not installed. Skipping pattern analysis."
-  echo "(semgrep not installed)" > "$SEMGREP_OUT"
+  echo "(semgrep not installed)" >"$SEMGREP_OUT"
   record "semgrep" "WARN"
 fi
 
@@ -580,20 +603,22 @@ echo "${BOLD}━━━━━━━━━━━━━━━━━━━━━━�
 echo "${BOLD}  Cosmian KMS — Audit Summary$(date +'  (%Y-%m-%d %H:%M:%S)')${RESET}"
 echo "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
 for name in "${!RESULTS[@]}"; do
   case "${RESULTS[$name]}" in
-    PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
-    WARN) WARN_COUNT=$((WARN_COUNT + 1)) ;;
-    FAIL) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+  PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
+  WARN) WARN_COUNT=$((WARN_COUNT + 1)) ;;
+  FAIL) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
   esac
 done
 for name in $(echo "${!RESULTS[@]}" | tr ' ' '\n' | sort); do
   status="${RESULTS[$name]}"
   case "$status" in
-    PASS) ok "  $name" ;;
-    WARN) warn "  $name" ;;
-    FAIL) fail "  $name" ;;
+  PASS) ok "  $name" ;;
+  WARN) warn "  $name" ;;
+  FAIL) fail "  $name" ;;
   esac
 done
 
@@ -622,7 +647,7 @@ JSON_OUT="$OUTPUT_DIR/summary.json"
   echo ""
   echo "  }"
   echo "}"
-} > "$JSON_OUT"
+} >"$JSON_OUT"
 
 info "JSON summary: $JSON_OUT"
 
@@ -631,7 +656,10 @@ info "JSON summary: $JSON_OUT"
 # the Status column from "Open" to "✅ Fixed" or "⚠️ Mitigated".
 update_audit_md() {
   local AUDIT_MD="${REPO_ROOT}/audit.md"
-  [[ -f "$AUDIT_MD" ]] || { warn "audit.md not found — skipping update"; return; }
+  [[ -f "$AUDIT_MD" ]] || {
+    warn "audit.md not found — skipping update"
+    return
+  }
 
   info "Updating audit.md Remediation Priority Matrix …"
 
@@ -641,7 +669,8 @@ update_audit_md() {
 
   # Helper: for a check name and finding IDs, add sed commands if the check PASSED
   add_fix() {
-    local check="$1"; shift
+    local check="$1"
+    shift
     local status="${RESULTS[$check]:-WARN}"
     local new_status
     if [[ "$status" == "PASS" ]]; then
@@ -649,29 +678,29 @@ update_audit_md() {
     elif [[ "$status" == "WARN" ]]; then
       new_status="⚠️ Mitigated"
     else
-      return  # FAIL → leave as Open
+      return # FAIL → leave as Open
     fi
     for id in "$@"; do
       # Replace "| Open |" with "| $new_status |" on rows that contain the finding ID
-      SED_SCRIPT+="s/| *$id *|\\(.*\\)| *Open *|/| $id |\\1| $new_status |/g;"
+      SED_SCRIPT+="s#| *$id *|\\(.*\\)| *Open *|#| $id |\\1| $new_status |#g;"
     done
   }
 
-  add_fix "ttlv-depth-limit"       "A03-2 / EXT2-2" "A03-3 / EXT2-3"
-  add_fix "payload-limit"          "A04-1 / EXT2-1"
-  add_fix "rate-limiting"          "A04-2 / EXT2-5"
-  add_fix "jwt-algorithm"          "A07-1"
-  add_fix "api-token-ct"           "A07-2"
-  add_fix "db-credential-masking"  "A09-1"
-  add_fix "tls-password-masking"   "A09-2"
-  add_fix "cors-config"            "A05-1 / A01-1"
-  add_fix "key-zeroization"        "EXT1-1"
-  add_fix "locate-cap"             "A04-3 / EXT2-4"
-  add_fix "locate-const"           "A04-3 / EXT2-4"
-  add_fix "samesite-cookie"        "A07-4"
-  add_fix "jwt-log-level"          "A09-3"
-  add_fix "reqwest-redirect"       "A10-2 / A10-3"
-  add_fix "session-key-warning"    "A08-2"
+  add_fix "ttlv-depth-limit" "A03-2 / EXT2-2" "A03-3 / EXT2-3"
+  add_fix "payload-limit" "A04-1 / EXT2-1"
+  add_fix "rate-limiting" "A04-2 / EXT2-5"
+  add_fix "jwt-algorithm" "A07-1"
+  add_fix "api-token-ct" "A07-2"
+  add_fix "db-credential-masking" "A09-1"
+  add_fix "tls-password-masking" "A09-2"
+  add_fix "cors-config" "A05-1 / A01-1"
+  add_fix "key-zeroization" "EXT1-1"
+  add_fix "locate-cap" "A04-3 / EXT2-4"
+  add_fix "locate-const" "A04-3 / EXT2-4"
+  add_fix "samesite-cookie" "A07-4"
+  add_fix "jwt-log-level" "A09-3"
+  add_fix "reqwest-redirect" "A10-2 / A10-3"
+  add_fix "session-key-warning" "A08-2"
 
   if [[ -n "$SED_SCRIPT" ]]; then
     sed -i "$SED_SCRIPT" "$AUDIT_MD"

@@ -4,9 +4,9 @@
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)
 **Repository**: `Cosmian/kms` — branch `develop`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
-**Audit date**: 2026-04-14 (re-run with remediation verification: 2026-04-14)
+**Audit date**: 2026-04-16 (re-run with remediation verification: 2026-04-14)
 **Auditor(s)**: GitHub Copilot (automated static analysis)
-**Status**: ☑ Complete — all High/Medium findings fixed or mitigated; Low findings addressed or accepted
+**Status**: ☑ Complete — automated pass (audit.sh ran 2026-04-16)
 
 ## Tools available during this audit
 

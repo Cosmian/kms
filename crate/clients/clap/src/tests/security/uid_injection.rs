@@ -1,7 +1,7 @@
 //! UID injection attack tests.
 //!
 //! Exercises the server with malicious unique identifier strings to verify
-//! that the server sanitises them and never produces SQL injection,
+//! that the server sanitizes them and never produces SQL injection,
 //! path traversal, or other injection attacks:
 //!   U1  - SQL injection pattern in UID
 //!   U2  - Path traversal in UID (../../etc/passwd)
