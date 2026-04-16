@@ -201,6 +201,7 @@ fn locate_by_name(client: &SocketClient, name_value: &str) -> Vec<String> {
                         name_value: name_value.to_owned(),
                         name_type: NameType::UninterpretedTextString,
                     })]),
+                    template_attribute: None,
                 }),
                 message_extension: None,
             },
