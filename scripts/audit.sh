@@ -44,13 +44,13 @@ step() {
 # ─── Arguments ────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_DIR="${REPO_ROOT}/audit-results/$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="${REPO_ROOT}/documentation/docs/certifications_and_compliance/audit-results/$(date +%Y%m%d_%H%M%S)"
 RUN_GEIGER=false
 FAIL_ON_WARN=false
 
 usage() {
   echo "Usage: $0 [--output-dir <dir>] [--geiger] [--fail-on-warn] [--help]"
-  echo "  --output-dir   Where to write per-tool output files (default: audit-results/<timestamp>/)"
+  echo "  --output-dir   Where to write per-tool output files (default: documentation/docs/certifications_and_compliance/audit-results/<timestamp>/)"
   echo "  --geiger       Also run cargo-geiger (slow; requires geiger installed)"
   echo "  --fail-on-warn Exit with code 1 on warnings, not just on failures"
   echo "  --help         Show this message"
@@ -651,17 +651,17 @@ JSON_OUT="$OUTPUT_DIR/summary.json"
 
 info "JSON summary: $JSON_OUT"
 
-# ─── Update audit.md Remediation Priority Matrix ──────────────────────────────
+# ─── Update security_audit.md Remediation Priority Matrix ────────────────────
 # Map each audit check result to one or more finding IDs in the matrix and update
 # the Status column from "Open" to "✅ Fixed" or "⚠️ Mitigated".
 update_audit_md() {
-  local AUDIT_MD="${REPO_ROOT}/audit.md"
+  local AUDIT_MD="${REPO_ROOT}/documentation/docs/certifications_and_compliance/security_audit.md"
   [[ -f "$AUDIT_MD" ]] || {
-    warn "audit.md not found — skipping update"
+    warn "security_audit.md not found — skipping update"
     return
   }
 
-  info "Updating audit.md Remediation Priority Matrix …"
+  info "Updating security_audit.md Remediation Priority Matrix …"
 
   # Build a sed script that replaces Open → ✅ Fixed for each confirmed passing check.
   # Pattern: match table rows containing the finding ID and replace their Status cell.
@@ -718,7 +718,7 @@ update_audit_md() {
     sed -i "s/\*\*Status\*\*:.*/\*\*Status\*\*: ⚠️ Incomplete — ${FAIL_COUNT} check(s) FAILED (audit.sh ran $TODAY)/" "$AUDIT_MD"
   fi
 
-  ok "audit.md updated — Remediation Priority Matrix status refreshed"
+  ok "security_audit.md updated — Remediation Priority Matrix status refreshed"
 }
 
 update_audit_md

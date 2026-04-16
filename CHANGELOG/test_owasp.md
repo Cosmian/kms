@@ -40,6 +40,11 @@
 
 - **A04-3/EXT2-4**: Add `MAX_LOCATE_ITEMS = 1000` server-side cap in `locate.rs`; the effective limit is `min(client_requested_max, 1000)` so an unbounded result set can no longer be requested.
 
+### TTLV Binary Deserializer — OOM Guards
+
+- Add `MAX_TTLV_FIELD_BYTES = 64 MiB` per-field length guard to `TTLVBytesDeserializer`: `ByteString`, `TextString`, and `BigInteger` types now reject claims of length > 64 MiB immediately — before any memory allocation — preventing a minimal HTTP request from triggering a gigabyte-scale `vec![0_u8; N]` allocation.
+- Add tests W26–W28 validating that oversized `ByteString`, `TextString`, and `BigInteger` length headers are rejected with a descriptive error.
+
 ### Logging
 
 - **A09-3**: Change `debug!` to `warn!` for all 401-unauthorized paths in `jwt_token_auth.rs` so authentication failures are visible at normal log levels.
@@ -56,6 +61,8 @@
 - Add checks 15–19 for: `SameSite::Strict`, JWT log level (`warn!`), reqwest redirect disable, session key salt warning, and `MAX_LOCATE_ITEMS` constant.
 - Add `update_audit_md()` function that automatically updates the Remediation Priority Matrix in `audit.md` from `Open` to `✅ Fixed` / `⚠️ Mitigated` based on check results.
 - Update `audit.md` Remediation Priority Matrix: all High and most Medium findings now marked `✅ Fixed` or `⚠️ Mitigated`.
+- Move `audit.md` to `documentation/docs/certifications_and_compliance/security_audit.md` and add page to `documentation/mkdocs.yml` navigation under *Certifications & Compliance*.
+- Update `scripts/audit.sh` default output path to `documentation/docs/certifications_and_compliance/audit-results/<timestamp>/`; add `.gitignore` to exclude per-run output files from git.
 
 ## Testing
 
@@ -77,3 +84,15 @@
 ### Server — Resource Limit Fix
 
 - **DoS/Memory exhaustion fix**: Add symmetric key size bounds validation in `create_symmetric_key_and_tags`: reject any request with `cryptographic_length < 8` or `> 8192` bits with `InvalidRequest` to prevent 128 MB+ key-material allocation attacks. `THREE_DES` retains its existing exact-value validation (112 or 168 bits).
+
+## Build
+
+### OpenSSL
+
+- Upgrade OpenSSL from 3.6.0 to 3.6.2 (security patch release fixing CVE-2026-31790, CVE-2026-2673, CVE-2026-28386, CVE-2026-28387, CVE-2026-28388, CVE-2026-28389, CVE-2026-28390, CVE-2026-31789); update `crate/crypto/build.rs` download URL to GitHub releases and SHA-256 hash; update `nix/common.nix` SRI hash; update all 3.6.0 version strings in `nix/kms-server.nix`.
+
+## Refactor
+
+### cosmian_kmip — LEB128 serialization
+
+- Remove `crate/kmip/src/bytes_ser_de.rs` (local LEB128 `Serializer`/`Deserializer` implementation) in favor of the upstream `cosmian_crypto_core::bytes_set_de` module which is actively maintained and includes a buffer-bounds check before allocation in `read_vec()`; add `cosmian_crypto_core` dependency to `cosmian_kmip`; add `From<CryptoCoreError>` for `KmipError`.

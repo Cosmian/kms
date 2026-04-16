@@ -239,8 +239,8 @@ let
     # At runtime, we override it with OPENSSL_CONF environment variable to use /usr/local/cosmian/lib/ssl
     # Full FIPS validation happens in smoke test with proper environment variables set
     ${lib.optionalString (static && pkgs.stdenv.isLinux) ''
-      strings "$BIN" | grep -q "OpenSSL 3.6.0" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.0"; exit 1; }
-      echo "Binary validation OK (OpenSSL 3.6.0 statically linked)"
+      strings "$BIN" | grep -q "OpenSSL 3.6.2" || { echo "ERROR: Binary not statically linked against OpenSSL 3.6.2"; exit 1; }
+      echo "Binary validation OK (OpenSSL 3.6.2 statically linked)"
     ''}
     ${lib.optionalString (static && pkgs.stdenv.isDarwin) ''
       echo "Skipping static OpenSSL string check on macOS (validation handled via FIPS modules and runtime tests)"
@@ -368,7 +368,7 @@ rustPlatform.buildRustPackage rec {
     ''}
 
     ${lib.optionalString (!isFips && static) ''
-      # Non-FIPS static: ship OpenSSL 3.6.0 provider modules (legacy, default)
+      # Non-FIPS static: ship OpenSSL 3.6.2 provider modules (legacy, default)
       # and a non-FIPS openssl.cnf that activates default+legacy (not fips) providers.
       # This is needed for PKCS#12 parsing and other legacy algorithms at runtime.
       mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
@@ -388,7 +388,7 @@ rustPlatform.buildRustPackage rec {
         # Dynamic linkage variant: ship libssl and libcrypto
         mkdir -p "$out/usr/local/cosmian/lib"
         # For FIPS dynamic builds, use OpenSSL 3.1.2 to match the FIPS provider version
-        # For non-FIPS dynamic builds, use OpenSSL 3.6.0
+        # For non-FIPS dynamic builds, use OpenSSL 3.6.2
         ${
           if isFips then
             ''
@@ -414,7 +414,7 @@ rustPlatform.buildRustPackage rec {
             fi
           done
         fi
-        # For non-FIPS dynamic builds, also include provider modules from OpenSSL 3.6.0 (e.g., legacy)
+        # For non-FIPS dynamic builds, also include provider modules from OpenSSL 3.6.2 (e.g., legacy)
         ${lib.optionalString (!isFips) ''
           mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
           if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
@@ -422,7 +422,7 @@ rustPlatform.buildRustPackage rec {
           elif [ -d "${openssl36_}/lib/ossl-modules" ]; then
             cp -r "${openssl36_}/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
           else
-            echo "WARNING: OpenSSL 3.6.0 ossl-modules directory not found; legacy provider may be missing"
+            echo "WARNING: OpenSSL 3.6.2 ossl-modules directory not found; legacy provider may be missing"
           fi
         ''}
       ''}

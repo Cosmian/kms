@@ -1065,11 +1065,11 @@ version = "5.20.1"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
+ "cosmian_crypto_core",
  "cosmian_logger",
  "hex",
  "js-sys",
  "kmip-derive",
- "leb128",
  "num-bigint-dig",
  "num-traits",
  "quick-xml",

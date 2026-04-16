@@ -14,6 +14,17 @@ use crate::ttlv::{
 /// legitimate KMIP nesting depth (typical maximum is ~8) while preventing the attack.
 pub(crate) const MAX_TTLV_DEPTH: u32 = 64;
 
+/// Maximum byte length for a single TTLV leaf field (`ByteString`, `TextString``BigInteger`er).
+///
+/// Without this guard an attacker can craft a tiny HTTP request whose TTLV header
+/// claims a field length of, say, 500 MB. The server would then call
+/// `vec![0_u8; 500_000_000]`, zero-initialising all pages and exhausting RAM,
+/// before `read_exact` fails on the actual (small) payload.
+///
+/// 64 MiB matches Actix-web's HTTP-body payload limit so no legitimate single
+/// field can ever exceed this value.
+pub(crate) const MAX_TTLV_FIELD_BYTES: usize = 64 * 1024 * 1024;
+
 pub struct TTLVBytesDeserializer<R> {
     reader: R,
 }
@@ -98,6 +109,12 @@ where
                 (TTLValue::LongInteger(i64::from_be_bytes(buf8)), 8)
             }
             TtlvType::BigInteger => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV BigInteger field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 (
@@ -122,6 +139,12 @@ where
                 (TTLValue::Boolean(buf8[7] != 0), 8)
             }
             TtlvType::TextString => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV TextString field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::TextString(String::from_utf8(buf)?);
@@ -135,6 +158,12 @@ where
                 (value, length + padding)
             }
             TtlvType::ByteString => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV ByteString field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::ByteString(buf);

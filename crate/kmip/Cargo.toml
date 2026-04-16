@@ -28,10 +28,10 @@ interop = []
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
+cosmian_crypto_core = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 kmip-derive = { path = "../kmip-derive", version = "5.20.1" }
-leb128 = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",

@@ -457,6 +457,87 @@ fn w24_longinteger_min_value() {
 }
 
 // ---------------------------------------------------------------------------
+// W26: ByteString with oversized length header → field-length guard rejects
+// ---------------------------------------------------------------------------
+/// A crafted TTLV packet whose `ByteString` length field claims 128 MiB of data
+/// while the actual payload is only a handful of bytes.
+/// Before the guard was added the deserializer would allocate 128 MiB of zeroed memory
+/// on every such request (`DoS` vector).  After the fix it must return an error immediately.
+#[test]
+fn w26_bytestring_oversized_length_rejected() {
+    use crate::ttlv::wire::MAX_TTLV_FIELD_BYTES;
+    // Claim a field that is 2× the allowed maximum.
+    let claimed_len: u32 = u32::try_from(MAX_TTLV_FIELD_BYTES * 2).unwrap_or(u32::MAX);
+    let mut data = vec![
+        0x42, 0x00, 0x08, // tag: Attribute (ByteString in tests)
+        0x08, // type: ByteString
+    ];
+    data.extend_from_slice(&claimed_len.to_be_bytes());
+    // Only write 16 bytes of actual payload (not the claimed length).
+    data.extend_from_slice(&[0xAA_u8; 16]);
+    let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
+    assert!(
+        result.is_err(),
+        "ByteString with oversized claimed length must be rejected, got Ok"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("exceeds maximum") || msg.contains("MAX"),
+        "error message must mention the length guard, got: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// W27: TextString with oversized length header → field-length guard rejects
+// ---------------------------------------------------------------------------
+#[test]
+fn w27_textstring_oversized_length_rejected() {
+    use crate::ttlv::wire::MAX_TTLV_FIELD_BYTES;
+    let claimed_len: u32 = u32::try_from(MAX_TTLV_FIELD_BYTES + 1).unwrap_or(u32::MAX);
+    let mut data = vec![
+        0x42, 0x00, 0x55, // tag: Name (TextString)
+        0x07, // type: TextString
+    ];
+    data.extend_from_slice(&claimed_len.to_be_bytes());
+    data.extend_from_slice(b"short payload");
+    let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
+    assert!(
+        result.is_err(),
+        "TextString with oversized claimed length must be rejected"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("exceeds maximum") || msg.contains("MAX"),
+        "error message must mention the length guard, got: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// W28: BigInteger with oversized length header → field-length guard rejects
+// ---------------------------------------------------------------------------
+#[test]
+fn w28_biginteger_oversized_length_rejected() {
+    use crate::ttlv::wire::MAX_TTLV_FIELD_BYTES;
+    let claimed_len: u32 = u32::try_from(MAX_TTLV_FIELD_BYTES + 1).unwrap_or(u32::MAX);
+    let mut data = vec![
+        0x42, 0x00, 0x0A, // tag: BigInteger
+        0x04, // type: BigInteger
+    ];
+    data.extend_from_slice(&claimed_len.to_be_bytes());
+    data.extend_from_slice(&[0xFF_u8; 8]);
+    let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
+    assert!(
+        result.is_err(),
+        "BigInteger with oversized claimed length must be rejected"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("exceeds maximum") || msg.contains("MAX"),
+        "error message must mention the length guard, got: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // W25: Round-trip — serialize a valid structure then deserialize it back
 // ---------------------------------------------------------------------------
 #[test]
