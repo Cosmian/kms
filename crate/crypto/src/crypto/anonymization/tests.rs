@@ -1,12 +1,13 @@
+#![allow(clippy::assertions_on_result_states)]
+
 use std::collections::HashSet;
 
 use approx::assert_relative_eq;
 use chrono::{DateTime, Datelike, Timelike};
 
-use super::{NumberAggregator, WordMasker};
-use crate::core::{
-    AnoError, DateAggregator, HashMethod, Hasher, NoiseGenerator, NumberScaler, TimeUnit,
-    WordPatternMasker, WordTokenizer,
+use super::{
+    AnoError, DateAggregator, HashMethod, Hasher, NoiseGenerator, NumberAggregator, NumberScaler,
+    TimeUnit, WordMasker, WordPatternMasker, WordTokenizer,
 };
 
 #[test]

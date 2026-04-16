@@ -674,6 +674,27 @@ impl KmsClient {
         self.get_no_ttlv("/google_cse/status", None::<&()>).await
     }
 
+    /// Call the `/tokenize/{method}` anonymization endpoint.
+    ///
+    /// * `method`  – one of: hash, noise, word-mask, word-tokenize, word-pattern-mask,
+    ///   aggregate-number, aggregate-date, scale-number.
+    /// * `request` – JSON-serializable request body specific to the method.
+    ///
+    /// Returns the deserialized JSON response.
+    #[cfg(feature = "non-fips")]
+    pub async fn tokenize<O, R>(
+        &self,
+        method: &str,
+        request: &O,
+    ) -> Result<R, KmsClientError>
+    where
+        O: Serialize + Sync,
+        R: serde::de::DeserializeOwned + Serialize + Sized + 'static,
+    {
+        self.post_no_ttlv(&format!("/tokenize/{method}"), Some(request))
+            .await
+    }
+
     pub async fn get_no_ttlv<R, O>(
         &self,
         endpoint: &str,

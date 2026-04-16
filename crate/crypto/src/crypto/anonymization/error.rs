@@ -12,8 +12,8 @@ pub enum AnoError {
     #[error(transparent)]
     Regex(#[from] regex::Error),
     /// An Argon2 hashing failure.
-    #[error(transparent)]
-    Argon2(#[from] argon2::Error),
+    #[error("Argon2 error: {0}")]
+    Argon2(String),
     /// A random number generator failure.
     #[error(transparent)]
     Rand(#[from] rand::Error),

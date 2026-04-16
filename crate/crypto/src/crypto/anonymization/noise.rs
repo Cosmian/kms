@@ -35,8 +35,8 @@ where
 /// Laplace distribution.
 ///
 /// # Example
-/// ```
-/// use cloudproof_anonymization::core::Laplace;
+/// ```ignore
+/// use cosmian_kms_crypto::crypto::anonymization::Laplace;
 /// use rand::prelude::*;
 /// use rand_distr::Distribution;
 ///
@@ -80,7 +80,7 @@ where
         // Clamp p away from 0 to prevent ln(0) = -inf.
         // rng.gen() samples [0, 1); p == 0 is possible but astronomically rare.
         let p: F = {
-            let raw: F = rng.gen();
+            let raw: F = rng.r#gen();
             if raw == F::zero() {
                 F::epsilon()
             } else {

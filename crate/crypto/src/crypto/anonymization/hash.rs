@@ -105,7 +105,7 @@ impl Hasher {
             HashMethod::SHA3(salt) => {
                 let mut hasher = Sha3::v256();
 
-                let mut output = [0u8; 32];
+                let mut output = [0_u8; 32];
                 if let Some(salt_val) = salt.as_deref() {
                     hasher.update(salt_val);
                 }
@@ -115,8 +115,10 @@ impl Hasher {
                 Ok(output)
             }
             HashMethod::Argon2(salt) => {
-                let mut output = [0u8; 32];
-                Argon2::default().hash_password_into(data, salt, &mut output)?;
+                let mut output = [0_u8; 32];
+                Argon2::default()
+                    .hash_password_into(data, salt, &mut output)
+                    .map_err(|e| AnoError::Argon2(e.to_string()))?;
 
                 Ok(output)
             }

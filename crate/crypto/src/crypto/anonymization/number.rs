@@ -8,8 +8,8 @@ use super::{AnoError, TimeUnit, datetime_to_rfc3339};
 ///
 /// Example usage:
 ///
-/// ```
-/// use cloudproof_anonymization::core::NumberAggregator;
+/// ```ignore
+/// use cosmian_kms_crypto::crypto::anonymization::NumberAggregator;
 ///
 /// let num_agg = NumberAggregator::new(2).unwrap();
 /// let anonymized_float = num_agg.apply_on_float(1234.5678); // returns "1200"
@@ -59,7 +59,7 @@ impl NumberAggregator {
         if self.power_of_ten_exponent < 0 {
             return format!("{:.1$}", data, -self.power_of_ten_exponent as usize);
         }
-        let r = 10f64.pow(self.power_of_ten_exponent);
+        let r = 10_f64.pow(self.power_of_ten_exponent);
         format!("{}", (data / r).round() * r)
     }
 
@@ -74,7 +74,7 @@ impl NumberAggregator {
     /// A string representation of the rounded number.
     #[must_use]
     pub fn apply_on_int(&self, data: i64) -> String {
-        let r = 10f64.pow(self.power_of_ten_exponent);
+        let r = 10_f64.pow(self.power_of_ten_exponent);
         format!("{:.0}", (data as f64 / r).round() * r)
     }
 }
@@ -83,8 +83,8 @@ impl NumberAggregator {
 ///
 /// Example usage:
 ///
-/// ```
-/// use cloudproof_anonymization::core::{DateAggregator, TimeUnit};
+/// ```ignore
+/// use cosmian_kms_crypto::crypto::anonymization::{DateAggregator, TimeUnit};
 ///
 /// let aggregator = DateAggregator::new(TimeUnit::Hour);
 /// let result = aggregator.apply_on_date("2022-04-28T14:30:00Z"); // returns "2022-04-28T14:00:00+00:00"

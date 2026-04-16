@@ -23,6 +23,8 @@ mod opaque_object;
 #[cfg(feature = "non-fips")]
 mod pqc;
 mod query;
+#[cfg(feature = "non-fips")]
+mod tokenize;
 mod rng;
 mod rsa;
 mod secret_data;

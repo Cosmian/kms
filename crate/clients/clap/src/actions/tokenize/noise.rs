@@ -55,15 +55,16 @@ pub struct NoiseAction {
 
 impl NoiseAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        let data: Value = match self.data_type.as_str() {
-            "float" => Value::from(self.data.parse::<f64>().map_err(|e| {
-                crate::error::KmsCliError::Default(format!("invalid float: {e}"))
-            })?),
-            "integer" => Value::from(self.data.parse::<i64>().map_err(|e| {
-                crate::error::KmsCliError::Default(format!("invalid integer: {e}"))
-            })?),
-            _ => Value::String(self.data.clone()),
-        };
+        let data: Value =
+            match self.data_type.as_str() {
+                "float" => Value::from(self.data.parse::<f64>().map_err(|e| {
+                    crate::error::KmsCliError::Default(format!("invalid float: {e}"))
+                })?),
+                "integer" => Value::from(self.data.parse::<i64>().map_err(|e| {
+                    crate::error::KmsCliError::Default(format!("invalid integer: {e}"))
+                })?),
+                _ => Value::String(self.data.clone()),
+            };
         let req = NoiseRequest {
             data,
             data_type: &self.data_type,

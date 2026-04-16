@@ -11,6 +11,8 @@ use super::cover_crypt::CovercryptCommands;
 use super::fpe::FpeCommands;
 #[cfg(feature = "non-fips")]
 use super::pqc::PqcCommands;
+#[cfg(feature = "non-fips")]
+use super::tokenize::TokenizeCommands;
 use crate::{
     actions::{
         access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
@@ -54,6 +56,9 @@ pub enum KmsActions {
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Pqc(PqcCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
+    Tokenize(TokenizeCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
     DeriveKey(DeriveKeyAction),
@@ -104,6 +109,8 @@ impl KmsActions {
             Self::Fpe(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
             Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
+            Self::Tokenize(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
