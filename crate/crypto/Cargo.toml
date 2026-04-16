@@ -85,7 +85,6 @@ zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [dev-dependencies]
 aes-kw = "0.3.0-rc.1"
-approx = "0.5"
 cosmian_logger = { workspace = true }
 ctor = "0.2"
 rand = "0.8"

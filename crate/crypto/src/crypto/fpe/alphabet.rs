@@ -28,12 +28,8 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
 /// Each variant corresponds to a predefined character set. To build a custom
 /// alphabet use [`Alphabet::try_from`] or [`Alphabet::from_preset_or_custom`].
 //
-// DEV NOTE (not shown in docs): When adding or renaming a preset, keep the
-// following in sync:
-//   • PRESET_NAMES array below (canonical name used by the HTTP API / CLI)
-//   • doc comments on the `alphabet` field in:
-//       crate/server/src/routes/tokenize.rs  – TokenizeEncryptRequest
-//                                            – TokenizeDecryptRequest
+// DEV NOTE (not shown in docs): When adding or renaming a preset, keep
+// PRESET_NAMES array below (canonical name used by the CLI) in sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlphabetPreset {
     /// Digits 0–9

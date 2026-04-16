@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 
-use approx::assert_relative_eq;
 use chrono::{DateTime, Datelike, Timelike};
 
 use super::{
@@ -197,67 +196,6 @@ fn test_noise_uniform_date() -> Result<(), AnoError> {
 }
 
 #[test]
-fn test_correlated_noise_gaussian_f64() -> Result<(), AnoError> {
-    let mut noise_generator = NoiseGenerator::new_with_parameters("Gaussian", 10.0, 2.0)?;
-    let values = vec![1.0, 1.0, 1.0];
-    let factors = vec![1.0, 2.0, 4.0];
-    let noisy_values = noise_generator.apply_correlated_noise_on_floats(&values, &factors)?;
-    assert_relative_eq!(
-        (noisy_values[0] - values[0]) * factors[1],
-        (noisy_values[1] - values[1]) * factors[0],
-        epsilon = 1e-6
-    );
-    assert_relative_eq!(
-        (noisy_values[0] - values[0]) * factors[2],
-        (noisy_values[2] - values[2]) * factors[0],
-        epsilon = 1e-6
-    );
-    // Ordering only holds if noise is positive
-    assert!(noisy_values[0] < noisy_values[1]);
-    assert!(noisy_values[1] < noisy_values[2]);
-    Ok(())
-}
-
-#[test]
-fn test_correlated_noise_laplace_i64() -> Result<(), AnoError> {
-    let mut noise_generator = NoiseGenerator::new_with_parameters("Laplace", 10.0, 2.0)?;
-    let values = vec![1, 1, 1];
-    let factors = vec![1.0, 2.0, 4.0];
-    let noisy_values = noise_generator.apply_correlated_noise_on_ints(&values, &factors)?;
-    // Ordering only holds if noise is positive
-    assert!(noisy_values[0] <= noisy_values[1]);
-    assert!(noisy_values[1] <= noisy_values[2]);
-    Ok(())
-}
-
-#[test]
-fn test_correlated_noise_uniform_date() -> Result<(), AnoError> {
-    let mut noise_generator = NoiseGenerator::new_with_bounds("Uniform", 0.0, 10.0)?;
-    let values = vec![
-        "2023-05-02T00:00:00-05:00",
-        "2023-05-02T00:00:00+00:00",
-        "2023-05-02T00:00:00Z",
-    ];
-    let factors = vec![1.0, 2.0, 4.0];
-    let noisy_values = noise_generator.apply_correlated_noise_on_dates(&values, &factors)?;
-
-    let date1 = DateTime::parse_from_rfc3339(&noisy_values[0])?;
-    let date2 = DateTime::parse_from_rfc3339(&noisy_values[1])?;
-    let date3 = DateTime::parse_from_rfc3339(&noisy_values[2])?;
-    // Ordering only holds if noise is positive
-    assert!(date1.second() <= date2.second());
-    assert!(date2.second() <= date3.second());
-
-    // Check that the output date has the same timezone as the input
-    assert_eq!(
-        date1.timezone(),
-        DateTime::parse_from_rfc3339(values[0])?.timezone()
-    );
-    assert_eq!(date2.timezone(), date3.timezone());
-    Ok(())
-}
-
-#[test]
 fn test_mask_word() -> Result<(), AnoError> {
     let input_str = String::from("Confidential: contains -secret- documents");
     let block_words = vec!["confidential", "SECRET"];
@@ -417,25 +355,6 @@ fn test_int_scale() -> Result<(), AnoError> {
 fn test_number_scaler_zero_std_deviation() {
     let res = NumberScaler::new(10.0, 0.0, 2.0, -50.0);
     assert!(res.is_err());
-}
-
-#[test]
-fn test_correlated_noise_mismatched_lengths() -> Result<(), AnoError> {
-    let mut noise_generator = NoiseGenerator::new_with_parameters("Gaussian", 0.0, 1.0)?;
-    let values = vec![1.0_f64, 2.0, 3.0];
-    let factors = vec![1.0_f64, 2.0]; // one fewer factor than data
-    let res = noise_generator.apply_correlated_noise_on_floats(&values, &factors);
-    assert!(res.is_err());
-    Ok(())
-}
-
-#[test]
-fn test_correlated_noise_dates_invalid_input() -> Result<(), AnoError> {
-    let mut noise_generator = NoiseGenerator::new_with_bounds("Uniform", 0.0, 10.0)?;
-    let res = noise_generator
-        .apply_correlated_noise_on_dates(&["not-a-date", "2023-05-02T00:00:00Z"], &[1.0, 1.0]);
-    assert!(res.is_err());
-    Ok(())
 }
 
 #[test]

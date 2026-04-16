@@ -1,9 +1,8 @@
+use crate::error::result::KmsCliResult;
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-use crate::error::result::KmsCliResult;
 
 pub mod aggregate_date;
 pub mod aggregate_number;
@@ -23,8 +22,6 @@ pub use word_mask::WordMaskAction;
 pub use word_pattern_mask::WordPatternMaskAction;
 pub use word_tokenize::WordTokenizeAction;
 
-// ─── Shared types ─────────────────────────────────────────────────────────────
-
 /// Common response wrapper for all tokenize endpoints.
 #[derive(Deserialize, Serialize)]
 pub(super) struct TokenizeResponse {
@@ -43,8 +40,6 @@ pub(super) struct WordListRequest<'a> {
     pub(super) data: &'a str,
     pub(super) words: &'a [String],
 }
-
-// ─── TokenizeCommands ─────────────────────────────────────────────────────────
 
 /// Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling.
 ///
