@@ -43,24 +43,30 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {
-    test_hsm_crypt2pay_get_info()?;
-    test_hsm_crypt2pay_get_mechanisms()?;
-    test_hsm_crypt2pay_get_supported_algorithms()?;
-    test_hsm_crypt2pay_destroy_all()?;
-    test_hsm_crypt2pay_generate_aes_key()?;
-    test_hsm_crypt2pay_generate_rsa_keypair()?;
-    test_hsm_crypt2pay_rsa_key_wrap()?;
-    test_hsm_crypt2pay_rsa_pkcs_encrypt()?;
-    test_hsm_crypt2pay_rsa_oaep_encrypt()?;
-    test_hsm_crypt2pay_aes_gcm_encrypt()?;
-    test_hsm_crypt2pay_rsa_pkcs_v15_sign()?;
-    test_hsm_crypt2pay_rsa_sha256_sign()?;
-    test_hsm_crypt2pay_rsa_sign_all_algorithms()?;
-    test_hsm_crypt2pay_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_crypt2pay_get_key_metadata()?;
-    test_hsm_crypt2pay_list_objects()?;
-    test_hsm_crypt2pay_search_incompatible_key()?;
-    test_hsm_crypt2pay_destroy_all()?;
+    // Use a single BaseHsm for the entire test to prevent repeated C_Initialize/C_Finalize
+    // cycles. Some PKCS#11 native libraries are not safely re-initializable within the same
+    // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
+    let cfg = cfg()?;
+    let hsm = shared::instantiate::<Crypt2payCapabilityProvider>(&cfg)?;
+    drop(hsm.hsm_lib().get_info_struct()?);
+    let slot = shared::get_slot::<Crypt2payCapabilityProvider>(&hsm, &cfg)?;
+    shared::get_mechanisms_and_hashes(&slot)?;
+    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::destroy_all(&slot)?;
+    shared::generate_aes_key(&slot)?;
+    shared::generate_rsa_keypair(&slot)?;
+    shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
+    shared::rsa_pkcs_encrypt(&slot)?;
+    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
+    shared::aes_gcm_encrypt(&slot)?;
+    shared::rsa_pkcs_v15_sign(&slot)?;
+    shared::rsa_sha256_sign(&slot)?;
+    shared::rsa_sign_all_algorithms(&slot)?;
+    shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
+    shared::get_key_metadata(&slot)?;
+    shared::list_objects(&slot)?;
+    shared::search_incompatible_key(&hsm, &cfg)?;
+    shared::destroy_all(&slot)?;
     Ok(())
 }
 

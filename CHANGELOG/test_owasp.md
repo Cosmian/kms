@@ -66,6 +66,10 @@
 
 ## Testing
 
+### HSM
+
+- Fix flaky SIGSEGV (signal 11) in `test_hsm_*_all` for Proteccio, Utimaco, SoftHSM2, Crypt2pay, and SmartcardHSM: each sub-test was creating its own `BaseHsm` instance, causing repeated `C_Initialize`/`C_Finalize`/`dlclose`/`dlopen` cycles within the same process. The `_all` test functions now create a single `BaseHsm` and `Arc<SlotManager>` and call the shared helpers directly, ensuring only one `C_Initialize` and one `C_Finalize` call per test run.
+
 ### KMIP Protocol Tests
 
 - Add 25 TTLV binary wire edge-case unit tests (W1–W25): truncated payloads, invalid header fields, structure-length underflow, depth-limit enforcement, oversized-length declarations, type-specific length checks, and round-trips (`crate/kmip/src/ttlv/tests/wire_edge_cases.rs`).
