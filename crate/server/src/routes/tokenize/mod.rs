@@ -7,7 +7,7 @@ use cosmian_kms_crypto::crypto::anonymization::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Maximum allowed regex pattern length to mitigate ReDoS attacks.
+/// Maximum allowed regex pattern length to mitigate `ReDoS` attacks.
 const MAX_PATTERN_LEN: usize = 1024;
 
 // ─── Error type ──────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ struct TokenizeErrorReply {
 }
 
 /// Convert an `AnoError` into an HTTP 422 response.
-fn ano_to_response(e: AnoError) -> HttpResponse {
+fn ano_to_response(e: &AnoError) -> HttpResponse {
     let reply = TokenizeErrorReply {
         code: 422,
         message: e.to_string(),
@@ -27,12 +27,12 @@ fn ano_to_response(e: AnoError) -> HttpResponse {
     HttpResponse::UnprocessableEntity().json(reply)
 }
 
-/// Convenience macro: return HTTP 422 from an AnoError result.
+/// Convenience macro: return HTTP 422 from an `AnoError` result.
 macro_rules! try_ano {
     ($expr:expr) => {
         match $expr {
             Ok(v) => v,
-            Err(e) => return ano_to_response(e),
+            Err(e) => return ano_to_response(&e),
         }
     };
 }
@@ -85,10 +85,10 @@ pub(crate) struct NoiseRequest {
     data_type: String,
     /// Distribution: "Gaussian", "Laplace", or "Uniform".
     method: String,
-    /// Used with new_with_parameters (Gaussian/Laplace).
+    /// Used with `new_with_parameters` (Gaussian/Laplace).
     mean: Option<f64>,
     std_dev: Option<f64>,
-    /// Used with new_with_bounds (Gaussian/Laplace/Uniform).
+    /// Used with `new_with_bounds` (Gaussian/Laplace/Uniform).
     min_bound: Option<f64>,
     max_bound: Option<f64>,
 }
@@ -187,7 +187,7 @@ pub(crate) async fn word_tokenize(body: Json<WordListRequest>) -> HttpResponse {
 pub(crate) struct WordPatternRequest {
     /// Input text.
     data: String,
-    /// Regex pattern to match (max 1024 chars — ReDoS mitigation).
+    /// Regex pattern to match (max 1024 chars — `ReDoS` mitigation).
     pattern: String,
     /// Replacement string.
     replace: String,
@@ -216,7 +216,7 @@ pub(crate) async fn word_pattern_mask(body: Json<WordPatternRequest>) -> HttpRes
 
 #[derive(Deserialize)]
 pub(crate) struct AggregateNumberRequest {
-    /// Number to round (float or integer depending on data_type).
+    /// Number to round (float or integer depending on `data_type`).
     data: Value,
     /// One of: "float", "integer".
     data_type: String,
@@ -284,7 +284,7 @@ pub(crate) async fn aggregate_date(body: Json<AggregateDateRequest>) -> HttpResp
 
 #[derive(Deserialize)]
 pub(crate) struct ScaleNumberRequest {
-    /// Number to scale (float or integer depending on data_type).
+    /// Number to scale (float or integer depending on `data_type`).
     data: Value,
     /// One of: "float", "integer".
     data_type: String,

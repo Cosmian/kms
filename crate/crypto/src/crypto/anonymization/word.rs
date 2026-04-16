@@ -31,8 +31,8 @@ impl WordTokenizer {
         }
         Ok(Self {
             word_token_mapping: mapping,
-            // SAFETY: the literal `r"\b\w+\b"` is a verified constant; this can never fail.
-            word_pattern: Regex::new(r"\b\w+\b").expect("hardcoded regex is valid"),
+            word_pattern: Regex::new(r"\b\w+\b")
+                .map_err(|e| AnoError::AnonymizationError(format!("regex error: {e}")))?,
         })
     }
 
@@ -48,10 +48,9 @@ impl WordTokenizer {
     #[must_use]
     pub fn apply(&self, data: &str) -> String {
         let result = self.word_pattern.replace_all(data, |caps: &regex::Captures| {
-            match self.word_token_mapping.get(&caps[0].to_lowercase()) {
-                Some(token) => token.to_string(),
-                None => caps[0].to_string(),
-            }
+            self.word_token_mapping
+                .get(&caps[0].to_lowercase())
+                .map_or_else(|| caps[0].to_owned(), Clone::clone)
         });
         result.into_owned()
     }
@@ -73,10 +72,11 @@ impl WordMasker {
     /// * `words_to_block`: A slice of string references containing the words to
     ///   be masked in the text.
     #[must_use]
+    // The hardcoded literal `r"\b\w+\b"` is always a valid regex; expect() cannot panic here.
+    #[allow(clippy::expect_used, clippy::missing_panics_doc)]
     pub fn new(words_to_block: &[&str]) -> Self {
         Self {
             word_list: words_to_block.iter().map(|s| s.to_lowercase()).collect(),
-            // SAFETY: the literal `r"\b\w+\b"` is a verified constant; this can never fail.
             word_pattern: Regex::new(r"\b\w+\b").expect("hardcoded regex is valid"),
         }
     }
@@ -94,9 +94,9 @@ impl WordMasker {
     pub fn apply(&self, data: &str) -> String {
         let result = self.word_pattern.replace_all(data, |caps: &regex::Captures| {
             if self.word_list.contains(&caps[0].to_lowercase()) {
-                MASK.to_string()
+                MASK.to_owned()
             } else {
-                caps[0].to_string()
+                caps[0].to_owned()
             }
         });
         result.into_owned()
@@ -119,7 +119,7 @@ impl WordPatternMasker {
     pub fn new(pattern_regex: &str, replace_str: &str) -> Result<Self, AnoError> {
         Ok(Self {
             pattern: Regex::new(pattern_regex)?,
-            replacer: replace_str.to_string(),
+            replacer: replace_str.to_owned(),
         })
     }
 

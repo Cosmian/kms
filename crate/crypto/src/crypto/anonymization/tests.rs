@@ -1,4 +1,8 @@
-#![allow(clippy::assertions_on_result_states)]
+#![allow(
+    clippy::assertions_on_result_states,
+    clippy::panic_in_result_fn,
+    clippy::unnecessary_wraps
+)]
 
 use std::collections::HashSet;
 

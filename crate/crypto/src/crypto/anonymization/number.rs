@@ -57,7 +57,10 @@ impl NumberAggregator {
     #[must_use]
     pub fn apply_on_float(&self, data: f64) -> String {
         if self.power_of_ten_exponent < 0 {
-            return format!("{:.1$}", data, -self.power_of_ten_exponent as usize);
+            // power_of_ten_exponent is negative and validated in new() to be > -308,
+            // so negating it yields a positive i32 that safely fits in usize.
+            let precision = usize::try_from(-self.power_of_ten_exponent).unwrap_or(0);
+            return format!("{data:.precision$}");
         }
         let r = 10_f64.pow(self.power_of_ten_exponent);
         format!("{}", (data / r).round() * r)
@@ -75,7 +78,10 @@ impl NumberAggregator {
     #[must_use]
     pub fn apply_on_int(&self, data: i64) -> String {
         let r = 10_f64.pow(self.power_of_ten_exponent);
-        format!("{:.0}", (data as f64 / r).round() * r)
+        // Precision loss is intentional: integer is rounded to a power of ten via f64 arithmetic.
+        #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+        let as_float = data as f64;
+        format!("{:.0}", (as_float / r).round() * r)
     }
 }
 
@@ -100,7 +106,7 @@ impl DateAggregator {
     ///
     /// * `time_unit`: The unit of time to round the date to.
     #[must_use]
-    pub fn new(time_unit: TimeUnit) -> Self {
+    pub const fn new(time_unit: TimeUnit) -> Self {
         Self { time_unit }
     }
 
@@ -211,6 +217,14 @@ impl NumberScaler {
     /// The scaled value as an integer.
     #[must_use]
     pub fn apply_on_int(&self, data: i64) -> i64 {
-        self.apply_on_float(data as f64).round() as i64
+        // Precision loss and rounding truncation are intentional: z-score scaling
+        // operates in f64, and the integer result is the rounded scaled value.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::as_conversions
+        )]
+        let result = self.apply_on_float(data as f64).round() as i64;
+        result
     }
 }

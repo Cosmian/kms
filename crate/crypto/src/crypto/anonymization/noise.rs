@@ -1,7 +1,7 @@
 use chrono::{DateTime, TimeZone};
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+use cosmian_crypto_core::{CsRng, reexport::rand_core::SeedableRng};
 use rand::{CryptoRng, Rng};
-use rand_distr::{num_traits::Float, Distribution, Normal, Standard, StandardNormal, Uniform};
+use rand_distr::{Distribution, Normal, Standard, StandardNormal, Uniform, num_traits::Float};
 
 use super::{AnoError, datetime_to_rfc3339};
 
@@ -81,11 +81,7 @@ where
         // rng.gen() samples [0, 1); p == 0 is possible but astronomically rare.
         let p: F = {
             let raw: F = rng.r#gen();
-            if raw == F::zero() {
-                F::epsilon()
-            } else {
-                raw
-            }
+            if raw == F::zero() { F::epsilon() } else { raw }
         };
         if rng.gen_bool(0.5) {
             self.mean - self.beta * F::ln(F::one() - p)
@@ -132,11 +128,17 @@ where
                 // σ = β * sqrt(2)
                 let beta = std_dev
                     / F::from(2)
-                        .ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?
+                        .ok_or_else(|| {
+                            AnoError::AnonymizationError(
+                                "Internal float conversion error.".to_owned(),
+                            )
+                        })?
                         .sqrt();
                 Ok(NoiseMethod::Laplace(Laplace::<F>::new(mean, beta)?))
             }
-            _ => Err(AnoError::AnonymizationError(format!("{method_name} is not a supported distribution."))),
+            _ => Err(AnoError::AnonymizationError(format!(
+                "{method_name} is not a supported distribution."
+            ))),
         }?;
         Ok(Self {
             method,
@@ -160,10 +162,14 @@ where
         max_bound: F,
     ) -> Result<Self, AnoError> {
         if min_bound >= max_bound {
-            return Err(AnoError::AnonymizationError("Min bound must be inferior to Max bound.".to_owned()));
+            return Err(AnoError::AnonymizationError(
+                "Min bound must be inferior to Max bound.".to_owned(),
+            ));
         }
 
-        let two = F::from(2).ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?;
+        let two = F::from(2).ok_or_else(|| {
+            AnoError::AnonymizationError("Internal float conversion error.".to_owned())
+        })?;
 
         // Select the appropriate distribution method
         let method = match method_name {
@@ -171,21 +177,24 @@ where
                 let mean = (max_bound + min_bound) / two;
                 // 5σ => 99.99994% of values will be in the bounds
                 let std_dev = (mean - min_bound)
-                    / F::from(5).ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?;
+                    / F::from(5).ok_or_else(|| {
+                        AnoError::AnonymizationError("Internal float conversion error.".to_owned())
+                    })?;
                 Ok(NoiseMethod::Gaussian(Normal::new(mean, std_dev)?))
             }
             "Laplace" => {
                 let mean = (max_bound + min_bound) / two;
                 // confidence interval at 1-a: μ ± β * ln(1/a)
                 let beta = (mean - min_bound)
-                    / -F::ln(
-                        F::from(0.00005_f64)
-                            .ok_or_else(|| AnoError::AnonymizationError("Internal float conversion error.".to_owned()))?,
-                    );
+                    / -F::ln(F::from(0.00005_f64).ok_or_else(|| {
+                        AnoError::AnonymizationError("Internal float conversion error.".to_owned())
+                    })?);
                 Ok(NoiseMethod::Laplace(Laplace::<F>::new(mean, beta)?))
             }
             "Uniform" => Ok(NoiseMethod::Uniform(Uniform::new(min_bound, max_bound))),
-            _ => Err(AnoError::AnonymizationError(format!("No supported distribution {method_name}."))),
+            _ => Err(AnoError::AnonymizationError(format!(
+                "No supported distribution {method_name}."
+            ))),
         }?;
         Ok(Self {
             method,
@@ -220,8 +229,15 @@ impl NoiseGenerator<f64> {
     ///
     /// Original data with added noise
     pub fn apply_on_int(&mut self, data: i64) -> i64 {
-        let res = self.apply_on_float(data as f64);
-        res.round() as i64
+        // Precision loss and truncation are intentional: noise arithmetic happens in f64,
+        // and rounding back to i64 is the expected semantics for a noisy integer.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::as_conversions
+        )]
+        let res = self.apply_on_float(data as f64).round() as i64;
+        res
     }
 
     /// Applies the selected noise method on a given date string.
