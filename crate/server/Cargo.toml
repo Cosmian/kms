@@ -44,6 +44,7 @@ timeout = []
 # Enable extra cryptographic mechanisms which are non-FIPS compliant.
 non-fips = [
   "cosmian_kms_client_utils/non-fips",
+  "cosmian_kms_crypto/non-fips",
   "cosmian_kms_server_database/non-fips",
 ]
 # Enable interop test operations (should only be used for testing)
@@ -71,6 +72,7 @@ clap = { workspace = true, features = [
 ] }
 cosmian_kms_access = { path = "../access", version = "5.20.1" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.20.1" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.20.1" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.20.1" }
 cosmian_logger = { workspace = true, features = ["full"] }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.20.1" }
