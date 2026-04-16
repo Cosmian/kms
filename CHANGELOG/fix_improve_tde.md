@@ -35,7 +35,7 @@
 
 ### Web UI
 
-- Pin pnpm to `10.17.1` across all CI environments to prevent `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` caused by version drift: add `"packageManager": "pnpm@10.17.1"` to `ui/package.json`; update `pnpm/action-setup@v6` in `test_windows.yml`; update install commands in `test_wasm.sh`, `build_ui.sh`, and `test_ui.sh` from `pnpm@10` (major-only) to `pnpm@10.17.1`; switch Nix from `pkgs.pnpm_9` to `pkgs.pnpm_10` in `nix/ui.nix`; update `ui/README.md` prerequisites table
+- Pin pnpm to `10.17.1` across all CI environments to prevent `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` caused by version drift: add `"packageManager": "pnpm@10.17.1"` to `ui/package.json`; update `pnpm/action-setup@v6` in `test_windows.yml`; update install commands in `test_wasm.sh`, `build_ui.sh`, and `test_ui.sh` from `pnpm@10` (major-only) to `pnpm@10.17.1`; keep Nix as `pkgs.pnpm_9` in `nix/ui.nix` (pnpm 9.12.3 is the latest in the pinned nixpkgs, is compatible with lockfile format 9.0 used by both pnpm 9 and pnpm 10, and silently ignores the `packageManager` version field); update `ui/README.md` prerequisites table
 
 ## Documentation
 
