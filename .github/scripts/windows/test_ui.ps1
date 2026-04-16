@@ -146,6 +146,10 @@ $LogTempDir = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]
 $KmsLogOut = Join-Path $LogTempDir "kms-stdout.log"
 $KmsLogErr = Join-Path $LogTempDir "kms-stderr.log"
 
+# Determine the Vite preview port before starting the KMS so we can pass it
+# as the CORS allowed origin.
+$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
+
 # Launch the pre-built binary directly — startup is near-instant.
 $oldRustLog = $env:RUST_LOG
 $env:RUST_LOG = "cosmian_kms_server=info,cosmian_kms_server_database=info"
@@ -156,7 +160,8 @@ try {
         "--sqlite-path", $SqliteDir,
         "--hostname", "127.0.0.1",
         "--port", "9998",
-        "--vendor-identification", "test_vendor"
+        "--vendor-identification", "test_vendor",
+        "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $KmsLogOut `
@@ -202,7 +207,6 @@ if (-not $KmsReady) {
 }
 
 # ── 5. Start Vite preview server ─────────────────────────────────────────────
-$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -ForegroundColor Cyan
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"

@@ -1073,7 +1073,6 @@ dependencies = [
  "num-bigint-dig",
  "num-traits",
  "quick-xml",
- "rand 0.9.4",
  "regex",
  "serde",
  "serde_json",
