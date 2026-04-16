@@ -33,6 +33,10 @@
 - Update macOS Nix CLI vendor hash files (`cli.vendor.static.darwin.sha256`, `cli.vendor.dynamic.darwin.sha256`) to match the updated `Cargo.lock` after adding PKCS#11 loader dependencies
 - Fix `test_ui.ps1` (Windows UI E2E script): KMS server log files were written to `GetTempPath()\kms-e2e.{log,err}` but the `Upload logs on failure` workflow step expected them at `${{ runner.temp }}\kms-{stdout,stderr}.log`; now uses `$env:RUNNER_TEMP` (with local fallback) and the correct filenames so that failure log artifacts are properly uploaded by the CI workflow
 
+### Web UI
+
+- Pin pnpm to `10.17.1` across all CI environments to prevent `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` caused by version drift: add `"packageManager": "pnpm@10.17.1"` to `ui/package.json`; update `pnpm/action-setup@v6` in `test_windows.yml`; update install commands in `test_wasm.sh`, `build_ui.sh`, and `test_ui.sh` from `pnpm@10` (major-only) to `pnpm@10.17.1`; switch Nix from `pkgs.pnpm_9` to `pkgs.pnpm_10` in `nix/ui.nix`; update `ui/README.md` prerequisites table
+
 ## Documentation
 
 ### Oracle TDE

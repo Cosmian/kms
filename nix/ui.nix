@@ -203,8 +203,8 @@ let
         baseName != "node_modules" && baseName != "dist";
     };
 
-    # pnpmDeps is read by pnpm_9.configHook to set up the offline virtual store
-    pnpmDeps = pkgs.pnpm_9.fetchDeps {
+    # pnpmDeps is read by pnpm_10.configHook to set up the offline virtual store
+    pnpmDeps = pkgs.pnpm_10.fetchDeps {
       pname = "cosmian-kms-ui-deps-${finalVariant}";
       inherit version;
 
@@ -238,7 +238,7 @@ let
     # configHook runs pnpm install --offline --frozen-lockfile, creating node_modules
     nativeBuildInputs = [
       pkgs.nodejs_22
-      pkgs.pnpm_9.configHook
+      pkgs.pnpm_10.configHook
     ];
 
     # Disable build phase - we only want dependencies installed
@@ -265,7 +265,7 @@ stdenv.mkDerivation {
   # Vite requires Node >= 20.19; use a recent Node to avoid warnings
   nativeBuildInputs = with pkgs; [
     nodejs_22
-    pnpm_9
+    pnpm_10
   ];
 
   buildPhase = ''
