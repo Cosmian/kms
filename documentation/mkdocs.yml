@@ -143,6 +143,7 @@ nav:
       - SBOM: certifications_and_compliance/sbom.md
       - CBOM: certifications_and_compliance/cbom.md
       - Security Audit (OWASP): certifications_and_compliance/security_audit.md
+      - Multi-Framework Security Audit: certifications_and_compliance/multi_framework_security_audit.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md

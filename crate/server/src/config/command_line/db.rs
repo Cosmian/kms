@@ -406,4 +406,71 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("empty"));
     }
+
+    // ── N1–N5: Database URL password masking (OSSTMM Visibility · NIST PR.DS-5) ─
+
+    /// N1: Standard single-host `PostgreSQL` URL – password must be replaced with `****`.
+    #[test]
+    fn n01_postgres_single_host_password_masked() {
+        let url = "postgresql://user:secret@localhost:5432/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in masked URL: {masked}"
+        );
+        assert!(
+            masked.contains("****"),
+            "Masked URL must contain ****: {masked}"
+        );
+        assert!(
+            masked.contains("user:"),
+            "Username must be preserved: {masked}"
+        );
+    }
+
+    /// N2: `MySQL` URL – password must be masked.
+    #[test]
+    fn n02_mysql_password_masked() {
+        let url = "mysql://admin:pass@127.0.0.1:3306/kms";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("pass"),
+            "Password must not appear: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N3: Multi-host `PostgreSQL` URL that `url::Url` cannot parse – slow-path masking.
+    #[test]
+    fn n03_postgres_multi_host_password_masked() {
+        let url = "postgresql://user:secret@host1,host2,host3/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in multi-host URL: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N4: URL without a password – string must be unchanged.
+    #[test]
+    fn n04_no_password_unchanged() {
+        let url = "postgresql://user@localhost/db";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "URL without password must be returned unchanged"
+        );
+    }
+
+    /// N5: Completely invalid URL – must not panic, return unchanged string.
+    #[test]
+    fn n05_invalid_url_no_panic() {
+        let url = "not-a-url-at-all";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "Invalid URL must be returned unchanged without panic"
+        );
+    }
 }

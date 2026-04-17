@@ -43,7 +43,7 @@ step() {
 
 # ─── Arguments ────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 OUTPUT_DIR="${REPO_ROOT}/documentation/docs/certifications_and_compliance/audit-results/$(date +%Y%m%d_%H%M%S)"
 RUN_GEIGER=false
 FAIL_ON_WARN=false

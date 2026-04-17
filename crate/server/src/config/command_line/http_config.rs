@@ -3,6 +3,8 @@ use std::fmt::Display;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+use super::tls_config::TlsConfig;
+
 const DEFAULT_PORT: u16 = 9998;
 #[cfg(target_os = "windows")]
 const DEFAULT_HOSTNAME: &str = "127.0.0.1";
@@ -44,9 +46,23 @@ pub struct HttpConfig {
     pub cors_allowed_origins: Option<Vec<String>>,
 }
 
+impl HttpConfig {
+    /// Returns the correct scheme (`"http"` or `"https"`) based on the companion
+    /// [`TlsConfig`].  Use this when building log messages or client URLs where
+    /// the scheme must be accurate.
+    #[must_use]
+    pub const fn scheme<'a>(&self, tls: &'a TlsConfig) -> &'a str {
+        if tls.is_tls_enabled() {
+            "https"
+        } else {
+            "http"
+        }
+    }
+}
+
 impl Display for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "http://{}:{}", self.hostname, self.port)?;
+        write!(f, "{}:{}", self.hostname, self.port)?;
         if let Some(ref token) = self.api_token_id {
             write!(f, " (api_token: {token})")?;
         }

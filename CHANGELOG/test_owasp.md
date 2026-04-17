@@ -1,5 +1,11 @@
 # CHANGELOG — test/owasp
 
+## Bug Fixes
+
+### Logging / Startup
+
+- **Display**: `HttpConfig::Display` no longer hardcodes `http://`; the scheme-less `hostname:port` is now the canonical `Display` form. A new `HttpConfig::scheme(&self, tls: &TlsConfig) -> &str` helper returns `"https"` or `"http"` based on `TlsConfig::is_tls_enabled()`. `ClapConfig::Debug` now logs the correct `https://…` or `http://…` URL.
+
 ## Security
 
 ### KMIP Protocol / Parser
@@ -57,14 +63,38 @@
 
 ### Audit
 
-- Update `scripts/audit.sh` CORS check to distinguish enterprise-integration scopes (WARN) from main KMIP scope (FAIL), and add JWT algorithm allowlist check that verifies `validation.algorithms` assignment.
+- Update `.github/scripts/audit/owasp.sh` CORS check to distinguish enterprise-integration scopes (WARN) from main KMIP scope (FAIL), and add JWT algorithm allowlist check that verifies `validation.algorithms` assignment.
+
+### JWKS HTTPS Guard
+
+- **A07-5 / CIS 16 / OSSTMM Trust**: Add `validate_jwks_uris_are_https()` startup guard in `start_kms_server.rs`; any JWKS URI that does not use the `https` scheme causes the server to refuse to start. Guard is gated behind `#[cfg(not(feature = "insecure"))]`. Unit tests J1–J4 cover rejection, acceptance, empty list, and mixed-list scenarios.
+
+### Dependency Policy
+
+- **SSDF PW.5.1 / CIS 4.1**: Add `[[bans.features]]` entry in `deny.toml` banning `serde_json::unbounded_depth`; this feature removes the built-in 128-level JSON recursion limit and is a direct DoS regression vector.
+
+## Testing
+
+### Security regression tests
+
+- **Unit** — `crate/server/src/config/command_line/db.rs`: N1–N5 tests for `mask_db_url_password()` covering Postgres single-host, MySQL, Postgres multi-host, no-password, and invalid URL edge cases.
+- **Unit** — `crate/server/src/middlewares/jwt/jwt_config.rs`: A1–A6 tests for the JWT algorithm allowlist (HS256/HS384/HS512 rejected; RS256/ES256/PS256 accepted) using the production constant `ALLOWED_JWT_ALGORITHMS`.
+- **Unit** — `crate/server/src/start_kms_server.rs`: J1–J4 tests for the JWKS HTTPS startup guard.
+- **Integration** — `crate/clients/clap/src/tests/serialization/batch_abuse.rs`: B1–B5 tests that submit KMIP batch requests with mismatched `BatchCount` values and verify the server does not return 500.
+- **Integration** — `crate/clients/clap/src/tests/security/privilege_bypass.rs`: PB1–PB4 tests verifying that privileged user scope does not bleed into read/export operations for other users.
+- **Integration** — `crate/clients/clap/src/tests/security/cors_config.rs`: C1–C3 tests verifying no-wildcard CORS policy (no foreign origin reflected in `Access-Control-Allow-Origin`).
+- **Unit** — `crate/server/src/middlewares/jwt/jwks.rs`: SR1–SR2 SSRF regression tests verifying that a 307 redirect from a JWKS endpoint is not followed.
+
+## Documentation
+
+- Move audit scripts to `.github/scripts/audit/`: `owasp.sh` (OWASP Top 10, 21 checks, JSON output, updates `security_audit.md`), `multi_framework.sh` (NIST CSF 2.0/SSDF, CIS Controls v8, ISO/IEC 27034, OSSTMM — 21 checks: gitleaks, cargo audit, cargo deny, unsafe count, JWKS HTTPS guard, CORS wildcard, TTLV depth, JWT allowlist, SSRF guard, TLS config, Zeroize usage), and unified entry-point `audit.sh`.
+- Add `documentation/docs/certifications_and_compliance/multi_framework_security_audit.md` — comprehensive multi-framework security audit report mapping all findings to NIST CSF 2.0, SSDF SP 800-218, CIS Controls v8, ISO/IEC 27034, and OSSTMM controls, with a remediation matrix cross-referencing all 8 closed findings.
+- Update `documentation/mkdocs.yml` — add **Multi-Framework Security Audit** page under `Certifications and compliance`.
 - Add checks 15–19 for: `SameSite::Strict`, JWT log level (`warn!`), reqwest redirect disable, session key salt warning, and `MAX_LOCATE_ITEMS` constant.
 - Add `update_audit_md()` function that automatically updates the Remediation Priority Matrix in `audit.md` from `Open` to `✅ Fixed` / `⚠️ Mitigated` based on check results.
 - Update `audit.md` Remediation Priority Matrix: all High and most Medium findings now marked `✅ Fixed` or `⚠️ Mitigated`.
 - Move `audit.md` to `documentation/docs/certifications_and_compliance/security_audit.md` and add page to `documentation/mkdocs.yml` navigation under *Certifications & Compliance*.
-- Update `scripts/audit.sh` default output path to `documentation/docs/certifications_and_compliance/audit-results/<timestamp>/`; add `.gitignore` to exclude per-run output files from git.
-
-## Testing
+- Update `.github/scripts/audit/owasp.sh` default output path to `documentation/docs/certifications_and_compliance/audit-results/<timestamp>/`; add `.gitignore` to exclude per-run output files from git.
 
 ### HSM
 

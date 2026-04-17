@@ -596,6 +596,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ));
         }
 
+        // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
+        // MITM attacks on the public-key material used to verify bearer tokens.
+        // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
+        // check is compiled out to allow http:// URIs.
+        #[cfg(not(feature = "insecure"))]
+        validate_jwks_uris_are_https(&all_jwks_uris)?;
+
         let jwks_manager = Arc::new(
             JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
         );
@@ -1094,6 +1101,30 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     Ok(builder)
 }
 
+/// Validate that every JWKS URI in `uris` uses the `https` scheme.
+///
+/// Prevents the KMS from starting with an HTTP JWKS endpoint, which would expose
+/// JWT public-key material to interception and allow MITM-based algorithm confusion.
+///
+/// This check is compiled out by the `insecure` feature flag so that integration
+/// tests can point the server at a local HTTP mock JWKS server.
+#[cfg(not(feature = "insecure"))]
+fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
+    for uri in uris {
+        let scheme = url::Url::parse(uri)
+            .map(|u| u.scheme().to_owned())
+            .unwrap_or_default();
+        if scheme != "https" {
+            return Err(KmsError::ServerError(format!(
+                "JWKS URI must use HTTPS scheme to protect JWT public-key material, \
+                 got: {uri:?}. Use the `insecure` feature flag to bypass this check \
+                 in non-production environments."
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used)]
 mod tests {
@@ -1169,5 +1200,62 @@ mod tests {
             key2.master(),
             "Keys with same URL and salt should be identical"
         );
+    }
+
+    // ── J1–J4: JWKS HTTPS URI validation (compiled out in `insecure` builds) ─
+    #[cfg(not(feature = "insecure"))]
+    mod jwks_https_guard {
+        use super::*;
+
+        /// J1: A plain HTTP JWKS URI must be rejected at startup.
+        #[test]
+        fn j01_http_uri_is_rejected() {
+            let uris = vec!["http://idp.example.com/.well-known/jwks.json".to_owned()];
+            let result = validate_jwks_uris_are_https(&uris);
+            assert!(result.is_err(), "HTTP JWKS URI must be rejected");
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("HTTPS") || msg.contains("https"),
+                "Error message must mention HTTPS, got: {msg}"
+            );
+        }
+
+        /// J2: A valid HTTPS JWKS URI must be accepted.
+        #[test]
+        fn j02_https_uri_is_accepted() {
+            let uris = vec!["https://idp.example.com/.well-known/jwks.json".to_owned()];
+            assert!(
+                validate_jwks_uris_are_https(&uris).is_ok(),
+                "HTTPS JWKS URI must be accepted"
+            );
+        }
+
+        /// J3: Empty URI list is always valid (no JWT auth configured).
+        #[test]
+        fn j03_empty_list_is_ok() {
+            assert!(
+                validate_jwks_uris_are_https(&[]).is_ok(),
+                "Empty URI list must be accepted"
+            );
+        }
+
+        /// J4: A mixed list (one HTTPS, one HTTP) must be rejected and the bad URI named.
+        #[test]
+        fn j04_mixed_list_rejects_http_uri() {
+            let uris = vec![
+                "https://good.example.com/jwks".to_owned(),
+                "http://bad.example.com/jwks".to_owned(),
+            ];
+            let result = validate_jwks_uris_are_https(&uris);
+            assert!(
+                result.is_err(),
+                "List containing an HTTP URI must be rejected"
+            );
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("bad.example.com"),
+                "Error message must identify the offending URI, got: {msg}"
+            );
+        }
     }
 }
