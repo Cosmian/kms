@@ -10,8 +10,6 @@ use serde_json::Value;
 /// Maximum allowed regex pattern length to mitigate `ReDoS` attacks.
 const MAX_PATTERN_LEN: usize = 1024;
 
-// ─── Error type ──────────────────────────────────────────────────────────────
-
 #[derive(Serialize, Debug)]
 struct TokenizeErrorReply {
     code: u16,
@@ -37,7 +35,6 @@ macro_rules! try_ano {
     };
 }
 
-// ─── Common response wrapper ──────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct TokenizeResponse {
@@ -58,9 +55,11 @@ pub(crate) struct HashRequest {
 #[post("/hash")]
 pub(crate) async fn hash(body: Json<HashRequest>) -> HttpResponse {
     let salt = match body.salt.as_deref() {
-        Some(s) => Some(try_ano!(general_purpose::STANDARD.decode(s).map_err(|e| {
-            AnoError::AnonymizationError(format!("invalid base64 salt: {e}"))
-        }))),
+        Some(s) => Some(try_ano!(
+            general_purpose::STANDARD
+                .decode(s)
+                .map_err(|e| AnoError::AnonymizationError(format!("invalid base64 salt: {e}")))
+        )),
         None => None,
     };
     let method = try_ano!(HashMethod::new(&body.method, salt));
@@ -70,6 +69,7 @@ pub(crate) async fn hash(body: Json<HashRequest>) -> HttpResponse {
         result: Value::String(result),
     })
 }
+
 
 #[derive(Deserialize)]
 pub(crate) struct NoiseRequest {
@@ -90,51 +90,45 @@ pub(crate) struct NoiseRequest {
 /// Add statistical noise to a float, integer, or RFC3339 date.
 #[post("/noise")]
 pub(crate) async fn noise(body: Json<NoiseRequest>) -> HttpResponse {
-    let mut noise_gen: NoiseGenerator<f64> =
-        if let (Some(mean), Some(std_dev)) = (body.mean, body.std_dev) {
-            try_ano!(NoiseGenerator::new_with_parameters(
-                &body.method,
-                mean,
-                std_dev
-            ))
-        } else if let (Some(min), Some(max)) = (body.min_bound, body.max_bound) {
-            try_ano!(NoiseGenerator::new_with_bounds(&body.method, min, max))
-        } else {
-            return HttpResponse::UnprocessableEntity().json(TokenizeErrorReply {
-                code: 422,
-                message: "provide either (mean + std_dev) or (min_bound + max_bound)".to_owned(),
-            });
-        };
+    let mut noise_gen: NoiseGenerator<f64> = if let (Some(mean), Some(std_dev)) =
+        (body.mean, body.std_dev)
+    {
+        try_ano!(NoiseGenerator::new_with_parameters(&body.method, mean, std_dev))
+    } else if let (Some(min), Some(max)) = (body.min_bound, body.max_bound) {
+        try_ano!(NoiseGenerator::new_with_bounds(&body.method, min, max))
+    } else {
+        return HttpResponse::UnprocessableEntity().json(TokenizeErrorReply {
+            code: 422,
+            message: "provide either (mean + std_dev) or (min_bound + max_bound)".to_owned(),
+        });
+    };
 
     let result: Value = match body.data_type.as_str() {
         "float" => {
-            let v = try_ano!(
-                body.data
-                    .as_f64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be a number for data_type=float".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_f64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be a number for data_type=float".to_owned()
+                )));
             Value::from(noise_gen.apply_on_float(v))
         }
         "integer" => {
-            let v = try_ano!(
-                body.data
-                    .as_i64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be an integer for data_type=integer".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_i64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be an integer for data_type=integer".to_owned()
+                )));
             Value::from(noise_gen.apply_on_int(v))
         }
         "date" => {
-            let s = try_ano!(
-                body.data
-                    .as_str()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be a string (RFC3339) for data_type=date".to_owned()
-                    ))
-            );
+            let s = try_ano!(body
+                .data
+                .as_str()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be a string (RFC3339) for data_type=date".to_owned()
+                )));
             Value::String(try_ano!(noise_gen.apply_on_date(s)))
         }
         other => {
@@ -146,8 +140,6 @@ pub(crate) async fn noise(body: Json<NoiseRequest>) -> HttpResponse {
     };
     HttpResponse::Ok().json(TokenizeResponse { result })
 }
-
-// ─── /word-mask ───────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct WordListRequest {
@@ -168,8 +160,6 @@ pub(crate) async fn word_mask(body: Json<WordListRequest>) -> HttpResponse {
     })
 }
 
-// ─── /word-tokenize ───────────────────────────────────────────────────────────
-
 /// Replace sensitive words with random hex tokens (consistent within one request).
 #[post("/word-tokenize")]
 pub(crate) async fn word_tokenize(body: Json<WordListRequest>) -> HttpResponse {
@@ -181,7 +171,6 @@ pub(crate) async fn word_tokenize(body: Json<WordListRequest>) -> HttpResponse {
     })
 }
 
-// ─── /word-pattern-mask ──────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct WordPatternRequest {
@@ -212,7 +201,6 @@ pub(crate) async fn word_pattern_mask(body: Json<WordPatternRequest>) -> HttpRes
     })
 }
 
-// ─── /aggregate-number ───────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct AggregateNumberRequest {
@@ -230,23 +218,21 @@ pub(crate) async fn aggregate_number(body: Json<AggregateNumberRequest>) -> Http
     let agg = try_ano!(NumberAggregator::new(body.power_of_ten));
     let result: String = match body.data_type.as_str() {
         "float" => {
-            let v = try_ano!(
-                body.data
-                    .as_f64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be a number for data_type=float".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_f64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be a number for data_type=float".to_owned()
+                )));
             agg.apply_on_float(v)
         }
         "integer" => {
-            let v = try_ano!(
-                body.data
-                    .as_i64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be an integer for data_type=integer".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_i64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be an integer for data_type=integer".to_owned()
+                )));
             agg.apply_on_int(v)
         }
         other => {
@@ -261,7 +247,6 @@ pub(crate) async fn aggregate_number(body: Json<AggregateNumberRequest>) -> Http
     })
 }
 
-// ─── /aggregate-date ─────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct AggregateDateRequest {
@@ -282,7 +267,6 @@ pub(crate) async fn aggregate_date(body: Json<AggregateDateRequest>) -> HttpResp
     })
 }
 
-// ─── /scale-number ───────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct ScaleNumberRequest {
@@ -311,23 +295,21 @@ pub(crate) async fn scale_number(body: Json<ScaleNumberRequest>) -> HttpResponse
     ));
     let result: Value = match body.data_type.as_str() {
         "float" => {
-            let v = try_ano!(
-                body.data
-                    .as_f64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be a number for data_type=float".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_f64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be a number for data_type=float".to_owned()
+                )));
             Value::from(scaler.apply_on_float(v))
         }
         "integer" => {
-            let v = try_ano!(
-                body.data
-                    .as_i64()
-                    .ok_or_else(|| AnoError::AnonymizationError(
-                        "data must be an integer for data_type=integer".to_owned()
-                    ))
-            );
+            let v = try_ano!(body
+                .data
+                .as_i64()
+                .ok_or_else(|| AnoError::AnonymizationError(
+                    "data must be an integer for data_type=integer".to_owned()
+                )));
             Value::from(scaler.apply_on_int(v))
         }
         other => {

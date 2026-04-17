@@ -21,8 +21,6 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
     n
 }
 
-// ── Built-in alphabet presets ─────────────────────────────────────────────────
-
 /// Built-in alphabet presets for AES-256 FF1 Format-Preserving Encryption.
 ///
 /// Each variant corresponds to a predefined character set. To build a custom
@@ -374,8 +372,6 @@ impl Display for Alphabet {
     }
 }
 
-// ── Preset → Alphabet conversion ──────────────────────────────────────────────
-
 /// Builds an `Alphabet` from a preset character string.
 /// Preset strings are guaranteed to produce a valid alphabet (2 ≤ chars < 2^16).
 fn build_from_chars(s: &str) -> Alphabet {
@@ -455,7 +451,6 @@ impl From<AlphabetPreset> for Alphabet {
 }
 
 impl Alphabet {
-    // ── Preset convenience constructors ──────────────────────────────────────
     // Thin wrappers over `From<AlphabetPreset>` kept for backward compatibility.
 
     #[must_use]

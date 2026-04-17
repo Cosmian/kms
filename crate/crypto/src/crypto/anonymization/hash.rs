@@ -6,7 +6,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::AnoError;
 
-// Available hashing methods
 #[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub enum HashMethod {
     /// Represents the SHA2 hash method with an optional salt.

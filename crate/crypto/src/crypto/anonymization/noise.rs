@@ -5,7 +5,6 @@ use rand_distr::{Distribution, Normal, Standard, StandardNormal, Uniform, num_tr
 
 use super::{AnoError, datetime_to_rfc3339};
 
-// Represent the different Noise methods.
 pub enum NoiseMethod<F>
 where
     F: Float + rand_distr::uniform::SampleUniform,
