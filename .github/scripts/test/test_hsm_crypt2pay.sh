@@ -64,9 +64,9 @@ fi
 
 export C2P_CONF="${C2P_CONF:-/etc/c2p/c2p.xml}"
 
-# The server HSM integration test is currently not runnable with Crypt2pay in CI:
+# The server HSM integration test is currently not runnable with Crypt2Pay in CI:
 # it fails during key generation with "Failed generating key. Return code: 112"
-# (CKR_MECHANISM_INVALID). Keep CI focused on the dedicated Crypt2pay loader tests.
+# (CKR_MECHANISM_INVALID). Keep CI focused on the dedicated Crypt2Pay loader tests.
 
 env \
   PATH="$PATH" \
