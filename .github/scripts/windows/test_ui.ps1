@@ -244,6 +244,11 @@ try {
     # SoftHSM2 is not available on Windows; signal to the specs that no HSM
     # keys are pre-created so the HSM-specific tests are skipped.
     $env:PLAYWRIGHT_HSM_KEY_COUNT = "0"
+    # Run fewer parallel workers on Windows to prevent the debug-build KMS server
+    # from being overwhelmed by concurrent crypto operations, which saturates the
+    # tokio reactor and causes actix-web to return 408 Request Timeout before it
+    # can even read incoming request bodies.
+    $env:PLAYWRIGHT_WORKERS = "4"
     try {
         Invoke-Checked $pnpmCmd @("run", "test:e2e")
     }
@@ -251,6 +256,7 @@ try {
         Remove-Item Env:CI -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_HSM_KEY_COUNT -ErrorAction SilentlyContinue
+        Remove-Item Env:PLAYWRIGHT_WORKERS -ErrorAction SilentlyContinue
         Pop-Location
     }
 }

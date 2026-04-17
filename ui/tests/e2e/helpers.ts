@@ -424,24 +424,46 @@ export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Prom
             },
         ],
     };
-    const response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-    });
-    if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`createHmacKey: KMS request failed with status ${response.status}: ${body}`);
+
+    // Retry up to 3 times with exponential backoff to handle transient 408
+    // Request Timeout responses that occur on slow Windows CI runners when the
+    // debug-build KMS server's tokio reactor is temporarily saturated by
+    // concurrent crypto operations from other parallel test workers.
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let response: Response;
+        try {
+            response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(request),
+            });
+        } catch (err) {
+            if (attempt < maxAttempts) {
+                await new Promise((res) => setTimeout(res, 1000 * attempt));
+                continue;
+            }
+            throw err;
+        }
+        if (response.status === 408 && attempt < maxAttempts) {
+            await new Promise((res) => setTimeout(res, 1000 * attempt));
+            continue;
+        }
+        if (!response.ok) {
+            const body = await response.text();
+            throw new Error(`createHmacKey: KMS request failed with status ${response.status}: ${body}`);
+        }
+        const json = (await response.json()) as {
+            tag?: string;
+            value?: Array<{ tag: string; value: unknown }>;
+        };
+        const idItem = json.value?.find((item) => item.tag === "UniqueIdentifier");
+        if (!idItem || typeof idItem.value !== "string") {
+            throw new Error(`createHmacKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
+        }
+        return idItem.value;
     }
-    const json = (await response.json()) as {
-        tag?: string;
-        value?: Array<{ tag: string; value: unknown }>;
-    };
-    const idItem = json.value?.find((item) => item.tag === "UniqueIdentifier");
-    if (!idItem || typeof idItem.value !== "string") {
-        throw new Error(`createHmacKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
-    }
-    return idItem.value;
+    throw new Error("createHmacKey: exhausted all retry attempts");
 }
 
 /**
