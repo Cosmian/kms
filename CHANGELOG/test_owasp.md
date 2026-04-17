@@ -94,6 +94,7 @@
 ### OpenSSL
 
 - Upgrade OpenSSL from 3.6.0 to 3.6.2 (security patch release fixing CVE-2026-31790, CVE-2026-2673, CVE-2026-28386, CVE-2026-28387, CVE-2026-28388, CVE-2026-28389, CVE-2026-28390, CVE-2026-31789); update `crate/crypto/build.rs` download URL to GitHub releases and SHA-256 hash; update `nix/common.nix` SRI hash; update all 3.6.0 version strings in `nix/kms-server.nix`.
+- Fix aarch64 packaging CI failure: `default.nix` `openssl36Args` block retained the 3.6.0 URL/hash from before the upgrade; updated version, `srcUrl`, `sha256SRI`, and `expectedHash` to 3.6.2; also updated all `openssl-3.6.0-linux` / `openssl-non-fips-3.6.0-linux` staging path references in `crate/server/Cargo.toml`, `crate/clients/ckms/Cargo.toml`, `.github/scripts/package/package_common.sh`, `.github/scripts/package/smoke_test_linux.sh`, and `.github/scripts/package/smoke_test_dmg.sh`.
 
 ## Refactor
 

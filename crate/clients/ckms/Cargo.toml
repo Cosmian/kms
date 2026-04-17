@@ -138,27 +138,27 @@ assets = [
     "555",
   ],
   [
-    "target/openssl-3.6.0-linux/lib/libssl.so.3",
+    "target/openssl-3.6.2-linux/lib/libssl.so.3",
     "usr/local/cosmian/ckms/lib/libssl.so.3",
     "555",
   ],
   [
-    "target/openssl-3.6.0-linux/lib/libcrypto.so.3",
+    "target/openssl-3.6.2-linux/lib/libcrypto.so.3",
     "usr/local/cosmian/ckms/lib/libcrypto.so.3",
     "555",
   ],
   [
-    "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so",
+    "target/openssl-3.6.2-linux/lib/ossl-modules/fips.so",
     "usr/local/cosmian/ckms/lib/ossl-modules/fips.so",
     "555",
   ],
   [
-    "target/openssl-3.6.0-linux/ssl/openssl.cnf",
+    "target/openssl-3.6.2-linux/ssl/openssl.cnf",
     "usr/local/cosmian/ckms/lib/ssl/openssl.cnf",
     "644",
   ],
   [
-    "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf",
+    "target/openssl-3.6.2-linux/ssl/fipsmodule.cnf",
     "usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf",
     "644",
   ],
@@ -185,17 +185,17 @@ assets = [
     "555",
   ],
   [
-    "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3",
+    "target/openssl-non-fips-3.6.2-linux/lib/libssl.so.3",
     "usr/local/cosmian/ckms/lib/libssl.so.3",
     "555",
   ],
   [
-    "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3",
+    "target/openssl-non-fips-3.6.2-linux/lib/libcrypto.so.3",
     "usr/local/cosmian/ckms/lib/libcrypto.so.3",
     "555",
   ],
   [
-    "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so",
+    "target/openssl-non-fips-3.6.2-linux/lib/ossl-modules/legacy.so",
     "usr/local/cosmian/ckms/lib/ossl-modules/legacy.so",
     "555",
   ],
@@ -235,11 +235,11 @@ assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
   { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
-  { source = "target/openssl-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
-  { source = "target/openssl-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
-  { source = "target/openssl-3.6.0-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/fips.so", mode = "555" },
-  { source = "target/openssl-3.6.0-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/openssl.cnf", mode = "644" },
-  { source = "target/openssl-3.6.0-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf", mode = "644" },
+  { source = "target/openssl-3.6.2-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
+  { source = "target/openssl-3.6.2-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
+  { source = "target/openssl-3.6.2-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/fips.so", mode = "555" },
+  { source = "target/openssl-3.6.2-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-3.6.2-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/ckms/lib/ssl/fipsmodule.cnf", mode = "644" },
 ]
 auto-req = "no"
 require-sh = true
@@ -252,9 +252,9 @@ assets = [
   { source = "target/release/ckms", dest = "/usr/local/bin/ckms", mode = "755" },
   { source = "target/release/cosmian_pkcs11_verify", dest = "/usr/local/bin/cosmian_pkcs11_verify", mode = "755" },
   { source = "target/release/libcosmian_pkcs11.so", dest = "/usr/local/lib/libcosmian_pkcs11.so", mode = "555" },
-  { source = "target/openssl-non-fips-3.6.0-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
-  { source = "target/openssl-non-fips-3.6.0-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
-  { source = "target/openssl-non-fips-3.6.0-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/legacy.so", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.2-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/ckms/lib/libssl.so.3", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.2-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/ckms/lib/libcrypto.so.3", mode = "555" },
+  { source = "target/openssl-non-fips-3.6.2-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/ckms/lib/ossl-modules/legacy.so", mode = "555" },
 ]
 auto-req = "no"
 require-sh = true

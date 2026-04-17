@@ -65,7 +65,7 @@ usage() {
   Global options:
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
-                    static: statically link OpenSSL 3.6.0
+                    static: statically link OpenSSL 3.6.2
                     dynamic: dynamically link system OpenSSL
 
   For testing, also supports environment variables:
@@ -101,9 +101,9 @@ usage() {
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.0 + all server + all ckms combinations)
+    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.2 + all server + all ckms combinations)
     $0 sbom --target openssl_3_1_2            # SBOM for the OpenSSL 3.1.2 (FIPS) derivation
-    $0 sbom --target openssl_3_6_0            # SBOM for the OpenSSL 3.6.0 (non-FIPS) derivation
+    $0 sbom --target openssl_3_6_0            # SBOM for the OpenSSL 3.6.2 (non-FIPS) derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
@@ -783,10 +783,10 @@ sbom_command() {
     }
     echo ""
 
-    # Generate SBOM for OpenSSL 3.6.0
-    echo ">>> Generating SBOM for OpenSSL 3.6.0..."
+    # Generate SBOM for OpenSSL 3.6.2
+    echo ">>> Generating SBOM for OpenSSL 3.6.2..."
     bash "$SCRIPT" --target openssl_3_6_0 || {
-      echo "ERROR: OpenSSL 3.6.0 SBOM generation failed" >&2
+      echo "ERROR: OpenSSL 3.6.2 SBOM generation failed" >&2
       exit 1
     }
     echo ""

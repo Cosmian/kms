@@ -499,7 +499,7 @@ write_binary_hash_file() {
 resolve_openssl_path() {
   # Resolve OpenSSL files to stage for packaging
   # For dynamic builds, use the libs staged in the server derivation, which
-  # already selects 3.6.0 for non-fips and 3.1.2 for fips.
+  # already selects 3.6.2 for non-fips and 3.1.2 for fips.
   if [ "$LINK" = "dynamic" ]; then
     OSSL_PATH="$REAL_SERVER/usr/local/cosmian"
   else
@@ -515,8 +515,8 @@ resolve_openssl_path() {
 
   # Compute staging directory matching Cargo.toml asset paths
   # Format expected:
-  #  - FIPS:      target/openssl-3.6.0-<os>-<arch>
-  #  - non-FIPS:  target/openssl-non-fips-3.6.0-<os>-<arch>
+  #  - FIPS:      target/openssl-3.6.2-<os>-<arch>
+  #  - non-FIPS:  target/openssl-non-fips-3.6.2-<os>-<arch>
   local os_name arch_name stage_basename stage_dir
   os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os_name" in
@@ -526,9 +526,9 @@ resolve_openssl_path() {
   esac
   arch_name=$(uname -m)
   if [ "$VARIANT" = "non-fips" ]; then
-    stage_basename="openssl-non-fips-3.6.0-${os_name}-${arch_name}"
+    stage_basename="openssl-non-fips-3.6.2-${os_name}-${arch_name}"
   else
-    stage_basename="openssl-3.6.0-${os_name}-${arch_name}"
+    stage_basename="openssl-3.6.2-${os_name}-${arch_name}"
   fi
   stage_dir="$REPO_ROOT/crate/server/target/${stage_basename}"
 
@@ -565,9 +565,9 @@ resolve_openssl_path() {
     if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
       cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     else
-      # Fallback: locate legacy.so from any OpenSSL 3.6.0 derivation in the Nix store
+      # Fallback: locate legacy.so from any OpenSSL 3.6.2 derivation in the Nix store
       # Use find instead of ls to handle arbitrary filenames and stop at first match
-      LEGACY_SRC=$(find /nix/store -type f -path '*/openssl-3.6.0*/lib/ossl-modules/legacy.so' -print -quit 2>/dev/null || true)
+      LEGACY_SRC=$(find /nix/store -type f -path '*/openssl-3.6.2*/lib/ossl-modules/legacy.so' -print -quit 2>/dev/null || true)
       if [ -n "${LEGACY_SRC}" ] && [ -f "${LEGACY_SRC}" ]; then
         cp "${LEGACY_SRC}" "$stage_dir/lib/ossl-modules/"
       else
@@ -610,9 +610,9 @@ resolve_openssl_path() {
   # These allow Cargo.toml to reference a fixed path regardless of build architecture
   local generic_basename
   if [ "$VARIANT" = "non-fips" ]; then
-    generic_basename="openssl-non-fips-3.6.0-linux"
+    generic_basename="openssl-non-fips-3.6.2-linux"
   else
-    generic_basename="openssl-3.6.0-linux"
+    generic_basename="openssl-3.6.2-linux"
   fi
 
   # Create symlink in crate/server/target for cargo-deb
