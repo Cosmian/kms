@@ -226,13 +226,23 @@ impl KMS {
                 })?;
                 match hsm_model.as_str() {
                     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-                    "crypt2pay" => instantiate_hsm_with_env!(
-                        Crypt2pay,
-                        "CRYPT2PAY_PKCS11_LIB",
-                        CRYPT2PAY_PKCS11_LIB,
-                        "Crypt2pay",
-                        server_params.slot_passwords.clone()
-                    ),
+                    "crypt2pay" => {
+                        if std::env::var("C2P_CONF").is_err() {
+                            kms_bail!(
+                                "The C2P_CONF environment variable is not set. The Crypt2pay PKCS#11 \
+                                 library requires it to point to the c2p.xml configuration file \
+                                 (e.g. export C2P_CONF=/path/to/c2p.xml). \
+                                 See crate/hsm/crypt2pay/README.md for setup instructions."
+                            );
+                        }
+                        instantiate_hsm_with_env!(
+                            Crypt2pay,
+                            "CRYPT2PAY_PKCS11_LIB",
+                            CRYPT2PAY_PKCS11_LIB,
+                            "Crypt2pay",
+                            server_params.slot_passwords.clone()
+                        )
+                    }
                     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                     "proteccio" => instantiate_hsm_with_env!(
                         Proteccio,

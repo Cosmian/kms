@@ -62,9 +62,12 @@ if ! source "$REPO_ROOT/.github/reusable_scripts/prepare_crypt2pay.sh"; then
   exit 0
 fi
 
+export C2P_CONF="${C2P_CONF:-/etc/c2p/c2p.xml}"
+
 # CRYPT2PAY integration test (KMS)
 env \
   PATH="$PATH" \
+  C2P_CONF="$C2P_CONF" \
   HSM_MODEL="crypt2pay" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
   HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
@@ -75,6 +78,7 @@ env \
 
 env \
   PATH="$PATH" \
+  C2P_CONF="$C2P_CONF" \
   HSM_MODEL="crypt2pay" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
   HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
