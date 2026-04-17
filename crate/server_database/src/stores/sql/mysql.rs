@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use cosmian_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
@@ -249,6 +249,10 @@ impl MySqlPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-roles",
+            "create-table-role_permissions",
+            "create-table-user_roles",
+            "create-table-role_hierarchy",
         ] {
             let sql = MYSQL_QUERIES
                 .get(name)
@@ -259,6 +263,10 @@ impl MySqlPool {
         // Optional: clear database content for tests to ensure isolation
         if clear_database {
             for name in [
+                "clean-table-role_hierarchy",
+                "clean-table-user_roles",
+                "clean-table-role_permissions",
+                "clean-table-roles",
                 "clean-table-objects",
                 "clean-table-read_access",
                 "clean-table-tags",
@@ -1175,3 +1183,365 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+// ── RoleStore implementation ────────────────────────────────────────────
+
+use cosmian_kms_access::rbac::{Role, RoleHierarchyEdge, RoleTreeNode, UserRole};
+
+#[async_trait(?Send)]
+impl RoleStore for MySqlPool {
+    async fn create_role(&self, role: &Role) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("insert-role"),
+            (
+                &role.id,
+                &role.name,
+                role.description.as_deref().unwrap_or(""),
+                role.builtin,
+            ),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_role(&self, role_id: &str) -> InterfaceResult<Role> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let row: Option<mysql_async::Row> = conn
+            .exec_first(get_mysql_query!("select-role"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        match row {
+            Some(r) => Ok(mysql_row_to_role(&r)?),
+            None => Err(InterfaceError::Db(format!("role '{role_id}' not found"))),
+        }
+    }
+
+    async fn list_roles(&self) -> InterfaceResult<Vec<Role>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-all-roles"), ())
+            .await
+            .map_err(DbError::from)?;
+        rows.iter().map(mysql_row_to_role).collect()
+    }
+
+    async fn update_role(&self, role: &Role) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("update-role"),
+            (
+                &role.name,
+                role.description.as_deref().unwrap_or(""),
+                &role.id,
+            ),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn delete_role(&self, role_id: &str) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        // Manual cascade
+        conn.exec_drop("DELETE FROM user_roles WHERE role_id=?", (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        conn.exec_drop("DELETE FROM role_permissions WHERE role_id=?", (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        conn.exec_drop(
+            "DELETE FROM role_hierarchy WHERE senior_role_id=? OR junior_role_id=?",
+            (role_id, role_id),
+        )
+        .await
+        .map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("delete-role"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn assign_permissions_to_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        // Merge with existing
+        let current = self.list_role_permissions(role_id).await?;
+        let mut combined = current.get(object_id).cloned().unwrap_or_default();
+        combined.extend(operations);
+        let json =
+            serde_json::to_value(&combined).map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("upsert-role-permissions"),
+            (role_id, object_id, json),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_permissions_from_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        let current = self.list_role_permissions(role_id).await?;
+        let existing = current.get(object_id).cloned().unwrap_or_default();
+        let remaining: HashSet<KmipOperation> = existing.difference(&operations).copied().collect();
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        if remaining.is_empty() {
+            conn.exec_drop(
+                get_mysql_query!("delete-role-permissions"),
+                (role_id, object_id),
+            )
+            .await
+            .map_err(DbError::from)?;
+        } else {
+            let json =
+                serde_json::to_value(&remaining).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            conn.exec_drop(
+                get_mysql_query!("upsert-role-permissions"),
+                (role_id, object_id, json),
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        Ok(())
+    }
+
+    async fn list_role_permissions(
+        &self,
+        role_id: &str,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-role-permissions"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        let mut map = HashMap::with_capacity(rows.len());
+        for row in &rows {
+            let oid: String = row.get(0).unwrap_or_default();
+            let v: Value = row.get(1).unwrap_or(Value::Array(vec![]));
+            let ops: HashSet<KmipOperation> =
+                serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            map.insert(oid, ops);
+        }
+        Ok(map)
+    }
+
+    async fn assign_role_to_user(
+        &self,
+        user_id: &str,
+        role_id: &str,
+        granted_by: &str,
+    ) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("insert-user-role"),
+            (user_id, role_id, granted_by),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn revoke_role_from_user(&self, user_id: &str, role_id: &str) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("delete-user-role"), (user_id, role_id))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_user_roles(&self, user_id: &str) -> InterfaceResult<Vec<Role>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-user-roles"), (user_id,))
+            .await
+            .map_err(DbError::from)?;
+        rows.iter().map(mysql_row_to_role).collect()
+    }
+
+    async fn list_role_users(&self, role_id: &str) -> InterfaceResult<Vec<UserRole>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-role-users"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .iter()
+            .map(|r| UserRole {
+                user_id: r.get(0).unwrap_or_default(),
+                role_id: r.get(1).unwrap_or_default(),
+                granted_by: r.get(2).unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    async fn role_based_operations_on_object(
+        &self,
+        uid: &str,
+        user: &str,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(
+                get_mysql_query!("select-role-operations-for-user-object"),
+                (user, uid),
+            )
+            .await
+            .map_err(DbError::from)?;
+        let mut all_ops = HashSet::new();
+        for row in &rows {
+            let v: Value = row.get(0).unwrap_or(Value::Array(vec![]));
+            let ops: HashSet<KmipOperation> =
+                serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+            all_ops.extend(ops);
+        }
+        Ok(all_ops)
+    }
+
+    async fn add_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        if senior_role_id == junior_role_id {
+            return Err(DbError::InvalidRequest("A role cannot be its own junior".to_owned()).into());
+        }
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        // Load all edges for cycle detection
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-all-hierarchy-edges"), ())
+            .await
+            .map_err(DbError::from)?;
+        let edges: Vec<(String, String)> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.get::<String, _>(0).unwrap_or_default(),
+                    r.get::<String, _>(1).unwrap_or_default(),
+                )
+            })
+            .collect();
+        // BFS: starting from `senior`, follow existing senior edges upward.
+        // If we can reach `junior`, then adding (senior, junior) would create a cycle.
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(senior_role_id.to_owned());
+        while let Some(current) = queue.pop_front() {
+            if current == junior_role_id {
+                return Err(InterfaceError::Db(
+                    "Adding this hierarchy edge would create a cycle".to_owned(),
+                ));
+            }
+            if visited.insert(current.clone()) {
+                for (s, j) in &edges {
+                    if j == &current {
+                        queue.push_back(s.clone());
+                    }
+                }
+            }
+        }
+        conn.exec_drop(
+            get_mysql_query!("insert-hierarchy-edge"),
+            (senior_role_id, junior_role_id),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("delete-hierarchy-edge"),
+            (senior_role_id, junior_role_id),
+        )
+        .await
+        .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_junior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-junior-roles"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        rows.iter().map(mysql_row_to_role).collect()
+    }
+
+    async fn list_senior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-senior-roles"), (role_id,))
+            .await
+            .map_err(DbError::from)?;
+        rows.iter().map(mysql_row_to_role).collect()
+    }
+
+    async fn list_all_hierarchy_edges(&self) -> InterfaceResult<Vec<RoleHierarchyEdge>> {
+        let mut conn = self.get_configured_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-all-hierarchy-edges"), ())
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .iter()
+            .map(|r| RoleHierarchyEdge {
+                senior_role_id: r.get(0).unwrap_or_default(),
+                junior_role_id: r.get(1).unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    async fn get_role_hierarchy_tree(&self, role_id: &str) -> InterfaceResult<RoleTreeNode> {
+        let role = self.get_role(role_id).await?;
+        let edges = self.list_all_hierarchy_edges().await?;
+        let all_roles = self.list_roles().await?;
+        Ok(mysql_build_tree_node(&role, &edges, &all_roles, &mut HashSet::new()))
+    }
+}
+
+fn mysql_build_tree_node(
+    role: &Role,
+    edges: &[RoleHierarchyEdge],
+    all_roles: &[Role],
+    visited: &mut HashSet<String>,
+) -> RoleTreeNode {
+    visited.insert(role.id.clone());
+    let mut juniors = Vec::new();
+    for edge in edges.iter().filter(|e| e.senior_role_id == role.id) {
+        if visited.contains(&edge.junior_role_id) {
+            continue;
+        }
+        if let Some(junior_role) = all_roles.iter().find(|r| r.id == edge.junior_role_id) {
+            juniors.push(mysql_build_tree_node(junior_role, edges, all_roles, visited));
+        }
+    }
+    RoleTreeNode {
+        role: role.clone(),
+        juniors,
+    }
+}
+
+fn mysql_row_to_role(row: &mysql_async::Row) -> InterfaceResult<Role> {
+    let desc: String = row.get(2).unwrap_or_default();
+    Ok(Role {
+        id: row.get(0).unwrap_or_default(),
+        name: row.get(1).unwrap_or_default(),
+        description: if desc.is_empty() { None } else { Some(desc) },
+        builtin: row.get(3).unwrap_or(false),
+    })
+}

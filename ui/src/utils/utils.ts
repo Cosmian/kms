@@ -77,6 +77,46 @@ export const postNoTTLVRequest = async (path: string, request: object, idToken: 
     return await response.json();
 };
 
+export const putNoTTLVRequest = async (path: string, request: object, idToken: string | null, serverUrl: string) => {
+    const kmsUrl = serverUrl + path;
+    const response = await fetch(kmsUrl, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...(idToken && { Authorization: `Bearer ${idToken}` }),
+        },
+        body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${errorText}`);
+    }
+
+    return await response.json();
+};
+
+export const deleteNoTTLVRequest = async (path: string, idToken: string | null, serverUrl: string, body?: object) => {
+    const kmsUrl = serverUrl + path;
+    const response = await fetch(kmsUrl, {
+        method: "DELETE",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...(idToken && { Authorization: `Bearer ${idToken}` }),
+        },
+        ...(body && { body: JSON.stringify(body) }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${errorText}`);
+    }
+
+    return await response.json();
+};
+
 export const getNoTTLVRequest = async (path: string, idToken: string | null, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
 

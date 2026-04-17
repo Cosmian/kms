@@ -21,6 +21,7 @@ use cosmian_kms_client_utils::reexport::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
         UserAccessResponse,
     },
+    cosmian_kms_access::rbac,
 };
 use cosmian_logger::{info, trace};
 use serde::Serialize;
@@ -664,6 +665,176 @@ impl KmsClient {
         self.get_no_ttlv("/access/obtained", None::<&()>).await
     }
 
+    // ── RBAC role management ────────────────────────────────────────────
+
+    /// Create a new RBAC role
+    pub async fn create_role(
+        &self,
+        request: &rbac::CreateRoleRequest,
+    ) -> Result<rbac::RoleResponse, KmsClientError> {
+        self.post_no_ttlv("/roles", Some(request)).await
+    }
+
+    /// List all RBAC roles
+    pub async fn list_roles(&self) -> Result<rbac::RolesListResponse, KmsClientError> {
+        self.get_no_ttlv("/roles", None::<&()>).await
+    }
+
+    /// Get a single RBAC role by ID
+    pub async fn get_role(&self, role_id: &str) -> Result<rbac::RoleResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}"), None::<&()>)
+            .await
+    }
+
+    /// Update an RBAC role's name and description
+    pub async fn update_role(
+        &self,
+        role_id: &str,
+        request: &rbac::UpdateRoleRequest,
+    ) -> Result<rbac::RoleResponse, KmsClientError> {
+        self.put_no_ttlv(&format!("/roles/{role_id}"), request)
+            .await
+    }
+
+    /// Delete an RBAC role
+    pub async fn delete_role(
+        &self,
+        role_id: &str,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.delete_no_ttlv_no_body(&format!("/roles/{role_id}"))
+            .await
+    }
+
+    /// Add permissions to an RBAC role
+    pub async fn add_role_permissions(
+        &self,
+        role_id: &str,
+        request: &rbac::RolePermissionsRequest,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv(&format!("/roles/{role_id}/permissions"), Some(request))
+            .await
+    }
+
+    /// Remove permissions from an RBAC role
+    pub async fn remove_role_permissions(
+        &self,
+        role_id: &str,
+        request: &rbac::RolePermissionsRequest,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.delete_no_ttlv(&format!("/roles/{role_id}/permissions"), request)
+            .await
+    }
+
+    /// List permissions of an RBAC role
+    pub async fn list_role_permissions(
+        &self,
+        role_id: &str,
+    ) -> Result<rbac::RolePermissionsResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}/permissions"), None::<&()>)
+            .await
+    }
+
+    /// Assign an RBAC role to users
+    pub async fn assign_role_to_users(
+        &self,
+        role_id: &str,
+        request: &rbac::AssignRoleRequest,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv(&format!("/roles/{role_id}/users"), Some(request))
+            .await
+    }
+
+    /// Revoke an RBAC role from a user
+    pub async fn revoke_role_from_user(
+        &self,
+        role_id: &str,
+        user_id: &str,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.delete_no_ttlv_no_body(&format!("/roles/{role_id}/users/{user_id}"))
+            .await
+    }
+
+    /// List users assigned to an RBAC role
+    pub async fn list_role_users(
+        &self,
+        role_id: &str,
+    ) -> Result<rbac::RoleUsersResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}/users"), None::<&()>)
+            .await
+    }
+
+    /// List roles assigned to a user
+    pub async fn list_user_roles(
+        &self,
+        user_id: &str,
+    ) -> Result<rbac::RolesListResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/users/{user_id}/roles"), None::<&()>)
+            .await
+    }
+
+    /// Get effective permissions for a user on an object
+    pub async fn effective_permissions(
+        &self,
+        user_id: &str,
+        object_id: &str,
+    ) -> Result<rbac::EffectivePermissionsResponse, KmsClientError> {
+        self.get_no_ttlv(
+            &format!("/users/{user_id}/effective-permissions/{object_id}"),
+            None::<&()>,
+        )
+        .await
+    }
+
+    // ── Hierarchical RBAC ───────────────────────────────────────────────
+
+    pub async fn add_junior_role(
+        &self,
+        senior_id: &str,
+        junior_id: &str,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv(&format!("/roles/{senior_id}/juniors/{junior_id}"), Some(&()))
+            .await
+    }
+
+    pub async fn remove_junior_role(
+        &self,
+        senior_id: &str,
+        junior_id: &str,
+    ) -> Result<SuccessResponse, KmsClientError> {
+        self.delete_no_ttlv_no_body(&format!("/roles/{senior_id}/juniors/{junior_id}"))
+            .await
+    }
+
+    pub async fn list_junior_roles(
+        &self,
+        role_id: &str,
+    ) -> Result<rbac::RoleHierarchyListResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}/juniors"), None::<&()>)
+            .await
+    }
+
+    pub async fn list_senior_roles(
+        &self,
+        role_id: &str,
+    ) -> Result<rbac::RoleHierarchyListResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}/seniors"), None::<&()>)
+            .await
+    }
+
+    pub async fn get_role_hierarchy_tree(
+        &self,
+        role_id: &str,
+    ) -> Result<rbac::RoleHierarchyTreeResponse, KmsClientError> {
+        self.get_no_ttlv(&format!("/roles/{role_id}/hierarchy"), None::<&()>)
+            .await
+    }
+
+    pub async fn list_all_hierarchy_edges(
+        &self,
+    ) -> Result<rbac::RoleHierarchyEdgesResponse, KmsClientError> {
+        self.get_no_ttlv("/roles-hierarchy", None::<&()>).await
+    }
+
     /// This operation requests the version of the server
     pub async fn version(&self) -> Result<String, KmsClientError> {
         self.get_no_ttlv("/version", None::<&()>).await
@@ -723,6 +894,47 @@ impl KmsClient {
         }
 
         // process error
+        let p = handle_error(endpoint, response).await?;
+        if status_code == StatusCode::UNAUTHORIZED {
+            return Err(KmsClientError::Unauthorized(p));
+        }
+        Err(KmsClientError::RequestFailed(p))
+    }
+
+    pub async fn put_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
+    where
+        O: Serialize + Sync,
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        let response = self.client.client.put(server_url).json(data).send().await?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return Ok(response.json::<R>().await?);
+        }
+
+        // process error
+        let p = handle_error(endpoint, response).await?;
+        if status_code == StatusCode::UNAUTHORIZED {
+            return Err(KmsClientError::Unauthorized(p));
+        }
+        Err(KmsClientError::RequestFailed(p))
+    }
+
+    /// Delete a resource at the given endpoint (no request body).
+    pub async fn delete_no_ttlv_no_body<R>(&self, endpoint: &str) -> Result<R, KmsClientError>
+    where
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        let response = self.client.client.delete(server_url).send().await?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return Ok(response.json::<R>().await?);
+        }
+
         let p = handle_error(endpoint, response).await?;
         if status_code == StatusCode::UNAUTHORIZED {
             return Err(KmsClientError::Unauthorized(p));

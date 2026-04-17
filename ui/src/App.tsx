@@ -55,6 +55,15 @@ import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import SymmetricDecryptForm from "./actions/Symmetric/SymmetricDecrypt";
 import SymmetricEncryptForm from "./actions/Symmetric/SymmetricEncrypt";
 import SymmetricHashForm from "./actions/Symmetric/SymmetricHash";
+import RolesList from "./actions/RBAC/RolesList";
+import RoleCreateForm from "./actions/RBAC/RoleCreate";
+import RoleUpdateForm from "./actions/RBAC/RoleUpdate";
+import RolePermissionAddForm from "./actions/RBAC/RolePermissionAdd";
+import RolePermissionsList from "./actions/RBAC/RolePermissionsList";
+import RoleAssignUsers from "./actions/RBAC/RoleAssignUsers";
+import RoleMembersList from "./actions/RBAC/RoleMembersList";
+import RoleHierarchy from "./actions/RBAC/RoleHierarchy";
+import RoleAddJunior from "./actions/RBAC/RoleAddJunior";
 import { useBranding } from "./contexts/useBranding";
 import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
@@ -325,6 +334,17 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="list" element={<AccessListForm />} />
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
+                        </Route>
+                        <Route path="roles">
+                            <Route path="list" element={<RolesList />} />
+                            <Route path="create" element={<RoleCreateForm />} />
+                            <Route path="update" element={<RoleUpdateForm />} />
+                            <Route path="add-permission" element={<RolePermissionAddForm />} />
+                            <Route path="permissions" element={<RolePermissionsList />} />
+                            <Route path="assign" element={<RoleAssignUsers />} />
+                            <Route path="members" element={<RoleMembersList />} />
+                            <Route path="hierarchy" element={<RoleHierarchy />} />
+                            <Route path="add-junior" element={<RoleAddJunior />} />
                         </Route>
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />

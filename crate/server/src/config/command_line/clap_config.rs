@@ -69,6 +69,7 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            rbac: cosmian_kms_access::rbac::RbacConfig::default(),
         }
     }
 }
@@ -202,6 +203,14 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// RBAC configuration.
+    ///
+    /// Controls role-based access control features, including enforcement mode
+    /// and strict `Get` privilege handling. Configured via `[rbac]` section in kms.toml.
+    #[clap(skip)]
+    #[serde(default)]
+    pub rbac: cosmian_kms_access::rbac::RbacConfig,
 }
 
 impl ClapConfig {
@@ -641,6 +650,7 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field("rbac", &self.rbac);
 
         x.finish()
     }

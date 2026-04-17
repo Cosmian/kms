@@ -15,7 +15,7 @@ use crate::{
         azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
         console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
-        opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
+        opaque_object::OpaqueObjectCommands, rng::RngAction, roles::RolesAction, rsa::RsaCommands,
         secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
@@ -71,6 +71,8 @@ pub enum KmsActions {
     Server(ServerCommands),
     #[command(subcommand)]
     Rsa(RsaCommands),
+    #[command(subcommand)]
+    Roles(RolesAction),
     #[command(subcommand)]
     OpaqueObject(OpaqueObjectCommands),
     #[command(subcommand)]
@@ -298,6 +300,7 @@ impl KmsActions {
                 }
             },
             Self::Rsa(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Roles(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::OpaqueObject(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Sym(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::SecretData(action) => Box::pin(action.process(kms_rest_client)).await?,

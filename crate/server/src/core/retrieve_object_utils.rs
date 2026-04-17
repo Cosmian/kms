@@ -1,3 +1,4 @@
+use cosmian_kms_access::rbac::RbacEnforcementMode;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -184,9 +185,41 @@ pub(crate) async fn user_has_permission(
         None => "*",
     };
 
-    let permissions = kms
+    let strict_get = kms.params.rbac.strict_get_privilege;
+    let enforcement_mode = kms.params.rbac.enforcement_mode;
+
+    // Check direct (legacy) permissions
+    let direct_perms = kms
         .database
         .list_user_operations_on_object(id, user, false)
         .await?;
-    Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
+    let direct_allows = direct_perms.contains(operation_type)
+        || (!strict_get && direct_perms.contains(&KmipOperation::Get));
+
+    // Check role-based permissions (RBAC)
+    let role_ops = kms
+        .database
+        .role_based_operations_on_object(id, user)
+        .await?;
+    let role_allows =
+        role_ops.contains(operation_type) || (!strict_get && role_ops.contains(&KmipOperation::Get));
+
+    match enforcement_mode {
+        RbacEnforcementMode::Additive => {
+            // Union: any permission source is sufficient
+            Ok(direct_allows || role_allows)
+        }
+        RbacEnforcementMode::Restrictive => {
+            // Role ceiling: direct grants cannot exceed what roles allow.
+            // The effective set is (direct ∪ role) ∩ role_ceiling.
+            // If the user has no roles at all, fall back to direct grants only
+            // (backward compat for deployments that haven't assigned roles yet).
+            if role_ops.is_empty() {
+                return Ok(direct_allows);
+            }
+            // The role_ops set IS the ceiling — only allow if the operation
+            // (or Get-implies-all when strict_get is off) is in the role set.
+            Ok(role_allows)
+        }
+    }
 }

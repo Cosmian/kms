@@ -1,8 +1,9 @@
 use std::collections::{BTreeSet, HashSet};
 
 use actix_web::{HttpMessage, HttpRequest};
-use cosmian_kms_access::access::{
-    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
+use cosmian_kms_access::{
+    access::{Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse},
+    rbac::builtin_roles,
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation, kmip_types::UniqueIdentifier,
@@ -63,6 +64,18 @@ impl KMS {
                 .ok_or(KmsError::UnsupportedPlaceholder)?
                 .as_str()
                 .context("unique_identifier is not a string")?;
+
+            // When restrict_grant_to_roles is enabled, only admin/operator roles
+            // (or the object owner) can grant access to other users.
+            if self.params.rbac.restrict_grant_to_roles
+                && !self.database.is_object_owned_by(uid, owner).await?
+                && !self.user_has_admin_role(owner).await?
+            {
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "User `{owner}` does not have an admin-level role to grant access on \
+                     object `{uid}`"
+                )))
+            }
 
             // check the object identified by its `uid` is really owned by `owner`
             if !self.database.is_object_owned_by(uid, owner).await? {
@@ -138,6 +151,18 @@ impl KMS {
                 .ok_or(KmsError::UnsupportedPlaceholder)?
                 .as_str()
                 .context("unique_identifier is not a string")?;
+
+            // When restrict_grant_to_roles is enabled, only admin/operator roles
+            // (or the object owner) can revoke access from other users.
+            if self.params.rbac.restrict_grant_to_roles
+                && !self.database.is_object_owned_by(uid, owner).await?
+                && !self.user_has_admin_role(owner).await?
+            {
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "User `{owner}` does not have an admin-level role to revoke access on \
+                     object `{uid}`"
+                )))
+            }
 
             // check the object identified by its `uid` is really owned by `owner`
             if !self.database.is_object_owned_by(uid, owner).await? {
@@ -243,5 +268,14 @@ impl KMS {
             );
         debug!("Authenticated user: {}", user);
         user
+    }
+
+    /// Check whether a user has an admin-level role (admin or operator).
+    /// Used to enforce role-based grant restrictions when `restrict_grant_to_roles` is enabled.
+    async fn user_has_admin_role(&self, user: &str) -> KResult<bool> {
+        let roles = self.database.list_user_roles(user).await?;
+        Ok(roles
+            .iter()
+            .any(|r| r.id == builtin_roles::ADMIN || r.id == builtin_roles::OPERATOR))
     }
 }

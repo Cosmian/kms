@@ -216,6 +216,22 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "roles",
+        label: "RBAC Roles",
+        icon: <TeamOutlined />,
+        children: [
+            { key: "roles/list", label: "List Roles" },
+            { key: "roles/create", label: "Create Role" },
+            { key: "roles/update", label: "Update Role" },
+            { key: "roles/add-permission", label: "Add Permission" },
+            { key: "roles/permissions", label: "View Permissions" },
+            { key: "roles/assign", label: "Assign Users" },
+            { key: "roles/members", label: "Role Members" },
+            { key: "roles/hierarchy", label: "View Hierarchy" },
+            { key: "roles/add-junior", label: "Add Junior Role" },
+        ],
+    },
+    {
         key: "hyperscalers",
         label: "Hyperscalers",
         icon: <CloudOutlined />,

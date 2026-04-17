@@ -135,3 +135,129 @@ ON objects.id = matched_tags.id;
 
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
+
+-- ── RBAC tables ─────────────────────────────────────────────────────────
+
+-- name: create-table-roles
+CREATE TABLE IF NOT EXISTS roles (
+        id VARCHAR(128) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        description TEXT,
+        builtin BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- name: create-table-role_permissions
+CREATE TABLE IF NOT EXISTS role_permissions (
+        role_id VARCHAR(128) NOT NULL,
+        object_id VARCHAR(128) NOT NULL,
+        operations json NOT NULL,
+        PRIMARY KEY (role_id, object_id)
+);
+
+-- name: create-table-user_roles
+CREATE TABLE IF NOT EXISTS user_roles (
+        user_id VARCHAR(255) NOT NULL,
+        role_id VARCHAR(128) NOT NULL,
+        granted_by VARCHAR(255) NOT NULL,
+        PRIMARY KEY (user_id, role_id)
+);
+
+-- name: clean-table-roles
+DELETE FROM roles;
+
+-- name: clean-table-role_permissions
+DELETE FROM role_permissions;
+
+-- name: clean-table-user_roles
+DELETE FROM user_roles;
+
+-- name: insert-role
+INSERT INTO roles (id, name, description, builtin) VALUES ($1, $2, $3, $4);
+
+-- name: select-role
+SELECT id, name, description, builtin FROM roles WHERE id=$1;
+
+-- name: select-all-roles
+SELECT id, name, description, builtin FROM roles ORDER BY name;
+
+-- name: update-role
+UPDATE roles SET name=$2, description=$3 WHERE id=$1;
+
+-- name: delete-role
+DELETE FROM roles WHERE id=$1;
+
+-- name: upsert-role-permissions
+INSERT INTO role_permissions (role_id, object_id, operations) VALUES ($1, $2, $3)
+        ON CONFLICT(role_id, object_id)
+        DO UPDATE SET operations=$3
+        WHERE role_permissions.role_id=$1 AND role_permissions.object_id=$2;
+
+-- name: delete-role-permissions
+DELETE FROM role_permissions WHERE role_id=$1 AND object_id=$2;
+
+-- name: select-role-permissions
+SELECT object_id, operations FROM role_permissions WHERE role_id=$1;
+
+-- name: insert-user-role
+INSERT INTO user_roles (user_id, role_id, granted_by) VALUES ($1, $2, $3);
+
+-- name: delete-user-role
+DELETE FROM user_roles WHERE user_id=$1 AND role_id=$2;
+
+-- name: select-user-roles
+SELECT r.id, r.name, r.description, r.builtin
+        FROM roles r
+        INNER JOIN user_roles ur ON r.id = ur.role_id
+        WHERE ur.user_id=$1
+        ORDER BY r.name;
+
+-- name: select-role-users
+SELECT user_id, role_id, granted_by FROM user_roles WHERE role_id=$1;
+
+-- name: select-role-operations-for-user-object
+WITH RECURSIVE role_tree(role_id) AS (
+        SELECT ur.role_id FROM user_roles ur WHERE ur.user_id=$1
+    UNION
+        SELECT rh.junior_role_id FROM role_hierarchy rh
+        INNER JOIN role_tree rt ON rh.senior_role_id = rt.role_id
+)
+SELECT rp.operations
+        FROM role_permissions rp
+        INNER JOIN role_tree rt ON rp.role_id = rt.role_id
+        WHERE rp.object_id=$2 OR rp.object_id='*';
+
+-- name: create-table-role_hierarchy
+CREATE TABLE IF NOT EXISTS role_hierarchy (
+        senior_role_id VARCHAR(128) NOT NULL,
+        junior_role_id VARCHAR(128) NOT NULL,
+        PRIMARY KEY (senior_role_id, junior_role_id)
+);
+
+-- name: clean-table-role_hierarchy
+DELETE FROM role_hierarchy;
+
+-- name: insert-hierarchy-edge
+INSERT INTO role_hierarchy (senior_role_id, junior_role_id) VALUES ($1, $2);
+
+-- name: delete-hierarchy-edge
+DELETE FROM role_hierarchy WHERE senior_role_id=$1 AND junior_role_id=$2;
+
+-- name: select-junior-roles
+SELECT r.id, r.name, r.description, r.builtin
+        FROM roles r
+        INNER JOIN role_hierarchy rh ON r.id = rh.junior_role_id
+        WHERE rh.senior_role_id=$1
+        ORDER BY r.name;
+
+-- name: select-senior-roles
+SELECT r.id, r.name, r.description, r.builtin
+        FROM roles r
+        INNER JOIN role_hierarchy rh ON r.id = rh.senior_role_id
+        WHERE rh.junior_role_id=$1
+        ORDER BY r.name;
+
+-- name: select-all-hierarchy-edges
+SELECT senior_role_id, junior_role_id FROM role_hierarchy;
+
+-- name: delete-hierarchy-edges-for-role
+DELETE FROM role_hierarchy WHERE senior_role_id=$1 OR junior_role_id=$1;

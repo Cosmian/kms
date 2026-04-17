@@ -15,6 +15,7 @@ pub mod login;
 pub mod mac;
 pub mod opaque_object;
 pub mod rng;
+pub mod roles;
 pub mod rsa;
 pub mod secret_data;
 pub mod shared;

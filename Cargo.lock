@@ -1234,6 +1234,7 @@ version = "5.20.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_logger",
  "num-bigint-dig",
  "serde_json",
@@ -1307,6 +1308,7 @@ dependencies = [
  "async-trait",
  "cosmian_findex",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",

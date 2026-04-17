@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
@@ -326,6 +326,10 @@ impl PgPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-roles",
+            "create-table-role_permissions",
+            "create-table-user_roles",
+            "create-table-role_hierarchy",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -342,6 +346,10 @@ impl PgPool {
         if clear_database {
             for name in [
                 // Remove dependent rows first to avoid potential constraints if present
+                "clean-table-role_hierarchy",
+                "clean-table-user_roles",
+                "clean-table-role_permissions",
+                "clean-table-roles",
                 "clean-table-read_access",
                 "clean-table-tags",
                 "clean-table-objects",
@@ -1021,6 +1029,453 @@ fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -
         base.to_owned()
     } else {
         format!("{}?{}", base, non_ssl_params.join("&"))
+    }
+}
+
+// ── RoleStore implementation ────────────────────────────────────────────
+
+use cosmian_kms_access::rbac::{Role, RoleHierarchyEdge, RoleTreeNode, UserRole};
+
+#[async_trait(?Send)]
+impl RoleStore for PgPool {
+    async fn create_role(&self, role: &Role) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("insert-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    &stmt,
+                    &[
+                        &role.id,
+                        &role.name,
+                        &role.description.as_deref().unwrap_or(""),
+                        &role.builtin,
+                    ],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn get_role(&self, role_id: &str) -> InterfaceResult<Role> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let row = client
+                .query_opt(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            match row {
+                Some(r) => Ok(pg_row_to_role(&r)),
+                None => Err(InterfaceError::Db(format!("role '{role_id}' not found"))),
+            }
+        })
+    }
+
+    async fn list_roles(&self) -> InterfaceResult<Vec<Role>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-all-roles"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(pg_row_to_role).collect())
+        })
+    }
+
+    async fn update_role(&self, role: &Role) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("update-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    &stmt,
+                    &[
+                        &role.id,
+                        &role.name,
+                        &role.description.as_deref().unwrap_or(""),
+                    ],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn delete_role(&self, role_id: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            // Manual cascade: remove user_roles, role_permissions, and role_hierarchy first
+            client
+                .execute("DELETE FROM user_roles WHERE role_id=$1", &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute("DELETE FROM role_permissions WHERE role_id=$1", &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(
+                    "DELETE FROM role_hierarchy WHERE senior_role_id=$1 OR junior_role_id=$1",
+                    &[&role_id],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let stmt = client
+                .prepare(get_pgsql_query!("delete-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn assign_permissions_to_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        // Read current permissions and merge
+        let current = self.list_role_permissions(role_id).await?;
+        let mut combined = current.get(object_id).cloned().unwrap_or_default();
+        combined.extend(operations);
+        pg_retry!(self.pool, |client| {
+            let json = serde_json::to_value(&combined)
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let stmt = client
+                .prepare(get_pgsql_query!("upsert-role-permissions"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&role_id, &object_id, &json])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn remove_permissions_from_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        let current = self.list_role_permissions(role_id).await?;
+        let existing = current.get(object_id).cloned().unwrap_or_default();
+        let remaining: HashSet<KmipOperation> = existing.difference(&operations).copied().collect();
+        pg_retry!(self.pool, |client| {
+            if remaining.is_empty() {
+                let stmt = client
+                    .prepare(get_pgsql_query!("delete-role-permissions"))
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                client
+                    .execute(&stmt, &[&role_id, &object_id])
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            } else {
+                let json = serde_json::to_value(&remaining)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let stmt = client
+                    .prepare(get_pgsql_query!("upsert-role-permissions"))
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                client
+                    .execute(&stmt, &[&role_id, &object_id, &json])
+                    .await
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            }
+            Ok(())
+        })
+    }
+
+    async fn list_role_permissions(
+        &self,
+        role_id: &str,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-role-permissions"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut map = HashMap::with_capacity(rows.len());
+            for row in rows {
+                let oid: String = row.get(0);
+                let v: Value = row.get(1);
+                let ops: HashSet<KmipOperation> =
+                    serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+                map.insert(oid, ops);
+            }
+            Ok(map)
+        })
+    }
+
+    async fn assign_role_to_user(
+        &self,
+        user_id: &str,
+        role_id: &str,
+        granted_by: &str,
+    ) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("insert-user-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&user_id, &role_id, &granted_by])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn revoke_role_from_user(&self, user_id: &str, role_id: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("delete-user-role"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&user_id, &role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn list_user_roles(&self, user_id: &str) -> InterfaceResult<Vec<Role>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-user-roles"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(pg_row_to_role).collect())
+        })
+    }
+
+    async fn list_role_users(&self, role_id: &str) -> InterfaceResult<Vec<UserRole>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-role-users"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|r| UserRole {
+                    user_id: r.get(0),
+                    role_id: r.get(1),
+                    granted_by: r.get(2),
+                })
+                .collect())
+        })
+    }
+
+    async fn role_based_operations_on_object(
+        &self,
+        uid: &str,
+        user: &str,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-role-operations-for-user-object"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user, &uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut all_ops = HashSet::new();
+            for row in rows {
+                let v: Value = row.get(0);
+                let ops: HashSet<KmipOperation> =
+                    serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+                all_ops.extend(ops);
+            }
+            Ok(all_ops)
+        })
+    }
+
+    async fn add_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        if senior_role_id == junior_role_id {
+            return Err(DbError::InvalidRequest("A role cannot be its own junior".to_owned()).into());
+        }
+        pg_retry!(self.pool, |client| {
+            // Load all edges for cycle detection
+            let stmt = client
+                .prepare(get_pgsql_query!("select-all-hierarchy-edges"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let edges: Vec<(String, String)> = rows
+                .iter()
+                .map(|r| (r.get(0), r.get(1)))
+                .collect();
+            // BFS: starting from `senior`, follow existing senior edges upward.
+            // If we can reach `junior`, then adding (senior, junior) would create a cycle.
+            let mut visited = std::collections::HashSet::new();
+            let mut queue = std::collections::VecDeque::new();
+            queue.push_back(senior_role_id.to_owned());
+            while let Some(current) = queue.pop_front() {
+                if current == junior_role_id {
+                    return Err(InterfaceError::Db(
+                        "Adding this hierarchy edge would create a cycle".to_owned(),
+                    ));
+                }
+                if visited.insert(current.clone()) {
+                    for (s, j) in &edges {
+                        if j == &current {
+                            queue.push_back(s.clone());
+                        }
+                    }
+                }
+            }
+            let stmt = client
+                .prepare(get_pgsql_query!("insert-hierarchy-edge"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&senior_role_id, &junior_role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn remove_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("delete-hierarchy-edge"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&senior_role_id, &junior_role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn list_junior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-junior-roles"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(pg_row_to_role).collect())
+        })
+    }
+
+    async fn list_senior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-senior-roles"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&role_id])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(pg_row_to_role).collect())
+        })
+    }
+
+    async fn list_all_hierarchy_edges(&self) -> InterfaceResult<Vec<RoleHierarchyEdge>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-all-hierarchy-edges"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows
+                .iter()
+                .map(|r| RoleHierarchyEdge {
+                    senior_role_id: r.get(0),
+                    junior_role_id: r.get(1),
+                })
+                .collect())
+        })
+    }
+
+    async fn get_role_hierarchy_tree(&self, role_id: &str) -> InterfaceResult<RoleTreeNode> {
+        let role = self.get_role(role_id).await?;
+        let edges = self.list_all_hierarchy_edges().await?;
+        let all_roles = self.list_roles().await?;
+        Ok(pg_build_tree_node(&role, &edges, &all_roles, &mut HashSet::new()))
+    }
+}
+
+fn pg_build_tree_node(
+    role: &Role,
+    edges: &[RoleHierarchyEdge],
+    all_roles: &[Role],
+    visited: &mut HashSet<String>,
+) -> RoleTreeNode {
+    visited.insert(role.id.clone());
+    let mut juniors = Vec::new();
+    for edge in edges.iter().filter(|e| e.senior_role_id == role.id) {
+        if visited.contains(&edge.junior_role_id) {
+            continue;
+        }
+        if let Some(junior_role) = all_roles.iter().find(|r| r.id == edge.junior_role_id) {
+            juniors.push(pg_build_tree_node(junior_role, edges, all_roles, visited));
+        }
+    }
+    RoleTreeNode {
+        role: role.clone(),
+        juniors,
+    }
+}
+
+fn pg_row_to_role(row: &tokio_postgres::Row) -> Role {
+    let desc: String = row.get(2);
+    Role {
+        id: row.get(0),
+        name: row.get(1),
+        description: if desc.is_empty() { None } else { Some(desc) },
+        builtin: row.get(3),
     }
 }
 

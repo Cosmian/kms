@@ -11,7 +11,10 @@ pub use hsm::{
     HSM, HsmCryptoOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
     HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
-pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
+pub use stores::{
+    AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore, Role, RoleHierarchyEdge,
+    RoleStore, RoleTreeNode, UserRole,
+};
 
 /// Supported cryptographic object types
 /// in plugins

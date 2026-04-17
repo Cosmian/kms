@@ -211,6 +211,9 @@ pub(crate) async fn test_app(
             .expect("cannot instantiate KMS server"),
     );
 
+    // Seed built-in RBAC roles (same as production startup)
+    crate::start_kms_server::seed_builtin_roles(&kms_server).await;
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -232,7 +235,26 @@ pub(crate) async fn test_app(
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access)
         .service(routes::access::get_create_access)
-        .service(routes::access::get_privileged_access);
+        .service(routes::access::get_privileged_access)
+        .service(routes::roles::create_role)
+        .service(routes::roles::list_roles)
+        .service(routes::roles::get_role)
+        .service(routes::roles::update_role)
+        .service(routes::roles::delete_role)
+        .service(routes::roles::add_role_permissions)
+        .service(routes::roles::remove_role_permissions)
+        .service(routes::roles::list_role_permissions)
+        .service(routes::roles::assign_role_to_users)
+        .service(routes::roles::revoke_role_from_user)
+        .service(routes::roles::list_role_users)
+        .service(routes::roles::list_user_roles)
+        .service(routes::roles::get_effective_permissions)
+        .service(routes::roles::add_hierarchy_edge)
+        .service(routes::roles::remove_hierarchy_edge)
+        .service(routes::roles::list_junior_roles)
+        .service(routes::roles::list_senior_roles)
+        .service(routes::roles::get_role_hierarchy_tree)
+        .service(routes::roles::list_all_hierarchy_edges);
 
     let google_cse_jwt_config = google_cse_auth(None)
         .await
@@ -276,6 +298,9 @@ pub(crate) async fn test_app_with_clap_config(
             .expect("cannot instantiate KMS server"),
     );
 
+    // Seed built-in RBAC roles (same as production startup)
+    crate::start_kms_server::seed_builtin_roles(&kms_server).await;
+
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
@@ -296,7 +321,26 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access)
         .service(routes::access::get_create_access)
-        .service(routes::access::get_privileged_access);
+        .service(routes::access::get_privileged_access)
+        .service(routes::roles::create_role)
+        .service(routes::roles::list_roles)
+        .service(routes::roles::get_role)
+        .service(routes::roles::update_role)
+        .service(routes::roles::delete_role)
+        .service(routes::roles::add_role_permissions)
+        .service(routes::roles::remove_role_permissions)
+        .service(routes::roles::list_role_permissions)
+        .service(routes::roles::assign_role_to_users)
+        .service(routes::roles::revoke_role_from_user)
+        .service(routes::roles::list_role_users)
+        .service(routes::roles::list_user_roles)
+        .service(routes::roles::get_effective_permissions)
+        .service(routes::roles::add_hierarchy_edge)
+        .service(routes::roles::remove_hierarchy_edge)
+        .service(routes::roles::list_junior_roles)
+        .service(routes::roles::list_senior_roles)
+        .service(routes::roles::get_role_hierarchy_tree)
+        .service(routes::roles::list_all_hierarchy_edges);
 
     let google_cse_jwt_config = google_cse_auth(None)
         .await
@@ -390,6 +434,86 @@ where
     B: MessageBody,
 {
     let req = test::TestRequest::get().uri(uri).to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+pub(crate) async fn put_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
+where
+    O: Serialize,
+    R: DeserializeOwned,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::put()
+        .uri(uri)
+        .set_json(&operation)
+        .to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+pub(crate) async fn delete_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>
+where
+    O: Serialize,
+    R: DeserializeOwned,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::delete()
+        .uri(uri)
+        .set_json(&operation)
+        .to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+pub(crate) async fn delete_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
+where
+    R: DeserializeOwned,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::delete().uri(uri).to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    Ok(serde_json::from_slice(&body)?)
+}
+
+pub(crate) async fn post_with_uri<B, R, S>(app: &S, uri: &str) -> KResult<R>
+where
+    R: DeserializeOwned,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post().uri(uri).to_request();
     let res = call_service(app, req).await;
     if res.status() != StatusCode::OK {
         kms_bail!(

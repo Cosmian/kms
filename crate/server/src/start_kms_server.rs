@@ -61,7 +61,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, roles, root_redirect,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -352,6 +352,9 @@ pub async fn start_kms_server(
             .context("start KMS server: failed instantiating the server")?,
     );
 
+    // Seed built-in RBAC roles (idempotent — skips roles that already exist)
+    seed_builtin_roles(&kms_server).await;
+
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
         Some(cron::spawn_metrics_cron(kms_server.clone()))
@@ -390,6 +393,50 @@ pub async fn start_kms_server(
             .context("start KMS server: failed sending shutdown command to socket server")?;
     }
     res
+}
+
+/// Seed built-in RBAC roles on startup. This is idempotent: roles that already
+/// exist are silently skipped.
+pub(crate) async fn seed_builtin_roles(kms: &KMS) {
+    use cosmian_kms_access::rbac::{builtin_role, builtin_role_permissions, builtin_roles};
+
+    for role_id in builtin_roles::all() {
+        if let Some(role) = builtin_role(role_id) {
+            if let Err(e) = kms.database.create_role(&role).await {
+                // Role already exists — not an error
+                tracing::debug!("built-in role '{role_id}' already exists or could not be created: {e}");
+                continue;
+            }
+            // Assign the default wildcard permissions for this role
+            let ops = builtin_role_permissions(role_id);
+            if !ops.is_empty() {
+                if let Err(e) = kms
+                    .database
+                    .assign_permissions_to_role(role_id, "*", ops)
+                    .await
+                {
+                    tracing::warn!("failed to assign default permissions to built-in role '{role_id}': {e}");
+                }
+            }
+            tracing::info!("seeded built-in RBAC role '{role_id}'");
+        }
+    }
+
+    // Seed the default role hierarchy edges
+    use cosmian_kms_access::rbac::builtin_hierarchy_edges;
+    for edge in builtin_hierarchy_edges() {
+        if let Err(e) = kms
+            .database
+            .add_hierarchy_edge(&edge.senior_role_id, &edge.junior_role_id)
+            .await
+        {
+            tracing::debug!(
+                "hierarchy edge '{}' → '{}' already exists or could not be created: {e}",
+                edge.senior_role_id,
+                edge.junior_role_id
+            );
+        }
+    }
 }
 
 /// Start a socket server that will handle TTLV bytes
@@ -969,6 +1016,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            // RBAC role management
+            .service(roles::create_role)
+            .service(roles::list_roles)
+            .service(roles::get_role)
+            .service(roles::update_role)
+            .service(roles::delete_role)
+            .service(roles::add_role_permissions)
+            .service(roles::remove_role_permissions)
+            .service(roles::list_role_permissions)
+            .service(roles::assign_role_to_users)
+            .service(roles::revoke_role_from_user)
+            .service(roles::list_role_users)
+            .service(roles::list_user_roles)
+            .service(roles::get_effective_permissions)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

@@ -140,6 +140,9 @@ pub struct ServerParams {
     pub kmip_policy: KmipPolicyParams,
 
     pub azure_ekm: AzureEkmConfig,
+
+    /// RBAC configuration (enforcement mode, strict Get privilege, etc.)
+    pub rbac: cosmian_kms_access::rbac::RbacConfig,
 }
 
 /// Represents the server parameters.
@@ -357,6 +360,7 @@ impl ServerParams {
                 },
             },
             azure_ekm: conf.azure_ekm_config,
+            rbac: conf.rbac,
         };
 
         debug!("{res:#?}");
@@ -572,6 +576,7 @@ impl fmt::Debug for ServerParams {
 
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
+        debug_struct.field("rbac", &self.rbac);
 
         debug_struct.finish()
     }

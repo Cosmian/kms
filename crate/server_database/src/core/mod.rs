@@ -2,13 +2,14 @@
 //! permission checks, and caching mechanisms for unwrapped keys.
 mod database_objects;
 mod database_permissions;
+mod database_roles;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, RoleStore};
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
 use tokio::sync::RwLock;
@@ -32,6 +33,8 @@ pub struct Database {
     objects: RwLock<HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>>,
     /// The permissions store is used to check if a user has the right to perform an operation
     permissions: Arc<dyn PermissionsStore + Sync + Send>,
+    /// The role store provides NIST Core RBAC operations (roles, UA, PA)
+    roles: Arc<dyn RoleStore + Sync + Send>,
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
     unwrapped_cache: UnwrappedCache,
@@ -102,6 +105,7 @@ impl Database {
                 let health = Arc::new(SqliteHealthProbe::new(db.clone()));
                 Ok(Self::new(
                     db.clone(),
+                    db.clone(),
                     db,
                     cache_max_age,
                     MainDbKind::Sqlite,
@@ -112,6 +116,7 @@ impl Database {
                 let db = Arc::new(PgPool::instantiate(url, clear_db_on_start, *max_conns).await?);
                 let health = Arc::new(PgHealthProbe::new(db.clone()));
                 Ok(Self::new(
+                    db.clone(),
                     db.clone(),
                     db,
                     cache_max_age,
@@ -125,6 +130,7 @@ impl Database {
                 );
                 let health = Arc::new(MySqlHealthProbe::new(db.clone()));
                 Ok(Self::new(
+                    db.clone(),
                     db.clone(),
                     db,
                     cache_max_age,
@@ -152,9 +158,12 @@ impl Database {
                         .await?,
                 );
                 let health = Arc::new(RedisFindexHealthProbe::new(db.clone()));
+                let roles: Arc<dyn RoleStore + Sync + Send> =
+                    Arc::new(database_roles::NoOpRoleStore);
                 Ok(Self::new(
                     db.clone(),
                     db,
+                    roles,
                     cache_max_age,
                     MainDbKind::RedisFindex,
                     health,
@@ -180,6 +189,7 @@ impl Database {
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
+        roles_database: Arc<dyn RoleStore + Sync + Send>,
         cache_max_age: Duration,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
@@ -187,6 +197,7 @@ impl Database {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
+            roles: roles_database,
             unwrapped_cache: UnwrappedCache::new(cache_max_age),
             kind,
             health,

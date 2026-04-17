@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
@@ -76,9 +76,17 @@ impl SqlitePool {
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
+        let create_roles = pool.get_query("create-table-roles")?.to_owned();
+        let create_role_permissions = pool.get_query("create-table-role_permissions")?.to_owned();
+        let create_user_roles = pool.get_query("create-table-user_roles")?.to_owned();
+        let create_role_hierarchy = pool.get_query("create-table-role_hierarchy")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let clean_roles = pool.get_query("clean-table-roles")?.to_owned();
+        let clean_role_permissions = pool.get_query("clean-table-role_permissions")?.to_owned();
+        let clean_user_roles = pool.get_query("clean-table-user_roles")?.to_owned();
+        let clean_role_hierarchy = pool.get_query("clean-table-role_hierarchy")?.to_owned();
         pool.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -87,7 +95,15 @@ impl SqlitePool {
                     tx.execute(&create_objects, [])?;
                     tx.execute(&create_read_access, [])?;
                     tx.execute(&create_tags, [])?;
+                    tx.execute(&create_roles, [])?;
+                    tx.execute(&create_role_permissions, [])?;
+                    tx.execute(&create_user_roles, [])?;
+                    tx.execute(&create_role_hierarchy, [])?;
                     if clear_database {
+                        tx.execute(&clean_role_hierarchy, [])?;
+                        tx.execute(&clean_user_roles, [])?;
+                        tx.execute(&clean_role_permissions, [])?;
+                        tx.execute(&clean_roles, [])?;
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
                         tx.execute(&clean_tags, [])?;
@@ -949,4 +965,515 @@ fn apply_owned_ops(
         }
     }
     Ok(uids)
+}
+
+// ── RoleStore implementation ────────────────────────────────────────────
+
+use cosmian_kms_access::rbac::{Role, RoleHierarchyEdge, RoleTreeNode, UserRole};
+
+#[async_trait(?Send)]
+impl RoleStore for SqlitePool {
+    async fn create_role(&self, role: &Role) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("insert-role"));
+        let id = role.id.clone();
+        let name = role.name.clone();
+        let desc = role.description.clone().unwrap_or_default();
+        let builtin = role.builtin;
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(
+                        &sql,
+                        params_from_iter([&id, &name, &desc, &builtin.to_string()]),
+                    )?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_role(&self, role_id: &str) -> InterfaceResult<Role> {
+        let sql = get_sqlite_query!("select-role").to_string();
+        let id = role_id.to_owned();
+        let role = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<Role>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    stmt.query_row(params_from_iter([&id]), |row| sqlite_row_to_role(row))
+                        .optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        role.ok_or_else(|| InterfaceError::Db(format!("role '{role_id}' not found")))
+    }
+
+    async fn list_roles(&self) -> InterfaceResult<Vec<Role>> {
+        let sql = get_sqlite_query!("select-all-roles").to_string();
+        let roles = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<Role>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query([])?;
+                    let mut result = Vec::new();
+                    while let Some(row) = rows.next()? {
+                        result.push(sqlite_row_to_role(row)?);
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(roles)
+    }
+
+    async fn update_role(&self, role: &Role) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("update-role"));
+        let id = role.id.clone();
+        let name = role.name.clone();
+        let desc = role.description.clone().unwrap_or_default();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(&sql, params_from_iter([&id, &name, &desc]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn delete_role(&self, role_id: &str) -> InterfaceResult<()> {
+        // Delete user_roles, role_permissions, and role_hierarchy first (no FK cascade in SQLite by default)
+        let del_role = replace_dollars_with_qn(get_sqlite_query!("delete-role"));
+        let del_hierarchy =
+            replace_dollars_with_qn(get_sqlite_query!("delete-hierarchy-edges-for-role"));
+        let id = role_id.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(
+                        "DELETE FROM user_roles WHERE role_id=?1",
+                        params_from_iter([&id]),
+                    )?;
+                    tx.execute(
+                        "DELETE FROM role_permissions WHERE role_id=?1",
+                        params_from_iter([&id]),
+                    )?;
+                    tx.execute(&del_hierarchy, params_from_iter([&id]))?;
+                    tx.execute(&del_role, params_from_iter([&id]))?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn assign_permissions_to_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        let sql_select = get_sqlite_query!("select-role-permissions").to_string();
+        let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-role-permissions"));
+        let role = role_id.to_owned();
+        let obj = object_id.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    // Read existing ops for this role+object
+                    let mut stmt = c.prepare(&sql_select)?;
+                    let mut rows = stmt.query(params_from_iter([&role]))?;
+                    let mut existing = HashSet::new();
+                    while let Some(row) = rows.next()? {
+                        let oid: String = row.get(0)?;
+                        if oid == obj {
+                            let raw: String = row.get(1)?;
+                            existing = serde_json::from_str(&raw)
+                                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                            break;
+                        }
+                    }
+                    drop(rows);
+                    drop(stmt);
+                    existing.extend(operations);
+                    let json = serde_json::to_string(&existing)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                    c.execute(&sql_upsert, params_from_iter([&role, &obj, &json]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_permissions_from_role(
+        &self,
+        role_id: &str,
+        object_id: &str,
+        operations: HashSet<KmipOperation>,
+    ) -> InterfaceResult<()> {
+        let sql_select = get_sqlite_query!("select-role-permissions").to_string();
+        let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-role-permissions"));
+        let sql_delete = replace_dollars_with_qn(get_sqlite_query!("delete-role-permissions"));
+        let role = role_id.to_owned();
+        let obj = object_id.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql_select)?;
+                    let mut rows = stmt.query(params_from_iter([&role]))?;
+                    let mut existing: HashSet<KmipOperation> = HashSet::new();
+                    while let Some(row) = rows.next()? {
+                        let oid: String = row.get(0)?;
+                        if oid == obj {
+                            let raw: String = row.get(1)?;
+                            existing = serde_json::from_str(&raw)
+                                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                            break;
+                        }
+                    }
+                    drop(rows);
+                    drop(stmt);
+                    let remaining: HashSet<KmipOperation> =
+                        existing.difference(&operations).copied().collect();
+                    if remaining.is_empty() {
+                        c.execute(&sql_delete, params_from_iter([&role, &obj]))?;
+                    } else {
+                        let json = serde_json::to_string(&remaining)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                        c.execute(&sql_upsert, params_from_iter([&role, &obj, &json]))?;
+                    }
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_role_permissions(
+        &self,
+        role_id: &str,
+    ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
+        let sql = get_sqlite_query!("select-role-permissions").to_string();
+        let role = role_id.to_owned();
+        let map = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    HashMap<String, HashSet<KmipOperation>>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query(params_from_iter([&role]))?;
+                    let mut result = HashMap::new();
+                    while let Some(row) = rows.next()? {
+                        let oid: String = row.get(0)?;
+                        let raw: String = row.get(1)?;
+                        let ops: HashSet<KmipOperation> = serde_json::from_str(&raw)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                        result.insert(oid, ops);
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(map)
+    }
+
+    async fn assign_role_to_user(
+        &self,
+        user_id: &str,
+        role_id: &str,
+        granted_by: &str,
+    ) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("insert-user-role"));
+        let user = user_id.to_owned();
+        let role = role_id.to_owned();
+        let granter = granted_by.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(&sql, params_from_iter([&user, &role, &granter]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn revoke_role_from_user(&self, user_id: &str, role_id: &str) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("delete-user-role"));
+        let user = user_id.to_owned();
+        let role = role_id.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(&sql, params_from_iter([&user, &role]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_user_roles(&self, user_id: &str) -> InterfaceResult<Vec<Role>> {
+        let sql = get_sqlite_query!("select-user-roles").to_string();
+        let user = user_id.to_owned();
+        let roles = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<Role>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query(params_from_iter([&user]))?;
+                    let mut result = Vec::new();
+                    while let Some(row) = rows.next()? {
+                        result.push(sqlite_row_to_role(row)?);
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(roles)
+    }
+
+    async fn list_role_users(&self, role_id: &str) -> InterfaceResult<Vec<UserRole>> {
+        let sql = get_sqlite_query!("select-role-users").to_string();
+        let role = role_id.to_owned();
+        let users = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<UserRole>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query(params_from_iter([&role]))?;
+                    let mut result = Vec::new();
+                    while let Some(row) = rows.next()? {
+                        result.push(UserRole {
+                            user_id: row.get(0)?,
+                            role_id: row.get(1)?,
+                            granted_by: row.get(2)?,
+                        });
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(users)
+    }
+
+    async fn role_based_operations_on_object(
+        &self,
+        uid: &str,
+        user: &str,
+    ) -> InterfaceResult<HashSet<KmipOperation>> {
+        let sql = get_sqlite_query!("select-role-operations-for-user-object").to_string();
+        let uid_s = uid.to_owned();
+        let user_s = user.to_owned();
+        let ops = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    HashSet<KmipOperation>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query(params_from_iter([&user_s, &uid_s]))?;
+                    let mut all_ops = HashSet::new();
+                    while let Some(row) = rows.next()? {
+                        let raw: String = row.get(0)?;
+                        let ops: HashSet<KmipOperation> = serde_json::from_str(&raw)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                        all_ops.extend(ops);
+                    }
+                    Ok(all_ops)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(ops)
+    }
+
+    async fn add_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        if senior_role_id == junior_role_id {
+            return Err(DbError::InvalidRequest("A role cannot be its own junior".to_owned()).into());
+        }
+        let all_edges_sql = get_sqlite_query!("select-all-hierarchy-edges").to_string();
+        let insert_sql = replace_dollars_with_qn(get_sqlite_query!("insert-hierarchy-edge"));
+        let senior = senior_role_id.to_owned();
+        let junior = junior_role_id.to_owned();
+        self.conn
+            .call(move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                let mut stmt = c.prepare(&all_edges_sql)?;
+                let mut rows = stmt.query([])?;
+                let mut edges: Vec<(String, String)> = Vec::new();
+                while let Some(row) = rows.next()? {
+                    edges.push((row.get(0)?, row.get(1)?));
+                }
+                drop(rows);
+                drop(stmt);
+                // BFS: starting from `senior`, follow existing senior edges upward.
+                // If we can reach `junior`, then adding (senior, junior) would create a cycle.
+                let mut visited = std::collections::HashSet::new();
+                let mut queue = std::collections::VecDeque::new();
+                queue.push_back(senior.clone());
+                while let Some(current) = queue.pop_front() {
+                    if current == junior {
+                        return Err(rusqlite::Error::InvalidQuery);
+                    }
+                    if visited.insert(current.clone()) {
+                        for (s, j) in &edges {
+                            if j == &current {
+                                queue.push_back(s.clone());
+                            }
+                        }
+                    }
+                }
+                c.execute(&insert_sql, params_from_iter([&senior, &junior]))?;
+                Ok(())
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_hierarchy_edge(
+        &self,
+        senior_role_id: &str,
+        junior_role_id: &str,
+    ) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("delete-hierarchy-edge"));
+        let senior = senior_role_id.to_owned();
+        let junior = junior_role_id.to_owned();
+        self.conn
+            .call(move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                c.execute(&sql, params_from_iter([&senior, &junior]))?;
+                Ok(())
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_junior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("select-junior-roles"));
+        let id = role_id.to_owned();
+        let roles = self
+            .conn
+            .call(move |c: &mut rusqlite::Connection| -> Result<Vec<Role>, rusqlite::Error> {
+                let mut stmt = c.prepare(&sql)?;
+                let mut rows = stmt.query(params_from_iter([&id]))?;
+                let mut result = Vec::new();
+                while let Some(row) = rows.next()? {
+                    result.push(sqlite_row_to_role(row)?);
+                }
+                Ok(result)
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(roles)
+    }
+
+    async fn list_senior_roles(&self, role_id: &str) -> InterfaceResult<Vec<Role>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("select-senior-roles"));
+        let id = role_id.to_owned();
+        let roles = self
+            .conn
+            .call(move |c: &mut rusqlite::Connection| -> Result<Vec<Role>, rusqlite::Error> {
+                let mut stmt = c.prepare(&sql)?;
+                let mut rows = stmt.query(params_from_iter([&id]))?;
+                let mut result = Vec::new();
+                while let Some(row) = rows.next()? {
+                    result.push(sqlite_row_to_role(row)?);
+                }
+                Ok(result)
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(roles)
+    }
+
+    async fn list_all_hierarchy_edges(&self) -> InterfaceResult<Vec<RoleHierarchyEdge>> {
+        let sql = get_sqlite_query!("select-all-hierarchy-edges").to_string();
+        let edges = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<RoleHierarchyEdge>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query([])?;
+                    let mut result = Vec::new();
+                    while let Some(row) = rows.next()? {
+                        result.push(RoleHierarchyEdge {
+                            senior_role_id: row.get(0)?,
+                            junior_role_id: row.get(1)?,
+                        });
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(edges)
+    }
+
+    async fn get_role_hierarchy_tree(&self, role_id: &str) -> InterfaceResult<RoleTreeNode> {
+        let role = self.get_role(role_id).await?;
+        let edges = self.list_all_hierarchy_edges().await?;
+        let all_roles = self.list_roles().await?;
+        Ok(build_tree_node(&role, &edges, &all_roles, &mut HashSet::new()))
+    }
+}
+
+fn build_tree_node(
+    role: &Role,
+    edges: &[RoleHierarchyEdge],
+    all_roles: &[Role],
+    visited: &mut HashSet<String>,
+) -> RoleTreeNode {
+    visited.insert(role.id.clone());
+    let mut juniors = Vec::new();
+    for edge in edges.iter().filter(|e| e.senior_role_id == role.id) {
+        if visited.contains(&edge.junior_role_id) {
+            continue;
+        }
+        if let Some(junior_role) = all_roles.iter().find(|r| r.id == edge.junior_role_id) {
+            juniors.push(build_tree_node(junior_role, edges, all_roles, visited));
+        }
+    }
+    RoleTreeNode {
+        role: role.clone(),
+        juniors,
+    }
+}
+
+fn sqlite_row_to_role(row: &Row<'_>) -> Result<Role, rusqlite::Error> {
+    let builtin_str: String = row.get(3)?;
+    Ok(Role {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: {
+            let d: String = row.get(2)?;
+            if d.is_empty() { None } else { Some(d) }
+        },
+        builtin: matches!(builtin_str.as_str(), "1" | "true" | "TRUE"),
+    })
 }
