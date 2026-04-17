@@ -13,9 +13,9 @@ use crate::{
             ResponseMessage, ResponseMessageBatchItemVersioned, ResponseMessageHeader,
         },
         kmip_types::{
-            AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
-            CredentialType, CredentialValue, CryptographicUsageMask, ErrorReason, MessageExtension,
-            Nonce, ProtocolVersion, ResultStatusEnumeration,
+            AsynchronousIndicator, AttestationType, Authentication, BatchErrorContinuationOption,
+            Credential, CredentialType, CredentialValue, CryptographicUsageMask, ErrorReason,
+            MessageExtension, Nonce, ProtocolVersion, ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
@@ -1429,18 +1429,20 @@ pub(super) fn test_message_request() {
             asynchronous_indicator: Some(AsynchronousIndicator::Optional),
             attestation_capable_indicator: Some(true),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            authentication: Some(vec![Credential {
-                credential_type: CredentialType::Attestation,
-                credential_value: CredentialValue::Attestation {
-                    nonce: Nonce {
-                        nonce_id: vec![9, 8, 7],
-                        nonce_value: vec![10, 11, 12],
+            authentication: Some(Authentication {
+                credential: vec![Credential {
+                    credential_type: CredentialType::Attestation,
+                    credential_value: CredentialValue::Attestation {
+                        nonce: Nonce {
+                            nonce_id: vec![9, 8, 7],
+                            nonce_value: vec![10, 11, 12],
+                        },
+                        attestation_type: AttestationType::TCG_Integrity_Report,
+                        attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                        attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
                     },
-                    attestation_type: AttestationType::TCG_Integrity_Report,
-                    attestation_measurement: Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-                    attestation_assertion: Some(vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-                },
-            }]),
+                }],
+            }),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
             time_stamp: Some(OffsetDateTime::from_unix_timestamp(1_950_940_403).unwrap()),

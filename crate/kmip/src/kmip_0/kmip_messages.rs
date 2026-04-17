@@ -28,7 +28,7 @@ use serde::{
 use time::OffsetDateTime;
 
 use super::kmip_types::{
-    AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential, Nonce,
+    AsynchronousIndicator, AttestationType, Authentication, BatchErrorContinuationOption, Nonce,
     ProtocolVersion,
 };
 enum KmipVersion {
@@ -247,9 +247,10 @@ pub struct RequestMessageHeader {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_type: Option<Vec<AttestationType>>,
 
-    /// Used to authenticate the requester
+    /// Used to authenticate the requester.
+    /// Contains one or more Credential structures per KMIP spec.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authentication: Option<Vec<Credential>>,
+    pub authentication: Option<Authentication>,
 
     /// If omitted, then `Stop` is assumed
     #[serde(skip_serializing_if = "Option::is_none")]
