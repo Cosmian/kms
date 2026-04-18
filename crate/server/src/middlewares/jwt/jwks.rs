@@ -129,7 +129,10 @@ async fn parse_jwks(
 ) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
-    let mut client = Client::builder().timeout(std::time::Duration::from_secs(30));
+    // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-2).
+    let mut client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none());
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {
@@ -283,6 +286,72 @@ mod tests {
             err.to_string().contains("No valid JWK found"),
             "unexpected error: {err}"
         );
+    }
+
+    /// Spawn a one-shot HTTP server that immediately returns a 307 redirect.
+    ///
+    /// Used to verify that `parse_jwks` does **not** follow redirects
+    /// (OWASP A10-2 SSRF / CIS 13.10 guard).
+    async fn one_shot_redirect_server(redirect_to: String) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0_u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+            let response = format!(
+                "HTTP/1.1 307 Temporary Redirect\r\nLocation: {redirect_to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        port
+    }
+
+    /// SR1: A JWKS URI that responds with a 307 redirect must NOT be followed.
+    ///
+    /// `reqwest` is configured with `Policy::none()` so the redirect response
+    /// is returned as-is. Parsing the empty body as JSON fails, preventing any
+    /// request from reaching the attacker-controlled destination.
+    ///
+    /// NIST SP 800-204B SI-10 · CIS 13.10 · OWASP A10-2 (SSRF)
+    #[actix_web::test]
+    async fn sr01_jwks_redirect_is_not_followed() {
+        // Target that must never receive a request from the KMS server.
+        let attacker_port = one_shot_http_server(SAMPLE_JWKS).await;
+        let attacker_url = format!("http://127.0.0.1:{attacker_port}/secret");
+
+        // Redirecting server: returns 307 → attacker_url.
+        let redirect_port = one_shot_redirect_server(attacker_url).await;
+        let jwks_url = format!("http://127.0.0.1:{redirect_port}/jwks.json");
+
+        let err = parse_jwks(&jwks_url, &None).await.unwrap_err();
+
+        // The JSON parse of the empty 307 body must fail — not a successful JWKS fetch.
+        assert!(
+            !err.to_string().is_empty(),
+            "Expected an error when a 307 redirect is returned, got Ok"
+        );
+        // Specifically we expect a JSON-parse or JWKS-content error, not a network error
+        // to the attacker URL (which would mean the redirect was followed).
+        let msg = err.to_string();
+        assert!(
+            msg.contains("parse JWKS") || msg.contains("JSON key") || msg.contains("No valid JWK"),
+            "Expected JWKS parse error (not a followed-redirect network error), got: {msg}"
+        );
+    }
+
+    /// SR2: A JWKS URI that serves valid JWKS without any redirect succeeds.
+    ///
+    /// Baseline / control: the no-redirect happy-path continues to work.
+    #[actix_web::test]
+    async fn sr02_jwks_direct_response_succeeds() {
+        let port = one_shot_http_server(SAMPLE_JWKS).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+
+        assert_eq!(res_url, url);
+        assert_eq!(jwks.keys.len(), 1);
     }
 
     /// Invalid JWK entries in the array are silently skipped;

@@ -148,6 +148,21 @@ port = 9998
 # The KMS HTTP server hostname
 hostname = "0.0.0.0"
 
+# An optional API token to use for authentication on the HTTP server.
+# api_token_id = "<secret-api-token>"
+
+# Maximum number of requests per second per IP address allowed by the rate limiter.
+# When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+# Requests exceeding the limit receive HTTP 429 Too Many Requests.
+# Leave unset (default) to disable rate limiting.
+# rate_limit_per_second = 100
+
+# Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+# Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
+# port or host from the KMS server. In production, leave unset to restrict to same-origin
+# only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+# cors_allowed_origins = ["<origin-1>", "<origin-2>"]
+
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
 [proxy]

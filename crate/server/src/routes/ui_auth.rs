@@ -40,7 +40,11 @@ pub(crate) async fn login(
     oidc_config: web::Data<OidcConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
-    let Ok(client) = Client::builder().build() else {
+    // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-3).
+    let Ok(client) = Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    else {
         return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 
@@ -170,7 +174,11 @@ pub(crate) async fn callback(
         Some(code) => code.to_owned(),
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
-    let Ok(client) = Client::builder().build() else {
+    // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-3).
+    let Ok(client) = Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    else {
         return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 

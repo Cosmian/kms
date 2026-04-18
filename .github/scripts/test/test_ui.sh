@@ -198,7 +198,7 @@ KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 # machines).  ui_index_html_folder is intentionally omitted: the UI is
 # served by the Vite preview process on port 5173; omitting this flag also
 # avoids a known actix-files interaction that causes the server to exit
-# immediately after worker initialisation on Linux CI.
+# immediately after worker initialization on Linux CI.
 cat >"${KMS_CONF_FILE}" <<HSMEOF
 default_username = "admin"
 vendor_identification = "test_vendor"
@@ -215,6 +215,7 @@ clear_database = true
 [http]
 hostname = "127.0.0.1"
 port = 9998
+cors_allowed_origins = ["http://127.0.0.1:5173"]
 HSMEOF
 
 echo "==> Starting KMS server with SoftHSM2 (port 9998) …"

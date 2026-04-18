@@ -1028,7 +1028,10 @@ ALGORITHMS: list[dict[str, Any]] = [
 
 
 def cargo_meta_versions(root: Path) -> dict[str, str]:
-    """Run cargo metadata and return {crate_name: version} for known libs."""
+    """Run cargo metadata and return {crate_name: version} for known libs.
+
+    This is the fallback path when cdxgen output is not available.
+    """
     cmd = [
         'cargo',
         'metadata',
@@ -1051,6 +1054,38 @@ def cargo_meta_versions(root: Path) -> dict[str, str]:
         name = pkg['name']
         if name in LIBRARIES and name not in versions:
             versions[name] = pkg['version']
+    return versions
+
+
+def cdxgen_versions(sbom_path: Path) -> dict[str, str]:
+    """Extract {crate_name: version} from a cdxgen-generated CycloneDX SBOM.
+
+    cdxgen parses Cargo.lock directly and produces authoritative PURLs.
+    Only versions for crates listed in LIBRARIES are extracted.
+    """
+    try:
+        sbom = json.loads(sbom_path.read_text(encoding='utf-8'))
+    except Exception as exc:
+        print(
+            f"Warning: could not parse cdxgen SBOM at {sbom_path}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+
+    versions: dict[str, str] = {}
+    for comp in sbom.get('components', []):
+        name = comp.get('name', '')
+        version = comp.get('version', '')
+        if name in LIBRARIES and name not in versions and version:
+            versions[name] = version
+
+    found = sorted(versions)
+    missing = sorted(k for k in LIBRARIES if k not in versions)
+    print(
+        f"cdxgen SBOM: resolved {len(found)} / {len(LIBRARIES)} library versions"
+        + (f" (missing: {missing})" if missing else ''),
+        file=sys.stderr,
+    )
     return versions
 
 
@@ -1084,7 +1119,7 @@ def build_algorithm_component(
 ) -> dict[str, Any]:
     algo_props: dict[str, Any] = {
         'primitive': algo['primitive'],
-        'executionEnvironment': 'software',
+        'executionEnvironment': 'software-plain-ram',
         'implementationLevel': 'library',
         'certificationLevel': certification_level(algo['fips']),
         'cryptoFunctions': algo['functions'],
@@ -1152,9 +1187,16 @@ def build_library_component(key: str, versions: dict[str, str]) -> dict[str, Any
 # ---------------------------------------------------------------------------
 
 
-def build_cbom(root: Path, kms_version: str) -> dict[str, Any]:
-    print('Resolving library versions from cargo metadata…', file=sys.stderr)
-    versions = cargo_meta_versions(root)
+def build_cbom(
+    root: Path,
+    kms_version: str,
+    lib_versions: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    if lib_versions is not None:
+        versions = lib_versions
+    else:
+        print('Resolving library versions from cargo metadata…', file=sys.stderr)
+        versions = cargo_meta_versions(root)
 
     print('Scanning source files for algorithm references…', file=sys.stderr)
     components: list[dict[str, Any]] = []
@@ -1250,9 +1292,30 @@ def main() -> None:
         default=_read_kms_version_from_cargo(REPO_ROOT),
         help='KMS version string to embed in metadata (default: read from Cargo.toml)',
     )
+    parser.add_argument(
+        '--lib-input',
+        metavar='FILE',
+        default=None,
+        help='CycloneDX SBOM produced by cdxgen (Cargo.lock scan). '
+        'Library versions are read from this file instead of running cargo metadata. '
+        'Falls back to cargo metadata if not provided or if parsing fails.',
+    )
     args = parser.parse_args()
 
-    cbom = build_cbom(ROOT, args.kms_version)
+    # Resolve library versions: cdxgen SBOM > cargo metadata fallback
+    lib_versions: dict[str, str] | None = None
+    if args.lib_input:
+        lib_path = Path(args.lib_input)
+        if lib_path.exists() and lib_path.stat().st_size > 0:
+            lib_versions = cdxgen_versions(lib_path)
+        else:
+            print(
+                f"Warning: --lib-input path '{args.lib_input}' not found or empty "
+                f"— falling back to cargo metadata.",
+                file=sys.stderr,
+            )
+
+    cbom = build_cbom(ROOT, args.kms_version, lib_versions=lib_versions)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

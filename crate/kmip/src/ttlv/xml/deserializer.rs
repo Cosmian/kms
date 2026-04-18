@@ -18,6 +18,13 @@ use crate::{
 // "permissive" fallbacks are removed.
 const ALLOW_IMPLICIT_STRUCTURE: bool = true; // keep acceptance of existing vectors
 
+/// Maximum XML element nesting depth accepted by the TTLV XML parser.
+///
+/// An excessively deep XML document would grow the internal `stack` without bound,
+/// exhausting heap memory (`DoS`). Limiting to 64 levels is far above any legitimate
+/// KMIP XML depth (typical maximum ~8 levels) while preventing the attack.
+const MAX_XML_STACK_DEPTH: usize = 64;
+
 pub struct TTLVXMLDeserializer;
 impl TTLVXMLDeserializer {
     // Group non-contiguous <Attribute> vendor-attribute children under an <Attributes> aggregate
@@ -112,6 +119,11 @@ impl TTLVXMLDeserializer {
                     // logic rewrote to RngAlgorithm which conflicted with explicit serde rename.
                     if tag.starts_with("PKCS_11") {
                         tag = tag.replace("PKCS_11", "PKCS11");
+                    }
+                    if stack.len() >= MAX_XML_STACK_DEPTH {
+                        return Err(KmipError::Default(format!(
+                            "TTLV XML structure depth exceeds maximum allowed depth ({MAX_XML_STACK_DEPTH})"
+                        )));
                     }
                     let mut node_type = None;
                     for a in e.attributes().flatten() {

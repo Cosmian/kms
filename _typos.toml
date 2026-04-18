@@ -14,3 +14,5 @@ OT = "OT"
 Fo = "Fo"
 # OAuth client IDs can contain this sequence.
 ot = "ot"
+# ISO/IEC 27034 term: Application Normative Framework
+ANF = "ANF"

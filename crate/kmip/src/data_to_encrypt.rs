@@ -1,4 +1,6 @@
-use crate::{Deserializer, Serializer, error::KmipError, kmip_0::kmip_types::ErrorReason};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
+
+use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason};
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///
@@ -33,9 +35,11 @@ impl DataToEncrypt {
         // Write the encryption policy
         let mut se = Serializer::with_capacity(mem_size);
         if let Some(encryption_policy) = &self.encryption_policy {
-            se.write_vec(encryption_policy.as_bytes())?;
+            se.write_vec(encryption_policy.as_bytes())
+                .map_err(|e| KmipError::Serialization(e.to_string()))?;
         } else {
-            se.write_leb128_u64(0)?;
+            se.write_leb128_u64(0)
+                .map_err(|e| KmipError::Serialization(e.to_string()))?;
         }
         // Write the plaintext
         let mut bytes = se.finalize().to_vec();
@@ -47,23 +51,19 @@ impl DataToEncrypt {
         let mut de = Deserializer::new(bytes);
 
         // Read the encryption policy
-        let encryption_policy = de
-            .read_vec()
-            .map(|ep| (!ep.is_empty()).then_some(ep))
-            .and_then(|ep| {
-                ep.map(|ep| {
-                    String::from_utf8(ep).map_err(|e| {
-                        KmipError::Kmip21(
-                            ErrorReason::Invalid_Message,
-                            format!("failed deserializing the encryption policy string: {e}"),
-                        )
-                    })
-                })
-                .transpose()
-            })
-            .map_err(|e| {
-                KmipError::ConversionError(format!("failed deserializing data to encrypt: {e}"))
-            })?;
+        let ep_bytes = de.read_vec().map_err(|e| {
+            KmipError::ConversionError(format!("failed deserializing data to encrypt: {e}"))
+        })?;
+        let encryption_policy = if ep_bytes.is_empty() {
+            None
+        } else {
+            Some(String::from_utf8(ep_bytes).map_err(|e| {
+                KmipError::Kmip21(
+                    ErrorReason::Invalid_Message,
+                    format!("failed deserializing the encryption policy string: {e}"),
+                )
+            })?)
+        };
 
         // Remaining is the plaintext to encrypt
         let plaintext = de.finalize();

@@ -8,6 +8,7 @@ vendor/
 # Security / Secrets
 data/keys
 .env
+audit-results
 
 # Runtime Artifacts / Local Data
 data/html

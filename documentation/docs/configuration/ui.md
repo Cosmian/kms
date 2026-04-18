@@ -18,7 +18,6 @@ If the KMS is running behind a reverse proxy, set [`kms_public_url`](server_conf
 
 The UI bundle is served from the path configured by [`ui_index_html_folder`](server_configuration_file.md#manual-configuration) (defaults to the built-in bundle shipped with the server).
 
-
 ## Authentication Configuration
 
 The UI automatically detects the authentication method configured on the KMS server and adapts its login flow accordingly:
@@ -27,7 +26,7 @@ The UI automatically detects the authentication method configured on the KMS ser
 - **Certificate Authentication**: The UI presents an **ACCESS KMS** button. The browser negotiates the [mTLS](tls.md) handshake and submits the client certificate automatically. If no valid certificate is available, the login page is shown again with an error. See [Configuring Certificate Authentication](#configuring-certificate-authentication-mtls) below.
 - **No authentication configured**: No login is required — the UI takes you directly to the key management interface. However, a warning banner is displayed:
 
-    !!! warning 
+    !!! warning
     To remove the warning "Authentication is disabled on this KMS server", configure an [authentication method like explained in the next sections](#authentication-configuration).
 
 ---
@@ -92,7 +91,6 @@ The steps below are for Google Chrome, but the process is similar in other brows
 3. Click **Import** and select your `.p12` (PKCS#12) certificate bundle.
 4. Enter the certificate password when prompted.
 
-
 !!! tip
     If your browser does not prompt for a certificate, or authentication keeps failing after installing the certificate, **close all windows completely and relaunch**. Browsers typically cache TLS session state and will not re-negotiate with the new certificate until they restart.
 
@@ -100,4 +98,3 @@ The steps below are for Google Chrome, but the process is similar in other brows
     On macOS, use **Keychain Access** to import the `.p12` bundle — Chrome reads client certificates directly from the system keychain. On Windows, use the system **Certificate Manager** (`certmgr.msc`).
 
 ---
-

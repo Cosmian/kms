@@ -136,6 +136,7 @@ opt-level = 0
 [workspace.dependencies]
 actix-cors = "0.6"
 actix-files = "0.6.10"
+actix-governor = "0.10"
 actix-http = "3.10"
 actix-identity = "0.6"
 actix-rt = "2.10"
@@ -204,6 +205,7 @@ tokio = { version = "1.44", default-features = false }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false }
+subtle = "2.6"
 url = "2.5"
 uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }

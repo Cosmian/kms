@@ -1,4 +1,7 @@
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{
+    Arc, LazyLock, RwLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 use zeroize::Zeroizing;
 
@@ -11,9 +14,6 @@ use crate::{
         SearchOptions, Version,
     },
 };
-
-// ── Internal: std::sync::atomic re-export ─────────────────────────────────
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug)]
 pub struct SignContext {

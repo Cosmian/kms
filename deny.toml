@@ -234,6 +234,16 @@ skip-tree = [
   # { crate = "ansi_term@0.11.0", depth = 20 },
 ]
 
+# Deny the `unbounded_depth` feature for `serde_json`.
+# This feature removes serde_json's built-in 128-level JSON recursion limit,
+# which exists to prevent stack-overflow DoS via deeply-nested JSON documents.
+# The TTLV JSON endpoint (`/kmip/2_1`) is protected by serde_json's default limit;
+# enabling `unbounded_depth` would silently remove that protection.
+# (NIST SSDF PW.4.4 / OSSTMM Integrity)
+[[bans.features]]
+crate = "serde_json"
+deny = ["unbounded_depth"]
+
 # This section is considered when running `cargo deny check sources`.
 # More documentation about the 'sources' section can be found here:
 # https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html

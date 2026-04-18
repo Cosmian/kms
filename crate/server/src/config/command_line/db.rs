@@ -15,6 +15,39 @@ use crate::{
 
 pub const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
 
+/// Mask the password component of a database connection URL before logging.
+///
+/// Uses [`url::Url::parse`] for standard single-host URLs; falls back to a simple
+/// string scan for multi-host `PostgreSQL` connection strings
+/// (e.g. `postgresql://user:pass@host1,host2/db`) that [`url::Url`] cannot parse.
+///
+/// Returns the original string unchanged when no password is detected.
+fn mask_db_url_password(url: &str) -> String {
+    // Fast path: standard URL that `url::Url` can parse (MySQL, single-host Postgres, Redis)
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        if parsed.password().is_some() {
+            // `set_password` can only fail if the URL has no host (e.g. `data:`), which
+            // won't happen for a database URL, so the error is intentionally discarded.
+            let _ = parsed.set_password(Some("****"));
+        }
+        return parsed.to_string();
+    }
+    // Slow path: multi-host PostgreSQL URL — scan manually
+    // Pattern: scheme://[user[:pass]@]... → replace :pass@ with :****@
+    if let Some(at_pos) = url.rfind('@') {
+        if let Some(scheme_end) = url.find("://") {
+            let creds = &url[scheme_end + 3..at_pos];
+            if let Some(colon_pos) = creds.find(':') {
+                let user = &creds[..colon_pos];
+                let scheme = &url[..scheme_end];
+                let rest = &url[at_pos + 1..];
+                return format!("{scheme}://{user}:****@{rest}");
+            }
+        }
+    }
+    url.to_owned()
+}
+
 /// Supported database backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseType {
@@ -156,22 +189,20 @@ impl Display for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(database_type) = &self.database_type {
             match database_type.as_str() {
-                "postgresql" => write!(
-                    f,
-                    "postgresql: {}",
-                    &self
+                "postgresql" => {
+                    let masked = self
                         .database_url
-                        .as_ref()
-                        .map_or("[INVALID URL]", |url| url.as_str())
-                ),
-                "mysql" => write!(
-                    f,
-                    "mysql: {}",
-                    &self
+                        .as_deref()
+                        .map_or_else(|| "[INVALID URL]".to_owned(), mask_db_url_password);
+                    write!(f, "postgresql: {masked}")
+                }
+                "mysql" => {
+                    let masked = self
                         .database_url
-                        .as_ref()
-                        .map_or("[INVALID URL]", |url| url.as_str())
-                ),
+                        .as_deref()
+                        .map_or_else(|| "[INVALID URL]".to_owned(), mask_db_url_password);
+                    write!(f, "mysql: {masked}")
+                }
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
                 #[cfg(feature = "non-fips")]
                 #[allow(deprecated)]
@@ -374,5 +405,72 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("empty"));
+    }
+
+    // ── N1–N5: Database URL password masking (OSSTMM Visibility · NIST PR.DS-5) ─
+
+    /// N1: Standard single-host `PostgreSQL` URL – password must be replaced with `****`.
+    #[test]
+    fn n01_postgres_single_host_password_masked() {
+        let url = "postgresql://user:secret@localhost:5432/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in masked URL: {masked}"
+        );
+        assert!(
+            masked.contains("****"),
+            "Masked URL must contain ****: {masked}"
+        );
+        assert!(
+            masked.contains("user:"),
+            "Username must be preserved: {masked}"
+        );
+    }
+
+    /// N2: `MySQL` URL – password must be masked.
+    #[test]
+    fn n02_mysql_password_masked() {
+        let url = "mysql://admin:pass@127.0.0.1:3306/kms";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("pass"),
+            "Password must not appear: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N3: Multi-host `PostgreSQL` URL that `url::Url` cannot parse – slow-path masking.
+    #[test]
+    fn n03_postgres_multi_host_password_masked() {
+        let url = "postgresql://user:secret@host1,host2,host3/db";
+        let masked = mask_db_url_password(url);
+        assert!(
+            !masked.contains("secret"),
+            "Password must not appear in multi-host URL: {masked}"
+        );
+        assert!(masked.contains("****"), "Must contain ****: {masked}");
+    }
+
+    /// N4: URL without a password – string must be unchanged.
+    #[test]
+    fn n04_no_password_unchanged() {
+        let url = "postgresql://user@localhost/db";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "URL without password must be returned unchanged"
+        );
+    }
+
+    /// N5: Completely invalid URL – must not panic, return unchanged string.
+    #[test]
+    fn n05_invalid_url_no_panic() {
+        let url = "not-a-url-at-all";
+        let masked = mask_db_url_password(url);
+        assert_eq!(
+            url, masked,
+            "Invalid URL must be returned unchanged without panic"
+        );
     }
 }

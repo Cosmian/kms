@@ -7,6 +7,24 @@ use crate::ttlv::{
     wire::kmip_tag::KmipTag,
 };
 
+/// Maximum nesting depth for TTLV structures.
+///
+/// A deeply-nested binary TTLV blob can exhaust the call stack (`DoS` via stack overflow)
+/// because `read_ttlv_inner` is recursive. Limiting depth to 64 is far above any
+/// legitimate KMIP nesting depth (typical maximum is ~8) while preventing the attack.
+pub(crate) const MAX_TTLV_DEPTH: u32 = 64;
+
+/// Maximum byte length for a single TTLV leaf field (`ByteString`, `TextString``BigInteger`er).
+///
+/// Without this guard an attacker can craft a tiny HTTP request whose TTLV header
+/// claims a field length of, say, 500 MB. The server would then call
+/// `vec![0_u8; 500_000_000]`, zero-initialising all pages and exhausting RAM,
+/// before `read_exact` fails on the actual (small) payload.
+///
+/// 64 MiB matches Actix-web's HTTP-body payload limit so no legitimate single
+/// field can ever exceed this value.
+pub(crate) const MAX_TTLV_FIELD_BYTES: usize = 64 * 1024 * 1024;
+
 pub struct TTLVBytesDeserializer<R> {
     reader: R,
 }
@@ -19,7 +37,19 @@ where
         Self { reader }
     }
 
+    /// Parse one TTLV item from the reader.
+    ///
+    /// Delegates to the depth-tracking inner implementation starting at depth 0.
     pub fn read_ttlv<TAG: KmipTag>(&mut self) -> Result<(TTLV, usize), TtlvError> {
+        self.read_ttlv_inner::<TAG>(0)
+    }
+
+    fn read_ttlv_inner<TAG: KmipTag>(&mut self, depth: u32) -> Result<(TTLV, usize), TtlvError> {
+        if depth > MAX_TTLV_DEPTH {
+            return Err(TtlvError::from(format!(
+                "TTLV structure depth exceeds maximum allowed depth ({MAX_TTLV_DEPTH})"
+            )));
+        }
         // Read Tag (3 bytes)
         let mut tag_bytes = [0_u8; 3];
         self.reader.read_exact(&mut tag_bytes)?;
@@ -53,7 +83,13 @@ where
                 let mut items = Vec::new();
                 let mut remaining = length;
                 while remaining > 0 {
-                    let (item, item_length) = self.read_ttlv::<TAG>()?;
+                    let (item, item_length) = self.read_ttlv_inner::<TAG>(depth + 1)?;
+                    if item_length > remaining {
+                        return Err(TtlvError::from(format!(
+                            "TTLV Structure child length ({item_length}) exceeds remaining \
+                             parent length ({remaining}): malformed Structure"
+                        )));
+                    }
                     remaining -= item_length;
                     items.push(item);
                 }
@@ -73,6 +109,12 @@ where
                 (TTLValue::LongInteger(i64::from_be_bytes(buf8)), 8)
             }
             TtlvType::BigInteger => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV BigInteger field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 (
@@ -97,6 +139,12 @@ where
                 (TTLValue::Boolean(buf8[7] != 0), 8)
             }
             TtlvType::TextString => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV TextString field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::TextString(String::from_utf8(buf)?);
@@ -110,6 +158,12 @@ where
                 (value, length + padding)
             }
             TtlvType::ByteString => {
+                if length > MAX_TTLV_FIELD_BYTES {
+                    return Err(TtlvError::from(format!(
+                        "TTLV ByteString field length {length} exceeds maximum allowed \
+                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                    )));
+                }
                 let mut buf = vec![0_u8; length];
                 self.reader.read_exact(&mut buf)?;
                 let value = TTLValue::ByteString(buf);
@@ -301,5 +355,46 @@ mod tests {
             ]),
         };
         serialize_and_deserialize(&original);
+    }
+
+    /// Build a TTLV tree that is `depth` levels deep (each level wraps the next in a Structure).
+    fn build_nested_structure(depth: u32) -> TTLV {
+        if depth == 0 {
+            return TTLV {
+                tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
+                value: TTLValue::Integer(0),
+            };
+        }
+        TTLV {
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
+            value: TTLValue::Structure(vec![build_nested_structure(depth - 1)]),
+        }
+    }
+
+    #[test]
+    fn test_depth_at_limit_is_ok() {
+        // A tree exactly at the maximum depth must parse successfully.
+        let original = build_nested_structure(MAX_TTLV_DEPTH);
+        serialize_and_deserialize(&original);
+    }
+
+    #[test]
+    fn test_depth_exceeds_limit_is_err() {
+        // One level deeper than MAX_TTLV_DEPTH must be rejected.
+        let over_limit = build_nested_structure(MAX_TTLV_DEPTH + 1);
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&over_limit)
+            .unwrap();
+
+        let mut deserializer = TTLVBytesDeserializer::new(buffer.as_slice());
+        let result = deserializer.read_ttlv::<kmip_1_4::kmip_types::Tag>();
+        assert!(result.is_err(), "expected error when depth exceeds maximum");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("depth"),
+            "error message should mention 'depth', got: {err_msg}"
+        );
     }
 }

@@ -146,6 +146,10 @@ $LogTempDir = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]
 $KmsLogOut = Join-Path $LogTempDir "kms-stdout.log"
 $KmsLogErr = Join-Path $LogTempDir "kms-stderr.log"
 
+# Determine the Vite preview port before starting the KMS so we can pass it
+# as the CORS allowed origin.
+$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
+
 # Launch the pre-built binary directly — startup is near-instant.
 $oldRustLog = $env:RUST_LOG
 $env:RUST_LOG = "cosmian_kms_server=info,cosmian_kms_server_database=info"
@@ -156,7 +160,8 @@ try {
         "--sqlite-path", $SqliteDir,
         "--hostname", "127.0.0.1",
         "--port", "9998",
-        "--vendor-identification", "test_vendor"
+        "--vendor-identification", "test_vendor",
+        "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $KmsLogOut `
@@ -202,7 +207,6 @@ if (-not $KmsReady) {
 }
 
 # ── 5. Start Vite preview server ─────────────────────────────────────────────
-$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -ForegroundColor Cyan
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"
@@ -244,6 +248,11 @@ try {
     # SoftHSM2 is not available on Windows; signal to the specs that no HSM
     # keys are pre-created so the HSM-specific tests are skipped.
     $env:PLAYWRIGHT_HSM_KEY_COUNT = "0"
+    # Run fewer parallel workers on Windows to prevent the debug-build KMS server
+    # from being overwhelmed by concurrent crypto operations, which saturates the
+    # tokio reactor and causes actix-web to return 408 Request Timeout before it
+    # can even read incoming request bodies.
+    $env:PLAYWRIGHT_WORKERS = "4"
     try {
         Invoke-Checked $pnpmCmd @("run", "test:e2e")
     }
@@ -251,6 +260,7 @@ try {
         Remove-Item Env:CI -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_HSM_KEY_COUNT -ErrorAction SilentlyContinue
+        Remove-Item Env:PLAYWRIGHT_WORKERS -ErrorAction SilentlyContinue
         Pop-Location
     }
 }

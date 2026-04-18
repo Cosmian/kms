@@ -1,0 +1,154 @@
+---
+rules:
+  # ── Deprecated / weak algorithm usage ─────────────────────────────────────
+
+  - id: cosmian-deprecated-md5
+    patterns:
+      - pattern: |
+          openssl::hash::MessageDigest::md5()
+      - pattern: |
+          Md5::new()
+      - pattern: |
+          md5::compute(...)
+    message: >
+      MD5 is cryptographically broken — it must not be used for any security
+      purpose (integrity, MAC, key derivation, or password hashing).
+      Use SHA-256 or SHA-3 instead.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-327
+      owasp: A02:2021
+      nist: SSDF PW.4.4
+
+  - id: cosmian-deprecated-sha1-signing
+    patterns:
+      - pattern: |
+          openssl::hash::MessageDigest::sha1()
+      - pattern: |
+          Sha1::new()
+    message: >
+      SHA-1 is deprecated for signing and integrity-protection contexts.
+      Use SHA-256 or SHA-3. SHA-1 may still appear in legacy protocol
+      compatibility code — review and annotate with a justification comment.
+    languages: [rust]
+    severity: WARNING
+    metadata:
+      cwe: CWE-327
+      owasp: A02:2021
+      nist: SSDF PW.4.4
+
+  - id: cosmian-deprecated-des-3des
+    patterns:
+      - pattern-regex: \b(DES|TripleDes|Des3|des_edge|des_cbc)\b
+    message: >
+      DES and 3DES are deprecated (NIST SP 800-131A Rev. 2). Replace with AES-256-GCM.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-327
+      owasp: A02:2021
+
+  - id: cosmian-deprecated-rc4
+    patterns:
+      - pattern-regex: \bRC4\b|\brc4\b|\bArcfour\b
+    message: >
+      RC4 is broken and prohibited by RFC 7465. Replace with ChaCha20-Poly1305 or AES-GCM.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-327
+      owasp: A02:2021
+
+  # ── Weak key sizes ──────────────────────────────────────────────────────────
+
+  - id: cosmian-weak-rsa-1024
+    pattern-regex: rsa.*1024|1024.*rsa|bits.*=.*1024
+    message: >
+      RSA-1024 is too weak (NIST minimum: 2048 bits for near-term, 3072 for long-term).
+      Update to RSA-2048 or RSA-3072.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-326
+      owasp: A02:2021
+
+  - id: cosmian-weak-ec-p192
+    pattern-regex: P192|p192|NistP192|secp192
+    message: >
+      P-192 / secp192 is below the 112-bit security level floor. Use P-256 or higher.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-326
+
+  # ── Constant-time requirement ───────────────────────────────────────────────
+
+  - id: cosmian-non-ct-secret-compare
+    patterns:
+      - pattern: $SECRET == $OTHER
+      - pattern: $OTHER == $SECRET
+    pattern-where-python: |
+      any(kw in vars["SECRET"].lower() for kw in ["token", "secret", "key", "password", "pwd", "mac", "hmac", "hash"])
+    message: >
+      Comparing secret values with == can leak timing information.
+      Use constant-time comparison (subtle::ConstantTimeEq or similar).
+    languages: [rust]
+    severity: WARNING
+    metadata:
+      cwe: CWE-208
+      owasp: A07:2021
+
+  # ── Missing zeroize on key structs ─────────────────────────────────────────
+
+  - id: cosmian-key-struct-no-zeroize
+    patterns:
+      - pattern: |
+          struct $KEY_STRUCT {
+            ...
+            $FIELD: Vec<u8>,
+            ...
+          }
+      - pattern-not: |
+          #[derive(..., Zeroize, ...)]
+          struct $KEY_STRUCT { ... }
+    pattern-where-python: |
+      any(kw in vars["KEY_STRUCT"].lower() for kw in ["key", "secret", "priv", "seed", "material"])
+    message: >
+      Key-bearing struct $KEY_STRUCT contains Vec<u8> but does not derive Zeroize.
+      Sensitive key material should be wrapped in Zeroizing<Vec<u8>> or derive ZeroizeOnDrop.
+    languages: [rust]
+    severity: WARNING
+    metadata:
+      cwe: CWE-316
+      nist: SSDF PW.4.4
+
+  # ── Cryptographic agility anti-patterns ────────────────────────────────────
+
+  - id: cosmian-algorithm-from-user-input
+    patterns:
+      - pattern: |
+          CryptographicAlgorithm::from($USER_INPUT)
+      - pattern: |
+          Algorithm::from_str($USER_INPUT)
+    message: >
+      Do not derive a cryptographic algorithm directly from unsanitised user input.
+      Validate against an explicit allowlist before use to prevent algorithm-confusion attacks.
+    languages: [rust]
+    severity: WARNING
+    metadata:
+      cwe: CWE-327
+      owasp: A02:2021
+
+  # ── Hardcoded IV / nonce ────────────────────────────────────────────────────
+
+  - id: cosmian-hardcoded-iv
+    pattern-regex: \b(iv|nonce|IV|NONCE)\s*=\s*b"[0-9a-fA-F]{16,}"
+    message: >
+      Hardcoded IV or nonce detected. IVs/nonces must be generated randomly
+      (or via a deterministic scheme with a unique counter) for each encryption.
+    languages: [rust]
+    severity: ERROR
+    metadata:
+      cwe: CWE-330
+      owasp: A02:2021

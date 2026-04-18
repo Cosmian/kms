@@ -7,6 +7,8 @@
 use std::{fmt, sync::Arc};
 
 use cosmian_logger::trace;
+#[cfg(not(feature = "insecure"))]
+use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
 #[cfg(all(not(test), not(feature = "insecure")))]
@@ -18,6 +20,39 @@ use serde::{
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
+
+/// Asymmetric JWT algorithms that the KMS server accepts.
+///
+/// HS* algorithms are explicitly excluded: when an attacker obtains the RSA
+/// public key from the JWKS endpoint they could forge HS256 tokens by using
+/// the public key as the HMAC secret (algorithm-confusion attack).
+/// Only RS*, ES*, and PS* families are accepted.
+#[cfg(not(feature = "insecure"))]
+pub(crate) const ALLOWED_JWT_ALGORITHMS: &[Algorithm] = &[
+    Algorithm::RS256,
+    Algorithm::RS384,
+    Algorithm::RS512,
+    Algorithm::ES256,
+    Algorithm::ES384,
+    Algorithm::PS256,
+    Algorithm::PS384,
+    Algorithm::PS512,
+];
+
+/// Verify that `alg` is an accepted asymmetric algorithm.
+///
+/// Returns `Err(KmsError::Unauthorized)` for `HS*`, `none`, or any other
+/// symmetric / unknown algorithm to prevent algorithm-confusion attacks.
+#[cfg(all(not(test), not(feature = "insecure")))]
+fn check_jwt_algorithm(alg: Algorithm) -> KResult<()> {
+    if ALLOWED_JWT_ALGORITHMS.contains(&alg) {
+        Ok(())
+    } else {
+        Err(KmsError::Unauthorized(format!(
+            "JWT algorithm {alg:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted"
+        )))
+    }
+}
 
 fn deserialize_aud<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
 where
@@ -167,7 +202,13 @@ impl JwtConfig {
                 KmsError::Unauthorized(format!("Failed to decode token header: {e}"))
             })?;
 
+            // Reject symmetric / unknown algorithms before touching the JWKS key material.
+            check_jwt_algorithm(header.alg)?;
+
             let mut validation = Validation::new(header.alg);
+            // Explicitly pin the allowed algorithms to the single pre-validated algorithm.
+            // This prevents jsonwebtoken from accepting any algorithm not in the allowlist.
+            validation.algorithms = vec![header.alg];
             validation.set_issuer(&[&self.jwt_issuer_uri]);
             validation.validate_exp = true;
             validation.required_spec_claims.clear();
@@ -210,5 +251,91 @@ impl JwtConfig {
 
             Ok(token_data.claims)
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(not(feature = "insecure"))]
+mod tests {
+    use jsonwebtoken::Algorithm;
+
+    use super::ALLOWED_JWT_ALGORITHMS;
+    use crate::error::KmsError;
+
+    fn check_alg(alg: Algorithm) -> crate::result::KResult<()> {
+        if ALLOWED_JWT_ALGORITHMS.contains(&alg) {
+            Ok(())
+        } else {
+            Err(KmsError::Unauthorized(format!(
+                "JWT algorithm {alg:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted"
+            )))
+        }
+    }
+
+    /// A1–A3: Symmetric HS* algorithms must all be rejected (algorithm-confusion attack vector).
+    #[test]
+    fn a01_hs256_is_rejected() {
+        assert!(
+            !ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS256),
+            "HS256 must not be in the allowlist (algorithm-confusion risk)"
+        );
+        assert!(check_alg(Algorithm::HS256).is_err());
+    }
+
+    #[test]
+    fn a02_hs384_is_rejected() {
+        assert!(!ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS384));
+        assert!(check_alg(Algorithm::HS384).is_err());
+    }
+
+    #[test]
+    fn a03_hs512_is_rejected() {
+        assert!(!ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::HS512));
+        assert!(check_alg(Algorithm::HS512).is_err());
+    }
+
+    /// A4–A6: Representative asymmetric algorithms must be accepted.
+    #[test]
+    fn a04_rs256_is_accepted() {
+        assert!(
+            ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::RS256),
+            "RS256 must be in the allowlist"
+        );
+        assert!(check_alg(Algorithm::RS256).is_ok());
+    }
+
+    #[test]
+    fn a05_es256_is_accepted() {
+        assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::ES256));
+        assert!(check_alg(Algorithm::ES256).is_ok());
+    }
+
+    #[test]
+    fn a06_ps256_is_accepted() {
+        assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::PS256));
+        assert!(check_alg(Algorithm::PS256).is_ok());
+    }
+
+    /// Full coverage: every algorithm in the allowlist must be accepted.
+    #[test]
+    fn all_allowlisted_algorithms_are_accepted() {
+        for &alg in ALLOWED_JWT_ALGORITHMS {
+            assert!(
+                check_alg(alg).is_ok(),
+                "Expected {alg:?} to be accepted but it was rejected"
+            );
+        }
+    }
+
+    /// Error message quality: rejection must mention "not permitted".
+    #[test]
+    fn rejection_error_message_quality() {
+        let result = check_alg(Algorithm::HS256);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("not permitted"),
+            "error message should mention 'not permitted', got: {msg}"
+        );
     }
 }

@@ -7,3 +7,5 @@ mod serialize_deserialize;
 mod serializer_deserializer;
 mod ttlv_wire;
 mod vmware;
+mod wire_edge_cases;
+mod xml_edge_cases;

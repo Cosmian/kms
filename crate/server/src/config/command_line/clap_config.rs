@@ -535,7 +535,8 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = x.field("KMS http", &self.http);
+        let kms_url = format!("{}://{}", self.http.scheme(&self.tls), self.http);
+        let x = x.field("KMS http", &kms_url);
         let x = x.field("KMS public URL", &self.kms_public_url);
 
         let x = x.field("workspace", &self.workspace);
