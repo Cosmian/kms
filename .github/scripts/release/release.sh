@@ -81,8 +81,8 @@ if [ "$CI_MODE" = "true" ]; then
 fi
 
 # pre-commit run -a --hook-stage manual release-git-cliff
-pre-commit run -a --hook-stage manual cbom || true
-pre-commit run -a --hook-stage manual release-update-readme-kmip || true
+# Regenerate all docs (server CLI help, ckms markdown, KMIP tables, crypto inventory, CBOM)
+bash .github/scripts/docs/generate_docs.sh || true
 
 pre-commit run -a --hook-stage manual nix-build-all
 pre-commit run -a --hook-stage manual release-docker-build-ui

@@ -66,7 +66,7 @@ NIST CSF 2.0 organises controls into six functions: **Govern, Identify, Protect,
 |---------|-------------|--------|---------|
 | GV.OC-01 | Organisational context understood | ✅ | `SECURITY.md`, `CONTRIBUTING.md` define security scope and disclosure process |
 | GV.OC-05 | Legal/regulatory requirements tracked | ✅ | FIPS 140-3 documentation maintained at `certifications_and_compliance/fips.md` |
-| GV.RM-01 | Risk management strategy | ✅ | OWASP audit (`security_audit.md`) + this document |
+| GV.RM-01 | Risk management strategy | ✅ | OWASP audit (`owasp_security_audit.md`) + this document |
 | GV.SC-06 | Supplier/component vetting | ✅ | `deny.toml` (bans, licenses); `deny.toml` bans `serde_json::unbounded_depth` |
 
 ### 2.2 IDENTIFY (ID)

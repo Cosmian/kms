@@ -234,6 +234,21 @@ port = 9998
 # The KMS HTTP server hostname
 hostname = "0.0.0.0"
 
+# An optional API token to use for authentication on the HTTP server.
+# api_token_id = "<secret-api-token>"
+
+# Maximum number of requests per second per IP address allowed by the rate limiter.
+# When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+# Requests exceeding the limit receive HTTP 429 Too Many Requests.
+# Leave unset (default) to disable rate limiting.
+# rate_limit_per_second = 100
+
+# Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+# Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
+# port or host from the KMS server. In production, leave unset to restrict to same-origin
+# only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+# cors_allowed_origins = ["<origin-1>", "<origin-2>"]
+
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
 [proxy]
@@ -363,3 +378,50 @@ aws_xks_enable = false
 
 [kmip.allowlists]
 ```
+
+---
+
+## CORS configuration
+
+Cross-Origin Resource Sharing (CORS) controls which browser origins are allowed
+to make requests to the KMS HTTP API.
+
+**Default behavior (no configuration needed for most deployments):**
+the `[http]` section ships with an empty `cors_allowed_origins` list, which
+restricts the KMIP API to same-origin requests only. Because the KMS already
+serves its own Web UI from the same host and port, production deployments
+typically do not need to change this setting.
+
+Only set `cors_allowed_origins` when a browser client runs on a **different**
+origin from the KMS server — for example a Vite dev server during development,
+or a custom front-end hosted on a separate domain.
+
+```toml
+[http]
+# Allow a Vite dev-server and a custom front-end to reach the KMIP API.
+cors_allowed_origins = ["http://127.0.0.1:5173", "https://app.example.com"]
+```
+
+The same list can be provided via the environment variable
+`KMS_CORS_ALLOWED_ORIGINS` (comma-separated) or the CLI flag
+`--cors-allowed-origins`.
+
+!!! warning "Security implications"
+    Every origin in `cors_allowed_origins` can issue **authenticated**
+    cross-origin requests to the KMS — session cookies and credentials are
+    forwarded for each listed origin.
+
+    - **Only add origins you fully control and trust.**  A compromised or
+      malicious site listed here can read and manage all cryptographic objects
+      accessible to the authenticated user.
+    - **Never use a wildcard (`*`).**  `actix-cors` rejects a wildcard when
+      `supports_credentials()` is active, and a wildcard CORS policy would
+      expose every user's keys to any website on the internet.
+    - **Omit this field entirely in production** unless your architecture
+      genuinely requires a cross-origin browser client.  When the KMS serves
+      its own UI (the default), no extra origin is needed.
+
+    **Enterprise integration scopes are not affected by this setting.**
+    The Google CSE, Microsoft DKE, and AWS XKS endpoints retain their own
+    permissive CORS policy as required by their respective integration
+    contracts — `cors_allowed_origins` has no effect on those routes.

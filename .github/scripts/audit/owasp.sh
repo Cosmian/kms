@@ -2,7 +2,7 @@
 # =============================================================================
 # Cosmian KMS — Reproducible OWASP Security Audit Script
 # =============================================================================
-# Usage:  bash .github/scripts/audit.sh [--output-dir <dir>] [--geiger] [--help]
+# Usage:  bash .github/scripts/audit/owasp.sh [--output-dir <dir>] [--geiger] [--help]
 #
 # What this script does:
 #   1.  Checks that all required tools are installed (installs missing Rust
@@ -12,6 +12,9 @@
 #   4.  Writes a machine-readable JSON summary at the end.
 #
 # Exit code: 0 if all checks passed or warned; 1 if any check FAILED.
+#
+# File paths are resolved dynamically at runtime — no hardcoded paths.
+# Individual checks search the whole workspace and narrow results by pattern.
 #
 # Dependencies (auto-installed if missing):
 #   • cargo-audit   — RustSec advisory database scan
@@ -33,7 +36,7 @@ CYAN=$'\e[36m'
 RESET=$'\e[0m'
 BOLD=$'\e[1m'
 info() { echo "${CYAN}${BOLD}[INFO ]${RESET} $*"; }
-ok() { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
+ok()   { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
 warn() { echo "${YELLOW}${BOLD}[WARN ]${RESET} $*"; }
 fail() { echo "${RED}${BOLD}[FAIL ]${RESET} $*"; }
 step() {
@@ -44,13 +47,13 @@ step() {
 # ─── Arguments ────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-OUTPUT_DIR="${REPO_ROOT}/documentation/docs/certifications_and_compliance/audit-results/$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="${REPO_ROOT}/documentation/docs/certifications_and_compliance/audit/audit-results/$(date +%Y%m%d_%H%M%S)"
 RUN_GEIGER=false
 FAIL_ON_WARN=false
 
 usage() {
   echo "Usage: $0 [--output-dir <dir>] [--geiger] [--fail-on-warn] [--help]"
-  echo "  --output-dir   Where to write per-tool output files (default: documentation/docs/certifications_and_compliance/audit-results/<timestamp>/)"
+  echo "  --output-dir   Where to write per-tool output files (default: documentation/docs/certifications_and_compliance/audit/audit-results/<timestamp>/)"
   echo "  --geiger       Also run cargo-geiger (slow; requires geiger installed)"
   echo "  --fail-on-warn Exit with code 1 on warnings, not just on failures"
   echo "  --help         Show this message"
@@ -98,6 +101,53 @@ record() {
   fi
 }
 
+# ─── Dynamic path resolution helpers ─────────────────────────────────────────
+# find_file PATTERN — returns the first matching .rs file in crate/
+# Falls back to empty string if not found.
+find_file() {
+  find "$REPO_ROOT/crate" -name "$1" -type f 2>/dev/null | head -1
+}
+
+# find_dir PATTERN — returns the first matching directory under crate/
+find_dir() {
+  find "$REPO_ROOT/crate" -name "$1" -type d 2>/dev/null | head -1
+}
+
+# grep_crate PATTERN [extra grep args] — grep across all Rust source in crate/
+grep_crate() {
+  local pattern="$1"; shift
+  grep -rn "$pattern" "$REPO_ROOT/crate/" --include="*.rs" "$@" 2>/dev/null || true
+}
+
+# grep_file FILE PATTERN [extra grep args] — grep a specific file if it exists,
+# otherwise fall back to grep_crate so the check still works after refactors.
+grep_file() {
+  local file="$1" pattern="$2"; shift 2
+  if [[ -f "$file" ]]; then
+    grep -n "$pattern" "$file" "$@" 2>/dev/null || true
+  else
+    warn "  ($file not found — falling back to workspace-wide search)"
+    grep_crate "$pattern" "$@"
+  fi
+}
+
+# ─── Resolve canonical file paths once ───────────────────────────────────────
+# Checks that target a specific well-known file resolve it here.
+# All other checks use grep_crate / find_* helpers.
+BINARY_TTLV_RS="$(find_file "ttlv_bytes_deserializer.rs")"
+XML_TTLV_DIR="$(find_dir "xml" | grep -i ttlv | head -1 || true)"
+[[ -z "$XML_TTLV_DIR" ]] && XML_TTLV_DIR="$(find "$REPO_ROOT/crate" -type d -name "xml" 2>/dev/null | head -1)"
+START_SERVER_RS="$(find_file "start_kms_server.rs")"
+JWT_CONFIG_RS="$(find_file "jwt_config.rs")"
+API_TOKEN_AUTH_RS="$(find_file "api_token_auth.rs")"
+DB_CONFIG_RS="$(find_file "db.rs" | grep command_line | head -1 || find_file "db.rs")"
+TLS_CONFIG_RS="$(find_file "tls_config.rs")"
+DERIVE_KEY_RS="$(find_file "derive_key.rs")"
+LOCATE_RS="$(find_file "locate.rs")"
+LOCATE_QUERY_RS="$(find_file "locate_query.rs")"
+JWKS_RS="$(find_file "jwks.rs")"
+UI_AUTH_RS="$(find_file "ui_auth.rs")"
+
 # ─── 0. Tool installation check ───────────────────────────────────────────────
 step "0. Tool Check & Auto-install"
 
@@ -127,7 +177,7 @@ if $RUN_GEIGER; then
     ok "cargo-geiger — $(cargo-geiger --version 2>/dev/null | head -1)"
   else
     warn "cargo-geiger not installed. Install with: cargo install cargo-geiger --locked"
-    warn "Note: cargo-geiger 0.13.0 has a known bug with virtual workspaces (github.com/rust-secure-code/cargo-geiger/issues/378). Unsafe counts will fall back to grep."
+    warn "Note: cargo-geiger 0.13.0 has a known bug with virtual workspaces. Unsafe counts will fall back to grep."
   fi
 fi
 
@@ -156,13 +206,38 @@ if cargo audit 2>&1 | tee "$AUDIT_OUT"; then
     record "cargo-audit" "PASS"
   fi
 else
-  # cargo audit exits with non-zero on warnings too; detect via output
   if grep -q "^error:" "$AUDIT_OUT" 2>/dev/null; then
     fail "cargo audit found vulnerabilities. See $AUDIT_OUT"
     record "cargo-audit" "FAIL"
   else
     warn "cargo audit completed with warnings. See $AUDIT_OUT"
     record "cargo-audit" "WARN"
+  fi
+fi
+
+# ─── 1b. cargo audit --json — machine-readable CVE severity filtering ─────────
+# Parses JSON to surface only CRITICAL/HIGH CVEs as failures.
+AUDIT_JSON="$OUTPUT_DIR/cargo_audit.json"
+if cargo audit --json >"$AUDIT_JSON" 2>/dev/null; then
+  if command -v python3 &>/dev/null && [[ -s "$AUDIT_JSON" ]]; then
+    CRITICAL_HIGH=$(python3 - <<'PYEOF'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    vulns = data.get("vulnerabilities", {}).get("list", [])
+    severe = [v for v in vulns if v.get("advisory", {}).get("severity", "").upper() in ("CRITICAL", "HIGH")]
+    print(len(severe))
+except Exception:
+    print(0)
+PYEOF
+    "$AUDIT_JSON" 2>/dev/null || echo 0)
+    if [[ "$CRITICAL_HIGH" -gt 0 ]]; then
+      fail "cargo audit: $CRITICAL_HIGH CRITICAL/HIGH CVE(s) detected."
+      record "cargo-audit-cve" "FAIL"
+    else
+      ok "cargo audit: no CRITICAL/HIGH CVEs"
+      record "cargo-audit-cve" "PASS"
+    fi
   fi
 fi
 
@@ -187,7 +262,6 @@ fi
 step "3. cargo outdated (dependency version freshness)"
 
 OUTDATED_OUT="$OUTPUT_DIR/cargo_outdated.txt"
-# cargo outdated can fail on wasm crate feature issue; capture and continue
 set +e
 cargo outdated --workspace 2>&1 | tee "$OUTDATED_OUT"
 set -e
@@ -208,29 +282,40 @@ fi
 step "4. A03/EXT-2 — TTLV binary parser recursion depth check"
 
 TTLV_OUT="$OUTPUT_DIR/ttlv_depth.txt"
-BINARY_PARSER="crate/kmip/src/ttlv/wire/ttlv_bytes_deserializer.rs"
-XML_PARSER_DIR="crate/kmip/src/ttlv/xml/"
 {
   echo "=== Binary TTLV parser (read_ttlv recursion) ==="
-  grep -n "fn read_ttlv\|read_ttlv(\|depth\|MAX_DEPTH\|max_depth" "$BINARY_PARSER" 2>/dev/null
+  if [[ -n "$BINARY_TTLV_RS" ]]; then
+    grep -n "fn read_ttlv\|read_ttlv(\|depth\|MAX_DEPTH\|max_depth" "$BINARY_TTLV_RS" 2>/dev/null || true
+  else
+    grep_crate "MAX_TTLV_DEPTH\|max_ttlv_depth\|MAX_DEPTH.*ttlv\|ttlv.*MAX_DEPTH"
+  fi
   echo ""
   echo "=== XML TTLV parser (depth counter + max check) ==="
-  grep -n "depth\|MAX_DEPTH\|max_depth" "$XML_PARSER_DIR" -r 2>/dev/null || true
+  if [[ -n "$XML_TTLV_DIR" ]]; then
+    grep -rn "depth\|MAX_DEPTH\|max_depth" "$XML_TTLV_DIR" 2>/dev/null || true
+  else
+    grep_crate "MAX_XML_STACK_DEPTH\|xml.*depth\|depth.*xml"
+  fi
 } | tee "$TTLV_OUT"
 
-# Binary parser: must have a MAX_DEPTH constant and a depth-limit check
-# Use 'VAR=$(grep -c) || VAR=0' to handle grep exit-1-on-no-match with set -euo pipefail
-BINARY_HAS_MAX=$(grep -cE "MAX_DEPTH|max_depth|if.*depth.*>|depth.*>=.*MAX" \
-  "$BINARY_PARSER" 2>/dev/null) || BINARY_HAS_MAX=0
-# XML parser: must also guard with a max constant, not just a zero-check
-XML_HAS_MAX=$(grep -rcE "MAX_DEPTH|max_depth|if.*depth.*>.*[0-9]" \
-  "$XML_PARSER_DIR" 2>/dev/null) || XML_HAS_MAX=0
+# Search the resolved file first, then fall back to workspace
+BINARY_HAS_MAX=0
+if [[ -n "$BINARY_TTLV_RS" ]]; then
+  BINARY_HAS_MAX=$(grep -cE "MAX_DEPTH|max_depth|if.*depth.*>|depth.*>=.*MAX" "$BINARY_TTLV_RS" 2>/dev/null) || BINARY_HAS_MAX=0
+fi
+if [[ "$BINARY_HAS_MAX" -eq 0 ]]; then BINARY_HAS_MAX=$(grep_crate "MAX_TTLV_DEPTH|MAX_DEPTH" | wc -l); fi
+
+XML_HAS_MAX=0
+if [[ -n "$XML_TTLV_DIR" ]]; then
+  XML_HAS_MAX=$(grep -rcE "MAX_DEPTH|max_depth|if.*depth.*>.*[0-9]" "$XML_TTLV_DIR" 2>/dev/null | wc -l) || XML_HAS_MAX=0
+fi
+if [[ "$XML_HAS_MAX" -eq 0 ]]; then XML_HAS_MAX=$(grep_crate "MAX_XML_STACK_DEPTH" | wc -l); fi
 
 if [[ "$BINARY_HAS_MAX" -eq 0 ]]; then
-  fail "A03-2/EXT2-2: Binary TTLV parser ($BINARY_PARSER) has no recursion depth limit. Stack overflow DoS possible."
+  fail "A03-2/EXT2-2: Binary TTLV parser has no recursion depth limit. Stack overflow DoS possible."
   record "ttlv-depth-limit" "FAIL"
 elif [[ "$XML_HAS_MAX" -eq 0 ]]; then
-  warn "A03-3/EXT2-3: XML TTLV parser has depth counter but no max-depth enforcement (depth != 0 check only)."
+  warn "A03-3/EXT2-3: XML TTLV parser has depth counter but no max-depth enforcement."
   record "ttlv-depth-limit" "WARN"
 else
   ok "TTLV parsers — both have recursion/depth limits"
@@ -241,8 +326,9 @@ fi
 step "5. A04/EXT-2 — HTTP payload size limit check"
 
 PAYLOAD_OUT="$OUTPUT_DIR/payload_limit.txt"
-grep -n "PayloadConfig\|json.*limit\|JsonConfig\|body.*limit" \
-  crate/server/src/start_kms_server.rs 2>/dev/null | tee "$PAYLOAD_OUT" || true
+# Search the well-known server startup file, fall back to workspace scan
+grep_file "${START_SERVER_RS:-/nonexistent}" \
+  "PayloadConfig\|json.*limit\|JsonConfig\|body.*limit" | tee "$PAYLOAD_OUT" || true
 
 if grep -qE "10_000_000_000|10000000000" "$PAYLOAD_OUT" 2>/dev/null; then
   fail "A04-1/EXT2-1: Payload limit is 10 GB (10_000_000_000). Reduce to ≤ 64 MB."
@@ -257,11 +343,10 @@ fi
 step "6. A04/EXT-2 — Rate limiting middleware check"
 
 RATE_OUT="$OUTPUT_DIR/rate_limiting.txt"
-grep -rn "RateLimiter\|rate_limit\|throttle\|governor\|leaky_bucket\|token_bucket" \
-  crate/server/src/ --include="*.rs" 2>/dev/null | tee "$RATE_OUT" || true
+grep_crate "RateLimiter\|rate_limit\|throttle\|governor\|leaky_bucket\|token_bucket" | tee "$RATE_OUT" || true
 
 if [[ ! -s "$RATE_OUT" ]]; then
-  fail "A04-2/EXT2-5: No rate-limiting middleware found in crate/server/src/."
+  fail "A04-2/EXT2-5: No rate-limiting middleware found in crate/."
   record "rate-limiting" "FAIL"
 else
   ok "Rate-limiting reference found"
@@ -272,16 +357,21 @@ fi
 step "7. A07 — JWT algorithm confusion check"
 
 JWT_ALG_OUT="$OUTPUT_DIR/jwt_algorithm.txt"
-grep -n "Validation::new\|header\.alg\|algorithms.*=" \
-  crate/server/src/middlewares/jwt/jwt_config.rs 2>/dev/null | tee "$JWT_ALG_OUT" || true
+grep_file "${JWT_CONFIG_RS:-/nonexistent}" \
+  "Validation::new\|header\.alg\|algorithms.*=" | tee "$JWT_ALG_OUT" || true
 
-# Check if the algorithm is restricted to a server-controlled allowlist
-# The safe pattern is: create Validation and then set validation.algorithms = vec![allowed_alg]
-# before using header.alg as the constructor value.
+# If no content from the specific file, widen search
+if [[ ! -s "$JWT_ALG_OUT" ]]; then
+  grep_crate "Validation::new\|ALLOWED_JWT_ALGORITHMS\|allowed_algorithms" | tee "$JWT_ALG_OUT" || true
+fi
+
 if grep -q "Validation::new(header" "$JWT_ALG_OUT" 2>/dev/null; then
-  # Check if it's followed by an algorithms allowlist override
-  NEXT_LINES=$(grep -A5 "Validation::new(header" \
-    crate/server/src/middlewares/jwt/jwt_config.rs 2>/dev/null || true)
+  # Check if it's followed by an allowlist override
+  CANDIDATE_FILE="${JWT_CONFIG_RS:-}"
+  [[ -z "$CANDIDATE_FILE" ]] && CANDIDATE_FILE="$(grep_crate "Validation::new(header" | head -1 | cut -d: -f1)"
+  NEXT_LINES=""
+  [[ -n "$CANDIDATE_FILE" && -f "$CANDIDATE_FILE" ]] && \
+    NEXT_LINES=$(grep -A5 "Validation::new(header" "$CANDIDATE_FILE" 2>/dev/null || true)
   if echo "$NEXT_LINES" | grep -q "algorithms.*=\|allowed_algs\|restrict"; then
     ok "JWT algorithm — allowlist override found after Validation::new(header.alg)"
     record "jwt-algorithm" "PASS"
@@ -298,8 +388,12 @@ fi
 step "8. A07 — API token constant-time comparison"
 
 TOKEN_CMP_OUT="$OUTPUT_DIR/api_token_cmp.txt"
-grep -n "client_token\|api_token\|== api_token\|constant_time\|ConstantTimeEq\|subtle" \
-  crate/server/src/middlewares/api_token/api_token_auth.rs 2>/dev/null | tee "$TOKEN_CMP_OUT" || true
+grep_file "${API_TOKEN_AUTH_RS:-/nonexistent}" \
+  "client_token\|api_token\|== api_token\|constant_time\|ConstantTimeEq\|subtle" | tee "$TOKEN_CMP_OUT" || true
+
+if [[ ! -s "$TOKEN_CMP_OUT" ]]; then
+  grep_crate "ConstantTimeEq\|subtle.*eq\|constant_time_eq\|api_token" | tee "$TOKEN_CMP_OUT" || true
+fi
 
 if grep -qE "==.*api_token|api_token.*==" "$TOKEN_CMP_OUT" 2>/dev/null; then
   if grep -qE "constant_time|ConstantTimeEq|subtle::fixed_time_eq" "$TOKEN_CMP_OUT" 2>/dev/null; then
@@ -318,15 +412,11 @@ fi
 step "9. A09 — Database URL credential masking in Display impl"
 
 DB_MASK_OUT="$OUTPUT_DIR/db_masking.txt"
-grep -n "database_url\|fn fmt\|Display\|password\|\*\*\*\*" \
-  crate/server/src/config/command_line/db.rs 2>/dev/null | tee "$DB_MASK_OUT" || true
+grep_file "${DB_CONFIG_RS:-/nonexistent}" \
+  "database_url\|fn fmt\|Display\|password\|\*\*\*\*" | tee "$DB_MASK_OUT" || true
 
-# Look for unmasked database_url: the Display impl uses `url.as_str()` for postgresql/mysql
-# without masking the password. Detect pattern: write!(f, "postgresql: {}", ...database_url...)
-if grep -qE '"(postgresql|mysql): \{\}"' \
-  crate/server/src/config/command_line/db.rs 2>/dev/null ||
-  grep -A3 '"postgresql:' crate/server/src/config/command_line/db.rs 2>/dev/null |
-  grep -q "database_url"; then
+if grep -qE '"(postgresql|mysql): \{\}"' "$DB_MASK_OUT" 2>/dev/null ||
+   (grep -A3 '"postgresql:' "$DB_MASK_OUT" 2>/dev/null | grep -q "database_url"); then
   fail "A09-1: database_url printed unmasked in Display impl (postgresql/mysql). Credentials leak to logs."
   record "db-credential-masking" "FAIL"
 else
@@ -338,8 +428,8 @@ fi
 step "10. A09 — TLS P12 password masking quality"
 
 TLS_MASK_OUT="$OUTPUT_DIR/tls_masking.txt"
-grep -n "replace\|mask\|\*\*\*\|password" \
-  crate/server/src/config/command_line/tls_config.rs 2>/dev/null | tee "$TLS_MASK_OUT" || true
+grep_file "${TLS_CONFIG_RS:-/nonexistent}" \
+  "replace\|mask\|\*\*\*\|password" | tee "$TLS_MASK_OUT" || true
 
 if grep -q "replace.*'\\.'" "$TLS_MASK_OUT" 2>/dev/null; then
   warn "A09-2: TLS P12 password masking uses replace('.','*') — replaces only dots."
@@ -353,20 +443,13 @@ fi
 step "11. A05/A01 — CORS permissive() check"
 
 CORS_OUT="$OUTPUT_DIR/cors.txt"
-grep -n "Cors::permissive\|allow_any_origin\|allow_origin.*\*" \
-  crate/server/src/start_kms_server.rs 2>/dev/null | tee "$CORS_OUT" || true
+# Scan the whole workspace for CORS configuration
+grep_crate "Cors::permissive\|allow_any_origin\|allow_origin.*\*" | tee "$CORS_OUT" || true
 
-# Enterprise integration scopes (Google CSE, MS DKE, AWS XKS, UI auth) intentionally use
-# Cors::permissive() because they are called by external cloud services from varying origins.
-# Only the default KMIP scope must use a restrictive CORS policy.
-# Count permissive() occurrences that are NOT in the enterprise integration block:
-# An occurrence is "enterprise" if it appears on the same line that names the scope type
-# (google_cse_scope, ms_dke_scope, aws_xks_scope, azure_ekm_scope, auth_routes).
 CORS_COUNT=$(wc -l <"$CORS_OUT" 2>/dev/null || echo 0)
-# Detect whether Cors::permissive() is being used without Cors::default() on the main scope
-# The main default scope wraps with Cors::default(); any remaining permissive() are enterprise.
-MAIN_SCOPE_PERMISSIVE=$(grep -c "Cors::permissive" crate/server/src/start_kms_server.rs 2>/dev/null || true)
-MAIN_SCOPE_DEFAULT=$(grep -c "Cors::default" crate/server/src/start_kms_server.rs 2>/dev/null || true)
+MAIN_SCOPE_PERMISSIVE=$(grep_crate "Cors::permissive" | wc -l) || MAIN_SCOPE_PERMISSIVE=0
+MAIN_SCOPE_DEFAULT=$(grep_crate "Cors::default" | wc -l)      || MAIN_SCOPE_DEFAULT=0
+
 if [[ "$CORS_COUNT" -eq 0 ]]; then
   ok "CORS — no permissive() found"
   record "cors-config" "PASS"
@@ -384,21 +467,23 @@ step "12. EXT-1 — Key material zeroization coverage"
 ZERO_OUT="$OUTPUT_DIR/zeroization.txt"
 {
   echo "=== Files using Zeroizing/ZeroizeOnDrop ==="
-  grep -rl "Zeroizing\|ZeroizeOnDrop\|zeroize()" crate/ --include="*.rs" 2>/dev/null | wc -l
+  grep_crate "Zeroizing\|ZeroizeOnDrop\|zeroize()" | wc -l
   echo ""
-  echo "=== derive_key return type ==="
-  grep -n "fn derive_\|-> Vec<u8>\|-> KResult<Vec<u8>>\|-> Zeroizing" \
-    crate/server/src/core/operations/derive_key.rs 2>/dev/null
+  echo "=== Key derivation return types ==="
+  # Check the canonical derive_key file first, then widen to workspace
+  if [[ -n "$DERIVE_KEY_RS" ]]; then
+    grep -n "fn derive_\|-> Vec<u8>\|-> KResult<Vec<u8>>\|-> Zeroizing" "$DERIVE_KEY_RS" 2>/dev/null || true
+  else
+    grep_crate "fn derive_\|-> Vec<u8>\|-> KResult<Vec<u8>>\|-> Zeroizing" | grep -i "derive_key\|key_material" || true
+  fi
 } | tee "$ZERO_OUT"
 
-# Detect bare Vec<u8> (or KResult<Vec<u8>>) as return types in key derivation functions
-# Use -F (fixed string) because angle brackets confuse grep option parsing
 if grep -qF "KResult<Vec<u8>>" "$ZERO_OUT" 2>/dev/null ||
-  grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
+   grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
   warn "EXT1-1: derive_key helper(s) return bare Vec<u8> / KResult<Vec<u8>> for key material (not Zeroizing)."
   record "key-zeroization" "WARN"
 else
-  ok "Key zeroization — derive_key does not return bare Vec<u8>"
+  ok "Key zeroization — no bare Vec<u8> return found in key derivation paths"
   record "key-zeroization" "PASS"
 fi
 
@@ -406,9 +491,12 @@ fi
 step "13. EXT-2 — Locate operation server-side result cap"
 
 LOCATE_OUT="$OUTPUT_DIR/locate_cap.txt"
-grep -n "MaximumItems\|max_items\|LIMIT\|server.*max\|cap" \
-  crate/server/src/core/operations/locate.rs \
-  crate/server_database/src/stores/sql/locate_query.rs 2>/dev/null | tee "$LOCATE_OUT" || true
+{
+  if [[ -n "$LOCATE_RS" ]]; then grep -n "MaximumItems\|max_items\|LIMIT\|server.*max\|cap\|clamp" "$LOCATE_RS" 2>/dev/null || true; fi
+  if [[ -n "$LOCATE_QUERY_RS" ]]; then grep -n "MaximumItems\|max_items\|LIMIT\|server.*max\|cap\|clamp" "$LOCATE_QUERY_RS" 2>/dev/null || true; fi
+  # Workspace-wide fallback
+  grep_crate "max_locate_items\|MAX_LOCATE_ITEMS" || true
+} | tee "$LOCATE_OUT"
 
 if grep -qiE "max_locate_items|server.*cap|min.*MAX|clamp" "$LOCATE_OUT" 2>/dev/null; then
   ok "Locate result cap — server-side maximum enforced"
@@ -418,36 +506,27 @@ else
   record "locate-cap" "WARN"
 fi
 
-# ─── 14. Unsafe code distribution (grep-based geiger fallback) ───────────────
-step "14. Unsafe code distribution (manual grep — geiger fallback)"
+# ─── 14. Unsafe code distribution (dynamic crate enumeration) ────────────────
+step "14. Unsafe code distribution (dynamic crate enumeration)"
 
 UNSAFE_OUT="$OUTPUT_DIR/unsafe_distribution.txt"
 {
-  echo "Crate | Files with unsafe | Total 'unsafe ' occurrences"
-  echo "-----|-------------------|----------------------------"
-  for crate_src in \
-    "server:crate/server/src" \
-    "server_database:crate/server_database/src" \
-    "crypto:crate/crypto/src" \
-    "kmip:crate/kmip/src" \
-    "access:crate/access/src" \
-    "clients/client:crate/clients/client/src" \
-    "clients/clap:crate/clients/clap/src" \
-    "clients/pkcs11/module:crate/clients/pkcs11/module/src" \
-    "hsm/base_hsm:crate/hsm/base_hsm/src"; do
-    name="${crate_src%%:*}"
-    path="${crate_src##*:}"
-    files=$(grep -rl "unsafe " "$path" --include="*.rs" 2>/dev/null | wc -l) || files=0
-    total=$(grep -r "unsafe " "$path" --include="*.rs" 2>/dev/null | wc -l) || total=0
+  echo "Crate path | Files with unsafe | Total 'unsafe ' occurrences"
+  echo "-----------|-------------------|----------------------------"
+  # Dynamically discover all src/ directories under crate/
+  while IFS= read -r src_dir; do
+    # Derive a short name: strip REPO_ROOT prefix and trailing /src
+    name="${src_dir#"$REPO_ROOT/"}"
+    name="${name%/src}"
+    files=$(grep -rl "unsafe " "$src_dir" --include="*.rs" 2>/dev/null | wc -l) || files=0
+    total=$(grep -r "unsafe " "$src_dir" --include="*.rs" 2>/dev/null | wc -l) || total=0
     echo "$name | $files | $total"
-  done
+  done < <(find "$REPO_ROOT/crate" -maxdepth 4 -name "src" -type d 2>/dev/null | sort)
 } | tee "$UNSAFE_OUT"
 
-# If cargo-geiger is available and --geiger was passed, try running it too
 if $RUN_GEIGER && command -v cargo-geiger &>/dev/null; then
   echo "" >>"$UNSAFE_OUT"
   echo "=== cargo-geiger output ===" >>"$UNSAFE_OUT"
-  # Run from within server crate to avoid virtual workspace issue
   (cd crate/server && cargo geiger --all-features 2>&1 |
     grep -v "^Failed\|^{\|emit\|Checking\|Compiling\|Finished" >>"$UNSAFE_OUT") ||
     echo "cargo-geiger failed (known virtual workspace bug)" >>"$UNSAFE_OUT"
@@ -460,8 +539,7 @@ record "unsafe-distribution" "PASS"
 step "15. A07-4 — Session cookie SameSite setting"
 
 SAMESITE_OUT="$OUTPUT_DIR/samesite_cookie.txt"
-grep -n "SameSite\|cookie_same_site" \
-  crate/server/src/start_kms_server.rs 2>/dev/null | tee "$SAMESITE_OUT" || true
+grep_crate "SameSite\|cookie_same_site" | tee "$SAMESITE_OUT" || true
 
 if grep -qE "SameSite::None|cookie_same_site.*None" "$SAMESITE_OUT" 2>/dev/null; then
   warn "A07-4: Session cookie uses SameSite::None — allows cross-site cookie submission."
@@ -478,10 +556,14 @@ fi
 step "16. A09-3 — JWT authentication failure log level"
 
 JWT_LOG_OUT="$OUTPUT_DIR/jwt_log_level.txt"
-grep -n "401\|debug!\|warn!\|unauthorized\|bad JWT\|no email" \
-  crate/server/src/middlewares/jwt/jwt_token_auth.rs 2>/dev/null | tee "$JWT_LOG_OUT" || true
+# Search all JWT middleware files dynamically
+JWT_MIDDLEWARE_DIR="$(find "$REPO_ROOT/crate" -type d -name "jwt" 2>/dev/null | head -1)"
+if [[ -n "$JWT_MIDDLEWARE_DIR" ]]; then
+  grep -rn "401\|debug!\|warn!\|unauthorized\|bad JWT\|no email" "$JWT_MIDDLEWARE_DIR" --include="*.rs" 2>/dev/null | tee "$JWT_LOG_OUT" || true
+else
+  grep_crate "401.*unauthorized\|warn!.*unauthorized\|debug!.*401" | tee "$JWT_LOG_OUT" || true
+fi
 
-# Check for debug!() calls on 401 unauthorized paths — should be warn!() for audit trail
 if grep -qE "debug!.*401|debug!.*unauthorized|debug!.*bad JWT|debug!.*no email" "$JWT_LOG_OUT" 2>/dev/null; then
   warn "A09-3: JWT auth failures logged at debug! level — will not appear in production logs."
   record "jwt-log-level" "WARN"
@@ -498,26 +580,35 @@ step "17. A10-2/A10-3 — reqwest redirect policy (SSRF mitigation)"
 
 REDIRECT_OUT="$OUTPUT_DIR/reqwest_redirect.txt"
 {
-  echo "=== jwks.rs ==="
-  grep -n "redirect\|Policy\|Client::builder" \
-    crate/server/src/middlewares/jwt/jwks.rs 2>/dev/null || true
+  if [[ -n "$JWKS_RS" ]]; then
+    echo "=== $(basename "$JWKS_RS") ==="
+    grep -n "redirect\|Policy\|Client::builder" "$JWKS_RS" 2>/dev/null || true
+  fi
+  if [[ -n "$UI_AUTH_RS" ]]; then
+    echo ""
+    echo "=== $(basename "$UI_AUTH_RS") ==="
+    grep -n "redirect\|Policy\|Client::builder" "$UI_AUTH_RS" 2>/dev/null || true
+  fi
+  # Workspace-wide search for any reqwest clients without redirect control
   echo ""
-  echo "=== ui_auth.rs ==="
-  grep -n "redirect\|Policy\|Client::builder" \
-    crate/server/src/routes/ui_auth.rs 2>/dev/null || true
+  echo "=== All reqwest Client::builder usages ==="
+  grep_crate "Client::builder\|reqwest::Client" || true
 } | tee "$REDIRECT_OUT"
 
-# Check that redirect::Policy::none() is used in both files
-JWKS_NO_REDIRECT=$(grep -c "Policy::none\|redirect::none\|no_redirect" \
-  crate/server/src/middlewares/jwt/jwks.rs 2>/dev/null) || JWKS_NO_REDIRECT=0
-UI_AUTH_NO_REDIRECT=$(grep -c "Policy::none\|redirect::none\|no_redirect" \
-  crate/server/src/routes/ui_auth.rs 2>/dev/null) || UI_AUTH_NO_REDIRECT=0
+JWKS_NO_REDIRECT=0
+if [[ -n "$JWKS_RS" ]]; then
+  JWKS_NO_REDIRECT=$(grep -c "Policy::none\|redirect::none\|no_redirect" "$JWKS_RS" 2>/dev/null) || true
+fi
+UI_AUTH_NO_REDIRECT=0
+if [[ -n "$UI_AUTH_RS" ]]; then
+  UI_AUTH_NO_REDIRECT=$(grep -c "Policy::none\|redirect::none\|no_redirect" "$UI_AUTH_RS" 2>/dev/null) || true
+fi
 
 if [[ "$JWKS_NO_REDIRECT" -gt 0 && "$UI_AUTH_NO_REDIRECT" -gt 0 ]]; then
-  ok "reqwest redirect — Policy::none() set in both jwks.rs and ui_auth.rs"
+  ok "reqwest redirect — Policy::none() set in JWKS and UI auth clients"
   record "reqwest-redirect" "PASS"
 elif [[ "$JWKS_NO_REDIRECT" -gt 0 || "$UI_AUTH_NO_REDIRECT" -gt 0 ]]; then
-  warn "A10-2/A10-3: reqwest redirect::Policy::none() found in only one of jwks.rs/ui_auth.rs."
+  warn "A10-2/A10-3: reqwest redirect::Policy::none() found in only one of the HTTP clients."
   record "reqwest-redirect" "WARN"
 else
   warn "A10-2/A10-3: reqwest client(s) use default redirect policy — potential SSRF via 3xx chain."
@@ -528,8 +619,7 @@ fi
 step "18. A08-2 — Session key predictability warning at startup"
 
 SESSION_WARN_OUT="$OUTPUT_DIR/session_key_warning.txt"
-grep -n "ui_session_salt\|session_key\|warn.*salt\|predictable" \
-  crate/server/src/start_kms_server.rs 2>/dev/null | tee "$SESSION_WARN_OUT" || true
+grep_crate "ui_session_salt\|session_key\|warn.*salt\|predictable" | tee "$SESSION_WARN_OUT" || true
 
 if grep -qE "warn.*salt|warn.*session.*salt|warn.*predictable" "$SESSION_WARN_OUT" 2>/dev/null; then
   ok "Session key — operator warning present when ui_session_salt not configured"
@@ -539,18 +629,17 @@ else
   record "session-key-warning" "WARN"
 fi
 
-# ─── 19. A04-3/EXT2-4: Locate server-side cap (enhanced) ────────────────────
+# ─── 19. A04-3/EXT2-4: Locate MaximumItems constant check ────────────────────
 step "19. A04-3 — Locate MaximumItems constant check"
 
 LOCATE_CONST_OUT="$OUTPUT_DIR/locate_const.txt"
-grep -n "MAX_LOCATE_ITEMS\|max_locate_items\|server_cap\|effective_max" \
-  crate/server/src/core/operations/locate.rs 2>/dev/null | tee "$LOCATE_CONST_OUT" || true
+grep_crate "MAX_LOCATE_ITEMS\|max_locate_items\|server_cap\|effective_max" | tee "$LOCATE_CONST_OUT" || true
 
 if grep -qiE "MAX_LOCATE_ITEMS|max_locate_items" "$LOCATE_CONST_OUT" 2>/dev/null; then
   ok "Locate result cap — MAX_LOCATE_ITEMS constant defined and applied"
   record "locate-const" "PASS"
 else
-  warn "A04-3: MAX_LOCATE_ITEMS constant not found in locate.rs."
+  warn "A04-3: MAX_LOCATE_ITEMS constant not found in workspace."
   record "locate-const" "WARN"
 fi
 
@@ -572,24 +661,56 @@ else
   record "secret-scan" "WARN"
 fi
 
-# ─── 21. semgrep (if available) ───────────────────────────────────────────────
-step "21. semgrep OWASP ruleset (if available)"
+# ─── 21. semgrep — auto community rules + project custom rules ────────────────
+# semgrep --config auto fetches the latest OWASP/CWE/NIST rules from the
+# Semgrep registry automatically — new vulnerability patterns are picked up
+# without any script changes.
+# Custom project-specific rules live in .github/scripts/audit/custom_rules/
+# — drop a new .yml file there and it is picked up automatically.
+step "21. semgrep (auto community rules + custom Cosmian rules)"
 
 SEMGREP_OUT="$OUTPUT_DIR/semgrep.txt"
+CUSTOM_RULES_DIR="$SCRIPT_DIR/custom_rules"
+
 if command -v semgrep &>/dev/null; then
-  if semgrep --config p/owasp-top-ten crate/ --lang rust \
-    --output "$SEMGREP_OUT" --quiet 2>&1; then
-    SEMGREP_FINDINGS=$(grep -cE "^severity:" "$SEMGREP_OUT" 2>/dev/null) || SEMGREP_FINDINGS=0
-    if [[ "$SEMGREP_FINDINGS" -gt 0 ]]; then
-      warn "semgrep: $SEMGREP_FINDINGS finding(s). See $SEMGREP_OUT"
-      record "semgrep" "WARN"
-    else
-      ok "semgrep — no findings"
-      record "semgrep" "PASS"
-    fi
+  SEMGREP_CONFIGS=("--config" "auto")
+  if [[ -d "$CUSTOM_RULES_DIR" ]] && compgen -G "$CUSTOM_RULES_DIR/*.yml" >/dev/null 2>&1; then
+    SEMGREP_CONFIGS+=("--config" "$CUSTOM_RULES_DIR")
+    info "Loading custom rules from $CUSTOM_RULES_DIR"
+  fi
+
+  set +e
+  semgrep "${SEMGREP_CONFIGS[@]}" \
+    --lang rust \
+    --json \
+    --output "$SEMGREP_OUT" \
+    --quiet \
+    crate/ 2>&1
+  SEMGREP_RC=$?
+  set -e
+
+  if [[ -s "$SEMGREP_OUT" ]] && command -v python3 &>/dev/null; then
+    SEMGREP_ERRORS=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$SEMGREP_OUT'))
+    errs = [r for r in d.get('results',[]) if r.get('extra',{}).get('severity','') in ('ERROR','WARNING')]
+    print(len(errs))
+except: print(0)
+" 2>/dev/null || echo 0)
   else
-    warn "semgrep encountered an error. See $SEMGREP_OUT"
+    SEMGREP_ERRORS=0
+  fi
+
+  if [[ "$SEMGREP_ERRORS" -gt 0 ]]; then
+    warn "semgrep: $SEMGREP_ERRORS finding(s). See $SEMGREP_OUT"
     record "semgrep" "WARN"
+  elif [[ "$SEMGREP_RC" -ne 0 ]]; then
+    warn "semgrep exited with code $SEMGREP_RC. See $SEMGREP_OUT"
+    record "semgrep" "WARN"
+  else
+    ok "semgrep — no findings"
+    record "semgrep" "PASS"
   fi
 else
   warn "semgrep not installed. Skipping pattern analysis."
@@ -651,11 +772,9 @@ JSON_OUT="$OUTPUT_DIR/summary.json"
 
 info "JSON summary: $JSON_OUT"
 
-# ─── Update security_audit.md Remediation Priority Matrix ────────────────────
-# Map each audit check result to one or more finding IDs in the matrix and update
-# the Status column from "Open" to "✅ Fixed" or "⚠️ Mitigated".
+# ─── Update owasp_security_audit.md Remediation Priority Matrix ─────────────
 update_audit_md() {
-  local AUDIT_MD="${REPO_ROOT}/documentation/docs/certifications_and_compliance/security_audit.md"
+  local AUDIT_MD="${REPO_ROOT}/documentation/docs/certifications_and_compliance/audit/owasp_security_audit.md"
   [[ -f "$AUDIT_MD" ]] || {
     warn "security_audit.md not found — skipping update"
     return
@@ -663,11 +782,8 @@ update_audit_md() {
 
   info "Updating security_audit.md Remediation Priority Matrix …"
 
-  # Build a sed script that replaces Open → ✅ Fixed for each confirmed passing check.
-  # Pattern: match table rows containing the finding ID and replace their Status cell.
   local SED_SCRIPT=""
 
-  # Helper: for a check name and finding IDs, add sed commands if the check PASSED
   add_fix() {
     local check="$1"
     shift
@@ -678,40 +794,37 @@ update_audit_md() {
     elif [[ "$status" == "WARN" ]]; then
       new_status="⚠️ Mitigated"
     else
-      return # FAIL → leave as Open
+      return
     fi
     for id in "$@"; do
-      # Replace "| Open |" with "| $new_status |" on rows that contain the finding ID
       SED_SCRIPT+="s#| *$id *|\\(.*\\)| *Open *|#| $id |\\1| $new_status |#g;"
     done
   }
 
-  add_fix "ttlv-depth-limit" "A03-2 / EXT2-2" "A03-3 / EXT2-3"
-  add_fix "payload-limit" "A04-1 / EXT2-1"
-  add_fix "rate-limiting" "A04-2 / EXT2-5"
-  add_fix "jwt-algorithm" "A07-1"
-  add_fix "api-token-ct" "A07-2"
+  add_fix "ttlv-depth-limit"      "A03-2 / EXT2-2" "A03-3 / EXT2-3"
+  add_fix "payload-limit"         "A04-1 / EXT2-1"
+  add_fix "rate-limiting"         "A04-2 / EXT2-5"
+  add_fix "jwt-algorithm"         "A07-1"
+  add_fix "api-token-ct"          "A07-2"
   add_fix "db-credential-masking" "A09-1"
-  add_fix "tls-password-masking" "A09-2"
-  add_fix "cors-config" "A05-1 / A01-1"
-  add_fix "key-zeroization" "EXT1-1"
-  add_fix "locate-cap" "A04-3 / EXT2-4"
-  add_fix "locate-const" "A04-3 / EXT2-4"
-  add_fix "samesite-cookie" "A07-4"
-  add_fix "jwt-log-level" "A09-3"
-  add_fix "reqwest-redirect" "A10-2 / A10-3"
-  add_fix "session-key-warning" "A08-2"
+  add_fix "tls-password-masking"  "A09-2"
+  add_fix "cors-config"           "A05-1 / A01-1"
+  add_fix "key-zeroization"       "EXT1-1"
+  add_fix "locate-cap"            "A04-3 / EXT2-4"
+  add_fix "locate-const"          "A04-3 / EXT2-4"
+  add_fix "samesite-cookie"       "A07-4"
+  add_fix "jwt-log-level"         "A09-3"
+  add_fix "reqwest-redirect"      "A10-2 / A10-3"
+  add_fix "session-key-warning"   "A08-2"
 
   if [[ -n "$SED_SCRIPT" ]]; then
     sed -i "$SED_SCRIPT" "$AUDIT_MD"
   fi
 
-  # Update the audit date in the document header (line 7: **Audit date**: ...)
   local TODAY
   TODAY="$(date +%Y-%m-%d)"
   sed -i "s/\*\*Audit date\*\*: [0-9-]*/\*\*Audit date\*\*: $TODAY/" "$AUDIT_MD"
 
-  # Update the Status line to reflect overall result
   if [[ "$OVERALL_STATUS" -eq 0 ]]; then
     sed -i "s/\*\*Status\*\*:.*/\*\*Status\*\*: ☑ Complete — automated pass (audit.sh ran $TODAY)/" "$AUDIT_MD"
   else

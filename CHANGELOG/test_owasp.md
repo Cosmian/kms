@@ -85,17 +85,6 @@
 - **Integration** — `crate/clients/clap/src/tests/security/cors_config.rs`: C1–C3 tests verifying no-wildcard CORS policy (no foreign origin reflected in `Access-Control-Allow-Origin`).
 - **Unit** — `crate/server/src/middlewares/jwt/jwks.rs`: SR1–SR2 SSRF regression tests verifying that a 307 redirect from a JWKS endpoint is not followed.
 
-## Documentation
-
-- Move audit scripts to `.github/scripts/audit/`: `owasp.sh` (OWASP Top 10, 21 checks, JSON output, updates `security_audit.md`), `multi_framework.sh` (NIST CSF 2.0/SSDF, CIS Controls v8, ISO/IEC 27034, OSSTMM — 21 checks: gitleaks, cargo audit, cargo deny, unsafe count, JWKS HTTPS guard, CORS wildcard, TTLV depth, JWT allowlist, SSRF guard, TLS config, Zeroize usage), and unified entry-point `audit.sh`.
-- Add `documentation/docs/certifications_and_compliance/multi_framework_security_audit.md` — comprehensive multi-framework security audit report mapping all findings to NIST CSF 2.0, SSDF SP 800-218, CIS Controls v8, ISO/IEC 27034, and OSSTMM controls, with a remediation matrix cross-referencing all 8 closed findings.
-- Update `documentation/mkdocs.yml` — add **Multi-Framework Security Audit** page under `Certifications and compliance`.
-- Add checks 15–19 for: `SameSite::Strict`, JWT log level (`warn!`), reqwest redirect disable, session key salt warning, and `MAX_LOCATE_ITEMS` constant.
-- Add `update_audit_md()` function that automatically updates the Remediation Priority Matrix in `audit.md` from `Open` to `✅ Fixed` / `⚠️ Mitigated` based on check results.
-- Update `audit.md` Remediation Priority Matrix: all High and most Medium findings now marked `✅ Fixed` or `⚠️ Mitigated`.
-- Move `audit.md` to `documentation/docs/certifications_and_compliance/security_audit.md` and add page to `documentation/mkdocs.yml` navigation under *Certifications & Compliance*.
-- Update `.github/scripts/audit/owasp.sh` default output path to `documentation/docs/certifications_and_compliance/audit-results/<timestamp>/`; add `.gitignore` to exclude per-run output files from git.
-
 ### HSM
 
 - Fix flaky SIGSEGV (signal 11) in `test_hsm_*_all` for Proteccio, Utimaco, SoftHSM2, Crypt2pay, and SmartcardHSM: each sub-test was creating its own `BaseHsm` instance, causing repeated `C_Initialize`/`C_Finalize`/`dlclose`/`dlopen` cycles within the same process. The `_all` test functions now create a single `BaseHsm` and `Arc<SlotManager>` and call the shared helpers directly, ensuring only one `C_Initialize` and one `C_Finalize` call per test run.
@@ -119,6 +108,23 @@
 
 - **DoS/Memory exhaustion fix**: Add symmetric key size bounds validation in `create_symmetric_key_and_tags`: reject any request with `cryptographic_length < 8` or `> 8192` bits with `InvalidRequest` to prevent 128 MB+ key-material allocation attacks. `THREE_DES` retains its existing exact-value validation (112 or 168 bits).
 
+## Documentation
+
+- Move audit scripts to `.github/scripts/audit/`: `owasp.sh` (OWASP Top 10, 21 checks, JSON output, updates `security_audit.md`), `multi_framework.sh` (NIST CSF 2.0/SSDF, CIS Controls v8, ISO/IEC 27034, OSSTMM — 21 checks: gitleaks, cargo audit, cargo deny, unsafe count, JWKS HTTPS guard, CORS wildcard, TTLV depth, JWT allowlist, SSRF guard, TLS config, Zeroize usage), and unified entry-point `audit.sh`.
+- Add `documentation/docs/certifications_and_compliance/multi_framework_security_audit.md` — comprehensive multi-framework security audit report mapping all findings to NIST CSF 2.0, SSDF SP 800-218, CIS Controls v8, ISO/IEC 27034, and OSSTMM controls, with a remediation matrix cross-referencing all 8 closed findings.
+- Update `documentation/mkdocs.yml` — add **Multi-Framework Security Audit** page under `Certifications and compliance`.
+- Add checks 15–19 for: `SameSite::Strict`, JWT log level (`warn!`), reqwest redirect disable, session key salt warning, and `MAX_LOCATE_ITEMS` constant.
+- Add `update_audit_md()` function that automatically updates the Remediation Priority Matrix in `audit.md` from `Open` to `✅ Fixed` / `⚠️ Mitigated` based on check results.
+- Update `audit.md` Remediation Priority Matrix: all High and most Medium findings now marked `✅ Fixed` or `⚠️ Mitigated`.
+- Move `audit.md` to `documentation/docs/certifications_and_compliance/security_audit.md` and add page to `documentation/mkdocs.yml` navigation under *Certifications & Compliance*.
+- Update `.github/scripts/audit/owasp.sh` default output path to `documentation/docs/certifications_and_compliance/audit-results/<timestamp>/`; add `.gitignore` to exclude per-run output files from git.
+
+### Audit reports reorganization
+
+- Move `security_audit.md` → `cryptographic_algorithms/audit/owasp_security_audit.md` and `multi_framework_security_audit.md` → `cryptographic_algorithms/audit/multi_framework_security_audit.md`; move `audit-results/` timestamped directories into the same subfolder.
+- Update `documentation/mkdocs.yml` navigation: add `Audit` section under `Cryptographic algorithms` containing both audit pages; remove the top-level audit page entries from `Certifications and compliance`.
+- Update all cross-references in `crypto_inventory.md`, `risk_score.py` (Related documentation section), `.github/scripts/audit/owasp.sh` (hardcoded `AUDIT_MD` and `OUTPUT_DIR` paths).
+
 ## Build
 
 ### OpenSSL
@@ -131,3 +137,33 @@
 ### cosmian_kmip — LEB128 serialization
 
 - Remove `crate/kmip/src/bytes_ser_de.rs` (local LEB128 `Serializer`/`Deserializer` implementation) in favor of the upstream `cosmian_crypto_core::bytes_set_de` module which is actively maintained and includes a buffer-bounds check before allocation in `read_vec()`; add `cosmian_crypto_core` dependency to `cosmian_kmip`; add `From<CryptoCoreError>` for `KmipError`.
+
+### CBOM / Cryptographic sensor
+
+- Fix `cbom/cbom.cdx.json`: replace 63 invalid `"executionEnvironment": "software"` values with `"software-plain-ram"` (valid CycloneDX 1.6 enum); validation via `validate_cbom.py` now passes.
+- Refactor `.github/scripts/crypto_sensor/` scripts to be project-agnostic:
+    - `scan_source.py`: add `--scan-dirs` argument (default: `crate`) so the scanner can target any Rust source directory; remove hardcoded `crate/` path and `crate/ not found` error.
+    - `risk_score.py`: add `--project-name` argument (auto-detected from `Cargo.toml` if omitted); replace hardcoded Cosmian KMS Mermaid dependency graph with a dynamically generated flowchart from scan data; add `import re`.
+    - `crypto_sensor.sh`: add `--scan-dirs`, `--project-name`, and `--docs-output` options; auto-detect project name from root `Cargo.toml`; remove hardcoded `DOCS_PAGE` assignment from risk-scoring step (now set once at top level); pass `--scan-dirs` to `scan_source.py` and `--project-name` to `risk_score.py`.
+- Merge `.github/scripts/crypto_sensor/` into `.github/scripts/audit/`; the three scripts (`crypto_sensor.sh`, `scan_source.py`, `risk_score.py`) now live alongside `owasp.sh`, `multi_framework.sh`, and `audit.sh`.
+- Expand `audit.sh` (main entry point) to also invoke `crypto_sensor.sh` as step 3; add `--quick`, `--server-url`, and `--update-cbom` routing from `audit.sh` to `crypto_sensor.sh`.
+- Add `--quick` flag to `crypto_sensor.sh`: skips cargo audit (step 2), cdxgen (step 4), TLS scan (step 5), and CBOM update — runs only source scan + risk scoring; suitable for pre-commit.
+- Move `KMIP_SPEC_PATH_FRAGMENTS` and `kmip_mitigation()` to module level in `risk_score.py`; add `mitigated` and `mitigation_note` fields to the JSON finding output; exit 1 only when there are unmitigated CRITICAL findings (not all CRITICALs), so the scanner passes when all criticals are KMIP-spec artefacts.
+- Show all CRITICAL/HIGH scanner findings in the priority remediation table instead of hiding KMIP-spec ones; annotate each KMIP specification artefact with `⚠️ Mitigated — <reason>` in the Remediation / Mitigation column so auditors have full visibility while understanding the context.
+- Add `crypto-inventory-update` pre-commit hook (triggers on `*.rs` file changes): calls `crypto_sensor.sh --quick` to regenerate `documentation/docs/certifications_and_compliance/crypto_inventory.md` automatically on every Rust commit.
+- Implement two-layer KMIP-policy-aware mitigation in `risk_score.py`: **Layer 1** reads `algorithm_policy.rs` deny-list (`DES/3DES`, `RC4`, `MD5`, `SHA-1`) via `load_algorithm_deny_list()`; **Layer 2** checks expanded `KMIP_SPEC_PATH_FRAGMENTS` covering crypto, HSM, WASM, test utilities; findings blocked at policy level report "Blocked by `algorithm_policy.rs`…"; result: 0 unmitigated CRITICAL and 0 unmitigated HIGH.
+- Remove `sys.exit(1)` from `scan_source.py` for CRITICAL findings; the policy-aware `risk_score.py` now owns the pass/fail decision for unmitigated criticals.
+- Add `.github/scripts/audit/runtime_security.sh`: black-box runtime network security analyser using `openssl s_client` + `curl` + optional `nmap`/`sslyze`/`nuclei`; 7 test groups (reachability, TLS protocol versions, cipher suites, certificate chain, HTTP security headers, mTLS, KMIP protocol probes including SQL injection / OOM / rate-limit tests); outputs JSON + text artefacts under `cbom/runtime-<timestamp>/`.
+- Add `documentation/docs/certifications_and_compliance/cryptographic_algorithms/audit/runtime_security_audit.md`: full MkDocs Material dashboard with Mermaid attack-surface map, network topology, TLS handshake sequence, cipher suite table, certificate chain diagram, HTTP headers matrix, mTLS architecture, KMIP probe flowchart, and STRIDE threat model table.
+- Add **Runtime Security Audit** page to `documentation/mkdocs.yml` under the `Audit` section.
+- Remove timestamps from sensor output directories: `crypto_sensor.sh` now writes to stable `cbom/sensor/` and `runtime_security.sh` writes to stable `cbom/runtime/` — overwritten on each run instead of accumulating timestamped directories.
+- Remove "Last updated" timestamp from generated `crypto_inventory.md` header and admonition (commit SHA retained); `crypto_inventory.md` is unconditionally regenerated on every sensor run.
+- Exclude KMIP-policy-mitigated CRITICAL/HIGH findings from the Priority Remediation table in `crypto_inventory.md`; mitigated findings are suppressed (count still shown in scorecard) — table now only shows genuinely actionable items; result: 0 rows in table, ✅ success admonition.
+- Fix invalid `xychart-beta` Mermaid diagram in `runtime_security_audit.md` (unsupported by MkDocs Material Mermaid); replaced with a `graph LR` showing per-protocol accept/reject with colour-coded nodes.
+- Update `cbom/runtime-TIMESTAMP/` path references in `runtime_security_audit.md` to stable `cbom/runtime/`.
+- Fix all Mermaid diagrams in `runtime_security_audit.md` and `crypto_inventory.md`: replace `&mdash;` HTML entities with `—`, remove emoji from edge labels, remove special characters (`≥`, `'self'`, `*`) from Mermaid node labels, fix parallelogram node with `\n`, remove PQC pie chart from inside HTML `<div>` (was not rendered), remove emoji from "How the Sensor Works" flowchart labels.
+- Add `api_token_id`, `rate_limit_per_second`, and `cors_allowed_origins` fields to `[http]` section of `crate/server/kms_template.toml` (used by `--print-default-config`); all fields documented with configuration guidance.
+- Extend `ckms configure` wizard (`configure_http` in `commands.rs`) to cover all `HttpClientConfig` fields: CA cert for server verification (`verified_cert`), database secret (`database_secret`), TLS cipher suites (`cipher_suites`), custom HTTP headers (`custom_headers`), and full interactive proxy configuration (`proxy_params` with URL, auth, exclusion list).
+- Reorganize `certifications_and_compliance/` docs: move `cbom.md`, `sbom.md`, `owasp_security_audit.md`, `multi_framework_security_audit.md`, `runtime_security_audit.md`, and `crypto_inventory.md` into a new `audit/` subdirectory; update all relative links in moved files and in `risk_score.py` generated templates; update `mkdocs.yml` to place `SBOM`, `CBOM`, and all audit pages under a single `Audit:` section.
+- Add `.github/scripts/docs/generate_docs.sh`: master doc-generation script replacing scattered individual calls; runs all 5 steps (server docs, ckms docs, KMIP tables, crypto inventory, CBOM) with per-step skip flags; used by `release.yml` and `release.sh`; the pre-commit `generate-docs` hook (replaces `renew-server-doc`, `renew-ckms-markdown`, `crypto-inventory-update`) now calls this single entry point.
+- Consolidate pre-commit doc hooks: replace separate `renew-server-doc`, `renew-ckms-markdown`, and `crypto-inventory-update` hooks with a single `generate-docs` hook that calls `generate_docs.sh --skip-cbom`.

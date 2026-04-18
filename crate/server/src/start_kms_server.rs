@@ -999,11 +999,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_jwt_auth,
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
-            // Prefer checking API token before JWT to avoid header handling quirks
-            .wrap(Condition::new(
-                use_api_token_auth,
-                ApiTokenAuth::new(kms_server.clone()),
-            ))
             .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via

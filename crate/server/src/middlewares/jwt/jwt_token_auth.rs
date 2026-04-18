@@ -112,7 +112,7 @@ pub(super) async fn handle_jwt(
         Err(jwt_log_errors) => {
             // JWT validation failed — log at WARN so auth failures appear in production logs
             for error in &jwt_log_errors {
-                tracing::warn!("{error:?}");
+                warn!("{error:?}");
             }
             warn!(
                 "{:?} {} 401 unauthorized: bad JWT",

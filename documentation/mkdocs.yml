@@ -140,10 +140,13 @@ nav:
               - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
               - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
       - Zeroization: certifications_and_compliance/zeroization.md
-      - SBOM: certifications_and_compliance/sbom.md
-      - CBOM: certifications_and_compliance/cbom.md
-      - Security Audit (OWASP): certifications_and_compliance/security_audit.md
-      - Multi-Framework Security Audit: certifications_and_compliance/multi_framework_security_audit.md
+      - Audit:
+          - SBOM: certifications_and_compliance/audit/sbom.md
+          - CBOM: certifications_and_compliance/audit/cbom.md
+          - Cryptographic Inventory (CBOM sensor): certifications_and_compliance/audit/crypto_inventory.md
+          - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
+          - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
+          - Runtime Security Audit: certifications_and_compliance/audit/runtime_security_audit.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md
