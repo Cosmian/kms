@@ -47,6 +47,8 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
+#[allow(dead_code)]
+pub(crate) static ONCE_SERVER_WITH_MULTI_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
@@ -749,6 +751,62 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
         })
 }
 
+/// KMS server backed by two independent `SoftHSM2` instances (multi-HSM test).
+///
+/// Uses the same `SoftHSM2` library / token as the single-HSM variant but registers two
+/// `[[hsm_instances]]` entries (prefix `"hsm"` and `"hsm1"`) so the routing and
+/// key-isolation logic can be tested.
+///
+/// Compatible with Linux and macOS wherever `SoftHSM2` is installed.
+///
+/// # Panics
+/// Aborts the process if the server fails to start.
+#[allow(dead_code, clippy::unwrap_used)]
+pub(crate) async fn start_default_test_kms_server_with_multi_softhsm2() -> &'static TestsContext {
+    trace!("Starting test server with two SoftHSM2 instances");
+    ONCE_SERVER_WITH_MULTI_HSM
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 8)?;
+            let db_config = get_db_config(port, None);
+            // Register two independent SoftHSM2 instances with different prefixes.
+            // In CI both instances share slot 0 (read-only for a second TOML entry is fine
+            // for routing isolation tests; the slot IDs can be different in a real setup).
+            let hsm_instances = vec![
+                HsmConfig {
+                    hsm_model: "softhsm2".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
+                    hsm_slot: vec![0],
+                    hsm_password: vec!["12345678".to_owned()],
+                },
+                HsmConfig {
+                    hsm_model: "softhsm2".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
+                    hsm_slot: vec![1],
+                    hsm_password: vec!["12345678".to_owned()],
+                },
+            ];
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Disabled,
+                hsm_instances,
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing server config (multi softhsm2): {e}"
+                ))
+            })?;
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with multi softhsm2: {e}");
+            std::process::abort();
+        })
+}
+
 /// Privileged users
 pub async fn start_default_test_kms_server_with_privileged_users(
     privileged_users: Vec<String>,
@@ -889,6 +947,8 @@ pub struct BuildServerParamsOptions {
     pub privileged_users: Option<Vec<String>>,
     pub non_revocable_key_id: Option<Vec<String>>,
     pub hsm: Option<HsmConfig>,
+    /// Multi-HSM instances (takes precedence over `hsm` when non-empty).
+    pub hsm_instances: Vec<HsmConfig>,
     pub key_encryption_key: Option<String>,
     /// Seconds between auto-rotation cron checks.  0 = disabled (default).
     pub auto_rotation_check_interval_secs: u64,
@@ -907,6 +967,7 @@ impl std::fmt::Debug for BuildServerParamsOptions {
             .field("privileged_users", &self.privileged_users)
             .field("non_revocable_key_id", &self.non_revocable_key_id)
             .field("hsm", &self.hsm.as_ref().map(|_| "<provided>"))
+            .field("hsm_instances", &self.hsm_instances.len())
             .field(
                 "key_encryption_key",
                 &self.key_encryption_key.as_ref().map(|_| "<provided>"),
@@ -932,6 +993,7 @@ impl Default for BuildServerParamsOptions {
             privileged_users: None,
             non_revocable_key_id: None,
             hsm: None,
+            hsm_instances: vec![],
             key_encryption_key: None,
             auto_rotation_check_interval_secs: 0,
         }
@@ -1176,8 +1238,10 @@ pub fn build_server_params_full(
         ..ClapConfig::default()
     };
 
-    // If HSM options were provided, set them under the nested HSM config
-    if let Some(h) = opts.hsm {
+    // If multi-HSM instances were provided, use them; otherwise fall back to single-HSM config.
+    if !opts.hsm_instances.is_empty() {
+        clap.hsm_instances = opts.hsm_instances;
+    } else if let Some(h) = opts.hsm {
         clap.hsm = h;
     }
 

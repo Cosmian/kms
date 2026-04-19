@@ -268,6 +268,7 @@ mod tests {
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
+            hsm_instances: vec![],
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
                 aws_xks_region: Some("us-east-1".to_owned()),

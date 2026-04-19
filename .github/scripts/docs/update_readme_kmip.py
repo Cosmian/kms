@@ -1032,7 +1032,7 @@ Legend:
 
     # Add profile compliance section
     for profile_name, status in profile_compliance.items():
-        md += f'**{profile_name}:** {status}\n\n'
+        md += f'\n**{profile_name}:** {status}\n\n'
 
     md += """The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
 
@@ -1094,6 +1094,7 @@ If you spot a mismatch or want to extend coverage, please open an issue or PR.
 ### Managed Objects
 
 The following table shows managed object support across all KMIP versions.
+
 """
 
     # Build managed objects table with version columns
@@ -1165,14 +1166,14 @@ The following table shows managed object support across all KMIP versions.
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """\nNotes:
-- Opaque Object import support is present (see `import.rs`).
+    md += """\nNotes:\n\n- Opaque Object import support is present (see `import.rs`).
 - PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
 - Template objects are deprecated in newer KMIP versions.
 
 ### Base Objects
 
 The following table shows base object support across all KMIP versions.
+
 """
 
     # Base objects list (from spec patterns); we will filter by presence in spec text per version
@@ -1390,14 +1391,14 @@ The following table shows base object support across all KMIP versions.
             row += f' {base_obj_version_matrix[obj].get(version, status):^7} |'
         md += row + '\n'
 
-    md += """\nNotes:
-- AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
+    md += """\nNotes:\n\n- AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
 - Nonce and RNG Parameter are used by symmetric encryption paths.
 - Base objects are fundamental structures present across all KMIP versions.
 
 ### Transparent Key Structures
 
 The following table shows transparent key structure support across all KMIP versions.
+
 """
 
     # Transparent key structures
@@ -1500,6 +1501,7 @@ The following table shows transparent key structure support across all KMIP vers
     md += """\nNote: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
+
 """
 
     # Attributes table - simple 2-column format (attributes are version-agnostic)

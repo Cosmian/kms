@@ -159,7 +159,7 @@ const LocateForm: React.FC = () => {
                         ]);
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
-                        const isHsm = uid.startsWith("hsm::");
+                        const isHsm = /^hsm[0-9]*::/.test(uid);
                         return {
                             object_id: uid,
                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -171,7 +171,7 @@ const LocateForm: React.FC = () => {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
                 // Fallback: HSM keys default to Active
-                return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : undefined } as LocatedRow;
+                return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
             }),
         );
         return rows;
@@ -283,7 +283,7 @@ const LocateForm: React.FC = () => {
                     // Always run KMIP Locate to capture HSM keys that may not appear in /access/owned
                     const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
                     // HSM keys from Locate are always Active; include them even if not in owned set
-                    const hsmLocatedIds = locatedIds.filter((id) => id.startsWith("hsm::"));
+                    const hsmLocatedIds = locatedIds.filter((id) => /^hsm[0-9]*::/.test(id));
                     const ownedIds = new Set(ownedFiltered.map((o) => o.id));
 
                     if (!hasOtherCriteria) {
@@ -342,7 +342,7 @@ const LocateForm: React.FC = () => {
                     }
 
                     // Intersect Locate results with owned set, but keep HSM keys that Locate found
-                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
+                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
 
                     // Fallback: if KFT provided but intersection is empty, drop KFT server-side and filter locally
                     if (keyFormatType && intersection.length === 0) {
@@ -355,7 +355,7 @@ const LocateForm: React.FC = () => {
                                 idToken,
                                 serverUrl,
                             );
-                            intersection = fbIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
+                            intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
                         } catch (e) {
                             console.warn("State+KFT fallback Locate without KFT failed:", e);
                         }
@@ -396,7 +396,7 @@ const LocateForm: React.FC = () => {
                             } catch (e) {
                                 console.error(`Error fetching Get for ${uid}:`, e);
                             }
-                            return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : stateVal } as LocatedRow;
+                            return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : stateVal } as LocatedRow;
                         }),
                     );
                     // Enforce KFT filter client-side if provided
@@ -1132,7 +1132,7 @@ const LocateForm: React.FC = () => {
                                                 const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
                                                 const dateValue = rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
                                                 if (!dateValue) {
-                                                    if (row.object_id.startsWith("hsm::")) {
+                                                    if (/^hsm[0-9]*::/.test(row.object_id)) {
                                                         return (
                                                             <Tooltip title="HSM-resident keys have no creation date stored in the PKCS#11 token">
                                                                 <span style={{ color: "#bbb", fontSize: "12px" }}>HSM</span>

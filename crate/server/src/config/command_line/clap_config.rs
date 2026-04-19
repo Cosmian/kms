@@ -62,6 +62,7 @@ impl Default for ClapConfig {
             info: false,
             print_default_config: false,
             hsm: HsmConfig::default(),
+            hsm_instances: vec![],
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
@@ -118,9 +119,22 @@ pub struct ClapConfig {
     #[serde(skip)]
     pub print_default_config: bool,
 
+    /// [DEPRECATED] Single HSM instance configured via flat `--hsm-*` CLI flags.
+    /// Prefer `[[hsm_instances]]` in the TOML configuration file instead, which
+    /// supports multiple HSM devices and uses the same field names.
+    /// These flags are still honoured when `[[hsm_instances]]` is absent, but may
+    /// be removed in a future release.
     #[clap(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
+
+    /// Multiple HSM instances, configured via the TOML `[[hsm_instances]]` array.
+    /// When non-empty, these take precedence over the flat `--hsm-*` CLI flags above.
+    /// Each entry uses the same field names as the flat flags:
+    /// `hsm_model`, `hsm_admin`, `hsm_slot`, `hsm_password`.
+    #[clap(skip)]
+    #[serde(default, rename = "hsm_instances")]
+    pub hsm_instances: Vec<HsmConfig>,
 
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
@@ -632,6 +646,7 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
+        let x = x.field("hsm_instances count", &self.hsm_instances.len());
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);

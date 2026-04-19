@@ -8,8 +8,8 @@ pub use crypto_oracle::{
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmCryptoOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    HSM, HsmBackend, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use stores::{
     AtomicOperation, Notification, NotificationsStore, ObjectWithMetadata, ObjectsStore,

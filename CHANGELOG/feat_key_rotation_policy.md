@@ -132,4 +132,28 @@
 
 - **Auto-rotation idempotency (single-node only)**: the current implementation prevents double-rotation within a single node by setting `rotate_interval = 0` on the old key as part of the rotation atomic batch. This guard is not CAS-atomic at the database level (no `UPDATE … WHERE rotate_interval > 0` conditional write). In a **multi-node deployment** where two KMS instances run the cron simultaneously, both may read the same due key and both attempt rotation before either commits the `rotate_interval = 0` update. For single-node deployments this is safe. A database-level CAS guard (`UPDATE objects SET attributes = … WHERE id = ? AND attributes->>'RotateInterval' > 0`) will be added in a follow-up issue.
 
+---
+
+## Multi-HSM support
+
+### 🚀 Features
+
+#### HSM — simultaneous multiple HSM instances
+
+- **`[[hsm_instances]]` TOML config**: new array-of-tables section in `kms.toml` allows configuring any number of HSM instances simultaneously. Each entry specifies `model`, `admin`, `slot`, and `password`. When this section is present it takes precedence over the legacy flat `--hsm-*` CLI flags.
+- **Prefix-based routing**: the first `[[hsm_instances]]` entry gets the routing prefix `"hsm"`, the second `"hsm1"`, the third `"hsm2"`, etc. Object UIDs follow the pattern `<prefix>::<slot_id>::<key_id>`.
+- **`HsmBackend` prefix-aware**: `HsmBackend::new()` now accepts an explicit `prefix: &str` argument. `parse_uid` uses this prefix to strip the correct routing prefix from incoming UIDs.
+- **`GLOBAL_HSMS`**: the internal singleton for test-server reuse is now a `Vec` of `Arc<dyn HSM>` (one entry per configured instance) rather than a single optional value.
+- **`GET /hsm/status` endpoint**: new public HTTP endpoint (no authentication required) returning a JSON array of all connected HSM instances with their prefix, model, and per-slot accessibility info.
+- **Web UI — HSM Status page**: new `Objects → HSM Status` page that calls `/hsm/status` and displays each HSM instance in a card with a slot table, accessible via the `hsm-status` menu entry.
+- **Web UI — `Locate.tsx` prefix regex**: all hard-coded `uid.startsWith("hsm::")` checks replaced with `/^hsm[0-9]*::/.test(uid)` so multi-HSM UIDs (`hsm1::`, `hsm2::`, etc.) are handled correctly throughout the Locate page.
+- **`resources/kms.toml`**: added commented-out example of `[[hsm_instances]]` blocks.
+- **Documentation**: new `documentation/docs/hsm_support/multi_hsm.md` page explaining routing, TOML config, and the `/hsm/status` endpoint.
+
+### 🧪 Testing
+
+- **`crate/server/src/tests/hsm/multi_hsm.rs`**: new `#[ignore]` test (`test_multi_hsm_routing`) verifying that two `[[hsm_instances]]` entries each create and locate keys under the correct prefix.
+- **`test_kms_server`**: added `ONCE_SERVER_WITH_MULTI_HSM` singleton and `start_default_test_kms_server_with_multi_softhsm2()` helper starting a KMS server with two `HsmInstanceConfig` entries (port `DEFAULT_KMS_SERVER_PORT + 8`).
+- **`BuildServerParamsOptions`**: new `hsm_instances: Vec<HsmInstanceConfig>` field; when non-empty it overrides the legacy `hsm: Option<HsmConfig>` field when building `ClapConfig`.
+
 Closes #859

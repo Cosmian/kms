@@ -135,6 +135,24 @@ info = false
 # Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
 # hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...] # corresponding user slot passwords/pins
 
+# ── Multi-HSM configuration ───────────────────────────────────────────────────
+# To connect multiple HSMs simultaneously, declare one [[hsm_instances]] section
+# per device.  The first entry gets the routing prefix "hsm", the second "hsm1",
+# the third "hsm2", etc.  Object UIDs take the form "<prefix>::<slot>::<key-id>".
+# When [[hsm_instances]] is present it takes precedence over the flat hsm_* fields above.
+#
+## [[hsm_instances]]
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
+## hsm_slot     = [0]                  # PKCS#11 slot indices (use softhsm2-util --show-slots to list them)
+## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
+#
+## [[hsm_instances]]
+## hsm_model    = "utimaco"
+## hsm_admin    = ["tech@example.com"]
+## hsm_slot     = [0, 1]
+## hsm_password = ["slot0pass", "slot1pass"]
+
 # Force all newly created and imported keys to be wrapped by the key specified in this field.
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.
 # Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
@@ -390,11 +408,7 @@ strategy = "time_before_renewal"
 # Only used when `strategy = "time_before_renewal"`. Values are sorted descending internally; duplicates are ignored. Default: `[30, 7, 1]` — 1 month, 1 week, and 1 day before renewal.
 #
 # Example: `warn_before_renewal_days = [90, 30, 14, 7, 1]`
-warn_before_renewal_days = [
-    30,
-    7,
-    1,
-]
+warn_before_renewal_days = [30, 7, 1]
 notify_on_success = true
 notify_on_failure = true
 ```

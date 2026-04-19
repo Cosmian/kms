@@ -8,9 +8,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use cosmian_kms_server_database::{
     Database,
-    reexport::cosmian_kms_interfaces::{
-        CryptoOracle, HSM, HsmCryptoOracle, HsmStore, ObjectsStore,
-    },
+    reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmBackend, ObjectsStore},
 };
 use cosmian_logger::{trace, warn};
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
@@ -32,11 +30,13 @@ use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 
-// Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
+// Reuse HSM instances across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
+// Each element is `Arc<dyn HSM>` for one configured HSM instance, in the same
+// order as `ServerParams::hsm_instances`.
 #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
-static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
+static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
     config::{RenewalNotificationStrategy, ServerParams},
@@ -47,8 +47,8 @@ use crate::{
     result::KResult,
 };
 
-/// Macro to instantiate an HSM with support for environment variable override
-/// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
+/// Macro to instantiate an HSM with support for environment variable override.
+/// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
 #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 #[allow(unused_macros)]
 macro_rules! instantiate_hsm_with_env {
@@ -62,12 +62,11 @@ macro_rules! instantiate_hsm_with_env {
                 ))
             })?,
         );
-        GLOBAL_HSM.set(hsm.clone()).ok();
-        Some(hsm)
+        hsm
     }};
 }
 
-/// A Key Management System that partially implements KMIP 2.1
+/// A Key Management System that partially implements KMIP 1.x and 2.1
 ///
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
@@ -116,25 +115,35 @@ impl KMS {
     pub(crate) async fn instantiate(server_params: Arc<ServerParams>) -> KResult<Self> {
         trace!("params: {server_params:?}");
 
-        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
-        let hsm = Self::instantiate_hsm(&server_params)?;
+        // Instantiate all configured HSMs.
+        let hsm_instances = Self::instantiate_hsms(&server_params)?;
+
+        // Build object-store and crypto-oracle maps, one entry per HSM instance.
+        let mut object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>> =
+            HashMap::new();
+        let mut crypto_oracles: HashMap<String, Box<dyn CryptoOracle + Sync + Send>> =
+            HashMap::new();
+        for (idx, hsm_arc) in hsm_instances.iter().enumerate() {
+            let inst = server_params.hsm_instances.get(idx).ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "HSM instance index {idx} out of range (config has {} instances)",
+                    server_params.hsm_instances.len()
+                ))
+            })?;
+            let backend = HsmBackend::new(
+                hsm_arc.clone(),
+                &inst.admin,
+                &server_params.vendor_identification,
+                &inst.prefix,
+            );
+            object_stores.insert(inst.prefix.clone(), Arc::new(backend.clone()));
+            crypto_oracles.insert(inst.prefix.clone(), Box::new(backend));
+        }
 
         // Instantiate the main database
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("The main database parameters are not specified".to_owned())
         })?;
-        let mut object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>> =
-            HashMap::new();
-        if let Some(hsm) = hsm.as_ref() {
-            object_stores.insert(
-                "hsm".to_owned(),
-                Arc::new(HsmStore::new(
-                    hsm.clone(),
-                    &server_params.hsm_admin,
-                    &server_params.vendor_identification,
-                )),
-            );
-        }
         let database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
@@ -142,16 +151,6 @@ impl KMS {
             server_params.unwrapped_cache_max_age,
         )
         .await?;
-
-        // HSMs are also encryption oracles
-        let mut crypto_oracles: HashMap<String, Box<dyn CryptoOracle + Sync + Send>> =
-            HashMap::new();
-        if let Some(hsm) = hsm.clone() {
-            crypto_oracles.insert(
-                "hsm".to_owned(),
-                Box::new(HsmCryptoOracle::new(hsm.clone())),
-            );
-        }
 
         // Set up email notifier (disabled if SMTP host not configured or transport init fails)
         let email_notifier =
@@ -170,7 +169,8 @@ impl KMS {
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),
-            hsm: hsm.clone(),
+            // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
+            hsm: hsm_instances.into_iter().next(),
             metrics: Self::create_otel_metrics(&server_params)?,
             email_notifier,
             renewal_strategy,
@@ -231,80 +231,93 @@ impl KMS {
         }
     }
 
-    fn instantiate_hsm(
+    /// Instantiate all configured HSM instances and return them in order.
+    /// On platforms without HSM support, returns an empty Vec (or an error if HSMs were configured).
+    fn instantiate_hsms(
         server_params: &ServerParams,
-    ) -> Result<Option<Arc<dyn HSM + Send + Sync>>, KmsError> {
-        // Instantiate the HSM if any; the code has support for multiple concurrent HSMs
-        let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
-            None
-        } else {
-            #[cfg(not(any(
-                all(target_os = "linux", target_arch = "x86_64"),
-                target_os = "macos"
-            )))]
-            kms_bail!("Fatal: HSMs are only supported on Linux x86_64 and macOS");
-            #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
-            {
-                // Attempt reuse first (used by test harness to allow multiple servers sharing one physical HSM).
-                if let Some(existing) = GLOBAL_HSM.get() {
-                    return Ok(Some(existing.clone()));
-                }
-                let hsm_model = server_params.hsm_model.as_ref().ok_or_else(|| {
-                    KmsError::InvalidRequest("The HSM model is not specified".to_owned())
-                })?;
-                match hsm_model.as_str() {
-                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-                    "crypt2pay" => instantiate_hsm_with_env!(
-                        Crypt2pay,
-                        "CRYPT2PAY_PKCS11_LIB",
-                        CRYPT2PAY_PKCS11_LIB,
-                        "Crypt2pay",
-                        server_params.slot_passwords.clone()
-                    ),
-                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-                    "proteccio" => instantiate_hsm_with_env!(
-                        Proteccio,
-                        "PROTECCIO_PKCS11_LIB",
-                        PROTECCIO_PKCS11_LIB,
-                        "Proteccio",
-                        server_params.slot_passwords.clone()
-                    ),
-                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-                    "utimaco" => instantiate_hsm_with_env!(
-                        Utimaco,
-                        "UTIMACO_PKCS11_LIB",
-                        UTIMACO_PKCS11_LIB,
-                        "Utimaco",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "softhsm2" => instantiate_hsm_with_env!(
-                        Softhsm2,
-                        "SOFTHSM2_PKCS11_LIB",
-                        SOFTHSM2_PKCS11_LIB,
-                        "Softhsm2",
-                        server_params.slot_passwords.clone()
-                    ),
-                    "smartcardhsm" => instantiate_hsm_with_env!(
-                        Smartcardhsm,
-                        "SMARTCARDHSM_PKCS11_LIB",
-                        SMARTCARDHSM_PKCS11_LIB,
-                        "Smartcardhsm",
-                        server_params.slot_passwords.clone()
-                    ),
-                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-                    "other" => instantiate_hsm_with_env!(
-                        Softhsm2,
-                        "OTHER_HSM_PKCS11_LIB",
-                        OTHER_HSM_PKCS11_LIB,
-                        "Other",
-                        server_params.slot_passwords.clone()
-                    ),
-                    _ => kms_bail!(
-                        "The only supported HSM models are proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco and other"
-                    ),
-                }
+    ) -> Result<Vec<Arc<dyn HSM + Send + Sync>>, KmsError> {
+        if server_params.hsm_instances.is_empty() {
+            return Ok(vec![]);
+        }
+
+        #[cfg(not(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos")))]
+        kms_bail!("Fatal: HSMs are only supported on Linux x86_64 and macOS");
+
+        #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+        {
+            // Reuse pre-existing global instances when available (test-server reuse pattern).
+            if let Some(existing) = GLOBAL_HSMS.get() {
+                return Ok(existing.clone());
             }
-        };
-        Ok(hsm)
+
+            let mut hsm_arcs: Vec<Arc<dyn HSM + Send + Sync>> = Vec::new();
+            for inst in &server_params.hsm_instances {
+                let hsm = Self::instantiate_one_hsm(&inst.model, inst.slot_passwords.clone())?;
+                hsm_arcs.push(hsm);
+            }
+
+            GLOBAL_HSMS.set(hsm_arcs.clone()).ok();
+            Ok(hsm_arcs)
+        }
+    }
+
+    /// Instantiate a single HSM by model name.
+    #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+    fn instantiate_one_hsm(
+        model: &str,
+        slot_passwords: std::collections::HashMap<usize, Option<String>>,
+    ) -> Result<Arc<dyn HSM + Send + Sync>, KmsError> {
+        match model {
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "crypt2pay" => Ok(instantiate_hsm_with_env!(
+                Crypt2pay,
+                "CRYPT2PAY_PKCS11_LIB",
+                CRYPT2PAY_PKCS11_LIB,
+                "Crypt2pay",
+                slot_passwords
+            )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "proteccio" => Ok(instantiate_hsm_with_env!(
+                Proteccio,
+                "PROTECCIO_PKCS11_LIB",
+                PROTECCIO_PKCS11_LIB,
+                "Proteccio",
+                slot_passwords
+            )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "utimaco" => Ok(instantiate_hsm_with_env!(
+                Utimaco,
+                "UTIMACO_PKCS11_LIB",
+                UTIMACO_PKCS11_LIB,
+                "Utimaco",
+                slot_passwords
+            )),
+            "softhsm2" => Ok(instantiate_hsm_with_env!(
+                Softhsm2,
+                "SOFTHSM2_PKCS11_LIB",
+                SOFTHSM2_PKCS11_LIB,
+                "Softhsm2",
+                slot_passwords
+            )),
+            "smartcardhsm" => Ok(instantiate_hsm_with_env!(
+                Smartcardhsm,
+                "SMARTCARDHSM_PKCS11_LIB",
+                SMARTCARDHSM_PKCS11_LIB,
+                "Smartcardhsm",
+                slot_passwords
+            )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "other" => Ok(instantiate_hsm_with_env!(
+                Softhsm2,
+                "OTHER_HSM_PKCS11_LIB",
+                OTHER_HSM_PKCS11_LIB,
+                "Other",
+                slot_passwords
+            )),
+            _ => kms_bail!(
+                "Unsupported HSM model: {model}. Supported values: \
+                 proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco, other"
+            ),
+        }
     }
 }

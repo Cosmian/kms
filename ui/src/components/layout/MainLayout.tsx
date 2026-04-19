@@ -147,8 +147,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 message={<span className="text-yellow-900 font-bold">Authentication is disabled on this KMS server</span>}
                                 description={
                                     <span className="text-yellow-900">
-                                        This KMS server was started without authentication method configured and then is not ready for
-                                        production use.
+                                        This KMS server was started without authentication method configured.
                                     </span>
                                 }
                             />
