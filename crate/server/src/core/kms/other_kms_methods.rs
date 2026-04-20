@@ -160,7 +160,9 @@ impl KMS {
                                 let bits = attributes.cryptographic_length.unwrap_or_else(|| {
                                     i32::try_from(AES_256_GCM_KEY_LENGTH * 8).unwrap_or(256)
                                 });
-                                if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS).contains(&bits) {
+                                if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS)
+                                    .contains(&bits)
+                                {
                                     return Err(KmsError::InvalidRequest(format!(
                                         "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
                                     )));
