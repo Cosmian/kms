@@ -58,8 +58,13 @@ export HSM_USER_PASSWORD="${CRYPT2PAY_PASSWORD:?CRYPT2PAY_PASSWORD not set}"
 
 # Setup Crypt2pay HSM client tools
 if ! source "$REPO_ROOT/.github/reusable_scripts/prepare_crypt2pay.sh"; then
-  echo "Warning: Failed to source prepare_crypt2pay.sh, c2pstatus may be failing. with return code $?."
-  exit 0
+  echo "Warning: Failed to source prepare_crypt2pay.sh with return code $?."
+  if [ -f /usr/lib/libpkcs11c2p.so ] && [ -f /etc/c2p/c2p.xml ]; then
+    echo "Continuing: Crypt2Pay client appears installed despite prepare script self-test failure."
+  else
+    echo "Warning: Crypt2Pay client setup is incomplete. Skipping Crypt2Pay tests."
+    exit 0
+  fi
 fi
 
 export C2P_CONF="${C2P_CONF:-/etc/c2p/c2p.xml}"
