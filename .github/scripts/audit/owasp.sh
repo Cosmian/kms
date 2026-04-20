@@ -43,7 +43,7 @@ CYAN=$'\e[36m'
 RESET=$'\e[0m'
 BOLD=$'\e[1m'
 info() { echo "${CYAN}${BOLD}[INFO ]${RESET} $*"; }
-ok()   { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
+ok() { echo "${GREEN}${BOLD}[PASS ]${RESET} $*"; }
 warn() { echo "${YELLOW}${BOLD}[WARN ]${RESET} $*"; }
 fail() { echo "${RED}${BOLD}[FAIL ]${RESET} $*"; }
 step() {
@@ -122,14 +122,16 @@ find_dir() {
 
 # grep_crate PATTERN [extra grep args] — grep across all Rust source in crate/
 grep_crate() {
-  local pattern="$1"; shift
+  local pattern="$1"
+  shift
   grep -rn "$pattern" "$REPO_ROOT/crate/" --include="*.rs" "$@" 2>/dev/null || true
 }
 
 # grep_file FILE PATTERN [extra grep args] — grep a specific file if it exists,
 # otherwise fall back to grep_crate so the check still works after refactors.
 grep_file() {
-  local file="$1" pattern="$2"; shift 2
+  local file="$1" pattern="$2"
+  shift 2
   if [[ -f "$file" ]]; then
     grep -n "$pattern" "$file" "$@" 2>/dev/null || true
   else
@@ -227,7 +229,8 @@ fi
 AUDIT_JSON="$OUTPUT_DIR/cargo_audit.json"
 if cargo audit --json >"$AUDIT_JSON" 2>/dev/null; then
   if command -v python3 &>/dev/null && [[ -s "$AUDIT_JSON" ]]; then
-    CRITICAL_HIGH=$(python3 - <<'PYEOF'
+    CRITICAL_HIGH=$(
+      python3 - <<'PYEOF'
 import json, sys
 try:
     data = json.load(open(sys.argv[1]))
@@ -237,7 +240,8 @@ try:
 except Exception:
     print(0)
 PYEOF
-    "$AUDIT_JSON" 2>/dev/null || echo 0)
+      "$AUDIT_JSON" 2>/dev/null || echo 0
+    )
     if [[ "$CRITICAL_HIGH" -gt 0 ]]; then
       fail "cargo audit: $CRITICAL_HIGH CRITICAL/HIGH CVE(s) detected."
       record "cargo-audit-cve" "FAIL"
@@ -377,7 +381,7 @@ if grep -q "Validation::new(header" "$JWT_ALG_OUT" 2>/dev/null; then
   CANDIDATE_FILE="${JWT_CONFIG_RS:-}"
   [[ -z "$CANDIDATE_FILE" ]] && CANDIDATE_FILE="$(grep_crate "Validation::new(header" | head -1 | cut -d: -f1)"
   NEXT_LINES=""
-  [[ -n "$CANDIDATE_FILE" && -f "$CANDIDATE_FILE" ]] && \
+  [[ -n "$CANDIDATE_FILE" && -f "$CANDIDATE_FILE" ]] &&
     NEXT_LINES=$(grep -A5 "Validation::new(header" "$CANDIDATE_FILE" 2>/dev/null || true)
   if echo "$NEXT_LINES" | grep -q "algorithms.*=\|allowed_algs\|restrict"; then
     ok "JWT algorithm — allowlist override found after Validation::new(header.alg)"
@@ -423,7 +427,7 @@ grep_file "${DB_CONFIG_RS:-/nonexistent}" \
   "database_url\|fn fmt\|Display\|password\|\*\*\*\*" | tee "$DB_MASK_OUT" || true
 
 if grep -qE '"(postgresql|mysql): \{\}"' "$DB_MASK_OUT" 2>/dev/null ||
-   (grep -A3 '"postgresql:' "$DB_MASK_OUT" 2>/dev/null | grep -q "database_url"); then
+  (grep -A3 '"postgresql:' "$DB_MASK_OUT" 2>/dev/null | grep -q "database_url"); then
   fail "A09-1: database_url printed unmasked in Display impl (postgresql/mysql). Credentials leak to logs."
   record "db-credential-masking" "FAIL"
 else
@@ -455,7 +459,7 @@ grep_crate "Cors::permissive\|allow_any_origin\|allow_origin.*\*" | tee "$CORS_O
 
 CORS_COUNT=$(wc -l <"$CORS_OUT" 2>/dev/null || echo 0)
 MAIN_SCOPE_PERMISSIVE=$(grep_crate "Cors::permissive" | wc -l) || MAIN_SCOPE_PERMISSIVE=0
-MAIN_SCOPE_DEFAULT=$(grep_crate "Cors::default" | wc -l)      || MAIN_SCOPE_DEFAULT=0
+MAIN_SCOPE_DEFAULT=$(grep_crate "Cors::default" | wc -l) || MAIN_SCOPE_DEFAULT=0
 
 if [[ "$CORS_COUNT" -eq 0 ]]; then
   ok "CORS — no permissive() found"
@@ -486,7 +490,7 @@ ZERO_OUT="$OUTPUT_DIR/zeroization.txt"
 } | tee "$ZERO_OUT"
 
 if grep -qF "KResult<Vec<u8>>" "$ZERO_OUT" 2>/dev/null ||
-   grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
+  grep -qF "-> Vec<u8>" "$ZERO_OUT" 2>/dev/null; then
   warn "EXT1-1: derive_key helper(s) return bare Vec<u8> / KResult<Vec<u8>> for key material (not Zeroizing)."
   record "key-zeroization" "WARN"
 else
@@ -808,21 +812,21 @@ update_audit_md() {
     done
   }
 
-  add_fix "ttlv-depth-limit"      "A03-2 / EXT2-2" "A03-3 / EXT2-3"
-  add_fix "payload-limit"         "A04-1 / EXT2-1"
-  add_fix "rate-limiting"         "A04-2 / EXT2-5"
-  add_fix "jwt-algorithm"         "A07-1"
-  add_fix "api-token-ct"          "A07-2"
+  add_fix "ttlv-depth-limit" "A03-2 / EXT2-2" "A03-3 / EXT2-3"
+  add_fix "payload-limit" "A04-1 / EXT2-1"
+  add_fix "rate-limiting" "A04-2 / EXT2-5"
+  add_fix "jwt-algorithm" "A07-1"
+  add_fix "api-token-ct" "A07-2"
   add_fix "db-credential-masking" "A09-1"
-  add_fix "tls-password-masking"  "A09-2"
-  add_fix "cors-config"           "A05-1 / A01-1"
-  add_fix "key-zeroization"       "EXT1-1"
-  add_fix "locate-cap"            "A04-3 / EXT2-4"
-  add_fix "locate-const"          "A04-3 / EXT2-4"
-  add_fix "samesite-cookie"       "A07-4"
-  add_fix "jwt-log-level"         "A09-3"
-  add_fix "reqwest-redirect"      "A10-2 / A10-3"
-  add_fix "session-key-warning"   "A08-2"
+  add_fix "tls-password-masking" "A09-2"
+  add_fix "cors-config" "A05-1 / A01-1"
+  add_fix "key-zeroization" "EXT1-1"
+  add_fix "locate-cap" "A04-3 / EXT2-4"
+  add_fix "locate-const" "A04-3 / EXT2-4"
+  add_fix "samesite-cookie" "A07-4"
+  add_fix "jwt-log-level" "A09-3"
+  add_fix "reqwest-redirect" "A10-2 / A10-3"
+  add_fix "session-key-warning" "A08-2"
 
   if [[ -n "$SED_SCRIPT" ]]; then
     sedi "$SED_SCRIPT" "$AUDIT_MD"

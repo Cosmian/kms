@@ -388,6 +388,106 @@ pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
             value: "rsa4096".into(),
             label: "RSA 4096".into(),
         },
+        // PQC signing algorithms (ML-DSA)
+        AlgoOption {
+            value: "ml-dsa-44".into(),
+            label: "ML-DSA-44 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-65".into(),
+            label: "ML-DSA-65 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-87".into(),
+            label: "ML-DSA-87 (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHA2)
+        AlgoOption {
+            value: "slh-dsa-sha2-128s".into(),
+            label: "SLH-DSA-SHA2-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128f".into(),
+            label: "SLH-DSA-SHA2-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192s".into(),
+            label: "SLH-DSA-SHA2-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192f".into(),
+            label: "SLH-DSA-SHA2-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256s".into(),
+            label: "SLH-DSA-SHA2-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256f".into(),
+            label: "SLH-DSA-SHA2-256f (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHAKE)
+        AlgoOption {
+            value: "slh-dsa-shake-128s".into(),
+            label: "SLH-DSA-SHAKE-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128f".into(),
+            label: "SLH-DSA-SHAKE-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192s".into(),
+            label: "SLH-DSA-SHAKE-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192f".into(),
+            label: "SLH-DSA-SHAKE-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256s".into(),
+            label: "SLH-DSA-SHAKE-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256f".into(),
+            label: "SLH-DSA-SHAKE-256f (PQC)".into(),
+        },
+        // ML-KEM and hybrid KEM algorithms (subject key for CA-issued certificates)
+        AlgoOption {
+            value: "ml-kem-512".into(),
+            label: "ML-KEM-512 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768".into(),
+            label: "ML-KEM-768 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-1024".into(),
+            label: "ML-KEM-1024 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "x25519-ml-kem-768".into(),
+            label: "X25519/ML-KEM-768 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "x448-ml-kem-1024".into(),
+            label: "X448/ML-KEM-1024 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-p256".into(),
+            label: "ML-KEM-512/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-p256".into(),
+            label: "ML-KEM-768/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-curve25519".into(),
+            label: "ML-KEM-512/Curve25519 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-curve25519".into(),
+            label: "ML-KEM-768/Curve25519 (Hybrid KEM)".into(),
+        },
     ];
     #[cfg(not(feature = "non-fips"))]
     let opts: Vec<AlgoOption> = vec![

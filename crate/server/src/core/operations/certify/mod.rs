@@ -1,6 +1,8 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
 use cosmian_kms_logger::{debug, info, trace};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -661,7 +663,31 @@ async fn issuer_for_self_signed_certificate<'a>(
             }
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
-            // the user is creating a self-signed certificate from a key pair
+            // ML-KEM / hybrid KEM keys are KEM-only algorithms — they do not support digital
+            // signatures and therefore cannot issue self-signed certificates.
+            // The caller must supply issuer_private_key_id + issuer_certificate_id pointing to
+            // a signing CA (RSA / EC / ML-DSA / SLH-DSA).
+            #[cfg(feature = "non-fips")]
+            if let Object::PrivateKey(pk) = &keypair_data.private_key_object {
+                if let Some(
+                    CryptographicAlgorithm::MLKEM_512
+                    | CryptographicAlgorithm::MLKEM_768
+                    | CryptographicAlgorithm::MLKEM_1024
+                    | CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024
+                    | CryptographicAlgorithm::ConfigurableKEM,
+                ) = pk.key_block.cryptographic_algorithm
+                {
+                    kms_bail!(KmsError::InvalidRequest(
+                        "KEM keys (ML-KEM, X25519MLKEM768, X448MLKEM1024, ConfigurableKEM) \
+                         do not support digital signatures and cannot issue self-signed \
+                         certificates. Provide issuer_private_key_id and \
+                         issuer_certificate_id pointing to a signing CA \
+                         (RSA/EC/ML-DSA/SLH-DSA)."
+                            .to_owned()
+                    ))
+                }
+            }
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
@@ -767,10 +793,12 @@ fn build_and_sign_certificate(
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
 
-    let digest = match subject.public_key()?.id() {
-        Id::ED25519 | Id::ED448 => MessageDigest::null(), // EdDSA does not use a digest
-        // Default to SHA-256 for other algorithms
-        _ => MessageDigest::sha256(),
+    // The digest must match the *issuer's signing key* type, not the subject key.
+    // RSA and EC (ECDSA) require an explicit external digest; EdDSA and PQC algorithms
+    // (ML-DSA, SLH-DSA) handle their digest internally and must receive a null digest.
+    let digest = match issuer.private_key().id() {
+        Id::RSA | Id::EC => MessageDigest::sha256(),
+        _ => MessageDigest::null(), // EdDSA, ML-DSA, SLH-DSA — internal digest
     };
 
     // Set the issuer name and private key

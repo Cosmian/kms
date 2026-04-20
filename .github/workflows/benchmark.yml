@@ -2,7 +2,10 @@
 name: Benchmark Regression
 
 on:
-  # Run on demand from the GitHub UI (useful for one-off checks)
+  # Run on demand from the GitHub UI (useful for one-off checks or retroactive
+  # version baselines).  Supply `tag_override` (e.g. "5.20.1") to check out
+  # that tag and publish results under /kms/<tag>/benchmarks/ instead of the
+  # default last_build/<branch> path.
   workflow_dispatch:
     inputs:
       bench_speed:
@@ -17,6 +20,14 @@ on:
         description: Build variant (fips|non-fips)
         required: false
         default: non-fips
+      tag_override:
+        description: >
+          Optional tag to check out and publish results for
+          (e.g. "5.20.1").  When set the results are published under
+          /kms/<tag>/benchmarks/ on package.cosmian.com.
+          Leave empty to run on the current branch.
+        required: false
+        default: ''
 
   # Run weekly on Sunday at 02:00 UTC against the default branch
   schedule:
@@ -42,6 +53,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+          # When tag_override is provided check out that exact tag; otherwise
+          # use the default ref for the triggering event (tag push, branch, …).
+          ref: ${{ inputs.tag_override || '' }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -93,14 +107,25 @@ jobs:
 
       - name: Push benchmark results to package.cosmian.com
         shell: bash
+        env:
+          TAG_OVERRIDE: ${{ inputs.tag_override || '' }}
         run: |
           set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
+          # Destination path resolution (priority order):
+          #   1. Tag push (push event on refs/tags/*)
+          #      → /kms/<tag>/benchmarks/
+          #   2. workflow_dispatch with tag_override
+          #      → /kms/<tag_override>/benchmarks/
+          #   3. Branch run (schedule, workflow_dispatch without tag_override)
+          #      → /kms/last_build/<branch>/benchmarks/
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
+            DEST_PATH="${GITHUB_REF_NAME}"
+          elif [[ -n "${TAG_OVERRIDE}" ]]; then
+            DEST_PATH="${TAG_OVERRIDE}"
           else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+            DEST_PATH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
           fi
-          REMOTE_DIR="/mnt/package/kms/${BRANCH}/benchmarks"
+          REMOTE_DIR="/mnt/package/kms/${DEST_PATH}/benchmarks"
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
             cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
           scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \

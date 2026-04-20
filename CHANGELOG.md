@@ -2,11 +2,101 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [5.21.0] - 2026-04-20
 
-### ⚙️ Miscellaneous Tasks
+### 🚀 Features
 
-- **Workspace reorganization**: move `crate/kms_client` → `crate/clients/client`; flatten `crate/clients/ckms/src/tests/kms/`, `crate/clients/clap/src/actions/kms/`, and `crate/clients/clap/src/tests/kms/` one level up; remove now-empty `kms/` subdirectories
+#### PQC X.509 Certificate Generation
+
+- **Server**: `Certify` now supports ML-DSA-44/65/87 and all SLH-DSA variants (SHA2/SHAKE × 128s/f, 192s/f, 256s/f) as subject key algorithms and issuer signing keys (non-FIPS only); digest selection fixed to use the issuer's key type, mapping EdDSA/ML-DSA/SLH-DSA to `MessageDigest::null()`.
+- **CLI**: `Algorithm` enum in `certificate_utils` extended with all ML-DSA, SLH-DSA, and ML-KEM/hybrid-KEM variants; KEM self-signed certificates are rejected by the server with a clear error.
+- **Web UI / WASM**: `get_certificate_algorithms()` exposes all ML-DSA, SLH-DSA, and ML-KEM options in the *Generate New Keypair* dropdown; `data-testid="cert-algorithm-select"` added to the algorithm `<Select>` for E2E testability.
+- **E2E Playwright**: new `certificates-certify.spec.ts` with 27 tests covering all four certification methods (generate key pair, existing public key, re-certify, CA-issued) and every supported algorithm; PQC tests auto-skipped in FIPS mode.
+
+#### Key Auto-Rotation (Scheduled / Policy-Driven)
+
+- **KMIP link chain**: `ReKey` links old and new keys via `ReplacementObjectLink` / `ReplacedObjectLink` ([#859](https://github.com/Cosmian/kms/issues/859)).
+- **Auto-rotation background task**: `run_auto_rotation()` scans all objects due for rotation and rotates them automatically; supports `SymmetricKey` (ReKey), `Certificate` (Certify upsert), and `PrivateKey`/`PublicKey` (RSA/EC/PQC key pairs).
+- **Policy inheritance**: new key inherits `rotate_interval`, `rotate_name`, `rotate_offset` from the old key; old key gets `rotate_interval = 0` to prevent re-rotation.
+- **Rotation lineage in key names**: user-defined UIDs produce `"toto_<uuid>"` children; UUID suffix stripped on subsequent rotations.
+- **Certificate renewal**: creates entirely new objects (cert + key pair) with `ReplacementObjectLink`/`ReplacedObjectLink`; serial number mixed with timestamp to guarantee unique DER bytes per RFC 5280.
+- **CLI**: `sym keys set-rotation-policy` sub-command; `--rotate-interval/--rotate-name/--rotate-offset` flags on all `create` commands; `re-key` sub-commands for RSA, EC, PQC.
+- **Web UI**: Re-Key pages for all key types; *Auto Rotation Policy* panel in all Create and Certificate Certify forms; inline *Auto-Rotate* button in the Locate table.
+- **Server flag**: `--auto-rotation-check-interval-secs` to configure the background cron interval.
+
+#### Renewal Notification System
+
+- **`NotificationsStore` trait**: backed by SQLite, PostgreSQL, MySQL (`notifications` table); Redis uses a no-op store.
+- **`dispatch_renewal_warnings`**: scans objects approaching rotation deadline, creates DB notifications, and sends e-mails via optional SMTP notifier (no feature flag — controlled by `KMS_SMTP_HOST`).
+- **HTTP routes**: `GET /api/notifications`, `GET /api/notifications/count-unread`, `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`.
+- **Web UI**: `NotificationBell` in header with live unread badge and inline Popover; full list at `/notifications`.
+- **Security**: `SmtpConfig::Debug` redacts the SMTP password with `<redacted>`.
+
+#### Multi-HSM Support
+
+- **`[[hsm_instances]]` TOML config**: unlimited simultaneous HSM instances; prefix-based routing (`hsm`, `hsm1`, `hsm2`, …).
+- **`GET /hsm/status`** endpoint: JSON array of all connected HSM instances with per-slot accessibility.
+- **Web UI**: `Objects → HSM Status` page; `Locate.tsx` prefix regex updated to `/^hsm[0-9]*::/`.
+
+#### CI — Automated Release Workflow
+
+- **`release.yml`**: `workflow_dispatch` workflow that creates the release branch, bumps versions, regenerates CBOM, updates Nix vendor hashes in parallel, triggers packaging, retrieves SBOMs, pushes the annotated tag, and merges back via git-flow.
+
+### 🐛 Bug Fixes
+
+#### Key Rotation
+
+- **RSA/EC `CreateKeyPair` fails in FIPS mode**: `rotate_asymmetric_keypair` now fetches old public key's `cryptographic_usage_mask` and constructs explicit per-key attribute structs.
+- **New key pair created PreActive**: auto-rotation now explicitly sets `state = Active` and `activation_date = now` on both new keys.
+- **`rotate_latest=false` on old key**: exactly one key in a lineage carries `rotate_latest=true` at any time.
+- **Certificate `PrivateKeyLink`/`PublicKeyLink` lost after renewal**: restored from stored attributes for `Subject::Certificate` after signing.
+- **`rotate_date` not updated after certificate renewal**: `auto_rotate_key` now sets `certify_attrs.rotate_date = Some(OffsetDateTime::now_utc())` before calling `Certify`.
+- **`initial_date` never set on newly issued certificates**: `build_and_sign_certificate` now stamps `initial_date` when not already present, fixing silent skip in the cron.
+
+#### Web UI — Locate Page
+
+- **Type and Key Format Type showing N/A**: redundant inner `supplementStateFromOwned` call on un-enriched data removed.
+- **Pagination page-size reset**: changed `pageSize` to `defaultPageSize` (uncontrolled).
+
+#### Authentication
+
+- **Stale session cookie warnings**: session cookie key derived deterministically from public URL instead of random.
+- **JWT**: reject symmetric algorithms (HS256/HS384/HS512); constant-time API-token comparison.
+
+#### PKCS#11 / Oracle TDE
+
+- **Oracle TDE wallet migration**: removed `CKF_WRITE_PROTECTED`, added `CKM_AES_KEY_GEN`/`CKM_AES_CBC` to supported mechanisms.
+- **`cosmian_pkcs11_verify`**: OIDC/JWT `--token` mode; enumerates all object classes; pagination loop for `C_FindObjects`.
+
+### 🔒 Security
+
+- **TTLV recursion depth limit** (`MAX_TTLV_DEPTH = 64`): prevents stack-overflow DoS.
+- **HTTP payload limit**: reduced from 10 GB to 64 MB.
+- **Rate limiting**: `actix-governor` middleware via `rate_limit_per_second` (disabled by default).
+- **CORS**: replaced `Cors::permissive()` with `Cors::default()` restricted to `cors_allowed_origins` on KMIP scope.
+- **SSRF prevention**: `redirect::Policy::none()` in JWKS fetcher and OAuth token exchange.
+- **Key zeroization**: `derive_pbkdf2` / `derive_hkdf` return `Zeroizing<Vec<u8>>`.
+- **`MAX_LOCATE_ITEMS = 1000`** server-side cap on `Locate` results.
+
+### 🔨 Refactor
+
+- **`cosmian_kms_logger` internalized**: workspace member at `crate/logger/`; removed `std::env::set_var` (unsafe in edition 2024); fixed all clippy lints.
+- **CLI crates reorganized**: moved to `crate/clients/`; `cosmian_kms_cli` → `cosmian_kms_cli_actions`; flattened `kms/` subdirectories.
+- **Script infrastructure**: 76 scripts reorganized into `.github/scripts/{test,build,package,release,benchmarks,pykmip,sbom,docs,demo,windows,shared}/`.
+- **TLS CLI parameters**: renamed `ssl_xxx` → `tls_xxx` (env vars and flags).
+
+### 📚 Documentation
+
+- **Key auto-rotation**: new `documentation/docs/kmip_support/key_auto_rotation.md` with lifecycle diagrams, KMIP attribute table, and configuration examples.
+- **Break-glass / Local authentication**: new section in `authentication.md` covering TLS client cert auth alongside OIDC/JWT.
+- **Oracle TDE**: architecture diagrams, OIDC keystore auth, wallet migration, `cosmian_pkcs11_verify` usage.
+
+### 🧪 Testing
+
+- **25+ server unit tests** for rekey, rotation metadata, policy inheritance, `rotate_latest`, wrapped/wrapping-key rotation, certificate renewal, and cron end-to-end.
+- **CLI tests**: `set-rotation-policy` (interval/name/offset/disable), link-chain assertion after manual rekey, wrapped-key `SetAttribute`.
+- **PQC certificate CLI tests**: 15 self-signed tests + 3 CA-issued ML-KEM tests + 1 KEM self-sign rejection + 6 format-unsupported tests.
+- **Web UI E2E**: `certificates-certify.spec.ts` (27 tests); `sym-rotation-flow` (Re-Key + set-rotation-policy).
 
 ## [5.20.0] - 2026-04-03
 

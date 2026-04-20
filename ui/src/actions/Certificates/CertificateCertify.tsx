@@ -248,7 +248,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Key Algorithm"
                                     rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
-                                    <Select options={algorithmOptions} />
+                                    <Select options={algorithmOptions} data-testid="cert-algorithm-select" virtual={false} />
                                 </Form.Item>
                             </div>
                         )}
