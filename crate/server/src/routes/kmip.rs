@@ -6,6 +6,7 @@ use actix_web::{
     post,
     web::{Bytes, Data, Json},
 };
+use cosmian_kms_logger::{debug, error, info, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         self, KmipResultHelper,
@@ -20,7 +21,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
 };
-use cosmian_logger::{debug, error, info, trace, warn};
 use serde_json::Value;
 use time::OffsetDateTime;
 use tracing::span;
@@ -519,8 +519,8 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
+    use cosmian_kms_logger::{info, log_init};
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
-    use cosmian_logger::{info, log_init};
 
     #[test]
     fn error_response_message() {

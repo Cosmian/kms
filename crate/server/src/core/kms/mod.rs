@@ -6,11 +6,11 @@ mod permissions;
 
 use std::{collections::HashMap, sync::Arc};
 
+use cosmian_kms_logger::{trace, warn};
 use cosmian_kms_server_database::{
     Database,
     reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmBackend, ObjectsStore},
 };
-use cosmian_logger::{trace, warn};
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};

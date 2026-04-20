@@ -43,6 +43,7 @@
 //! `KeyValue::Structure.attribute = None` for `PublicKey` and `PrivateKey`
 //! objects whenever the KMIP major version is 1.
 
+use cosmian_kms_logger::{info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -61,7 +62,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
-use cosmian_logger::{info, log_init};
 
 use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 

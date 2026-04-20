@@ -1,4 +1,4 @@
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use num_bigint_dig::BigInt;
 use time::OffsetDateTime;
 

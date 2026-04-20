@@ -1040,7 +1040,7 @@ jwt_auth_provider = [
     - added support for SHA1 in RSA key wrapping ([#541](https://github.com/Cosmian/kms/pull/541))
     - add Azure functionality to facilitate BYOK ([#541](https://github.com/Cosmian/kms/pull/541))
     - `attributes get` added support to retrieve Object tags only ([#541](https://github.com/Cosmian/kms/pull/541))
-- *tracing*: print function names while using tracing macros. Use cosmian_logger instead of tracing crate ([#536](https://github.com/Cosmian/kms/pull/536))
+- *tracing*: print function names while using tracing macros. use cosmian_kms_logger instead of tracing crate ([#536](https://github.com/Cosmian/kms/pull/536))
 
 ### 🐛 Bug Fixes
 

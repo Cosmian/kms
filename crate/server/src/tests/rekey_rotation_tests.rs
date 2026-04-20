@@ -36,6 +36,7 @@
 
 use std::sync::Arc;
 
+use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
@@ -51,7 +52,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::{create_rsa_key_pair_request, symmetric_key_create_request},
     },
 };
-use cosmian_logger::log_init;
 
 use crate::{
     config::ServerParams,

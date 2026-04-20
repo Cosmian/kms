@@ -1,4 +1,4 @@
-use cosmian_logger::{debug, info, log_init, trace};
+use cosmian_kms_logger::{debug, info, log_init, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use time::OffsetDateTime;

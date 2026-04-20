@@ -8,6 +8,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     requests::create_rsa_key_pair_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
+use cosmian_kms_logger::{debug, info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -25,7 +26,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use cosmian_logger::{debug, info, log_init};
 use uuid::Uuid;
 
 const EMPTY_TAGS: [&str; 0] = [];

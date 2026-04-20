@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{

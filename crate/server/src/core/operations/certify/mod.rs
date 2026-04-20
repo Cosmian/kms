@@ -1,5 +1,6 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+use cosmian_kms_logger::{debug, info, trace};
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -35,7 +36,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,

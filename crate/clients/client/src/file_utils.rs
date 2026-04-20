@@ -6,7 +6,7 @@ use std::{
 
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use cosmian_kms_client_utils::export_utils::tag_from_object;
-use cosmian_logger::info;
+use cosmian_kms_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{

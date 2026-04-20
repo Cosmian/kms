@@ -14,7 +14,7 @@ use std::{
 use cosmian_kms_client_utils::reexport::cosmian_kmip::ttlv::{
     KmipFlavor, TTLV, from_ttlv, to_ttlv,
 };
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use native_tls::{Identity, TlsConnector};
 use serde::{Serialize, de::DeserializeOwned};
 

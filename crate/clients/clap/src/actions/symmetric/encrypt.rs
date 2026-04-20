@@ -22,7 +22,7 @@ use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, encrypt, random_key, random_nonce},
     wrap::wrap_object_with_key,
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{

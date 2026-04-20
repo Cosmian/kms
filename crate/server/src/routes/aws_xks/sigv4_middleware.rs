@@ -23,11 +23,11 @@ use actix_web::{
     http::StatusCode,
 };
 use chrono::Duration;
+use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Get,
     kmip_types::{KeyFormatType, UniqueIdentifier},
 };
-use cosmian_logger::debug;
 use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},

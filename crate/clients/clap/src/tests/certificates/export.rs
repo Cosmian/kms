@@ -13,7 +13,7 @@ use cosmian_kms_client::{
         import_utils::CertificateInputFormat,
     },
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use openssl::{
     pkcs7::Pkcs7,
     pkcs12::Pkcs12,

@@ -6,7 +6,7 @@ use std::{
     sync::{self, Arc, Weak},
 };
 
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use pkcs11_sys::CK_OBJECT_HANDLE;
 
 use crate::{

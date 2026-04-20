@@ -11,7 +11,7 @@ A flexible logging crate that supports both synchronous and asynchronous environ
 
 ```toml
 [dependencies]
-cosmian_logger = { version = "0.5.4", features = ["full"] }
+cosmian_kms_logger = { version = "0.5.4", features = ["full"] }
 ```
 
 ## Usage
@@ -22,11 +22,11 @@ For applications that need OpenTelemetry and advanced features:
 
 ```toml
 [dependencies]
-cosmian_logger = { version = "0.5.4", features = ["full"] }
+cosmian_kms_logger = { version = "0.5.4", features = ["full"] }
 ```
 
 ```rust
-use cosmian_logger::{tracing_init, TelemetryConfig, TracingConfig};
+use cosmian_kms_logger::{tracing_init, TelemetryConfig, TracingConfig};
 
 #[tokio::main]
 async fn main() {
@@ -55,11 +55,11 @@ For synchronous applications that only need basic logging:
 
 ```toml
 [dependencies]
-cosmian_logger = "0.5.4"
+cosmian_kms_logger = "0.5.4"
 ```
 
 ```rust
-use cosmian_logger::{tracing_init, TracingConfig};
+use cosmian_kms_logger::{tracing_init, TracingConfig};
 
 fn main() {
     let config = TracingConfig {
@@ -81,7 +81,7 @@ fn main() {
 The crate provides logging macros that work with or without the full feature:
 
 ```rust
-use cosmian_logger::{info, debug, warn, error, trace};
+use cosmian_kms_logger::{info, debug, warn, error, trace};
 
 // Function name is automatically prefixed to log messages
 info!("Application initialized");
@@ -111,7 +111,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cosmian_logger = { path = "../path/to/crate/logger" }
+cosmian_kms_logger = { path = "../path/to/crate/logger" }
 ```
 
 ## Basic Usage
@@ -119,7 +119,7 @@ cosmian_logger = { path = "../path/to/crate/logger" }
 For simple applications, use the `log_init` function to set up logging:
 
 ```rust
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use tracing::{debug, info};
 
 fn main() {
@@ -142,11 +142,11 @@ For more advanced use cases with OpenTelemetry integration, enable the `full` fe
 
 ```toml
 [dependencies]
-cosmian_logger = { version = "0.5.4", features = ["full"] }
+cosmian_kms_logger = { version = "0.5.4", features = ["full"] }
 ```
 
 ```rust
-use cosmian_logger::{tracing_init, TelemetryConfig, TracingConfig};
+use cosmian_kms_logger::{tracing_init, TelemetryConfig, TracingConfig};
 use tracing::span;
 use tracing_core::Level;
 
@@ -209,7 +209,7 @@ The `log_init` function is safe to use in tests:
 ```rust
 #[test]
 fn test_something() {
-    cosmian_logger::log_init(Some("debug"));
+    cosmian_kms_logger::log_init(Some("debug"));
     // Your test code
 }
 ```
@@ -219,5 +219,5 @@ fn test_something() {
 The logger crate re-exports common tracing utilities:
 
 ```rust
-use cosmian_logger::reexport::{tracing, tracing_subscriber};
+use cosmian_kms_logger::reexport::{tracing, tracing_subscriber};
 ```

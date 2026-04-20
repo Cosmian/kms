@@ -22,6 +22,7 @@ use cosmian_kms_client::{
     kms_client_bail, kms_client_error,
     reexport::cosmian_http_client::HttpClientConfig,
 };
+use cosmian_kms_logger::{error, info, trace, warn};
 use cosmian_kms_server::{
     config::{
         ClapConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig,
@@ -29,7 +30,6 @@ use cosmian_kms_server::{
     },
     start_kms_server::start_kms_server,
 };
-use cosmian_logger::{error, info, trace, warn};
 use tokio::sync::OnceCell;
 
 use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};

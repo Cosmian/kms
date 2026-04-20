@@ -1,3 +1,4 @@
+use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_operations::DiscoverVersions,
     kmip_2_1::kmip_operations::{
@@ -8,7 +9,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::{TTLV, from_ttlv},
 };
-use cosmian_logger::debug;
 
 use crate::{
     core::{

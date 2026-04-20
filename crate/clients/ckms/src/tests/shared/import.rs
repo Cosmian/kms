@@ -11,7 +11,7 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms
     ImportKeyFormat, KeyUsage,
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 

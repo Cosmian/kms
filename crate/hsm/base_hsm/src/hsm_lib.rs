@@ -1,6 +1,6 @@
 use std::ptr;
 
-use cosmian_logger::warn;
+use cosmian_kms_logger::warn;
 use libloading::Library;
 use pkcs11_sys::{
     CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptUpdate,

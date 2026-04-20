@@ -1,5 +1,5 @@
 use cosmian_kms_cli_actions::actions::symmetric::keys::create_key::CreateKeyAction;
-use cosmian_logger::{debug, log_init};
+use cosmian_kms_logger::{debug, log_init};
 use test_kms_server::TestsContext;
 use uuid::Uuid;
 

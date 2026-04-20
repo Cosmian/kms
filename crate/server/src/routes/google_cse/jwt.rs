@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 
 use super::operations::Role;
@@ -470,7 +470,7 @@ pub(super) async fn validate_tokens(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_logger::{debug, info, log_init, trace};
+    use cosmian_kms_logger::{debug, info, log_init, trace};
 
     use crate::{
         config::IdpAuthConfig,

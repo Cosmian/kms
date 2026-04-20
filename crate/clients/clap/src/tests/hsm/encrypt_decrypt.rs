@@ -9,9 +9,9 @@ use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;

@@ -1,4 +1,4 @@
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use zeroize::Zeroizing;
 
 use crate::{

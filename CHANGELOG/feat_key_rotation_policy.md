@@ -90,9 +90,9 @@
 
 ### 🔨 Build / Refactor
 
-#### Internalize `cosmian_logger`
+#### Internalize `cosmian_kms_logger`
 
-- **`crate/logger`**: `cosmian_logger` is now a first-class workspace member at `crate/logger/` instead of being pulled from crates.io. The source is identical to `cosmian_logger 0.5.4` with the following adaptations for the workspace:
+- **`crate/logger`**: `cosmian_kms_logger` is now a first-class workspace member at `crate/logger/` instead of being pulled from crates.io. The source is identical to `cosmian_kms_logger 0.5.4` with the following adaptations for the workspace:
     - Removed `std::env::set_var` calls (unsafe in edition 2024) — the `rust_log` string from `TracingConfig` is now fed directly to `EnvFilter::try_new()`, removing the need to mutate the process environment.
     - Fixed all clippy lints enforced by the workspace (`struct_excessive_bools`, `items_after_statements`, `manual_inspect`, `unnecessary_debug_formatting`, `str_to_string`, `let_underscore_drop`).
     - `opentelemetry 0.29.x` packages are pinned directly in the crate manifest (workspace uses 0.27 for the server metrics layer; both versions coexist in the dependency tree).

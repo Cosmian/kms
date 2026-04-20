@@ -1,3 +1,4 @@
+use cosmian_kms_logger::{info, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipResultHelper,
     kmip_0::{
@@ -19,7 +20,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     time_normalize,
     ttlv::KmipFlavor,
 };
-use cosmian_logger::{info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;

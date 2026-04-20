@@ -28,6 +28,13 @@
 
 set -euo pipefail
 
+# ─── Portable in-place sed (BSD sed on macOS requires -i '') ──────────────────
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  sedi() { sed -i '' "$@"; }
+else
+  sedi() { sed -i "$@"; }
+fi
+
 # ─── Colour helpers ───────────────────────────────────────────────────────────
 RED=$'\e[31m'
 GREEN=$'\e[32m'
@@ -818,17 +825,17 @@ update_audit_md() {
   add_fix "session-key-warning"   "A08-2"
 
   if [[ -n "$SED_SCRIPT" ]]; then
-    sed -i "$SED_SCRIPT" "$AUDIT_MD"
+    sedi "$SED_SCRIPT" "$AUDIT_MD"
   fi
 
   local TODAY
   TODAY="$(date +%Y-%m-%d)"
-  sed -i "s/\*\*Audit date\*\*: [0-9-]*/\*\*Audit date\*\*: $TODAY/" "$AUDIT_MD"
+  sedi "s/\*\*Audit date\*\*: [0-9-]*/\*\*Audit date\*\*: $TODAY/" "$AUDIT_MD"
 
   if [[ "$OVERALL_STATUS" -eq 0 ]]; then
-    sed -i "s/\*\*Status\*\*:.*/\*\*Status\*\*: ☑ Complete — automated pass (audit.sh ran $TODAY)/" "$AUDIT_MD"
+    sedi "s/\*\*Status\*\*:.*/\*\*Status\*\*: ☑ Complete — automated pass (audit.sh ran $TODAY)/" "$AUDIT_MD"
   else
-    sed -i "s/\*\*Status\*\*:.*/\*\*Status\*\*: ⚠️ Incomplete — ${FAIL_COUNT} check(s) FAILED (audit.sh ran $TODAY)/" "$AUDIT_MD"
+    sedi "s/\*\*Status\*\*:.*/\*\*Status\*\*: ⚠️ Incomplete — ${FAIL_COUNT} check(s) FAILED (audit.sh ran $TODAY)/" "$AUDIT_MD"
   fi
 
   ok "security_audit.md updated — Remediation Priority Matrix status refreshed"

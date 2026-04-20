@@ -19,7 +19,7 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_kms_logger::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 
 use super::KEY_PAIRS_ENDPOINT;

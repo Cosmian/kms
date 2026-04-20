@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{

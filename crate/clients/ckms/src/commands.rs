@@ -9,7 +9,7 @@ use cosmian_kms_cli_actions::{
         reexport::cosmian_http_client::{HttpClientConfig, ProxyParams},
     },
 };
-use cosmian_logger::{info, log_init, trace};
+use cosmian_kms_logger::{info, log_init, trace};
 use dialoguer::{Confirm, Input, Password, Select};
 use url::Url;
 

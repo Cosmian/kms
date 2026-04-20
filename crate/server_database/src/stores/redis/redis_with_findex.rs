@@ -16,7 +16,7 @@ use cosmian_kms_crypto::{
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use time::OffsetDateTime;

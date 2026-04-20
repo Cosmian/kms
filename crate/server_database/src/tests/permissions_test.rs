@@ -7,14 +7,14 @@ use uuid::Uuid;
 use crate::error::DbResult;
 
 pub(super) async fn permissions<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     permissions_users(db).await?;
     permissions_wildcard(db).await?;
     Ok(())
 }
 
 async fn permissions_users<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
 
     let user_id_1 = Uuid::new_v4().to_string();
     let user_id_2 = Uuid::new_v4().to_string();

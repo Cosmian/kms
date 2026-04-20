@@ -11,7 +11,7 @@ use cosmian_kmip::{
 use cosmian_kms_client::cosmian_kmip::{
     kmip_0::kmip_messages::ResponseMessage, kmip_2_1::kmip_operations::Operation,
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 
 // KMIP 1.4 helper: substitute placeholder UID strings using the map of real values
 fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usize, String>) {

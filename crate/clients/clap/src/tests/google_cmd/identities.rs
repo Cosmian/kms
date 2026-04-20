@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{GmailApiConf, write_json_object_to_file};
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use serde::Deserialize;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};

@@ -1,7 +1,7 @@
+use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     RNGSeed, RNGSeedResponse,
 };
-use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, rng::global_rng},

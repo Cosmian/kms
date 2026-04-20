@@ -1,3 +1,4 @@
+use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RNGAlgorithm, State},
     kmip_2_1::{
@@ -14,7 +15,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         },
     },
 };
-use cosmian_logger::{debug, trace};
 use openssl::sha;
 use strum::IntoEnumIterator;
 use time::OffsetDateTime;

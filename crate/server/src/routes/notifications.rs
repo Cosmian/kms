@@ -4,8 +4,8 @@ use actix_web::{
     HttpRequest, get, post,
     web::{Data, Json, Path, Query},
 };
+use cosmian_kms_logger::info;
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::Notification;
-use cosmian_logger::info;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 

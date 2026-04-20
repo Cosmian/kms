@@ -4,13 +4,13 @@
 /// `"hsm1"` prefix to the corresponding HSM instance and that cross-instance access is denied.
 use std::sync::Arc;
 
+use cosmian_kms_logger::{info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::Operation,
     kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     requests::symmetric_key_create_request,
 };
-use cosmian_logger::{info, log_init};
 use uuid::Uuid;
 
 use crate::{

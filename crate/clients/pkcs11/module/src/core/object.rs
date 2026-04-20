@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use log::error;
 use openssl::pkey::PKey;
 use p256::{

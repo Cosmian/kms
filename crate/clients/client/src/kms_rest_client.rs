@@ -22,7 +22,7 @@ use cosmian_kms_client_utils::reexport::{
         UserAccessResponse,
     },
 };
-use cosmian_logger::{info, trace};
+use cosmian_kms_logger::{info, trace};
 use serde::Serialize;
 
 use crate::{

@@ -7,7 +7,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::UniqueIdentifier, read_object_from_json_ttlv_file,
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 

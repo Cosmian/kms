@@ -116,7 +116,7 @@ impl Drop for LoggingGuards {
 /// # Usage
 ///
 /// ```rust-ignore
-/// use cosmian_logger::{telemetry_init, TelemetryConfig};
+/// use cosmian_kms_logger::{telemetry_init, TelemetryConfig};
 /// use tracing::span;
 /// use tracing_core::Level;
 ///

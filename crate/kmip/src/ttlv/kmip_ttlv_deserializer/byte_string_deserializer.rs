@@ -1,4 +1,4 @@
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use serde::de::{self, DeserializeSeed, SeqAccess};
 use tracing::instrument;
 

@@ -24,6 +24,7 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kms_logger::{debug, error, info, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
@@ -38,7 +39,6 @@ use cosmian_kms_server_database::reexport::{
         openssl::kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,

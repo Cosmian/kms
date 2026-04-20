@@ -8,7 +8,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::{Decrypt, DecryptResponse},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::user_key::unwrap_user_decryption_key_object;

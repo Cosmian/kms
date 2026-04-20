@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::actions::{hash::HashAction, mac::CHashingAlgorithm};
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
 use super::utils::extract_uids::extract_uid;

@@ -18,7 +18,7 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     },
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::{
     pkcs7::Pkcs7,

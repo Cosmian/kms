@@ -159,7 +159,7 @@ cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "ser",
 ] }
-cosmian_logger = { path = "crate/logger", version = "5.20.0" }
+cosmian_kms_logger = { path = "crate/logger", version = "5.20.0" }
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = [
   "editor",

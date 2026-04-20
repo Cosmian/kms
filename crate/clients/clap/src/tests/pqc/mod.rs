@@ -1,4 +1,4 @@
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 

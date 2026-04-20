@@ -7,6 +7,7 @@ use actix_web::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use clap::crate_version;
+use cosmian_kms_logger::{info, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
@@ -15,7 +16,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
-use cosmian_logger::{info, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use url::Url;

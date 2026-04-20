@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
 
+use cosmian_kms_logger::{debug, warn};
 use cosmian_kms_server_database::{
     MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
-use cosmian_logger::{debug, warn};
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{

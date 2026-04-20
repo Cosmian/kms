@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;

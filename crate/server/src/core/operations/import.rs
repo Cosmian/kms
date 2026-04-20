@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use cosmian_kms_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 use cosmian_kms_server_database::reexport::{
@@ -29,7 +30,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
-use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 

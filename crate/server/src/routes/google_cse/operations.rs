@@ -9,6 +9,7 @@ use base64::{
 };
 use chrono::{Duration, Utc};
 use clap::crate_version;
+use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
@@ -21,7 +22,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::{CryptoResultHelper, crypto::rsa::sign_rsa_digest_with_algorithm},
 };
-use cosmian_logger::{debug, trace};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,

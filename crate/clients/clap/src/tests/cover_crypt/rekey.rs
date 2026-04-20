@@ -11,7 +11,7 @@ use cosmian_kms_crypto::{
         cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
     },
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 

@@ -5,7 +5,7 @@ use cosmian_kms_client::{
     KmsClient, kmip_2_1::kmip_types::UniqueIdentifier,
     reexport::cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request,
 };
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 
 use crate::{
     actions::{console, shared::utils::apply_rotation_policy_if_set},

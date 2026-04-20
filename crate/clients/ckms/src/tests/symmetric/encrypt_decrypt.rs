@@ -12,7 +12,7 @@ use cosmian_kms_cli_actions::{
         },
     },
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;

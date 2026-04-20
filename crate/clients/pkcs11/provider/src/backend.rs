@@ -12,7 +12,7 @@ use ckms::reexport::cosmian_kms_cli_actions::reexport::{
     },
     cosmian_kms_client::KmsClient,
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_kms_logger::{debug, trace, warn};
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     core::object::Object,

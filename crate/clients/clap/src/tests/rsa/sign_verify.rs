@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
     kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
 };
-use cosmian_logger::{log_init, trace};
+use cosmian_kms_logger::{log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -132,7 +132,7 @@ async fn rsa_streaming_sign_and_verify_cli() -> KmsCliResult<()> {
 
 #[tokio::test]
 async fn test_rsa_sign() -> KmsCliResult<()> {
-    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
+    // to enable this, add cosmian_kms_logger = { workspace = true } to dev-dependencies in Cargo.toml
     log_init(None);
 
     let ctx = start_default_test_kms_server().await;

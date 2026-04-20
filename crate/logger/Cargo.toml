@@ -1,5 +1,5 @@
 [package]
-name = "cosmian_logger"
+name = "cosmian_kms_logger"
 version = { workspace = true }
 edition = { workspace = true }
 rust-version = { workspace = true }
@@ -24,11 +24,10 @@ full = [
 ]
 
 [lib]
-name = "cosmian_logger"
+name = "cosmian_kms_logger"
 path = "src/lib.rs"
 
 [dependencies]
-# opentelemetry 0.29.x — pinned directly (workspace uses 0.27 for the server metrics layer)
 opentelemetry = { version = "0.29", features = ["trace", "metrics"] }
 opentelemetry-otlp = { version = "0.29", features = [
     "trace",

@@ -12,7 +12,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 
 use crate::{crypto::EncryptionSystem, error::CryptoError};
 

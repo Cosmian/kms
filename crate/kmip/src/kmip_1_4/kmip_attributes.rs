@@ -1,6 +1,6 @@
 use std::fmt::{self, Formatter};
 
-use cosmian_logger::warn;
+use cosmian_kms_logger::warn;
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,

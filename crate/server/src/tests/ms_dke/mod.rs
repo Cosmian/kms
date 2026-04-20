@@ -55,7 +55,7 @@ const ENCRYPTED_DATA: &str = r#"{
 #[ignore = "Requires external MS DKE service and credentials"]
 #[tokio::test]
 async fn decrypt_data_test() -> KResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
 
     let app = test_utils::test_app(None, None).await;
 

@@ -14,6 +14,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         },
     },
 };
+use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
@@ -25,7 +26,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::{secret_data_create_request, symmetric_key_create_request},
     },
 };
-use cosmian_logger::log_init;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 

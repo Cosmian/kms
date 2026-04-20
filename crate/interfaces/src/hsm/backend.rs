@@ -17,7 +17,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_kms_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 use zeroize::Zeroizing;
 

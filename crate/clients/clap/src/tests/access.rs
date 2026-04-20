@@ -4,7 +4,7 @@ use cosmian_kms_client::{
     kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_logger::{log_init, trace};
+use cosmian_kms_logger::{log_init, trace};
 use serial_test::serial;
 use tempfile::TempDir;
 #[cfg(not(feature = "non-fips"))]

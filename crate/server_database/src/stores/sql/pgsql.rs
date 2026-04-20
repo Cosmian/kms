@@ -764,7 +764,7 @@ impl ObjectsStore for PgPool {
                 user_must_be_owner,
                 vendor_id,
             );
-            cosmian_logger::debug!("PG find query: {}", locate.sql);
+            cosmian_kms_logger::debug!("PG find query: {}", locate.sql);
             let stmt = client
                 .prepare(&locate.sql)
                 .await

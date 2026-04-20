@@ -14,7 +14,7 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
-use cosmian_logger::{info, trace};
+use cosmian_kms_logger::{info, trace};
 use serde::Deserialize;
 use strum::EnumIter;
 use time::OffsetDateTime;

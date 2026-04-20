@@ -701,7 +701,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use cosmian_logger::debug;
+    use cosmian_kms_logger::debug;
 
     use super::ClapConfig;
 

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use cosmian_kms_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
-use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use tracing::span;
 

@@ -30,8 +30,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State::{Active,PreActive};
 #[cfg(feature = "non-fips")]
-use cosmian_logger::warn;
-use cosmian_logger::{debug, info, trace};
+use cosmian_kms_logger::warn;
+use cosmian_kms_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},

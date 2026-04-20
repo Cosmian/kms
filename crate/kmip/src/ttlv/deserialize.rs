@@ -1,6 +1,6 @@
 use core::fmt;
 
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use serde::{
     Deserialize,
     de::{self, MapAccess, SeqAccess, Visitor},

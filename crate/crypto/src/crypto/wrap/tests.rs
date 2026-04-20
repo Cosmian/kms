@@ -15,9 +15,9 @@ use cosmian_kmip::{
     },
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::info;
+use cosmian_kms_logger::info;
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::{
     ec::{EcGroup, EcKey},

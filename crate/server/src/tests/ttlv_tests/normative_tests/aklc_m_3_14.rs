@@ -1,4 +1,5 @@
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_1_4::kmip_operations::ModifyAttribute;
+use cosmian_kms_logger::{info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -19,7 +20,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
-use cosmian_logger::{info, log_init};
 use time::OffsetDateTime;
 
 use crate::{

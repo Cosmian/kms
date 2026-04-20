@@ -13,7 +13,7 @@ use cosmian_kms_client::{
         export_utils::CertificateExportFormat, import_utils::CertificateInputFormat,
     },
 };
-use cosmian_logger::{debug, info, log_init};
+use cosmian_kms_logger::{debug, info, log_init};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};

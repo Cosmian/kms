@@ -195,7 +195,7 @@ let openssl_key = convert_key(&kmip_key)?;
 
 ### Development Dependencies
 
-- **cosmian_logger**: Logging for tests
+- **cosmian_kms_logger**: Logging for tests
 - **hex**: Hexadecimal encoding for tests
 
 ## Feature Flags

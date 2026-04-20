@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use cosmian_kms_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
@@ -34,7 +35,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 

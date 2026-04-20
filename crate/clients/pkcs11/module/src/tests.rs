@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_C_INITIALIZE_ARGS_PTR, CK_FALSE, CK_FUNCTION_LIST,
     CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INVALID_HANDLE, CK_MECHANISM_INFO, CK_MECHANISM_TYPE,
