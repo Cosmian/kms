@@ -62,6 +62,7 @@ test.describe("Certificate certify – generate key pair (self-signed)", () => {
     });
 
     test("self-signed Ed25519", async ({ page }) => {
+        test.skip(FIPS_MODE, "Ed25519 not available in FIPS mode");
         const id = await createCertificate(page, "Ed25519");
         expect(id).toMatch(/[0-9a-f-]{36}/i);
     });
