@@ -1035,7 +1035,7 @@ jwt_auth_provider = [
 
 - Example of configuration file: replace deprecated [auth] section with [idp_auth]
 
-## [5.11.1] - 2025-11-04
+## [5.21.0] - 2025-11-04
 
 ### 📚 Documentation
 

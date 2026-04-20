@@ -50,6 +50,8 @@ pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCe
 #[allow(dead_code)]
 pub(crate) static ONCE_SERVER_WITH_MULTI_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
+#[cfg(feature = "non-fips")]
+pub(crate) static ONCE_PQC_TLS: OnceCell<TestsContext> = OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
@@ -155,6 +157,10 @@ pub enum TlsMode {
     PlainHttp,
     HttpsNoClientCa,
     HttpsWithClientCa,
+    /// HTTPS with a PQC (ML-DSA-44) server certificate — no client certificate required.
+    /// Only available in non-FIPS builds where PQC algorithms are enabled.
+    #[cfg(feature = "non-fips")]
+    HttpsPqcCert,
 }
 
 impl TlsMode {
@@ -841,6 +847,46 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         })
 }
 
+/// Start a KMS server whose HTTPS listener is protected by a PQC (ML-DSA-44) TLS certificate.
+///
+/// This verifies that the server infrastructure accepts a customer-provided PQC X.509
+/// certificate as its TLS server certificate.  The ML-DSA-44 cert+key pair lives in
+/// `test_data/certificates/client_server/server/` and was generated with OpenSSL 3.6.
+///
+/// Only available in non-FIPS builds because the non-FIPS OpenSSL provider is needed to
+/// load and use ML-DSA-44 keys.
+#[cfg(feature = "non-fips")]
+pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
+    crate::init_openssl_providers_for_tests();
+
+    trace!("Starting test server with PQC (ML-DSA-44) TLS certificate");
+    ONCE_PQC_TLS
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 11)?;
+            let db_config = get_db_config(port, None);
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::HttpsPqcCert,
+                jwt: JwtAuth::Disabled,
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (PQC TLS): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with PQC TLS cert: {e}");
+            std::process::abort();
+        })
+}
+
 #[derive(Debug)]
 pub struct TestsContext {
     pub server_port: u16,
@@ -1134,6 +1180,24 @@ fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) ->
     let clients_ca = mode
         .use_known_ca_list()
         .then(|| root_dir().join("../../test_data/certificates/client_server/ca/ca.crt"));
+
+    // PQC-signed TLS certificate: always use PEM files regardless of FIPS mode
+    // (PKCS#12 does not support PQC private keys; only available in non-FIPS builds).
+    #[cfg(feature = "non-fips")]
+    if matches!(mode, TlsMode::HttpsPqcCert) {
+        return TlsConfig {
+            tls_cert_file: Some(
+                root_dir().join("../../test_data/certificates/client_server/server/ml_dsa_44.crt"),
+            ),
+            tls_key_file: Some(
+                root_dir().join("../../test_data/certificates/client_server/server/ml_dsa_44.key"),
+            ),
+            clients_ca_cert_file: clients_ca,
+            tls_cipher_suites: server_tls_cipher_suites,
+            ..Default::default()
+        };
+    }
+
     #[cfg(feature = "non-fips")]
     {
         TlsConfig {

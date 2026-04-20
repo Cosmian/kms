@@ -16,6 +16,8 @@ use cosmian_kms_client::{
 use cosmian_kms_logger::{debug, info, log_init};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
+#[cfg(feature = "non-fips")]
+use test_kms_server::start_test_kms_server_with_pqc_tls;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
@@ -1427,6 +1429,223 @@ async fn test_certify_pqc_slh_dsa_ca_signs_ml_dsa_leaf() -> KmsCliResult<()> {
     assert_eq!(cert_link.to_string(), ca_cert_id);
     let leaf_pub_key_id = leaf_attributes.get_link(LinkType::PublicKeyLink).unwrap();
     assert!(!leaf_pub_key_id.to_string().is_empty());
+
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PQC TLS + PKI compliance tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verify that the KMS server can be configured with a PQC (ML-DSA-44) X.509 certificate
+/// as its TLS server certificate, and that KMIP operations succeed over that HTTPS connection.
+///
+/// Requires a TLS client that supports the ML-DSA-44 TLS signature scheme
+/// (draft-ietf-tls-mldsa). The `reqwest` crate with `native-tls` on macOS uses Apple's
+/// Security.framework which does not yet implement PQC TLS signature algorithms. The test is
+/// therefore `#[ignore]`d by default; run it explicitly with `-- --ignored` on a system where
+/// the TLS client supports ML-DSA-44 (e.g. Linux with system OpenSSL ≥ 3.5).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+#[ignore = "requires a TLS client that supports ML-DSA-44 (not available via native-tls on macOS)"]
+async fn test_server_with_pqc_tls_cert() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_test_kms_server_with_pqc_tls().await;
+
+    // Perform a KMIP Certify operation over the PQC TLS connection.
+    // If the TLS handshake fails (unsupported PQC signature scheme), this will error.
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC TLS Test Cert".to_owned(),
+        ),
+        tags: vec!["pqc_tls_test".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    assert!(!cert_id.is_empty(), "certificate ID must not be empty");
+    Ok(())
+}
+
+/// Verify that a KMS-generated PQC (ML-DSA-44) certificate is fully X.509 v3 compliant:
+///   - X.509 version 3
+///   - Both outer and TBS `signatureAlgorithm` carry the `id-ml-dsa-44` OID
+///     (2.16.840.1.101.3.4.3.17 per FIPS 204 / draft-ietf-lamps-dilithium-certificates)
+///   - `subjectPublicKeyInfo.algorithm` carries the same OID
+///   - Subject and Issuer are correctly encoded (self-signed ⇒ equal)
+///   - Validity period is non-degenerate
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_pqc_x509_structural_compliance() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC X509 Compliance Test".to_owned(),
+        ),
+        tags: vec!["pqc_x509_compliance".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "PQC X509 Compliance Test").await;
+
+    // --- x509_parser structural checks ---
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER as X.509");
+
+    // Must be X.509 v3 (encoded as integer value 2 per RFC 5280)
+    assert_eq!(
+        cert.tbs_certificate.version,
+        X509Version::V3,
+        "certificate must be X.509 v3"
+    );
+
+    // id-ml-dsa-44 OID per FIPS 204 / draft-ietf-lamps-dilithium-certificates
+    let ml_dsa_44 = oid!(2.16.840.1.101.3.4.3.17);
+
+    // Outer signatureAlgorithm must use id-ml-dsa-44
+    assert_eq!(
+        cert.signature_algorithm.algorithm, ml_dsa_44,
+        "outer signatureAlgorithm OID must be id-ml-dsa-44 (2.16.840.1.101.3.4.3.17)"
+    );
+
+    // TBS signatureAlgorithm must match outer (RFC 5280 §4.1.1.2)
+    assert_eq!(
+        cert.tbs_certificate.signature.algorithm, ml_dsa_44,
+        "TBS signatureAlgorithm OID must be id-ml-dsa-44 and match outer signatureAlgorithm"
+    );
+
+    // SubjectPublicKeyInfo algorithm must use id-ml-dsa-44
+    assert_eq!(
+        cert.tbs_certificate.subject_pki.algorithm.algorithm, ml_dsa_44,
+        "SubjectPublicKeyInfo algorithm OID must be id-ml-dsa-44"
+    );
+
+    // Common Name must match what we requested
+    let cn = cert
+        .subject()
+        .iter_common_name()
+        .next()
+        .expect("certificate has no Common Name")
+        .as_str()
+        .expect("CN is not valid UTF-8");
+    assert_eq!(cn, "PQC X509 Compliance Test", "Subject CN mismatch");
+
+    // Self-signed: Issuer DN must equal Subject DN
+    assert_eq!(
+        cert.tbs_certificate.issuer.to_string(),
+        cert.tbs_certificate.subject.to_string(),
+        "self-signed certificate: Issuer DN must equal Subject DN"
+    );
+
+    // Validity period must be non-degenerate (notBefore < notAfter)
+    assert!(
+        cert.tbs_certificate.validity.not_before < cert.tbs_certificate.validity.not_after,
+        "notBefore must be earlier than notAfter"
+    );
+
+    Ok(())
+}
+
+/// Verify that a CA PQC certificate can issue a leaf certificate and that the
+/// resulting signature is cryptographically valid.
+///
+/// Steps:
+///   1. Generate a self-signed ML-DSA-44 CA certificate via the KMS.
+///   2. Issue an ML-DSA-65 leaf certificate signed by the CA.
+///   3. Check KMIP link consistency (issuer link, public key link).
+///   4. Verify that `leaf.issuer == ca.subject` (DN match).
+///   5. Use OpenSSL's `X509::verify()` (backed by OpenSSL 3.x EVP, which supports
+///      PQC algorithms) to cryptographically verify the leaf's signature against the
+///      CA's public key.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_pqc_ca_signature_verification() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Create a self-signed ML-DSA-44 CA certificate
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-DSA-44 PQC Root CA".to_owned(),
+        ),
+        tags: vec!["pqc_sig_verify_ca".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, ca_attrs, ca_der) =
+        fetch_pqc_certificate(ctx, &ca_cert_id, "ML-DSA-44 PQC Root CA").await;
+    let ca_private_key_id = ca_attrs
+        .get_link(LinkType::PrivateKeyLink)
+        .expect("CA certificate must have a private key link");
+
+    // Issue an ML-DSA-65 leaf certificate signed by the ML-DSA-44 CA
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa65,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-DSA-65 PQC Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_private_key_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["pqc_sig_verify_leaf".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, leaf_attrs, leaf_der) =
+        fetch_pqc_certificate(ctx, &leaf_cert_id, "ML-DSA-65 PQC Leaf").await;
+
+    // KMIP link: the leaf's certificate link must point to the CA
+    let issuer_link = leaf_attrs
+        .get_link(LinkType::CertificateLink)
+        .expect("leaf must have a CertificateLink pointing to its issuer");
+    assert_eq!(
+        issuer_link.to_string(),
+        ca_cert_id,
+        "leaf CertificateLink must point to the CA certificate"
+    );
+
+    // x509_parser: leaf Issuer DN must equal CA Subject DN
+    let (_, ca_x509p) = X509Certificate::from_der(&ca_der).expect("failed to parse CA DER");
+    let (_, leaf_x509p) = X509Certificate::from_der(&leaf_der).expect("failed to parse leaf DER");
+    assert_eq!(
+        leaf_x509p.tbs_certificate.issuer.to_string(),
+        ca_x509p.tbs_certificate.subject.to_string(),
+        "leaf Issuer DN must equal CA Subject DN"
+    );
+
+    // OpenSSL: cryptographic signature verification.
+    // X509::verify() calls OpenSSL's X509_verify() which uses the EVP layer and
+    // supports PQC algorithms (ML-DSA) via the OpenSSL 3.x non-FIPS provider.
+    let ca_x509 = X509::from_der(&ca_der).expect("failed to load CA cert into OpenSSL");
+    let leaf_x509 = X509::from_der(&leaf_der).expect("failed to load leaf cert into OpenSSL");
+    let ca_pub_key = ca_x509
+        .public_key()
+        .expect("failed to extract CA public key");
+    let signature_valid = leaf_x509
+        .verify(&ca_pub_key)
+        .expect("OpenSSL signature verification must not error for a well-formed PQC certificate");
+    assert!(
+        signature_valid,
+        "leaf certificate signature must be cryptographically valid under the CA public key"
+    );
 
     Ok(())
 }
