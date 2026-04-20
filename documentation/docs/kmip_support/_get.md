@@ -26,8 +26,8 @@ error if there is more than one valid certificate chain.
 
 #### Implementation
 
-The `Get` operation allows exporting `Active` objects only.
-When an object is `Destroyed` or `Deactivated`, the `Export` operation must be used instead.
+The `Get` operation allows retrieving `Active`, `Pre-Active`, and `Compromised` objects.
+When an object is `Deactivated`, `Destroyed`, or `Destroyed Compromised`, the `Export` operation must be used instead.
 
 Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
 for more details.
@@ -93,7 +93,7 @@ Corresponding [KMS CLI](../../kms_clients/index.md) command:
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "Object",
+          "tag": "SymmetricKey",
           "type": "Structure",
           "value": [
             {
@@ -247,7 +247,7 @@ more details.
           "value": "df871e79-0923-47cd-9078-bbec83287c85"
         },
         {
-          "tag": "Object",
+          "tag": "PrivateKey",
           "type": "Structure",
           "value": [
             {
@@ -467,7 +467,7 @@ Please note:
           "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
         },
         {
-          "tag": "Object",
+          "tag": "PrivateKey",
           "type": "Structure",
           "value": [
             {
@@ -619,7 +619,7 @@ Please note:
           "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
         },
         {
-          "tag": "Object",
+          "tag": "Certificate",
           "type": "Structure",
           "value": [
             {
@@ -729,7 +729,7 @@ Please note:
           "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
         },
         {
-          "tag": "Object",
+          "tag": "PrivateKey",
           "type": "Structure",
           "value": [
             {

@@ -80,9 +80,9 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "Data",
+          "tag": "MACData",
           "type": "ByteString",
-          "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
+          "value": "A3C0547A1B2E3F4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8"
         }
       ]
     }
@@ -91,6 +91,10 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
 #### Example - Stream MAC
 
 Computing MAC for a large file in multiple parts using SHA3-512.
+
+**Note**: The Cosmian KMS MAC implementation processes data eagerly — a request with `FinalIndicator: false` (Middle)
+will immediately compute and return the `MACData` for the data supplied so far, rather than returning a new
+`CorrelationValue`. Use `FinalIndicator: true` to explicitly mark the final chunk.
 
 Corresponding [KMS CLI](../../kms_clients/index.md) commands:
 
@@ -211,9 +215,9 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "CorrelationValue",
+          "tag": "MACData",
           "type": "ByteString",
-          "value": "51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F"
+          "value": "A3C0547A1B2E3F4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8"
         }
       ]
     }
@@ -274,9 +278,9 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "Data",
+          "tag": "MACData",
           "type": "ByteString",
-          "value": "511BDAFDB2D059BD94FC72B8301ABF01DB9E02127420AED072B891A83952B88063DF3470225ACC6D46AD503E5E86B16BAEB581F218A148472120A9B541E1AF5D"
+          "value": "A3C0547A1B2E3F4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8"
         }
       ]
     }

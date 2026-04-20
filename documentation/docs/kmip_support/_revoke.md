@@ -14,8 +14,10 @@ the current date and time.
 #### Implementation
 
 The state of the object is kept as specified but the revocation reason is currently not maintained.
-Once an Object is revoked, it can only be retrieved using the `Export` operation. The `Get` operation will return an
-error.
+
+An object placed in `Deactivated` state can only be retrieved using the `Export` operation; the `Get` operation will
+return an error for `Deactivated` objects. An object placed in `Compromised` state (revocation reason is
+"key compromise" or "CA compromise") can still be retrieved with both `Get` and `Export`.
 
 A `Revoked` object can be destroyed using the `Destroy` operation.
 
@@ -43,8 +45,14 @@ Corresponding [KMS CLI](../../kms_clients/index.md) command:
         },
         {
           "tag": "RevocationReason",
-          "type": "TextString",
-          "value": "key was compromised"
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "RevocationReasonCode",
+              "type": "Enumeration",
+              "value": "KeyCompromise"
+            }
+          ]
         }
       ]
     }
