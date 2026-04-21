@@ -15,7 +15,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 TARGET="${REPO_ROOT}/documentation/docs/configuration/server_configuration_file.md"
 PKG_TOML="${REPO_ROOT}/pkg/kms.toml"
 KMS_TEMPLATE="${REPO_ROOT}/crate/server/kms_template.toml"
-TOML_TMP=$(mktemp /tmp/kms_default_config.XXXXXX.toml)
+TOML_TMP=$(mktemp /tmp/kms_default_configXXXXXX)
+mv "${TOML_TMP}" "${TOML_TMP}.toml"
+TOML_TMP="${TOML_TMP}.toml"
 trap 'rm -f "${TOML_TMP}"' EXIT
 
 # Build the server binary once (non-fips, debug)
