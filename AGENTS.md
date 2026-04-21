@@ -422,6 +422,10 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 # Web UI at http://localhost:9998/ui
 ```
 
+**During debugging**: whenever you add temporary code (a log, a hardcoded value, a
+relaxed auth/CORS/TLS config, a test-only endpoint), mark it immediately with a comment:
+`// TODO: debug — remove before shipping`. This makes residue findable at a glance.
+
 ---
 
 ## 13. Nix packaging
@@ -532,3 +536,40 @@ The integrations section is the most commonly extended area. Keep these four vie
 **documentation/docs/index.md** should not be updated with new integrations; it is a high-level overview and the README is the main entry point for users to discover integrations.
 
 **Never** put an integration in a different category in README than it appears in mkdocs.yml, or leave it out of the README table if it has a mkdocs page.
+
+---
+
+## 16. Post-task self-review (mandatory)
+
+### When to run this
+
+- After completing each task or subtask in a multi-step plan.
+- If the diff is >200 lines OR touches >2 files.
+- Before marking **the last** todo item as "completed".
+- Before suggesting the user commits or pushes.
+
+After completing the task, run through every item below; if any answer is "yes", fix it
+before finishing.
+
+### Checklist
+
+1. **Scope audit** — _"Did I change any file or code path that is not strictly required
+   by the task I was asked to perform?"_
+   Compare each modified file against the task description. Remove any change that was
+   not requested and is not a direct, necessary consequence of the requested change.
+
+2. **Security-posture delta** — _"Did any change widen the attack surface compared to
+   the codebase before my changes ? Did any change cause a vulnerability ? Did I enform the user of any compromise or security concern that is in this code ?"
+
+3. **Feature-flag consistency** — _"Are my additions gated behind the same feature
+   flags as the surrounding code?"_
+
+4. **Diff review** — Run `git diff --stat` and `git diff` before declaring done.
+   Every hunk must be explainable by the task. If a hunk surprises you, investigate
+   and revert if it is not justified.
+
+
+### Reporting
+
+If the self-review finds issues, fix them and note what was cleaned up in a
+brief summary to the user. Do **not** skip the self-review for multi-task workflows.
