@@ -589,7 +589,8 @@ test_command() {
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
         --keep PROTECCIO_IP --keep PROTECCIO_PASSWORD --keep PROTECCIO_SLOT \
         --keep PROTECCIO_PKCS11_LIB --keep PROTECCIO_PORT \
-        --keep CRYPT2PAY_PASSWORD \
+        --keep CRYPT2PAY_PASSWORD --keep CRYPT2PAY_SLOT_ID \
+        --keep OVPN_CONF \
         --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \
