@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:b29cacbc-f0d2-4412-9bfd-f31260c0a35a",
+  "serialNumber": "urn:uuid:9e57fae4-1d47-4120-9392-733f86d321fa",
   "metadata": {
-    "timestamp": "2026-04-08T22:11:17.736837+00:00",
+    "timestamp": "2026-04-21T14:48:59.021942+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,19 +20,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/034d22cajvj7p5w4jbifn3an47y4akyk-cosmian-kms-server-dynamic-5.20.1.drv",
+      "bom-ref": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv",
       "name": "cosmian-kms-server-dynamic",
-      "version": "5.20.1",
-      "purl": "pkg:nix/cosmian-kms-server-dynamic@5.20.1",
-      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.20.1:*:*:*:*:*:*:*",
+      "version": "5.21.0",
+      "purl": "pkg:nix/cosmian-kms-server-dynamic@5.21.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.21.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/f09852b578p5a0z945ary9aksc5k3jnf-cosmian-kms-server-dynamic-5.20.1"
+          "value": "/nix/store/ipbpg97j0rbx5hq073yln544s2bjdh7p-cosmian-kms-server-dynamic-5.21.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/034d22cajvj7p5w4jbifn3an47y4akyk-cosmian-kms-server-dynamic-5.20.1.drv"
+          "value": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv"
         }
       ]
     }
@@ -94,28 +94,28 @@
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
+      "bom-ref": "/nix/store/0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv",
       "name": "openssl",
-      "version": "3.6.0",
-      "purl": "pkg:nix/openssl@3.6.0",
-      "cpe": "cpe:2.3:a:openssl:openssl:3.6.0:*:*:*:*:*:*:*",
+      "version": "3.6.2",
+      "purl": "pkg:nix/openssl@3.6.2",
+      "cpe": "cpe:2.3:a:openssl:openssl:3.6.2:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/387k2rw8xsn6p1km2yz36phg74k5yp1s-openssl-3.6.0"
+          "value": "/nix/store/zvvqgqj5ry34sf6rkd5isqjr5vpf3mp1-openssl-3.6.2"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv"
+          "value": "/nix/store/0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv"
         }
       ]
     }
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/034d22cajvj7p5w4jbifn3an47y4akyk-cosmian-kms-server-dynamic-5.20.1.drv",
+      "ref": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv",
       "dependsOn": [
-        "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv"
+        "/nix/store/0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv"
       ]
     },
     {
@@ -134,7 +134,7 @@
       "ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
+      "ref": "/nix/store/0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv",
       "dependsOn": [
         "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
       ]
@@ -510,328 +510,6 @@
         }
       ],
       "tools": [
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-69418",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69418",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69418",
-            "name": "NVD"
-          },
-          "score": 4.0
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-68160",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-68160",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-68160",
-            "name": "NVD"
-          },
-          "score": 4.7
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2026-22796",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-22796",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-22796",
-            "name": "NVD"
-          },
-          "score": 5.3
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-15469",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15469",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15469",
-            "name": "NVD"
-          },
-          "score": 5.5
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2026-22795",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-22795",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-22795",
-            "name": "NVD"
-          },
-          "score": 5.5
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-15468",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15468",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15468",
-            "name": "NVD"
-          },
-          "score": 5.9
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-66199",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-66199",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-66199",
-            "name": "NVD"
-          },
-          "score": 5.9
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-11187",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-11187",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-11187",
-            "name": "NVD"
-          },
-          "score": 6.1
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-69419",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69419",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69419",
-            "name": "NVD"
-          },
-          "score": 7.4
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-69420",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69420",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69420",
-            "name": "NVD"
-          },
-          "score": 7.5
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-69421",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69421",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-69421",
-            "name": "NVD"
-          },
-          "score": 7.5
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
-        {
-          "name": "vulnix"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2026-2673",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-2673",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-2673",
-            "name": "NVD"
-          },
-          "score": 7.5
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        }
-      ]
-    },
-    {
-      "bom-ref": "/nix/store/61xjndv5ml9rj9d70yb5rkb10j98z68h-openssl-3.6.0.drv",
-      "id": "CVE-2025-15467",
-      "source": {
-        "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15467",
-        "name": "NVD"
-      },
-      "ratings": [
-        {
-          "source": {
-            "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-15467",
-            "name": "NVD"
-          },
-          "score": 8.8
-        }
-      ],
-      "tools": [
-        {
-          "name": "grype"
-        },
         {
           "name": "vulnix"
         }

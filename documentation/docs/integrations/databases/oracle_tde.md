@@ -57,12 +57,12 @@ graph TD
 
 Before configuring a HSM such as described in [Oracle Key Vault](https://docs.oracle.com/en/database/oracle/key-vault/21.10/okvhm/index.html), some steps are needed:
 
-For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip).
+For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.21.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.21.0_linux-amd64.zip).
 
 - Extract the package:
 
     ```bash
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.21.0_linux-amd64.zip
     ```
 
 - Copy the PKCS#11 provider library to the Oracle Key Vault server to `/usr/local/okv/hsm/generic/libcosmian_pkcs11.so`
@@ -137,11 +137,11 @@ graph TD
 
 1. **Install Cosmian PKCS#11 Library**
 
-    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.20.1/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip).
+    For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.21.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.21.0_linux-amd64.zip).
 
     ```bash
     # Extract library from PKCS#11 ZIP package.
-    unzip cosmian-pkcs11-non-fips-static-openssl_5.20.1_linux-amd64.zip
+    unzip cosmian-pkcs11-non-fips-static-openssl_5.21.0_linux-amd64.zip
 
     # Copy to Oracle's HSM directory
     mkdir -p /opt/oracle/extapi/64/hsm/Cosmian/
