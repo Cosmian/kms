@@ -1,7 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import { FormUpload } from "../../components/common/FormUpload";
 import { azureKekKeyUsage, azureKekTags } from "../../utils/azureKek";
 import { sendKmipRequest } from "../../utils/utils";

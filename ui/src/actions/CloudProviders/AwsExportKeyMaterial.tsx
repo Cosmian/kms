@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg/cosmian_kms_client_wasm";
 import ExternalLink from "../../components/common/ExternalLink";

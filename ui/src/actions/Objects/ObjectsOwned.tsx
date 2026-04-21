@@ -1,6 +1,6 @@
 import { Button, Card, Space, Table, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
 interface OwnedObject {
