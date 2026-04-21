@@ -50,7 +50,7 @@ aes-gcm-siv = { version = "0.11.1", optional = true }
 argon2 = { version = "0.5", optional = true }
 chrono = { workspace = true, optional = true }
 base64 = { workspace = true }
-cbc = { workspace = true, optional = true }
+cbc = { workspace = true, optional = true, features = ["zeroize"] }
 cipher = { workspace = true, optional = true }
 cosmian_cover_crypt = { version = "16.0.0", optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }

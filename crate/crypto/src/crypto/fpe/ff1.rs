@@ -6,7 +6,7 @@ use cipher::{
 use core::{cmp, fmt};
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct InvalidRadix(pub(crate) u32);
@@ -211,19 +211,19 @@ pub(crate) trait NumeralString: Sized {
 }
 
 #[derive(Clone)]
-struct Prf<CIPH: BlockCipher + BlockEncrypt> {
+struct Prf<CIPH: BlockCipher + BlockEncrypt + ZeroizeOnDrop> {
     state: cbc::Encryptor<CIPH>,
     buf: Block<CIPH>,
     offset: usize,
 }
 
-impl<CIPH: BlockCipher + BlockEncrypt> Drop for Prf<CIPH> {
+impl<CIPH: BlockCipher + BlockEncrypt + ZeroizeOnDrop> Drop for Prf<CIPH> {
     fn drop(&mut self) {
         self.buf.zeroize();
     }
 }
 
-impl<CIPH: BlockCipher + BlockEncrypt + Clone> Prf<CIPH> {
+impl<CIPH: BlockCipher + BlockEncrypt + Clone + ZeroizeOnDrop> Prf<CIPH> {
     fn new(ciph: &CIPH) -> Self {
         let ciph = ciph.clone();
         Self {
@@ -279,12 +279,14 @@ fn generate_s<'a, CIPH: BlockEncrypt>(
 
 pub(crate) type FF1h<CIPH> = FF1fr<18, CIPH>;
 
-pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher> {
+pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + ZeroizeOnDrop> {
     ciph: CIPH,
     radix: Radix,
 }
 
-impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit> FF1fr<FEISTEL_ROUNDS, CIPH> {
+impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit + ZeroizeOnDrop>
+    FF1fr<FEISTEL_ROUNDS, CIPH>
+{
     pub(crate) fn new(key: &[u8], radix: u32) -> Result<Self, FF1Error> {
         if FEISTEL_ROUNDS < 8 {
             return Err(FF1Error::InsufficientFeistelRounds);
@@ -302,7 +304,7 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit> FF1fr<FEISTEL_ROUNDS
     }
 }
 
-impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
+impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + ZeroizeOnDrop>
     FF1fr<FEISTEL_ROUNDS, CIPH>
 {
     // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
@@ -334,7 +336,7 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
         let d = 4 * b.div_ceil(4) + 4;
 
         // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
-        let u_byte = u8::try_from(u & 0xFF).unwrap_or(0);
+        let u_byte = u8::try_from(u & 0xFF).expect("u & 0xFF always fits in u8");
         let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
         let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
         let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
@@ -403,7 +405,7 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone>
         let d = 4 * b.div_ceil(4) + 4;
 
         // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
-        let u_byte = u8::try_from(u & 0xFF).unwrap_or(0);
+        let u_byte = u8::try_from(u & 0xFF).expect("u & 0xFF always fits in u8");
         let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
         let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
         let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();

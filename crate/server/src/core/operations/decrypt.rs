@@ -83,6 +83,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
     //
     // Permissions checks are done AFTER the object is fetched in the default database
     // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
+
     // for each uid. This is also based on the high probability that there is still a single object
     // in the candidates' list.
     let mut selected_owm = None;
@@ -500,6 +501,29 @@ fn decrypt_single_with_symmetric_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    #[cfg(not(feature = "non-fips"))]
+    {
+        let key_block = owm.object().key_block()?;
+        let cryptographic_algorithm = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| cp.cryptographic_algorithm)
+            .or_else(|| {
+                owm.attributes()
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| cp.cryptographic_algorithm)
+            })
+            .or_else(|| key_block.cryptographic_algorithm().copied())
+            .unwrap_or(CryptographicAlgorithm::AES);
+
+        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+            return Err(KmsError::NotSupported(
+                "FPE_FF1 decryption is not supported in FIPS mode".to_owned(),
+            ));
+        }
+    }
+
     #[cfg(feature = "non-fips")]
     {
         let key_block = owm.object().key_block()?;
