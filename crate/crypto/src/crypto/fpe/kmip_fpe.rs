@@ -195,7 +195,7 @@ pub fn encrypt_fpe(
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?;
             let integer = Integer::instantiate(radix, digits)?;
             let plaintext_value = integer_text_to_biguint(plaintext, &alphabet)?;
-            let ciphertext_value = integer.encrypt_big(&*key, tweak, &plaintext_value)?;
+            let ciphertext_value = integer.encrypt_big(&key, tweak, &plaintext_value)?;
             Ok(biguint_to_integer_text(&ciphertext_value, &alphabet, digits)?.into_bytes())
         }
         FpeDataType::Float => {
@@ -207,7 +207,7 @@ pub fn encrypt_fpe(
             // Encode as 16 lowercase hex digits (the raw IEEE-754 bit pattern) to
             // preserve all bit patterns — including NaN and ±Inf payloads — without
             // floating-point canonicalization on the decrypt path.
-            let ciphertext_bits = float.encrypt(&*key, tweak, float_value)?.to_bits();
+            let ciphertext_bits = float.encrypt(&key, tweak, float_value)?.to_bits();
             Ok(format!("{ciphertext_bits:016x}").into_bytes())
         }
     }
@@ -227,7 +227,9 @@ pub fn decrypt_fpe(
         FpeDataType::Text => {
             let alphabet = resolve_text_alphabet(&metadata)?;
             let ciphertext = parse_utf8(data, "FPE ciphertext")?;
-            Ok(alphabet.decrypt(&*key, tweak, ciphertext)?.into_bytes())
+            Ok(alphabet
+                .decrypt(key.as_ref(), tweak, ciphertext)?
+                .into_bytes())
         }
         FpeDataType::Integer => {
             let alphabet = resolve_integer_alphabet(&metadata)?;
@@ -237,7 +239,7 @@ pub fn decrypt_fpe(
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?;
             let integer = Integer::instantiate(radix, digits)?;
             let ciphertext_value = integer_text_to_biguint(ciphertext, &alphabet)?;
-            let plaintext_value = integer.decrypt_big(&*key, tweak, &ciphertext_value)?;
+            let plaintext_value = integer.decrypt_big(&key, tweak, &ciphertext_value)?;
             Ok(biguint_to_integer_text(&plaintext_value, &alphabet, digits)?.into_bytes())
         }
         FpeDataType::Float => {
@@ -250,7 +252,7 @@ pub fn decrypt_fpe(
             let float_value = f64::from_bits(bits);
             let float = Float::instantiate()?;
             Ok(float
-                .decrypt(&*key, tweak, float_value)?
+                .decrypt(&key, tweak, float_value)?
                 .to_string()
                 .into_bytes())
         }

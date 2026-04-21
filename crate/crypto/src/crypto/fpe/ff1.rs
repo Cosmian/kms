@@ -335,8 +335,8 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
         let b = self.radix.calculate_b(v);
         let d = 4 * b.div_ceil(4) + 4;
 
-        // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
-        let u_byte = u8::try_from(u & 0xFF).expect("u & 0xFF always fits in u8");
+        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
+        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
         let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
         let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
         let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
@@ -404,8 +404,8 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
         let b = self.radix.calculate_b(v);
         let d = 4 * b.div_ceil(4) + 4;
 
-        // u mod 256 fits in u8; n and t are both ≤ MAX_NS_LEN (checked above) so ≤ u32::MAX.
-        let u_byte = u8::try_from(u & 0xFF).expect("u & 0xFF always fits in u8");
+        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
+        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
         let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
         let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
         let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
