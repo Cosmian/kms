@@ -69,24 +69,28 @@ fi
 
 export C2P_CONF="${C2P_CONF:-/etc/c2p/c2p.xml}"
 
-# The server HSM integration test is currently not runnable with Crypt2Pay in CI:
-# it fails during key generation with "Failed generating key. Return code: 112"
-# (CKR_MECHANISM_INVALID). `get_supported_algorithms` also triggers this RSA key
-# generation path with the current provider, so keep CI on the known-stable
-# smoke subset.
-for t in \
-  tests::test_hsm_crypt2pay_get_info \
-  tests::test_hsm_crypt2pay_get_mechanisms
-do
-  env \
-    PATH="$PATH" \
-    C2P_CONF="$C2P_CONF" \
-    HSM_MODEL="crypt2pay" \
-    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
-    HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
-    cargo test \
-    -p crypt2pay_pkcs11_loader \
-    --features crypt2pay \
-    -- "$t" --ignored --exact
-done
+# Note: This script assumes Crypt2pay HSM setup is already configured
+# Users need to set up the Crypt2pay HSM environment and related variables
+
+# CRYPT2PAY integration test (KMS)
+env \
+  PATH="$PATH" \
+  HSM_MODEL="crypt2pay" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
+  cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::test_hsm_all --ignored --exact
+
+env \
+  PATH="$PATH" \
+  HSM_MODEL="crypt2pay" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
+  cargo test \
+  -p crypt2pay_pkcs11_loader \
+  --features crypt2pay \
+  -- tests::test_hsm_crypt2pay_all --ignored --exact
+
 echo "Crypt2pay HSM tests completed successfully."
