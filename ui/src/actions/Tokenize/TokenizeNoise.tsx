@@ -164,7 +164,11 @@ const TokenizeNoiseForm: React.FC = () => {
                 <div ref={responseRef} className="mt-6">
                     <Alert
                         message={res.startsWith("Error") ? "Error" : "Success"}
-                        description={<div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">{res}</div>}
+                        description={
+                            <div data-testid="response-output" className="break-all font-mono text-sm whitespace-pre-wrap">
+                                {res}
+                            </div>
+                        }
                         type={res.startsWith("Error") ? "error" : "success"}
                         showIcon
                     />

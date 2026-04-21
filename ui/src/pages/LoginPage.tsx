@@ -1,7 +1,7 @@
 import { Alert, Button, Spin } from "antd";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { useBranding } from "../contexts/useBranding";
 import { AuthMethod, getNoTTLVRequest } from "../utils/utils";
 
