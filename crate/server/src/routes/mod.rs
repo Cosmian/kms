@@ -10,7 +10,7 @@ use actix_web::{
     web::{Data, Json},
 };
 use clap::crate_version;
-use cosmian_logger::{error, info, warn};
+use cosmian_kms_logger::{error, info, warn};
 use serde::Serialize;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
@@ -25,6 +25,7 @@ pub mod google_cse;
 pub mod health;
 pub mod kmip;
 pub mod ms_dke;
+pub(crate) mod notifications;
 pub mod root_redirect;
 pub mod ui_auth;
 mod utils;
@@ -93,17 +94,56 @@ pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResul
 }
 
 #[derive(Serialize)]
-struct HsmInfo {
-    configured: bool,
-    model: Option<String>,
-    slots: Vec<usize>,
-}
-
-#[derive(Serialize)]
 struct ServerInfo {
     version: String,
     fips_mode: bool,
-    hsm: HsmInfo,
+    /// All configured HSM instances (empty when no HSM is configured).
+    hsm_instances: Vec<HsmInstanceStatus>,
+}
+
+/// Per-slot information for the HSM status endpoint.
+#[derive(Serialize)]
+pub(crate) struct HsmSlotStatus {
+    pub slot_id: usize,
+    /// Whether the slot is accessible (password provided).
+    pub accessible: bool,
+}
+
+/// Status information for one HSM instance.
+#[derive(Serialize)]
+pub(crate) struct HsmInstanceStatus {
+    /// Routing prefix for this HSM instance (e.g. `"hsm"`, `"hsm1"`).
+    pub prefix: String,
+    pub model: String,
+    pub slots: Vec<HsmSlotStatus>,
+}
+
+/// GET /hsm/status — returns information about all configured HSM instances.
+/// This endpoint is public (no authentication required).
+#[get("/hsm/status")]
+pub(crate) async fn get_hsm_status(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<Vec<HsmInstanceStatus>>> {
+    info!("GET /hsm/status {}", kms.get_user(&req));
+    let instances: Vec<HsmInstanceStatus> = kms
+        .params
+        .hsm_instances
+        .iter()
+        .map(|inst| HsmInstanceStatus {
+            prefix: inst.prefix.clone(),
+            model: inst.model.clone(),
+            slots: inst
+                .slot_passwords
+                .iter()
+                .map(|(&slot_id, pw)| HsmSlotStatus {
+                    slot_id,
+                    accessible: pw.is_some(),
+                })
+                .collect(),
+        })
+        .collect();
+    Ok(Json(instances))
 }
 
 /// Get high-level server information: version, FIPS mode, and HSM status.
@@ -115,8 +155,27 @@ pub(crate) async fn get_server_info(
 ) -> KResult<Json<ServerInfo>> {
     info!("GET /server-info {}", kms.get_user(&req));
     let fips_mode = !cfg!(feature = "non-fips");
-    let mut slots: Vec<usize> = kms.params.slot_passwords.keys().copied().collect();
-    slots.sort_unstable();
+    let hsm_instances: Vec<HsmInstanceStatus> = kms
+        .params
+        .hsm_instances
+        .iter()
+        .map(|inst| {
+            let mut slots: Vec<HsmSlotStatus> = inst
+                .slot_passwords
+                .iter()
+                .map(|(&slot_id, pw)| HsmSlotStatus {
+                    slot_id,
+                    accessible: pw.is_some(),
+                })
+                .collect();
+            slots.sort_unstable_by_key(|s| s.slot_id);
+            HsmInstanceStatus {
+                prefix: inst.prefix.clone(),
+                model: inst.model.clone(),
+                slots,
+            }
+        })
+        .collect();
     Ok(Json(ServerInfo {
         version: format!(
             "{} ({}-{})",
@@ -129,11 +188,7 @@ pub(crate) async fn get_server_info(
             }
         ),
         fips_mode,
-        hsm: HsmInfo {
-            configured: kms.params.hsm_model.is_some(),
-            model: kms.params.hsm_model.clone(),
-            slots,
-        },
+        hsm_instances,
     }))
 }
 

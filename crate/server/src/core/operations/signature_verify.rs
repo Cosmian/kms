@@ -1,3 +1,4 @@
+use cosmian_kms_logger::debug;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
@@ -19,7 +20,6 @@ use cosmian_kms_server_database::reexport::{
         openssl::kmip_public_key_to_openssl,
     },
 };
-use cosmian_logger::debug;
 use openssl::pkey::{Id, PKey, Public};
 
 use crate::{

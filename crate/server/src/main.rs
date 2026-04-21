@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use cosmian_kms_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
-use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use tracing::span;
 
@@ -268,6 +268,7 @@ mod tests {
                 hsm_slot: vec![],
                 hsm_password: vec![],
             },
+            hsm_instances: vec![],
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
                 aws_xks_region: Some("us-east-1".to_owned()),
@@ -281,6 +282,8 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            auto_rotation_check_interval_secs: 0,
+            notifications: cosmian_kms_server::config::NotificationsConfig::default(),
             print_default_config: false,
         };
 

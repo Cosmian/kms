@@ -1,3 +1,4 @@
+use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     self,
     kmip_0::kmip_types::State,
@@ -8,7 +9,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     time_normalize,
 };
-use cosmian_logger::{debug, trace};
 
 use super::import::process_opaque_object;
 use crate::{

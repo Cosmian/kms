@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         kmip_types::{AttributeReference, Tag},
     },
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 
 use super::set::SetOrDeleteAttributes;
 use crate::{

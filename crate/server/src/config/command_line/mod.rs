@@ -7,7 +7,9 @@ mod http_config;
 mod idp_auth_config;
 mod kmip_policy_config;
 mod logging;
+mod notifications_config;
 mod proxy_config;
+mod smtp_config;
 mod socket_server_config;
 mod tls_config;
 mod ui_config;
@@ -26,7 +28,9 @@ pub use kmip_policy_config::{
     AesKeySize, KmipAllowlistsConfig, KmipPolicyConfig, KmipPolicyId, RsaKeySize,
 };
 pub use logging::LoggingConfig;
+pub use notifications_config::{NotificationsConfig, RenewalNotificationStrategy};
 pub use proxy_config::ProxyConfig;
+pub use smtp_config::SmtpConfig;
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
 pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};

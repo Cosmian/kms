@@ -9,7 +9,7 @@ use cosmian_kms_cli_actions::{
     },
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 
 #[cfg(feature = "non-fips")]

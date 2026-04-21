@@ -1,7 +1,7 @@
+use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     RNGRetrieve, RNGRetrieveResponse,
 };
-use cosmian_logger::trace;
 use openssl::rand::rand_bytes;
 
 use crate::{core::KMS, error::KmsError, result::KResult};

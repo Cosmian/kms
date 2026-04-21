@@ -15,11 +15,11 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
         import_utils::{CertificateInputFormat, ImportKeyFormat},
     },
 };
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 #[cfg(not(feature = "non-fips"))]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use openssl::{nid::Nid, pkey::PKey, x509::X509};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;

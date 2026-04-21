@@ -1,4 +1,5 @@
 //! Shared utility functions for route handlers
+use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
@@ -7,7 +8,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{KeyFormatType, UniqueIdentifier},
     },
 };
-use cosmian_logger::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

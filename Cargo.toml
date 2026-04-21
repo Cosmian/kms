@@ -7,6 +7,7 @@ default-members = [
 members = [
   # Common crates
   "crate/kmip",
+  "crate/logger",
   # Client crates
   "crate/clients/client_utils",
   "crate/clients/client",
@@ -158,7 +159,7 @@ cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "ser",
 ] }
-cosmian_logger = "0.5"
+cosmian_kms_logger = { path = "crate/logger", version = "5.20.0" }
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = [
   "editor",
@@ -174,6 +175,7 @@ http = "1.4"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 lazy_static = "1.5"
 leb128 = "0.2"
+lettre = { version = "0.11", default-features = false }
 libloading = "0.8"
 log = { version = "0.4", default-features = false }
 lru = "0.16"

@@ -1,7 +1,7 @@
 //! Tests for XML serializer/deserializer and (eventually) parser.
 #[cfg(test)]
 mod inner {
-    use cosmian_logger::trace;
+    use cosmian_kms_logger::trace;
 
     use crate::{
         kmip_0::{

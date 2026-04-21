@@ -1,0 +1,57 @@
+[package]
+name = "cosmian_kms_logger"
+version = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+description = "Logger helper — tracing, file rolling, OpenTelemetry, syslog"
+readme = "README.md"
+keywords = ["logging", "tracing", "opentelemetry", "syslog"]
+categories = ["development-tools::debugging"]
+
+[features]
+default = []
+full = [
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry-semantic-conventions",
+    "dep:opentelemetry-stdout",
+    "dep:opentelemetry_sdk",
+    "dep:tracing-opentelemetry",
+    "dep:syslog-tracing",
+]
+
+[lib]
+name = "cosmian_kms_logger"
+path = "src/lib.rs"
+
+[dependencies]
+opentelemetry = { version = "0.29", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.29", features = [
+    "trace",
+    "metrics",
+    "grpc-tonic",
+], optional = true }
+opentelemetry-semantic-conventions = { version = "0.29", features = [
+    "semconv_experimental",
+], optional = true }
+opentelemetry-stdout = { version = "0.29", features = [
+    "trace",
+    "metrics",
+], optional = true }
+opentelemetry_sdk = { version = "0.29", features = ["trace"], optional = true }
+syslog-tracing = { version = "0.3", optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { version = "0.2" }
+tracing-opentelemetry = { version = "0.30", optional = true }
+tracing-subscriber = { workspace = true, features = [
+    "env-filter",
+    "fmt",
+    "ansi",
+] }
+
+[lints]
+workspace = true

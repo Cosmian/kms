@@ -48,7 +48,7 @@ use cosmian_kms_interfaces::{
     KeyType::{AesKey, RsaPrivateKey, RsaPublicKey},
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
@@ -59,8 +59,8 @@ use pkcs11_sys::{
     CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
     CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
     CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKZ_DATA_SPECIFIED,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRngCore, rngs::OsRng};
 use uuid::Uuid;
@@ -1712,6 +1712,12 @@ impl Session {
         }
         if rv == CKR_OBJECT_HANDLE_INVALID {
             // The key was not found
+            return Ok(None);
+        }
+        if rv == CKR_ATTRIBUTE_TYPE_INVALID {
+            // The attribute does not exist on this object (e.g. CKA_ID not set on
+            // an externally provisioned key).  Treat as "not present" so callers
+            // can gracefully fall back to the next attribute type.
             return Ok(None);
         }
         if rv != CKR_OK {

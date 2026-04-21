@@ -6,7 +6,7 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use predicates::prelude::*;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -128,13 +128,13 @@ pub(crate) fn decrypt(
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CosmianResult<()> {
-    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
+    // to enable this, add cosmian_kms_logger = { workspace = true } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
 
-    use cosmian_logger::trace;
+    use cosmian_kms_logger::trace;
     let ctx = start_default_test_kms_server().await;
     let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
 
@@ -203,7 +203,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CosmianResult<()> {
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CosmianResult<()> {
-    // to enable this, add cosmian_logger = { workspace = true } to dev-dependencies in Cargo.toml
+    // to enable this, add cosmian_kms_logger = { workspace = true } to dev-dependencies in Cargo.toml
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=info,cosmian_kms_server::core::operations=trace,\
     //      cosmian_kms_utils=trace,cosmian_kmip=info",

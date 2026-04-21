@@ -1,3 +1,4 @@
+use cosmian_kms_logger::{debug, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
@@ -11,7 +12,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
-use cosmian_logger::{debug, trace, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
@@ -66,11 +66,21 @@ pub(crate) async fn wrap_and_cache(
         return Ok(());
     };
 
-    // Cannot wrap yourself
+    // A key cannot be its own wrapping key.
     if wrapping_key_id == unique_identifier.to_string() {
-        if kms.params.key_wrapping_key.is_none() {
-            warn!("Key {wrapping_key_id} attempted to wrap itself");
+        // The wrapping_key_id came from the request attributes (user-supplied),
+        // not from the server-wide KEK. Reject this as an explicit self-wrap.
+        if kms.params.key_wrapping_key.as_deref() != Some(&wrapping_key_id) {
+            return Err(KmsError::InvalidRequest(format!(
+                "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
+                 the wrapping key ID must differ from the key ID being created"
+            )));
         }
+        // The server-wide KEK coincidentally matches the new key's UID — skip silently.
+        // This should not happen in practice (KEKs use prefixed UIDs like "hsm::0::kek").
+        warn!(
+            "Server KEK '{wrapping_key_id}' matches the UID of the key being created; skipping self-wrap"
+        );
         return Ok(());
     }
 
@@ -235,7 +245,15 @@ async fn wrap_using_kms(
             "The wrapping key {wrapping_key_uid} is not active"
         )));
     }
-    if wrapping_key.owner() != user {
+    // The server-configured key_encryption_key is a shared server resource accessible
+    // to all users, so skip the ownership check for it (mirrors the bypass in
+    // `wrap_using_crypto_oracle` — issue #761).
+    let is_server_kek = kms
+        .params
+        .key_wrapping_key
+        .as_deref()
+        .is_some_and(|kek| kek == wrapping_key_uid);
+    if !is_server_kek && wrapping_key.owner() != user {
         let ops = kms
             .database
             .list_user_operations_on_object(wrapping_key.id(), user, false)

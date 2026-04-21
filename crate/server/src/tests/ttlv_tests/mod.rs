@@ -42,7 +42,7 @@ use std::{
 };
 
 use actix_web::dev::ServerHandle;
-use cosmian_logger::{info, trace};
+use cosmian_kms_logger::{info, trace};
 use futures::{TryFutureExt, executor::block_on};
 use socket_client::{SocketClient, SocketClientConfig};
 

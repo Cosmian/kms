@@ -112,7 +112,7 @@ impl IdpAuthConfig {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_logger::{info, log_init};
+    use cosmian_kms_logger::{info, log_init};
 
     use crate::config::IdpAuthConfig;
 

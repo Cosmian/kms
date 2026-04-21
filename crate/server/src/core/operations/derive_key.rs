@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType, State},
     kmip_2_1::{
@@ -11,7 +12,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     time_normalize,
 };
-use cosmian_logger::debug;
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},

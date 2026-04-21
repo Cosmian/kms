@@ -1,4 +1,4 @@
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use num_bigint_dig::BigInt;
 use zeroize::Zeroizing;
 

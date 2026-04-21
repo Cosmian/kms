@@ -18,7 +18,7 @@ use ckms::{
     },
 };
 use cosmian_config_utils::ConfigUtils;
-use cosmian_logger::{debug, log_init};
+use cosmian_kms_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,

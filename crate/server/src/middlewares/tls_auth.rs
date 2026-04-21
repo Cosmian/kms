@@ -18,7 +18,7 @@ use actix_web::{
     dev::{Extensions, Service, ServiceRequest, ServiceResponse, Transform},
     rt::net::TcpStream,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use futures::{
     Future,
     future::{Ready, ok},

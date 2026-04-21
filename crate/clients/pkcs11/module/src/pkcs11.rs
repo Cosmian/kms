@@ -25,7 +25,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use cosmian_logger::{debug, error, info, trace};
+use cosmian_kms_logger::{debug, error, info, trace};
 use pkcs11_sys::{
     CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS, CK_FUNCTION_LIST,
     CK_INFO, CK_INFO_PTR, CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR,
@@ -69,7 +69,7 @@ where
     match f() {
         Ok(()) => CKR_OK,
         Err(e) => {
-            cosmian_logger::error!("{}: {}", name, e);
+            cosmian_kms_logger::error!("{}: {}", name, e);
             e.into()
         }
     }

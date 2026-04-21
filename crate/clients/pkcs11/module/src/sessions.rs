@@ -26,7 +26,7 @@ use std::{
     sync::{self, Arc, atomic::Ordering},
 };
 
-use cosmian_logger::{debug, trace, warn};
+use cosmian_kms_logger::{debug, trace, warn};
 use pkcs11_sys::{
     CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG,
     CK_ULONG_PTR,

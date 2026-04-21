@@ -5,7 +5,7 @@ use std::{
 };
 
 use cosmian_kms_interfaces::CryptoAlgorithm;
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use pkcs11_sys::{
     CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
 };

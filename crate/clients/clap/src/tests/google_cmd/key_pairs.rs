@@ -9,7 +9,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::{ExportObjectParams, export_object};
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use openssl::x509::X509;
 use test_kms_server::{
     reexport::cosmian_kms_server::routes::google_cse::operations::PrivateKeySignRequest,

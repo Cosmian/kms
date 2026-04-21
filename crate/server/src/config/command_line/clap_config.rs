@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    NotificationsConfig, WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -62,6 +62,7 @@ impl Default for ClapConfig {
             info: false,
             print_default_config: false,
             hsm: HsmConfig::default(),
+            hsm_instances: vec![],
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
@@ -69,6 +70,8 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            auto_rotation_check_interval_secs: 0,
+            notifications: NotificationsConfig::default(),
         }
     }
 }
@@ -116,9 +119,22 @@ pub struct ClapConfig {
     #[serde(skip)]
     pub print_default_config: bool,
 
+    /// [DEPRECATED] Single HSM instance configured via flat `--hsm-*` CLI flags.
+    /// Prefer `[[hsm_instances]]` in the TOML configuration file instead, which
+    /// supports multiple HSM devices and uses the same field names.
+    /// These flags are still honoured when `[[hsm_instances]]` is absent, but may
+    /// be removed in a future release.
     #[clap(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
+
+    /// Multiple HSM instances, configured via the TOML `[[hsm_instances]]` array.
+    /// When non-empty, these take precedence over the flat `--hsm-*` CLI flags above.
+    /// Each entry uses the same field names as the flat flags:
+    /// `hsm_model`, `hsm_admin`, `hsm_slot`, `hsm_password`.
+    #[clap(skip)]
+    #[serde(default, rename = "hsm_instances")]
+    pub hsm_instances: Vec<HsmConfig>,
 
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
@@ -202,6 +218,16 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// Set to 0 (default) to disable the auto-rotation background task.
+    #[clap(long, default_value = "0", verbatim_doc_comment)]
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Notification settings (SMTP email, renewal strategy).
+    #[clap(flatten)]
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
 }
 
 impl ClapConfig {
@@ -620,6 +646,7 @@ impl fmt::Debug for ClapConfig {
                 .map(|_| "********")
                 .collect::<Vec<&str>>(),
         );
+        let x = x.field("hsm_instances count", &self.hsm_instances.len());
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
@@ -642,6 +669,11 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field("notifications", &self.notifications);
 
         x.finish()
     }
@@ -669,7 +701,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use cosmian_logger::debug;
+    use cosmian_kms_logger::debug;
 
     use super::ClapConfig;
 

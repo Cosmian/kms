@@ -24,7 +24,7 @@ use cosmian_kms_crypto::crypto::{
     symmetric::symmetric_ciphers::{Mode, SymCipher, decrypt},
     wrap::unwrap_key_block,
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{

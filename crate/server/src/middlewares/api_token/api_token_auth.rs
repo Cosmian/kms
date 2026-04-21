@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use actix_web::{dev::ServiceRequest, http::header};
 use base64::Engine;
+use cosmian_kms_logger::{debug, error, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::kmip_objects::ObjectType,
 };
-use cosmian_logger::{debug, error, trace};
 use subtle::ConstantTimeEq;
 
 use crate::{core::KMS, error::KmsError, result::KResult};

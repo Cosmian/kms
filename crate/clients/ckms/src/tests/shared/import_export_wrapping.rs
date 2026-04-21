@@ -25,7 +25,7 @@ use cosmian_kms_cli_actions::{
         },
     },
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -123,7 +123,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
 pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     use cosmian_kms_cli_actions::reexport::cosmian_kms_client::kmip_0::kmip_types::CryptographicUsageMask;
 
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

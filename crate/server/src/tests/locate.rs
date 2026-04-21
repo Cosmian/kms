@@ -11,6 +11,7 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         requests::create_ec_key_pair_request,
     },
 };
+use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -19,7 +20,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
 };
-use cosmian_logger::log_init;
 
 use crate::{
     config::{MainDBConfig, ServerParams},

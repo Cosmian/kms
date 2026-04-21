@@ -24,6 +24,7 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kms_logger::{debug, error, info, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
@@ -38,7 +39,6 @@ use cosmian_kms_server_database::reexport::{
         openssl::kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,
@@ -58,11 +58,12 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, notifications, root_redirect,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -360,6 +361,14 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background auto-rotation cron thread, independent of metrics.
+    // Only started when auto_rotation_check_interval_secs > 0.
+    let auto_rotation_shutdown_tx = if kms_server.params.auto_rotation_check_interval_secs > 0 {
+        Some(cron::spawn_auto_rotation_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -382,6 +391,10 @@ pub async fn start_kms_server(
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the auto-rotation cron thread to stop
+    if let Some(tx) = auto_rotation_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -982,7 +995,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version)
-            .service(get_server_info);
+            .service(get_server_info)
+            .service(get_hsm_status);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
@@ -1028,6 +1042,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(notifications::list_notifications)
+            .service(notifications::count_unread_notifications)
+            .service(notifications::mark_notification_read)
+            .service(notifications::mark_all_notifications_read)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

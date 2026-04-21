@@ -1,4 +1,4 @@
-use cosmian_logger::error;
+use cosmian_kms_logger::error;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     traits::{KeyAlgorithm, PrivateKey, SearchOptions, SignatureAlgorithm, backend},

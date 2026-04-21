@@ -41,6 +41,23 @@ graph LR
     D --> E[Destroy]
 ```
 
+### sym-rotation-flow
+
+```mermaid
+graph LR
+    A[Create AES key] --> B[Re-Key]
+    B --> C{New UID returned}
+    A --> D[Set rotation interval]
+    D --> E{Policy updated}
+    A --> F[Set rotation name]
+    A --> G[Disable rotation interval=0]
+    N[Navigate] --> H[RSA set-rotation-policy page]
+    N --> I[EC set-rotation-policy page]
+    N --> J[PQC set-rotation-policy page]
+```
+
+Covers `sym/keys/re-key` (KMIP `ReKey`) and `sym/keys/set-rotation-policy` (`SetAttribute` with `rotate_interval`, `rotate_name`, `rotate_offset`). Also verifies that the rotation policy page renders correctly for RSA, EC, and PQC key types.
+
 ### symmetric-encrypt-decrypt
 
 ```mermaid
@@ -143,6 +160,39 @@ graph LR
     C --> D[Encrypt with cert]
     D --> E[Decrypt with privKey]
     E --> F{Compare}
+```
+
+### certificates-certify
+
+_PQC tests skipped in FIPS mode._
+
+Full coverage of all four certification methods and all supported algorithms:
+
+```mermaid
+graph LR
+    subgraph "Method 4 — Generate New Keypair"
+        A1[RSA-2048 / RSA-4096] --> SS1[Self-signed cert]
+        A2[P-256 / P-384 / P-521 / Ed25519] --> SS2[Self-signed cert]
+        A3[ML-DSA-44/65/87] --> SS3[Self-signed cert]
+        A4[SLH-DSA-SHA2-128s/f 192s 256s SHAKE-128s/256s] --> SS4[Self-signed cert]
+        A5[ML-KEM-512] --> ERR[Server rejects KEM self-sign]
+    end
+    subgraph "Method 2 — Certify existing public key"
+        B1[Create EC P-256 pair] --> B2[Certify pubKey]
+        B3[Create ML-DSA-44 pair] --> B4[Certify pubKey]
+    end
+    subgraph "Method 3 — Re-certify"
+        C1[Create P-256 self-signed] --> C2[Re-certify → new cert ID]
+    end
+    subgraph "CA-issued"
+        D1[Create ML-DSA-44 CA] --> D2[Issue ML-KEM-512 leaf]
+        D1 --> D3[Issue ML-KEM-768 leaf]
+        D1 --> D4[Issue ML-KEM-1024 leaf]
+        D1 --> D5[Issue RSA-4096 leaf cross-algo]
+    end
+    subgraph "Optional cert ID"
+        E1[Provide custom UUID] --> E2[Returned ID matches]
+    end
 ```
 
 ## Locate & Filters

@@ -5,7 +5,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::Curve;
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use sha2::Digest;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -75,7 +75,7 @@ async fn ecdsa_deterministic_cli_rfc6979() -> KmsCliResult<()> {
 // Additional coverage: end-to-end EC CLI digested sign and verify
 #[tokio::test]
 async fn ecdsa_digested_sign_verify_cli_end_to_end() -> crate::error::result::KmsCliResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     let ctx = test_kms_server::start_default_test_kms_server().await;
 
     let tmp_dir = tempfile::TempDir::new()?;
@@ -133,7 +133,7 @@ async fn ecdsa_digested_sign_verify_cli_end_to_end() -> crate::error::result::Km
 // Negative test: providing both data and digested_data must fail
 #[tokio::test]
 async fn ecdsa_sign_both_data_and_digest_should_fail() -> crate::error::result::KmsCliResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     let ctx = test_kms_server::start_default_test_kms_server().await;
 
     let input_file = std::path::PathBuf::from("../../../test_data/plain.txt");

@@ -23,7 +23,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
     verify_attributes: bool,
 ) -> DbResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     let mut rng = CsRng::from_entropy();
 
     let owner = "eyJhbGciOiJSUzI1Ni";

@@ -10,7 +10,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 
@@ -38,6 +38,9 @@ pub(crate) async fn test_password_wrap_import() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0, key_ids.1)

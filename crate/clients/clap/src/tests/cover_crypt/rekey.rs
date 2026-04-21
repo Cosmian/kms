@@ -11,7 +11,7 @@ use cosmian_kms_crypto::{
         cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
     },
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -44,6 +44,9 @@ async fn test_rekey_error() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
@@ -187,6 +190,9 @@ async fn test_enc_dec_rekey() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
@@ -264,6 +270,9 @@ async fn test_rekey_prune() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())

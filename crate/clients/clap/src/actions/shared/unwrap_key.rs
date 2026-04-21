@@ -15,7 +15,7 @@ use cosmian_kms_client::{
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use uuid::Uuid;
 
 use crate::{

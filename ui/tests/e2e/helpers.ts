@@ -62,6 +62,17 @@ export async function submitAndWaitForResponse(page: Page): Promise<string> {
 }
 
 /**
+ * Clicks the "Set Rotation Policy" button and waits for a response panel to appear.
+ * Returns the text content of the response panel.
+ */
+export async function setPolicyAndWaitForResponse(page: Page): Promise<string> {
+    await page.click('[data-testid="set-rotation-policy-btn"]');
+    const responseEl = page.locator('[data-testid="response-output"]');
+    await responseEl.waitFor({ state: "visible", timeout: UI_RESPONSE_TIMEOUT });
+    return (await responseEl.textContent()) ?? "";
+}
+
+/**
  * Like `submitAndWaitForResponse` but additionally intercepts the file
  * download that operations such as Export / Encrypt trigger via a synthetic
  * `<a download>` click.
@@ -356,6 +367,29 @@ export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{
     expect(privKeyId).not.toBeNull();
     expect(pubKeyId).not.toBeNull();
     return { privKeyId: privKeyId!, pubKeyId: pubKeyId! };
+}
+
+/**
+ * Create a self-signed X.509 certificate by generating a new key pair in the
+ * Certificate Certify form (method 4: "Generate New Keypair").
+ *
+ * @param algorithm Visible algorithm label matching an entry in the Key Algorithm dropdown,
+ *                  e.g. "RSA 4096", "NIST P-256", "ML-DSA-44 (PQC)".
+ * @param subjectName X.509 subject name, e.g. "CN=E2E Test,O=Cosmian".
+ * @returns The certificate ID from the success message.
+ */
+export async function createCertificate(page: Page, algorithm: string, subjectName = "CN=E2E Test,O=Cosmian"): Promise<string> {
+    await gotoAndWait(page, "/ui/certificates/certs/certify");
+    // Choose method 4: Generate New Keypair (renders the algorithm dropdown)
+    await page.getByText("4. Generate New Keypair").click();
+    // selectOption already retries up to 30 s, so no extra wait is needed.
+    await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', subjectName);
+    await selectOption(page, "cert-algorithm-select", algorithm);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/certificate successfully created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
 }
 
 /**

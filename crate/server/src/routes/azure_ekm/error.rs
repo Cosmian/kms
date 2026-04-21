@@ -1,7 +1,7 @@
 use std::fmt;
 
 use actix_web::{HttpResponse, ResponseError};
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use serde::Serialize;
 
 use crate::{error::KmsError, routes::azure_ekm::SUPPORTED_API_VERSIONS};

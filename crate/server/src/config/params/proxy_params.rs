@@ -1,6 +1,6 @@
 use std::fmt;
 
-use cosmian_logger::debug;
+use cosmian_kms_logger::debug;
 use url::Url;
 
 use crate::{config::ProxyConfig, kms_error, result::KResult};

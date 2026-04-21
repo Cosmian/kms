@@ -13,7 +13,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::kmip_2_1::KmipOperation;
-use cosmian_logger::{
+use cosmian_kms_logger::{
     debug, info, log_init,
     reexport::tracing::{self, trace},
 };

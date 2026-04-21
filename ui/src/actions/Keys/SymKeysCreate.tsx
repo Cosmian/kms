@@ -3,8 +3,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "./RotationPolicyFields";
 
-interface SymKeyCreateFormData {
+interface SymKeyCreateFormData extends RotationPolicyFormValues {
     keyId?: string;
     algorithm: string; // options provided by WASM get_symmetric_algorithms()
     numberOfBits?: number;
@@ -59,7 +61,20 @@ const SymKeyCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been created.`);
+                const keyId = result.UniqueIdentifier;
+                // Apply rotation policy attributes if specified
+                await applyRotationPolicy(
+                    keyId,
+                    values.rotateInterval,
+                    values.rotateName,
+                    values.rotateOffset,
+                    sendKmipRequest,
+                    parse_set_attribute_ttlv_response,
+                    set_attribute_ttlv_request,
+                    idToken,
+                    serverUrl,
+                );
+                setRes(`${keyId} has been created.`);
             }
         } catch (e) {
             setRes(`Error creating key: ${e}`);
@@ -126,6 +141,10 @@ const SymKeyCreateForm: React.FC = () => {
                         <Form.Item name="sensitive" valuePropName="checked" help="If set, the key will not be exportable">
                             <Checkbox>Sensitive</Checkbox>
                         </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <RotationPolicyFields />
                     </Card>
 
                     <Form.Item>

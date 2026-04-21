@@ -1,8 +1,8 @@
+use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::{
     kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     kmip_types::ProtocolVersion,
 };
-use cosmian_logger::trace;
 
 /// This request is used by the client to determine a list of protocol versions
 /// that is supported by the server.

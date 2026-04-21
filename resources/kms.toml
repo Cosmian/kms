@@ -6,6 +6,23 @@ default_username = "admin"
 # Example:
 ## default_unwrap_type = ["SecretData", "SymmetricKey"]
 
+# ── Multi-HSM configuration ───────────────────────────────────────────────────
+# To connect multiple HSMs simultaneously, declare one [[hsm_instances]] section
+# per device.  The first entry gets the routing prefix "hsm", the second "hsm1",
+# the third "hsm2", etc.  Object UIDs take the form "<prefix>::<slot>::<key>".
+#
+## [[hsm_instances]]
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
+## hsm_slot     = [0]                  # PKCS#11 slot indices
+## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
+#
+## [[hsm_instances]]
+## hsm_model    = "utimaco"
+## hsm_admin    = ["tech@example.com"]
+## hsm_slot     = [0, 1]
+## hsm_password = ["slot0pass", "slot1pass"]
+
 [http]
 port = 9998
 hostname = "0.0.0.0"

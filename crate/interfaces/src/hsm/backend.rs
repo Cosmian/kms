@@ -1,5 +1,6 @@
-//! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
-//! It is the link between the database and the HSM.
+//! `HsmBackend` — a single adapter that implements both `ObjectsStore` and `CryptoOracle`
+//! for Hardware Security Module backends.  It consolidates what was previously two separate
+//! types (`HsmStore` and `HsmCryptoOracle`) that always wrapped the same `Arc<dyn HSM>`.
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -16,27 +17,41 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_kms_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
+use zeroize::Zeroizing;
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, KeyType, ObjectWithMetadata, ObjectsStore,
-    as_hsm_uid, crypto_oracle::KeyMetadata,
+    AtomicOperation, CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyType,
+    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, as_hsm_uid,
+    crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
-pub struct HsmStore {
+/// A single adapter that wraps an `Arc<dyn HSM>` and implements both [`ObjectsStore`] and
+/// [`CryptoOracle`].  Callers can [`Clone`] the backend cheaply (only the inner `Arc` is
+/// cloned) to register it in both the object-store and crypto-oracle maps.
+#[derive(Clone)]
+pub struct HsmBackend {
     hsm: Arc<dyn HSM + Send + Sync>,
     hsm_admin: Vec<String>,
     vendor_id: String,
+    /// UID routing prefix, e.g. `"hsm"`, `"hsm1"`, `"hsm2"`.
+    prefix: String,
 }
 
-impl HsmStore {
-    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &[String], vendor_id: &str) -> Self {
+impl HsmBackend {
+    pub fn new(
+        hsm: Arc<dyn HSM + Send + Sync>,
+        hsm_admin: &[String],
+        vendor_id: &str,
+        prefix: &str,
+    ) -> Self {
         Self {
             hsm,
             hsm_admin: hsm_admin.to_owned(),
             vendor_id: vendor_id.to_owned(),
+            prefix: prefix.to_owned(),
         }
     }
 
@@ -56,8 +71,12 @@ impl HsmStore {
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ObjectsStore implementation
+// ──────────────────────────────────────────────────────────────────────────────
+
 #[async_trait(?Send)]
-impl ObjectsStore for HsmStore {
+impl ObjectsStore for HsmBackend {
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM
@@ -81,7 +100,7 @@ impl ObjectsStore for HsmStore {
                 format!("An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'. Got {uid:?}"
             ))
         })?;
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         if object.object_type() != ObjectType::SymmetricKey {
             return Err(InterfaceError::InvalidRequest(
                 "Only symmetric keys can be created on the HSM in this server".to_owned(),
@@ -119,7 +138,7 @@ impl ObjectsStore for HsmStore {
 
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the UID into a slot_id and key id
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         Ok(
             if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
                 // Convert the HSM object into an ObjectWithMetadata
@@ -158,7 +177,7 @@ impl ObjectsStore for HsmStore {
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
         Ok(())
     }
@@ -175,7 +194,7 @@ impl ObjectsStore for HsmStore {
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
                 ));
             }
-            let (slot_id, sk_id) = parse_uid(&uid)?;
+            let (slot_id, sk_id) = parse_uid_with_prefix(&uid, &self.prefix)?;
             let pk_id = sk_id.clone() + SYSTEM_TAG_PUBLIC_KEY;
             self.hsm
                 .create_keypair(
@@ -307,6 +326,175 @@ impl ObjectsStore for HsmStore {
 
         Ok(uids)
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CryptoOracle implementation
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl CryptoOracle for HsmBackend {
+    async fn encrypt(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
+        authenticated_encryption_additional_data: Option<&[u8]>,
+    ) -> InterfaceResult<EncryptedContent> {
+        if authenticated_encryption_additional_data.is_some() {
+            return Err(InterfaceError::InvalidRequest(
+                "Additional authenticated data are not supported on HSMs for now".to_owned(),
+            ));
+        }
+        let (mut slot_id, mut key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
+        let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
+            ca
+        } else {
+            debug!("Using default algorithm to encrypt");
+            match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+                None => {
+                    return Err(InterfaceError::InvalidRequest(format!(
+                        "The key type of key: {uid}, cannot be determined"
+                    )));
+                }
+                Some(key_type) => match key_type {
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPublicKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                    KeyType::RsaPrivateKey => {
+                        // try fetching the corresponding public key
+                        let pk_uid = format!("{uid}_pk");
+                        debug!(
+                            "encrypt: an RSA private key {uid} was specified. Trying to use \
+                             public key {pk_uid} for encryption"
+                        );
+                        (slot_id, key_id) = parse_uid_with_prefix(&pk_uid, &self.prefix)?;
+                        self.hsm
+                            .get_key_type(slot_id, key_id.as_bytes())
+                            .await?
+                            .ok_or_else(|| {
+                                InterfaceError::InvalidRequest(format!(
+                                    "The key {uid} is a private key, but no public key {pk_uid} \
+                                     is available"
+                                ))
+                            })?;
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                },
+            }
+        };
+        self.hsm
+            .encrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
+            .await
+    }
+
+    async fn decrypt(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
+        authenticated_encryption_additional_data: Option<&[u8]>,
+    ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
+        if authenticated_encryption_additional_data.is_some() {
+            return Err(InterfaceError::InvalidRequest(
+                "Additional authenticated data are not supported on HSMs for now".to_owned(),
+            ));
+        }
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
+        let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
+            ca
+        } else {
+            debug!("Using default algorithm to decrypt");
+            match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+                None => {
+                    return Err(InterfaceError::InvalidRequest(
+                        "The key {}type is not known".to_owned(),
+                    ));
+                }
+                Some(key_type) => match key_type {
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPrivateKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                    KeyType::RsaPublicKey => {
+                        return Err(InterfaceError::Default(
+                            "An RSA public key cannot be used to decrypt".to_owned(),
+                        ));
+                    }
+                },
+            }
+        };
+        self.hsm
+            .decrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
+            .await
+    }
+
+    async fn get_key_type(&self, uid: &str) -> InterfaceResult<Option<KeyType>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm.get_key_type(slot_id, key_id.as_bytes()).await
+    }
+
+    async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm.get_key_metadata(slot_id, key_id.as_bytes()).await
+    }
+
+    async fn sign(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<Vec<u8>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
+        match key_type {
+            Some(KeyType::RsaPrivateKey) => {}
+            Some(other) => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} is a {other:?}, expected an RSA private key"
+                )));
+            }
+            None => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} not found on the HSM"
+                )));
+            }
+        }
+        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        debug!("sign: using algorithm {algorithm:?} for key {uid}");
+        self.hsm
+            .sign(slot_id, key_id.as_bytes(), algorithm, data)
+            .await
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Private helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Parse the `uid` into a `(slot_id, key_id)` pair, stripping the given prefix.
+fn parse_uid_with_prefix(uid: &str, prefix: &str) -> Result<(usize, String), InterfaceError> {
+    let rest = uid
+        .strip_prefix(&format!("{prefix}::"))
+        .ok_or_else(|| {
+            InterfaceError::InvalidRequest(format!(
+                "An HSM request must have a uid in the form of '{prefix}::<slot_id>::<key_id>', got: {uid}"
+            ))
+        })?;
+    let (slot_id, key_id) = rest.split_once("::").ok_or_else(|| {
+        InterfaceError::InvalidRequest(format!(
+            "An HSM request must have a uid in the form of '{prefix}::<slot_id>::<key_id>', got: {uid}"
+        ))
+    })?;
+    let slot_id = slot_id.parse::<usize>().map_err(|e| {
+        InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
+    })?;
+    Ok((slot_id, key_id.to_owned()))
 }
 
 fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
@@ -494,23 +682,6 @@ fn is_rsa_keypair_creation(
         .cloned()
 }
 
-/// Parse the `uid` into a `slot_id` and `key_id`
-fn parse_uid(uid: &str) -> Result<(usize, String), InterfaceError> {
-    let (slot_id, key_id) = uid
-        .trim_start_matches("hsm::")
-        .split_once("::")
-        .ok_or_else(|| {
-            InterfaceError::InvalidRequest(
-                "An HSM request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
-                    .to_owned(),
-            )
-        })?;
-    let slot_id = slot_id.parse::<usize>().map_err(|e| {
-        InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
-    })?;
-    Ok((slot_id, key_id.to_owned()))
-}
-
 fn to_object_with_metadata(
     hsm_object: &HsmObject,
     uid: &str,
@@ -644,7 +815,7 @@ fn to_object_with_metadata(
                         InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                     })? * 8,
                 ),
-                object_type: Some(ObjectType::PrivateKey),
+                object_type: Some(ObjectType::PublicKey),
                 // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
                     CryptographicUsageMask::Encrypt
@@ -655,7 +826,7 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+            tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;

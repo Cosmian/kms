@@ -6,7 +6,7 @@ use cosmian_kms_cli_actions::reexport::{
 };
 use    test_kms_server::start_default_test_kms_server;
 use tempfile::TempDir;
-use cosmian_logger::{debug, info};
+use cosmian_kms_logger::{debug, info};
 
 use crate::{
     config::CKMS_CONF_ENV,

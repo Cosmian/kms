@@ -1,3 +1,4 @@
+use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
@@ -8,7 +9,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -376,9 +376,14 @@ pub(crate) async fn set_attribute(
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
-            debug!("Set Object Attribute: {}", object_attributes);
+            // For wrapped keys, `attributes_mut()` returns an error because the key
+            // block holds a ByteString (ciphertext), not a Structure. In that case,
+            // skip the embedded key-block update; the attribute is persisted in the
+            // metadata column by `update_object` below.
+            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+                *object_attributes = attributes.clone();
+                debug!("Set Object Attribute: {}", object_attributes);
+            }
         }
         _ => {
             trace!(

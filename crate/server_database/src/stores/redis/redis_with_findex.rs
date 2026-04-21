@@ -14,11 +14,13 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+    AtomicOperation, InterfaceResult, Notification, NotificationsStore, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_kms_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
-use redis::aio::ConnectionManager;
+use redis::{AsyncCommands, aio::ConnectionManager};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
@@ -552,6 +554,81 @@ impl ObjectsStore for RedisWithFindex {
             })
             .collect())
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // For Redis-Findex: scan all keys with prefix do::, decrypt and filter in memory.
+        // This is O(n) in the number of stored objects.
+        let pattern = "do::*";
+        let keys: Vec<String> = self
+            .objects_db
+            .scan_keys(pattern)
+            .await
+            .map_err(|e| db_error!(format!("Redis scan_keys error: {e:?}")))?;
+
+        let permissions: std::collections::HashMap<String, _> = self
+            .permission_db
+            .list_user_permissions(&UserId(user.to_owned()))
+            .await?
+            .into_iter()
+            .map(|(k, v)| (k.0, v))
+            .collect();
+
+        let uids: std::collections::HashSet<String> = keys
+            .into_iter()
+            .map(|k| k.trim_start_matches("do::").to_owned())
+            .collect();
+
+        let all_objects = self.objects_db.objects_get(&uids).await?;
+        let mut out = Vec::new();
+        for (uid, redis_obj) in all_objects {
+            if redis_obj.owner != user && !permissions.contains_key(&uid) {
+                continue;
+            }
+            let wrapped_by = redis_obj
+                .object
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.key_wrapping_data.as_ref())
+                .and_then(|kwd| kwd.encryption_key_information.as_ref())
+                .map(|eki| eki.unique_identifier.to_string());
+            if wrapped_by.as_deref() == Some(wrapping_key_uid) {
+                let attrs = redis_obj.object.attributes().cloned().unwrap_or_default();
+                out.push((uid, redis_obj.state, attrs));
+            }
+        }
+        Ok(out)
+    }
+
+    async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        let pattern = "do::*";
+        let keys: Vec<String> = self
+            .objects_db
+            .scan_keys(pattern)
+            .await
+            .map_err(|e| db_error!(format!("Redis scan_keys error: {e:?}")))?;
+
+        let uids: std::collections::HashSet<String> = keys
+            .into_iter()
+            .map(|k| k.trim_start_matches("do::").to_owned())
+            .collect();
+
+        let all_objects = self.objects_db.objects_get(&uids).await?;
+        let mut due = Vec::new();
+        for (uid, redis_obj) in all_objects {
+            if redis_obj.state != State::Active {
+                continue;
+            }
+            let attrs = redis_obj.object.attributes().cloned().unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
+    }
 }
 
 #[async_trait(?Send)]
@@ -661,6 +738,215 @@ impl PermissionsStore for RedisWithFindex {
             .unwrap_or_default()
             .into_iter()
             .collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for Redis-with-Findex
+//
+// Design:
+//  - notif_counter          → global INCR to generate monotonic IDs.
+//  - notif::<id>            → Redis STRING holding JSON-encoded Notification.
+//  - notif_user::<user_id>  → Redis SORTED SET; score = id (insertion order),
+//                             member = "<id>" (string).
+//
+// All operations that need "unread first, then desc created_at" ordering fetch
+// all IDs for the user, deserialise, sort in Rust, then apply limit/offset.
+// This is correct for the expected scale of per-user notification lists.
+// ---------------------------------------------------------------------------
+#[async_trait(?Send)]
+impl NotificationsStore for RedisWithFindex {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let id: i64 = redis::cmd("INCR")
+            .arg("notif_counter")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        let notification = Notification {
+            id,
+            user_id: user_id.to_owned(),
+            event_type: event_type.to_owned(),
+            message: message.to_owned(),
+            object_id: object_id.map(str::to_owned),
+            created_at,
+            read_at: None,
+        };
+        let json = serde_json::to_string(&notification)
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        let notif_key = format!("notif::{id}");
+        let user_index_key = format!("notif_user::{user_id}");
+        // Redis sorted-set scores are f64; IDs up to 2^53 are represented exactly.
+        // The cast is intentional and unavoidable since the redis crate requires f64 scores.
+        #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+        let score = id as f64;
+
+        let mut pipe = redis::pipe();
+        pipe.set(&notif_key, &json);
+        pipe.zadd(&user_index_key, id.to_string(), score);
+        pipe.query_async::<Vec<redis::Value>>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        Ok(id)
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let user_index_key = format!("notif_user::{user_id}");
+        let ids: Vec<String> = self
+            .mgr
+            .clone()
+            .zrange(&user_index_key, 0, -1)
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let keys: Vec<String> = ids.iter().map(|id| format!("notif::{id}")).collect();
+        let jsons: Vec<Option<String>> = redis::cmd("MGET")
+            .arg(&keys)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        let mut notifications: Vec<Notification> = jsons
+            .into_iter()
+            .flatten()
+            .filter_map(|j| serde_json::from_str(&j).ok())
+            .collect();
+
+        // Sort: unread first (read_at IS NULL DESC), then by created_at DESC.
+        notifications.sort_by(|a, b| {
+            let a_unread = a.read_at.is_none();
+            let b_unread = b.read_at.is_none();
+            b_unread
+                .cmp(&a_unread)
+                .then_with(|| b.created_at.cmp(&a.created_at))
+        });
+
+        let offset = usize::try_from(offset.max(0)).unwrap_or(0);
+        let limit = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+        Ok(notifications.into_iter().skip(offset).take(limit).collect())
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let user_index_key = format!("notif_user::{user_id}");
+        let ids: Vec<String> = self
+            .mgr
+            .clone()
+            .zrange(&user_index_key, 0, -1)
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let keys: Vec<String> = ids.iter().map(|id| format!("notif::{id}")).collect();
+        let jsons: Vec<Option<String>> = redis::cmd("MGET")
+            .arg(&keys)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        let count = jsons
+            .into_iter()
+            .flatten()
+            .filter_map(|j| serde_json::from_str::<Notification>(&j).ok())
+            .filter(|n| n.read_at.is_none())
+            .count();
+
+        Ok(i64::try_from(count).unwrap_or(i64::MAX))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let notif_key = format!("notif::{id}");
+        let json: Option<String> = self
+            .mgr
+            .clone()
+            .get(&notif_key)
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        let Some(json) = json else {
+            return Ok(false);
+        };
+        let mut notification: Notification = serde_json::from_str(&json)
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        if notification.user_id != user_id || notification.read_at.is_some() {
+            return Ok(false);
+        }
+
+        notification.read_at = Some(now);
+        let updated_json = serde_json::to_string(&notification)
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        self.mgr
+            .clone()
+            .set::<_, _, ()>(&notif_key, &updated_json)
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        Ok(true)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: OffsetDateTime) -> InterfaceResult<()> {
+        let user_index_key = format!("notif_user::{user_id}");
+        let ids: Vec<String> = self
+            .mgr
+            .clone()
+            .zrange(&user_index_key, 0, -1)
+            .await
+            .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+
+        for id_str in &ids {
+            let notif_key = format!("notif::{id_str}");
+            let json: Option<String> = self
+                .mgr
+                .clone()
+                .get(&notif_key)
+                .await
+                .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+            let Some(json) = json else { continue };
+            let mut notification: Notification = match serde_json::from_str(&json) {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+            if notification.read_at.is_some() {
+                continue;
+            }
+            notification.read_at = Some(now);
+            let updated_json = serde_json::to_string(&notification)
+                .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+            self.mgr
+                .clone()
+                .set::<_, _, ()>(&notif_key, &updated_json)
+                .await
+                .map_err(|e| cosmian_kms_interfaces::InterfaceError::Db(e.to_string()))?;
+        }
+
+        Ok(())
     }
 }
 

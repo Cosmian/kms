@@ -1,5 +1,8 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+use cosmian_kms_logger::{debug, info, trace};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -35,7 +38,6 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
@@ -43,6 +45,7 @@ use openssl::{
     sha::Sha1,
     x509::{X509, X509Req},
 };
+use time::OffsetDateTime;
 
 use crate::{
     core::{
@@ -92,9 +95,22 @@ pub(crate) async fn certify(
     let (certificate, tags, attributes) =
         build_and_sign_certificate(kms.vendor_id(), &issuer, &subject, request)?;
 
+    // For certificate renewal (Subject::Certificate), build_and_sign_certificate strips
+    // PrivateKeyLink and PublicKeyLink from the attributes (to prevent issuer-key leakage).
+    // These links belong to the *subject* certificate and must be preserved across renewals;
+    // without them the next auto-rotation cycle fails with "No private or public key link found".
+    let cert_renewal_key_links = if let Subject::Certificate(_, _, stored_attrs) = &subject {
+        (
+            stored_attrs.get_link(LinkType::PrivateKeyLink),
+            stored_attrs.get_link(LinkType::PublicKeyLink),
+        )
+    } else {
+        (None, None)
+    };
+
     let (operations, unique_identifier) = match subject {
-        Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
-            trace!("Certify X509Req or Certificate:{unique_identifier}");
+        Subject::X509Req(unique_identifier, _) => {
+            trace!("Certify X509Req:{unique_identifier}");
             (
                 vec![
                     // upsert the certificate
@@ -102,6 +118,31 @@ pub(crate) async fn certify(
                         unique_identifier.to_string(),
                         certificate,
                         attributes,
+                        Some(tags),
+                        State::Active,
+                    )),
+                ],
+                unique_identifier,
+            )
+        }
+        Subject::Certificate(unique_identifier, _, _) => {
+            trace!("Certify Certificate:{unique_identifier}");
+            // Restore the subject certificate's key links that were stripped by
+            // build_and_sign_certificate. These are needed for future renewals.
+            let mut cert_attributes = attributes;
+            if let Some(link) = cert_renewal_key_links.0 {
+                cert_attributes.set_link(LinkType::PrivateKeyLink, link);
+            }
+            if let Some(link) = cert_renewal_key_links.1 {
+                cert_attributes.set_link(LinkType::PublicKeyLink, link);
+            }
+            (
+                vec![
+                    // upsert the certificate
+                    AtomicOperation::Upsert((
+                        unique_identifier.to_string(),
+                        certificate,
+                        cert_attributes,
                         Some(tags),
                         State::Active,
                     )),
@@ -199,7 +240,20 @@ pub(crate) async fn certify(
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
                         keypair_data.private_key_object.clone(),
-                        keypair_data.private_key_object.attributes()?.clone(),
+                        {
+                            let mut a = keypair_data.private_key_object.attributes()?.clone();
+                            let now = OffsetDateTime::now_utc();
+                            if a.activation_date.is_none() {
+                                a.activation_date = Some(now);
+                            }
+                            if a.initial_date.is_none() {
+                                a.initial_date = Some(now);
+                            }
+                            if a.original_creation_date.is_none() {
+                                a.original_creation_date = Some(now);
+                            }
+                            a
+                        },
                         Some(keypair_data.private_key_tags),
                         State::Active,
                     )),
@@ -207,7 +261,20 @@ pub(crate) async fn certify(
                     AtomicOperation::Upsert((
                         keypair_data.public_key_id.to_string(),
                         keypair_data.public_key_object.clone(),
-                        keypair_data.public_key_object.attributes()?.clone(),
+                        {
+                            let mut a = keypair_data.public_key_object.attributes()?.clone();
+                            let now = OffsetDateTime::now_utc();
+                            if a.activation_date.is_none() {
+                                a.activation_date = Some(now);
+                            }
+                            if a.initial_date.is_none() {
+                                a.initial_date = Some(now);
+                            }
+                            if a.original_creation_date.is_none() {
+                                a.original_creation_date = Some(now);
+                            }
+                            a
+                        },
                         Some(keypair_data.public_key_tags),
                         State::Active,
                     )),
@@ -527,8 +594,8 @@ async fn issuer_for_self_signed_certificate<'a>(
             )
         }
         Subject::Certificate(unique_identifier, certificate, certificate_attributes) => {
-            // the user is renewing a self-signed certificate. See if we can find
-            // a linked private key
+            // The user is renewing a self-signed certificate.  See if we can find
+            // a linked private key to re-sign with.
             let private_key = fetch_object_from_attributes(
                 LinkType::PrivateKeyLink,
                 kms,
@@ -542,10 +609,19 @@ async fn issuer_for_self_signed_certificate<'a>(
                         .to_owned(),
                 )
             })?;
-            Ok(Issuer::PrivateKeyAndCertificate(
+            // Use PrivateKeyAndSubjectName (not PrivateKeyAndCertificate) so that
+            // `issuer.not_after()` returns None.  Using the old cert as the issuer would
+            // cap the renewed cert's NotAfter to the OLD cert's expiry, meaning each
+            // renewal only shrinks the validity window rather than extending it — the cert
+            // would approach its original expiry date and eventually fail to renew at all.
+            // With PrivateKeyAndSubjectName there is no cap, and build_and_sign_certificate
+            // issues a fresh N-day cert from the current date, as intended.
+            // The issuer name is set to the old cert's subject name so the renewed cert
+            // remains a valid self-signed cert (issuer == subject).
+            Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(private_key.object())?,
-                certificate.clone(),
+                certificate.subject_name(),
             ))
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subject_name) => {
@@ -587,7 +663,31 @@ async fn issuer_for_self_signed_certificate<'a>(
             }
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
-            // the user is creating a self-signed certificate from a key pair
+            // ML-KEM / hybrid KEM keys are KEM-only algorithms — they do not support digital
+            // signatures and therefore cannot issue self-signed certificates.
+            // The caller must supply issuer_private_key_id + issuer_certificate_id pointing to
+            // a signing CA (RSA / EC / ML-DSA / SLH-DSA).
+            #[cfg(feature = "non-fips")]
+            if let Object::PrivateKey(pk) = &keypair_data.private_key_object {
+                if let Some(
+                    CryptographicAlgorithm::MLKEM_512
+                    | CryptographicAlgorithm::MLKEM_768
+                    | CryptographicAlgorithm::MLKEM_1024
+                    | CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024
+                    | CryptographicAlgorithm::ConfigurableKEM,
+                ) = pk.key_block.cryptographic_algorithm
+                {
+                    kms_bail!(KmsError::InvalidRequest(
+                        "KEM keys (ML-KEM, X25519MLKEM768, X448MLKEM1024, ConfigurableKEM) \
+                         do not support digital signatures and cannot issue self-signed \
+                         certificates. Provide issuer_private_key_id and \
+                         issuer_certificate_id pointing to a signing CA \
+                         (RSA/EC/ML-DSA/SLH-DSA)."
+                            .to_owned()
+                    ))
+                }
+            }
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
@@ -602,6 +702,15 @@ fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer
     let spki_der = pk.public_key_to_der()?;
     let mut sha1 = Sha1::default();
     sha1.update(&spki_der);
+    // Mix in the current time (nanosecond precision) so that consecutive renewals of the
+    // same key pair — which share an identical SPKI — produce distinct serial numbers.
+    // RFC 5280 §4.1.2.2 requires the serial to be unique for each certificate issued by
+    // a given CA; without this, renewals produce bitwise-identical DER bytes.
+    sha1.update(
+        &OffsetDateTime::now_utc()
+            .unix_timestamp_nanos()
+            .to_le_bytes(),
+    );
     let mut serial_number_bytes = sha1.finish().to_vec();
 
     // Ensure the serial number is always positive by clearing the high bit of the first byte.
@@ -684,10 +793,12 @@ fn build_and_sign_certificate(
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
 
-    let digest = match subject.public_key()?.id() {
-        Id::ED25519 | Id::ED448 => MessageDigest::null(), // EdDSA does not use a digest
-        // Default to SHA-256 for other algorithms
-        _ => MessageDigest::sha256(),
+    // The digest must match the *issuer's signing key* type, not the subject key.
+    // RSA and EC (ECDSA) require an explicit external digest; EdDSA and PQC algorithms
+    // (ML-DSA, SLH-DSA) handle their digest internally and must receive a null digest.
+    let digest = match issuer.private_key().id() {
+        Id::RSA | Id::EC => MessageDigest::sha256(),
+        _ => MessageDigest::null(), // EdDSA, ML-DSA, SLH-DSA — internal digest
     };
 
     // Set the issuer name and private key
@@ -721,6 +832,20 @@ fn build_and_sign_certificate(
     attributes.cryptographic_domain_parameters = None;
     // Set the key format type to X509
     attributes.key_format_type = Some(KeyFormatType::X509);
+
+    // Stamp initial_date on initial issuance so that is_due_for_rotation can compute the
+    // first rotation deadline from `initial_date + rotate_interval` even if the caller never
+    // sets RotateDate explicitly.  For renewals the existing initial_date is preserved because
+    // it is carried through the certify_attrs clone in auto_rotate.rs.
+    let now = OffsetDateTime::now_utc();
+    if attributes.initial_date.is_none() {
+        attributes.initial_date = Some(now);
+    }
+    // Certificates issued by Certify are always immediately active (State::Active is set by
+    // the caller).  Stamp activation_date so it appears correctly in GetAttributes / Locate.
+    if attributes.activation_date.is_none() {
+        attributes.activation_date = Some(now);
+    }
 
     // Add certificate attributes
     let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);

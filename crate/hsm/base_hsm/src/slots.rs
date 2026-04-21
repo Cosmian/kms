@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use cosmian_logger::{debug, warn};
+use cosmian_kms_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
     CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,

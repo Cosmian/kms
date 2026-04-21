@@ -2,6 +2,7 @@
 
 use std::{fs, path, sync::Arc};
 
+use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CertificateType,
     kmip_2_1::{
@@ -11,7 +12,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
 };
-use cosmian_logger::debug;
 
 use crate::{
     config::ServerParams, core::KMS, error::KmsError,
@@ -21,7 +21,7 @@ use crate::{
 #[ignore = "Requires network access to perform certificate validation since CRL is fetched from https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem"]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsError> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =
         path::Path::new("../../test_data/certificates/chain/intermediate.cert.der");
@@ -112,7 +112,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 #[ignore = "Requires network access to perform certificate validation since CRL is fetched from https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem"]
 #[tokio::test]
 pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
     let root_path = path::Path::new("../../test_data/certificates/chain/ca.cert.der");
     let intermediate_path =
         path::Path::new("../../test_data/certificates/chain/intermediate.cert.der");

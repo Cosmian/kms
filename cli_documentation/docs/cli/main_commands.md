@@ -649,6 +649,12 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
+`--rotate-interval [-i] <ROTATE_INTERVAL>` Auto-rotation interval in seconds. Set to 0 to disable. Example: 86400 for daily rotation, 604800 for weekly rotation
+
+`--rotate-name <ROTATE_NAME>` Optional name to identify the rotation policy lineage
+
+`--rotate-offset <ROTATE_OFFSET>` Delay in seconds before the first automatic rotation is triggered. Defaults to the rotation interval if not set
+
 
 
 ---
@@ -1116,17 +1122,19 @@ Manage post-quantum keys (ML-KEM, ML-DSA)
 
 **`create`** [[7.1.1]](#711-ckms-pqc-keys-create)  Create a new post-quantum key pair (ML-KEM or ML-DSA).
 
-**`export`** [[7.1.2]](#712-ckms-pqc-keys-export)  Export a key or secret data from the KMS
+**`re-key`** [[7.1.2]](#712-ckms-pqc-keys-re-key)  Refresh an existing post-quantum private key (key rotation)
 
-**`import`** [[7.1.3]](#713-ckms-pqc-keys-import)  Import a secret data or a key in the KMS.
+**`export`** [[7.1.3]](#713-ckms-pqc-keys-export)  Export a key or secret data from the KMS
 
-**`wrap`** [[7.1.4]](#714-ckms-pqc-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`import`** [[7.1.4]](#714-ckms-pqc-keys-import)  Import a secret data or a key in the KMS.
 
-**`unwrap`** [[7.1.5]](#715-ckms-pqc-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[7.1.5]](#715-ckms-pqc-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[7.1.6]](#716-ckms-pqc-keys-revoke)  Revoke a PQC public or private key
+**`unwrap`** [[7.1.6]](#716-ckms-pqc-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`destroy`** [[7.1.7]](#717-ckms-pqc-keys-destroy)  Destroy a PQC public or private key
+**`revoke`** [[7.1.7]](#717-ckms-pqc-keys-revoke)  Revoke a PQC public or private key
+
+**`destroy`** [[7.1.8]](#718-ckms-pqc-keys-destroy)  Destroy a PQC public or private key
 
 ---
 
@@ -1147,11 +1155,30 @@ Possible values:  `"ml-kem-512", "ml-kem-768", "ml-kem-1024", "ml-dsa-44", "ml-d
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
+`--rotate-interval [-i] <ROTATE_INTERVAL>` Auto-rotation interval in seconds. Set to 0 to disable. Example: 86400 for daily rotation, 604800 for weekly rotation
+
+`--rotate-name <ROTATE_NAME>` Optional name to identify the rotation policy lineage
+
+`--rotate-offset <ROTATE_OFFSET>` Delay in seconds before the first automatic rotation is triggered. Defaults to the rotation interval if not set
+
 
 
 ---
 
-## 7.1.2 ckms pqc keys export
+## 7.1.2 ckms pqc keys re-key
+
+Refresh an existing post-quantum private key (key rotation)
+
+### Usage
+`ckms pqc keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the PQC private key to rotate
+
+
+
+---
+
+## 7.1.3 ckms pqc keys export
 
 Export a key or secret data from the KMS
 
@@ -1210,7 +1237,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 7.1.3 ckms pqc keys import
+## 7.1.4 ckms pqc keys import
 
 Import a secret data or a key in the KMS.
 
@@ -1258,7 +1285,7 @@ If the wrapping key is:
 
 ---
 
-## 7.1.4 ckms pqc keys wrap
+## 7.1.5 ckms pqc keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -1283,7 +1310,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 7.1.5 ckms pqc keys unwrap
+## 7.1.6 ckms pqc keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -1306,7 +1333,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 7.1.6 ckms pqc keys revoke
+## 7.1.7 ckms pqc keys revoke
 
 Revoke a PQC public or private key
 
@@ -1324,7 +1351,7 @@ Revoke a PQC public or private key
 
 ---
 
-## 7.1.7 ckms pqc keys destroy
+## 7.1.8 ckms pqc keys destroy
 
 Destroy a PQC public or private key
 
@@ -1483,7 +1510,7 @@ the subject name to use.
 
 `--algorithm [-a] <ALGORITHM>` The algorithm to use for the keypair generation
 
-Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "ed25519", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096"` [default: `"rsa4096"`]
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "ed25519", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096", "ml-dsa-44", "ml-dsa-65", "ml-dsa-87", "slh-dsa-sha2-128s", "slh-dsa-sha2-128f", "slh-dsa-sha2-192s", "slh-dsa-sha2-192f", "slh-dsa-sha2-256s", "slh-dsa-sha2-256f", "slh-dsa-shake-128s", "slh-dsa-shake-128f", "slh-dsa-shake-192s", "slh-dsa-shake-192f", "slh-dsa-shake-256s", "slh-dsa-shake-256f", "ml-kem-512", "ml-kem-768", "ml-kem-1024", "x25519-ml-kem-768", "x448-ml-kem-1024", "ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"` [default: `"rsa4096"`]
 
 `--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
 
@@ -1757,17 +1784,19 @@ Create, destroy, import, and export elliptic curve key pairs
 
 **`create`** [[10.1.1]](#1011-ckms-ec-keys-create)  Create an elliptic curve key pair
 
-**`export`** [[10.1.2]](#1012-ckms-ec-keys-export)  Export a key or secret data from the KMS
+**`re-key`** [[10.1.2]](#1012-ckms-ec-keys-re-key)  Refresh an existing Elliptic Curve private key (key rotation)
 
-**`import`** [[10.1.3]](#1013-ckms-ec-keys-import)  Import a secret data or a key in the KMS.
+**`export`** [[10.1.3]](#1013-ckms-ec-keys-export)  Export a key or secret data from the KMS
 
-**`wrap`** [[10.1.4]](#1014-ckms-ec-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`import`** [[10.1.4]](#1014-ckms-ec-keys-import)  Import a secret data or a key in the KMS.
 
-**`unwrap`** [[10.1.5]](#1015-ckms-ec-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[10.1.5]](#1015-ckms-ec-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[10.1.6]](#1016-ckms-ec-keys-revoke)  Revoke a public or private key
+**`unwrap`** [[10.1.6]](#1016-ckms-ec-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`destroy`** [[10.1.7]](#1017-ckms-ec-keys-destroy)  Destroy a public or private key
+**`revoke`** [[10.1.7]](#1017-ckms-ec-keys-revoke)  Revoke a public or private key
+
+**`destroy`** [[10.1.8]](#1018-ckms-ec-keys-destroy)  Destroy a public or private key
 
 ---
 
@@ -1798,11 +1827,30 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
+`--rotate-interval [-i] <ROTATE_INTERVAL>` Auto-rotation interval in seconds. Set to 0 to disable. Example: 86400 for daily rotation, 604800 for weekly rotation
+
+`--rotate-name <ROTATE_NAME>` Optional name to identify the rotation policy lineage
+
+`--rotate-offset <ROTATE_OFFSET>` Delay in seconds before the first automatic rotation is triggered. Defaults to the rotation interval if not set
+
 
 
 ---
 
-## 10.1.2 ckms ec keys export
+## 10.1.2 ckms ec keys re-key
+
+Refresh an existing Elliptic Curve private key (key rotation)
+
+### Usage
+`ckms ec keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the EC private key to rotate
+
+
+
+---
+
+## 10.1.3 ckms ec keys export
 
 Export a key or secret data from the KMS
 
@@ -1861,7 +1909,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 10.1.3 ckms ec keys import
+## 10.1.4 ckms ec keys import
 
 Import a secret data or a key in the KMS.
 
@@ -1909,7 +1957,7 @@ If the wrapping key is:
 
 ---
 
-## 10.1.4 ckms ec keys wrap
+## 10.1.5 ckms ec keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -1934,7 +1982,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 10.1.5 ckms ec keys unwrap
+## 10.1.6 ckms ec keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -1957,7 +2005,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 10.1.6 ckms ec keys revoke
+## 10.1.7 ckms ec keys revoke
 
 Revoke a public or private key
 
@@ -1975,7 +2023,7 @@ Revoke a public or private key
 
 ---
 
-## 10.1.7 ckms ec keys destroy
+## 10.1.8 ckms ec keys destroy
 
 Destroy a public or private key
 
@@ -2670,17 +2718,19 @@ Create, destroy, import, and export RSA key pairs
 
 **`create`** [[19.1.1]](#1911-ckms-rsa-keys-create)  Create a new RSA key pair
 
-**`export`** [[19.1.2]](#1912-ckms-rsa-keys-export)  Export a key or secret data from the KMS
+**`re-key`** [[19.1.2]](#1912-ckms-rsa-keys-re-key)  Refresh an existing RSA private key (key rotation)
 
-**`import`** [[19.1.3]](#1913-ckms-rsa-keys-import)  Import a secret data or a key in the KMS.
+**`export`** [[19.1.3]](#1913-ckms-rsa-keys-export)  Export a key or secret data from the KMS
 
-**`wrap`** [[19.1.4]](#1914-ckms-rsa-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`import`** [[19.1.4]](#1914-ckms-rsa-keys-import)  Import a secret data or a key in the KMS.
 
-**`unwrap`** [[19.1.5]](#1915-ckms-rsa-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[19.1.5]](#1915-ckms-rsa-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[19.1.6]](#1916-ckms-rsa-keys-revoke)  Revoke a public or private key
+**`unwrap`** [[19.1.6]](#1916-ckms-rsa-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`destroy`** [[19.1.7]](#1917-ckms-rsa-keys-destroy)  Destroy a public or private key
+**`revoke`** [[19.1.7]](#1917-ckms-rsa-keys-revoke)  Revoke a public or private key
+
+**`destroy`** [[19.1.8]](#1918-ckms-rsa-keys-destroy)  Destroy a public or private key
 
 ---
 
@@ -2709,11 +2759,30 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
+`--rotate-interval [-i] <ROTATE_INTERVAL>` Auto-rotation interval in seconds. Set to 0 to disable. Example: 86400 for daily rotation, 604800 for weekly rotation
+
+`--rotate-name <ROTATE_NAME>` Optional name to identify the rotation policy lineage
+
+`--rotate-offset <ROTATE_OFFSET>` Delay in seconds before the first automatic rotation is triggered. Defaults to the rotation interval if not set
+
 
 
 ---
 
-## 19.1.2 ckms rsa keys export
+## 19.1.2 ckms rsa keys re-key
+
+Refresh an existing RSA private key (key rotation)
+
+### Usage
+`ckms rsa keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the RSA private key to rotate
+
+
+
+---
+
+## 19.1.3 ckms rsa keys export
 
 Export a key or secret data from the KMS
 
@@ -2772,7 +2841,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 19.1.3 ckms rsa keys import
+## 19.1.4 ckms rsa keys import
 
 Import a secret data or a key in the KMS.
 
@@ -2820,7 +2889,7 @@ If the wrapping key is:
 
 ---
 
-## 19.1.4 ckms rsa keys wrap
+## 19.1.5 ckms rsa keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2845,7 +2914,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 19.1.5 ckms rsa keys unwrap
+## 19.1.6 ckms rsa keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2868,7 +2937,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 19.1.6 ckms rsa keys revoke
+## 19.1.7 ckms rsa keys revoke
 
 Revoke a public or private key
 
@@ -2886,7 +2955,7 @@ Revoke a public or private key
 
 ---
 
-## 19.1.7 ckms rsa keys destroy
+## 19.1.8 ckms rsa keys destroy
 
 Destroy a public or private key
 
@@ -3497,17 +3566,19 @@ Create, destroy, import, and export symmetric keys
 
 **`re-key`** [[22.1.2]](#2212-ckms-sym-keys-re-key)  Refresh an existing symmetric key
 
-**`export`** [[22.1.3]](#2213-ckms-sym-keys-export)  Export a key or secret data from the KMS
+**`set-rotation-policy`** [[22.1.3]](#2213-ckms-sym-keys-set-rotation-policy)  Set the rotation policy for a symmetric key.
 
-**`import`** [[22.1.4]](#2214-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
+**`export`** [[22.1.4]](#2214-ckms-sym-keys-export)  Export a key or secret data from the KMS
 
-**`wrap`** [[22.1.5]](#2215-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`import`** [[22.1.5]](#2215-ckms-sym-keys-import)  Import a secret data or a key in the KMS.
 
-**`unwrap`** [[22.1.6]](#2216-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[22.1.6]](#2216-ckms-sym-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[22.1.7]](#2217-ckms-sym-keys-revoke)  Revoke a symmetric key
+**`unwrap`** [[22.1.7]](#2217-ckms-sym-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`destroy`** [[22.1.8]](#2218-ckms-sym-keys-destroy)  Destroy a symmetric key
+**`revoke`** [[22.1.8]](#2218-ckms-sym-keys-revoke)  Revoke a symmetric key
+
+**`destroy`** [[22.1.9]](#2219-ckms-sym-keys-destroy)  Destroy a symmetric key
 
 ---
 
@@ -3542,6 +3613,12 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
+`--rotate-interval [-i] <ROTATE_INTERVAL>` Auto-rotation interval in seconds. Set to 0 to disable. Example: 86400 for daily rotation, 604800 for weekly rotation
+
+`--rotate-name <ROTATE_NAME>` Optional name to identify the rotation policy lineage
+
+`--rotate-offset <ROTATE_OFFSET>` Delay in seconds before the first automatic rotation is triggered. Defaults to the rotation interval if not set
+
 
 
 ---
@@ -3559,7 +3636,26 @@ Refresh an existing symmetric key
 
 ---
 
-## 22.1.3 ckms sym keys export
+## 22.1.3 ckms sym keys set-rotation-policy
+
+Set the rotation policy for a symmetric key.
+
+### Usage
+`ckms sym keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to configure
+
+`--interval [-i] <INTERVAL>` Rotation interval in seconds. Set to 0 to disable auto-rotation. Example: 86400 for daily rotation, 604800 for weekly
+
+`--name [-n] <NAME>` The name used to track the rotation lineage (optional)
+
+`--offset <OFFSET>` Time offset in seconds from the creation date before the first rotation is triggered (optional). Defaults to the interval if not set
+
+
+
+---
+
+## 22.1.4 ckms sym keys export
 
 Export a key or secret data from the KMS
 
@@ -3618,7 +3714,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 22.1.4 ckms sym keys import
+## 22.1.5 ckms sym keys import
 
 Import a secret data or a key in the KMS.
 
@@ -3666,7 +3762,7 @@ If the wrapping key is:
 
 ---
 
-## 22.1.5 ckms sym keys wrap
+## 22.1.6 ckms sym keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3691,7 +3787,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 22.1.6 ckms sym keys unwrap
+## 22.1.7 ckms sym keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -3714,7 +3810,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 22.1.7 ckms sym keys revoke
+## 22.1.8 ckms sym keys revoke
 
 Revoke a symmetric key
 
@@ -3732,7 +3828,7 @@ Revoke a symmetric key
 
 ---
 
-## 22.1.8 ckms sym keys destroy
+## 22.1.9 ckms sym keys destroy
 
 Destroy a symmetric key
 

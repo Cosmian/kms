@@ -4,7 +4,7 @@ use cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
     kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 use sha2::Digest as Sha2Digest;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;

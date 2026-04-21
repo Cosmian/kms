@@ -66,6 +66,7 @@ nav:
   - HSM support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - Multi-HSM support: hsm_support/multi_hsm.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
@@ -132,6 +133,7 @@ nav:
       - Custom OpenSSL build: configuration/openssl_override.md
   - Certifications and compliance:
       - FIPS 140-3: certifications_and_compliance/fips.md
+      - ANSSI: certifications_and_compliance/anssi.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
@@ -176,5 +178,6 @@ nav:
       - Mac: kmip_support/_mac.md
       - Re-Key: kmip_support/_re-key.md
       - Re-Key Key Pair: kmip_support/_re-key_key_pair.md
+      - Key Auto-Rotation Policy: kmip_support/key_auto_rotation.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md

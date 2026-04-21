@@ -1,4 +1,4 @@
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 #[cfg(feature = "non-fips")]
 use openssl::pkcs12::ParsedPkcs12_2;
 use openssl::{

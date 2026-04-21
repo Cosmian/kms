@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 
-use cosmian_logger::info;
+use cosmian_kms_logger::info;
 
 /// Safely retrieve OpenSSL version information without risking a segmentation
 /// fault.  In some edge-case environments (missing OpenSSL shared library,

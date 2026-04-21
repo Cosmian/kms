@@ -1,8 +1,8 @@
+use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
     kmip_2_1::kmip_operations::{Hash, HashResponse},
 };
-use cosmian_logger::trace;
 use openssl::hash::{Hasher, MessageDigest};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};

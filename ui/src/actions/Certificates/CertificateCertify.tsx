@@ -1,11 +1,13 @@
 import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
 import { FormUploadDragger } from "../../components/common/FormUpload";
+import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "../Keys/RotationPolicyFields";
 
-interface CertificateCertifyFormData {
+interface CertificateCertifyFormData extends RotationPolicyFormValues {
     certificateId?: string;
     certificateSigningRequest?: Uint8Array;
     csrFormat: "pem" | "der";
@@ -88,7 +90,19 @@ const CertificateCertifyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);
-                setRes(`Certificate successfully created with ID: ${response.UniqueIdentifier}`);
+                const certId = response.UniqueIdentifier as string;
+                await applyRotationPolicy(
+                    certId,
+                    values.rotateInterval,
+                    values.rotateName,
+                    values.rotateOffset,
+                    sendKmipRequest,
+                    parse_set_attribute_ttlv_response,
+                    set_attribute_ttlv_request,
+                    idToken,
+                    serverUrl,
+                );
+                setRes(`Certificate successfully created with ID: ${certId}`);
             }
         } catch (e) {
             setRes(`Error certifying certificate: ${e}`);
@@ -234,7 +248,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Key Algorithm"
                                     rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
-                                    <Select options={algorithmOptions} />
+                                    <Select options={algorithmOptions} data-testid="cert-algorithm-select" virtual={false} />
                                 </Form.Item>
                             </div>
                         )}
@@ -299,6 +313,10 @@ const CertificateCertifyForm: React.FC = () => {
                         <Form.Item name="tags" label="Tags" help="Tags to associate with the certificate (optional)">
                             <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <RotationPolicyFields />
                     </Card>
 
                     <Form.Item>

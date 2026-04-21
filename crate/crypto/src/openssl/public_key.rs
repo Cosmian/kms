@@ -9,7 +9,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use num_bigint_dig::{BigInt, Sign};
 use openssl::{
     bn::{BigNum, BigNumContext},

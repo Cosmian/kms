@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use time::OffsetDateTime;
@@ -401,6 +401,12 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_offset: Option<i32>,
 
+    /// Server-internal: tracks the largest warning threshold (in days) for which a
+    /// renewal-approaching notification has already been dispatched in the current cycle.
+    /// Not a standard KMIP attribute — Cosmian-proprietary, persisted via serde only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_last_warning_days: Option<i32>,
+
     /// If True then the server SHALL prevent the object value being retrieved
     /// (via the Get operation) unless it is wrapped by another key. The server
     /// SHALL set the value to False if the value is not provided by the client.
@@ -734,6 +740,7 @@ impl Attributes {
         merge_option_field!(rotate_latest);
         merge_option_field!(rotate_name);
         merge_option_field!(rotate_offset);
+        merge_option_field!(rotate_last_warning_days);
         merge_option_field!(sensitive);
         merge_option_field!(short_unique_identifier);
         merge_option_field!(state);

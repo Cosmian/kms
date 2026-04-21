@@ -22,7 +22,7 @@ use cosmian_kms_cli_actions::{
     },
 };
 #[cfg(feature = "non-fips")]
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
@@ -475,7 +475,7 @@ pub(crate) async fn test_export_x25519() -> CosmianResult<()> {
     // create a temp dir
 
     use cosmian_kms_cli_actions::reexport::cosmian_kms_client::kmip_2_1::kmip_data_structures::KeyValue;
-    use cosmian_logger::trace;
+    use cosmian_kms_logger::trace;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server

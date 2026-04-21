@@ -16,7 +16,7 @@ use crate::error::DbResult;
 pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
 ) -> DbResult<()> {
-    cosmian_logger::log_init(None);
+    cosmian_kms_logger::log_init(None);
 
     let mut rng = CsRng::from_entropy();
     let owner = Uuid::new_v4().to_string();

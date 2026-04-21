@@ -1,4 +1,4 @@
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,

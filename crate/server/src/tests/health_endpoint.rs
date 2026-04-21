@@ -1,4 +1,4 @@
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 
 use crate::tests::test_utils;
 

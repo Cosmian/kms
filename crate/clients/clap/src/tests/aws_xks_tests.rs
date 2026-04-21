@@ -5,7 +5,7 @@ use crate::{
 use cosmian_aws_structs::health_status::{self, GetHealthStatusResponse};
 use cosmian_kmip::kmip_2_1::KmipOperation;
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::ImportKeyFormat;
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use std::{fs, path::PathBuf};
 use tempfile::TempDir;
 use test_kms_server::{

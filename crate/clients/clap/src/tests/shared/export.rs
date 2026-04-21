@@ -16,7 +16,7 @@ use cosmian_kms_client::{
     },
     pad_be_bytes,
 };
-use cosmian_logger::log_init;
+use cosmian_kms_logger::log_init;
 #[cfg(feature = "non-fips")]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
@@ -290,6 +290,9 @@ pub(crate) async fn test_export_covercrypt() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
@@ -359,6 +362,9 @@ pub(crate) async fn test_export_error_cover_crypt() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
@@ -387,7 +393,7 @@ pub(crate) async fn test_export_x25519() -> KmsCliResult<()> {
         kmip_2_1::kmip_data_structures::KeyValue,
         reexport::cosmian_kms_client_utils::create_utils::Curve,
     };
-    use cosmian_logger::trace;
+    use cosmian_kms_logger::trace;
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
@@ -633,6 +639,9 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: true,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())

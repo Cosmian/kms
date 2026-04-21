@@ -5,7 +5,7 @@ use cosmian_kmip::{
 use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::{
     ResponseMessage, ResponseMessageBatchItemVersioned,
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 
 // Bring in version-specific payload comparators
 use crate::tests::xml::kmip_1_4::compare::compare_payload_v14;

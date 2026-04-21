@@ -34,7 +34,7 @@ cosmian_findex = { version = "8.0.2", optional = true }
 cosmian_kmip = { path = "../kmip", version = "5.20.1" }
 cosmian_kms_crypto = { path = "../crypto", version = "5.20.1" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.20.1" }
-cosmian_logger = { workspace = true }
+cosmian_kms_logger = { workspace = true }
 cosmian_sse_memories = { version = "8.0.2", optional = true }
 deadpool-postgres = "0.14"
 lru = { workspace = true }
@@ -55,6 +55,7 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 strum = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { version = "0.7", features = [
   "with-uuid-1",

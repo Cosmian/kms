@@ -1,4 +1,4 @@
-use cosmian_logger::{info, log_init};
+use cosmian_kms_logger::{info, log_init};
 use kmip_derive::{KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};

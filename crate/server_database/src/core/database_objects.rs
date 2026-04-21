@@ -8,6 +8,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
+use time::OffsetDateTime;
 
 use crate::{
     Database,
@@ -310,6 +311,37 @@ impl Database {
                 .await
                 .unwrap_or(vec![]),
             );
+        }
+        Ok(results)
+    }
+
+    /// Find all Active objects whose `key_wrapping_data` wrapping key UID matches
+    /// `wrapping_key_uid`, accessible to `user`. Used during key rotation to
+    /// find dependant keys that must be re-wrapped.
+    pub async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
+        for (_prefix, db) in map.iter() {
+            results.extend(
+                db.find_wrapped_by(wrapping_key_uid, user)
+                    .await
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Find all Active objects that have a `rotate_interval > 0` and whose next
+    /// rotation instant is ≤ `now`. Returns a list of UIDs.
+    pub async fn find_due_for_rotation(&self, now: OffsetDateTime) -> DbResult<Vec<String>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<String> = Vec::new();
+        for (_prefix, db) in map.iter() {
+            results.extend(db.find_due_for_rotation(now).await.unwrap_or_default());
         }
         Ok(results)
     }

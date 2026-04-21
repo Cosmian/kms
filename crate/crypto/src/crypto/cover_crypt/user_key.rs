@@ -13,7 +13,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_logger::trace;
+use cosmian_kms_logger::trace;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 

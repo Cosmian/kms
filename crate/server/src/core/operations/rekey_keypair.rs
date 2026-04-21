@@ -1,3 +1,4 @@
+use cosmian_kms_logger::trace;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -13,7 +14,6 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
     reexport::cosmian_cover_crypt::api::Covercrypt,
 };
-use cosmian_logger::trace;
 
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::rekey_keypair_cover_crypt;
