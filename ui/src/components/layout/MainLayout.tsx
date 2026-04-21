@@ -2,7 +2,7 @@ import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";

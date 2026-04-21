@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
 interface WordListFormData {

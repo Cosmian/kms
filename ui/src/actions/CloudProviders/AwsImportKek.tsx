@@ -1,7 +1,7 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Select, Space, Upload, Tabs } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/useAuth";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import ExternalLink from "../../components/common/ExternalLink";

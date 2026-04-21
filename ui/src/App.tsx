@@ -10,7 +10,7 @@ import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
 import AttributeSetForm from "./actions/Attributes/AttributeSet";
 import { AuthProvider } from "./contexts/AuthContext";
-import { useAuth } from "./hooks/useAuth";
+import { useAuth } from "./contexts/useAuth";
 import ExportAzureBYOKForm from "./actions/CloudProviders/AzureExportByok";
 import ImportAzureKekForm from "./actions/CloudProviders/AzureImportKek";
 import CertificateCertifyForm from "./actions/Certificates/CertificateCertify";
