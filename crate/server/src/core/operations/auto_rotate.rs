@@ -650,6 +650,12 @@ async fn rotate_asymmetric_keypair(
             new_sk_attrs,
             Some(old_sk_tags_for_new),
         )));
+        // UpdateObject does NOT update the state column — add an explicit UpdateState
+        // so the new private key's state column is set to Active.
+        atomic_ops.push(AtomicOperation::UpdateState((
+            new_private_uid.clone(),
+            State::Active,
+        )));
     }
 
     // 4. New public key: add ReplacedObjectLink (no rotation policy on public keys).
@@ -671,6 +677,12 @@ async fn rotate_asymmetric_keypair(
                 new_pk_owm.object().clone(),
                 new_pk_attrs,
                 Some(old_pk_tags_for_new),
+            )));
+            // UpdateObject does NOT update the state column — add an explicit UpdateState
+            // so the new public key's state column is set to Active.
+            atomic_ops.push(AtomicOperation::UpdateState((
+                new_public_uid.clone(),
+                State::Active,
             )));
         }
     }

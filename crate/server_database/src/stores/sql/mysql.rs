@@ -258,24 +258,23 @@ impl MySqlPool {
         }
 
         // Create notifications table if it doesn't exist
-        conn.query_drop(
-            "CREATE TABLE IF NOT EXISTS notifications (\
-                id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, \
-                user_id VARCHAR(255) NOT NULL, \
-                event_type VARCHAR(64) NOT NULL, \
-                message TEXT NOT NULL, \
-                object_id VARCHAR(255), \
-                created_at VARCHAR(64) NOT NULL, \
-                read_at VARCHAR(64))",
-        )
-        .await
-        .map_err(DbError::from)?;
+        let sql = MYSQL_QUERIES
+            .get("create-table-notifications")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: create-table-notifications".to_owned())
+            })?;
+        conn.query_drop(sql).await.map_err(DbError::from)?;
 
         // Optional: clear database content for tests to ensure isolation
         if clear_database {
-            conn.query_drop("DELETE FROM notifications")
-                .await
-                .map_err(DbError::from)?;
+            let sql = MYSQL_QUERIES
+                .get("clean-table-notifications")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: clean-table-notifications".to_owned(),
+                    )
+                })?;
+            conn.query_drop(sql).await.map_err(DbError::from)?;
             for name in [
                 "clean-table-objects",
                 "clean-table-read_access",
@@ -301,7 +300,9 @@ impl MySqlPool {
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SELECT 1").await.map_err(DbError::from)
+        conn.query_drop(get_mysql_query!("health-check"))
+            .await
+            .map_err(DbError::from)
     }
 
     // Helper to obtain a pooled connection and configure session settings consistently
@@ -309,10 +310,10 @@ impl MySqlPool {
     // - Lock wait timeout: 10s (avoid long stalls under contention)
     async fn get_configured_conn(&self) -> DbResult<mysql_async::Conn> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        conn.query_drop(get_mysql_query!("set-session-isolation-level"))
             .await
             .map_err(DbError::from)?;
-        conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+        conn.query_drop(get_mysql_query!("set-session-lock-timeout"))
             .await
             .map_err(DbError::from)?;
         Ok(conn)
@@ -649,25 +650,13 @@ impl ObjectsStore for MySqlPool {
         wrapping_key_uid: &str,
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // MySQL/MariaDB: search in the stored `object` JSON column using JSON_EXTRACT
-        let sql = "SELECT DISTINCT objects.id, objects.state, objects.attributes \
-             FROM objects \
-             LEFT JOIN read_access ON objects.id = read_access.id \
-                 AND read_access.userid = ? \
-             WHERE (objects.owner = ? OR read_access.userid = ?) \
-               AND ( \
-                 JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
-                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
-                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
-                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
-                 OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ? \
-               )";
         let uid_s = wrapping_key_uid.to_owned();
         let user_s = user.to_owned();
         let mut conn = self
             .get_configured_conn()
             .await
             .map_err(InterfaceError::from)?;
+        let sql = get_mysql_query!("find-wrapped-by-objects");
         let rows: Vec<mysql_async::Row> = conn
             .exec(
                 sql,
@@ -711,15 +700,11 @@ impl ObjectsStore for MySqlPool {
     }
 
     async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
-        let sql = "SELECT objects.id, objects.attributes \
-             FROM objects \
-             WHERE objects.state = 'Active' \
-               AND JSON_EXTRACT(objects.attributes, '$.RotateInterval') IS NOT NULL \
-               AND CAST(JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '$.RotateInterval')) AS UNSIGNED) > 0";
         let mut conn = self
             .get_configured_conn()
             .await
             .map_err(InterfaceError::from)?;
+        let sql = get_mysql_query!("find-due-for-rotation");
         let rows: Vec<(String, String)> = conn
             .query(sql)
             .await
@@ -1309,15 +1294,13 @@ impl NotificationsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         conn.exec_drop(
-            "INSERT INTO notifications \
-             (user_id, event_type, message, object_id, created_at) \
-             VALUES (?, ?, ?, ?, ?)",
+            get_mysql_query!("insert-notification"),
             (user_id, event_type, message, oid, ca_str),
         )
         .await
         .map_err(|e| InterfaceError::Db(e.to_string()))?;
         let id: Option<u64> = conn
-            .exec_first("SELECT LAST_INSERT_ID()", ())
+            .exec_first(get_mysql_query!("last-insert-id"), ())
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         let raw = id.unwrap_or(0);
@@ -1346,10 +1329,7 @@ impl NotificationsStore for MySqlPool {
             Option<String>,
         )> = conn
             .exec(
-                "SELECT id, user_id, event_type, message, object_id, created_at, read_at \
-                 FROM notifications WHERE user_id = ? \
-                 ORDER BY (read_at IS NULL) DESC, created_at DESC \
-                 LIMIT ? OFFSET ?",
+                get_mysql_query!("list-notifications"),
                 (user_id, limit, offset),
             )
             .await
@@ -1384,10 +1364,7 @@ impl NotificationsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         let count: Option<i64> = conn
-            .exec_first(
-                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL",
-                (user_id,),
-            )
+            .exec_first(get_mysql_query!("count-unread-notifications"), (user_id,))
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         Ok(count.unwrap_or(0))
@@ -1409,13 +1386,13 @@ impl NotificationsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         conn.exec_drop(
-            "UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL",
+            get_mysql_query!("mark-notification-read"),
             (now_str, id, user_id),
         )
         .await
         .map_err(|e| InterfaceError::Db(e.to_string()))?;
         let affected: Option<u64> = conn
-            .exec_first("SELECT ROW_COUNT()", ())
+            .exec_first(get_mysql_query!("row-count"), ())
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         Ok(affected.unwrap_or(0) > 0)
@@ -1432,7 +1409,7 @@ impl NotificationsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::Db(e.to_string()))?;
         conn.exec_drop(
-            "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
+            get_mysql_query!("mark-all-notifications-read"),
             (now_str, user_id),
         )
         .await

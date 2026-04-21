@@ -333,33 +333,27 @@ impl PgPool {
         }
         // Ensure attributes column is jsonb (and convert if needed)
         client
-            .batch_execute(
-                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
-            )
+            .batch_execute(tmp_loader.get_query("alter-table-objects-attributes-jsonb")?)
             .await
             .map_err(DbError::from)?;
 
         // Create notifications table if it doesn't exist
-        client
-            .batch_execute(
-                "CREATE TABLE IF NOT EXISTS notifications (\
-                    id BIGSERIAL PRIMARY KEY, \
-                    user_id VARCHAR(255) NOT NULL, \
-                    event_type VARCHAR(64) NOT NULL, \
-                    message TEXT NOT NULL, \
-                    object_id VARCHAR(255), \
-                    created_at VARCHAR(64) NOT NULL, \
-                    read_at VARCHAR(64))",
-            )
-            .await
-            .map_err(DbError::from)?;
+        let sql = tmp_loader.get_query("create-table-notifications")?;
+        client.batch_execute(sql).await.map_err(DbError::from)?;
+        // Apply PostgreSQL-specific auto-increment setup (idempotent)
+        for name in [
+            "create-notifications-sequence",
+            "alter-notifications-id-bigint",
+            "set-notifications-id-default",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
 
         // Optionally clear any existing data (useful for tests)
         if clear_database {
-            client
-                .batch_execute("DELETE FROM notifications")
-                .await
-                .map_err(DbError::from)?;
+            let sql = tmp_loader.get_query("clean-table-notifications")?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
             for name in [
                 // Remove dependent rows first to avoid potential constraints if present
                 "clean-table-read_access",
@@ -384,7 +378,7 @@ impl PgPool {
             .await
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         client
-            .query_one("SELECT 1", &[])
+            .query_one(get_pgsql_query!("health-check"), &[])
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
@@ -727,8 +721,7 @@ impl ObjectsStore for PgPool {
 
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         pg_retry!(self.pool, |client| {
-            // Use ANY($1) with text[] to avoid dynamic placeholder lifetimes
-            let sql = "SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int";
+            let sql = get_pgsql_query!("select-uids-for-tags-any");
             let mut tag_vec: Vec<String> = tags.iter().cloned().collect();
             tag_vec.sort();
             let tag_refs: Vec<&str> = tag_vec.iter().map(String::as_str).collect();
@@ -806,21 +799,9 @@ impl ObjectsStore for PgPool {
         wrapping_key_uid: &str,
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let sql = "SELECT DISTINCT objects.id, objects.state, objects.attributes \
-             FROM objects \
-             LEFT JOIN read_access ON objects.id = read_access.id \
-                 AND read_access.userid = $2 \
-             WHERE (objects.owner = $2 OR read_access.userid = $2) \
-               AND ( \
-                 (objects.object::jsonb) -> 'SymmetricKey' -> 'KeyBlock' -> 'KeyWrappingData' -> 'EncryptionKeyInformation' ->> 'UniqueIdentifier' = $1 \
-                 OR (objects.object::jsonb) -> 'PrivateKey' -> 'KeyBlock' -> 'KeyWrappingData' -> 'EncryptionKeyInformation' ->> 'UniqueIdentifier' = $1 \
-                 OR (objects.object::jsonb) -> 'SecretData' -> 'KeyBlock' -> 'KeyWrappingData' -> 'EncryptionKeyInformation' ->> 'UniqueIdentifier' = $1 \
-                 OR (objects.object::jsonb) -> 'SplitKey' -> 'KeyBlock' -> 'KeyWrappingData' -> 'EncryptionKeyInformation' ->> 'UniqueIdentifier' = $1 \
-                 OR (objects.object::jsonb) -> 'PGPKey' -> 'KeyBlock' -> 'KeyWrappingData' -> 'EncryptionKeyInformation' ->> 'UniqueIdentifier' = $1 \
-               )";
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare(sql)
+                .prepare(get_pgsql_query!("find-wrapped-by-objects"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
@@ -843,14 +824,9 @@ impl ObjectsStore for PgPool {
     }
 
     async fn find_due_for_rotation(&self, now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
-        let sql = "SELECT objects.id, objects.attributes \
-             FROM objects \
-             WHERE objects.state = 'Active' \
-               AND (objects.attributes::jsonb ->> 'RotateInterval') IS NOT NULL \
-               AND CAST((objects.attributes::jsonb ->> 'RotateInterval') AS BIGINT) > 0";
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare(sql)
+                .prepare(get_pgsql_query!("find-due-for-rotation"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
@@ -1135,9 +1111,7 @@ impl NotificationsStore for PgPool {
         pg_retry!(self.pool, |client| {
             let row = client
                 .query_one(
-                    "INSERT INTO notifications \
-                     (user_id, event_type, message, object_id, created_at) \
-                     VALUES ($1, $2, $3, $4, $5) RETURNING id",
+                    get_pgsql_query!("insert-notification"),
                     &[&user_id, &event_type, &message, &oid, &ca_str],
                 )
                 .await
@@ -1156,10 +1130,7 @@ impl NotificationsStore for PgPool {
         pg_retry!(self.pool, |client| {
             let rows = client
                 .query(
-                    "SELECT id, user_id, event_type, message, object_id, created_at, read_at \
-                     FROM notifications WHERE user_id = $1 \
-                     ORDER BY (read_at IS NULL) DESC, created_at DESC \
-                     LIMIT $2 OFFSET $3",
+                    get_pgsql_query!("list-notifications"),
                     &[&user_id, &limit, &offset],
                 )
                 .await
@@ -1198,11 +1169,7 @@ impl NotificationsStore for PgPool {
     async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
         pg_retry!(self.pool, |client| {
             let row = client
-                .query_one(
-                    "SELECT COUNT(*) FROM notifications \
-                     WHERE user_id = $1 AND read_at IS NULL",
-                    &[&user_id],
-                )
+                .query_one(get_pgsql_query!("count-unread-notifications"), &[&user_id])
                 .await
                 .map_err(|e| InterfaceError::Db(e.to_string()))?;
             Ok(row.get::<_, i64>(0))
@@ -1222,8 +1189,7 @@ impl NotificationsStore for PgPool {
         pg_retry!(self.pool, |client| {
             let n = client
                 .execute(
-                    "UPDATE notifications SET read_at = $1 \
-                     WHERE id = $2 AND user_id = $3 AND read_at IS NULL",
+                    get_pgsql_query!("mark-notification-read"),
                     &[&now_str, &id, &user_id],
                 )
                 .await
@@ -1240,8 +1206,7 @@ impl NotificationsStore for PgPool {
         pg_retry!(self.pool, |client| {
             client
                 .execute(
-                    "UPDATE notifications SET read_at = $1 \
-                     WHERE user_id = $2 AND read_at IS NULL",
+                    get_pgsql_query!("mark-all-notifications-read"),
                     &[&now_str, &user_id],
                 )
                 .await
