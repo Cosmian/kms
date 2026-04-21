@@ -1,6 +1,8 @@
 import { ReactNode, useState } from "react";
 import { AuthContext } from "./AuthContextDef";
 
+export { useAuth } from "../hooks/useAuth";
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [idToken, setIdToken] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
