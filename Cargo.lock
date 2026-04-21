@@ -1538,6 +1538,7 @@ name = "crypt2pay_pkcs11_loader"
 version = "5.21.0"
 dependencies = [
  "cosmian_kms_base_hsm",
+ "cosmian_logger",
 ]
 
 [[package]]

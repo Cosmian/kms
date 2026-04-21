@@ -12,7 +12,11 @@ fi
 : "${OVPN_CONF:?OVPN_CONF not set}"
 echo "$OVPN_CONF" | sudo tee /tmp/openvpn.ovpn > /dev/null
 
-sudo touch /tmp/vpn.log
+# Kill any previous openvpn instances to avoid duplicate routes / stale tunnels
+sudo killall openvpn 2>/dev/null || true
+sleep 1
+
+sudo truncate -s 0 /tmp/vpn.log 2>/dev/null || sudo touch /tmp/vpn.log
 
 sudo openvpn --config /tmp/openvpn.ovpn \
   --log /tmp/vpn.log \
