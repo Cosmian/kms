@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Space, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import { export_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import ExternalLink from "../../components/common/ExternalLink";

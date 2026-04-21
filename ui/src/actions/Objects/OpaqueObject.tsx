@@ -1,6 +1,6 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_opaque_object_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
 

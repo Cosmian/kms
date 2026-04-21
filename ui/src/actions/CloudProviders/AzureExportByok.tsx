@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { buildAzureByokContent, getAzureByokFilename, getTags } from "../../utils/azureByok";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import {
