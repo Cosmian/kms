@@ -3,15 +3,15 @@
   "build": {
     "variant": "non-fips",
     "derivation": "kms-server-non-fips-dynamic-openssl",
-    "output_path": "/nix/store/w1jmmq68q5wcfhzkvgfiyvxqhxfnsiy6-cosmian-kms-server-dynamic-5.20.1",
-    "timestamp": "2026-04-08T22:11:07Z",
+    "output_path": "/nix/store/4224mpmkxxyxjhrhv61vd535sn5zcid0-cosmian-kms-server-dynamic-5.21.0",
+    "timestamp": "2026-04-21T14:49:00Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.7.4"
     }
   },
   "component_count": 5,
-  "vulnerability_count": 30,
+  "vulnerability_count": 17,
   "notes": [
     "OpenSSL is dynamically linked in the binary",
     "All dependencies are from Nix store with pinned versions",
