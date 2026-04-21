@@ -18,7 +18,7 @@ impl Integer {
     /// # Example
     ///
     /// ```
-    /// use cloudproof_fpe::core::Integer;
+    /// use cosmian_kms_crypto::crypto::fpe::Integer;
     /// use num_bigint::BigUint;
     ///
     /// let number = Integer::instantiate(8, 7).unwrap();
@@ -78,7 +78,7 @@ impl Integer {
     /// # Example
     ///
     /// ```
-    /// use cloudproof_fpe::core::Integer;
+    /// use cosmian_kms_crypto::crypto::fpe::Integer;
     ///
     /// let integer = Integer::instantiate(10, 8).unwrap();
     /// let key = [0u8; 32];
@@ -115,7 +115,7 @@ impl Integer {
     /// # Example
     ///
     /// ```
-    /// use cloudproof_fpe::core::Integer;
+    /// use cosmian_kms_crypto::crypto::fpe::Integer;
     /// use num_bigint::BigUint;
     ///
     /// let integer = Integer::instantiate(16, 8).unwrap();
@@ -218,7 +218,7 @@ impl Integer {
     /// # Example
     ///
     /// ```
-    /// use cloudproof_fpe::core::Integer;
+    /// use cosmian_kms_crypto::crypto::fpe::Integer;
     /// use num_bigint::BigUint;
     ///
     /// let key = [0; 32];

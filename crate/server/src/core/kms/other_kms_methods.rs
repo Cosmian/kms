@@ -99,6 +99,16 @@ impl KMS {
             )
         })?;
 
+        // FPE-FF1 is a non-standard extension not approved for FIPS mode.
+        // Reject it explicitly so that FIPS-mode clients receive a clear error
+        // instead of silently creating a key that can never be used for encryption.
+        #[cfg(not(feature = "non-fips"))]
+        if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+            return Err(KmsError::NotSupported(
+                "FPE_FF1 key creation is not supported in FIPS mode".to_owned(),
+            ));
+        }
+
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::FPE_FF1

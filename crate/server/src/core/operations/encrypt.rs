@@ -460,6 +460,24 @@ fn encrypt_with_symmetric_key(
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     trace!("entering. owm: {}", owm.attributes());
+    #[cfg(not(feature = "non-fips"))]
+    {
+        let key_block = owm.object().key_block()?;
+        let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+        let req_cp = request.cryptographic_parameters.as_ref();
+        let cryptographic_algorithm = req_cp
+            .and_then(|cp| cp.cryptographic_algorithm)
+            .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+            .or_else(|| key_block.cryptographic_algorithm().copied())
+            .unwrap_or(CryptographicAlgorithm::AES);
+
+        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+            return Err(KmsError::NotSupported(
+                "FPE_FF1 encryption is not supported in FIPS mode".to_owned(),
+            ));
+        }
+    }
+
     #[cfg(feature = "non-fips")]
     {
         let key_block = owm.object().key_block()?;

@@ -1,6 +1,7 @@
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
 use serde::Deserialize;
+use zeroize::Zeroizing;
 
 use super::{Alphabet, FPEError, Float, Integer, KEY_LENGTH};
 
@@ -21,6 +22,10 @@ struct FpeMetadata {
     alphabet: Option<String>,
 }
 
+/// Maximum byte length of `authenticated_encryption_additional_data` accepted for JSON parsing.
+/// Prevents memory/CPU exhaustion from oversized payloads sent by authenticated clients.
+const MAX_ADDITIONAL_DATA_LEN: usize = 4096;
+
 impl FpeMetadata {
     fn parse(additional_data: Option<&[u8]>) -> Result<Self, FPEError> {
         let Some(additional_data) = additional_data else {
@@ -34,6 +39,11 @@ impl FpeMetadata {
                 data_type: FpeDataType::Text,
                 alphabet: Some("alpha_numeric".to_owned()),
             });
+        }
+        if additional_data.len() > MAX_ADDITIONAL_DATA_LEN {
+            return Err(FPEError::ConversionError(format!(
+                "additional_data exceeds maximum allowed length of {MAX_ADDITIONAL_DATA_LEN} bytes"
+            )));
         }
 
         let as_text = std::str::from_utf8(additional_data).map_err(|e| {
@@ -65,13 +75,13 @@ impl FpeMetadata {
     }
 }
 
-const fn key_to_array(key: &[u8]) -> Result<[u8; KEY_LENGTH], FPEError> {
+fn key_to_array(key: &[u8]) -> Result<Zeroizing<[u8; KEY_LENGTH]>, FPEError> {
     if key.len() != KEY_LENGTH {
         return Err(FPEError::KeySize(key.len(), KEY_LENGTH));
     }
     let mut key_array = [0_u8; KEY_LENGTH];
     key_array.copy_from_slice(key);
-    Ok(key_array)
+    Ok(Zeroizing::new(key_array))
 }
 
 fn parse_utf8<'a>(data: &'a [u8], field: &str) -> Result<&'a str, FPEError> {
@@ -175,7 +185,7 @@ pub fn encrypt_fpe(
         FpeDataType::Text => {
             let alphabet = resolve_text_alphabet(&metadata)?;
             let plaintext = parse_utf8(data, "FPE plaintext")?;
-            Ok(alphabet.encrypt(&key, tweak, plaintext)?.into_bytes())
+            Ok(alphabet.encrypt(&*key, tweak, plaintext)?.into_bytes())
         }
         FpeDataType::Integer => {
             let alphabet = resolve_integer_alphabet(&metadata)?;
@@ -185,7 +195,7 @@ pub fn encrypt_fpe(
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?;
             let integer = Integer::instantiate(radix, digits)?;
             let plaintext_value = integer_text_to_biguint(plaintext, &alphabet)?;
-            let ciphertext_value = integer.encrypt_big(&key, tweak, &plaintext_value)?;
+            let ciphertext_value = integer.encrypt_big(&*key, tweak, &plaintext_value)?;
             Ok(biguint_to_integer_text(&ciphertext_value, &alphabet, digits)?.into_bytes())
         }
         FpeDataType::Float => {
@@ -194,10 +204,11 @@ pub fn encrypt_fpe(
                 FPEError::ConversionError(format!("failed parsing FPE float plaintext: {e}"))
             })?;
             let float = Float::instantiate()?;
-            Ok(float
-                .encrypt(&key, tweak, float_value)?
-                .to_string()
-                .into_bytes())
+            // Encode as 16 lowercase hex digits (the raw IEEE-754 bit pattern) to
+            // preserve all bit patterns — including NaN and ±Inf payloads — without
+            // floating-point canonicalization on the decrypt path.
+            let ciphertext_bits = float.encrypt(&*key, tweak, float_value)?.to_bits();
+            Ok(format!("{ciphertext_bits:016x}").into_bytes())
         }
     }
 }
@@ -216,7 +227,7 @@ pub fn decrypt_fpe(
         FpeDataType::Text => {
             let alphabet = resolve_text_alphabet(&metadata)?;
             let ciphertext = parse_utf8(data, "FPE ciphertext")?;
-            Ok(alphabet.decrypt(&key, tweak, ciphertext)?.into_bytes())
+            Ok(alphabet.decrypt(&*key, tweak, ciphertext)?.into_bytes())
         }
         FpeDataType::Integer => {
             let alphabet = resolve_integer_alphabet(&metadata)?;
@@ -226,17 +237,20 @@ pub fn decrypt_fpe(
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?;
             let integer = Integer::instantiate(radix, digits)?;
             let ciphertext_value = integer_text_to_biguint(ciphertext, &alphabet)?;
-            let plaintext_value = integer.decrypt_big(&key, tweak, &ciphertext_value)?;
+            let plaintext_value = integer.decrypt_big(&*key, tweak, &ciphertext_value)?;
             Ok(biguint_to_integer_text(&plaintext_value, &alphabet, digits)?.into_bytes())
         }
         FpeDataType::Float => {
-            let ciphertext = parse_utf8(data, "FPE float ciphertext")?;
-            let float_value = ciphertext.parse::<f64>().map_err(|e| {
-                FPEError::ConversionError(format!("failed parsing FPE float ciphertext: {e}"))
+            let ciphertext_str = parse_utf8(data, "FPE float ciphertext")?;
+            // Decode from the 16-hex-digit bit-pattern representation produced by
+            // encrypt_fpe, preserving exact IEEE-754 semantics without NaN canonicalization.
+            let bits = u64::from_str_radix(ciphertext_str.trim(), 16).map_err(|e| {
+                FPEError::ConversionError(format!("failed decoding FPE float ciphertext: {e}"))
             })?;
+            let float_value = f64::from_bits(bits);
             let float = Float::instantiate()?;
             Ok(float
-                .decrypt(&key, tweak, float_value)?
+                .decrypt(&*key, tweak, float_value)?
                 .to_string()
                 .into_bytes())
         }
