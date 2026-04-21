@@ -384,6 +384,9 @@ _run_workspace_tests() {
   case "$KMS_TEST_DB" in
   postgresql | mysql | redis-findex)
     cargo_test_args+=(--ignored)
+    # Run DB-specific ignored tests serially to avoid cross-test interference
+    # (e.g. test_db_postgresql and test_db_postgresql_multihost share port 5432).
+    cargo_test_args+=(--test-threads=1)
     ;;
   esac
   if [ -n "${test_filter:-}" ]; then

@@ -151,9 +151,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 DELETE FROM notifications;
 
 -- name: pragma-wal-mode
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA busy_timeout=5000;
+PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;
 
 -- name: health-check
 SELECT 1;
@@ -211,10 +209,7 @@ WHERE objects.state = 'Active'
 CREATE SEQUENCE IF NOT EXISTS notifications_id_seq AS BIGINT;
 
 -- name: alter-notifications-id-bigint
-DO $$ BEGIN
-  ALTER TABLE notifications ALTER COLUMN id TYPE BIGINT USING id::BIGINT;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
+DO $$ BEGIN ALTER TABLE notifications ALTER COLUMN id TYPE BIGINT USING id::BIGINT; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- name: set-notifications-id-default
 ALTER TABLE notifications ALTER COLUMN id SET DEFAULT nextval('notifications_id_seq'::regclass);
