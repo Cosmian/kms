@@ -17,6 +17,7 @@ mod hsm;
 mod mac;
 mod mac_verify;
 mod metrics;
+mod oom;
 mod opaque_object;
 #[cfg(feature = "non-fips")]
 mod pqc;
@@ -24,6 +25,8 @@ mod query;
 mod rng;
 mod rsa;
 mod secret_data;
+mod security;
+mod serialization;
 mod shared;
 mod symmetric;
 #[cfg(feature = "non-fips")] // Since KMIP test vectors use non-FIPS algorithms such as ChaCha20

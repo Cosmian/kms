@@ -293,12 +293,12 @@ verify_openssl_runtime_version() {
 
   # Determine expected OpenSSL version based on variant
   # - FIPS dynamic: OpenSSL 3.1.2 (both runtime and FIPS provider)
-  # - All others: OpenSSL 3.6.0
+  # - All others: OpenSSL 3.6.2
   local expected_version
   if [ "$is_fips" = true ] && [ "$is_dynamic" = true ]; then
     expected_version="3.1.2"
   else
-    expected_version="3.6.0"
+    expected_version="3.6.2"
   fi
 
   info "Verifying OpenSSL runtime version (expected $expected_version)…"
@@ -389,7 +389,7 @@ EOF
       strings_output=$(strings "$fips_module")
 
       # For FIPS dynamic builds, FIPS provider should match runtime (3.1.2)
-      # For FIPS static builds, FIPS provider is 3.1.2 but runtime is 3.6.0
+      # For FIPS static builds, FIPS provider is 3.1.2 but runtime is 3.6.2
       local expected_fips_version
       if [ "$is_dynamic" = true ]; then
         expected_fips_version="3.1.2"

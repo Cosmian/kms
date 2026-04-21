@@ -204,6 +204,9 @@ let
     };
 
     # pnpmDeps is read by pnpm_9.configHook to set up the offline virtual store
+    # pnpm_9 is the latest available in the pinned nixpkgs; it supports lockfile
+    # format 9.0 (used by both pnpm 9 and pnpm 10) and silently ignores the
+    # "packageManager" field in package.json when it specifies a different version.
     pnpmDeps = pkgs.pnpm_9.fetchDeps {
       pname = "cosmian-kms-ui-deps-${finalVariant}";
       inherit version;
@@ -306,7 +309,7 @@ stdenv.mkDerivation {
     export default init;
     EOF
 
-      pnpm run build
+      pnpm run build:vite
 
       # Return to root directory after build
       cd ..

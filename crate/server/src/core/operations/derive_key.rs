@@ -20,6 +20,7 @@ use openssl::{
     pkey_ctx::PkeyCtx,
 };
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission},
@@ -244,7 +245,7 @@ pub(crate) async fn derive_key(
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentSymmetricKey {
-                        key: derived_key_bytes.clone().into(),
+                        key: (*derived_key_bytes).clone().into(),
                     },
                     attributes: Some(attributes.clone()),
                 }),
@@ -259,7 +260,7 @@ pub(crate) async fn derive_key(
             let key_block = KeyBlock {
                 key_format_type: KeyFormatType::Opaque,
                 key_compression_type: None,
-                key_value: Some(KeyValue::ByteString(derived_key_bytes.into())),
+                key_value: Some(KeyValue::ByteString((*derived_key_bytes).clone().into())),
                 cryptographic_algorithm: None,
                 cryptographic_length: Some(i32::try_from(cryptographic_length * 8).map_err(
                     |_e| KmsError::InvalidRequest("Invalid cryptographic length".to_owned()),
@@ -388,15 +389,18 @@ fn get_message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
 }
 
 /// PBKDF2 key derivation using OpenSSL's `pbkdf2_hmac`
+///
+/// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
+/// from memory when the value is dropped (EXT1-1).
 fn derive_pbkdf2(
     key: &[u8],
     salt: &[u8],
     iterations: u32,
     length: usize,
     hashing_algorithm: HashingAlgorithm,
-) -> KResult<Vec<u8>> {
+) -> KResult<Zeroizing<Vec<u8>>> {
     let digest = get_message_digest(hashing_algorithm)?;
-    let mut output = vec![0_u8; length];
+    let mut output = Zeroizing::new(vec![0_u8; length]);
 
     pbkdf2_hmac(
         key,
@@ -412,13 +416,16 @@ fn derive_pbkdf2(
 }
 
 /// HKDF key derivation using OpenSSL's native HKDF implementation
+///
+/// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
+/// from memory when the value is dropped (EXT1-1).
 fn derive_hkdf(
     key: &[u8],
     salt: &[u8],
     info: &[u8],
     length: usize,
     hashing_algorithm: HashingAlgorithm,
-) -> KResult<Vec<u8>> {
+) -> KResult<Zeroizing<Vec<u8>>> {
     // Get the message digest for the hashing algorithm
     let md = get_md(hashing_algorithm)?;
 
@@ -453,7 +460,7 @@ fn derive_hkdf(
     }
 
     // Derive the key material
-    let mut output = vec![0_u8; length];
+    let mut output = Zeroizing::new(vec![0_u8; length]);
     ctx.derive(Some(&mut output))
         .map_err(|e| KmsError::CryptographicError(format!("HKDF derivation failed: {e}")))?;
 

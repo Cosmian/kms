@@ -8,7 +8,8 @@ name: Release
 #   2. Creates "release/<new_version>" from develop (matching the git-flow model).
 #   3. Runs the version-bump script (.github/scripts/release/release.sh).
 #   4. Commits the bumped versions on the release branch and pushes it.
-#   5. Regenerates the CBOM (cbom/cbom.cdx.json) via generate_cbom.sh.
+#   5. Regenerates all documentation via generate_docs.sh (server CLI, ckms docs,
+#      KMIP tables, crypto inventory, and CBOM).
 #   6. Runs `nix_build_update_hash.sh` on BOTH Linux and macOS runners in
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
@@ -175,12 +176,16 @@ jobs:
       - name: Update Cargo.lock
         run: cargo build --workspace
 
-      - name: Regenerate CBOM
+      - name: Regenerate all documentation
         run: |
-          # generate_cbom.sh runs cargo metadata (non-fips) + a Python scan of
-          # the source tree and emits cbom/cbom.cdx.json.  No Nix required.
+          # generate_docs.sh is the single entry point for all auto-generated docs:
+          #   1. server_cli.md + server_configuration_file.md (--help / --print-default-config)
+          #   2. cli_documentation/docs/cli/main_commands.md + usage.md (ckms markdown)
+          #   3. KMIP support tables (README.md + kmip_support/support.md)
+          #   4. crypto_inventory.md (cryptographic asset sensor, no network)
+          #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
-          bash .github/scripts/release/generate_cbom.sh
+          bash .github/scripts/docs/generate_docs.sh
 
       - name: Commit version bump and push release branch
         run: |

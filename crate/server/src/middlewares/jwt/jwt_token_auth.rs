@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use actix_identity::Identity;
 use actix_web::{FromRequest, dev::ServiceRequest, http::header};
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace, warn};
 
 use super::UserClaim;
 use crate::{
@@ -101,8 +101,8 @@ pub(super) async fn handle_jwt(
             Ok(AuthenticatedUser { username: email })
         }
         Ok(None) => {
-            // JWT is valid but missing the required email claim
-            debug!(
+            // JWT is valid but missing the required email claim — log as WARN for audit trail
+            warn!(
                 "{:?} {} 401 unauthorized, no email in JWT",
                 req.method(),
                 req.path()
@@ -110,11 +110,11 @@ pub(super) async fn handle_jwt(
             Err(KmsError::InvalidRequest("No email in JWT".to_owned()))
         }
         Err(jwt_log_errors) => {
-            // JWT validation failed
+            // JWT validation failed — log at WARN so auth failures appear in production logs
             for error in &jwt_log_errors {
-                tracing::debug!("{error:?}");
+                warn!("{error:?}");
             }
-            debug!(
+            warn!(
                 "{:?} {} 401 unauthorized: bad JWT",
                 req.method(),
                 req.path(),

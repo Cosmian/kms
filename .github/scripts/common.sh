@@ -361,6 +361,19 @@ _run_workspace_tests() {
   fi
   cargo build "${cargo_build_args[@]}"
 
+  # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration tests
+  # can dynamically load it at runtime.  `cargo test --lib` does not produce
+  # cdylib artifacts, so we build it explicitly here (non-fips only — the
+  # loader tests are compiled away in fips mode via #[cfg(feature="non-fips")]).
+  if [ "${VARIANT:-fips}" = "non-fips" ]; then
+    local -a cdylib_build_args
+    cdylib_build_args=(-p cosmian_pkcs11)
+    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+      cdylib_build_args+=("${FEATURES_FLAG[@]}")
+    fi
+    cargo build "${cdylib_build_args[@]}"
+  fi
+
   local -a cargo_test_args
   cargo_test_args=(--workspace --lib)
   if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then

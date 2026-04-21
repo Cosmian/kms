@@ -46,6 +46,9 @@ pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_ECDSA,
     CKM_EDDSA,
     CKM_RSA_PKCS_PSS,
+    CKM_AES_KEY_GEN,
+    CKM_AES_CBC,
+    CKM_AES_CBC_PAD,
 ];
 
 #[derive(Debug)]

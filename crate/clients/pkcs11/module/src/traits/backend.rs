@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc, LazyLock, RwLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 use zeroize::Zeroizing;
 
 use super::{SignatureAlgorithm, SymmetricKey};
 use crate::{
-    ModuleResult,
+    ModuleError, ModuleResult,
     core::object::Object,
     traits::{
         Certificate, DataObject, EncryptionAlgorithm, KeyAlgorithm, PrivateKey, PublicKey,
@@ -34,20 +37,84 @@ pub struct EncryptContext {
     pub iv: Option<Vec<u8>>,
 }
 
-static BACKEND: std::sync::OnceLock<Box<dyn Backend>> = std::sync::OnceLock::new();
+static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));
 
-/// Stores the backend for use in all calls to [`backend()`].
-/// Must be called before any PKCS#11 operation.  Subsequent calls are no-ops
-/// (the first registration wins); this is safe because the backend type is
-/// fixed per process, and calling modules always register the same backend.
+/// Stores (or replaces) the backend used by all PKCS#11 operations.
+/// Called by the provider at `C_GetFunctionList` (modes 0/1) or at
+/// `C_Login` time when OIDC-pin mode is active (mode 2).
 pub fn register_backend(backend: Box<dyn Backend>) {
-    // Ignore the Result: Err(T) means already set, which is acceptable.
-    drop(BACKEND.set(backend));
+    if let Ok(mut guard) = BACKEND.write() {
+        *guard = Some(Arc::from(backend));
+    }
 }
 
-#[expect(clippy::expect_used, clippy::missing_panics_doc)]
-pub fn backend() -> &'static dyn Backend {
-    BACKEND.get().expect("backend not initialized").as_ref()
+/// Clears the registered backend. Called by `C_Logout` when OIDC-pin mode is active.
+pub fn clear_backend() {
+    if let Ok(mut guard) = BACKEND.write() {
+        *guard = None;
+    }
+}
+
+/// Returns the currently registered backend.
+/// Returns [`ModuleError::UserNotLoggedIn`] when no backend is registered
+/// (i.e. before `C_GetFunctionList` or after `C_Logout` in OIDC-pin mode).
+pub fn backend() -> ModuleResult<Arc<dyn Backend>> {
+    let guard = BACKEND
+        .read()
+        .map_err(|e| ModuleError::Default(e.to_string()))?;
+    guard.clone().ok_or(ModuleError::UserNotLoggedIn)
+}
+
+// ── OIDC pin-as-access-token mode ────────────────────────────────────────
+
+/// Whether `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`.
+///
+/// Uses `AtomicBool` (not `OnceLock`) so that the value can be *updated* on
+/// each call to `C_GetFunctionList`.  On Windows the DLL is kept in memory by
+/// the Tokio background-I/O threads that live inside the static `RUNTIME`
+/// (in the provider crate).  A second `Library::new()` in a test therefore
+/// returns the **same DLL instance** with its static state intact, so every
+/// `register_*` helper must support repeated calls with fresh values.
+static PKCS11_USE_PIN_AS_ACCESS_TOKEN: AtomicBool = AtomicBool::new(false);
+
+/// Registers whether `pkcs11_use_pin_as_access_token = true` is set in `ckms.toml`.
+/// Called at every `C_GetFunctionList` invocation (overwriting any previous value).
+pub fn register_pin_mode(enabled: bool) {
+    PKCS11_USE_PIN_AS_ACCESS_TOKEN.store(enabled, Ordering::SeqCst);
+}
+
+/// Returns `true` when the OIDC-pin mode is active: the `pPin` passed to
+/// `C_Login` is treated as a bearer token for every subsequent KMS request.
+pub fn use_pin_as_access_token() -> bool {
+    PKCS11_USE_PIN_AS_ACCESS_TOKEN.load(Ordering::SeqCst)
+}
+
+// ── Login callback (provider ↔ module bridge) ─────────────────────────────
+
+type LoginFn = Box<dyn Fn(&str) -> ModuleResult<()> + Send + Sync>;
+
+/// Login callback, wrapped in `RwLock<Option<…>>` so that it can be
+/// *replaced* on every `C_GetFunctionList` call (see the comment on
+/// `PKCS11_USE_PIN_AS_ACCESS_TOKEN` above for the rationale).
+static LOGIN_FN: LazyLock<RwLock<Option<LoginFn>>> = LazyLock::new(|| RwLock::new(None));
+
+/// Registers (or replaces) the login callback at `C_GetFunctionList` time (mode 2 only).
+/// The closure receives the bearer token, builds an authenticated `KmsClient`,
+/// and calls `register_backend` to replace the pre-login stub.
+pub fn register_login_fn(f: LoginFn) {
+    if let Ok(mut guard) = LOGIN_FN.write() {
+        *guard = Some(f);
+    }
+}
+
+/// Invokes the registered login callback with `token`.
+/// Returns [`ModuleError::UserNotLoggedIn`] if no callback was registered.
+pub fn invoke_login_fn(token: &str) -> ModuleResult<()> {
+    let guard = LOGIN_FN
+        .read()
+        .map_err(|e| ModuleError::Default(e.to_string()))?;
+    let f = guard.as_ref().ok_or(ModuleError::UserNotLoggedIn)?;
+    f(token)
 }
 
 pub trait Backend: Send + Sync {

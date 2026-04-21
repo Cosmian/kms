@@ -32,6 +32,13 @@ pub struct KmsClientConfig {
     /// The vendor identification used in KMIP vendor attributes (default: "cosmian")
     #[serde(default = "KmsClientConfig::default_vendor_id")]
     pub vendor_id: String,
+    /// When `true`, the PKCS#11 provider treats the `pPin` passed to `C_Login` as a
+    /// short-lived OIDC/JWT bearer token for the KMS REST API.  No credentials are
+    /// stored in `ckms.toml`; the token is supplied at keystore-open time
+    /// (e.g. Oracle: `ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY 'eyJ...'`).
+    /// When absent or `false`, `C_Login` is a no-op (backward-compatible default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pkcs11_use_pin_as_access_token: Option<bool>,
 }
 
 impl KmsClientConfig {
@@ -50,6 +57,7 @@ impl Default for KmsClientConfig {
             gmail_api_conf: None,
             print_json: None,
             vendor_id: Self::default_vendor_id(),
+            pkcs11_use_pin_as_access_token: None,
         }
     }
 }

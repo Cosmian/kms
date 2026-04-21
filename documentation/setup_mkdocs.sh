@@ -1,8 +1,8 @@
 #!/bin/bash
 
-python3 -m venv .venv
+virtualenv env
 
-source .venv/bin/activate
+source env/bin/activate
 
 pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
 mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-enumerate-headings-plugin \

@@ -32,7 +32,7 @@ run_ui() {
 }
 
 # Run pnpm with FIPS OpenSSL env vars stripped.
-# pnpm 9.x uses MD4 in createBase32Hash (depPathToFilename) which is blocked
+# pnpm uses MD4 in createBase32Hash (depPathToFilename) which is blocked
 # by the FIPS provider loaded via LD_PRELOAD in the Nix CI shell.
 # Stripping LD_PRELOAD/OPENSSL_CONF/OPENSSL_MODULES lets pnpm use the default
 # OpenSSL provider; cargo/KMS builds are unaffected.
@@ -42,7 +42,7 @@ run_pnpm() {
 
 ensure_pnpm() {
     if ! command -v pnpm &>/dev/null; then
-        npm install -g pnpm
+        npm install -g pnpm@10.17.1
     fi
 }
 
@@ -72,7 +72,7 @@ SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}/libsofthsm2.so
 _LD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${LD_LIBRARY_PATH:-}"
 _DYLD="${SOFTHSM2_LIB_DIR:+${SOFTHSM2_LIB_DIR}:}${NIX_OPENSSL_OUT:+${NIX_OPENSSL_OUT}/lib:}${DYLD_LIBRARY_PATH:-}"
 
-# ── SoftHSM2 token initialisation ───────────────────────────────────────────
+# ── SoftHSM2 token initialization ───────────────────────────────────────────
 echo "========================================="
 echo "SoftHSM2 detected – initialising token"
 echo "========================================="
@@ -145,12 +145,12 @@ echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
 run_ui run_pnpm install --frozen-lockfile
 
-echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) …"
+echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) …"
 (cd "${UI_DIR}" && {
     chmod -R u+w dist >/dev/null 2>&1 || true
     rm -rf dist >/dev/null 2>&1 || true
 })
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" pnpm run build)
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
@@ -198,7 +198,7 @@ KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 # machines).  ui_index_html_folder is intentionally omitted: the UI is
 # served by the Vite preview process on port 5173; omitting this flag also
 # avoids a known actix-files interaction that causes the server to exit
-# immediately after worker initialisation on Linux CI.
+# immediately after worker initialization on Linux CI.
 cat >"${KMS_CONF_FILE}" <<HSMEOF
 default_username = "admin"
 vendor_identification = "test_vendor"
@@ -215,6 +215,7 @@ clear_database = true
 [http]
 hostname = "127.0.0.1"
 port = 9998
+cors_allowed_origins = ["http://127.0.0.1:5173"]
 HSMEOF
 
 echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
@@ -254,7 +255,7 @@ echo "==> HSM test keys created."
 # ── 7. Start Vite preview server ────────────────────────────────────────────
 echo "==> Starting Vite preview server (port 5173) …"
 VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm exec vite preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
 echo "==> Waiting for Vite preview to be ready …"

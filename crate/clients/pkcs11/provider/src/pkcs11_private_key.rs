@@ -59,7 +59,7 @@ impl PrivateKey for Pkcs11PrivateKey {
     }
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>> {
-        backend()
+        backend()?
             .remote_sign(&self.remote_id, algorithm, data)
             .map_err(|e| {
                 error!(
@@ -80,7 +80,7 @@ impl PrivateKey for Pkcs11PrivateKey {
 
     fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
         self.der_bytes.get_or_fetch(|| {
-            let sk = backend().find_private_key(SearchOptions::Id(self.remote_id.clone()))?;
+            let sk = backend()?.find_private_key(SearchOptions::Id(self.remote_id.clone()))?;
             sk.pkcs8_der_bytes()
         })
     }

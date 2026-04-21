@@ -57,7 +57,7 @@ function Build-UI {
 {
   "name": "cosmian_kms_client_wasm",
   "type": "module",
-  "version": "5.20.1",
+  "version": "5.21.0",
   "main": "cosmian_kms_client_wasm.js",
   "types": "cosmian_kms_client_wasm.d.ts"
 }
@@ -148,9 +148,9 @@ function Build-UI {
         Write-Host "Installing dependencies with $packageManager..."
         & $packageManager install
 
-        # Build the UI
-        Write-Host "Running $packageManager build..."
-        & $packageManager run build
+        # Build the UI (WASM already built above; only run the Vite/tsc step)
+        Write-Host "Running $packageManager build:vite..."
+        & $packageManager run build:vite
 
         # Verify dist directory was created
         if (-not (Test-Path "dist")) {

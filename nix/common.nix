@@ -22,11 +22,11 @@ let
     else
       opensslPkgs.callPackage ./openssl.nix {
         inherit static;
-        version = "3.6.0";
+        version = "3.6.2";
         enableLegacy = true;
-        srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
-        sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
-        expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+        srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
+        sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
+        expectedHash = "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
       };
 
   openssl312_ =

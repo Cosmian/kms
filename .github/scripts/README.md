@@ -48,12 +48,12 @@ bash nix.sh docker --load
 
 Cosmian KMS uses **Nix** to achieve:
 
-- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.6.0 + OpenSSL 3.1.2 FIPS provider)
+- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.6.2 + OpenSSL 3.1.2 FIPS provider)
 - **Hermetic packaging**: Static linking, no runtime /nix/store paths
 - **Offline capability**: Pre-warming enables network-free builds
 - **Variant isolation**: FIPS and non-FIPS builds with controlled feature sets
 
-**OpenSSL note**: KMS links against OpenSSL **3.6.0**, but OpenSSL **3.1.2** must still be used for the **FIPS provider** because it is the official FIPS provider version available today (no more recent FIPS provider version).
+**OpenSSL note**: KMS links against OpenSSL **3.6.2**, but OpenSSL **3.1.2** must still be used for the **FIPS provider** because it is the official FIPS provider version available today (no more recent FIPS provider version).
 
 **Key principle**: `nix.sh` is the single entrypoint for developers and CI; it orchestrates all other scripts within controlled Nix environments.
 
@@ -215,7 +215,7 @@ bash .github/scripts/nix.sh [--variant <fips|non-fips>] [--link <static|dynamic>
 3. **Smoke Test** (mandatory):
    - Extract package to temp directory
    - Run `cosmian_kms --info`
-   - Verify OpenSSL versions are as expected (runtime/library is typically `3.6.0`; for FIPS variants the FIPS provider remains `3.1.2`)
+   - Verify OpenSSL versions are as expected (runtime/library is typically `3.6.2`; for FIPS variants the FIPS provider remains `3.1.2`)
    - Fail entire build if test fails
 4. **Checksum**:
    - Generate SHA-256 checksum file (`.sha256`) alongside package
@@ -252,7 +252,7 @@ After one successful online run, subsequent package builds work offline (network
 
 - Nix store contains pinned nixpkgs
 - Cargo vendor cache is populated
-- OpenSSL 3.1.2 tarball (FIPS provider) is cached (runtime OpenSSL is 3.6.0)
+- OpenSSL 3.1.2 tarball (FIPS provider) is cached (runtime OpenSSL is 3.6.2)
 
 ---
 
@@ -377,7 +377,7 @@ All commands support these flags (place them **before** the command token; `dock
 
 | Aspect          | FIPS Variant                      | Non-FIPS Variant                |
 | --------------- | --------------------------------- | ------------------------------- |
-| Crypto backend  | OpenSSL 3.6.0 runtime + OpenSSL 3.1.2 FIPS provider | OpenSSL 3.6.0 runtime (default/legacy providers) |
+| Crypto backend  | OpenSSL 3.6.2 runtime + OpenSSL 3.1.2 FIPS provider | OpenSSL 3.6.2 runtime (default/legacy providers) |
 | Redis-findex    | Disabled                          | Enabled                         |
 | Reproducibility | Bit-for-bit deterministic (Linux) | Hash-verified (may vary by env) |
 | Target users    | Government, regulated industries  | General enterprise              |
@@ -428,7 +428,7 @@ Nix provides the foundation for deterministic, auditable builds:
 | -------------------------- | --------------------------------------------- | ------------------------------------------------ |
 | **Pinned Dependencies**    | nixpkgs 24.05 tarball locked by hash          | Identical build environment across machines/time |
 | **Reproducible Toolchain** | Rust 1.90.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
-| **Static OpenSSL**         | Link against OpenSSL 3.6.0; vendored 3.1.2 tarball for the FIPS provider | No runtime SSL dependency; portable binaries     |
+| **Static OpenSSL**         | Link against OpenSSL 3.6.2; vendored 3.1.2 tarball for the FIPS provider | No runtime SSL dependency; portable binaries     |
 | **Hash Enforcement**       | Binary SHA-256 checked in `installCheckPhase` | Detects drift/tampering (FIPS builds on Linux)   |
 | **Offline Capability**     | Pre-warmed store + Cargo offline cache        | Air-gapped builds after first online run         |
 | **Variant Isolation**      | Separate derivations for FIPS/non-FIPS        | Controlled cryptographic footprint               |
@@ -685,7 +685,7 @@ flowchart TB
     rpm["RPM (Linux)<br/>nix-build -A kms-rpm-<variant>"]
     dmg["DMG (macOS)<br/>nix-shell + cargo-packager"]
     platform --> deb & rpm & dmg
-    smoke["Smoke Test (Mandatory)<br/>1. Extract package<br/>2. Run --info<br/>3. Verify OpenSSL runtime (3.6.0)<br/>4. Verify FIPS provider = 3.1.2 (FIPS only)"]
+    smoke["Smoke Test (Mandatory)<br/>1. Extract package<br/>2. Run --info<br/>3. Verify OpenSSL runtime (3.6.2)<br/>4. Verify FIPS provider = 3.1.2 (FIPS only)"]
     deb & rpm & dmg --> smoke
     pass["Generate .sha256 checksum<br/>Output: result-<type>-<variant>-<link>/"]
     fail["Exit 1"]
@@ -732,7 +732,7 @@ flowchart LR
     subgraph pure["PURE MODE (--pure flag)"]
         p_use["Use cases: database tests<br/>(sqlite, psql, mysql)"]
         p_char["✓ Hermetic/reproducible<br/>✓ No system PATH pollution<br/>✓ Only Nix-provided deps"]
-        p_env["Rust 1.90.0 (Nix)<br/>OpenSSL 3.6.0 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
+        p_env["Rust 1.90.0 (Nix)<br/>OpenSSL 3.6.2 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
     end
     subgraph nonpure["NON-PURE MODE"]
         np_use["Use cases: HSM tests<br/>macOS DMG packaging<br/>Vendor-specific system libs"]
@@ -870,7 +870,7 @@ bash .github/scripts/nix.sh update-hashes [RUN_ID]
 
 - [ ] Understand why hash changed (code change, dep update, etc.)
 - [ ] Verify `cosmian_kms --info` shows correct version
-- [ ] Smoke test passes (OpenSSL 3.6.0 runtime; 3.1.2 provider for FIPS)
+- [ ] Smoke test passes (OpenSSL 3.6.2 runtime; 3.1.2 provider for FIPS)
 - [ ] No unexpected `/nix/store` paths in binary (Linux: `ldd`, `readelf -d`)
 - [ ] Document reason in commit message
 

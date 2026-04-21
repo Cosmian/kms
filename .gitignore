@@ -8,6 +8,7 @@ vendor/
 # Security / Secrets
 data/keys
 .env
+audit-results
 
 # Runtime Artifacts / Local Data
 data/html
@@ -47,6 +48,7 @@ ui/test-results
 .claude
 .agent/
 .agents/
+.qwen/
 QWEN.md
 
 # Misc

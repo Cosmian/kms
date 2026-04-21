@@ -24,7 +24,6 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
     );
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
     const { idToken, serverUrl } = useAuth();
-    const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
 
     // Process menu items to disable "Create" and "Import" options based on access rights
     const processMenuItems = useCallback(
@@ -73,7 +72,6 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
             let method: AuthMethod | null = null;
             try {
                 method = await fetchAuthMethod(serverUrl);
-                setAuthMethod(method);
             } catch {
                 /* ignore */
             }
@@ -139,11 +137,6 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
             theme={branding.menuTheme ?? "light"}
             style={{ position: "sticky", top: 0, overflow: "auto" }}
         >
-            {authMethod === "JWT" && !idToken && (
-                <div style={{ padding: 8, background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: 4, margin: 8 }}>
-                    JWT authentication is enabled. Please log in to enable Create/Import.
-                </div>
-            )}
             <Menu
                 mode="inline"
                 defaultSelectedKeys={["1"]}

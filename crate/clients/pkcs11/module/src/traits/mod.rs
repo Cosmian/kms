@@ -18,7 +18,8 @@
 // limitations under the License.
 
 pub use backend::{
-    Backend, DecryptContext, EncryptContext, SignContext, backend, register_backend,
+    Backend, DecryptContext, EncryptContext, SignContext, backend, clear_backend, invoke_login_fn,
+    register_backend, register_login_fn, register_pin_mode, use_pin_as_access_token,
 };
 pub use certificate::Certificate;
 pub use data_object::DataObject;

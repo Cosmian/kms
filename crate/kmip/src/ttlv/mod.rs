@@ -16,6 +16,8 @@ pub(super) mod kmip_ttlv_serializer;
 pub use kmip_ttlv_serializer::{TtlvSerializer, to_ttlv};
 pub(crate) use normalize::{collapse_adjacently_tagged_structure, normalize_ttlv};
 pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvType};
+#[cfg(test)]
+pub(crate) use wire::MAX_TTLV_DEPTH;
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
 #[expect(

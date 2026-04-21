@@ -1,0 +1,46 @@
+[package]
+name = "cosmian_pkcs11_verify"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Diagnostic binary to verify that libcosmian_pkcs11.so is loadable and communicates with the KMS server"
+
+[lints]
+workspace = true
+
+[lib]
+name = "cosmian_pkcs11_verify"
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "cosmian_pkcs11_verify"
+path = "src/main.rs"
+
+[features]
+# Propagate non-fips to the test KMS server so server-side non-fips features
+# (Covercrypt, Redis-findex, etc.) are included when running non-fips tests.
+non-fips = ["test_kms_server/non-fips"]
+
+[dev-dependencies]
+serial_test = "3.2.0"
+test_kms_server = { path = "../../../test_kms_server" }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+[dependencies]
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+libloading = { workspace = true }
+pkcs11-sys = { workspace = true }

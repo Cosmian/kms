@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:b0d6ebe6-7310-43a1-9b08-3deb8e91cc36",
+  "serialNumber": "urn:uuid:391d57c3-fb1d-4842-ab6b-7970d516cf6d",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-04-08T20:23:19Z",
+    "timestamp": "2026-04-21T12:57:46Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.20.1",
+      "version": "5.21.0",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
@@ -128,7 +128,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -168,7 +168,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -208,7 +208,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -248,7 +248,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -288,7 +288,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -328,7 +328,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -368,7 +368,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -408,7 +408,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -448,7 +448,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -488,7 +488,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -527,7 +527,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -566,7 +566,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -603,7 +603,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -640,7 +640,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -676,7 +676,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -715,7 +715,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "block-cipher",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -754,7 +754,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "pke",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -795,7 +795,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "pke",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -833,7 +833,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "pke",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -872,7 +872,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -910,7 +910,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -948,7 +948,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -986,7 +986,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "ae",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1024,7 +1024,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1062,7 +1062,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1098,7 +1098,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1137,7 +1137,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1176,7 +1176,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1214,7 +1214,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1252,7 +1252,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1288,7 +1288,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1324,7 +1324,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "combiner",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1362,7 +1362,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1402,7 +1402,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1442,7 +1442,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1482,7 +1482,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1521,7 +1521,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1560,7 +1560,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1599,7 +1599,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1635,7 +1635,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1674,7 +1674,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "signature",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1713,7 +1713,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "key-agree",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1751,7 +1751,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "key-agree",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1789,7 +1789,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "key-agree",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1827,7 +1827,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "key-agree",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -1863,7 +1863,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1900,7 +1900,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1937,7 +1937,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -1974,7 +1974,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2010,7 +2010,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2046,7 +2046,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2082,7 +2082,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kdf",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -2117,7 +2117,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2154,7 +2154,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2191,7 +2191,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2228,7 +2228,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2265,7 +2265,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2302,7 +2302,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2339,7 +2339,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2376,7 +2376,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2413,7 +2413,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "hash",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [
             "fips140-3"
@@ -2450,7 +2450,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "xof",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
@@ -2484,7 +2484,7 @@
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "xof",
-          "executionEnvironment": "software",
+          "executionEnvironment": "software-plain-ram",
           "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [

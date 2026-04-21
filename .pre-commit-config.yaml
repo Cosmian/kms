@@ -30,14 +30,14 @@ repos:
             --disable=MD046,
             --fix,
           ]
-        exclude: cli_documentation/docs/cli/main_commands.md
+        exclude: cli_documentation/docs/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
-        exclude: ansible
+        exclude: ansible|ui/pnpm-lock.yaml
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.31.1
@@ -163,17 +163,21 @@ repos:
       - id: docker-compose-up
       - id: clippy-all-targets-all-features
       - id: clippy-all-targets
-      
+
   - repo: local
     hooks:
-      - id: renew-server-doc
-        name: renew server docs (CLI help + configuration file)
+      - id: generate-docs
+        name: Regenerate all documentation
         description: |
-          Build cosmian_kms (non-fips) and regenerate:
-            - documentation/docs/configuration/server_cli.md from --help
-            - documentation/docs/configuration/server_configuration_file.md from --print-default-config
-            - pkg/kms.toml and crate/server/kms_template.toml
-        entry: bash .github/scripts/docs/renew_server_doc.sh
+          Master doc-generation script. Runs all steps that are triggered by Rust
+          source changes:
+            1. server_cli.md + server_configuration_file.md (from --help / --print-default-config)
+            2. cli_documentation/docs/cli/main_commands.md + usage.md (from ckms markdown)
+            3. KMIP support tables (README.md + kmip_support/support.md)
+            4. crypto_inventory.md (cryptographic asset sensor, no network)
+          CBOM generation (step 5) is skipped on every commit (manual stage only —
+          it requires cdxgen and network access).
+        entry: bash .github/scripts/docs/generate_docs.sh --skip-cbom
         language: system
         types: [rust]
         pass_filenames: false
@@ -202,16 +206,6 @@ repos:
         always_run: true
         stages: [manual]
 
-      - id: renew-ckms-markdown
-        name: renew ckms markdown docs
-        description: |
-          Build ckms (non-fips) and regenerate cli_documentation/docs/cli/main_commands.md
-          and cli_documentation/docs/usage.md.
-        entry: bash .github/scripts/docs/renew_ckms_markdown.sh
-        language: system
-        types: [rust]
-        pass_filenames: false
-
       # # Remove folders result*
       # - id: clean-result-folders
       #   name: Clean result* folders
@@ -223,7 +217,14 @@ repos:
 
       - id: pnpm-ui-format
         name: pnpm ui format
-        entry: pnpm -C ui format
+        entry: pnpm -C ui check:format
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: pnpm-ui-lint
+        name: pnpm ui check:lint
+        entry: pnpm -C ui check:lint
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]

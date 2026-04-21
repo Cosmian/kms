@@ -121,7 +121,7 @@ impl Session {
             ));
         }
         // Find all objects
-        for object in backend().find_all_objects()? {
+        for object in backend()?.find_all_objects()? {
             self.update_find_objects_context(object)?;
         }
 
@@ -179,7 +179,7 @@ impl Session {
                 let res = match search_class {
                     pkcs11_sys::CKO_CERTIFICATE => {
                         attributes.ensure_X509_or_none()?;
-                        backend()
+                        backend()?
                             .find_all_certificates()?
                             .into_iter()
                             .map(|c| {
@@ -187,17 +187,17 @@ impl Session {
                             })
                             .collect::<ModuleResult<Vec<_>>>()?
                     }
-                    pkcs11_sys::CKO_PUBLIC_KEY => backend()
+                    pkcs11_sys::CKO_PUBLIC_KEY => backend()?
                         .find_all_public_keys()?
                         .into_iter()
                         .map(|c| self.update_find_objects_context(Arc::new(Object::PublicKey(c))))
                         .collect::<ModuleResult<Vec<_>>>()?,
-                    pkcs11_sys::CKO_PRIVATE_KEY => backend()
+                    pkcs11_sys::CKO_PRIVATE_KEY => backend()?
                         .find_all_private_keys()?
                         .into_iter()
                         .map(|c| self.update_find_objects_context(Arc::new(Object::PrivateKey(c))))
                         .collect::<ModuleResult<Vec<_>>>()?,
-                    pkcs11_sys::CKO_SECRET_KEY => backend()
+                    pkcs11_sys::CKO_SECRET_KEY => backend()?
                         .find_all_symmetric_keys()?
                         .into_iter()
                         .map(|c| {
@@ -361,7 +361,7 @@ impl Session {
             .decrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
-        let cleartext = backend().decrypt(decrypt_ctx, ciphertext)?;
+        let cleartext = backend()?.decrypt(decrypt_ctx, ciphertext)?;
         unsafe {
             if pData.is_null() {
                 *pulDataLen = cleartext.len() as CK_ULONG;
@@ -387,7 +387,7 @@ impl Session {
             .encrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
-        let ciphertext = backend().encrypt(encrypt_ctx, cleartext)?;
+        let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
         unsafe {
             *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
             if !pEncryptedData.is_null() {
@@ -423,7 +423,7 @@ impl Session {
         let sensitive = attributes.get_sensitive()?;
         let label = attributes.get_label()?;
 
-        let object = backend().generate_key(
+        let object = backend()?.generate_key(
             KeyAlgorithm::try_from(mechanism)?,
             key_length.try_into()?,
             sensitive,
@@ -450,7 +450,7 @@ impl Session {
         let label = attributes.get_label()?;
         let value = attributes.get_value()?;
         let object = match class {
-            pkcs11_sys::CKO_DATA => backend().create_object(&label, &value)?,
+            pkcs11_sys::CKO_DATA => backend()?.create_object(&label, &value)?,
             o => {
                 trace!("create_object: Object not supported: {o}");
                 return Err(ModuleError::Todo(format!("Object not supported: {o}")));
@@ -469,8 +469,8 @@ impl Session {
         let mut objects_store = OBJECTS_STORE.write()?;
         match objects_store.get_using_handle(handle) {
             Some(object) => {
-                backend().revoke_object(&object.remote_id())?;
-                backend().destroy_object(&object.remote_id())?;
+                backend()?.revoke_object(&object.remote_id())?;
+                backend()?.destroy_object(&object.remote_id())?;
             }
             None => return Err(ModuleError::ObjectHandleInvalid(handle)),
         }

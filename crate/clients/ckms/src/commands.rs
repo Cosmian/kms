@@ -417,6 +417,77 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
         http.proxy_params = None;
     }
 
+    // CA certificate for server TLS verification
+    let verified_cert: String = Input::new()
+        .with_prompt(
+            "CA certificate for server TLS verification (PEM path, leave empty to use system roots)",
+        )
+        .allow_empty(true)
+        .with_initial_text(http.verified_cert.clone().unwrap_or_default())
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    http.verified_cert = if verified_cert.is_empty() {
+        None
+    } else {
+        Some(verified_cert)
+    };
+
+    // Database secret (Redis-findex client-side encryption key)
+    let db_secret: String = Password::new()
+        .with_prompt(
+            "Database secret (Redis-findex client-side encryption key, leave empty to skip)",
+        )
+        .allow_empty_password(true)
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    http.database_secret = if db_secret.is_empty() {
+        None
+    } else {
+        Some(db_secret)
+    };
+
+    // TLS cipher suites
+    let cipher_suites: String = Input::new()
+        .with_prompt(
+            "TLS cipher suites (colon-separated, e.g. TLS_AES_256_GCM_SHA384, leave empty for default)",
+        )
+        .allow_empty(true)
+        .with_initial_text(http.cipher_suites.clone().unwrap_or_default())
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    http.cipher_suites = if cipher_suites.is_empty() {
+        None
+    } else {
+        Some(cipher_suites)
+    };
+
+    // Custom HTTP headers
+    let add_headers = Confirm::new()
+        .with_prompt("Add custom HTTP headers to every request?")
+        .default(http.custom_headers.as_ref().is_some_and(|h| !h.is_empty()))
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    if add_headers {
+        let headers_s: String = Input::new()
+            .with_prompt("Custom headers (comma-separated \"Header-Name: value\" entries)")
+            .allow_empty(true)
+            .with_initial_text(http.custom_headers.clone().unwrap_or_default().join(", "))
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        let headers: Vec<String> = headers_s
+            .split(',')
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        http.custom_headers = if headers.is_empty() {
+            None
+        } else {
+            Some(headers)
+        };
+    } else {
+        http.custom_headers = None;
+    }
+
     Ok(())
 }
 

@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const repoRoot = process.cwd();
-const srcPkg = path.join(repoRoot, "crate", "wasm", "pkg");
+const srcPkg = path.join(repoRoot, "crate", "clients", "wasm", "pkg");
 const dstWasmDir = path.join(repoRoot, "ui", "src", "wasm");
 const dstPkg = path.join(dstWasmDir, "pkg");
 

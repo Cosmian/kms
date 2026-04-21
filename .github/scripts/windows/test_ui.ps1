@@ -14,7 +14,7 @@
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
 #   • cargo / rustup  (with wasm32-unknown-unknown target)
 #   • wasm-pack       (cargo install wasm-pack --locked)
-#   • pnpm or npm     (pnpm/action-setup GitHub Action)
+#   • pnpm            (pnpm/action-setup GitHub Action)
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -24,8 +24,11 @@ $RepoRoot = (Get-Item (Join-Path (Join-Path (Join-Path $PSScriptRoot "..") "..")
 $WasmCrate = Join-Path (Join-Path (Join-Path $RepoRoot "crate") "clients") "wasm"
 $UiDir = Join-Path $RepoRoot "ui"
 
-# ── Detect pnpm / npm ─────────────────────────────────────────────────────────
-$pnpmCmd = if (Get-Command pnpm -ErrorAction SilentlyContinue) { "pnpm" } else { "npm" }
+# ── Require pnpm ─────────────────────────────────────────────────────────────
+$pnpmCmd = "pnpm"
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    throw "pnpm not found on PATH. Install it via 'pnpm/action-setup' in the CI workflow or 'npm install -g pnpm' locally."
+}
 
 # Resolve the full .cmd path for use with Start-Process (Win32 requires a real executable)
 $pnpmExe = (Get-Command $pnpmCmd).Source
@@ -42,6 +45,9 @@ else {
 # ── Helper: run a command and throw on non-zero exit ─────────────────────────
 function Invoke-Checked {
     param([string]$Exe, [string[]]$Arguments)
+    # Use Continue so that stderr output from native commands (e.g. wasm-pack
+    # INFO messages) does not trigger a NativeCommandError under Stop mode.
+    $local:ErrorActionPreference = 'Continue'
     & $Exe @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Command '$Exe $Arguments' exited with code $LASTEXITCODE"
@@ -79,16 +85,22 @@ Copy-Item (Join-Path $PkgSrc "*") -Destination $PkgDst -Recurse -Force
 Write-Host "==> Installing UI dependencies ..." -ForegroundColor Cyan
 Push-Location $UiDir
 try {
-    # Use --no-frozen-lockfile to avoid lock mismatch failures in CI
-    Invoke-Checked $pnpmCmd @("install", "--no-frozen-lockfile")
+    Invoke-Checked $pnpmCmd @("install", "--prefer-frozen-lockfile")
 
-    Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998) ..." -ForegroundColor Cyan
+    Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
+    # Write a .env.production.local file so Vite picks up the variables even
+    # if the process-level env vars are not visible to the pnpm child process.
+    $EnvFile = Join-Path $UiDir ".env.production.local"
+    "VITE_KMS_URL=http://127.0.0.1:9998`nVITE_DEV_MODE=true" | Out-File -FilePath $EnvFile -Encoding utf8 -NoNewline
     $env:VITE_KMS_URL = "http://127.0.0.1:9998"
+    $env:VITE_DEV_MODE = "true"
     try {
-        Invoke-Checked $pnpmCmd @("run", "build")
+        Invoke-Checked $pnpmCmd @("run", "build:vite")
     }
     finally {
+        Remove-Item -Force $EnvFile -ErrorAction SilentlyContinue
         Remove-Item Env:VITE_KMS_URL -ErrorAction SilentlyContinue
+        Remove-Item Env:VITE_DEV_MODE -ErrorAction SilentlyContinue
     }
 
     # ── 3. Install Playwright's Chromium browser ──────────────────────────────
@@ -127,8 +139,16 @@ if (-not (Test-Path $KmsBin)) {
 }
 
 Write-Host "==> Starting KMS server (non-fips, sqlite) ..." -ForegroundColor Cyan
-$KmsLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-e2e.log"
-$KmsLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-e2e.err"
+# Use RUNNER_TEMP when available (GitHub Actions) so that the paths match the
+# `path:` globs in the "Upload logs on failure" workflow step; fall back to
+# the system temp directory for local runs.
+$LogTempDir = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$KmsLogOut = Join-Path $LogTempDir "kms-stdout.log"
+$KmsLogErr = Join-Path $LogTempDir "kms-stderr.log"
+
+# Determine the Vite preview port before starting the KMS so we can pass it
+# as the CORS allowed origin.
+$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 
 # Launch the pre-built binary directly — startup is near-instant.
 $oldRustLog = $env:RUST_LOG
@@ -140,7 +160,8 @@ try {
         "--sqlite-path", $SqliteDir,
         "--hostname", "127.0.0.1",
         "--port", "9998",
-        "--vendor-identification", "test_vendor"
+        "--vendor-identification", "test_vendor",
+        "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $KmsLogOut `
@@ -160,16 +181,22 @@ for ($i = 1; $i -le 300; $i++) {
         throw "KMS server process exited unexpectedly (exit code $($KmsProc.ExitCode))"
     }
     try {
-        # -SkipHttpErrorCheck (PS7+) returns the response object for any HTTP
-        # status code instead of throwing, so a KMIP 4xx validation error from
-        # a healthy server correctly signals readiness.
-        $resp = Invoke-WebRequest `
+        # Both PS5.1 and PS7+ throw on non-2xx responses with -ErrorAction Stop.
+        # Accept any HTTP response (including KMIP 422) as a sign of readiness.
+        $null = Invoke-WebRequest `
             -Uri "http://127.0.0.1:9998/kmip/2_1" `
             -Method POST -Body "{}" -ContentType "application/json" `
-            -UseBasicParsing -SkipHttpErrorCheck -ErrorAction SilentlyContinue
-        if ($null -ne $resp) { $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break }
+            -UseBasicParsing -ErrorAction Stop
+        $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
     }
-    catch { }
+    catch {
+        # Any HTTP error response (4xx/5xx) means the server IS up.
+        # Works for both PS5.1 (System.Net.WebException) and
+        # PS7+ (Microsoft.PowerShell.Commands.HttpResponseException).
+        if ($null -ne $_.Exception.Response) {
+            $KmsReady = $true; Write-Host "    KMS ready after ${i}s"; break
+        }
+    }
     Start-Sleep -Seconds 1
 }
 if (-not $KmsReady) {
@@ -180,7 +207,6 @@ if (-not $KmsReady) {
 }
 
 # ── 5. Start Vite preview server ─────────────────────────────────────────────
-$PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 Write-Host "==> Starting Vite preview server (port $PreviewPort) ..." -ForegroundColor Cyan
 $PreviewLogOut = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.log"
 $PreviewLogErr = Join-Path ([System.IO.Path]::GetTempPath()) "kms-ui-preview.err"
@@ -222,6 +248,11 @@ try {
     # SoftHSM2 is not available on Windows; signal to the specs that no HSM
     # keys are pre-created so the HSM-specific tests are skipped.
     $env:PLAYWRIGHT_HSM_KEY_COUNT = "0"
+    # Run fewer parallel workers on Windows to prevent the debug-build KMS server
+    # from being overwhelmed by concurrent crypto operations, which saturates the
+    # tokio reactor and causes actix-web to return 408 Request Timeout before it
+    # can even read incoming request bodies.
+    $env:PLAYWRIGHT_WORKERS = "4"
     try {
         Invoke-Checked $pnpmCmd @("run", "test:e2e")
     }
@@ -229,6 +260,7 @@ try {
         Remove-Item Env:CI -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue
         Remove-Item Env:PLAYWRIGHT_HSM_KEY_COUNT -ErrorAction SilentlyContinue
+        Remove-Item Env:PLAYWRIGHT_WORKERS -ErrorAction SilentlyContinue
         Pop-Location
     }
 }

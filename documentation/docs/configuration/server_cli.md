@@ -251,6 +251,22 @@ Options:
 
           [env: KMS_API_TOKEN=]
 
+      --rate-limit-per-second <RATE_LIMIT_PER_SECOND>
+          Maximum number of requests per second per IP address allowed by the rate limiter.
+          When set, the server enforces this limit to mitigate `DoS` and brute-force attacks.
+          Requests exceeding the limit receive HTTP 429 Too Many Requests.
+          Leave unset (default) to disable rate limiting.
+
+          [env: KMS_RATE_LIMIT_PER_SECOND=]
+
+      --cors-allowed-origins <CORS_ALLOWED_ORIGINS>
+          Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
+          Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
+          port or host from the KMS server. In production, leave unset to restrict to same-origin
+          only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+
+          [env: KMS_CORS_ALLOWED_ORIGINS=]
+
       --proxy-url <PROXY_URL>
           The proxy URL:
             - e.g., `https://secure.example` for an HTTP proxy
@@ -395,7 +411,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.20.0"]
+          [default: "Cosmian KMS v5.21.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory

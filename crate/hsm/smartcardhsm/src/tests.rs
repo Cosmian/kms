@@ -34,25 +34,31 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
 #[test]
 #[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
 fn test_hsm_smartcardhsm_all() -> HResult<()> {
-    test_hsm_smartcardhsm_get_info()?;
-    test_hsm_smartcardhsm_get_mechanisms()?;
-    test_hsm_smartcardhsm_get_supported_algorithms()?;
-    test_hsm_smartcardhsm_destroy_all()?;
-    test_hsm_smartcardhsm_generate_aes_key()?;
-    test_hsm_smartcardhsm_generate_rsa_keypair()?;
-    //    test_hsm_smartcardhsm_rsa_key_wrap()?; //Not supported
-    test_hsm_smartcardhsm_rsa_pkcs_encrypt()?;
-    test_hsm_smartcardhsm_rsa_oaep_encrypt()?;
-    test_hsm_smartcardhsm_aes_cbc_encrypt()?;
-    test_hsm_smartcardhsm_aes_cbc_multi_round_encrypt()?;
-    test_hsm_smartcardhsm_rsa_pkcs_v15_sign()?;
-    test_hsm_smartcardhsm_rsa_sha256_sign()?;
-    test_hsm_smartcardhsm_rsa_sign_all_algorithms()?;
-    test_hsm_smartcardhsm_multi_threaded_rsa_encrypt_decrypt_test()?;
-    test_hsm_smartcardhsm_get_key_metadata()?;
-    test_hsm_smartcardhsm_list_objects()?;
-    test_hsm_smartcardhsm_search_incompatible_key()?;
-    test_hsm_smartcardhsm_destroy_all()?;
+    // Use a single BaseHsm for the entire test to prevent repeated C_Initialize/C_Finalize
+    // cycles. Some PKCS#11 native libraries are not safely re-initializable within the same
+    // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
+    let cfg = cfg()?;
+    let hsm = shared::instantiate::<SmartcardHsmCapabilityProvider>(&cfg)?;
+    drop(hsm.hsm_lib().get_info_struct()?);
+    let slot = shared::get_slot::<SmartcardHsmCapabilityProvider>(&hsm, &cfg)?;
+    shared::get_mechanisms_and_hashes(&slot)?;
+    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::destroy_all(&slot)?;
+    shared::generate_aes_key(&slot)?;
+    shared::generate_rsa_keypair(&slot)?;
+    // rsa_key_wrap not supported on SmartcardHSM
+    shared::rsa_pkcs_encrypt(&slot)?;
+    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA1)?;
+    shared::aes_cbc_encrypt(&slot)?;
+    shared::aes_cbc_multi_round(&slot)?;
+    shared::rsa_pkcs_v15_sign(&slot)?;
+    shared::rsa_sha256_sign(&slot)?;
+    shared::rsa_sign_all_algorithms(&slot)?;
+    shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA1, cfg.threads)?;
+    shared::get_key_metadata(&slot)?;
+    shared::list_objects(&slot)?;
+    shared::search_incompatible_key(&hsm, &cfg)?;
+    shared::destroy_all(&slot)?;
     Ok(())
 }
 

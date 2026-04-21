@@ -62,6 +62,10 @@ jobs:
           set -ex
           if [ "${{ matrix.features }}" = "non-fips" ]; then
             export FEATURES_FLAG="--features non-fips";
+            # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration
+            # tests can dynamically load it at runtime.  `cargo test --lib` does
+            # not produce cdylib artifacts, so we build it explicitly here.
+            cargo build -p cosmian_pkcs11 --features non-fips
           else
             export FEATURES_FLAG="";
           fi

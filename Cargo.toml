@@ -13,6 +13,7 @@ members = [
   "crate/clients/wasm",
   "crate/clients/clap",
   "crate/clients/ckms",
+  "crate/clients/pkcs11/loader",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
   # Server crates
@@ -93,7 +94,7 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.20.1"
+version = "5.21.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
@@ -110,18 +111,18 @@ categories = ["security"]
 [profile.release]
 # Deterministic build configuration for reproducible binaries
 # These settings ensure the same source produces identical binaries across builds
-lto = "fat" # Fat LTO: maximum cross-crate optimization for smallest binaries
-strip = "symbols" # Strip symbol tables for smaller binaries
-opt-level = "z" # Optimize for size while maintaining performance
-codegen-units = 1 # Single codegen unit: best optimization and determinism
-panic = "abort" # Smaller binaries, no unwinding tables
+lto = "fat"         # Fat LTO: maximum cross-crate optimization for smallest binaries
+strip = "symbols"   # Strip symbol tables for smaller binaries
+opt-level = "z"     # Optimize for size while maintaining performance
+codegen-units = 1   # Single codegen unit: best optimization and determinism
+panic = "abort"     # Smaller binaries, no unwinding tables
 incremental = false # Disable incremental compilation for determinism
-debug = 0 # No debug info (timestamps/paths)
+debug = 0           # No debug info (timestamps/paths)
 
 [profile.dev]
 strip = "debuginfo"
 incremental = false
-panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
+panic = "abort"     # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]
@@ -135,6 +136,7 @@ opt-level = 0
 [workspace.dependencies]
 actix-cors = "0.6"
 actix-files = "0.6.10"
+actix-governor = "0.10"
 actix-http = "3.10"
 actix-identity = "0.6"
 actix-rt = "2.10"
@@ -148,12 +150,23 @@ base64 = "0.22"
 bitflags = "2.9"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-criterion = { version = "0.6", default-features = false, features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.6", default-features = false, features = [
+  "html_reports",
+  "async_tokio",
+] }
 cosmian_config_utils = "0.3.1"
-cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
+cosmian_crypto_core = { version = "11.0", default-features = false, features = [
+  "ser",
+] }
 cosmian_logger = "0.5"
 der = { version = "0.7", default-features = false }
-dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
+dialoguer = { version = "0.11", default-features = false, features = [
+  "editor",
+  "fuzzy-select",
+  "history",
+  "password",
+  "completion",
+] }
 dotenvy = "0.15"
 futures = "0.3"
 hex = { version = "0.4", default-features = false }
@@ -192,6 +205,7 @@ tokio = { version = "1.44", default-features = false }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false }
+subtle = "2.6"
 url = "2.5"
 uuid = "=1.11.1"
 x509-cert = { version = "0.2", default-features = false }

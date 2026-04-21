@@ -12,11 +12,11 @@ use std::{
     process::Command,
 };
 
-const OPENSSL_MAIN_VERSION: &str = "3.6.0";
-const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.0.tar.gz";
-const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
+const OPENSSL_MAIN_VERSION: &str = "3.6.2";
+const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.2.tar.gz";
+const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
 const OPENSSL_MAIN_SHA256: &str =
-    "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+    "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
@@ -78,7 +78,7 @@ fn main() {
     let _ = fs::create_dir_all(&build_root);
     let _ = fs::create_dir_all(&main_prefix);
 
-    // Build main OpenSSL (3.6.0) if not present
+    // Build main OpenSSL (3.6.2) if not present
     if !main_prefix.join("lib/libcrypto.a").exists() {
         let _ = build_and_install_openssl(
             &workspace_root,

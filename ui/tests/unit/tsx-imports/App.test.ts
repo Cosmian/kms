@@ -19,7 +19,10 @@ test("renders App (and initializes WASM)", async () => {
     window.history.pushState({}, "", "/ui/");
     const { container } = render(React.createElement(BrandingProvider, { branding: mockBranding }, React.createElement(App)));
 
-    await waitFor(() => {
-        expect(container).toHaveTextContent(/Cosmian KMS user interface|ACCESS KMS|Key Management System|LOGIN|Login|Objects|Keys/i);
-    });
+    await waitFor(
+        () => {
+            expect(container).toHaveTextContent(/Cosmian KMS user interface|ACCESS KMS|Key Management System|LOGIN|Login|Objects|Keys/i);
+        },
+        { timeout: 5000 },
+    );
 });

@@ -14,15 +14,12 @@ The PKCS#11 library enables organizations to leverage Cosmian's advanced cryptog
 
 By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic functionalities and secure search capabilities into their applications, enhancing data security and privacy.
 
-!!! important
-    A Web UI version of the CLI is also available when installing the KMS server.
-
 [TOC]
 
 !!! info Download cosmian
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.20.1/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.21.0/)
     See below for installation instructions.
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
@@ -32,7 +29,23 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
 
 To communicate with the KMS, the clients `ckms` expect the same configuration file. Please read the [configuration](./configuration.md) section.
 
-## Usage
-
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
 {!kms_clients/usage.md!}
+
+## Web UI
+
+The KMS server ships with a built-in **browser-based client** that covers the same operations as the `ckms` CLI. It is available at:
+
+```plaintext
+https://YOUR_KMS_URL/ui
+```
+
+No installation is required — the UI is served directly by the KMS server.
+
+**Authentication** is handled automatically: the UI detects the server's configured method and adapts its login flow accordingly:
+
+- **OIDC / JWT**: a **LOGIN** button redirects to the identity provider.
+- **mTLS (client certificate)**: the browser negotiates the TLS handshake using a certificate installed in the system or browser store. No extra configuration is needed on the client side.
+- **No authentication**: direct access, with a warning banner indicating that the server is unsecured.
+
+For server-side configuration and browser certificate installation steps, see the [KMS User Interface configuration guide](https://docs.cosmian.com/kms/configuration/ui/).

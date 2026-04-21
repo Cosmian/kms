@@ -71,14 +71,30 @@ pub struct TlsConfig {
     pub tls_cipher_suites: Option<String>,
 }
 
+impl TlsConfig {
+    /// Returns `true` if TLS will be active on the HTTP listener.
+    ///
+    /// TLS is active when either:
+    /// - A PEM certificate **and** private key are both configured, or
+    /// - A PKCS#12 bundle is configured (non-FIPS only).
+    #[must_use]
+    pub const fn is_tls_enabled(&self) -> bool {
+        #[cfg(feature = "non-fips")]
+        if self.tls_p12_file.is_some() {
+            return true;
+        }
+        self.tls_cert_file.is_some() && self.tls_key_file.is_some()
+    }
+}
+
 impl Display for TlsConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(feature = "non-fips")]
         {
             if self.tls_p12_file.is_some() {
                 write!(f, "Pkcs12 file: {:?}, ", self.tls_p12_file.as_ref())?;
-                if let Some(https_p12_password) = &self.tls_p12_password {
-                    write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+                if self.tls_p12_password.is_some() {
+                    write!(f, "password: [****], ")?;
                 }
                 return write!(
                     f,

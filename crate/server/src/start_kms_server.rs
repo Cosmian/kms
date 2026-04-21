@@ -14,6 +14,7 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
+use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
@@ -595,6 +596,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ));
         }
 
+        // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
+        // MITM attacks on the public-key material used to verify bearer tokens.
+        // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
+        // check is compiled out to allow http:// URIs.
+        #[cfg(not(feature = "insecure"))]
+        validate_jwks_uris_are_https(&all_jwks_uris)?;
+
         let jwks_manager = Arc::new(
             JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
         );
@@ -722,22 +730,68 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         )
     });
 
-    // Derive or generate key for actix session cookie encryption
-    // If session_salt is provided, derive a deterministic key for load-balanced setups
-    // Otherwise, generate a random key (for setups without UI or load balancing)
-    let secret_key: Key = if let Some(ref salt) = kms_server.params.ui_session_salt {
-        derive_session_key_from_url(&kms_public_url, salt)?
-    } else {
-        Key::generate()
-    };
+    // Derive the session cookie encryption key.
+    // - If ui_session_salt is set, derive a deterministic key from it (required for
+    //   load-balanced multi-instance setups where all nodes must share the same key).
+    // - Otherwise, derive a stable key from the public URL using a built-in default salt.
+    //   This prevents the "cookie failed cryptographic checks" warnings that occur when
+    //   a random key is regenerated on every restart, invalidating existing browser cookies.
+    //   For single-instance deployments this is sufficient; for multi-instance setups
+    //   ui_session_salt must be configured to ensure all nodes share the same key.
+    let effective_salt = kms_server.params.ui_session_salt.as_deref().unwrap_or_else(|| {
+        // A08-2: Warn operators that the session key is derived from a predictable default salt.
+        // In single-instance deployments this is acceptable; for production or multi-instance
+        // setups, configure `ui_session_salt` (or KMS_UI_SESSION_SALT) with a strong random value
+        // to prevent cookie forgery if the deployment URL is publicly known.
+        warn!(
+            "ui_session_salt is not configured — session cookie key is derived from a predictable \
+             default salt and the public URL. Set `ui_session_salt` in the KMS configuration for \
+             production deployments to prevent cookie forgery."
+        );
+        "cosmian_kms_default_ui_session_key_v1"
+    });
+    let secret_key: Key = derive_session_key_from_url(&kms_public_url, effective_salt)?;
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
+
+    // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
+    // The test-server helper leaves that field at `None` so parallel unit tests are never
+    // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
+    let rate_limit_enabled = kms_server.params.rate_limit_per_second.is_some();
+    let governor_conf = if let Some(rps) = kms_server.params.rate_limit_per_second {
+        GovernorConfigBuilder::default()
+            .requests_per_second(u64::from(rps))
+            .burst_size(rps.saturating_mul(3))
+            .finish()
+            .or_else(|| {
+                GovernorConfigBuilder::default()
+                    .requests_per_second(10)
+                    .burst_size(30)
+                    .finish()
+            })
+            .ok_or_else(|| {
+                KmsError::ServerError("Failed to build rate-limiter configuration".to_owned())
+            })?
+    } else {
+        // Placeholder config when rate limiting is disabled; permissive mode never
+        // blocks requests, and the Condition wrapper also ensures the middleware is
+        // never actually invoked.
+        GovernorConfigBuilder::default()
+            .permissive(true)
+            .finish()
+            .ok_or_else(|| {
+                KmsError::ServerError(
+                    "Failed to build placeholder rate-limiter configuration".to_owned(),
+                )
+            })?
+    };
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(Condition::new(rate_limit_enabled, Governor::new(&governor_conf)))
             .wrap(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
@@ -750,7 +804,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_path("/".to_owned())
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::None)
+                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
                     .cookie_secure(true)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),
@@ -758,8 +812,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .build(),
             )
             .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
+            // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
+            // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
+            .app_data(PayloadConfig::new(64 * 1024 * 1024))
+            .app_data(JsonConfig::default().limit(64 * 1024 * 1024));
 
         if kms_server_for_http.params.kms_public_url.is_some()
             && kms_server_for_http.params.google_cse.google_cse_enable
@@ -943,17 +999,26 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 use_jwt_auth,
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
-            // Prefer checking API token before JWT to avoid header handling quirks
-            .wrap(Condition::new(
-                use_api_token_auth,
-                ApiTokenAuth::new(kms_server.clone()),
-            ))
             .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
-            // Enable CORS for the application.
-            // Since Actix is running the middlewares in reverse order, it's important that the
-            // CORS middleware is the last one, so that the auth middlewares do not run on
-            // preflight (OPTION) requests.
-            .wrap(Cors::permissive())
+            // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
+            // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
+            // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
+            // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
+            // When origins are configured, allow any method and header for those origins so that
+            // browser WASM clients (which use POST with Content-Type: application/octet-stream) can
+            // pass the CORS preflight check and carry session cookies (`credentials: "include"`).
+            // When no origins are configured, Cors::default() with no allowed origins effectively
+            // blocks all cross-origin requests (same-origin only).
+            .wrap({
+                let mut cors = Cors::default()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .supports_credentials();
+                for origin in &kms_server_for_http.params.cors_allowed_origins {
+                    cors = cors.allowed_origin(origin.as_str());
+                }
+                cors
+            })
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(access::list_owned_objects)
@@ -1031,6 +1096,30 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     Ok(builder)
 }
 
+/// Validate that every JWKS URI in `uris` uses the `https` scheme.
+///
+/// Prevents the KMS from starting with an HTTP JWKS endpoint, which would expose
+/// JWT public-key material to interception and allow MITM-based algorithm confusion.
+///
+/// This check is compiled out by the `insecure` feature flag so that integration
+/// tests can point the server at a local HTTP mock JWKS server.
+#[cfg(not(feature = "insecure"))]
+fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
+    for uri in uris {
+        let scheme = url::Url::parse(uri)
+            .map(|u| u.scheme().to_owned())
+            .unwrap_or_default();
+        if scheme != "https" {
+            return Err(KmsError::ServerError(format!(
+                "JWKS URI must use HTTPS scheme to protect JWT public-key material, \
+                 got: {uri:?}. Use the `insecure` feature flag to bypass this check \
+                 in non-production environments."
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used)]
 mod tests {
@@ -1106,5 +1195,62 @@ mod tests {
             key2.master(),
             "Keys with same URL and salt should be identical"
         );
+    }
+
+    // ── J1–J4: JWKS HTTPS URI validation (compiled out in `insecure` builds) ─
+    #[cfg(not(feature = "insecure"))]
+    mod jwks_https_guard {
+        use super::*;
+
+        /// J1: A plain HTTP JWKS URI must be rejected at startup.
+        #[test]
+        fn j01_http_uri_is_rejected() {
+            let uris = vec!["http://idp.example.com/.well-known/jwks.json".to_owned()];
+            let result = validate_jwks_uris_are_https(&uris);
+            assert!(result.is_err(), "HTTP JWKS URI must be rejected");
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("HTTPS") || msg.contains("https"),
+                "Error message must mention HTTPS, got: {msg}"
+            );
+        }
+
+        /// J2: A valid HTTPS JWKS URI must be accepted.
+        #[test]
+        fn j02_https_uri_is_accepted() {
+            let uris = vec!["https://idp.example.com/.well-known/jwks.json".to_owned()];
+            assert!(
+                validate_jwks_uris_are_https(&uris).is_ok(),
+                "HTTPS JWKS URI must be accepted"
+            );
+        }
+
+        /// J3: Empty URI list is always valid (no JWT auth configured).
+        #[test]
+        fn j03_empty_list_is_ok() {
+            assert!(
+                validate_jwks_uris_are_https(&[]).is_ok(),
+                "Empty URI list must be accepted"
+            );
+        }
+
+        /// J4: A mixed list (one HTTPS, one HTTP) must be rejected and the bad URI named.
+        #[test]
+        fn j04_mixed_list_rejects_http_uri() {
+            let uris = vec![
+                "https://good.example.com/jwks".to_owned(),
+                "http://bad.example.com/jwks".to_owned(),
+            ];
+            let result = validate_jwks_uris_are_https(&uris);
+            assert!(
+                result.is_err(),
+                "List containing an HTTP URI must be rejected"
+            );
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("bad.example.com"),
+                "Error message must identify the offending URI, got: {msg}"
+            );
+        }
     }
 }

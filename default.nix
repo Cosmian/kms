@@ -155,14 +155,14 @@ let
   # Default to static for backward compatibility
   openssl312 = openssl312-static;
 
-  # Build OpenSSL 3.6.0 with legacy provider for non-FIPS builds
+  # Build OpenSSL 3.6.2 with legacy provider for non-FIPS builds
   # Common parameters for both static and dynamic builds
   openssl36Args = {
-    version = "3.6.0";
+    version = "3.6.2";
     enableLegacy = true;
-    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
-    sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
-    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
+    sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
+    expectedHash = "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
   };
   openssl36-static = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
   openssl36-dynamic = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = false; });
@@ -338,7 +338,7 @@ let
     pkcs11LibDrv = kms-cli-non-fips-static-openssl;
     variant = "non-fips";
     version = kmsVersion;
-    # Provide OpenSSL 3.6.0 so the Docker image ships legacy provider + non-FIPS openssl.cnf
+    # Provide OpenSSL 3.6.2 so the Docker image ships legacy provider + non-FIPS openssl.cnf
     opensslDrv = openssl36-static;
   };
 
@@ -368,7 +368,7 @@ rec {
   # Export OpenSSL 3.1.2 FIPS derivations for tooling (packaging script)
   inherit openssl312 openssl312-static openssl312-dynamic;
 
-  # Export OpenSSL 3.6.0 derivations (with legacy provider for non-FIPS)
+  # Export OpenSSL 3.6.2 derivations (with legacy provider for non-FIPS)
   inherit openssl36-static openssl36-dynamic;
 
   # Export cargo-packager and cargo-generate-rpm tools for scripts and dev shell

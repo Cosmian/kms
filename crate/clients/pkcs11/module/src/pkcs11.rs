@@ -33,10 +33,11 @@ use pkcs11_sys::{
     CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR, CK_SESSION_INFO, CK_SESSION_INFO_PTR,
     CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO, CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR,
     CK_ULONG, CK_ULONG_PTR, CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION,
-    CK_VOID_PTR, CKF_HW_SLOT, CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION,
-    CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT,
-    CKF_USER_PIN_INITIALIZED, CKF_WRITE_PROTECTED, CKR_OK, CKS_RO_USER_FUNCTIONS,
-    CKS_RW_USER_FUNCTIONS, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CK_VOID_PTR, CKF_DECRYPT, CKF_ENCRYPT, CKF_GENERATE, CKF_HW_SLOT,
+    CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN,
+    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_INITIALIZED, CKM_AES_CBC,
+    CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
+    CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use rand::RngCore;
 
@@ -49,7 +50,10 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     sessions::{self, Session},
-    traits::{DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, backend},
+    traits::{
+        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, backend, clear_backend,
+        invoke_login_fn, use_pin_as_access_token,
+    },
 };
 
 pub(crate) const SLOT_DESCRIPTION: &[u8; 64] =
@@ -240,7 +244,7 @@ cryptoki_fn!(
     unsafe fn C_GetInfo(pInfo: CK_INFO_PTR) {
         initialized!();
         not_null!(pInfo, "C_GetInfo: pInfo");
-        let backend = backend();
+        let backend = backend()?;
         let info = CK_INFO {
             cryptokiVersion: CK_VERSION {
                 major: CRYPTOKI_VERSION_MAJOR,
@@ -288,7 +292,7 @@ cryptoki_fn!(
         initialized!();
         valid_slot!(slotID);
         not_null!(pInfo, "C_GetSlotInfo: pInfo");
-        let backend = backend();
+        let backend = backend()?;
         let info = CK_SLOT_INFO {
             slotDescription: *SLOT_DESCRIPTION,
             manufacturerID: backend.token_manufacturer_id(),
@@ -315,7 +319,7 @@ cryptoki_fn!(
         valid_slot!(slotID);
         not_null!(pInfo, "C_GetTokenInfo: pInfo");
 
-        let backend = backend();
+        let backend = backend()?;
 
         let info = CK_TOKEN_INFO {
             label: backend.token_label(),
@@ -323,8 +327,11 @@ cryptoki_fn!(
             model: backend.token_model(),
             serialNumber: backend.token_serial_number(),
             flags: CKF_TOKEN_INITIALIZED
-                | CKF_PROTECTED_AUTHENTICATION_PATH
-                | CKF_WRITE_PROTECTED
+                | if use_pin_as_access_token() {
+                    0
+                } else {
+                    CKF_PROTECTED_AUTHENTICATION_PATH
+                }
                 | CKF_USER_PIN_INITIALIZED
                 | CKF_RNG
                 | CKF_HW_SLOT, /* systemd-cryptenroll() requires this to be a hardware slot to
@@ -383,8 +390,13 @@ cryptoki_fn!(
         if !SUPPORTED_SIGNATURE_MECHANISMS.contains(&mechType) {
             return Err(ModuleError::MechanismInvalid(mechType));
         }
+        let flags = match mechType {
+            CKM_AES_KEY_GEN => CKF_GENERATE,
+            CKM_AES_CBC | CKM_AES_CBC_PAD => CKF_ENCRYPT | CKF_DECRYPT,
+            _ => CKF_SIGN,
+        };
         let info = CK_MECHANISM_INFO {
-            flags: CKF_SIGN,
+            flags,
             ..Default::default()
         };
         unsafe {
@@ -520,7 +532,7 @@ cryptoki_fn_not_supported!(
 );
 
 cryptoki_fn!(
-    fn C_Login(
+    unsafe fn C_Login(
         hSession: CK_SESSION_HANDLE,
         userType: CK_USER_TYPE,
         pPin: CK_UTF8CHAR_PTR,
@@ -528,6 +540,17 @@ cryptoki_fn!(
     ) {
         initialized!();
         valid_session!(hSession);
+        if use_pin_as_access_token() {
+            if pPin.is_null() || ulPinLen == 0 {
+                return Err(ModuleError::PinRequired);
+            }
+            // Safety: caller guarantees pPin points to ulPinLen valid UTF-8 bytes.
+            let pin_bytes = unsafe { slice::from_raw_parts(pPin, ulPinLen as usize) };
+            let token = std::str::from_utf8(pin_bytes).map_err(|e| {
+                ModuleError::BadArguments(format!("C_Login: pPin is not valid UTF-8: {e}"))
+            })?;
+            invoke_login_fn(token)?;
+        }
         Ok(())
     }
 );
@@ -536,6 +559,9 @@ cryptoki_fn!(
     fn C_Logout(hSession: CK_SESSION_HANDLE) {
         initialized!();
         valid_session!(hSession);
+        if use_pin_as_access_token() {
+            clear_backend();
+        }
         Ok(())
     }
 );
