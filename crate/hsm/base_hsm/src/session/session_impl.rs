@@ -297,7 +297,9 @@ impl Session {
         ) {
             Ok(handles) => handles,
             Err(e) => {
-                debug!("HSM does not support RSA key pair generation; OAEP hash probing skipped: {e}");
+                debug!(
+                    "HSM does not support RSA key pair generation; OAEP hash probing skipped: {e}"
+                );
                 *cache = Some(vec![]);
                 return Ok(vec![]);
             }
