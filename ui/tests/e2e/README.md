@@ -205,6 +205,39 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`
 
+## Anonymize (non-FIPS only)
+
+_Skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`). All eight `/tokenize/*` endpoints are feature-gated by `non-fips`._
+
+### tokenize
+
+```mermaid
+graph LR
+    A[Navigate each page] --> B{Submit known input}
+    B --> C[Hash: SHA2/SHA3 known digest]
+    B --> D[Noise: finite result]
+    B --> E[Word Mask: XXXX replacement]
+    B --> F[Word Tokenize: hex tokens]
+    B --> G[Pattern Mask: regex replace]
+    B --> H[Aggregate Number: 1234→1200]
+    B --> I[Aggregate Date: truncate to Hour]
+    B --> J[Scale Number: finite result]
+```
+
+Covers all 8 anonymization methods via plain REST (`POST /tokenize/{method}`; no KMIP/WASM). Tests include:
+
+- Navigation smoke test for each of the 8 pages
+- SHA2 hash: `"test sha2"` → known base64 digest (sourced from Rust unit test `test_hash_sha2`)
+- SHA3 hash: `"test sha3"` → known base64 digest (sourced from Rust unit test `test_hash_sha3`)
+- Gaussian noise on a float returns a finite number
+- Uniform noise: switching distribution shows min/max bound fields, hides mean/std_dev
+- Word mask: `"confidential"` and `"secret"` replaced by `XXXX`
+- Word tokenize: sensitive word replaced by consistent hex token
+- Pattern mask: email-like pattern replaced by `[EMAIL]`
+- Aggregate number: `1234` with `power_of_ten=2` → `"1200"` (sourced from Rust unit test `test_int_aggregation`)
+- Aggregate date: `"2023-04-07T12:34:56+02:00"` truncated to Hour → contains `"2023-04-07T12:00:00"` (sourced from `test_time_aggregation`)
+- Scale number: z-score + scale returns a finite number
+
 ## CoverCrypt
 
 _Skipped in FIPS mode._

@@ -20,6 +20,9 @@ const apiProxy: Record<string, { target: string; secure: boolean }> = {
     "/download-cli": proxyOpts,
     "/version": proxyOpts,
     "/health": proxyOpts,
+    "/tokenize": proxyOpts,
+    "/ui/token": proxyOpts,
+    "/ui/auth_method": proxyOpts,
 };
 
 // https://vite.dev/config/

@@ -97,8 +97,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             type="info"
                             showIcon
                             closable
-                            className="ml-4 py-0 px-3 text-sm leading-tight"
-                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }}
+                            className="py-0 px-3 text-sm leading-tight"
+                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", marginLeft: "20px" }}
                         />
                     )}
                     <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>

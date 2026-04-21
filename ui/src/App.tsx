@@ -61,6 +61,14 @@ import init, * as wasmModule from "./wasm/pkg";
 import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
 import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
 import DeriveKeyForm from "./actions/Keys/DeriveKey";
+import TokenizeAggregateDate from "./actions/Tokenize/TokenizeAggregateDate";
+import TokenizeAggregateNumber from "./actions/Tokenize/TokenizeAggregateNumber";
+import TokenizeHash from "./actions/Tokenize/TokenizeHash";
+import TokenizeNoise from "./actions/Tokenize/TokenizeNoise";
+import TokenizeScaleNumber from "./actions/Tokenize/TokenizeScaleNumber";
+import TokenizeWordMask from "./actions/Tokenize/TokenizeWordMask";
+import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask";
+import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
 
 type AppContentProps = {
     isDarkMode: boolean;
@@ -351,6 +359,16 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
                         <Route path="google-cse" element={<CseInfo />} />
+                        <Route path="tokenize">
+                            <Route path="hash" element={<TokenizeHash />} />
+                            <Route path="noise" element={<TokenizeNoise />} />
+                            <Route path="word-mask" element={<TokenizeWordMask />} />
+                            <Route path="word-tokenize" element={<TokenizeWordTokenize />} />
+                            <Route path="word-pattern-mask" element={<TokenizeWordPatternMask />} />
+                            <Route path="aggregate-number" element={<TokenizeAggregateNumber />} />
+                            <Route path="aggregate-date" element={<TokenizeAggregateDate />} />
+                            <Route path="scale-number" element={<TokenizeScaleNumber />} />
+                        </Route>
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </>

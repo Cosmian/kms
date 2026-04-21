@@ -148,6 +148,18 @@ const MAC_ROUTES: Route[] = [
     { name: "verify", path: "/ui/mac/verify" },
 ];
 
+// ── Tokenize / Anonymize routes ───────────────────────────────────────────────
+const TOKENIZE_ROUTES: Route[] = [
+    { name: "hash", path: "/ui/tokenize/hash" },
+    { name: "noise", path: "/ui/tokenize/noise" },
+    { name: "word-mask", path: "/ui/tokenize/word-mask" },
+    { name: "word-tokenize", path: "/ui/tokenize/word-tokenize" },
+    { name: "word-pattern-mask", path: "/ui/tokenize/word-pattern-mask" },
+    { name: "aggregate-number", path: "/ui/tokenize/aggregate-number" },
+    { name: "aggregate-date", path: "/ui/tokenize/aggregate-date" },
+    { name: "scale-number", path: "/ui/tokenize/scale-number" },
+];
+
 /**
  * All application routes, grouped by section.
  *
@@ -170,4 +182,5 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Derive Key", routes: DERIVE_KEY_ROUTE },
     { section: "Locate", routes: LOCATE_ROUTES },
     { section: "MAC", routes: MAC_ROUTES },
+    { section: "Anonymize", routes: TOKENIZE_ROUTES },
 ];
