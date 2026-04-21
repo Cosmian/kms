@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, Space, Table } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
 interface AccessListFormData {

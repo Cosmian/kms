@@ -1,7 +1,7 @@
 import { WarningFilled } from "@ant-design/icons";
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { getObjectLabel, getTypeString, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 

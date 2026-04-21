@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { postNoTTLVRequest } from "../../utils/utils";
 
 interface ScaleNumberFormData {

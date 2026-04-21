@@ -1,7 +1,7 @@
 import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
 import type { TableColumnsType } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";

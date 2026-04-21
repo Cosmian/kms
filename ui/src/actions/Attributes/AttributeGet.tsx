@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import HashMapDisplay from "../../components/common/HashMapDisplay";
 import { sendKmipRequest } from "../../utils/utils";
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
