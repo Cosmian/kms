@@ -63,9 +63,9 @@ const CNG_KSP_TAG: &str = "cng-ksp";
 
 #[cfg(windows)]
 fn register(dll: &PathBuf) -> KmsCliResult<()> {
-    let dll_str = dll.to_str().ok_or_else(|| {
-        KmsCliError::Default("DLL path contains non-UTF-8 characters".to_owned())
-    })?;
+    let dll_str = dll
+        .to_str()
+        .ok_or_else(|| KmsCliError::Default("DLL path contains non-UTF-8 characters".to_owned()))?;
     if !dll.exists() {
         return Err(KmsCliError::Default(format!(
             "DLL not found: {}",
@@ -129,8 +129,7 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
     let mut attrs = Attributes::default();
     attrs
         .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG])
-        .map_err(|e| KmsCliError::Default(format!("Failed to set tags: {e}")))?
-    ;
+        .map_err(|e| KmsCliError::Default(format!("Failed to set tags: {e}")))?;
 
     let locate = Locate {
         attributes: attrs,
@@ -156,8 +155,7 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
 // ─── Windows Registry helpers ─────────────────────────────────────────────────
 
 const KSP_PROVIDER_NAME: &str = "Cosmian KMS Key Storage Provider";
-const KSP_REGISTRY_PATH: &str =
-    r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
+const KSP_REGISTRY_PATH: &str = r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
 /// NCRYPT_IMPL_SOFTWARE_FLAG
 const KSP_CAPABILITIES: u32 = 2_u32;
 
