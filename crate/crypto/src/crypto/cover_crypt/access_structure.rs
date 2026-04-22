@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use cosmian_cover_crypt::{AccessStructure, EncryptionHint, QualifiedAttribute};
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 
 use crate::{CryptoError, error::result::CryptoResult};
 

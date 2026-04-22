@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_crypto::{CryptoError, reexport::cosmian_crypto_core::CryptoCoreError};
 use cosmian_kms_interfaces::InterfaceError;
-use cosmian_kms_logger::reexport::tracing;
+use cosmian_logger::reexport::tracing;
 #[cfg(feature = "non-fips")]
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemoryError};
 use thiserror::Error;

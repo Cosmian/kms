@@ -4,13 +4,13 @@
 /// `"hsm1"` prefix to the corresponding HSM instance and that cross-instance access is denied.
 use std::sync::Arc;
 
-use cosmian_kms_logger::{info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::Operation,
     kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     requests::symmetric_key_create_request,
 };
+use cosmian_logger::{info, log_init};
 use uuid::Uuid;
 
 use crate::{
@@ -53,8 +53,8 @@ async fn test_multi_hsm_routing() -> KResult<()> {
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
-    // Create a symmetric key on the first HSM (prefix "hsm", slot 0).
-    let key1_uid = format!("hsm::0::{}", Uuid::new_v4());
+    // Create a symmetric key on the first HSM (prefix "hsm::softhsm2", slot 0).
+    let key1_uid = format!("hsm::softhsm2::0::{}", Uuid::new_v4());
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key1_uid.clone())),
@@ -69,7 +69,7 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         panic!("Expected CreateResponse");
     };
     info!(
-        "Created key on hsm::0 — uid={}",
+        "Created key on hsm::softhsm2::0 — uid={}",
         create_response.unique_identifier
     );
     assert_eq!(
@@ -77,8 +77,8 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         UniqueIdentifier::TextString(key1_uid.clone())
     );
 
-    // Create a symmetric key on the second HSM (prefix "hsm1", slot 1).
-    let key2_uid = format!("hsm1::1::{}", Uuid::new_v4());
+    // Create a symmetric key on the second HSM (prefix "hsm::softhsm2_1", slot 1).
+    let key2_uid = format!("hsm::softhsm2_1::1::{}", Uuid::new_v4());
     let create_req2 = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key2_uid.clone())),
@@ -93,7 +93,7 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         panic!("Expected CreateResponse for hsm1");
     };
     info!(
-        "Created key on hsm1::1 — uid={}",
+        "Created key on hsm::softhsm2_1::1 — uid={}",
         create_response2.unique_identifier
     );
     assert_eq!(

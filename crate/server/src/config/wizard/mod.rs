@@ -104,7 +104,12 @@ pub fn run_configure_wizard() -> KResult<()> {
     // ── [6/9] HSM ─────────────────────────────────────────────────────────────
     println!("[6/9] Hardware Security Module (HSM) configuration");
     println!("───────────────────────────────────────────────────");
-    let hsm = hsm_wizard::configure_hsm()?;
+    let hsm_config = hsm_wizard::configure_hsm()?;
+    let hsm_instances = if hsm_config.hsm_slot.is_empty() {
+        vec![]
+    } else {
+        vec![hsm_config]
+    };
     println!();
 
     // ── [7/9] Logging ─────────────────────────────────────────────────────────
@@ -136,7 +141,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         socket_server,
         idp_auth: auth_result.idp_auth,
         ui_config: advanced.ui_config,
-        hsm,
+        hsm_instances,
         logging,
         proxy,
         workspace: advanced.workspace,

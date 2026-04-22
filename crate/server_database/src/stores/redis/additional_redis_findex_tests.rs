@@ -14,7 +14,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng, RandomFixedSizeCBytes, Secret, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use redis::aio::ConnectionManager;
 
 use crate::{
@@ -33,7 +33,7 @@ async fn clear_all(mgr: &mut ConnectionManager) -> DbResult<()> {
 }
 
 pub(crate) async fn test_objects_db() -> DbResult<()> {
-    cosmian_kms_logger::log_init(option_env!("RUST_LOG"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     trace!("test_objects_db");
 
     let mut rng = CsRng::from_entropy();

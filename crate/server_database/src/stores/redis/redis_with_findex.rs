@@ -17,7 +17,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceResult, Notification, NotificationsStore, ObjectWithMetadata,
     ObjectsStore, PermissionsStore,
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::{AsyncCommands, aio::ConnectionManager};
 use time::OffsetDateTime;

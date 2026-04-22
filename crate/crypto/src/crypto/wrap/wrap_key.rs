@@ -9,7 +9,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
     },
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,

@@ -20,7 +20,7 @@ use cosmian_kms_cli_actions::{
         reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
     },
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
 use super::super::utils::extract_uids::extract_uid;

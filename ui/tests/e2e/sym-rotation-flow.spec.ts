@@ -69,7 +69,7 @@ test.describe("Symmetric key rotation", () => {
 
         await gotoAndWait(page, "/ui/sym/keys/re-key");
         await page.fill('input[placeholder="Enter key ID"]', keyId);
-        await page.fill('input.ant-input-number-input[placeholder="e.g. 86400"]', "86400");
+        await page.fill('input.ant-input-number-input[placeholder="e.g. 1"]', "1");
         const text = await setPolicyAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy updated/i);
         expect(text).toContain("rotate_interval=86400");
@@ -92,7 +92,7 @@ test.describe("Symmetric key rotation", () => {
         // First set a rotation interval
         await gotoAndWait(page, "/ui/sym/keys/re-key");
         await page.fill('input[placeholder="Enter key ID"]', keyId);
-        await page.fill('input.ant-input-number-input[placeholder="e.g. 86400"]', "0");
+        await page.fill('input.ant-input-number-input[placeholder="e.g. 1"]', "0");
         const text = await setPolicyAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy updated/i);
         expect(text).toContain("rotate_interval=0");
@@ -114,7 +114,7 @@ test.describe("Symmetric key rotation", () => {
         // Arm the key with a rotation policy.
         await gotoAndWait(page, "/ui/sym/keys/re-key");
         await page.fill('input[placeholder="Enter key ID"]', oldKeyId);
-        await page.fill('input.ant-input-number-input[placeholder="e.g. 86400"]', "3600");
+        await page.fill('input.ant-input-number-input[placeholder="e.g. 1"]', "1");
         await page.fill('input[placeholder="e.g. daily-rotation"]', "e2e-hourly");
         const policyText = await setPolicyAndWaitForResponse(page);
         expect(policyText).toMatch(/rotation policy updated/i);

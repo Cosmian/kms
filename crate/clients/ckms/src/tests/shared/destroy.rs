@@ -9,7 +9,7 @@ use cosmian_kms_cli_actions::{
     },
 };
 #[cfg(feature = "non-fips")]
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 

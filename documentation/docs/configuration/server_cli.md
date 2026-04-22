@@ -44,46 +44,6 @@ Options:
       --print-default-config
           Serialize the default server configuration as TOML to stdout and exit. This is used to keep the documentation in sync with the Rust struct
 
-      --hsm-model <HSM_MODEL>
-          The HSM model.
-          `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, and `SoftHSM2` are natively supported.
-          Other HSMs are supported too; specify `other` and check the documentation
-
-          [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
-
-      --hsm-admin <HSM_ADMIN>...
-          List of KMS usernames that are granted HSM admin privileges.
-          HSM admins can create, destroy, and potentially export objects on the HSM.
-          Use `"*"` as the only entry to grant all authenticated users admin access.
-          Repeat the option or use a comma-separated list to specify multiple admins:
-            `--hsm-admin alice@example.com --hsm-admin bob@example.com`
-            or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
-
-          [env: KMS_HSM_ADMIN=]
-          [default: admin]
-
-      --hsm-slot <HSM_SLOT>
-          HSM slot number. The slots used must be listed.
-          Repeat this option to specify multiple slots
-          while specifying a password for each slot (or an empty string for no password)
-          e.g.
-          ```sh
-            --hsm-slot 1 --hsm-password password1 \
-            --hsm-slot 2 --hsm-password password2
-          ```
-
-          [env: KMS_HSM_SLOT=]
-
-      --hsm-password <HSM_PASSWORD>
-          Password for the user logging in to the HSM Slot specified with `--hsm_slot`
-          Provide an empty string for no password
-          see `--hsm_slot` for more information.
-          Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
-
-          [env: KMS_HSM_PASSWORD=]
-
       --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
           Specifies which KMIP object types should be automatically unwrapped when retrieved.
           Repeat this option to specify multiple object types

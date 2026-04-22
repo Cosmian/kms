@@ -816,7 +816,7 @@ dependencies = [
  "clap",
  "cosmian_config_utils",
  "cosmian_kms_cli_actions",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "csv",
  "der",
  "dialoguer",
@@ -1067,7 +1067,7 @@ dependencies = [
  "base64 0.22.1",
  "bitflags",
  "cosmian_crypto_core",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "hex",
  "js-sys",
  "kmip-derive",
@@ -1100,7 +1100,7 @@ version = "5.20.1"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "futures",
  "libloading",
  "lru",
@@ -1123,7 +1123,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "criterion",
  "der",
  "hex",
@@ -1157,7 +1157,7 @@ dependencies = [
  "actix-web",
  "cosmian_crypto_core",
  "cosmian_kms_client_utils",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "der",
  "oauth2",
  "pem",
@@ -1180,7 +1180,7 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_kmip",
  "cosmian_kms_access",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "pem",
  "serde",
  "serde_json",
@@ -1220,7 +1220,7 @@ dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
  "cosmian_kmip",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "ctor",
  "hex",
  "k256",
@@ -1246,30 +1246,13 @@ version = "5.20.1"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "num-bigint-dig",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "time",
  "zeroize",
-]
-
-[[package]]
-name = "cosmian_kms_logger"
-version = "5.20.1"
-dependencies = [
- "opentelemetry 0.29.1",
- "opentelemetry-otlp 0.29.0",
- "opentelemetry-semantic-conventions",
- "opentelemetry-stdout",
- "opentelemetry_sdk 0.29.0",
- "syslog-tracing",
- "thiserror 2.0.17",
- "tracing",
- "tracing-appender",
- "tracing-opentelemetry",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1293,8 +1276,8 @@ dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_client_utils",
  "cosmian_kms_interfaces",
- "cosmian_kms_logger",
  "cosmian_kms_server_database",
+ "cosmian_logger",
  "crypt2pay_pkcs11_loader",
  "dialoguer",
  "dotenvy",
@@ -1343,7 +1326,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "cosmian_sse_memories",
  "deadpool-postgres",
  "lru",
@@ -1368,6 +1351,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_logger"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff3434d2a64271c79bb0f0b6c05d4995dd88396165b8aba92291b91ee1deb7ca"
+dependencies = [
+ "opentelemetry 0.29.1",
+ "opentelemetry-otlp 0.29.0",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry-stdout",
+ "opentelemetry_sdk 0.29.0",
+ "syslog-tracing",
+ "thiserror 2.0.17",
+ "tracing",
+ "tracing-appender",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1384,7 +1386,7 @@ version = "5.20.1"
 dependencies = [
  "ckms",
  "cosmian_config_utils",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "cosmian_pkcs11_module",
  "etcetera",
  "hex",
@@ -1408,7 +1410,7 @@ name = "cosmian_pkcs11_module"
 version = "5.20.1"
 dependencies = [
  "const-oid 0.9.6",
- "cosmian_kms_logger",
+ "cosmian_logger",
  "hex",
  "log",
  "openssl",
@@ -5000,8 +5002,8 @@ version = "5.20.1"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
- "cosmian_kms_logger",
  "cosmian_kms_server",
+ "cosmian_logger",
  "criterion",
  "serde_json",
  "time",

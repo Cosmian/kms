@@ -6,7 +6,7 @@
 )]
 use std::path::Path;
 
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use tempfile::TempDir;
 
 use self::{

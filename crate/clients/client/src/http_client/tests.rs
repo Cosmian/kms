@@ -1,7 +1,7 @@
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod pkcs12_tests {
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
 
     use crate::http_client::{HttpClient, HttpClientConfig};
 

@@ -159,7 +159,7 @@ const LocateForm: React.FC = () => {
                         ]);
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
-                        const isHsm = /^hsm[0-9]*::/.test(uid);
+                        const isHsm = /^hsm::/.test(uid);
                         return {
                             object_id: uid,
                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -171,7 +171,7 @@ const LocateForm: React.FC = () => {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
                 // Fallback: HSM keys default to Active
-                return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
+                return { object_id: uid, state: /^hsm::/.test(uid) ? "Active" : undefined } as LocatedRow;
             }),
         );
         return rows;
@@ -283,7 +283,7 @@ const LocateForm: React.FC = () => {
                     // Always run KMIP Locate to capture HSM keys that may not appear in /access/owned
                     const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
                     // HSM keys from Locate are always Active; include them even if not in owned set
-                    const hsmLocatedIds = locatedIds.filter((id) => /^hsm[0-9]*::/.test(id));
+                    const hsmLocatedIds = locatedIds.filter((id) => /^hsm::/.test(id));
                     const ownedIds = new Set(ownedFiltered.map((o) => o.id));
 
                     if (!hasOtherCriteria) {
@@ -342,7 +342,7 @@ const LocateForm: React.FC = () => {
                     }
 
                     // Intersect Locate results with owned set, but keep HSM keys that Locate found
-                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
+                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || /^hsm::/.test(id));
 
                     // Fallback: if KFT provided but intersection is empty, drop KFT server-side and filter locally
                     if (keyFormatType && intersection.length === 0) {
@@ -355,7 +355,7 @@ const LocateForm: React.FC = () => {
                                 idToken,
                                 serverUrl,
                             );
-                            intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
+                            intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm::/.test(id));
                         } catch (e) {
                             console.warn("State+KFT fallback Locate without KFT failed:", e);
                         }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use cosmian_kms_logger::warn;
+use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
     nid::Nid,
@@ -296,7 +296,7 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, Crypt
 #[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
-    use cosmian_kms_logger::{info, log_init};
+    use cosmian_logger::{info, log_init};
     use openssl::{
         conf::{Conf, ConfMethod},
         x509::X509,

@@ -1,4 +1,3 @@
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
     kmip_2_1::{
@@ -11,6 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
+use cosmian_logger::trace;
 
 use crate::result::KResult;
 

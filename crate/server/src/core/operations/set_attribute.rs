@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
@@ -9,6 +8,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
@@ -322,6 +322,16 @@ pub(crate) async fn set_attribute(
         }
         Attribute::RotateInterval(rotate_interval) => {
             trace!("Set Attribute: Rotate Interval: {}", rotate_interval);
+            // 0 disables auto-rotation; otherwise enforce a minimum of 1 day (86400s).
+            // The `insecure` feature (dev/test only) skips this check so that
+            // fast-cycling lifecycle tests can use tiny intervals.
+            #[cfg(not(feature = "insecure"))]
+            if rotate_interval != 0 && rotate_interval < 86400 {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: rotate_interval must be 0 (disabled) or at least 86400 \
+                     (1 day); got {rotate_interval}"
+                )));
+            }
             attributes.rotate_interval = Some(rotate_interval);
         }
         Attribute::RotateLatest(rotate_latest) => {

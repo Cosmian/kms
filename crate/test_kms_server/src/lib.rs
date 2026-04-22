@@ -27,12 +27,12 @@ use std::sync::Once;
 
 /// Initialize tracing/logging once for the entire test process.
 /// Prevents panics like: "Tracing already initialized or crashed" when tests
-/// or multiple crates call `cosmian_kms_logger::log_init` concurrently.
+/// or multiple crates call `cosmian_logger::log_init` concurrently.
 static INIT_LOGGING: Once = Once::new();
 
 pub fn init_test_logging() {
     INIT_LOGGING.call_once(|| {
-        cosmian_kms_logger::log_init(option_env!("RUST_LOG"));
+        cosmian_logger::log_init(option_env!("RUST_LOG"));
         // Also initialize OpenSSL legacy provider for non-FIPS tests
         cosmian_kms_server::openssl_providers::init_openssl_providers_for_tests();
     });

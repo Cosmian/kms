@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use cosmian_kms_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
@@ -35,6 +34,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
+use cosmian_logger::{debug, info, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
@@ -73,32 +73,48 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         .context("Decrypt")?;
     debug!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process is as follows: loop through the uids
-    // 1. If the UID has a prefix, try using that
-    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
-    //   a- the object is active
-    //   b- the object is a Private Key, a Symmetric Key
-    //   c- the object is authorized for Decryption
-    //
-    // Permissions checks are done AFTER the object is fetched in the default database
-    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This is also based on the high probability that there is still a single object
-    // in the candidates' list.
-    let mut selected_owm = None;
-    let mut found_but_no_permission = false;
+    // Determine which UID to select. The decision process is as follows:
+    // Phase 1: If any UID has a prefix (crypto oracle), use that key immediately.
+    // Phase 2: Loop through remaining UIDs via the standard database path; it enforces
+    //          Active state, permissions, and key type checks.
+
+    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
+    let mut eligible_oracles: Vec<(String, String)> = Vec::new(); // (uid, prefix)
+    let mut db_uids: Vec<String> = Vec::new();
     for uid in uids {
         if let Some(prefix) = has_prefix(&uid) {
+            let prefix = prefix.to_owned();
             if !is_user_authorized_for_operation(&kms.database, &uid, user, KmipOperation::Decrypt)
                 .await?
             {
                 debug!("{user} is not authorized to decrypt using: {uid}");
                 continue;
             }
-            debug!("{user} is authorized to decrypt using: {uid}");
-            return decrypt_using_crypto_oracle(kms, &request, &uid, prefix).await;
+            eligible_oracles.push((uid, prefix));
+        } else {
+            db_uids.push(uid);
         }
+    }
+    match eligible_oracles.as_slice() {
+        [] => {} // fall through to Phase 2
+        [(uid, prefix)] => {
+            debug!("{user} is authorized to decrypt using: {uid} from crypto oracle");
+            return decrypt_using_crypto_oracle(kms, &request, uid, prefix).await;
+        }
+        multiple => {
+            let ids: Vec<&str> = multiple.iter().map(|(uid, _)| uid.as_str()).collect();
+            return Err(KmsError::InvalidRequest(format!(
+                "Decrypt: identifier {unique_identifier} resolves to {} valid oracle keys \
+                 {ids:?}; use a unique identifier",
+                multiple.len()
+            )));
+        }
+    }
 
-        // Default database
+    // Phase 2 — Standard database path.
+    let mut selected_owm = None;
+    let mut found_but_no_permission = false;
+    for uid in db_uids {
         let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
             debug!("failed to retrieve the key: {uid}");
             KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {uid}"))

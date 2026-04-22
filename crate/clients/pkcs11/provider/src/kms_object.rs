@@ -33,7 +33,7 @@ use ckms::{
         },
     },
 };
-use cosmian_kms_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace};
 use cosmian_pkcs11_module::traits::{
     DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
     SignatureAlgorithm,

@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -7,6 +6,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use cosmian_logger::{trace, warn};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

@@ -7,16 +7,20 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(super) const UID_PREFIX_SEPARATOR: &str = "::";
-
-/// Determine whether the unique identifier has a prefix or not
-/// # Arguments
-///  * `uid` - A string slice representing the unique identifier
-/// # Returns
-/// * `Option` - A tuple of two string slices, the first one is the prefix and the second one is the full uid
+/// Determine whether the unique identifier has a crypto-oracle prefix.
+///
+/// The prefix format is `hsm::<model>` (e.g. `hsm::softhsm2`), followed by
+/// `::slot::key`.  Returns `Some("hsm::<model>")` when the UID matches this
+/// pattern, or `None` for plain database UIDs.
 pub(super) fn has_prefix(uid: &str) -> Option<&str> {
-    uid.split_once(UID_PREFIX_SEPARATOR)
-        .map(|(prefix, _)| prefix)
+    // HSM UIDs: hsm::<model>::<slot>::<key> → prefix = "hsm::<model>"
+    if let Some(rest) = uid.strip_prefix("hsm::") {
+        if let Some(pos) = rest.find("::") {
+            // prefix length = "hsm::".len() + model.len()
+            return Some(&uid[..5 + pos]);
+        }
+    }
+    None
 }
 
 /// Determine the list of possible UIDs from a Unique Identifier,

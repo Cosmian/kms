@@ -1,4 +1,3 @@
-use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
@@ -12,6 +11,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
 };
+use cosmian_logger::debug;
 
 use crate::{
     core::{KMS, uid_utils::has_prefix},

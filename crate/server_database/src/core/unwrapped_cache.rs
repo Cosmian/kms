@@ -11,7 +11,7 @@ use cosmian_kmip::{
     kmip_2_1::kmip_objects::Object,
     ttlv::{KmipFlavor, to_ttlv},
 };
-use cosmian_kms_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
@@ -297,7 +297,7 @@ mod tests {
         CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
     };
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
 

@@ -9,7 +9,7 @@ use cosmian_kms_cli_actions::{
     actions::symmetric::keys::create_key::CreateKeyAction,
     reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_kms_logger::{log_init, trace};
+use cosmian_logger::{log_init, trace};
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server_with_privileged_users;

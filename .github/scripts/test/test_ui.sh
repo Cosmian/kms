@@ -201,6 +201,8 @@ KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 cat >"${KMS_CONF_FILE}" <<HSMEOF
 default_username = "admin"
 vendor_identification = "test_vendor"
+
+[[hsm_instances]]
 hsm_model = "softhsm2"
 hsm_admin = ["admin"]
 hsm_slot = [${SOFTHSM2_HSM_SLOT_ID}]
@@ -242,12 +244,12 @@ echo "==> Creating 2 HSM AES-256 keys (slot ${SOFTHSM2_HSM_SLOT_ID}) …"
 env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
     "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
     --algorithm aes --number-of-bits 256 \
-    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
+    "hsm::softhsm2::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
 
 env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
     "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
     --algorithm aes --number-of-bits 256 \
-    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes2_${TS}"
+    "hsm::softhsm2::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes2_${TS}"
 
 echo "==> HSM test keys created."
 

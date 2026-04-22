@@ -17,14 +17,14 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_kms_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 use zeroize::Zeroizing;
 
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
     HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyType,
-    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, as_hsm_uid,
+    ObjectWithMetadata, ObjectsStore, SigningAlgorithm,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -97,7 +97,7 @@ impl ObjectsStore for HsmBackend {
         // try converting the rest of the uid into a slot_id
         let uid = uid.as_ref().ok_or_else(|| {
             InterfaceError::InvalidRequest(
-                format!("An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'. Got {uid:?}"
+                format!("An HSM create request must have a uid in the form of 'hsm::<model>::<slot_id>::<key_id>'. Got {uid:?}"
             ))
         })?;
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
@@ -209,8 +209,8 @@ impl ObjectsStore for HsmBackend {
                 )
                 .await?;
             return Ok(vec![
-                format!("hsm::{slot_id}::{sk_id}"),
-                format!("hsm::{slot_id}::{pk_id}"),
+                format!("{}::{slot_id}::{sk_id}", self.prefix),
+                format!("{}::{slot_id}::{pk_id}", self.prefix),
             ]);
         }
 
@@ -309,7 +309,7 @@ impl ObjectsStore for HsmBackend {
                         continue;
                     }
                 };
-                let uid = as_hsm_uid!(slot_id, object_string);
+                let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
                 trace!("Found: {uid}");
                 if let Some(ref wanted_id) = key_id_filter {
                     if !uid.eq(wanted_id) {

@@ -7,7 +7,7 @@
 use std::{collections::HashMap, sync::RwLock};
 
 use chrono::{DateTime, Duration, Utc};
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use reqwest::{Client, header::HeaderValue};
 use serde_json::{Value, json};

@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{debug, info, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
@@ -19,6 +18,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
+use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use openssl::{hash::MessageDigest, nid::Nid};
 use openssl::{

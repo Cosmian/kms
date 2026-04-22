@@ -15,7 +15,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore};
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
@@ -371,7 +371,7 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: ObjectsStore>(
     db: &DB,
 ) -> DbResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let owner = "test_owner";
     let uid = Uuid::new_v4().to_string();

@@ -4,7 +4,11 @@ import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
-import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "../Keys/RotationPolicyFields";
+import RotationPolicyFields, {
+    type RotationPolicyFormValues,
+    applyRotationPolicy,
+    rotationIntervalToSeconds,
+} from "../Keys/RotationPolicyFields";
 
 interface RsaKeyCreateFormData extends RotationPolicyFormValues {
     privateKeyId?: string;
@@ -49,9 +53,9 @@ const RsaKeyCreateForm: React.FC = () => {
                 // Apply rotation policy on the private key if specified
                 await applyRotationPolicy(
                     result.PrivateKeyUniqueIdentifier,
-                    values.rotateInterval,
+                    rotationIntervalToSeconds(values.rotateIntervalValue, values.rotateIntervalUnit),
                     values.rotateName,
-                    values.rotateOffset,
+                    rotationIntervalToSeconds(values.rotateOffsetValue, values.rotateOffsetUnit),
                     sendKmipRequest,
                     parse_set_attribute_ttlv_response,
                     set_attribute_ttlv_request,

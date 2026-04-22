@@ -5,7 +5,11 @@ import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
-import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "../Keys/RotationPolicyFields";
+import RotationPolicyFields, {
+    type RotationPolicyFormValues,
+    applyRotationPolicy,
+    rotationIntervalToSeconds,
+} from "../Keys/RotationPolicyFields";
 
 interface CertificateCertifyFormData extends RotationPolicyFormValues {
     certificateId?: string;
@@ -93,9 +97,9 @@ const CertificateCertifyForm: React.FC = () => {
                 const certId = response.UniqueIdentifier as string;
                 await applyRotationPolicy(
                     certId,
-                    values.rotateInterval,
+                    rotationIntervalToSeconds(values.rotateIntervalValue, values.rotateIntervalUnit),
                     values.rotateName,
-                    values.rotateOffset,
+                    rotationIntervalToSeconds(values.rotateOffsetValue, values.rotateOffsetUnit),
                     sendKmipRequest,
                     parse_set_attribute_ttlv_response,
                     set_attribute_ttlv_request,

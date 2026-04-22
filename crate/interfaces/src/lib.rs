@@ -27,7 +27,7 @@ pub enum KeyType {
 
 #[macro_export]
 macro_rules! as_hsm_uid {
-    ($slot:expr, $uuid:expr) => {
-        format!("hsm::{}::{}", $slot, $uuid)
+    ($model:expr, $slot:expr, $uuid:expr) => {
+        format!("hsm::{}::{}::{}", $model, $slot, $uuid)
     };
 }

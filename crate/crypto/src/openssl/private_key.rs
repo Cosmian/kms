@@ -543,7 +543,7 @@ mod tests {
         kmip_objects::{Object, PrivateKey},
         kmip_types::{KeyFormatType, RecommendedCurve},
     };
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
     use openssl::{
         bn::BigNum,
         ec::{EcGroup, EcKey, EcPoint},

@@ -21,7 +21,7 @@ use crate::{result::KResult, tests::test_utils};
 
 #[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
-    // cosmian_kms_logger::log_init("trace,hyper=info,reqwest=info");
+    // cosmian_logger::log_init("trace,hyper=info,reqwest=info");
     let app = test_utils::test_app(None, None).await;
 
     // Parse the json access_structure file

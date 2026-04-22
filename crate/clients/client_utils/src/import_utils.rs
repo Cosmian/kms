@@ -9,7 +9,7 @@ use cosmian_kmip::{
     time_normalize,
     ttlv::{TTLV, from_ttlv},
 };
-use cosmian_kms_logger::info;
+use cosmian_logger::info;
 use serde::Deserialize;
 use strum::{EnumIter, EnumString};
 

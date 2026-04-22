@@ -126,9 +126,9 @@ mod tests {
 
     use base64::Engine;
     use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
     #[cfg(not(target_os = "windows"))]
-    use cosmian_kms_logger::warn;
+    use cosmian_logger::warn;
     use openssl::pkey::PKey;
     use serde_json::json;
     #[cfg(not(target_os = "windows"))]

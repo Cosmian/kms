@@ -8,8 +8,9 @@ default_username = "admin"
 
 # ── Multi-HSM configuration ───────────────────────────────────────────────────
 # To connect multiple HSMs simultaneously, declare one [[hsm_instances]] section
-# per device.  The first entry gets the routing prefix "hsm", the second "hsm1",
-# the third "hsm2", etc.  Object UIDs take the form "<prefix>::<slot>::<key>".
+# per device.  The first entry gets the routing prefix "hsm::<model>", the second
+# "hsm::<model>" (or "hsm::<model>_1" if same model), etc.
+# Object UIDs take the form "hsm::<model>::<slot>::<key>".
 #
 ## [[hsm_instances]]
 ## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
@@ -17,11 +18,15 @@ default_username = "admin"
 ## hsm_slot     = [0]                  # PKCS#11 slot indices
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
 #
+# UIDs for the above: hsm::softhsm2::0::<key_id>
+#
 ## [[hsm_instances]]
 ## hsm_model    = "utimaco"
 ## hsm_admin    = ["tech@example.com"]
 ## hsm_slot     = [0, 1]
 ## hsm_password = ["slot0pass", "slot1pass"]
+#
+# UIDs for the above: hsm::utimaco::0::<key_id>, hsm::utimaco::1::<key_id>
 
 [http]
 port = 9998

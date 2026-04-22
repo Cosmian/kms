@@ -5,7 +5,6 @@ use std::sync::Arc;
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
-use cosmian_kms_logger::{debug, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
@@ -20,6 +19,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     time_normalize,
 };
+use cosmian_logger::{debug, log_init};
 use uuid::Uuid;
 
 use crate::{

@@ -108,38 +108,14 @@ force_default_username = false
 # Print the server configuration information and exit
 info = false
 
-# The HSM model.
+# ── HSM configuration ─────────────────────────────────────────────────────────
+# To connect HSMs, declare one [[hsm_instances]] section per device.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
 # `Smartcard HSM`, and `SoftHSM2` are natively supported.
-# Other HSMs are supported too; specify `other` and check the documentation
-# hsm_model = "<hsm_name>" # the name of the HSM model (see HSMs documentation)
-# List of KMS usernames that are granted HSM admin privileges.
-# HSM admins can create, destroy, and potentially export objects on the HSM.
-# Use `"*"` as the only entry to grant all authenticated users admin access.
-# Repeat the option or use a comma-separated list to specify multiple admins:
-#   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
-#   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
-# hsm_admin = ["admin"]   # list of HSM admin users; use ["*"] to allow all users to perform HSM operations
-# HSM slot number. The slots used must be listed.
-# Repeat this option to specify multiple slots
-# while specifying a password for each slot (or an empty string for no password)
-# e.g.
-# ```sh
-#   --hsm-slot 1 --hsm-password password1 \
-#   --hsm-slot 2 --hsm-password password2
-# ```
-# hsm_slot = [1, 2, ...] # slot numbers
-# Password for the user logging in to the HSM Slot specified with `--hsm_slot`
-# Provide an empty string for no password
-# see `--hsm_slot` for more information.
-# Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
-# hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...] # corresponding user slot passwords/pins
-
-# ── Multi-HSM configuration ───────────────────────────────────────────────────
-# To connect multiple HSMs simultaneously, declare one [[hsm_instances]] section
-# per device.  The first entry gets the routing prefix "hsm", the second "hsm1",
-# the third "hsm2", etc.  Object UIDs take the form "<prefix>::<slot>::<key-id>".
-# When [[hsm_instances]] is present it takes precedence over the flat hsm_* fields above.
+# Other HSMs are supported too; specify `other` and check the documentation.
+#
+# The first entry gets the routing prefix "hsm::<model>", the second
+# "hsm::<model>_1", etc. Object UIDs take the form "<prefix>::<slot>::<key-id>".
 #
 ## [[hsm_instances]]
 ## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other

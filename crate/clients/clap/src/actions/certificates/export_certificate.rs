@@ -14,7 +14,7 @@ use cosmian_kms_client::{
     },
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 
 use crate::{
     actions::{console, labels::CERTIFICATE_ID, shared::get_key_uid},

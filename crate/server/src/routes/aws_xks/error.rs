@@ -12,7 +12,7 @@ use actix_web::{
     // middleware::ErrorHandlerResponse,
     // dev::ServiceResponse, error::JsonPayloadError, http, middleware::ErrorHandlerResponse,
 };
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
 
 /// Error Name for AWS XKS Error replies

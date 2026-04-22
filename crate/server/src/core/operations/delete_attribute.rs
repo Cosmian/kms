@@ -1,4 +1,3 @@
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
     kmip_attributes::Attribute,
@@ -6,6 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
     kmip_types::{AttributeReference, Tag, UniqueIdentifier},
 };
+use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},

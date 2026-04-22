@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::attributes_utils::{CLinkType, parse_selected_attributes},
     write_bytes_to_file,
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use serde_json::Value;
 
 use crate::{

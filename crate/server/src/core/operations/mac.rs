@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{debug, trace};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
     kmip_2_1::{
@@ -7,6 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
     },
 };
+use cosmian_logger::{debug, trace};
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 
 use crate::{

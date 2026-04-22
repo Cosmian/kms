@@ -21,7 +21,7 @@ non-fips = []
 
 [dependencies]
 const-oid = "0.9.6"
-cosmian_kms_logger = { workspace = true }
+cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 log = { workspace = true, default-features = false }
 openssl = { workspace = true }
@@ -39,5 +39,5 @@ tracing = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-cosmian_kms_logger = { workspace = true }
+cosmian_logger = { workspace = true }
 serial_test = { version = "3.2.0", default-features = true }

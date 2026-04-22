@@ -1,8 +1,6 @@
 #![allow(clippy::unwrap_in_result)]
 
 #[cfg(feature = "non-fips")]
-use cosmian_kms_logger::log_init;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader},
@@ -15,6 +13,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::{TTLV, to_ttlv},
 };
+#[cfg(feature = "non-fips")]
+use cosmian_logger::log_init;
 
 #[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};

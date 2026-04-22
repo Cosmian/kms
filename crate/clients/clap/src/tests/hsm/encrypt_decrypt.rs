@@ -9,9 +9,9 @@ use cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
@@ -31,7 +31,7 @@ pub(super) async fn test_aes_gcm(ctx: &TestsContext) -> KmsCliResult<()> {
     log_init(None);
 
     let dek = CreateKeyAction {
-        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::utimaco::0::".to_owned() + &Uuid::new_v4().to_string()),
         number_of_bits: Some(256),
         algorithm: SymmetricAlgorithm::Aes,
         ..Default::default()
@@ -67,7 +67,7 @@ pub(super) async fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> KmsCliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) = CreateKeyPairAction {
-        private_key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        private_key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
@@ -154,7 +154,7 @@ pub(super) async fn test_rsa_pkcs_v15(ctx: &TestsContext) -> KmsCliResult<()> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) = CreateKeyPairAction {
-        private_key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        private_key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

@@ -47,7 +47,7 @@ cosmian_crypto_core = { workspace = true, default-features = false }
 cosmian_kmip = { path = "../../kmip", version = "5.20.1" } # only to be reexported, not used directly
 cosmian_kms_client = { path = "../client", version = "5.20.1" }
 cosmian_kms_crypto = { path = "../../crypto", version = "5.20.1" }
-cosmian_kms_logger = { workspace = true }
+cosmian_logger = { workspace = true }
 criterion = { workspace = true }
 der = { workspace = true, features = ["pem"] }
 hex = { workspace = true }

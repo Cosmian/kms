@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use cosmian_kms_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State;
 #[cfg(feature = "non-fips")]
@@ -20,6 +19,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_KEY_LENGTH,
     cosmian_kms_interfaces::CryptoOracle,
 };
+use cosmian_logger::{debug, trace};
 use openssl::rand::rand_bytes;
 use zeroize::Zeroizing;
 

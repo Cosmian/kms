@@ -8,7 +8,7 @@ use cosmian_kms_client::{
     read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
     write_single_decrypted_data,
 };
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 
 use crate::{
     actions::{labels::KEY_ID, shared::get_key_uid},

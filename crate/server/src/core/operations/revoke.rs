@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use async_recursion::async_recursion;
-use cosmian_kms_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType;
 use cosmian_kms_server_database::reexport::{
@@ -17,6 +16,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use cosmian_logger::{debug, info, trace};
 use time::OffsetDateTime;
 
 #[cfg(feature = "non-fips")]

@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{debug, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -15,6 +14,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
+use cosmian_logger::{debug, trace, warn};
 use uuid::Uuid;
 
 use crate::{

@@ -182,14 +182,15 @@ test_pkcs11tool_no_warnings() {
   ts=$(date +%s)
   local aes_label="pkcs11tool_aes_${ts}"
   local rsa_label="pkcs11tool_rsa_${ts}"
-  local aes_uid="hsm::0::${aes_label}"
-  local rsa_uid="hsm::0::${rsa_label}"
+  local aes_uid="hsm::utimaco::0::${aes_label}"
+  local rsa_uid="hsm::utimaco::0::${rsa_label}"
 
   # Write a temp config so that /etc/cosmian/kms.toml (if present on the host)
   # does not interfere: when --config is supplied explicitly, the server never
   # falls back to the default path.
   local kms_conf="$tmp_dir/kms.toml"
   cat >"$kms_conf" <<KMS_CONF_EOF
+[[hsm_instances]]
 hsm_model = "utimaco"
 hsm_admin = ["admin"]
 hsm_slot = [0]

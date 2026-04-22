@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use time::OffsetDateTime;

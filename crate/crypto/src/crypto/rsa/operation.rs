@@ -16,7 +16,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use num_bigint_dig::{BigInt, Sign};
 use openssl::{pkey::Private, rsa::Rsa};
 use zeroize::Zeroizing;

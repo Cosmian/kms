@@ -1,4 +1,3 @@
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ProtocolVersion,
     kmip_2_1::{
@@ -7,6 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
     },
 };
+use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation},

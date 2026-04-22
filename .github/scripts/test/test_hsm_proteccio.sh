@@ -168,6 +168,7 @@ OPENSSL_CNF
   # falls back to the default path.
   local kms_conf="$tmp_dir/kms.toml"
   cat >"$kms_conf" <<KMS_CONF_EOF
+[[hsm_instances]]
 hsm_model = "proteccio"
 hsm_admin = ["admin"]
 hsm_slot = [${HSM_SLOT_ID_VALUE}]

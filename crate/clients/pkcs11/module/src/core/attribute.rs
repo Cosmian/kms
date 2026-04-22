@@ -22,7 +22,7 @@
 use core::ops::Deref;
 use std::slice;
 
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_ATTRIBUTE_PTR, CK_ATTRIBUTE_TYPE, CK_BBOOL, CK_CERTIFICATE_CATEGORY,
     CK_CERTIFICATE_TYPE, CK_FALSE, CK_KEY_TYPE, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_TRUE, CK_ULONG,

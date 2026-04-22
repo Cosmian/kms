@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
 
-use cosmian_kms_logger::{debug, warn};
 use cosmian_kms_server_database::{
     MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
+use cosmian_logger::{debug, warn};
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
@@ -30,7 +30,7 @@ pub struct HsmInstanceParams {
     /// Slot-number → optional PIN mapping passed to `BaseHsm::instantiate`.
     pub slot_passwords: HashMap<usize, Option<String>>,
     /// Routing prefix for object UIDs managed by this instance.
-    /// Index 0 → `"hsm"`, index N → `"hsmN"` (N ≥ 1).
+    /// Format: `"hsm::<model>"` (e.g. `"hsm::softhsm2"`, `"hsm::utimaco"`).
     pub prefix: String,
 }
 
@@ -238,45 +238,29 @@ impl ServerParams {
         // Build HSM instances from config.
         // If `conf.hsm_instances` is non-empty (TOML [[hsm]] array) use it directly;
         // otherwise fall back to the legacy flat CLI fields.
-        let hsm_instances: Vec<HsmInstanceParams> = if conf.hsm_instances.is_empty() {
-            let slot_passwords: HashMap<usize, Option<String>> = conf
-                .hsm
-                .hsm_slot
-                .iter()
-                .zip(&conf.hsm.hsm_password)
-                .map(|(s, p)| {
-                    let password = if p == "<NO_LOGIN>" {
-                        None
-                    } else {
-                        Some(p.clone())
-                    };
-                    (*s, password)
-                })
-                .collect();
-            if slot_passwords.is_empty() {
-                vec![]
-            } else {
-                vec![HsmInstanceParams {
-                    model: conf.hsm.hsm_model.clone(),
-                    admin: conf.hsm.hsm_admin.clone(),
-                    slot_passwords,
-                    prefix: "hsm".to_owned(),
-                }]
-            }
-        } else {
+        // Build HSM instances with prefixes of the form "hsm::<model>".
+        // When multiple instances share the same model, disambiguate with a
+        // numeric suffix: "hsm::<model>", "hsm::<model>_1", "hsm::<model>_2", …
+        let hsm_instances: Vec<HsmInstanceParams> = {
+            let mut model_counts: HashMap<String, usize> = HashMap::new();
             conf.hsm_instances
                 .iter()
-                .enumerate()
-                .filter(|(_, inst)| !inst.hsm_slot.is_empty())
-                .map(|(i, inst)| HsmInstanceParams {
-                    model: inst.hsm_model.clone(),
-                    admin: inst.hsm_admin.clone(),
-                    slot_passwords: inst.slot_passwords(),
-                    prefix: if i == 0 {
-                        "hsm".to_owned()
+                .filter(|inst| !inst.hsm_slot.is_empty())
+                .map(|inst| {
+                    let model_lower = inst.hsm_model.to_lowercase();
+                    let count = model_counts.entry(model_lower.clone()).or_insert(0);
+                    let prefix = if *count == 0 {
+                        format!("hsm::{model_lower}")
                     } else {
-                        format!("hsm{i}")
-                    },
+                        format!("hsm::{model_lower}_{count}")
+                    };
+                    *count += 1;
+                    HsmInstanceParams {
+                        model: inst.hsm_model.clone(),
+                        admin: inst.hsm_admin.clone(),
+                        slot_passwords: inst.slot_passwords(),
+                        prefix,
+                    }
                 })
                 .collect()
         };

@@ -11,7 +11,7 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     reexport::cosmian_kms_client_utils::create_utils::Curve,
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server_with_cert_auth;
 
 use crate::{

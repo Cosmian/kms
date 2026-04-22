@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use cosmian_config_utils::{ConfigUtils, location};
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientConfig;
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::error::CosmianError;
@@ -74,7 +74,7 @@ mod tests {
     use std::{env, fs, path::PathBuf};
 
     use cosmian_config_utils::{ConfigUtils, get_default_conf_path};
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
 
     use super::ClientConfig;
     use crate::config::{CKMS_CONF_ENV, CKMS_CONF_PATH};

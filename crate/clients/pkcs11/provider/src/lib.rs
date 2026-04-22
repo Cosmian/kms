@@ -10,7 +10,7 @@
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr};
 
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
-use cosmian_kms_logger::{error, reexport::tracing::Level};
+use cosmian_logger::{error, reexport::tracing::Level};
 use cosmian_pkcs11_module::{
     ModuleError,
     pkcs11::FUNC_LIST,

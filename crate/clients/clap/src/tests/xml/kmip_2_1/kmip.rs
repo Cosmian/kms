@@ -159,7 +159,7 @@ xml_test!(
 #[tokio::test]
 #[serial]
 async fn kmip_2_1_xml_pkcs11_m_1_21() {
-    use cosmian_kms_logger::log_init;
+    use cosmian_logger::log_init;
     use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
 
     log_init(None);

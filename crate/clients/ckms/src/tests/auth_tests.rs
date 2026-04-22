@@ -9,7 +9,7 @@ use cosmian_kms_cli_actions::{
         read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
     },
 };
-use cosmian_kms_logger::{debug, info, log_init, trace};
+use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     AuthenticationOptions, ClientAuthOptions, MainDBConfig, ServerJwtAuth as JwtAuth,

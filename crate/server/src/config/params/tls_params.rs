@@ -2,7 +2,7 @@ use std::fmt;
 #[cfg(feature = "non-fips")]
 use std::path::PathBuf;
 
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 #[cfg(feature = "non-fips")]
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 use x509_parser::pem::Pem;

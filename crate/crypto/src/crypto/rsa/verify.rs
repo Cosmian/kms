@@ -2,7 +2,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm as KmipHash, PaddingMethod},
     kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, ValidityIndicator},
 };
-use cosmian_kms_logger::error;
+use cosmian_logger::error;
 use openssl::{
     hash::MessageDigest,
     md::MdRef,

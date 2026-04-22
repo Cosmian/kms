@@ -27,7 +27,6 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
@@ -44,6 +43,7 @@ use cosmian_kms_server_database::reexport::{
         reexport::rand_core::{RngCore, SeedableRng},
     },
 };
+use cosmian_logger::log_init;
 use time::OffsetDateTime;
 use uuid::Uuid;
 

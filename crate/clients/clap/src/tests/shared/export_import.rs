@@ -5,13 +5,13 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     export_utils::{ExportKeyFormat, WrappingAlgorithm},
     import_utils::{ImportKeyFormat, KeyUsage},
 };
-use cosmian_kms_logger::{debug, info, log_init};
+use cosmian_logger::{debug, info, log_init};
 use openssl::pkey::PKey;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 #[cfg(not(windows))]
 use {
-    crate::cli_bail, crate::error::result::KmsCliResultHelper, cosmian_kms_logger::warn,
+    crate::cli_bail, crate::error::result::KmsCliResultHelper, cosmian_logger::warn,
     std::path::Path, test_kms_server::TestsContext,
 };
 

@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
     ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
 use mysql_async::ClientIdentity;
 use mysql_async::{Pool, SslOpts, Transaction, prelude::*};

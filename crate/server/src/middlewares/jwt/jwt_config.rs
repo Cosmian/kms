@@ -6,7 +6,7 @@
 
 use std::{fmt, sync::Arc};
 
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 #[cfg(not(feature = "insecure"))]
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]

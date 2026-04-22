@@ -20,7 +20,6 @@ use actix_web::dev::{Service, ServiceResponse};
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
-use cosmian_kms_logger::{debug, log_init, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
@@ -42,6 +41,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG,
 };
+use cosmian_logger::{debug, log_init, trace};
 use hex::{FromHex, ToHex};
 use jsonwebtoken::jwk::JwkSet;
 use openssl::{

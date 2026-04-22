@@ -19,7 +19,7 @@ use cosmian_kms_client::{
         build_usage_mask_from_key_usage,
     },
 };
-use cosmian_kms_logger::{debug, trace};
+use cosmian_logger::{debug, trace};
 use der::{Decode, DecodePem, Encode};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;

@@ -20,7 +20,7 @@ use cosmian_kms_client::{
     },
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
 use test_kms_server::start_default_test_kms_server;
 use uuid::Uuid;

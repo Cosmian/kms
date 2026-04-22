@@ -47,7 +47,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                 <span className="flex items-center gap-1">
                     <DatabaseOutlined />
                     <span>
-                        {inst.prefix}: {inst.model}
+                        {inst.prefix}
                         {slotIds && <span className="text-gray-400 ml-1">(slot {slotIds})</span>}
                     </span>
                 </span>

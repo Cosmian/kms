@@ -25,7 +25,7 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 actix-web = { workspace = true, features = ["macros"] }
 cosmian_crypto_core = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.20.1" }
-cosmian_kms_logger = { workspace = true }
+cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["std"] }
 oauth2 = { version = "5.0", features = ["reqwest"], default-features = false }
 pem = { workspace = true }

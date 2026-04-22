@@ -4,10 +4,10 @@ use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
-use cosmian_kms_logger::debug;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation, kmip_types::UniqueIdentifier,
 };
+use cosmian_logger::debug;
 
 use crate::{
     core::KMS,

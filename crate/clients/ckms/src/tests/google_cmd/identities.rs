@@ -5,7 +5,7 @@ use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::{GmailApiConf, write_json_object_to_file},
     test_kms_server::{TestsContext, start_default_test_kms_server},
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use serde::Deserialize;
 use tempfile::TempDir;
 

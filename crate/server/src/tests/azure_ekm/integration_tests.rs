@@ -14,7 +14,6 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_logger::{log_init, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
     cosmian_kms_crypto::reexport::cosmian_crypto_core::{
@@ -22,6 +21,7 @@ use cosmian_kms_server_database::reexport::{
         reexport::rand_core::{RngCore, SeedableRng},
     },
 };
+use cosmian_logger::{log_init, warn};
 
 use crate::{
     config::ServerParams,

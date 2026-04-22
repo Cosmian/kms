@@ -17,7 +17,7 @@ use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
-use cosmian_kms_logger::{debug, error};
+use cosmian_logger::{debug, error};
 use futures::{
     Future,
     future::{Ready, ok},

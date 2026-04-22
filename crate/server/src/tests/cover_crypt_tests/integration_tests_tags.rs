@@ -44,7 +44,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post_2_1(&app, &create_key_pair).await?;
 
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
     let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
@@ -80,7 +80,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
 
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let app = test_utils::test_app(None, None).await;
     // create Key Pair

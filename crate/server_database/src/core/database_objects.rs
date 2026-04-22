@@ -89,10 +89,14 @@ impl Database {
     ///
     /// This function will return an error if no object store is found for the given prefix or if no default object store is available.
     async fn get_object_store(&self, uid: &str) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
-        // split the uid on the first ::
-        let splits = uid.split_once("::");
-        Ok(match splits {
-            Some((prefix, _rest)) => self
+        // HSM UIDs use a two-part prefix: "hsm::<model>::<slot>::<key>"
+        // Extract "hsm::<model>" as the lookup key.
+        let prefix = uid.strip_prefix("hsm::").map_or_else(
+            || uid.split_once("::").map(|(p, _)| p),
+            |rest| rest.find("::").map(|pos| &uid[..5 + pos]),
+        );
+        Ok(match prefix {
+            Some(prefix) => self
                 .objects
                 .read()
                 .await

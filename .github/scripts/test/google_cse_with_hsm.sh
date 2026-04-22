@@ -60,7 +60,7 @@ $COSMIAN certificates certify \
   --certificate-extensions $EXT_DIR/example_user.ext
 
 # Using a HSM wrapping key
-HSM_KEY_ID="hsm::0::wrapping_key_$(openssl rand -hex 8)"
+HSM_KEY_ID="hsm::utimaco::0::wrapping_key_$(openssl rand -hex 8)"
 GOOGLE_KEY_ID="google_cse"
 $COSMIAN sym keys create "$HSM_KEY_ID"
 # CryptographicUsageMask is already set to 2108 for the imported CSE key

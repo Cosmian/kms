@@ -11,15 +11,18 @@ of the server through a unique *routing prefix*.
 Every KMS object stored inside an HSM has a UID of the form:
 
 ```text
-<prefix>::<slot_id>::<key_id>
+hsm::<model>::<slot_id>::<key_id>
 ```
 
-| Instance index | Prefix | Example UID |
+| HSM model | Prefix | Example UID |
 |---|---|---|
-| First (0) | `hsm` | `hsm::0::my-aes-key` |
-| Second (1) | `hsm1` | `hsm1::0::another-key` |
-| Third (2) | `hsm2` | `hsm2::1::yet-another-key` |
-| … | `hsmN` | … |
+| softhsm2 | `hsm::softhsm2` | `hsm::softhsm2::0::my-aes-key` |
+| utimaco | `hsm::utimaco` | `hsm::utimaco::0::another-key` |
+| proteccio | `hsm::proteccio` | `hsm::proteccio::1::yet-another-key` |
+| … | `hsm::<model>` | … |
+
+If two HSM instances use the **same model**, the second one gets a `_1` suffix
+(e.g. `hsm::utimaco` and `hsm::utimaco_1`).
 
 The server routes any KMIP operation to the correct HSM by matching the prefix of
 the object UID.
@@ -32,7 +35,7 @@ the object UID.
 
 The existing `--hsm-model`, `--hsm-admin`, `--hsm-slot`, and `--hsm-password`
 flags continue to work exactly as before.  They configure **one** HSM instance
-with the prefix `"hsm"`.
+with the prefix `"hsm::<model>"` (derived from the `--hsm-model` value).
 
 ### Option B — TOML `[[hsm_instances]]` array (multi-HSM)
 
@@ -40,14 +43,14 @@ Add one `[[hsm_instances]]` section per HSM in `kms.toml`.  When this section is
 present it **takes precedence** over the flat CLI flags.
 
 ```toml
-# First HSM — prefix "hsm"
+# First HSM — prefix "hsm::softhsm2"
 [[hsm_instances]]
 hsm_model    = "softhsm2"
 hsm_admin    = ["tech@example.com"]
 hsm_slot     = [0]
 hsm_password = ["changeme"]
 
-# Second HSM — prefix "hsm1"
+# Second HSM — prefix "hsm::utimaco"
 [[hsm_instances]]
 hsm_model    = "utimaco"
 hsm_admin    = ["tech@example.com"]
@@ -78,14 +81,14 @@ Example response:
 ```json
 [
   {
-    "prefix": "hsm",
+    "prefix": "hsm::softhsm2",
     "model": "softhsm2",
     "slots": [
       { "slot_id": 0, "accessible": true }
     ]
   },
   {
-    "prefix": "hsm1",
+    "prefix": "hsm::utimaco",
     "model": "utimaco",
     "slots": [
       { "slot_id": 0, "accessible": true },

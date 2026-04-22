@@ -10,7 +10,7 @@ use cosmian_kms_client::{
         import_utils::{KeyUsage, build_usage_mask_from_key_usage},
     },
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use strum::IntoEnumIterator;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::{

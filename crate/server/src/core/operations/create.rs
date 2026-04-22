@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{info, trace};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip,
     cosmian_kmip::{
@@ -11,6 +10,7 @@ use cosmian_kms_server_database::reexport::{
         time_normalize,
     },
 };
+use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
 use crate::{

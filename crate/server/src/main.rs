@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use cosmian_kms_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
+use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
 use tracing::span;
 
@@ -262,12 +262,6 @@ mod tests {
                 ansi_colors: false,
             },
             info: false,
-            hsm: cosmian_kms_server::config::HsmConfig {
-                hsm_model: String::new(),
-                hsm_admin: vec![],
-                hsm_slot: vec![],
-                hsm_password: vec![],
-            },
             hsm_instances: vec![],
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
@@ -293,10 +287,6 @@ default_username = "[default username]"
 force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
-hsm_model = ""
-hsm_admin = []
-hsm_slot = []
-hsm_password = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 

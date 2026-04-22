@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
@@ -28,6 +27,7 @@ use cosmian_kms_server_database::reexport::{
         reexport::cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH,
     },
 };
+use cosmian_logger::trace;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -211,7 +211,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[tokio::test]
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -264,7 +264,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -321,7 +321,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let clap_config = https_clap_config();
 
@@ -398,7 +398,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
 #[tokio::test]
 async fn test_register_operation() -> KResult<()> {
-    cosmian_kms_logger::log_init(None);
+    cosmian_logger::log_init(None);
 
     let clap_config = https_clap_config();
 

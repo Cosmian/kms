@@ -22,7 +22,6 @@ use cosmian_kms_client::{
     kms_client_bail, kms_client_error,
     reexport::cosmian_http_client::HttpClientConfig,
 };
-use cosmian_kms_logger::{error, info, trace, warn};
 use cosmian_kms_server::{
     config::{
         ClapConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig,
@@ -30,6 +29,7 @@ use cosmian_kms_server::{
     },
     start_kms_server::start_kms_server,
 };
+use cosmian_logger::{error, info, trace, warn};
 use tokio::sync::OnceCell;
 
 use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};
@@ -479,7 +479,7 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
 async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     let port = 20000;
     let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_{port}"));
-    let kek_id = "hsm::0::kek";
+    let kek_id = "hsm::utimaco::0::kek";
     let db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
         clear_database: true,
@@ -626,7 +626,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 async fn create_kek_in_db_softhsm2() -> Result<(PathBuf, String), KmsClientError> {
     let port = 20001_u16;
     let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_softhsm2_{port}"));
-    let kek_id = "hsm::0::softhsm2_kek";
+    let kek_id = "hsm::softhsm2::0::softhsm2_kek";
 
     let db_config = MainDBConfig {
         database_type: Some("sqlite".to_owned()),
@@ -1306,7 +1306,7 @@ pub fn build_server_params_full(
     if !opts.hsm_instances.is_empty() {
         clap.hsm_instances = opts.hsm_instances;
     } else if let Some(h) = opts.hsm {
-        clap.hsm = h;
+        clap.hsm_instances = vec![h];
     }
 
     trace!(

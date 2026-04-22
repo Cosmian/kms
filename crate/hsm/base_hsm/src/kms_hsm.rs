@@ -36,7 +36,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject,
     HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
 };
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};

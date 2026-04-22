@@ -1,9 +1,9 @@
-use cosmian_kms_logger::{info, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_messages::{ResponseMessage, ResponseMessageBatchItemVersioned},
     kmip_1_4,
     ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
 };
+use cosmian_logger::{info, log_init};
 
 use crate::tests::ttlv_tests::{create_1_4::create_symmetric_key, get_client};
 

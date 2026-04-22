@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use cosmian_kms_logger::{debug, log_init};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -26,6 +25,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::to_ttlv,
 };
+use cosmian_logger::{debug, log_init};
 
 use crate::{
     config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,

@@ -1,4 +1,3 @@
-use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -11,6 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_1_4, kmip_2_1,
     ttlv::KmipFlavor,
 };
+use cosmian_logger::log_init;
 
 use crate::tests::ttlv_tests::get_client;
 

@@ -4,7 +4,11 @@ import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
-import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "./RotationPolicyFields";
+import RotationPolicyFields, {
+    type RotationPolicyFormValues,
+    applyRotationPolicy,
+    rotationIntervalToSeconds,
+} from "./RotationPolicyFields";
 
 interface SymKeyCreateFormData extends RotationPolicyFormValues {
     keyId?: string;
@@ -65,9 +69,9 @@ const SymKeyCreateForm: React.FC = () => {
                 // Apply rotation policy attributes if specified
                 await applyRotationPolicy(
                     keyId,
-                    values.rotateInterval,
+                    rotationIntervalToSeconds(values.rotateIntervalValue, values.rotateIntervalUnit),
                     values.rotateName,
-                    values.rotateOffset,
+                    rotationIntervalToSeconds(values.rotateOffsetValue, values.rotateOffsetUnit),
                     sendKmipRequest,
                     parse_set_attribute_ttlv_response,
                     set_attribute_ttlv_request,

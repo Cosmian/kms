@@ -18,7 +18,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},

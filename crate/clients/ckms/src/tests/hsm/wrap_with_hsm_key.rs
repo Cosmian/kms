@@ -3,11 +3,11 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms
 use cosmian_kms_cli_actions::{actions::symmetric::{keys::create_key::CreateKeyAction, KeyEncryptionAlgorithm}, reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 }};
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_logger::info;
+use cosmian_logger::info;
 use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]
@@ -32,7 +32,7 @@ pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
         CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: SymmetricAlgorithm::Aes,
             sensitive: true,
@@ -80,7 +80,7 @@ pub(crate) fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> CosmianResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()
@@ -127,7 +127,7 @@ pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()

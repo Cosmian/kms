@@ -37,7 +37,6 @@
 //! Steps 8 and 9 only proceed if `ModifyAttributeResponse` correctly echoes
 //! the modified `Name` attribute (KMIP 1.2 spec §4.14, issue #820).
 
-use cosmian_kms_logger::log_init;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -58,6 +57,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::KmipFlavor,
 };
+use cosmian_logger::log_init;
 use zeroize::Zeroizing;
 
 use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};

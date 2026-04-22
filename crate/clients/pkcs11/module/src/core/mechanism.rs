@@ -21,7 +21,7 @@
 
 use std::slice;
 
-use cosmian_kms_logger::{debug, error};
+use cosmian_logger::{debug, error};
 use pkcs11_sys::{
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1, CKG_MGF1_SHA224,
     CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD,

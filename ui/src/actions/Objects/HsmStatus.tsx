@@ -95,8 +95,8 @@ const HsmStatus: React.FC = () => {
             <div className="mb-8 space-y-2">
                 <p>Displays all Hardware Security Module (HSM) instances connected to this KMS server.</p>
                 <p>
-                    Each instance is identified by a routing prefix (e.g. <code>hsm</code>, <code>hsm1</code>) and a model name. The slot
-                    table shows which PKCS#11 slots are configured and whether a login password has been provided.
+                    Each instance is identified by a routing prefix (e.g. <code>hsm::softhsm2</code>, <code>hsm::utimaco</code>) and a model
+                    name. The slot table shows which PKCS#11 slots are configured and whether a login password has been provided.
                 </p>
             </div>
 

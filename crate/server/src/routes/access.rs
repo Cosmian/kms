@@ -8,10 +8,10 @@ use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, CreatePermissionResponse, ObjectOwnedResponse,
     PrivilegedAccessResponse, SuccessResponse, UserAccessResponse,
 };
-use cosmian_kms_logger::{debug, info};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     self, kmip_2_1::kmip_types::UniqueIdentifier,
 };
+use cosmian_logger::{debug, info};
 
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission},

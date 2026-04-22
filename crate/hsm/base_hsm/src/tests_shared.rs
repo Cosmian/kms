@@ -6,7 +6,7 @@
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
 use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_kms_logger::{debug, info, log_init, warn};
+use cosmian_logger::{debug, info, log_init, warn};
 use futures::executor::block_on;
 use libloading::Library;
 use pkcs11_sys::{

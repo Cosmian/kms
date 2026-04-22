@@ -2,7 +2,7 @@ use cosmian_crypto_core::{
     CsRng, Ecies, EciesSalsaSealBox, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
     X25519PublicKey, reexport::rand_core::SeedableRng,
 };
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use openssl::pkey::{Id, PKey, Private, Public};
 use zeroize::Zeroizing;
 

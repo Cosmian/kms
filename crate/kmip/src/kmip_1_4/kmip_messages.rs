@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 /// The messages in the protocol consist of a message header,
 /// one or more batch items (which contain OPTIONAL message payloads),
 /// and OPTIONAL message extensions. The message headers contain fields whose

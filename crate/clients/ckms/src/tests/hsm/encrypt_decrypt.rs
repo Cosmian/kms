@@ -12,9 +12,9 @@ use cosmian_kms_cli_actions::{
         create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
     },
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
@@ -40,7 +40,7 @@ pub(crate) fn test_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     let dek = create_symmetric_key(
         &owner_client_conf_path,
         CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(256),
             algorithm: SymmetricAlgorithm::Aes,
             ..Default::default()
@@ -76,7 +76,7 @@ pub(crate) fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> CosmianResult<()> {
     let (private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },
     )?;
@@ -164,7 +164,7 @@ pub(crate) fn test_rsa_pkcs_v15(ctx: &TestsContext) -> CosmianResult<()> {
     let (private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },
     )?;

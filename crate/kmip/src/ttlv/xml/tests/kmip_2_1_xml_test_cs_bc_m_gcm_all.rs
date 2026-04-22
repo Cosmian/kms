@@ -1,7 +1,7 @@
 //! Initial focus on CS-BC-M-GCM-2-21.xml file when starting XML parsing support.
 use std::path::{Path, PathBuf};
 
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 
 use crate::{
     kmip_0::{

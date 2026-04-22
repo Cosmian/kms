@@ -12,7 +12,7 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_logger::debug;
+use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{

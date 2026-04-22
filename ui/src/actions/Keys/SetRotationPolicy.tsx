@@ -1,14 +1,23 @@
-import { Button, Card, Form, Input, InputNumber, Space } from "antd";
+import { Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { ObjectType, getObjectLabel, sendKmipRequest } from "../../utils/utils";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
 
+/** Supported duration units for the rotation interval picker. */
+const DURATION_UNITS = [
+    { label: "Days", value: 86400 },
+    { label: "Weeks", value: 604800 },
+    { label: "Months (30 days)", value: 2592000 },
+];
+
 interface SetRotationPolicyFormData {
     objectId: string;
-    rotateInterval?: number;
+    rotateIntervalValue?: number;
+    rotateIntervalUnit?: number;
     rotateName?: string;
-    rotateOffset?: number;
+    rotateOffsetValue?: number;
+    rotateOffsetUnit?: number;
 }
 
 interface SetRotationPolicyProps {
@@ -34,14 +43,20 @@ const SetRotationPolicyForm: React.FC<SetRotationPolicyProps> = ({ objectType })
         setRes(undefined);
 
         const attrsToSet: Array<[string, string]> = [];
-        if (values.rotateInterval != null) {
-            attrsToSet.push(["rotate_interval", String(Math.round(values.rotateInterval))]);
+        if (values.rotateIntervalValue != null) {
+            if (values.rotateIntervalValue === 0) {
+                attrsToSet.push(["rotate_interval", "0"]);
+            } else if (values.rotateIntervalValue > 0) {
+                const seconds = values.rotateIntervalValue * (values.rotateIntervalUnit ?? 86400);
+                attrsToSet.push(["rotate_interval", String(Math.round(seconds))]);
+            }
         }
         if (values.rotateName) {
             attrsToSet.push(["rotate_name", values.rotateName]);
         }
-        if (values.rotateOffset != null) {
-            attrsToSet.push(["rotate_offset", String(Math.round(values.rotateOffset))]);
+        if (values.rotateOffsetValue != null && values.rotateOffsetValue > 0) {
+            const seconds = values.rotateOffsetValue * (values.rotateOffsetUnit ?? 86400);
+            attrsToSet.push(["rotate_offset", String(Math.round(seconds))]);
         }
 
         if (attrsToSet.length === 0) {
@@ -100,19 +115,32 @@ const SetRotationPolicyForm: React.FC<SetRotationPolicyProps> = ({ objectType })
                         </Form.Item>
 
                         <Form.Item
-                            name="rotateInterval"
-                            label="Rotation Interval (seconds)"
-                            help="Time between automatic re-keys. Set 0 to disable."
+                            label="Rotation Interval"
+                            help="Time between automatic re-keys (minimum 1 day, or 0 to disable). Leave empty to skip."
                         >
-                            <InputNumber className="w-[200px]" min={0} step={3600} placeholder="e.g. 86400" />
+                            <Input.Group compact>
+                                <Form.Item name="rotateIntervalValue" noStyle>
+                                    <InputNumber className="w-[120px]" min={0} step={1} placeholder="e.g. 1" />
+                                </Form.Item>
+                                <Form.Item name="rotateIntervalUnit" noStyle initialValue={86400}>
+                                    <Select className="w-[170px]" options={DURATION_UNITS} />
+                                </Form.Item>
+                            </Input.Group>
                         </Form.Item>
 
                         <Form.Item name="rotateName" label="Rotation Name" help="Optional label for this rotation policy">
                             <Input placeholder="e.g. daily-rotation" />
                         </Form.Item>
 
-                        <Form.Item name="rotateOffset" label="Rotation Offset (seconds)" help="Delay in seconds before the first rotation">
-                            <InputNumber className="w-[200px]" min={0} step={3600} placeholder="e.g. 0" />
+                        <Form.Item label="Rotation Offset" help="Delay before the first rotation (minimum 1 day)">
+                            <Input.Group compact>
+                                <Form.Item name="rotateOffsetValue" noStyle>
+                                    <InputNumber className="w-[120px]" min={1} step={1} placeholder="e.g. 1" />
+                                </Form.Item>
+                                <Form.Item name="rotateOffsetUnit" noStyle initialValue={86400}>
+                                    <Select className="w-[170px]" options={DURATION_UNITS} />
+                                </Form.Item>
+                            </Input.Group>
                         </Form.Item>
                     </Card>
 

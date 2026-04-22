@@ -13,7 +13,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::kmip_2_1::KmipOperation;
-use cosmian_kms_logger::{
+use cosmian_logger::{
     debug, info, log_init,
     reexport::tracing::{self, trace},
 };
@@ -318,7 +318,7 @@ async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
         .as_millis();
     // Create the Google CSE key in the HSM (prefix hsm::0::)
     let cse_key_id = CreateKeyAction {
-        key_id: Some(format!("hsm::0::google_cse_{ts}")),
+        key_id: Some(format!("hsm::utimaco::0::google_cse_{ts}")),
         ..Default::default()
     }
     .run(ctx.get_owner_client())

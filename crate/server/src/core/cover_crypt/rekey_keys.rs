@@ -1,6 +1,5 @@
 use std::ops::AsyncFn;
 
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -24,6 +23,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
 };
+use cosmian_logger::trace;
 
 use super::KMS;
 use crate::{core::cover_crypt::locate_usk, error::KmsError, kms_bail, result::KResult};

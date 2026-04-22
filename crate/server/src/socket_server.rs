@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use cosmian_kms_logger::{debug, error, info, trace, warn};
+use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::ssl::{SslAcceptor, SslStream};
 use tokio::task::JoinHandle;
 

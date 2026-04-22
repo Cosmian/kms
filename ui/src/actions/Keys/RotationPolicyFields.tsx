@@ -1,15 +1,22 @@
-import { Collapse, Form, Input, InputNumber } from "antd";
+import { Collapse, Form, Input, InputNumber, Select } from "antd";
 import React from "react";
 
 const { Panel } = Collapse;
+
+/** Supported duration units for the rotation interval picker. */
+const DURATION_UNITS = [
+    { label: "Days", value: 86400 },
+    { label: "Weeks", value: 604800 },
+    { label: "Months (30 days)", value: 2592000 },
+];
 
 /**
  * A collapsible form section that adds optional rotation policy fields.
  *
  * When the user expands the panel, they can set:
- * - Rotation Interval (seconds) — triggers automatic re-keying when due
+ * - Rotation Interval — triggers automatic re-keying when due (minimum 1 day)
  * - Rotation Name — optional label to identify the lineage
- * - Rotation Offset (seconds) — delay before the first rotation
+ * - Rotation Offset — delay before the first rotation (minimum 1 day)
  *
  * These fields map to the `rotate_interval`, `rotate_name`, and `rotate_offset`
  * KMIP attributes that are applied via `SetAttribute` after the object is created.
@@ -18,11 +25,17 @@ const RotationPolicyFields: React.FC = () => (
     <Collapse ghost>
         <Panel header="Auto Rotation Policy (optional)" key="rotation-policy">
             <Form.Item
-                name="rotateInterval"
-                label="Rotation Interval (seconds)"
-                help="Automatically re-key this object at the given interval. Set 0 to disable."
+                label="Rotation Interval"
+                help="Automatically re-key this object at the given interval (minimum 1 day). Leave empty to disable."
             >
-                <InputNumber className="w-[200px]" min={0} step={3600} placeholder="e.g. 86400 (daily)" />
+                <Input.Group compact>
+                    <Form.Item name="rotateIntervalValue" noStyle>
+                        <InputNumber className="w-[120px]" min={1} step={1} placeholder="e.g. 1" />
+                    </Form.Item>
+                    <Form.Item name="rotateIntervalUnit" noStyle initialValue={86400}>
+                        <Select className="w-[170px]" options={DURATION_UNITS} />
+                    </Form.Item>
+                </Input.Group>
             </Form.Item>
 
             <Form.Item name="rotateName" label="Rotation name" help="Optional label to identify this rotation policy lineage">
@@ -30,11 +43,17 @@ const RotationPolicyFields: React.FC = () => (
             </Form.Item>
 
             <Form.Item
-                name="rotateOffset"
-                label="Rotation offset (seconds)"
-                help="Delay before the first automatic rotation. Defaults to the interval if not set."
+                label="Rotation offset"
+                help="Delay before the first automatic rotation (minimum 1 day). Defaults to the interval if not set."
             >
-                <InputNumber className="w-[200px]" min={0} step={3600} placeholder="e.g. 0" />
+                <Input.Group compact>
+                    <Form.Item name="rotateOffsetValue" noStyle>
+                        <InputNumber className="w-[120px]" min={1} step={1} placeholder="e.g. 1" />
+                    </Form.Item>
+                    <Form.Item name="rotateOffsetUnit" noStyle initialValue={86400}>
+                        <Select className="w-[170px]" options={DURATION_UNITS} />
+                    </Form.Item>
+                </Input.Group>
             </Form.Item>
         </Panel>
     </Collapse>
@@ -44,9 +63,17 @@ export default RotationPolicyFields;
 
 /** Fields contributed by the rotation policy panel. */
 export interface RotationPolicyFormValues {
-    rotateInterval?: number;
+    rotateIntervalValue?: number;
+    rotateIntervalUnit?: number;
     rotateName?: string;
-    rotateOffset?: number;
+    rotateOffsetValue?: number;
+    rotateOffsetUnit?: number;
+}
+
+/** Convert the form values to seconds. Returns undefined when no value is set. */
+export function rotationIntervalToSeconds(value?: number, unit?: number): number | undefined {
+    if (value == null || value <= 0) return undefined;
+    return value * (unit ?? 86400);
 }
 
 /**

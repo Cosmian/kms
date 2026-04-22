@@ -4,7 +4,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
     kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
-use cosmian_kms_logger::{info, trace};
+use cosmian_logger::{info, trace};
 use openssl::{
     rand::rand_bytes,
     symm::{

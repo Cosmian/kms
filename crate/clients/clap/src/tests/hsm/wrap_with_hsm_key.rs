@@ -3,7 +3,7 @@ use cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::Export
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
     create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_kms_logger::{info, log_init};
+use cosmian_logger::{info, log_init};
 use tempfile::TempDir;
 use test_kms_server::TestsContext;
 use uuid::Uuid;
@@ -22,7 +22,7 @@ pub(super) async fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> KmsCliResult<(
     // log_init(Some("info,cosmian_kms_server=debug"));
 
     let wrapping_key_id = CreateKeyAction {
-        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::utimaco::0::".to_owned() + &Uuid::new_v4().to_string()),
         number_of_bits: Some(256),
         algorithm: SymmetricAlgorithm::Aes,
         sensitive: true,
@@ -78,7 +78,7 @@ pub(super) async fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> KmsCliResult<
 
     let (_private_key_id, public_key_id) = CreateKeyPairAction {
         key_size: 2048,
-        private_key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        private_key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
         sensitive: true,
         ..Default::default()
     }
@@ -130,7 +130,7 @@ pub(super) async fn test_unwrap_on_export(ctx: &TestsContext) -> KmsCliResult<()
 
     let (_private_key_id, public_key_id) = CreateKeyPairAction {
         key_size: 2048,
-        private_key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+        private_key_id: Some("hsm::utimaco::0::".to_string() + &Uuid::new_v4().to_string()),
         sensitive: true,
         ..Default::default()
     }
@@ -175,7 +175,7 @@ pub(super) async fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> KmsCliResult
 
     // Create a sensitive AES key on the HSM (non-extractable, identified by hsm:: prefix).
     let wrapping_key_id = CreateKeyAction {
-        key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
+        key_id: Some("hsm::utimaco::0::".to_owned() + &Uuid::new_v4().to_string()),
         number_of_bits: Some(256),
         algorithm: SymmetricAlgorithm::Aes,
         sensitive: true,

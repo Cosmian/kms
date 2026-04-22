@@ -14,11 +14,11 @@ use actix_web::{
     test::{self, call_service, read_body},
     web::{self, Data},
 };
-use cosmian_kms_logger::info;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{kmip_operations::LocateResponse, kmip_types::UniqueIdentifier},
     ttlv::{TTLV, from_ttlv, to_ttlv},
 };
+use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
 

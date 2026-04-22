@@ -1,6 +1,6 @@
 use std::sync::RwLock;
 
-use cosmian_kms_logger::trace;
+use cosmian_logger::trace;
 use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
 use tracing::instrument;
 

@@ -97,13 +97,6 @@
 
 ### 🔨 Build / Refactor
 
-#### Internalize `cosmian_kms_logger`
-
-- **`crate/logger`**: `cosmian_kms_logger` is now a first-class workspace member at `crate/logger/` instead of being pulled from crates.io. The source is identical to `cosmian_kms_logger 0.5.4` with the following adaptations for the workspace:
-    - Removed `std::env::set_var` calls (unsafe in edition 2024) — the `rust_log` string from `TracingConfig` is now fed directly to `EnvFilter::try_new()`, removing the need to mutate the process environment.
-    - Fixed all clippy lints enforced by the workspace (`struct_excessive_bools`, `items_after_statements`, `manual_inspect`, `unnecessary_debug_formatting`, `str_to_string`, `let_underscore_drop`).
-    - `opentelemetry 0.29.x` packages are pinned directly in the crate manifest (workspace uses 0.27 for the server metrics layer; both versions coexist in the dependency tree).
-
 ### 📚 Documentation
 
 #### Key auto-rotation policy
@@ -171,5 +164,23 @@
     - PQC tests are automatically skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`).
     - Added `createCertificate` helper to `helpers.ts` for reuse across test files.
     - Added `data-testid="cert-algorithm-select"` to the algorithm `<Select>` in `CertificateCertify.tsx`.
+
+#### HSM — model-based routing prefix
+
+- **HSM UID prefix now includes model name**: the HSM object UID format changed from `hsm::<slot>::<key>` (with numeric suffixes `hsm1::`, `hsm2::` for multi-HSM) to `hsm::<model>::<slot>::<key>` (e.g. `hsm::utimaco::0::my_aes_key`, `hsm::softhsm2::0::kek`). When duplicate models are configured, the second instance gets `hsm::<model>_1`, the third `hsm::<model>_2`, etc.
+- **`has_prefix()` rewritten**: prefix detection in `uid_utils.rs` now parses the `hsm::<model>::` pattern instead of splitting on the first `::`.
+- **`as_hsm_uid!` macro updated**: now takes 3 arguments `($model, $slot, $key)` instead of 2.
+- **UI `Locate.tsx`**: HSM detection regex updated from `/^hsm[0-9]*::/` to `/^hsm::/`.
+- **Shell scripts and TOML configs**: all hardcoded `hsm::0::` references updated to include the model name.
+- **Documentation**: `hsm_operations.md`, `multi_hsm.md`, and `key_auto_rotation.md` updated with new UID format.
+
+#### Rotate interval minimum enforcement
+
+- **Server-side validation**: `SetAttribute` and `ModifyAttribute` now reject `rotate_interval` values less than 86400 seconds (1 day) with an `InvalidRequest` error, preventing misconfigured sub-day rotation policies.
+- **Web UI duration picker**: rotation interval and offset fields in all Create, Re-Key, and Set Rotation Policy forms now use a value+unit selector with Days, Weeks, and Months (30 days) as the smallest granularity, making it impossible to set a sub-day interval from the UI.
+
+#### Tag-based key selection with rotation
+
+- **`select_unique_key_for_operation` auto-selects latest rotated key**: when tag-based UID resolution finds multiple eligible keys (common after rotation creates a new key with identical tags), the function now automatically selects the one with `rotate_latest=true` if exactly one candidate has that flag set and all others have `rotate_latest=false`.
 
 Closes #859

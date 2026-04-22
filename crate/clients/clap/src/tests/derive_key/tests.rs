@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     },
     reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
 };
-use cosmian_kms_logger::{debug, log_init};
+use cosmian_logger::{debug, log_init};
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{

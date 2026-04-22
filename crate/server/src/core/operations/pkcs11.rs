@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use cosmian_kms_base_hsm::HsmLib;
-use cosmian_kms_logger::trace;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     PKCS11, PKCS11Function, PKCS11Response, PKCS11ReturnCode,
 };
+use cosmian_logger::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};
 

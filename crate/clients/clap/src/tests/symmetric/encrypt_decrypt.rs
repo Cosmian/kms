@@ -8,7 +8,7 @@ use cosmian_kms_client::{
         create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
     },
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use strum::IntoEnumIterator;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;

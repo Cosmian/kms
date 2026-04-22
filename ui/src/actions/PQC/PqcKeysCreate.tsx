@@ -5,7 +5,11 @@ import { useBranding } from "../../contexts/useBranding";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
-import RotationPolicyFields, { type RotationPolicyFormValues, applyRotationPolicy } from "../Keys/RotationPolicyFields";
+import RotationPolicyFields, {
+    type RotationPolicyFormValues,
+    applyRotationPolicy,
+    rotationIntervalToSeconds,
+} from "../Keys/RotationPolicyFields";
 
 interface PqcKeyCreateFormData extends RotationPolicyFormValues {
     algorithm: string;
@@ -63,9 +67,9 @@ const PqcKeysCreateForm: React.FC = () => {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 await applyRotationPolicy(
                     result.PrivateKeyUniqueIdentifier,
-                    values.rotateInterval,
+                    rotationIntervalToSeconds(values.rotateIntervalValue, values.rotateIntervalUnit),
                     values.rotateName,
-                    values.rotateOffset,
+                    rotationIntervalToSeconds(values.rotateOffsetValue, values.rotateOffsetUnit),
                     sendKmipRequest,
                     parse_set_attribute_ttlv_response,
                     set_attribute_ttlv_request,

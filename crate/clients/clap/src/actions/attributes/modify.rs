@@ -7,7 +7,7 @@ use cosmian_kms_client::{
         kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
     },
 };
-use cosmian_kms_logger::{info, trace};
+use cosmian_logger::{info, trace};
 
 use super::set::SetOrDeleteAttributes;
 use crate::{

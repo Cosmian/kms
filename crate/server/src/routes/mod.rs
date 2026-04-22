@@ -10,7 +10,7 @@ use actix_web::{
     web::{Data, Json},
 };
 use clap::crate_version;
-use cosmian_kms_logger::{error, info, warn};
+use cosmian_logger::{error, info, warn};
 use serde::Serialize;
 
 use crate::{core::KMS, error::KmsError, result::KResult};

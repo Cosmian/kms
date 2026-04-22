@@ -10,7 +10,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use tempfile::TempDir;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 

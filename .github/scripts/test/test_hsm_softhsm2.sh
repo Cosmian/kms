@@ -140,6 +140,7 @@ test_pkcs11tool_no_warnings() {
   # falls back to the default path.
   local kms_conf="$tmp_dir/kms.toml"
   cat >"$kms_conf" <<KMS_CONF_EOF
+[[hsm_instances]]
 hsm_model = "softhsm2"
 hsm_admin = ["admin"]
 hsm_slot = [${SOFTHSM2_HSM_SLOT_ID}]

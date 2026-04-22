@@ -1,6 +1,6 @@
 use std::{fs, fs::OpenOptions, path::PathBuf, sync::Once};
 
-use cosmian_kms_logger::reexport::tracing::Level;
+use cosmian_logger::reexport::tracing::Level;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
     EnvFilter, Registry, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,

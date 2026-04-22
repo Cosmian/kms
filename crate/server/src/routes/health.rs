@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
 use actix_web::{HttpRequest, HttpResponse, get, web::Data};
-use cosmian_kms_logger::info;
 use cosmian_kms_server_database::MainDbKind;
+use cosmian_logger::info;
 use serde::Serialize;
 
 use crate::{core::KMS, result::KResult};

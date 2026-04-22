@@ -32,7 +32,7 @@ const NUM_MESSAGES: usize = 1000;
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn bulk_encrypt_decrypt() -> KResult<()> {
-    cosmian_kms_logger::log_init(option_env!("RUST_LOG"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
 
     let response: CreateResponse = test_utils::post_2_1(
@@ -93,7 +93,7 @@ async fn bulk_encrypt_decrypt() -> KResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
-    cosmian_kms_logger::log_init(option_env!("RUST_LOG"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     let app = test_utils::test_app(None, None).await;
 
     let response: CreateResponse = test_utils::post_2_1(

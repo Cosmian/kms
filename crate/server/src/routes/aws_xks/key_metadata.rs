@@ -8,7 +8,6 @@ use actix_web::{
     web::{Data, Json, Path},
 };
 use cosmian_kms_access::access::Access;
-use cosmian_kms_logger::warn;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -20,6 +19,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
 };
+use cosmian_logger::warn;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use tracing::{debug, info};

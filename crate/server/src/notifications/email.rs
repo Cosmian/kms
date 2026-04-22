@@ -1,4 +1,4 @@
-use cosmian_kms_logger::warn;
+use cosmian_logger::warn;
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox,
     transport::smtp::authentication::Credentials,

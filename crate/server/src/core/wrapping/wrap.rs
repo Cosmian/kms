@@ -1,4 +1,3 @@
-use cosmian_kms_logger::{debug, trace, warn};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, State},
@@ -12,6 +11,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
+use cosmian_logger::{debug, trace, warn};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
@@ -77,7 +77,7 @@ pub(crate) async fn wrap_and_cache(
             )));
         }
         // The server-wide KEK coincidentally matches the new key's UID — skip silently.
-        // This should not happen in practice (KEKs use prefixed UIDs like "hsm::0::kek").
+        // This should not happen in practice (KEKs use prefixed UIDs like "hsm::softhsm2::0::kek").
         warn!(
             "Server KEK '{wrapping_key_id}' matches the UID of the key being created; skipping self-wrap"
         );

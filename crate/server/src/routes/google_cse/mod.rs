@@ -5,7 +5,7 @@ use actix_web::{
     HttpRequest, HttpResponse, ResponseError, get, post,
     web::{Data, Json},
 };
-use cosmian_kms_logger::{debug, info, trace};
+use cosmian_logger::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 
 use crate::{core::KMS, error::KmsError, result::KResult};

@@ -4,7 +4,7 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, Path, Query},
 };
-use cosmian_kms_logger::{info, trace};
+use cosmian_logger::{info, trace};
 use serde::Deserialize;
 
 use crate::{

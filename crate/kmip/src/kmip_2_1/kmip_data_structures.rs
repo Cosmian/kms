@@ -4,7 +4,7 @@ use std::{
     fmt::{Display, Formatter, Write as _},
 };
 
-use cosmian_kms_logger::{trace, warn};
+use cosmian_logger::{trace, warn};
 use num_bigint_dig::BigInt;
 use serde::{
     Deserialize, Serialize,

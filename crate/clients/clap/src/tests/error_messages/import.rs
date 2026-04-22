@@ -15,7 +15,7 @@ use cosmian_kms_client::{
     },
     kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
 };
-use cosmian_kms_logger::log_init;
+use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 use zeroize::Zeroizing;
 
