@@ -17,7 +17,7 @@
  * Skipped in FIPS mode: the /tokenize endpoints are guarded by #[cfg(feature = "non-fips")].
  */
 import { expect, test } from "@playwright/test";
-import { gotoAndWait, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
+import { gotoAndWait, selectOption, submitAndWaitForResponse, UI_READY_TIMEOUT } from "./helpers";
 
 const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
 
@@ -67,8 +67,7 @@ test.describe("Tokenize — Hash", () => {
         await gotoAndWait(page, "/ui/tokenize/hash");
         await page.fill('input[placeholder="e.g. hello world"]', "test sha3");
         // Switch method to SHA3
-        await page.click('[data-testid="hash-method-select"]');
-        await page.locator('.ant-select-dropdown :text("SHA3")').first().click();
+        await selectOption(page, "hash-method-select", "SHA3 (256-bit)");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/Result:\s*b8rRtRqnSFs8s12jsKSXHFcLf5MeHx8g6m4tvZq04\/I=/);
     });
@@ -159,7 +158,7 @@ test.describe("Tokenize — Pattern Mask", () => {
 
         await gotoAndWait(page, "/ui/tokenize/word-pattern-mask");
         await page.fill('textarea[placeholder="e.g. Call +33 6 12 34 56 78 or +1 800 555 0199"]', "Contact: user@example.com");
-        await page.fill('input[placeholder^="e.g. \\"]', String.raw`\S+@\S+\.\S+`);
+        await page.fill('[data-testid="pattern-input"]', String.raw`\S+@\S+\.\S+`);
         await page.fill('input[placeholder="e.g. [PHONE]"]', "[EMAIL]");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/\[EMAIL\]/);
