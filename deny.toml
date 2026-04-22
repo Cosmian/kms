@@ -185,14 +185,11 @@ allow = [
 ]
 # List of crates to deny
 deny = [
-
-
   # "ansi_term@0.11.0",
   # { crate = "ansi_term@0.11.0", reason = "you can specify a reason it is banned" },
   # Wrapper crates can optionally be specified to allow the crate when it
   # is a direct dependency of the otherwise banned crate
   # { crate = "ansi_term@0.11.0", wrappers = ["this-crate-directly-depends-on-ansi_term"] },
-  "tracing-appender@0.2.5", # breaks CI WASM builds
 ]
 
 # List of features to allow/deny
