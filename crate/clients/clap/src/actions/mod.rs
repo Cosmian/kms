@@ -4,6 +4,7 @@ pub mod aws;
 pub mod azure;
 pub mod bench;
 pub mod certificates;
+pub mod cng;
 pub mod console;
 pub mod derive_key;
 pub mod elliptic_curves;

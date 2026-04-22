@@ -16,6 +16,8 @@ members = [
   "crate/clients/pkcs11/loader",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
+  "crate/clients/cng",
+  "crate/clients/cng_verify",
   # Server crates
   "crate/access",
   "crate/crypto",
