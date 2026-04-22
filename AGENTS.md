@@ -1,3 +1,11 @@
+# THIS SECTION IS ONLY FOR  feat/crypto_JWE_api pull request. DO NOT MERGE TO MASTER BRANCH
+
+0. All files under .agents/ server as context that should be always incorporated to requests on this git branch.
+1. Always RESPECT the norms,  and the data indicated by the RFC documents under /.agents - no hallucinating !
+In order to avoid fully re-reading all the files for each prompt, here is the summarry of what you would mostly need :
+2. When doubts, ask question to the user
+3. When needing syntax, don't heistate to use @io.github.upstash/context7 @com.stackoverflow.mcp/mcp 
+
 # Cosmian KMS — AI Agent Instructions
 
 > **Purpose of this file**: This is the single source of truth for any AI agent
