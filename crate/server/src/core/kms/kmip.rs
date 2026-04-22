@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
         DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
         GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, MAC, MACResponse, ModifyAttribute, ModifyAttributeResponse, PKCS11,
+        LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute, ModifyAttributeResponse, PKCS11,
         PKCS11Response, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
         RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
         RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
@@ -544,6 +544,17 @@ impl KMS {
         let _enter = span.enter();
 
         Box::pin(operations::mac(self, request, user)).await
+    }
+
+    pub(crate) async fn mac_verify(
+        &self,
+        request: MACVerify,
+        user: &str,
+    ) -> KResult<MACVerifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "mac_verify");
+        let _enter = span.enter();
+
+        Box::pin(operations::mac_verify(self, request, user)).await
     }
 
     pub(crate) async fn message(
