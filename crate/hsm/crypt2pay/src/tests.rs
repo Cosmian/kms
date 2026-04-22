@@ -19,24 +19,27 @@ const SLOT_ID: usize = 0x01; // Crypt2pay default slot
 
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
-    let slot_id = get_hsm_slot_id().unwrap_or(SLOT_ID);
     Ok(shared::HsmTestConfig {
         lib_path: shared::lib_path("CRYPT2PAY_PKCS11_LIB", CRYPT2PAY_PKCS11_LIB),
-        slot_ids_and_passwords: HashMap::from([(slot_id, Some(user_password))]),
-        slot_id_for_tests: slot_id,
-        // Per C2P_LP54016 PKCS#11 API User Guide v2.28:
-        // CKM_RSA_PKCS_OAEP is supported with MGF1/SHA1 and MGF1/SHA256
+        slot_ids_and_passwords: HashMap::from([(
+            get_hsm_slot_id().unwrap_or(SLOT_ID),
+            Some(user_password),
+        )]),
+        slot_id_for_tests: SLOT_ID,
         rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        // Per spec: C_WrapKey/C_UnwrapKey supported with CKM_RSA_PKCS
         supports_rsa_wrap: true,
     })
 }
 
-/// Run all `Crypt2Pay` tests.
-///
-/// The surrounding shell harness ensures the live HSM service is reachable
-/// before running this aggregate test.
+/// To tun all the tests, try something like
+/// ```sh
+///  RUST_LOG=info \
+///  C2P_CONF=<PATH_TO_C2P_DIR>/c2p.xml \
+///  HSM_USER_PASSWORD="" \
+///  HSM_SLOT_ID=1 \
+///  cargo test test_hsm_crypt2pay_all --features crypt2pay -- --ignored
+/// ```
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {

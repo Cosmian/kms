@@ -284,26 +284,15 @@ impl Session {
             return Ok(list.clone());
         }
 
-        // Create a temporary key for testing.
-        // If RSA key pair generation is not supported (e.g. Crypt2Pay), return empty — the HSM
-        // does not support RSA OAEP either.
+        // Create a temporary key for testing
         let sk_id = Uuid::new_v4().to_string();
         let pk_id = sk_id.clone() + "_pk";
-        let (sk_handle, pk_handle) = match self.generate_rsa_key_pair(
+        let (sk_handle, pk_handle) = self.generate_rsa_key_pair(
             sk_id.as_bytes(),
             pk_id.as_bytes(),
             RsaKeySize::Rsa1024, //As the specific key size doesn't matter, use the smallest (fastest) algorithm supported.
             false,
-        ) {
-            Ok(handles) => handles,
-            Err(e) => {
-                debug!(
-                    "HSM does not support RSA key pair generation; OAEP hash probing skipped: {e}"
-                );
-                *cache = Some(vec![]);
-                return Ok(vec![]);
-            }
-        };
+        )?;
 
         let candidates: &[(CK_MECHANISM_TYPE, CK_RSA_PKCS_MGF_TYPE)] = &[
             (CKM_SHA_1, CKG_MGF1_SHA1),
