@@ -65,6 +65,8 @@ assert_cmd = "2.0"
 openssl = { workspace = true }
 predicates = "3.1"
 regex = { version = "1.11", default-features = false }
+reqwest = { workspace = true, features = ["json"] }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 test_kms_server = { path = "../../test_kms_server" }
 x509-parser = { workspace = true, features = ["verify"] }
