@@ -86,8 +86,9 @@ const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.has(host);
 
 const resolveServerUrl = (): string => {
     const configuredUrl = (import.meta.env.VITE_KMS_URL as string | undefined)?.trim();
+    const isDevMode = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === "true";
     const defaultDevUrl = `${window.location.protocol}//${window.location.hostname}:9998`;
-    const fallbackUrl = import.meta.env.DEV ? defaultDevUrl : window.location.origin;
+    const fallbackUrl = isDevMode ? defaultDevUrl : window.location.origin;
     const candidate = configuredUrl && configuredUrl.length > 0 ? configuredUrl : fallbackUrl;
 
     try {
