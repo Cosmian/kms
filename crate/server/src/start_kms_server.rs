@@ -911,6 +911,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         {
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
+                .wrap(Cors::permissive())
                 .wrap(Condition::new(
                     use_jwt_auth || use_cert_auth || use_api_token_auth,
                     EnsureAuth::new(

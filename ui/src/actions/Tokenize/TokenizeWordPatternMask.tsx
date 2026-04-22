@@ -75,7 +75,7 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
                             rules={[{ required: true, message: "Please enter a regex pattern" }]}
                             help="Regular expression to match (max 1 024 chars)"
                         >
-                            <Input placeholder={String.raw`e.g. \+\d[\d\s]{7,14}\d`} />
+                            <Input data-testid="pattern-input" placeholder={String.raw`e.g. \+\d[\d\s]{7,14}\d`} />
                         </Form.Item>
 
                         <Form.Item
