@@ -531,6 +531,10 @@ test_command() {
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
       shift
       ;;
+    crypt2pay)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_crypt2pay.sh"
+      shift
+      ;;
     *)
       echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
       echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2
@@ -585,6 +589,8 @@ test_command() {
         --keep POSTGRES_HOST --keep POSTGRES_PORT \
         --keep PROTECCIO_IP --keep PROTECCIO_PASSWORD --keep PROTECCIO_SLOT \
         --keep PROTECCIO_PKCS11_LIB --keep PROTECCIO_PORT \
+        --keep CRYPT2PAY_PASSWORD --keep CRYPT2PAY_SLOT_ID \
+        --keep OVPN_CONF \
         --keep VARIANT \
         --keep TEST_GOOGLE_OAUTH_CLIENT_ID \
         --keep TEST_GOOGLE_OAUTH_CLIENT_SECRET \

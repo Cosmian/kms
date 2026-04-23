@@ -143,6 +143,7 @@ jobs:
           - utimaco
           - proteccio
           - softhsm2
+          - crypt2pay
         features: [fips, non-fips]
         exclude:
           # parallel connections on proteccio is not supported
@@ -184,11 +185,14 @@ jobs:
           PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
           PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
           PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+          # OVPN for Crypt2Pay HSM tests
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
           bash .github/scripts/nix.sh --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
 
