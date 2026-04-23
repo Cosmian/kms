@@ -1,9 +1,9 @@
-// This code is tweaked and vendored from https://github.com/Cosmian/cosmian_fpe
+use core::{cmp, fmt};
+
 use cipher::{
     Block, BlockCipher, BlockEncrypt, BlockEncryptMut, InnerIvInit, KeyInit, Unsigned,
     generic_array::GenericArray,
 };
-use core::{cmp, fmt};
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
 use zeroize::{Zeroize, ZeroizeOnDrop};

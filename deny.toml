@@ -72,7 +72,6 @@ ignore = [
   { id = "RUSTSEC-2025-0009", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2025-0010", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
-  { id = "RUSTSEC-2026-0097", reason = "rand 0.8.5 (transitive via cookie, jsonwebtoken, num-bigint-dig): unsoundness requires BOTH 'log' AND 'thread_rng' features enabled simultaneously. These features are not enabled in our build. Upgrading would require cookie 0.18+ (incompatible with actix-web 4.13) and num-bigint-dig updates. This will resolve when ecosystem dependencies upgrade independently." },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
@@ -159,7 +158,7 @@ registries = [
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "allow"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates
@@ -258,11 +257,3 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
 allow-git = []
-
-[sources.allow-org]
-# 1 or more github.com organizations to allow git sources for
-github = [""]
-# 1 or more gitlab.com organizations to allow git sources for
-gitlab = [""]
-# 1 or more bitbucket.org organizations to allow git sources for
-bitbucket = [""]

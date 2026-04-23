@@ -154,7 +154,7 @@ impl Integer {
         let digits = self.digits;
         let str_value = format!("{:0>digits$}", big_value.to_str_radix(self.radix));
 
-        //encrypt
+        // encrypt
         let ciphertext = self.numeric_alphabet.encrypt(key, tweak, &str_value)?;
         let big_ciphertext = BigUint::from_str_radix(&ciphertext, self.radix).map_err(|e| {
             FPEError::OperationFailed(format!("failed generating the ciphertext value {e}"))

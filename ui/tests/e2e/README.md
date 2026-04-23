@@ -13,6 +13,8 @@ FIPS mode because they exercise algorithms that are not NIST-approved:
 | `covercrypt-flow` | Covercrypt is a non-FIPS algorithm                |
 | `pqc-key-flow`    | ML-KEM, ML-DSA, SLH-DSA are non-FIPS              |
 | `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
+| `fpe`             | FPE-FF1 is a non-FIPS algorithm                   |
+| `tokenize`        | Anonymization endpoints are non-FIPS only          |
 
 In addition, specific individual tests inside otherwise-FIPS-compatible spec files
 are skipped because the underlying algorithm is not FIPS 140-3 approved:
@@ -204,6 +206,27 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 - Error when key ID is missing
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`
+
+## FPE — Format-Preserving Encryption (non-FIPS only)
+
+_Skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`). FPE is feature-gated by `non-fips`._
+
+### fpe
+
+```mermaid
+graph LR
+    A[Navigate all 7 FPE pages] --> B[Create FPE key → UUID]
+    B --> C[Encrypt "1234567890123456" with numeric alphabet]
+    C --> D[Decrypt ciphertext]
+    D --> E{Compare}
+    E -->|Match| F[Pass]
+```
+
+Covers the full FPE-FF1 lifecycle via KMIP:
+
+- Navigation smoke test for all 7 pages (keys/create, keys/export, keys/import, keys/revoke, keys/destroy, encrypt, decrypt)
+- Create FPE key returns a valid UUID
+- Encrypt → decrypt roundtrip: numeric text preserves length, ciphertext differs, decryption recovers original
 
 ## Anonymize (non-FIPS only)
 
