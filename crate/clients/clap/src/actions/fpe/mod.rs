@@ -59,12 +59,12 @@ pub struct FpeArgs {
     #[clap(long = "tweak")]
     pub(crate) tweak: Option<String>,
 
-    /// Read the input from a file instead of stdin.
-    #[clap(long = "input-file")]
+    /// Input file to read from. If not specified, reads from stdin.
+    #[clap(name = "FILE", value_name = "FILE")]
     pub(crate) input_file: Option<PathBuf>,
 
     /// Write the output to a file instead of stdout.
-    #[clap(long = "output-file")]
+    #[clap(long = "output-file", short = 'o')]
     pub(crate) output_file: Option<PathBuf>,
 }
 

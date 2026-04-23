@@ -1,3 +1,5 @@
+use std::fs;
+
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
@@ -8,7 +10,10 @@ use cosmian_kms_client::{
 };
 
 use super::{FpeArgs, write_output_bytes};
-use crate::error::result::{KmsCliResult, KmsCliResultHelper};
+use crate::{
+    actions::console,
+    error::result::{KmsCliResult, KmsCliResultHelper},
+};
 
 /// Decrypt data using AES-256 FF1 format-preserving encryption through KMIP.
 #[derive(Parser, Debug, Default)]
@@ -37,7 +42,24 @@ impl DecryptAction {
         let plaintext = response
             .data
             .with_context(|| "the plaintext returned by KMIP Decrypt is empty")?;
-        write_output_bytes(self.args.output_file.as_ref(), plaintext.as_slice())?;
+
+        if let Some(input_file) = self.args.input_file.as_ref() {
+            let output_path = self
+                .args
+                .output_file
+                .clone()
+                .unwrap_or_else(|| input_file.with_extension("plain"));
+            fs::write(&output_path, plaintext.as_slice())
+                .with_context(|| "failed to write the decrypted file")?;
+            console::Stdout::new(&format!(
+                "The decrypted file is available at {}",
+                output_path.display()
+            ))
+            .write()?;
+        } else {
+            write_output_bytes(self.args.output_file.as_ref(), plaintext.as_slice())?;
+        }
+
         Ok(())
     }
 }
