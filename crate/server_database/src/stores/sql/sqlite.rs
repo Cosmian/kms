@@ -2,6 +2,10 @@
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use async_trait::async_trait;
@@ -41,36 +45,67 @@ macro_rules! get_sqlite_query {
 
 #[derive(Clone)]
 pub(crate) struct SqlitePool {
-    conn: Connection,
+    /// Dedicated connection for write operations (create, update, delete).
+    writer: Connection,
+    /// Pool of connections for read operations (retrieve, find, list).
+    /// `SQLite` WAL mode allows concurrent readers alongside a single writer.
+    readers: Vec<Connection>,
+    /// Round-robin counter for distributing reads across the pool.
+    reader_idx: Arc<AtomicUsize>,
 }
 
 impl SqlitePool {
+    /// Opens `count` connections to the same `SQLite` database and applies
+    /// `PRAGMAs` to each. Returns them in a `Vec`.
+    async fn open_connections(path: &Path, count: usize) -> DbResult<Vec<Connection>> {
+        let mut conns = Vec::with_capacity(count);
+        for _ in 0..count {
+            let conn = Connection::open(path).await?;
+            conn.call(
+                |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute_batch(
+                        "PRAGMA journal_mode=WAL;\
+                         PRAGMA synchronous=NORMAL;\
+                         PRAGMA busy_timeout=5000;",
+                    )
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+            conns.push(conn);
+        }
+        Ok(conns)
+    }
+
     pub(crate) async fn instantiate(
         path: &Path,
         clear_database: bool,
-        _max_connections: Option<u32>,
+        max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        let conn = Connection::open(path).await?;
-        // Enable WAL journal mode and NORMAL synchronous for better write throughput.
-        // WAL mode allows concurrent reads during writes and avoids the two-fsync
-        // overhead of DELETE journal mode.  With synchronous=NORMAL SQLite fsyncs
-        // the WAL file only at checkpoints (background) rather than on every commit,
-        // which reduces per-write latency from ~10 ms to sub-millisecond on typical
-        // Docker / overlayfs environments.
-        // busy_timeout lets writers retry on transient lock conflicts instead of
-        // returning SQLITE_BUSY immediately (important under concurrent load tests).
-        conn.call(
-            |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                c.execute_batch(
-                    "PRAGMA journal_mode=WAL;\
-                 PRAGMA synchronous=NORMAL;\
-                 PRAGMA busy_timeout=5000;",
-                )
-            },
-        )
-        .await
-        .map_err(DbError::from)?;
-        let pool = Self { conn };
+        // Determine reader pool size: default to 2×CPUs capped at 10,
+        // matching the MySQL/PostgreSQL backend pool sizing strategy.
+        let default_readers: usize = num_cpus::get().saturating_mul(2).min(10);
+        let num_readers: usize = max_connections
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(default_readers)
+            .max(1);
+
+        // Open the writer connection
+        let writer_vec = Self::open_connections(path, 1).await?;
+        let writer = writer_vec
+            .into_iter()
+            .next()
+            .ok_or_else(|| DbError::DatabaseError("Failed to open writer connection".to_owned()))?;
+
+        // Open the reader connections
+        let readers = Self::open_connections(path, num_readers).await?;
+
+        let pool = Self {
+            writer,
+            readers,
+            reader_idx: Arc::new(AtomicUsize::new(0)),
+        };
+
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
@@ -79,7 +114,7 @@ impl SqlitePool {
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
-        pool.conn
+        pool.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -107,8 +142,16 @@ impl SqlitePool {
         Ok(pool)
     }
 
+    /// Returns a reader connection using round-robin distribution.
+    fn reader(&self) -> &Connection {
+        let idx = self.reader_idx.fetch_add(1, Ordering::Relaxed) % self.readers.len();
+        #[allow(clippy::indexing_slicing)]
+        // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
+        &self.readers[idx]
+    }
+
     pub(crate) async fn health_check(&self) -> DbResult<()> {
-        self.conn
+        self.writer
             .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
             .await
             .map_err(DbError::from)
@@ -182,7 +225,7 @@ impl ObjectsStore for SqlitePool {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         // If an explicit UID already exists, return a clear error matching CLI expectations
         let exists = self
-            .conn
+            .writer
             .call({
                 let uid_check = uid.clone();
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
@@ -210,7 +253,7 @@ impl ObjectsStore for SqlitePool {
 
         let uid_clone = uid.clone();
         let tags_owned: HashSet<String> = tags.clone();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -241,8 +284,7 @@ impl ObjectsStore for SqlitePool {
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         let select_object = get_sqlite_query!("select-object").to_string();
         let uid_s = uid.to_owned();
-        let res = self
-            .conn
+        let res = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<Option<ObjectWithMetadata>, rusqlite::Error> {
                 let mut stmt = c.prepare(&select_object)?;
                 let row = stmt
@@ -261,7 +303,7 @@ impl ObjectsStore for SqlitePool {
         let sql = get_sqlite_query!("select-tags").to_string();
         let uid_s = uid.to_owned();
         let tags = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -297,7 +339,7 @@ impl ObjectsStore for SqlitePool {
 
         let uid_s = uid.to_owned();
         let tags_owned: Option<HashSet<String>> = tags.cloned();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -324,7 +366,7 @@ impl ObjectsStore for SqlitePool {
         let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-state"));
         let state_s = state.to_string();
         let uid_s = uid.to_owned();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -342,7 +384,7 @@ impl ObjectsStore for SqlitePool {
         let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
         let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
         let uid_s = uid.to_owned();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -365,7 +407,7 @@ impl ObjectsStore for SqlitePool {
         let user_s = user.to_owned();
         let ops_owned: Vec<OwnedOp> = operations.iter().map(OwnedOp::from).collect();
         let v = self
-            .conn
+            .writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -385,7 +427,7 @@ impl ObjectsStore for SqlitePool {
         let uid_s = uid.to_owned();
         let owner_s = owner.to_owned();
         let owned = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -410,7 +452,7 @@ impl ObjectsStore for SqlitePool {
         let tag_list: Vec<String> = tags.iter().cloned().collect();
         let len_val: i64 = i64::try_from(tags.len()).unwrap_or(0);
         let set = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&sql)?;
@@ -452,8 +494,7 @@ impl ObjectsStore for SqlitePool {
         );
         let sql_conversion = replace_dollars_with_qn(&locate.sql);
         let locate_params = locate.params;
-        let rows = self
-            .conn
+        let rows = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql_conversion)?;
                 let values: Vec<rusqlite::types::Value> = locate_params
@@ -500,7 +541,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
         let res: Option<String> = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&select_param)?;
@@ -527,7 +568,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
         let state_json = serde_json::to_string(&state)?;
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -551,7 +592,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
         let res: Option<String> = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
                     let mut stmt = c.prepare(&select_param)?;
@@ -575,7 +616,7 @@ impl Migrate for SqlitePool {
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
         let version_s = version.to_owned();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
@@ -602,7 +643,7 @@ impl PermissionsStore for SqlitePool {
         let sql = get_sqlite_query!("select-objects-access-obtained").to_string();
         let user_s = user.to_owned();
         let list = self
-            .conn
+            .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<
                     HashMap<String, (String, State, HashSet<KmipOperation>)>,
@@ -637,8 +678,7 @@ impl PermissionsStore for SqlitePool {
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
         let sql = get_sqlite_query!("select-rows-read_access-with-object-id").to_string();
         let uid_s = uid.to_owned();
-        let map = self
-            .conn
+        let map = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashMap<String, HashSet<KmipOperation>>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql)?;
                 let mut rows = stmt.query(params_from_iter([&uid_s]))?;
@@ -667,7 +707,7 @@ impl PermissionsStore for SqlitePool {
         let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-row-read_access"));
         let uid_s = uid.to_owned();
         let user_s = user.to_owned();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let mut stmt = c.prepare(&sql_select)?;
@@ -708,7 +748,7 @@ impl PermissionsStore for SqlitePool {
         let uid_s = uid.to_owned();
         let user_s = user.to_owned();
         let operations = operations.clone();
-        self.conn
+        self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let mut stmt = c.prepare(&sql_select)?;
@@ -757,7 +797,7 @@ impl SqlitePool {
         let sql = get_sqlite_query!("select-user-accesses-for-object").to_string();
         let uid_s = uid.to_owned();
         let user_s = userid.to_owned();
-        self.conn
+        self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashSet<KmipOperation>, rusqlite::Error> {
                 let mut stmt = c.prepare(&sql)?;
                 let res = stmt
