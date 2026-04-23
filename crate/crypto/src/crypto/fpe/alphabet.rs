@@ -1,9 +1,12 @@
-use super::FPEError;
-use super::KEY_LENGTH;
-use super::ff1::{FF1h, FlexibleNumeralString};
+use std::{collections::HashMap, fmt::Display};
+
 use aes::Aes256;
 use itertools::Itertools;
-use std::{collections::HashMap, fmt::Display};
+
+use super::{
+    FPEError, KEY_LENGTH,
+    ff1::{FF1h, FlexibleNumeralString},
+};
 
 /// The recommended threshold according to NIST standards
 pub(crate) const RECOMMENDED_THRESHOLD: usize = 1_000_000;
@@ -25,7 +28,6 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
 ///
 /// Each variant corresponds to a predefined character set. To build a custom
 /// alphabet use [`Alphabet::try_from`] or [`Alphabet::from_preset_or_custom`].
-//
 // DEV NOTE (not shown in docs): When adding or renaming a preset, keep
 // PRESET_NAMES array below (canonical name used by the CLI) in sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +60,22 @@ pub enum AlphabetPreset {
 }
 
 impl AlphabetPreset {
+    /// All preset names, in definition order.
+    pub const PRESET_NAMES: &'static [&'static str] = &[
+        "numeric",
+        "hexadecimal",
+        "alpha_lower",
+        "alpha_upper",
+        "alpha",
+        "alpha_numeric",
+        "chinese",
+        "latin1sup",
+        "latin1sup_alphanum",
+        "utf",
+        "ascii_printable",
+        "base64",
+    ];
+
     /// Canonical name used in the HTTP API and on the command line.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -76,22 +94,6 @@ impl AlphabetPreset {
             Self::Base64 => "base64",
         }
     }
-
-    /// All preset names, in definition order.
-    pub const PRESET_NAMES: &'static [&'static str] = &[
-        "numeric",
-        "hexadecimal",
-        "alpha_lower",
-        "alpha_upper",
-        "alpha",
-        "alpha_numeric",
-        "chinese",
-        "latin1sup",
-        "latin1sup_alphanum",
-        "utf",
-        "ascii_printable",
-        "base64",
-    ];
 
     /// Returns the preset matching `s`, or `None` if `s` is not a known preset name.
     #[must_use]
@@ -457,46 +459,57 @@ impl Alphabet {
     pub fn numeric() -> Self {
         Self::from(AlphabetPreset::Numeric)
     }
+
     #[must_use]
     pub fn hexadecimal() -> Self {
         Self::from(AlphabetPreset::Hexadecimal)
     }
+
     #[must_use]
     pub fn alpha_lower() -> Self {
         Self::from(AlphabetPreset::AlphaLower)
     }
+
     #[must_use]
     pub fn alpha_upper() -> Self {
         Self::from(AlphabetPreset::AlphaUpper)
     }
+
     #[must_use]
     pub fn alpha() -> Self {
         Self::from(AlphabetPreset::Alpha)
     }
+
     #[must_use]
     pub fn alpha_numeric() -> Self {
         Self::from(AlphabetPreset::AlphaNumeric)
     }
+
     #[must_use]
     pub fn chinese() -> Self {
         Self::from(AlphabetPreset::Chinese)
     }
+
     #[must_use]
     pub fn latin1sup() -> Self {
         Self::from(AlphabetPreset::Latin1Sup)
     }
+
     #[must_use]
     pub fn latin1sup_alphanum() -> Self {
         Self::from(AlphabetPreset::Latin1SupAlphanum)
     }
+
     #[must_use]
     pub fn utf() -> Self {
         Self::from(AlphabetPreset::Utf)
     }
+
     #[must_use]
     pub fn ascii_printable() -> Self {
         Self::from(AlphabetPreset::AsciiPrintable)
     }
+
     #[must_use]
     pub fn base64() -> Self {
         Self::from(AlphabetPreset::Base64)

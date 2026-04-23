@@ -137,6 +137,27 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "fpe",
+        label: "FPE",
+        icon: <LockOutlined />,
+        collapsedlabel: "FPE",
+        children: [
+            {
+                key: "fpe/keys",
+                label: "Keys",
+                children: [
+                    { key: "fpe/keys/create", label: "Create" },
+                    { key: "fpe/keys/export", label: "Export" },
+                    { key: "fpe/keys/import", label: "Import" },
+                    { key: "fpe/keys/revoke", label: "Revoke" },
+                    { key: "fpe/keys/destroy", label: "Destroy" },
+                ],
+            },
+            { key: "fpe/encrypt", label: "Encrypt" },
+            { key: "fpe/decrypt", label: "Decrypt" },
+        ],
+    },
+    {
         key: "tokenize",
         label: "Anonymize",
         icon: <EyeInvisibleOutlined />,
@@ -294,9 +315,9 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
 
     let menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
 
-    // Hide PQC, MAC, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
+    // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "tokenize");
+        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last

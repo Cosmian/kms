@@ -16,11 +16,12 @@ Commands:
   aws            Support for AWS specific interactions
   bench          Run benchmarks using criterion for statistical analysis.
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  fpe            Manage FPE keys and perform FPE encryption/decryption through KMIP Encrypt/Decrypt
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
+  tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
-  fpe            Manage FPE-FF1 keys. Encrypt and decrypt text, integer, and floating-point values
   google         Manage google elements. Handle key pairs and identities from Gmail API
   locate         Locate cryptographic objects inside the KMS
   login          Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
@@ -105,7 +106,3 @@ Options:
   -V, --version
           Print version
 ```
-
-For format-preserving encryption, use `ckms fpe keys create` to generate an FF1 key, then
-`ckms fpe encrypt` and `ckms fpe decrypt` to process text, integer, or floating-point values
-over the KMIP `Encrypt` and `Decrypt` operations.

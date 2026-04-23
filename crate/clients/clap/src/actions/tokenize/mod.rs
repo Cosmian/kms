@@ -1,8 +1,9 @@
-use crate::error::result::KmsCliResult;
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::error::result::KmsCliResult;
 
 pub mod aggregate_date;
 pub mod aggregate_number;
