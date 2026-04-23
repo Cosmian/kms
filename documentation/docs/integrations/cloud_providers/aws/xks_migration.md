@@ -67,6 +67,18 @@ Expected output:
 "DISCONNECTED"
 ```
 
+Alternatively, from the AWS Management Console, open the key store and click **Key store actions → Disconnect**:
+
+![Select Disconnect in Key store actions menu](./xks-disconnect.png)
+
+Type `disconnect` in the confirmation dialog and click **Disconnect key store**:
+
+![Confirm disconnection](./xks-confirm-disconnect.png)
+
+A success banner confirms the key store is now disconnected:
+
+![Key store successfully disconnected](./xks-disconnected.png)
+
 ---
 
 ## Step 3 — Configure Server B
@@ -106,6 +118,22 @@ aws kms update-custom-key-store \
 
 > If you are keeping the same SigV4 credentials, the
 > `--xks-proxy-authentication-credential` argument can be omitted.
+
+Alternatively, from the AWS Management Console, click **Key store actions → Edit**:
+
+![Select Edit in Key store actions menu](./xks-edit.png)
+
+Update the **Proxy URI endpoint** field with Server B's hostname, then click **Update external key store**:
+
+![Update the proxy URI endpoint](./xks-update-endpoint.png)
+
+Check the acknowledgement checkbox and confirm:
+
+![Confirm the update](./xks-confirm-update.png)
+
+A success banner confirms the endpoint has been updated:
+
+![Key store successfully updated](./xks-updated.png)
 
 ---
 
