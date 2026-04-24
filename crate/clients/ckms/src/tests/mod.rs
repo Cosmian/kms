@@ -40,7 +40,6 @@ mod login_tests;
 mod mac;
 #[cfg(feature = "non-fips")]
 mod pqc;
-mod rest_crypto;
 mod rsa;
 mod secret_data;
 mod shared;

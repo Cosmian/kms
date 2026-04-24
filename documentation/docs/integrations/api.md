@@ -19,9 +19,3 @@ of this manual for details. When authenticating using JWT, an HTTP `Authorizatio
 passed with the JWT token as a bearer token.
 
 For example: `Authorization: Bearer <JWT_TOKEN>`
-
-## REST Native Crypto API
-
-In addition to the KMIP protocol, the server exposes a lightweight JOSE-compatible REST API
-under `/v1/crypto` for encrypt, decrypt, sign, verify, and MAC operations.
-See the [REST Native Crypto API](rest_crypto_api.md) page for full documentation.
