@@ -256,14 +256,6 @@ pub(crate) async fn test_app(
 
     app = app.service(google_cse_scope);
 
-    let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler);
-    app = app.service(crypto_scope);
-
     test::init_service(app).await
 }
 
@@ -326,14 +318,6 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::google_cse::delegate);
 
     app = app.service(google_cse_scope);
-
-    let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler);
-    app = app.service(crypto_scope);
 
     test::init_service(app).await
 }

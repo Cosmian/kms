@@ -60,7 +60,6 @@ pub(crate) use hash::hash_operation;
 pub(crate) use import::import;
 pub(crate) use locate::locate;
 pub(crate) use mac::mac;
-pub(crate) use mac::mac_verify;
 pub(crate) use message::message;
 pub(crate) use modify_attribute::modify_attribute;
 pub(crate) use pkcs11::pkcs11;
