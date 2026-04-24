@@ -850,7 +850,6 @@ dependencies = [
  "openssl",
  "predicates",
  "regex",
- "reqwest",
  "serde",
  "serde_json",
  "strum",
