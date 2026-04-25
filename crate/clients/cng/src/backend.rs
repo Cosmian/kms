@@ -18,8 +18,8 @@ use ckms::{
                 kmip_attributes::Attributes,
                 kmip_objects::Object,
                 kmip_operations::{
-                    CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Locate, Revoke,
-                    Sign, SignatureVerify,
+                    CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Locate, Revoke, Sign,
+                    SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicDomainParameters,
@@ -42,8 +42,9 @@ use crate::error::{KspError, KspResult};
 pub const CNG_KSP_TAG: &str = "cng-ksp";
 
 /// Tags used to query key by CNG name.
+#[must_use]
 pub fn cng_key_tag(name: &str) -> String {
-    format!("{}::{name}", CNG_KSP_TAG)
+    format!("{CNG_KSP_TAG}::{name}")
 }
 
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
@@ -60,8 +61,7 @@ static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLo
 /// Mirrors `get_kms_client_with_path` in the PKCS#11 provider.
 pub fn get_kms_client(explicit_conf: Option<PathBuf>) -> KspResult<KmsClient> {
     let config = ClientConfig::load(explicit_conf)
-        .map_err(|e| KspError::Backend(format!("Failed to load ckms.toml: {e}")))?
-        ;
+        .map_err(|e| KspError::Backend(format!("Failed to load ckms.toml: {e}")))?;
     KmsClient::new_with_config(config.kms_config)
         .map_err(|e: KmsClientError| KspError::Backend(format!("Failed to create KMS client: {e}")))
 }
@@ -89,10 +89,9 @@ pub fn locate_key_by_name(client: &KmsClient, name: &str) -> KspResult<String> {
     })?;
 
     let ids = resp.unique_identifier.unwrap_or_default();
-    match ids.first() {
-        Some(id) => Ok(id.to_string()),
-        None => Err(KspError::KeyNotFound(name.to_owned())),
-    }
+    ids.first()
+        .map(ToString::to_string)
+        .ok_or_else(|| KspError::KeyNotFound(name.to_owned()))
 }
 
 /// List all CNG KSP key names and their KMS UUIDs.
@@ -434,14 +433,16 @@ pub fn create_rsa_key_pair(
     };
 
     RUNTIME.block_on(async {
-        let mut attrs = Attributes::default();
-        attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-        attrs.cryptographic_length = Some(i32::try_from(bit_length).unwrap_or(2048));
-        attrs.cryptographic_usage_mask = Some(usage);
-        // Set activation_date to the past so the key is created in Active state
-        // (without it the server creates keys in PreActive state, which cannot be used).
-        attrs.activation_date =
-            Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?);
+        let attrs = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            cryptographic_length: Some(i32::try_from(bit_length).unwrap_or(2048)),
+            cryptographic_usage_mask: Some(usage),
+            // Set activation_date to the past so the key is created in Active state
+            // (without it the server creates keys in PreActive state, which cannot be used).
+            activation_date: Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?),
+            ..Default::default()
+        };
+        let mut attrs = attrs;
         attrs
             .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
@@ -472,18 +473,21 @@ pub fn create_ec_key_pair(
     let tag = cng_key_tag(key_name);
 
     RUNTIME.block_on(async {
-        let mut attrs = Attributes::default();
-        attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::EC);
-        attrs.cryptographic_domain_parameters = Some(CryptographicDomainParameters {
-            recommended_curve: Some(curve),
+        let attrs = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+            cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                recommended_curve: Some(curve),
+                ..Default::default()
+            }),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+            ),
+            // Set activation_date to the past so the key is created in Active state
+            // (without it the server creates keys in PreActive state, which cannot be used).
+            activation_date: Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?),
             ..Default::default()
-        });
-        attrs.cryptographic_usage_mask =
-            Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
-        // Set activation_date to the past so the key is created in Active state
-        // (without it the server creates keys in PreActive state, which cannot be used).
-        attrs.activation_date =
-            Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?);
+        };
+        let mut attrs = attrs;
         attrs
             .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
@@ -506,7 +510,7 @@ pub fn create_ec_key_pair(
 /// Extract raw key bytes (SPKI DER) from a KMS `Object`.
 fn key_bytes_from_object(obj: &Object) -> KspResult<Vec<u8>> {
     obj.key_block()
-        .and_then(|kb| kb.key_bytes())
+        .and_then(ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
         .map(|z| z.to_vec())
         .map_err(|e| KspError::Backend(e.to_string()))
 }

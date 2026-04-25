@@ -21,12 +21,17 @@ fn main() {
     };
 
     // Look for the DLL in the target directory.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    let ws_root = std::path::Path::new(&manifest_dir)
+    let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") else {
+        return;
+    };
+    let Some(ws_root) = std::path::Path::new(&manifest_dir)
         .parent() // clients/
         .and_then(|p| p.parent()) // crate/
-        .and_then(|p| p.parent()) // workspace root
-        .expect("cannot find workspace root");
+        .and_then(|p| p.parent())
+    // workspace root
+    else {
+        return;
+    };
     let dll_path = ws_root
         .join("target")
         .join(profile)

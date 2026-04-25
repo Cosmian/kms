@@ -112,7 +112,7 @@ pub enum KeyState {
 // ─── Key context ─────────────────────────────────────────────────────────────
 
 /// Magic number stored in `CngKeyCtx` so we can validate handles before use.
-pub const KEY_CTX_MAGIC: u32 = 0xC0_5_1A_AC; // "COSMIANAC"
+pub const KEY_CTX_MAGIC: u32 = 0x0C05_1AAC; // "COSMIANAC"
 
 /// Heap-allocated key context.  Its address is used as `NCRYPT_KEY_HANDLE`.
 pub struct CngKeyCtx {
@@ -126,6 +126,8 @@ pub struct CngKeyCtx {
 
 impl CngKeyCtx {
     /// Create a new context for a key that is already persisted in the KMS.
+    // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
+    #[allow(clippy::unnecessary_box_returns)]
     pub fn new_persisted(
         client: Arc<KmsClient>,
         priv_uid: String,
@@ -135,6 +137,7 @@ impl CngKeyCtx {
         usage: KeyUsage,
         export_policy: ExportPolicy,
     ) -> Box<Self> {
+        #[allow(clippy::box_default)]
         Box::new(Self {
             magic: KEY_CTX_MAGIC,
             client,
@@ -150,7 +153,10 @@ impl CngKeyCtx {
     }
 
     /// Create a new context for a key that is pending creation.
+    // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
+    #[allow(clippy::unnecessary_box_returns)]
     pub fn new_pending(client: Arc<KmsClient>, pending: PendingCreation) -> Box<Self> {
+        #[allow(clippy::box_default)]
         Box::new(Self {
             magic: KEY_CTX_MAGIC,
             client,
@@ -219,31 +225,29 @@ impl CngKeyCtx {
 
     pub fn key_name(&self) -> &str {
         match &self.state {
-            KeyState::Persisted { key_name, .. } | KeyState::Pending(PendingCreation { key_name, .. }) => key_name.as_str(),
+            KeyState::Persisted { key_name, .. }
+            | KeyState::Pending(PendingCreation { key_name, .. }) => key_name.as_str(),
         }
     }
 
-    pub fn algorithm(&self) -> KspResult<&KeyAlgorithm> {
+    pub fn algorithm(&self) -> &KeyAlgorithm {
         match &self.state {
-            KeyState::Persisted { algorithm, .. } => Ok(algorithm),
-            KeyState::Pending(PendingCreation { algorithm, .. }) => Ok(algorithm),
+            KeyState::Persisted { algorithm, .. }
+            | KeyState::Pending(PendingCreation { algorithm, .. }) => algorithm,
         }
     }
 
     pub fn usage(&self) -> KeyUsage {
         match &self.state {
-            KeyState::Persisted { usage, .. } | KeyState::Pending(PendingCreation { usage, .. }) => *usage,
+            KeyState::Persisted { usage, .. }
+            | KeyState::Pending(PendingCreation { usage, .. }) => *usage,
         }
     }
 
     pub fn export_policy(&self) -> ExportPolicy {
         match &self.state {
-            KeyState::Persisted {
-                export_policy, ..
-            }
-            | KeyState::Pending(PendingCreation {
-                export_policy, ..
-            }) => *export_policy,
+            KeyState::Persisted { export_policy, .. }
+            | KeyState::Pending(PendingCreation { export_policy, .. }) => *export_policy,
         }
     }
 
