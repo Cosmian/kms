@@ -21,7 +21,7 @@ pub enum CngCommands {
     /// Requires elevated (Administrator) privileges.
     ///
     /// Example:
-    ///   ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
+    ///   `ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"`
     Register {
         /// Full path to the `cosmian_kms_cng_ksp.dll` file.
         #[arg(long, short = 'd')]
@@ -62,6 +62,7 @@ const CNG_KSP_TAG: &str = "cng-ksp";
 // ─── Register ─────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
+#[allow(clippy::print_stdout)]
 fn register(dll: &PathBuf) -> KmsCliResult<()> {
     let dll_str = dll
         .to_str()
@@ -88,6 +89,7 @@ fn register(_dll: &PathBuf) -> KmsCliResult<()> {
 // ─── Unregister ───────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
+#[allow(clippy::print_stdout)]
 fn unregister() -> KmsCliResult<()> {
     delete_ksp_registry().map_err(KmsCliError::Default)?;
     println!("Cosmian KMS CNG KSP unregistered successfully.");
@@ -104,6 +106,7 @@ fn unregister() -> KmsCliResult<()> {
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
+#[allow(clippy::print_stdout)]
 fn status() -> KmsCliResult<()> {
     if ksp_is_registered() {
         println!("Cosmian KMS CNG KSP: REGISTERED");
@@ -114,6 +117,7 @@ fn status() -> KmsCliResult<()> {
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps, clippy::print_stdout)]
 fn status() -> KmsCliResult<()> {
     println!("CNG KSP status is only available on Windows");
     Ok(())
@@ -121,6 +125,7 @@ fn status() -> KmsCliResult<()> {
 
 // ─── List-keys ────────────────────────────────────────────────────────────────
 
+#[allow(clippy::print_stdout)]
 async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResult<()> {
     use cosmian_kmip::kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_operations::Locate,
@@ -154,9 +159,12 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
 
 // ─── Windows Registry helpers ─────────────────────────────────────────────────
 
+#[cfg(windows)]
 const KSP_PROVIDER_NAME: &str = "Cosmian KMS Key Storage Provider";
+#[cfg(windows)]
 const KSP_REGISTRY_PATH: &str = r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
-/// NCRYPT_IMPL_SOFTWARE_FLAG
+/// `NCRYPT_IMPL_SOFTWARE_FLAG`
+#[cfg(windows)]
 const KSP_CAPABILITIES: u32 = 2_u32;
 
 #[cfg(windows)]

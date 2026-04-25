@@ -182,13 +182,16 @@ fn der_read_tlv(data: &[u8]) -> KspResult<(&[u8], &[u8])> {
     if data.len() < 2 {
         return Err(KspError::InvalidParameter("DER too short".to_owned()));
     }
-    let _tag = data[0];
+    let tag = data[0];
+    let _ = tag;
     let (len, hdr) = if data[1] & 0x80 == 0 {
         (usize::from(data[1]), 2_usize)
     } else {
         let n = usize::from(data[1] & 0x7F);
         if data.len() < 2 + n {
-            return Err(KspError::InvalidParameter("DER length truncated".to_owned()));
+            return Err(KspError::InvalidParameter(
+                "DER length truncated".to_owned(),
+            ));
         }
         let mut l = 0_usize;
         for b in data.iter().skip(2).take(n) {
@@ -248,7 +251,9 @@ fn parse_pkcs1_public_der(der: &[u8]) -> KspResult<(Vec<u8>, Vec<u8>)> {
 fn spki_inner_key(spki: &[u8]) -> KspResult<&[u8]> {
     // SEQUENCE (outer SPKI)
     if spki.first() != Some(&0x30) {
-        return Err(KspError::InvalidParameter("Expected SPKI SEQUENCE".to_owned()));
+        return Err(KspError::InvalidParameter(
+            "Expected SPKI SEQUENCE".to_owned(),
+        ));
     }
     let (spki_body, _) = der_read_tlv(spki)?;
     // First element is AlgorithmIdentifier SEQUENCE — skip it
@@ -274,7 +279,9 @@ const OID_SECP521R1: &[u8] = &[0x2B, 0x81, 0x04, 0x00, 0x23];
 /// Extract the EC curve and uncompressed point from a SubjectPublicKeyInfo DER.
 fn spki_ec_inner_key(spki: &[u8]) -> KspResult<(EcCurve, &[u8])> {
     if spki.first() != Some(&0x30) {
-        return Err(KspError::InvalidParameter("Expected SPKI SEQUENCE".to_owned()));
+        return Err(KspError::InvalidParameter(
+            "Expected SPKI SEQUENCE".to_owned(),
+        ));
     }
     let (spki_body, _) = der_read_tlv(spki)?;
 

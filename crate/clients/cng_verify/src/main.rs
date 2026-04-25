@@ -1,13 +1,13 @@
 //! # Cosmian CNG KSP Verification Tool
 //!
 //! Standalone binary that loads `cosmian_kms_cng_ksp.dll` at runtime and
-//! exercises the KSP through the standard Windows NCrypt API surface — exactly
+//! exercises the KSP through the standard Windows `NCrypt` API surface — exactly
 //! like any external CNG caller would.
 //!
 //! The tool dynamically loads the DLL, obtains the
 //! `NCRYPT_KEY_STORAGE_FUNCTION_TABLE` via `GetKeyStorageInterface`, and calls
-//! each NCrypt function pointer (OpenProvider, CreatePersistedKey, FinalizeKey,
-//! SignHash, ExportKey, DeleteKey, …).
+//! each `NCrypt` function pointer (`OpenProvider`, `CreatePersistedKey`, `FinalizeKey`,
+//! `SignHash`, `ExportKey`, `DeleteKey`, …).
 //!
 //! ## Usage
 //!
@@ -38,18 +38,12 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(windows)]
 mod win {
-    use std::{
-        ffi::OsStr,
-        os::windows::ffi::OsStrExt,
-        process::ExitCode,
-        ptr,
-    };
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, process::ExitCode, ptr};
 
     use windows_sys::Win32::{
         Foundation::{FreeLibrary, HMODULE},
         Security::Cryptography::{
-            BCRYPT_ECCKEY_BLOB, BCRYPT_RSAKEY_BLOB,
-            NCRYPT_KEY_STORAGE_FUNCTION_TABLE,
+            BCRYPT_ECCKEY_BLOB, BCRYPT_RSAKEY_BLOB, NCRYPT_KEY_STORAGE_FUNCTION_TABLE,
         },
         System::LibraryLoader::{GetProcAddress, LoadLibraryW},
     };
@@ -97,7 +91,10 @@ mod win {
 
     /// Encode a Rust string as a null-terminated UTF-16 wide string.
     fn to_wide(s: &str) -> Vec<u16> {
-        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     }
 
     /// Well-known algorithm names as wide strings.
@@ -165,9 +162,7 @@ mod win {
             let status = unsafe { get_interface(provider_name.as_ptr(), &mut table_ptr, 0) };
             if status != ERROR_SUCCESS || table_ptr.is_null() {
                 unsafe { FreeLibrary(handle) };
-                return Err(format!(
-                    "GetKeyStorageInterface returned 0x{status:08X}"
-                ));
+                return Err(format!("GetKeyStorageInterface returned 0x{status:08X}"));
             }
 
             let table = unsafe { &*table_ptr };
@@ -216,7 +211,14 @@ mod win {
         let wide_name = to_wide(name);
         let mut h_key: usize = 0;
         let status = unsafe {
-            create_fn(h_provider, &mut h_key, alg.as_ptr(), wide_name.as_ptr(), 0, 0)
+            create_fn(
+                h_provider,
+                &mut h_key,
+                alg.as_ptr(),
+                wide_name.as_ptr(),
+                0,
+                0,
+            )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("CreatePersistedKey({name}): 0x{status:08X}"));
@@ -237,16 +239,7 @@ mod win {
             .SetKeyProperty
             .ok_or("SetKeyProperty not in table")?;
         let bytes = value.to_le_bytes();
-        let status = unsafe {
-            set_fn(
-                h_provider,
-                h_key,
-                prop_name.as_ptr(),
-                bytes.as_ptr(),
-                4,
-                0,
-            )
-        };
+        let status = unsafe { set_fn(h_provider, h_key, prop_name.as_ptr(), bytes.as_ptr(), 4, 0) };
         if status != ERROR_SUCCESS {
             return Err(format!("SetKeyProperty: 0x{status:08X}"));
         }
@@ -280,13 +273,13 @@ mod win {
             export_fn(
                 h_provider,
                 h_key,
-                0,                    // h_export_key (unused)
+                0, // h_export_key (unused)
                 blob_type_w.as_ptr(),
-                ptr::null(),          // pParameterList
-                ptr::null_mut(),      // pb_output (null for size query)
-                0,                    // cb_output
+                ptr::null(),     // pParameterList
+                ptr::null_mut(), // pb_output (null for size query)
+                0,               // cb_output
                 &mut cb_result,
-                0,                    // flags
+                0, // flags
             )
         };
         if status != ERROR_SUCCESS || cb_result == 0 {
@@ -747,10 +740,7 @@ mod win {
         if ciphertext.is_empty() {
             return Err("RSA OAEP ciphertext is empty".to_owned());
         }
-        step_ok(&format!(
-            "RSA OAEP encrypt OK ({} bytes)",
-            ciphertext.len()
-        ));
+        step_ok(&format!("RSA OAEP encrypt OK ({} bytes)", ciphertext.len()));
 
         let recovered = decrypt_oaep(dll, h_provider, h_key, &ciphertext)?;
         if recovered != plaintext {
@@ -951,9 +941,15 @@ mod win {
             ("RSA key pair + sign + export + lookup", verify_rsa_key_pair),
             ("RSA encrypt / decrypt (OAEP)", verify_rsa_encrypt_decrypt),
             ("RSA-PSS sign", verify_rsa_pss_sign),
-            ("RSA signature verify (PKCS1v15)", verify_rsa_signature_verify),
+            (
+                "RSA signature verify (PKCS1v15)",
+                verify_rsa_signature_verify,
+            ),
             ("EC P-256 key pair + sign + export", verify_ec_key_pair),
-            ("ECDSA signature verify (P-256)", verify_ecdsa_signature_verify),
+            (
+                "ECDSA signature verify (P-256)",
+                verify_ecdsa_signature_verify,
+            ),
             ("EC P-384 key pair + sign", verify_ec_p384),
             ("EC P-521 key pair + export", verify_ec_p521),
             ("DeleteKey + verify gone", verify_destroy_and_lookup),
@@ -1001,9 +997,7 @@ mod win {
             }
         }
 
-        Err(
-            "Could not find cosmian_kms_cng_ksp.dll. Use --dll <path> to specify.".to_owned(),
-        )
+        Err("Could not find cosmian_kms_cng_ksp.dll. Use --dll <path> to specify.".to_owned())
     }
 
     // ── Entry point ──────────────────────────────────────────────────────
@@ -1099,9 +1093,7 @@ mod tests {
         let dir = std::env::temp_dir().join("cosmian_cng_verify_test");
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("ckms.toml");
-        let content = format!(
-            "[http_config]\nserver_url = \"http://localhost:{port}\"\n"
-        );
+        let content = format!("[http_config]\nserver_url = \"http://localhost:{port}\"\n");
         std::fs::write(&path, content).expect("write ckms.toml");
         path
     }
@@ -1110,8 +1102,7 @@ mod tests {
     fn verify_all() {
         // Start in-process KMS server
         let rt = tokio::runtime::Runtime::new().expect("failed to create setup runtime");
-        let ctx =
-            rt.block_on(async { test_kms_server::start_default_test_kms_server().await });
+        let ctx = rt.block_on(async { test_kms_server::start_default_test_kms_server().await });
 
         // Write a ckms.toml pointing at the test server and tell the DLL where it is
         let config_path = write_test_config(ctx.server_port);

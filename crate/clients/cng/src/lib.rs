@@ -6,7 +6,17 @@
     clippy::similar_names,
     clippy::cargo_common_metadata,
     clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate
+    clippy::redundant_pub_crate,
+    // Windows HRESULT constants use `u32 as i32` casts by convention
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    // CNG blob parsing requires direct slice indexing
+    clippy::indexing_slicing,
+    clippy::missing_asserts_for_indexing,
+    // Windows API names (NCrypt, BCRYPT_, …) in doc comments
+    clippy::doc_markdown,
+    // Many small helpers could technically be const fn
+    clippy::missing_const_for_fn,
 )]
 //! # Cosmian KMS CNG Key Storage Provider (KSP)
 //!
@@ -33,7 +43,9 @@
 //! ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
 //! ```
 
-use std::{path::PathBuf, ptr::addr_of_mut};
+use std::path::PathBuf;
+#[cfg(windows)]
+use std::ptr::addr_of_mut;
 
 pub mod backend;
 mod blob;
@@ -105,8 +117,8 @@ pub(crate) fn dll_directory() -> Option<PathBuf> {
 fn initialize_logging(log_home: Option<String>) {
     use cosmian_logger::reexport::tracing_subscriber::{EnvFilter, fmt};
 
-    let level = std::env::var("COSMIAN_CNG_KSP_LOGGING_LEVEL")
-        .unwrap_or_else(|_| "info".to_owned());
+    let level =
+        std::env::var("COSMIAN_CNG_KSP_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
     let filter = EnvFilter::try_new(&level).unwrap_or_else(|_| EnvFilter::new("info"));
 
     // Write to a log file when given a log_home directory.
@@ -155,9 +167,7 @@ pub unsafe extern "system" fn GetKeyStorageInterface(
     }
 
     let dll_dir = dll_directory();
-    let log_home = dll_dir
-        .as_deref()
-        .map(|d| d.to_string_lossy().into_owned());
+    let log_home = dll_dir.as_deref().map(|d| d.to_string_lossy().into_owned());
     initialize_logging(log_home);
 
     cosmian_logger::debug!("CNG KSP GetKeyStorageInterface called");
@@ -171,6 +181,8 @@ pub unsafe extern "system" fn GetKeyStorageInterface(
 /// Stub for non-Windows builds so the crate compiles cross-platform in CI.
 #[cfg(not(windows))]
 #[unsafe(no_mangle)]
+/// # Safety
+/// This is a C ABI entry point called by Windows CNG.
 pub unsafe extern "C" fn GetKeyStorageInterface() -> i32 {
     crate::error::NTE_NOT_SUPPORTED
 }
