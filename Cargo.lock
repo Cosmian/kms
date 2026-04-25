@@ -1222,11 +1222,10 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cng_ksp"
-version = "5.21.0"
+version = "5.22.0"
 dependencies = [
  "bitflags",
  "ckms",
- "cosmian_config_utils",
  "cosmian_logger",
  "serial_test",
  "test_kms_server",
@@ -1239,7 +1238,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cng_ksp_verify"
-version = "5.21.0"
+version = "5.22.0"
 dependencies = [
  "cosmian_logger",
  "test_kms_server",
