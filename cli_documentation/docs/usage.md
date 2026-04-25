@@ -18,6 +18,7 @@ Commands:
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+  cng            Manage the Windows CNG Key Storage Provider (KSP)
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
   google         Manage google elements. Handle key pairs and identities from Gmail API

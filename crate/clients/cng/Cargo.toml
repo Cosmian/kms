@@ -27,11 +27,8 @@ non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 bitflags = { workspace = true }
 ckms = { path = "../ckms", version = "5.20.1" }
 cosmian_logger = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { version = "=1.11.1", features = ["v4"] }
 zeroize = { workspace = true }
 

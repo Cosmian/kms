@@ -12,20 +12,22 @@ use std::path::Path;
 use cosmian_logger::debug;
 #[cfg(windows)]
 use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ,
-    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW, RegSetValueExW,
-    REG_OPTION_NON_VOLATILE,
+    HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WRITE, REG_DWORD,
+    REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW,
+    RegSetValueExW,
 };
 
+#[cfg(windows)]
 use crate::provider::KSP_PROVIDER_NAME;
 
 /// Registry path to all CNG KSP providers (without trailing `\`).
-const KSP_REGISTRY_PATH: &str =
-    r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
+#[cfg(windows)]
+const KSP_REGISTRY_PATH: &str = r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
 
 /// Registry flag: NCRYPT_IMPL_HARDWARE_FLAG(1) | NCRYPT_IMPL_SOFTWARE_FLAG(2)
 /// We advertise software-only.
-const KSP_CAPABILITIES: u32 = 2u32; // NCRYPT_IMPL_SOFTWARE_FLAG
+#[cfg(windows)]
+const KSP_CAPABILITIES: u32 = 2_u32; // NCRYPT_IMPL_SOFTWARE_FLAG
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -166,7 +168,7 @@ pub fn is_ksp_registered() -> bool {
 // ─── Registry helpers for non-Windows builds (stubs) ─────────────────────────
 
 #[cfg(not(windows))]
-pub fn register_ksp(_dll_path: &Path) -> Result<(), String> {
+pub fn register_ksp(_dll_path: &std::path::Path) -> Result<(), String> {
     Err("KSP registration is only supported on Windows".to_owned())
 }
 
@@ -176,6 +178,7 @@ pub fn unregister_ksp() -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
+#[must_use]
 pub fn is_ksp_registered() -> bool {
     false
 }
@@ -199,7 +202,5 @@ fn str_to_wide(s: &str) -> Vec<u16> {
 #[cfg(windows)]
 #[allow(unsafe_code)]
 fn wide_as_bytes(wide: &[u16]) -> Vec<u8> {
-    wide.iter()
-        .flat_map(|c| c.to_le_bytes())
-        .collect()
+    wide.iter().flat_map(|c| c.to_le_bytes()).collect()
 }

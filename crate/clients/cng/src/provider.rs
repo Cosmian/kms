@@ -18,10 +18,8 @@ use std::{path::PathBuf, sync::Arc};
 use cosmian_logger::error;
 #[cfg(windows)]
 use windows_sys::Win32::Security::Cryptography::{
-    BCryptBufferDesc,
-    NCryptAlgorithmName, NCryptKeyName,
-    NCRYPT_IMPL_SOFTWARE_FLAG,
-    NCRYPT_ALLOW_EXPORT_FLAG, NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG,
+    BCryptBufferDesc, NCRYPT_ALLOW_EXPORT_FLAG, NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG,
+    NCRYPT_IMPL_SOFTWARE_FLAG, NCryptAlgorithmName, NCryptKeyName,
 };
 
 // NCrypt constants not provided by windows-sys — values from ncryptprovider.h
@@ -90,9 +88,9 @@ struct BcryptOaepPaddingInfo {
 use crate::{
     backend,
     error::{
-        KspError, KspResult, SecurityStatus, ERROR_SUCCESS, NTE_BAD_ALGID,
-        NTE_BUFFER_TOO_SMALL, NTE_FAIL, NTE_INVALID_HANDLE, NTE_INVALID_PARAMETER, NTE_NOT_SUPPORTED,
-        NTE_NO_KEY, NTE_PERM, STATUS_SUCCESS_VAL,
+        ERROR_SUCCESS, KspError, KspResult, NTE_BAD_ALGID, NTE_BUFFER_TOO_SMALL, NTE_FAIL,
+        NTE_INVALID_HANDLE, NTE_INVALID_PARAMETER, NTE_NO_KEY, NTE_NOT_SUPPORTED, NTE_PERM,
+        STATUS_SUCCESS_VAL, SecurityStatus,
     },
     key::{CngKeyCtx, ExportPolicy, KeyAlgorithm, KeyState, KeyUsage, PendingCreation},
 };
@@ -102,9 +100,9 @@ use crate::{
 /// The display name of this KSP as registered in the Windows Registry.
 pub const KSP_PROVIDER_NAME: &str = "Cosmian KMS Key Storage Provider";
 pub const KSP_PROVIDER_NAME_W: &[u16] = &[
-    0x0043, 0x006F, 0x0073, 0x006D, 0x0069, 0x0061, 0x006E, 0x0020, 0x004B, 0x004D, 0x0053,
-    0x0020, 0x004B, 0x0065, 0x0079, 0x0020, 0x0053, 0x0074, 0x006F, 0x0072, 0x0061, 0x0067,
-    0x0065, 0x0020, 0x0050, 0x0072, 0x006F, 0x0076, 0x0069, 0x0064, 0x0065, 0x0072, 0x0000,
+    0x0043, 0x006F, 0x0073, 0x006D, 0x0069, 0x0061, 0x006E, 0x0020, 0x004B, 0x004D, 0x0053, 0x0020,
+    0x004B, 0x0065, 0x0079, 0x0020, 0x0053, 0x0074, 0x006F, 0x0072, 0x0061, 0x0067, 0x0065, 0x0020,
+    0x0050, 0x0072, 0x006F, 0x0076, 0x0069, 0x0064, 0x0065, 0x0072, 0x0000,
 ];
 
 // ─── Provider context ─────────────────────────────────────────────────────────
@@ -115,7 +113,8 @@ pub const PROVIDER_CTX_MAGIC: u32 = 0xC0_5A_1A_AC;
 #[cfg(windows)]
 pub struct CngProviderCtx {
     pub magic: u32,
-    pub client: Arc<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient>,
+    pub client:
+        Arc<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient>,
 }
 
 #[cfg(windows)]
@@ -147,7 +146,9 @@ unsafe fn write_output(
 ) -> SecurityStatus {
     let needed = u32::try_from(data.len()).unwrap_or(u32::MAX);
     if !pcb_result.is_null() {
-        unsafe { *pcb_result = needed; }
+        unsafe {
+            *pcb_result = needed;
+        }
     }
     if pb_output.is_null() {
         return ERROR_SUCCESS;
@@ -165,9 +166,7 @@ unsafe fn write_output(
 #[cfg(windows)]
 fn str_to_wide_bytes(s: &str) -> Vec<u8> {
     let wide: Vec<u16> = s.encode_utf16().chain(std::iter::once(0)).collect();
-    wide.iter()
-        .flat_map(|c| c.to_le_bytes())
-        .collect()
+    wide.iter().flat_map(|c| c.to_le_bytes()).collect()
 }
 
 /// Decode a null-terminated UTF-16 wide string from a raw pointer.
@@ -190,7 +189,7 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> KspResult<String> {
 /// Parse a CNG hash algorithm name (wide string) into a `HashingAlgorithm`.
 /// Returns `None` if the pointer is null or the algorithm is unknown.
 #[cfg(windows)]
-unsafe fn parse_hash_alg_from_wide(ptr: *const u16) -> Option<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm> {
+unsafe fn parse_hash_alg_from_wide(ptr: *const u16) -> Option<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm>{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     if ptr.is_null() {
         return None;
@@ -227,7 +226,11 @@ unsafe extern "system" fn open_provider(
 
     let explicit_conf: Option<PathBuf> = dll_dir.as_deref().and_then(|dir| {
         let candidate = dir.join("ckms.toml");
-        if candidate.exists() { Some(candidate) } else { None }
+        if candidate.exists() {
+            Some(candidate)
+        } else {
+            None
+        }
     });
 
     match backend::get_kms_client(explicit_conf) {
@@ -238,7 +241,9 @@ unsafe extern "system" fn open_provider(
             });
             let raw = Box::into_raw(ctx);
             #[allow(clippy::as_conversions)]
-            unsafe { *ph_provider = raw as usize; }
+            unsafe {
+                *ph_provider = raw as usize;
+            }
             ERROR_SUCCESS
         }
         Err(e) => {
@@ -314,7 +319,9 @@ unsafe extern "system" fn open_key(
     );
     let raw = Box::into_raw(ctx);
     #[allow(clippy::as_conversions)]
-    unsafe { *ph_key = raw as usize; }
+    unsafe {
+        *ph_key = raw as usize;
+    }
     ERROR_SUCCESS
 }
 
@@ -362,7 +369,9 @@ unsafe extern "system" fn create_persisted_key(
     let ctx = CngKeyCtx::new_pending(Arc::clone(&prov.client), pending);
     let raw = Box::into_raw(ctx);
     #[allow(clippy::as_conversions)]
-    unsafe { *ph_key = raw as usize; }
+    unsafe {
+        *ph_key = raw as usize;
+    }
     ERROR_SUCCESS
 }
 
@@ -398,7 +407,9 @@ unsafe extern "system" fn delete_key(
         Err(_) => return NTE_INVALID_HANDLE,
     };
     let result = match &ctx.state {
-        KeyState::Persisted { priv_uid, pub_uid, .. } => {
+        KeyState::Persisted {
+            priv_uid, pub_uid, ..
+        } => {
             // Revoke both keys first (Active keys require revocation before destroy)
             drop(backend::revoke_key(&ctx.client, priv_uid));
             if let Some(pub_id) = pub_uid {
@@ -425,10 +436,7 @@ unsafe extern "system" fn delete_key(
 
 /// `NCryptFreeKey`
 #[cfg(windows)]
-unsafe extern "system" fn free_key(
-    _h_provider: usize,
-    h_key: usize,
-) -> SecurityStatus {
+unsafe extern "system" fn free_key(_h_provider: usize, h_key: usize) -> SecurityStatus {
     unsafe { CngKeyCtx::free(h_key) };
     ERROR_SUCCESS
 }
@@ -468,29 +476,22 @@ unsafe extern "system" fn get_key_property(
 
     match prop.as_str() {
         "Algorithm" => {
-            let alg = match ctx.algorithm() {
-                Ok(a) => a.cng_alg_id(),
-                Err(_) => return NTE_INVALID_PARAMETER,
-            };
+            let alg = ctx.algorithm().cng_alg_id();
             let data = str_to_wide_bytes(alg);
             unsafe { write_output(pb_output, cb_output, pcb_result, &data) }
         }
         "Algorithm Group" => {
             let group = match ctx.algorithm() {
-                Ok(KeyAlgorithm::Rsa { .. }) => "RSA",
-                Ok(KeyAlgorithm::Ec { .. }) => "ECDSA",
-                Err(_) => return NTE_INVALID_PARAMETER,
+                KeyAlgorithm::Rsa { .. } => "RSA",
+                KeyAlgorithm::Ec { .. } => "ECDSA",
             };
             let data = str_to_wide_bytes(group);
             unsafe { write_output(pb_output, cb_output, pcb_result, &data) }
         }
         "Length" | "KeyLength" => {
             let bits: u32 = match ctx.algorithm() {
-                Ok(KeyAlgorithm::Rsa { bits }) => *bits,
-                Ok(KeyAlgorithm::Ec { curve }) => {
-                    u32::try_from(curve.coord_size() * 8).unwrap_or(0)
-                }
-                Err(_) => return NTE_INVALID_PARAMETER,
+                KeyAlgorithm::Rsa { bits } => *bits,
+                KeyAlgorithm::Ec { curve } => u32::try_from(curve.coord_size() * 8).unwrap_or(0),
             };
             let data = bits.to_le_bytes();
             unsafe { write_output(pb_output, cb_output, pcb_result, &data) }
@@ -500,10 +501,7 @@ unsafe extern "system" fn get_key_property(
             unsafe { write_output(pb_output, cb_output, pcb_result, &data) }
         }
         "UniqueName" => {
-            let uid_or_name = ctx
-                .priv_uid()
-                .unwrap_or_else(|_| ctx.key_name())
-                .to_owned();
+            let uid_or_name = ctx.priv_uid().unwrap_or_else(|_| ctx.key_name()).to_owned();
             let data = str_to_wide_bytes(&uid_or_name);
             unsafe { write_output(pb_output, cb_output, pcb_result, &data) }
         }
@@ -575,10 +573,7 @@ unsafe extern "system" fn set_key_property(
             };
             match &mut ctx.state {
                 KeyState::Pending(p) => p.export_policy = ep,
-                KeyState::Persisted {
-                    export_policy,
-                    ..
-                } => *export_policy = ep,
+                KeyState::Persisted { export_policy, .. } => *export_policy = ep,
             }
             ERROR_SUCCESS
         }
@@ -738,7 +733,9 @@ unsafe extern "system" fn verify_signature(
     };
     // For verification, use the public key if available, otherwise fall back to private key
     let uid = match &ctx.state {
-        KeyState::Persisted { pub_uid: Some(uid), .. } => uid.clone(),
+        KeyState::Persisted {
+            pub_uid: Some(uid), ..
+        } => uid.clone(),
         KeyState::Persisted { priv_uid, .. } => priv_uid.clone(),
         KeyState::Pending(_) => return NTE_INVALID_PARAMETER,
     };
@@ -775,7 +772,15 @@ unsafe extern "system" fn verify_signature(
         }
     };
 
-    match backend::verify_signature(&ctx.client, &uid, hash, signature, hash_alg, padding, salt_len) {
+    match backend::verify_signature(
+        &ctx.client,
+        &uid,
+        hash,
+        signature,
+        hash_alg,
+        padding,
+        salt_len,
+    ) {
         Ok(true) => ERROR_SUCCESS,
         Ok(false) => {
             // NTE_BAD_SIGNATURE
@@ -827,7 +832,10 @@ unsafe extern "system" fn encrypt(
             } else {
                 None
             };
-            (PaddingMethod::OAEP, Some(alg.unwrap_or(HashingAlgorithm::SHA256)))
+            (
+                PaddingMethod::OAEP,
+                Some(alg.unwrap_or(HashingAlgorithm::SHA256)),
+            )
         }
         _ => (PaddingMethod::PKCS1v15, None),
     };
@@ -878,7 +886,10 @@ unsafe extern "system" fn decrypt(
             } else {
                 None
             };
-            (PaddingMethod::OAEP, Some(alg.unwrap_or(HashingAlgorithm::SHA256)))
+            (
+                PaddingMethod::OAEP,
+                Some(alg.unwrap_or(HashingAlgorithm::SHA256)),
+            )
         }
         _ => (PaddingMethod::PKCS1v15, None),
     };
@@ -923,15 +934,13 @@ unsafe extern "system" fn export_key(
 
     // Only public key blobs are exported; private blobs require explicit allow-export
     match blob_type.as_str() {
-        "RSAPUBLICBLOB" | "ECCPUBLICBLOB" | "" => {
-            match ctx.export_public_blob() {
-                Ok(blob) => unsafe { write_output(pb_output, cb_output, pcb_result, &blob) },
-                Err(e) => {
-                    error!("CNG KSP export_key: {e}");
-                    e.to_security_status()
-                }
+        "RSAPUBLICBLOB" | "ECCPUBLICBLOB" | "" => match ctx.export_public_blob() {
+            Ok(blob) => unsafe { write_output(pb_output, cb_output, pcb_result, &blob) },
+            Err(e) => {
+                error!("CNG KSP export_key: {e}");
+                e.to_security_status()
             }
-        }
+        },
         "PRIVATEKEYBLOB" | "RSAPRIVATEBLOB" | "ECCPRIVATEBLOB" => {
             if !ctx.export_policy().allow_export {
                 return NTE_PERM;
@@ -1003,28 +1012,58 @@ unsafe extern "system" fn enum_algorithms(
 
     // UTF-16LE null-terminated algorithm names
     static RSA_W: &[u16] = &[0x52, 0x53, 0x41, 0x00]; // "RSA\0"
-    static ECDSA_P256_W: &[u16] = &[0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x32, 0x35, 0x36, 0x00]; // "ECDSA_P256\0"
-    static ECDSA_P384_W: &[u16] = &[0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x33, 0x38, 0x34, 0x00]; // "ECDSA_P384\0"
-    static ECDSA_P521_W: &[u16] = &[0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x35, 0x32, 0x31, 0x00]; // "ECDSA_P521\0"
+    static ECDSA_P256_W: &[u16] = &[
+        0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x32, 0x35, 0x36, 0x00,
+    ]; // "ECDSA_P256\0"
+    static ECDSA_P384_W: &[u16] = &[
+        0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x33, 0x38, 0x34, 0x00,
+    ]; // "ECDSA_P384\0"
+    static ECDSA_P521_W: &[u16] = &[
+        0x45, 0x43, 0x44, 0x53, 0x41, 0x5F, 0x50, 0x35, 0x32, 0x31, 0x00,
+    ]; // "ECDSA_P521\0"
     static ECDH_P256_W: &[u16] = &[0x45, 0x43, 0x44, 0x48, 0x5F, 0x50, 0x32, 0x35, 0x36, 0x00]; // "ECDH_P256\0"
     static ECDH_P384_W: &[u16] = &[0x45, 0x43, 0x44, 0x48, 0x5F, 0x50, 0x33, 0x38, 0x34, 0x00]; // "ECDH_P384\0"
     static ECDH_P521_W: &[u16] = &[0x45, 0x43, 0x44, 0x48, 0x5F, 0x50, 0x35, 0x32, 0x31, 0x00]; // "ECDH_P521\0"
 
     let all_algs: &[AlgDef] = &[
-        AlgDef { name: RSA_W, ops: NCRYPT_SIGN_OPERATION | NCRYPT_DECRYPT_OPERATION | NCRYPT_ENCRYPT_OPERATION },
-        AlgDef { name: ECDSA_P256_W, ops: NCRYPT_SIGN_OPERATION },
-        AlgDef { name: ECDSA_P384_W, ops: NCRYPT_SIGN_OPERATION },
-        AlgDef { name: ECDSA_P521_W, ops: NCRYPT_SIGN_OPERATION },
-        AlgDef { name: ECDH_P256_W, ops: 0 }, // key agreement — no CNG operation flag
-        AlgDef { name: ECDH_P384_W, ops: 0 },
-        AlgDef { name: ECDH_P521_W, ops: 0 },
+        AlgDef {
+            name: RSA_W,
+            ops: NCRYPT_SIGN_OPERATION | NCRYPT_DECRYPT_OPERATION | NCRYPT_ENCRYPT_OPERATION,
+        },
+        AlgDef {
+            name: ECDSA_P256_W,
+            ops: NCRYPT_SIGN_OPERATION,
+        },
+        AlgDef {
+            name: ECDSA_P384_W,
+            ops: NCRYPT_SIGN_OPERATION,
+        },
+        AlgDef {
+            name: ECDSA_P521_W,
+            ops: NCRYPT_SIGN_OPERATION,
+        },
+        AlgDef {
+            name: ECDH_P256_W,
+            ops: 0,
+        }, // key agreement — no CNG operation flag
+        AlgDef {
+            name: ECDH_P384_W,
+            ops: 0,
+        },
+        AlgDef {
+            name: ECDH_P521_W,
+            ops: 0,
+        },
     ];
 
     // Filter by requested operation class (0 = all)
     let filtered: Vec<&AlgDef> = if dw_alg_class == 0 {
         all_algs.iter().collect()
     } else {
-        all_algs.iter().filter(|a| a.ops & dw_alg_class != 0).collect()
+        all_algs
+            .iter()
+            .filter(|a| a.ops & dw_alg_class != 0)
+            .collect()
     };
 
     if filtered.is_empty() {
@@ -1106,12 +1145,16 @@ unsafe extern "system" fn enum_keys(
     let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
     let leaked = wide.into_boxed_slice();
     let ptr = Box::into_raw(leaked) as *mut NCryptKeyName;
-    unsafe { *pp_key_name = ptr; }
+    unsafe {
+        *pp_key_name = ptr;
+    }
 
     // Advance enum state
     if !idx_ptr.is_null() {
         let new_idx = Box::new(idx + 1);
-        unsafe { *idx_ptr = Box::into_raw(new_idx) as *mut usize; }
+        unsafe {
+            *idx_ptr = Box::into_raw(new_idx) as *mut usize;
+        }
     }
 
     ERROR_SUCCESS
@@ -1125,11 +1168,20 @@ unsafe extern "system" fn gen_random(
     cb_buffer: u32,
     _dw_flags: u32,
 ) -> SecurityStatus {
-    use windows_sys::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
+    use windows_sys::Win32::Security::Cryptography::{
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom,
+    };
     if pb_buffer.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let status = unsafe { BCryptGenRandom(std::ptr::null_mut(), pb_buffer, cb_buffer, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            pb_buffer,
+            cb_buffer,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
     if status == STATUS_SUCCESS_VAL {
         ERROR_SUCCESS
     } else {
@@ -1244,7 +1296,7 @@ unsafe extern "system" fn verify_claim(
 
 /// Infer hashing algorithm from digest byte length (fallback heuristic).
 #[cfg(windows)]
-fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm {
+fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     match len {
         20 => HashingAlgorithm::SHA1,
@@ -1267,7 +1319,8 @@ fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actio
 /// ExportKey, SignHash, VerifySignature, PromptUser, NotifyChangeKey, SecretAgreement,
 /// DeriveKey, FreeSecret.
 #[cfg(windows)]
-pub static KSP_FUNCTION_TABLE: windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE =
+pub static KSP_FUNCTION_TABLE:
+    windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE =
     windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE {
         Version: windows_sys::Win32::Security::Cryptography::BCRYPT_INTERFACE_VERSION {
             MajorVersion: 1,
@@ -1357,4 +1410,5 @@ fn attrs_to_usage(
 }
 
 // Re-export for use in blob.rs helpers called from key.rs
+#[cfg(windows)]
 use crate::blob::EcCurve;

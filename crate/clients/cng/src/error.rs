@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-#[cfg(windows)]
-
 /// SECURITY_STATUS / HRESULT constants used by the NCrypt KSP interface.
 ///
 /// Windows defines these as `i32` (HRESULT) or on some surfaces `u32`.

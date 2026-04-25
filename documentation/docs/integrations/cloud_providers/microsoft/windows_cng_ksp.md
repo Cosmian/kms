@@ -1,5 +1,40 @@
 # Windows CNG Key Storage Provider (KSP)
 
+> **Microsoft Intune integration** — The Cosmian KMS CNG KSP integrates natively
+> with [Microsoft Intune](https://learn.microsoft.com/en-us/mem/intune/fundamentals/what-is-intune)
+> SCEP and PKCS certificate profiles. When Intune provisions a device certificate,
+> the private key is created and permanently stored in Cosmian KMS — never on the
+> endpoint. See the [Intune integration section](#microsoft-intune-integration)
+> for setup details.
+
+## Intune + CNG KSP architecture
+
+```mermaid
+sequenceDiagram
+    participant Admin as IT Administrator
+    participant Intune as Microsoft Intune<br/>(Cloud UEM)
+    participant Endpoint as Windows Endpoint<br/>(Intune-managed)
+    participant KSP as cosmian_kms_cng_ksp.dll<br/>(CNG KSP)
+    participant KMS as Cosmian KMS<br/>(KMIP 2.1)
+    participant SCEP as SCEP / PKCS<br/>Certificate Authority
+
+    Admin->>Intune: 1. Create SCEP certificate profile<br/>KSP = "Cosmian KMS Key Storage Provider"
+    Intune->>Endpoint: 2. Push certificate profile
+    Endpoint->>KSP: 3. NCryptCreatePersistedKey()
+    KSP->>KMS: 4. KMIP CreateKeyPair<br/>(private key stays in KMS)
+    KMS-->>KSP: 5. Public key + key UUID
+    KSP-->>Endpoint: 6. Key handle (public key blob)
+    Endpoint->>SCEP: 7. Submit CSR<br/>(public key only)
+    SCEP-->>Endpoint: 8. Signed certificate
+    Note over Endpoint,KMS: All subsequent Sign / Decrypt operations<br/>are forwarded to Cosmian KMS via the KSP
+    Endpoint->>KSP: 9. NCryptSignHash() (e.g. TLS handshake)
+    KSP->>KMS: 10. KMIP Sign
+    KMS-->>KSP: 11. Signature
+    KSP-->>Endpoint: 12. Signature bytes
+```
+
+---
+
 ## What is it?
 
 Cosmian KMS provides a Windows **CNG Key Storage Provider (KSP)** DLL —
@@ -216,7 +251,7 @@ cargo build --release --package cosmian_kms_cng_ksp --features non-fips
 
 Place the DLL in an installation directory, e.g.:
 
-```
+```text
 C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll
 ```
 
@@ -248,7 +283,7 @@ ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
 
 This writes the following registry key:
 
-```
+```text
 HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
     Cosmian KMS Key Storage Provider\
         DllFileName  REG_SZ  "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
@@ -353,6 +388,20 @@ ckms locate --tag "cng-ksp::my-key"
 
 ## Microsoft Intune integration
 
+[Microsoft Intune](https://learn.microsoft.com/en-us/mem/intune/fundamentals/what-is-intune)
+is Microsoft's cloud-based **Unified Endpoint Management (UEM)** service. It
+lets IT administrators manage devices (Windows, macOS, iOS, Android) and enforce
+security policies — including deploying certificates — without on-premises
+infrastructure. When Intune provisions a certificate on a Windows endpoint, the
+private key is generated locally via a **Key Storage Provider**. By default
+Windows uses its built-in software KSP, which stores keys in the registry.
+
+With the Cosmian KMS CNG KSP registered on the device, Intune can be configured
+to use it instead: the private key is created and permanently stored in Cosmian
+KMS rather than on the device. This gives the organisation centralised custody,
+FIPS 140-3 compliance, real-time revocation, and a full audit trail — all
+without any change to the Intune enrollment workflow itself.
+
 ### SCEP certificate profile
 
 1. In the Microsoft Intune admin center, create a **SCEP certificate profile**
@@ -361,7 +410,7 @@ ckms locate --tag "cng-ksp::my-key"
    **"Enroll to Custom KSP, otherwise fail"** and enter the provider name
    exactly as:
 
-   ```
+   ```text
    Cosmian KMS Key Storage Provider
    ```
 
