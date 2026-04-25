@@ -42,6 +42,5 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [dev-dependencies]
-cosmian_config_utils = { workspace = true }
 serial_test = { version = "3.2.0", default-features = true }
 test_kms_server = { path = "../../test_kms_server" }
