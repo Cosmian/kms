@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use actix_web::{HttpRequest, post, web::{Data, Json}};
+use actix_web::{
+    HttpRequest, post,
+    web::{Data, Json},
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{MAC, MACVerify},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
@@ -9,8 +12,8 @@ use cosmian_logger::trace;
 use serde::Serialize;
 
 use super::{
-    CryptoApiError, MacComputeResponse, MacRequest, MacVerifyResponse,
-    b64_decode, b64_encode, jose_to_kmip_params,
+    CryptoApiError, MacComputeResponse, MacRequest, MacVerifyResponse, b64_decode, b64_encode,
+    jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -40,9 +43,7 @@ pub(crate) async fn mac(
     let data_bytes = b64_decode("data", &body.data)?;
     let kmip_params = jose_to_kmip_params(&body.alg, None)?;
 
-    // Dispatch: verify if mac present, else compute
     if let Some(ref expected_mac_b64) = body.mac {
-        // Verify path
         let expected_mac_bytes = b64_decode("mac", expected_mac_b64)?;
 
         let verify_req = MACVerify {
@@ -59,12 +60,13 @@ pub(crate) async fn mac(
 
         let valid = matches!(resp.validity_indicator, ValidityIndicator::Valid);
 
-        Ok(actix_web::web::Json(MacResponse::Verify(MacVerifyResponse {
-            kid: body.kid,
-            valid,
-        })))
+        Ok(actix_web::web::Json(MacResponse::Verify(
+            MacVerifyResponse {
+                kid: body.kid,
+                valid,
+            },
+        )))
     } else {
-        // Compute path
         let mac_req = MAC {
             unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
             cryptographic_parameters: Some(kmip_params),
@@ -81,9 +83,11 @@ pub(crate) async fn mac(
             CryptoApiError::InternalError("MAC response missing mac_data".to_owned())
         })?;
 
-        Ok(actix_web::web::Json(MacResponse::Compute(MacComputeResponse {
-            kid: body.kid,
-            mac: b64_encode(&mac_bytes),
-        })))
+        Ok(actix_web::web::Json(MacResponse::Compute(
+            MacComputeResponse {
+                kid: body.kid,
+                mac: b64_encode(&mac_bytes),
+            },
+        )))
     }
 }

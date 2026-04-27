@@ -1,17 +1,19 @@
 use std::sync::Arc;
 
-use actix_web::{HttpRequest, post, web::{Data, Json}};
+use actix_web::{
+    HttpRequest, post,
+    web::{Data, Json},
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::Sign as KmipSign,
-    kmip_types::UniqueIdentifier,
+    kmip_operations::Sign as KmipSign, kmip_types::UniqueIdentifier,
 };
 use cosmian_logger::trace;
 use serde_json::json;
 use zeroize::Zeroizing;
 
 use super::{
-    CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse,
-    b64_decode, b64_encode, jose_to_kmip_params,
+    CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
+    b64_encode, jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -32,7 +34,6 @@ pub(crate) async fn sign(
 
     trace!(user = user, "POST /v1/crypto/sign kid={}", body.kid);
 
-    // 1. Build JWS protected header and its base64url representation
     let protected_header = json!({
         "alg": body.alg,
         "kid": body.kid,
@@ -40,19 +41,14 @@ pub(crate) async fn sign(
     let protected_json = protected_header.to_string();
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
-    // 2. Validate payload: must be valid base64url
     b64_decode("data", &body.data)?;
     let payload_b64 = body.data.as_str();
 
-    // 3. Build JWS Signing Input per RFC 7515 §2
-    //    signing_input = ASCII(protected_b64 + "." + payload_b64)
+    // RFC 7515 §2: signing_input = ASCII(protected_b64 + "." + payload_b64)
     let signing_input = format!("{protected_b64}.{payload_b64}");
     let signing_input_bytes = signing_input.as_bytes().to_vec();
 
-    // 4. Map JOSE alg to KMIP parameters
     let kmip_params = jose_to_kmip_params(&body.alg, None)?;
-
-    // 5. Call KMS sign
     let sign_req = KmipSign {
         unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
         cryptographic_parameters: Some(kmip_params),
