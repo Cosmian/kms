@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct EncryptRequest {
     /// KMS object UID of the symmetric key
     pub(crate) kid: String,
-    /// JOSE `alg` identifier — Phase 1: only `"dir"` supported
+    /// JOSE `alg` identifier — `/v1/crypto` currently supports only `"dir"` (direct key agreement)
     pub(crate) alg: String,
     /// JOSE `enc` content-encryption algorithm identifier (e.g. `"A256GCM"`)
     pub(crate) enc: String,
