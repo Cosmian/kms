@@ -249,7 +249,11 @@ impl NoiseGenerator<f64> {
     ///
     ///  The resulting noisy date string
     pub fn apply_on_date(&mut self, date_str: &str) -> Result<String, AnoError> {
-        let date = DateTime::parse_from_rfc3339(date_str)?;
+        let date = DateTime::parse_from_rfc3339(date_str).map_err(|e| {
+            AnoError::AnonymizationError(format!(
+                "invalid RFC3339 date '{date_str}': {e} (expected format: 2023-04-07T12:34:56+02:00)"
+            ))
+        })?;
         let tz = date.timezone();
         let date_unix = date.timestamp();
         let noisy_date_unix = self.apply_on_int(date_unix);
