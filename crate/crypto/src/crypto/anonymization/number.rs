@@ -123,7 +123,11 @@ impl DateAggregator {
     /// otherwise returns an `AnoError`.
     pub fn apply_on_date(&self, date_str: &str) -> Result<String, AnoError> {
         // Parse the date string into a DateTime.
-        let date = DateTime::parse_from_rfc3339(date_str)?;
+        let date = DateTime::parse_from_rfc3339(date_str).map_err(|e| {
+            AnoError::AnonymizationError(format!(
+                "invalid RFC3339 date '{date_str}': {e} (expected format: 2023-04-07T12:34:56+02:00)"
+            ))
+        })?;
         let tz = date.timezone();
 
         let (y, mo, d, h, mi, s) = match self.time_unit {

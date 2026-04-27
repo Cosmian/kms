@@ -51,7 +51,13 @@ pub struct FpeArgs {
     #[clap(long = "type", default_value = "text")]
     pub(crate) data_type: FpeDataType,
 
-    /// The alphabet preset or custom alphabet string.
+    /// The alphabet to use for encryption/decryption.
+    ///
+    /// Either a built-in preset name or a custom alphabet string (all distinct characters).
+    ///
+    /// Preset names: `numeric`, `hexadecimal`, `alpha_lower`, `alpha_upper`, `alpha`,
+    /// `alpha_numeric`, `chinese`, `latin1sup`, `latin1sup_alphanum`, `utf`,
+    /// `ascii_printable`, `base64`.
     #[clap(long = "alphabet")]
     pub(crate) alphabet: Option<String>,
 
