@@ -1,0 +1,9 @@
+# (important) exclude from GitHub Linguist language stats
+crate/kmip/src/**/*.html  linguist-vendored
+crate/kmip/src/**/*.xml   linguist-vendored
+
+# Experimental: better hunk headers in diffs
+*.rs                 text diff=rust
+*.toml               text diff=toml
+Cargo.lock           text merge=union # avoid manually fixingmerge conflicts in Cargo.lock. Just run `cargo build` after a rebase should auto-fix any problem
+pnpm-lock.yaml       text eol=lf linguist-generated # UI: collapse lock file in PR diffs
