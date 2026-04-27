@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use actix_web::{HttpRequest, post, web::{Data, Json}};
+use actix_web::{
+    HttpRequest, post,
+    web::{Data, Json},
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::Encrypt,
-    kmip_types::UniqueIdentifier,
+    kmip_operations::Encrypt, kmip_types::UniqueIdentifier,
 };
 use cosmian_logger::trace;
 use serde_json::json;
@@ -31,13 +33,9 @@ pub(crate) async fn encrypt(
 
     trace!(user = user, "POST /v1/crypto/encrypt kid={}", body.kid);
 
-    // 1. Validate alg/enc and map to KMIP parameters
     let kmip_params = jose_to_kmip_params(&body.alg, Some(&body.enc))?;
-
-    // 2. Decode plaintext
     let plaintext = b64_decode("data", &body.data)?;
 
-    // 3. Build protected header and its base64url representation
     let protected_header = json!({
         "alg": body.alg,
         "enc": body.enc,
@@ -46,28 +44,24 @@ pub(crate) async fn encrypt(
     let protected_json = protected_header.to_string();
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
-    // 4. Build AEAD AAD per RFC 7516 §5.1 step 14
-    //    AAD = ASCII(protected_b64)  [or ASCII(protected_b64 + "." + aad_b64) when aad present]
-    let aad_input = body.aad.as_deref();
-    let aad_bytes = build_jwe_aad(&protected_b64, aad_input)?;
+    // RFC 7516 §5.1 step 14
+    let aad_bytes = build_jwe_aad(&protected_b64, body.aad.as_deref())?;
 
-    // 5. Build KMIP Encrypt request (no nonce — server generates one)
+    // no nonce — server generates one
     let encrypt_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
         cryptographic_parameters: Some(kmip_params),
         data: Some(Zeroizing::new(plaintext)),
-        i_v_counter_nonce: None,
+        i_v_counter_nonce: None, // server generates IV
         authenticated_encryption_additional_data: Some(aad_bytes),
         ..Default::default()
     };
 
-    // 6. Call KMS
     let resp = kms
         .encrypt(encrypt_req, &user)
         .await
         .map_err(CryptoApiError::from)?;
 
-    // 7. Extract ciphertext, IV, tag from response
     let ciphertext_bytes = resp.data.ok_or_else(|| {
         CryptoApiError::InternalError("Encrypt response missing ciphertext".to_owned())
     })?;
@@ -77,11 +71,16 @@ pub(crate) async fn encrypt(
         )
     })?;
     let tag_bytes = resp.authenticated_encryption_tag.ok_or_else(|| {
-        CryptoApiError::InternalError(
-            "Encrypt response missing authentication tag".to_owned(),
-        )
+        CryptoApiError::InternalError("Encrypt response missing authentication tag".to_owned())
     })?;
 
+    // For 'dir': no key material is transmitted — encrypted_key is always empty.
+    // Future key-wrapping algs (RSA-OAEP, ECDH-ES) must populate encrypted_key here;
+    // add a new branch rather than inheriting String::new() silently.
+    debug_assert_eq!(
+        body.alg, "dir",
+        "encrypted_key must be populated for non-dir key management algs"
+    );
     Ok(Json(CryptoEncryptResponse {
         protected: protected_b64,
         encrypted_key: String::new(),
@@ -103,7 +102,6 @@ pub(crate) fn build_jwe_aad(
     match external_aad_b64 {
         None => Ok(protected_b64.as_bytes().to_vec()),
         Some(aad_b64) => {
-            // Validate that the supplied aad is valid base64url
             b64_decode("aad", aad_b64)?;
             let aad_string = format!("{protected_b64}.{aad_b64}");
             Ok(aad_string.into_bytes())
