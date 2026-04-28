@@ -23,7 +23,7 @@ use crate::core::KMS;
 ///
 /// The `protected` field must be exactly as returned by `POST /v1/crypto/sign`
 /// and `data` must be the same payload base64url.
-#[post("/v1/crypto/verify")]
+#[post("/verify")]
 pub(crate) async fn verify(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,

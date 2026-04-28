@@ -22,7 +22,7 @@ use crate::core::KMS;
 /// Follows RFC 7516 §5.1 steps 14/15 for AAD construction:
 /// - no `aad` field: AAD = `ASCII(protected_b64)`
 /// - `aad` field present: AAD = `ASCII(protected_b64 + "." + aad_b64)`
-#[post("/v1/crypto/encrypt")]
+#[post("/encrypt")]
 pub(crate) async fn encrypt(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
