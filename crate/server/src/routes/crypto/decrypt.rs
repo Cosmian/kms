@@ -21,7 +21,7 @@ use crate::core::KMS;
 /// Follows RFC 7516 §5.2 step 15 for AAD reconstruction:
 /// - no `aad` field: AAD = `ASCII(protected_b64)`
 /// - `aad` field present: AAD = `ASCII(protected_b64 + "." + aad_b64)`
-#[post("/v1/crypto/decrypt")]
+#[post("/decrypt")]
 pub(crate) async fn decrypt(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,

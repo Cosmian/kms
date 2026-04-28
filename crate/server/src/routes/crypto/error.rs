@@ -45,10 +45,12 @@ pub(crate) enum CryptoApiError {
 impl actix_web::error::ResponseError for CryptoApiError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::BadRequest(_) | Self::UnsupportedAlgorithm(_) => StatusCode::BAD_REQUEST,
+            Self::UnsupportedAlgorithm(_) | Self::CryptoFailure(_) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::CryptoFailure(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
