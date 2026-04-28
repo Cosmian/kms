@@ -2,15 +2,15 @@
 name = "cosmian_kms_server"
 version.workspace = true
 authors.workspace = true
-categories.workspace = true
 edition.workspace = true
-exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
-homepage.workspace = true
-keywords.workspace = true
-license.workspace = true
-repository.workspace = true
 rust-version.workspace = true
 description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 compliant Key Management System"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+exclude = [".vscode/", "cosmian-kms/", "ui_non_fips/", "ui/"]
 
 # NOTE: OpenSSL FIPS Build Paths
 # - Nix builds (production): OpenSSL is configured with --openssldir=/usr/local/cosmian/lib/ssl
@@ -21,114 +21,6 @@ description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 c
 # - Local cargo builds now place artifacts under target/openssl-<mode>-3.6.0-<os>-<arch>
 #   FIPS mode:   target/openssl-3.6.2-<os>-<arch> with fips provider/configs integrated
 #   Non-FIPS:    target/openssl-non-fips-3.6.2-<os>-<arch> with legacy provider
-
-[lints]
-workspace = true
-
-[[bin]]
-name = "cosmian_kms"
-path = "src/main.rs"
-test = false
-
-[lib]
-# doc test linking as a separate binary is extremely slow
-# and is not needed for internal lib
-doctest = false
-
-[features]
-default = ["interop"]
-# Do not verify auth0 token expiration date, and https ssl is auto-signed (to avoid to be banned by letsencrypt)
-insecure = []
-# The binary won't start after a date chosen at compile-time
-timeout = []
-# Enable extra cryptographic mechanisms which are non-FIPS compliant.
-non-fips = [
-  "cosmian_kms_client_utils/non-fips",
-  "cosmian_kms_server_database/non-fips",
-]
-# Enable interop test operations (should only be used for testing)
-interop = ["cosmian_kms_server_database/interop"]
-
-[dependencies]
-actix-cors = { workspace = true }
-actix-files = { workspace = true }
-actix-governor = { workspace = true }
-actix-identity = { workspace = true }
-actix-rt = { workspace = true }
-actix-session = { workspace = true, features = ["cookie-session"] }
-actix-tls = { workspace = true }
-actix-web = { workspace = true, features = ["macros", "openssl"] }
-async-recursion = { workspace = true }
-base64 = { workspace = true }
-chrono = { workspace = true }
-clap = { workspace = true, features = [
-  "help",
-  "env",
-  "std",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
-] }
-cosmian_kms_access = { path = "../access", version = "5.21.0" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.21.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.21.0" }
-cosmian_logger = { workspace = true, features = ["full"] }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.21.0" }
-dialoguer = { workspace = true }
-dotenvy = { workspace = true }
-futures = { workspace = true }
-hex = { workspace = true, features = ["serde"] }
-http = { workspace = true }
-jsonwebtoken = { workspace = true }
-num-bigint-dig = { workspace = true, features = [
-  "std",
-  "rand",
-  "serde",
-  "zeroize",
-] }
-openssl = { workspace = true }
-openssl-sys = "0.9"
-opentelemetry = { workspace = true }
-opentelemetry-otlp = { workspace = true }
-opentelemetry_sdk = { workspace = true }
-pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.21.0" }
-reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
-  "json",
-  "native-tls",
-  "socks",
-] }
-scratchstack-aws-signature = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.21.0" }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.21.0" }
-strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
-thiserror = { workspace = true }
-time = { workspace = true, features = ["local-offset", "formatting"] }
-tokio = { workspace = true, features = ["full"] }
-toml = { workspace = true }
-tracing = { workspace = true }
-subtle = { workspace = true }
-url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.21.0" }
-uuid = { workspace = true, features = ["v4"] }
-x509-parser = { workspace = true }
-zeroize = { workspace = true }
-
-[dev-dependencies]
-actix-http = { workspace = true }
-cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.21.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.21.0" }
-native-tls = { workspace = true }
-pem = { workspace = true }
-tempfile = { workspace = true }
-
-[build-dependencies]
-actix-http = { workspace = true }
-time = { workspace = true, features = ["local-offset", "formatting"] }
-sha2 = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ["sha2"]
@@ -332,7 +224,7 @@ assets = [
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
-auto-req = "no" # do not try to discover .so dependencies
+auto-req = "no"  # do not try to discover .so dependencies
 features = ["non-fips"]
 require-sh = true
 
@@ -349,7 +241,7 @@ assets = [
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
 ]
-auto-req = "no" # do not try to discover .so dependencies
+auto-req = "no"  # do not try to discover .so dependencies
 require-sh = true
 features = []
 
@@ -435,8 +327,125 @@ target = "ui/"
 [package.metadata.packager.nsis]
 # Installer configuration
 display-language-selector = false
-installer-mode = "currentUser"    # or "perMachine" for system-wide installation
+installer-mode = "currentUser"  # or "perMachine" for system-wide installation
 languages = ["English"]
 
 # END WINDOWS INSTALLER PACKAGING
 # ------------------------------------------------------------------------------
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
+[[bin]]
+name = "cosmian_kms"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+actix-cors = { workspace = true }
+actix-files = { workspace = true }
+actix-governor = { workspace = true }
+actix-identity = { workspace = true }
+actix-rt = { workspace = true }
+actix-session = { workspace = true, features = ["cookie-session"] }
+actix-tls = { workspace = true }
+actix-web = { workspace = true, features = ["macros", "openssl"] }
+async-recursion = { workspace = true }
+# Secret URI backends (optional, behind feature flags)
+aws-config = { version = "1", optional = true }
+aws-sdk-ssm = { version = "1", optional = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = [
+  "cargo",
+  "derive",
+  "env",
+  "error-context",
+  "help",
+  "std",
+  "usage",
+] }
+cosmian_kms_access = { path = "../access", version = "5.21.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.21.0" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.21.0" }
+cosmian_logger = { workspace = true, features = ["full"] }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.21.0" }
+dialoguer = { workspace = true }
+dotenvy = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true, features = ["serde"] }
+http = { workspace = true }
+jsonwebtoken = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+  "rand",
+  "serde",
+  "std",
+  "zeroize",
+] }
+openssl = { workspace = true }
+openssl-sys = "0.9"
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+pem = { workspace = true }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.21.0" }
+reqwest = { workspace = true, features = [  # Remove "default" which includes rustls
+  "json",
+  "native-tls",
+  "socks",
+] }
+scratchstack-aws-signature = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.21.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.21.0" }
+strum = { workspace = true, features = ["derive", "std", "strum_macros"] }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["formatting", "local-offset"] }
+tokio = { workspace = true, features = ["full"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.21.0" }
+uuid = { workspace = true, features = ["v4"] }
+x509-parser = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+actix-http = { workspace = true }
+cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.21.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.21.0" }
+native-tls = { workspace = true }
+pem = { workspace = true }
+tempfile = { workspace = true }
+
+[build-dependencies]
+actix-http = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true, features = ["formatting", "local-offset"] }
+
+[features]
+default = ["interop"]
+# Do not verify auth0 token expiration date, and https ssl is auto-signed (to avoid to be banned by letsencrypt)
+insecure = []
+# Enable interop test operations (should only be used for testing)
+interop = ["cosmian_kms_server_database/interop"]
+# Enable extra cryptographic mechanisms which are non-FIPS compliant.
+non-fips = [
+  "cosmian_kms_client_utils/non-fips",
+  "cosmian_kms_server_database/non-fips",
+]
+# Enable secret URI resolution via AWS SSM Parameter Store (aws-ssm://)
+secret-aws = ["dep:aws-config", "dep:aws-sdk-ssm"]
+# Enable secret URI resolution via Azure Key Vault (azure-kv://)
+secret-azure = []
+# Enable secret URI resolution via HashiCorp Vault (vault://)
+secret-vault = []
+# The binary won't start after a date chosen at compile-time
+timeout = []
+
+[lints]
+workspace = true
