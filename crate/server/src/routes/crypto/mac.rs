@@ -29,7 +29,7 @@ pub(crate) enum MacResponse {
 ///
 /// - If `mac` field is absent in the request: compute and return the MAC.
 /// - If `mac` field is present in the request: verify and return `valid`.
-#[post("/v1/crypto/mac")]
+#[post("/mac")]
 pub(crate) async fn mac(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
