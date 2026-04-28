@@ -480,6 +480,9 @@ test_command() {
   azure_ekm)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
     ;;
+  rest_crypto)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_rest_crypto.sh"
+    ;;
   gcp_cmek)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
     ;;
@@ -540,7 +543,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, rest_crypto, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -567,7 +570,7 @@ test_command() {
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ] || [ "$TEST_TYPE" = "rest_crypto" ]; then
     export WITH_CURL=1
   fi
 
