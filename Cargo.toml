@@ -158,7 +158,7 @@ cosmian_config_utils = "0.3.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "ser",
 ] }
-cosmian_logger = "0.5"
+cosmian_logger = "=0.5.4" # 0.5.5 pulls tracing-appender 0.2.5 which breaks wasm32 builds.
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = [
   "editor",
@@ -180,6 +180,13 @@ lru = "0.16"
 native-tls = { version = "0.2", default-features = false }
 num_cpus = "1.16"
 num-format = "0.4"
+aes = { version = "0.8", features = ["zeroize"] }
+cbc = { version = "0.1", default-features = false }
+cipher = "0.4"
+itertools = "0.10"
+libm = "0.2"
+num-bigint = { version = "0.4", default-features = false }
+num-integer = { version = "0.1", default-features = false }
 num-traits = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }

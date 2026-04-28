@@ -46,6 +46,7 @@ The supported encryption algorithms are:
 | AES GCM           | Symmetric authenticated encryption with additional data | NIST FIPS 197       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf). |
 | AES XTS           | Symmetric, not authenticated                            | NIST SP 800-38E     | Used in disk encryption. Requires 2 keys (e.g. a double-sized key)                                                       |
 | AES GCM-SIV       | Symmetric, authenticated, synthetic IV                  | No                  | Used for deterministic encryption and encryption of very large data sets.                                                |
+| FPE FF1           | Symmetric, format-preserving encryption                 | No                  | NIST SP 800-38G FF1 format-preserving encryption for text, integers, and floating-point values through KMIP Encrypt/Decrypt. |
 | ChaCha20-Poly1305 | Symmetric authenticated encryption with additional data | No                  | A popular symmetric encryption algorithm standardized in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439)              |
 | CKM_RSA_PKCS      | RSA PKCS#1 v1.5                                         | Not anymore         | RSA WITH PKCS#1 v1.5 padding - removed by NIST approved algorithms for encryption in FIPS 140-3                          |
 | CKM_RSA_PKCS_OAEP | RSA encryption with OAEP padding                        | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
@@ -67,6 +68,21 @@ AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST
 Cosmian KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of
 operation ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag
 with and key sizes of 128, 192 or 256 bits.
+
+### FPE FF1
+
+Cosmian KMS supports [NIST SP 800-38G](https://csrc.nist.gov/pubs/sp/800/38/g/final) FF1
+format-preserving encryption in non-FIPS mode through the KMIP `Encrypt` and `Decrypt`
+operations when the `Cryptographic Algorithm` is set to `FPE_FF1`.
+
+The server supports three data shapes:
+
+- text values, using the alphabet name or a custom alphabet in `AuthenticatedEncryptionAdditionalData`
+- integer values, using JSON metadata such as `{"type":"integer","alphabet":"numeric"}`
+- floating-point values, using JSON metadata such as `{"type":"float"}`
+
+The tweak is supplied through `IVCounterNonce`. The CLI exposes the same flow via `ckms fpe`
+commands: `ckms fpe keys create`, `ckms fpe encrypt`, and `ckms fpe decrypt`.
 
 ### ChaCha20-Poly1305
 
