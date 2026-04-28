@@ -33,6 +33,7 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - rest_crypto
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
