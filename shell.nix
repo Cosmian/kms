@@ -44,6 +44,8 @@ let
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
   # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
   withAws = (builtins.getEnv "WITH_AWS") == "1";
+  # Vault secret backend test: docker-client is needed to start the Vault dev container
+  withDocker = (builtins.getEnv "WITH_DOCKER") == "1";
 
   rustToolchain =
     if withWasm then
@@ -179,7 +181,9 @@ pkgs.mkShell {
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
   # AWS secret backend test: include awscli2 for SSM parameter management
-  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ];
+  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
+  # Vault secret backend test: include docker-client (CLI only) to interact with the host daemon
+  ++ pkgs.lib.optionals withDocker [ pkgs.docker-client ];
 
   shellHook = ''
     set -eo pipefail

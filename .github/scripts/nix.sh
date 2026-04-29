@@ -600,9 +600,10 @@ test_command() {
   if [ "$TEST_TYPE" = "secret_vault" ]; then
     export WITH_DOCKER=1
   fi
-  # Azure KV secret backend test: curl is needed for REST API calls
+  # Azure KV secret backend test: curl + python3 are needed for REST API calls and JSON parsing
   if [ "$TEST_TYPE" = "secret_azure" ]; then
     export WITH_CURL=1
+    export WITH_PYTHON=1
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
