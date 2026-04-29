@@ -42,6 +42,8 @@ let
   withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
   # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  withAws = (builtins.getEnv "WITH_AWS") == "1";
 
   rustToolchain =
     if withWasm then
@@ -175,7 +177,9 @@ pkgs.mkShell {
   # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
-  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ];
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
+  # AWS secret backend test: include awscli2 for SSM parameter management
+  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ];
 
   shellHook = ''
     set -eo pipefail

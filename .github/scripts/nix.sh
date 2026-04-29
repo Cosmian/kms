@@ -592,6 +592,18 @@ test_command() {
   if [ "$TEST_TYPE" = "luks" ]; then
     export WITH_LUKS=1
   fi
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  if [ "$TEST_TYPE" = "secret_aws" ]; then
+    export WITH_AWS=1
+  fi
+  # Vault secret backend test: Docker is needed to start the Vault dev container
+  if [ "$TEST_TYPE" = "secret_vault" ]; then
+    export WITH_DOCKER=1
+  fi
+  # Azure KV secret backend test: curl is needed for REST API calls
+  if [ "$TEST_TYPE" = "secret_azure" ]; then
+    export WITH_CURL=1
+  fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
   if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
@@ -627,6 +639,14 @@ test_command() {
         --keep WITH_PYTHON \
         --keep WITH_OPENSSH \
         --keep WITH_LUKS \
+        --keep WITH_AWS \
+        --keep AWS_ACCESS_KEY_ID \
+        --keep AWS_SECRET_ACCESS_KEY \
+        --keep AWS_REGION \
+        --keep AZURE_TENANT_ID \
+        --keep AZURE_CLIENT_ID \
+        --keep AZURE_CLIENT_SECRET \
+        --keep AZURE_KV_NAME \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
