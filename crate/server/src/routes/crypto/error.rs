@@ -22,7 +22,7 @@ pub(crate) enum CryptoApiError {
     #[error("{0}")]
     BadRequest(String),
 
-    /// 400 — unknown or unsupported JOSE algorithm identifier
+    /// 422 — unknown or unsupported JOSE algorithm identifier
     #[error("{0}")]
     UnsupportedAlgorithm(String),
 
@@ -46,8 +46,10 @@ pub(crate) enum CryptoApiError {
 impl actix_web::error::ResponseError for CryptoApiError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::UnsupportedAlgorithm(_) | Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::CryptoFailure(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::UnsupportedAlgorithm(_) | Self::CryptoFailure(_) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
