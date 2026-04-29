@@ -240,8 +240,7 @@ pub(crate) async fn signature_verify(
         signature_data,
         &crypto_params,
         request.digested_data.is_some(),
-    )
-    .context("signature_verify: verification operation failed")?;
+    )?;
 
     debug!("Signature verification result: {validity_indicator:?}");
 

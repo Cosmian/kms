@@ -1,4 +1,5 @@
 use actix_web::{HttpResponse, HttpResponseBuilder, http::StatusCode, web::Json};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason;
 use cosmian_logger::warn;
 use serde::Serialize;
 
@@ -45,10 +46,8 @@ pub(crate) enum CryptoApiError {
 impl actix_web::error::ResponseError for CryptoApiError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::UnsupportedAlgorithm(_) | Self::CryptoFailure(_) => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
-            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::UnsupportedAlgorithm(_) | Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::CryptoFailure(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,6 +84,8 @@ impl From<KmsError> for CryptoApiError {
             KmsError::Unauthorized(msg) => Self::Forbidden(msg),
             KmsError::ItemNotFound(msg) => Self::NotFound(msg),
             KmsError::InvalidRequest(msg) => Self::BadRequest(msg),
+            KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg)
+            | KmsError::Kmip21Error(ErrorReason::Object_Not_Found, msg) => Self::NotFound(msg),
             KmsError::CryptographicError(msg)
             | KmsError::Kmip21Error(_, msg)
             | KmsError::Kmip14Error(_, msg)

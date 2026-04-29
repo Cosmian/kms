@@ -73,12 +73,18 @@ pub(crate) async fn verify(
         ..Default::default()
     };
 
-    let resp = kms
-        .signature_verify(verify_req, &user)
-        .await
-        .map_err(CryptoApiError::from)?;
-
-    let valid = matches!(resp.validity_indicator, Some(ValidityIndicator::Valid));
+    let valid = match kms.signature_verify(verify_req, &user).await {
+        Ok(resp) => matches!(resp.validity_indicator, Some(ValidityIndicator::Valid)),
+        Err(e) => {
+            let api_err = CryptoApiError::from(e);
+            match api_err {
+                // A crypto failure during verification means the signature bytes are
+                // malformed or otherwise unverifiable — treat as invalid (not an error).
+                CryptoApiError::CryptoFailure(_) => false,
+                other => return Err(other),
+            }
+        }
+    };
 
     Ok(Json(CryptoVerifyResponse { kid, valid }))
 }
