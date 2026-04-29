@@ -2,31 +2,30 @@
 
 ## Features
 
-### REST Native Crypto API (`/v1/crypto`)
-
-- Added new HTTP REST endpoints under `/v1/crypto` implementing JOSE-compatible
-  encrypt, decrypt, sign, verify, and MAC operations (RFC 7516 / RFC 7515 / RFC 7518).
-  Key material never leaves the KMS; only ciphertext/signatures/MACs are transmitted.
-  - `POST /v1/crypto/encrypt` — AES-GCM encryption (`dir` + `A128GCM`/`A192GCM`/`A256GCM`)
-  - `POST /v1/crypto/decrypt` — AES-GCM decryption with AAD binding verification
-  - `POST /v1/crypto/sign` — Detached JWS signing (RS256/384/512, PS256/384/512, ES256/384/512;
-    EdDSA and MLDSA44 in non-FIPS builds)
+- Added REST crypto API under `/v1/crypto` — JOSE-compatible encrypt, decrypt, sign, verify,
+  and MAC without a KMIP client library ([RFC 7515](https://www.rfc-editor.org/rfc/rfc7515),
+  [RFC 7516](https://www.rfc-editor.org/rfc/rfc7516), [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518)):
+  - `POST /v1/crypto/encrypt` — AES-GCM (`dir` + `A128/192/256GCM`)
+  - `POST /v1/crypto/decrypt` — AES-GCM with AAD binding
+  - `POST /v1/crypto/sign` — RS256/384/512, PS256/384/512, ES256/384/512 (+ EdDSA, MLDSA44 non-FIPS)
   - `POST /v1/crypto/verify` — JWS signature verification
-  - `POST /v1/crypto/mac` — HMAC compute and verify (HS256/HS384/HS512)
-- Exposed `mac_verify` KMIP operation from the KMS core layer to support the REST API
-  (`crate/server/src/core/operations/mac.rs`, `kms/kmip.rs`).
-- Added integration tests for the REST crypto API under
-  `crate/server/src/tests/rest_crypto/` (refactored into a module folder by category):
-  - `encrypt_decrypt` — AES-GCM round-trips (128-bit, 256-bit), AAD binding
-  - `sign_verify` — RSA-2048 and EC P-256 sign/verify round-trips; tamper rejection
-  - `mac` — HMAC-SHA256 compute and verify
-  - `error_cases` — unknown algorithm (422), nonexistent key (4xx), wrong key type
-  - `rfc_vectors` — RFC 7515 §A.1 HMAC-SHA256 known-answer test (exact MAC pinned);
-    RFC 7515 §A.2/A.3/A.4 known-key round-trips (RS256/ES256/ES512)
-- Fixed a pre-existing routing bug: handler macros used full paths (`/v1/crypto/encrypt`)
-  while also being registered under `web::scope("/v1/crypto")`, causing actix-web to
-  double the prefix and make all crypto endpoints unreachable in tests.
-- Added documentation page `documentation/docs/integrations/rest_crypto_api.md` with
-  full endpoint reference, curl examples, and algorithm support matrix.
+  - `POST /v1/crypto/mac` — HMAC compute and verify (HS256/384/512)
+- Added documentation: [`documentation/docs/integrations/rest_crypto_api.md`](documentation/docs/integrations/rest_crypto_api.md)
+
+## Bug Fixes
+
+- Fixed ECDSA verify returning HTTP 500 on a corrupted signature instead of `{"valid": false}`
+  ([`crate/server/src/core/operations/signature_verify.rs`](crate/server/src/core/operations/signature_verify.rs),
+  [`crate/server/src/routes/crypto/verify.rs`](crate/server/src/routes/crypto/verify.rs)).
+
+## Testing
+
+- Added [`crate/server/src/tests/rest_crypto/`](crate/server/src/tests/rest_crypto/) — integration tests
+  (`encrypt_decrypt`, `sign_verify`, `mac`, `error_cases`, `rfc_vectors`).
+- Added [`.github/scripts/test/rest_crypto_test.sh`](.github/scripts/test/rest_crypto_test.sh) — shell-only
+  E2E test suite (curl/sed/grep/base64/tr only; no python3 or jq), wired into
+  [`.github/scripts/nix.sh`](.github/scripts/nix.sh) and
+  [`.github/workflows/test_all.yml`](.github/workflows/test_all.yml).
 
 Closes #868
+
