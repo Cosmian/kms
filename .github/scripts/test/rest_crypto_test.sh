@@ -310,15 +310,15 @@ assert_status \
     "$(crypto_status "decrypt" "{\"protected\":\"${MOD_PROT}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${AAD_B64}\"}")" \
     "422" "Protected header tamper"
 
-echo "==> A7: Unsupported enc (A128CBC-HS256) returns 400"
+echo "==> A7: Unsupported enc (A128CBC-HS256) returns 422"
 assert_status \
-    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A128CBC-HS256\",\"data\":\"${PLAINTEXT_B64}\"}")" \
-    "400" "Unsupported enc"
+    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A128CBC-HS256\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
+    "422" "Unsupported enc"
 
-echo "==> A8: Unsupported alg (RSA-OAEP) returns 400"
+echo "==> A8: Unsupported alg (RSA-OAEP) returns 422"
 assert_status \
-    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"RSA-OAEP\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}")" \
-    "400" "Unsupported alg"
+    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"RSA-OAEP\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
+    "422" "Unsupported alg"
 
 echo "==> A9: Non-existent kid returns 404"
 FAKE_PROT=$(b64url_encode '{"alg":"dir","enc":"A256GCM","kid":"does-not-exist"}')
@@ -368,10 +368,10 @@ run_sign_verify "$RSA_PRIV_UID" "RS256"
 echo "==> B2: ES256 round-trip + tamper checks"
 run_sign_verify "$EC_PRIV_UID" "ES256"
 
-echo "==> B3: Unknown alg returns 400"
+echo "==> B3: Unknown alg returns 422"
 assert_status \
-    "$(crypto_status "sign" "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"UNKNOWN\",\"data\":\"${PLAINTEXT_B64}\"}")" \
-    "400" "Unknown sign alg"
+    "$(crypto_status "sign" "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"UNKNOWN\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
+    "422" "Unknown sign alg"
 
 # ── Section C: MAC ────────────────────────────────────────────────────────────
 
