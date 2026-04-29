@@ -82,12 +82,13 @@ impl From<KmsError> for CryptoApiError {
     fn from(e: KmsError) -> Self {
         match e {
             KmsError::Unauthorized(msg) => Self::Forbidden(msg),
-            KmsError::ItemNotFound(msg) => Self::NotFound(msg),
             KmsError::InvalidRequest(msg) => Self::BadRequest(msg),
-            KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg)
-            | KmsError::Kmip21Error(ErrorReason::Object_Not_Found, msg) => Self::NotFound(msg),
+            KmsError::ItemNotFound(msg) => Self::NotFound(msg),
+            KmsError::Kmip21Error(reason, msg) => match reason {
+                ErrorReason::Item_Not_Found | ErrorReason::Object_Not_Found => Self::NotFound(msg),
+                _ => Self::CryptoFailure(msg),
+            },
             KmsError::CryptographicError(msg)
-            | KmsError::Kmip21Error(_, msg)
             | KmsError::Kmip14Error(_, msg)
             | KmsError::NotSupported(msg)
             | KmsError::InconsistentOperation(msg) => Self::CryptoFailure(msg),
