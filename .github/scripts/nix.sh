@@ -509,6 +509,29 @@ test_command() {
   luks)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
     ;;
+  secret_vault)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_vault.sh"
+    ;;
+  secret_aws)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_aws.sh"
+    for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
+      if [ -z "${!var:-}" ]; then
+        echo "Error: Required environment variable $var is not set" >&2
+        echo "AWS SSM secret backend tests require AWS credentials." >&2
+        exit 1
+      fi
+    done
+    ;;
+  secret_azure)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_azure.sh"
+    for var in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME; do
+      if [ -z "${!var:-}" ]; then
+        echo "Error: Required environment variable $var is not set" >&2
+        echo "Azure KV secret backend tests require Azure credentials." >&2
+        exit 1
+      fi
+    done
+    ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
     ;;

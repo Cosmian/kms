@@ -555,4 +555,88 @@ mod tests {
         // Unchanged because no backend handles the scheme
         assert_eq!(v["password"].as_str().unwrap(), "echo://secret");
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Integration tests — require live external services.
+    // Run with:  cargo test --features secret-vault  -- --ignored test_secret_vault
+    //            cargo test --features secret-aws    -- --ignored test_secret_aws_ssm
+    //            cargo test --features secret-azure  -- --ignored test_secret_azure_kv
+    //
+    // Required env vars (set by CI scripts):
+    //   Vault:  VAULT_ADDR, VAULT_TOKEN, KMS_TEST_VAULT_URI
+    //   AWS:    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (or profile),
+    //           KMS_TEST_AWS_SSM_URI
+    //   Azure:  AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
+    //           KMS_TEST_AZURE_KV_URI
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Vault integration test.
+    ///
+    /// Expects the secret at `KMS_TEST_VAULT_URI` (e.g.
+    /// `vault://secret/kms-ci/db#password`) to exist and its resolved value to
+    /// equal `KMS_TEST_VAULT_EXPECTED` (defaults to `"ci-secret-value"`).
+    #[cfg(feature = "secret-vault")]
+    #[test]
+    #[ignore]
+    fn test_secret_vault() {
+        use super::vault::VaultBackend;
+        let uri = std::env::var("KMS_TEST_VAULT_URI")
+            .unwrap_or_else(|_| "vault://secret/kms-ci/db#password".to_owned());
+        let expected = std::env::var("KMS_TEST_VAULT_EXPECTED")
+            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+
+        let backend = VaultBackend::new();
+        let resolved = backend.resolve(&uri).expect("Vault resolution failed");
+        assert_eq!(
+            resolved, expected,
+            "Vault secret value mismatch: got '{resolved}', expected '{expected}'"
+        );
+    }
+
+    /// AWS SSM integration test.
+    ///
+    /// Expects the parameter at `KMS_TEST_AWS_SSM_URI` (e.g.
+    /// `aws-ssm://eu-west-1/kms/ci/db-password`) to exist and its resolved value
+    /// to equal `KMS_TEST_AWS_SSM_EXPECTED` (defaults to `"ci-secret-value"`).
+    #[cfg(feature = "secret-aws")]
+    #[test]
+    #[ignore]
+    fn test_secret_aws_ssm() {
+        use super::aws::AwsSsmBackend;
+        let uri = std::env::var("KMS_TEST_AWS_SSM_URI")
+            .unwrap_or_else(|_| "aws-ssm://eu-west-1/kms/ci/db-password".to_owned());
+        let expected = std::env::var("KMS_TEST_AWS_SSM_EXPECTED")
+            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+
+        let backend = AwsSsmBackend::new();
+        let resolved = backend.resolve(&uri).expect("AWS SSM resolution failed");
+        assert_eq!(
+            resolved, expected,
+            "AWS SSM secret value mismatch: got '{resolved}', expected '{expected}'"
+        );
+    }
+
+    /// Azure Key Vault integration test.
+    ///
+    /// Expects the secret at `KMS_TEST_AZURE_KV_URI` (e.g.
+    /// `azure-kv://my-vault/secrets/kms-ci-db-password`) to exist and its
+    /// resolved value to equal `KMS_TEST_AZURE_KV_EXPECTED` (defaults to
+    /// `"ci-secret-value"`).
+    #[cfg(feature = "secret-azure")]
+    #[test]
+    #[ignore]
+    fn test_secret_azure_kv() {
+        use super::azure::AzureKvBackend;
+        let uri = std::env::var("KMS_TEST_AZURE_KV_URI")
+            .unwrap_or_else(|_| "azure-kv://my-vault/secrets/kms-ci-db-password".to_owned());
+        let expected = std::env::var("KMS_TEST_AZURE_KV_EXPECTED")
+            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+
+        let backend = AzureKvBackend::new();
+        let resolved = backend.resolve(&uri).expect("Azure KV resolution failed");
+        assert_eq!(
+            resolved, expected,
+            "Azure KV secret value mismatch: got '{resolved}', expected '{expected}'"
+        );
+    }
 }
