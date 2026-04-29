@@ -38,50 +38,30 @@ trap cleanup EXIT
 
 # ── Generic helpers ───────────────────────────────────────────────────────────
 
-# Encode raw bytes (or a string) to base64url without padding.
+# Encode a literal string to base64url without padding.
 b64url_encode() {
-    printf '%s' "$1" | base64 -w0 | tr '+/' '-_' | tr -d '='
+    printf '%s' "$1" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='
 }
 
-# Extract a string or bool field from a flat JSON REST-crypto response.
-# Booleans are printed as lowercase "true"/"false".
+# Extract a string-typed field from a flat JSON REST response.
+# Example: json_str '{"iv":"abc","tag":"def"}' "iv"  →  abc
 json_str() {
-    printf '%s' "$1" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-v = d.get('$2')
-if isinstance(v, bool):
-    print('true' if v else 'false')
-elif v is not None:
-    print(v)
-"
+    printf '%s' "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -1 | sed 's/.*":"//;s/"$//'
 }
 
-# Recursively search a KMIP JSON-TTLV tree for the first occurrence of a tag
-# and print its value.  Exits non-zero when the tag is not found.
+# Extract a boolean field from a flat JSON REST response.
+# Returns the literal word: true or false.
+json_bool() {
+    printf '%s' "$1" | grep -oE "\"$2\":(true|false)" | head -1 | sed 's/.*://'
+}
+
+# Extract a TextString value by KMIP tag name from a JSON-TTLV response.
+# Works on compact single-line JSON as returned by the KMS server.
 kmip_tag() {
-    printf '%s' "$1" | python3 -c "
-import json, sys
-def find(obj, tag):
-    if isinstance(obj, dict):
-        if obj.get('tag') == tag:
-            return obj.get('value')
-        for v in obj.values():
-            r = find(v, tag)
-            if r is not None:
-                return r
-    elif isinstance(obj, list):
-        for i in obj:
-            r = find(i, tag)
-            if r is not None:
-                return r
-    return None
-v = find(json.load(sys.stdin), '$2')
-if v is not None:
-    print(v)
-else:
-    sys.exit(1)
-"
+    printf '%s' "$1" | \
+        grep -o "\"tag\":\"$2\",\"type\":\"TextString\",\"value\":\"[^\"]*\"" | \
+        grep -o '"value":"[^"]*"' | \
+        sed 's/"value":"//;s/"$//'
 }
 
 # POST JSON to the KMIP 2.1 endpoint and return the full response body.
@@ -363,14 +343,14 @@ run_sign_verify() {
     # Happy path
     ver_resp=$(crypto_post "verify" \
         "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${signature}\"}")
-    assert_eq "$(json_str "$ver_resp" "valid")" "true" "${alg} sign/verify round-trip"
+    assert_eq "$(json_bool "${ver_resp}" "valid")" "true" "${alg} sign/verify round-trip"
 
     # Tampered data → valid=false
     local tampered_b64
     tampered_b64=$(b64url_encode "tampered payload for ${alg}")
     ver_resp=$(crypto_post "verify" \
         "{\"protected\":\"${protected}\",\"data\":\"${tampered_b64}\",\"signature\":\"${signature}\"}")
-    assert_eq "$(json_str "$ver_resp" "valid")" "false" "${alg} tampered data → invalid"
+    assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} tampered data → invalid"
 
     # Corrupted signature (flip one character) → valid=false
     local bad_sig bad_char
@@ -378,7 +358,7 @@ run_sign_verify() {
     bad_sig="${bad_char}${signature:1}"
     ver_resp=$(crypto_post "verify" \
         "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${bad_sig}\"}")
-    assert_eq "$(json_str "$ver_resp" "valid")" "false" "${alg} corrupted signature → invalid"
+    assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} corrupted signature → invalid"
 }
 
 echo ""
@@ -405,20 +385,20 @@ MAC_COMPUTE=$(crypto_post "mac" \
 MAC_VALUE=$(json_str "$MAC_COMPUTE" "mac")
 MAC_VER=$(crypto_post "mac" \
     "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
-assert_eq "$(json_str "$MAC_VER" "valid")" "true" "HS256 compute + verify"
+assert_eq "$(json_bool "${MAC_VER}" "valid")" "true" "HS256 compute + verify"
 
 echo "==> C2: HS256 tampered data → invalid"
 WRONG_DATA_B64=$(b64url_encode "different message")
 MAC_WRONG=$(crypto_post "mac" \
     "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${WRONG_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
-assert_eq "$(json_str "$MAC_WRONG" "valid")" "false" "HS256 tampered data"
+assert_eq "$(json_bool "${MAC_WRONG}" "valid")" "false" "HS256 tampered data"
 
 echo "==> C3: HS256 corrupted mac → invalid"
 if [ "${MAC_VALUE:0:1}" = "A" ]; then MAC_BAD_CHAR="B"; else MAC_BAD_CHAR="A"; fi
 BAD_MAC="${MAC_BAD_CHAR}${MAC_VALUE:1}"
 MAC_BAD=$(crypto_post "mac" \
     "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${BAD_MAC}\"}")
-assert_eq "$(json_str "$MAC_BAD" "valid")" "false" "HS256 corrupted mac"
+assert_eq "$(json_bool "${MAC_BAD}" "valid")" "false" "HS256 corrupted mac"
 
 echo "==> C4: MAC with non-existent kid returns 404"
 assert_status \
