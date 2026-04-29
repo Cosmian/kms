@@ -137,7 +137,7 @@ jobs:
           # AWS secret backend variables (secret_aws test type)
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: eu-west-1
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
 
           # Azure Key Vault secret backend variables (secret_azure test type)
           AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}

@@ -514,7 +514,7 @@ test_command() {
     ;;
   secret_aws)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_aws.sh"
-    for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+    for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
       if [ -z "${!var:-}" ]; then
         echo "Error: Required environment variable $var is not set" >&2
         echo "AWS SSM secret backend tests require AWS credentials." >&2
