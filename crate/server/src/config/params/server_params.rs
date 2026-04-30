@@ -340,6 +340,7 @@ impl ServerParams {
             {
                 Some(OpenTelemetryConfig {
                     otlp_url: conf.logging.otlp,
+                    otlp_allow_insecure: conf.logging.otlp_allow_insecure,
                     enable_metering: conf.logging.enable_metering,
                     environment: conf.logging.environment,
                 })

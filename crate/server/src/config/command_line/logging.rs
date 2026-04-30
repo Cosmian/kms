@@ -13,10 +13,19 @@ pub struct LoggingConfig {
     pub rust_log: Option<String>,
 
     /// The OTLP collector URL for gRPC
-    /// (for instance, <http://localhost:4317>)
-    /// If not set, the telemetry system will not be initialized
+    /// (for instance, <https://localhost:4317>)
+    /// If not set, the telemetry system will not be initialized.
+    /// Must use https:// or grpcs:// in production.
+    /// Use --otlp-allow-insecure to permit plaintext http:// connections.
     #[clap(long, env("KMS_OTLP_URL"), verbatim_doc_comment)]
     pub otlp: Option<String>,
+
+    /// Allow insecure (plaintext HTTP) OTLP connections.
+    /// WARNING: Enabling this exposes telemetry data (including encryption
+    /// operation metadata) over an unencrypted channel.
+    /// Only use for development or when the collector is on localhost.
+    #[clap(long, env("KMS_OTLP_ALLOW_INSECURE"), default_value = "false")]
+    pub otlp_allow_insecure: bool,
 
     /// Do not log to stdout
     #[clap(long, env("KMS_LOG_QUIET"), default_value = "false")]

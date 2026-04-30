@@ -52,7 +52,7 @@ pub(crate) async fn import(
     user: &str,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
-    trace!("Entering import KMIP operation: {}", request);
+    trace!("Entering import KMIP operation: uid={}, object_type={}", request.unique_identifier, request.object_type);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for a unique identifier `[tag1]` will
@@ -1062,7 +1062,7 @@ pub(super) async fn process_secret_data(
     request: Import,
     user: &str,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
-    trace!("{request}");
+    trace!("import secret_data: uid={}", request.unique_identifier);
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
 
@@ -1145,7 +1145,7 @@ pub(super) fn process_opaque_object(
     vendor_id: &str,
     request: Import,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
-    trace!("{request}");
+    trace!("import opaque_object: uid={}", request.unique_identifier);
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
 

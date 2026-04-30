@@ -142,7 +142,7 @@ pub(super) fn decode_jwt_authorization_token(
 
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
 
-    trace!("Try to validate token:\n{token:?} \n {issuer_uri:?}");
+    trace!("Try to validate token from issuer: {issuer_uri:?}");
 
     let jwk = &jwt_config.jwks.find(&kid)?.ok_or_else(|| {
         // Only log JWKS on error
@@ -360,15 +360,14 @@ pub(super) async fn validate_cse_authorization_token(
         }
     }
 
-    let (authorization_token, jwt_headers) = decoded_token.ok_or_else(|| {
+    let (authorization_token, _jwt_headers) = decoded_token.ok_or_else(|| {
         KmsError::Unauthorized(
             "Failed to decode authorization token with any configured JWT authorization config"
                 .to_owned(),
         )
     })?;
 
-    trace!("authorization token: {authorization_token:?}");
-    trace!("authorization token headers: {jwt_headers:?}");
+    trace!("authorization token validated successfully");
 
     #[cfg(all(not(test), not(feature = "insecure")))]
     if let Some(roles) = roles {
