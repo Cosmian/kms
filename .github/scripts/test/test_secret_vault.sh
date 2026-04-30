@@ -48,7 +48,8 @@ docker run -d \
   -p "${VAULT_PORT}:8200" \
   -e "VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN}" \
   -e "VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200" \
-  hashicorp/vault:latest
+  hashicorp/vault:1.17 \
+  vault server -dev
 
 echo "Waiting for Vault to be ready..."
 for i in $(seq 1 60); do
@@ -61,6 +62,8 @@ for i in $(seq 1 60); do
   fi
   if [ "${i}" -eq 60 ]; then
     echo "ERROR: Vault did not become ready in time (last status: ${STATUS})" >&2
+    echo "--- Vault container logs ---" >&2
+    docker logs "${VAULT_CONTAINER}" >&2 || true
     exit 1
   fi
   sleep 2
