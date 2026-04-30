@@ -167,6 +167,9 @@ jobs:
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+          ORACLE_DEMO_PASS: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.ORACLE_DEMO_PASS || '' }}
+          ORACLE_WALLET_PASS: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.ORACLE_WALLET_PASS || '' }}
+          COSMIAN_HSM_PIN: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.COSMIAN_HSM_PIN || '' }}
         run: |
           bash .github/scripts/test/test_docker_image.sh
 
@@ -249,72 +252,3 @@ jobs:
             images+="${tag} "
           done
           cosign sign --yes ${images}
-
-  upgrade-kms-oracle:
-    name: upgrade-kms-oracle
-    needs: [nix-docker-manifest]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Compute image tag
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/cosmian/kms
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Extract deployment tag
-        id: pick_tag
-        run: |
-          set -euo pipefail
-          first=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          TAG_ONLY="${first##*:}"
-          echo "image_tag=${first}" >> "$GITHUB_OUTPUT"
-          echo "tag_only=${TAG_ONLY}" >> "$GITHUB_OUTPUT"
-
-      - name: Copy upgrade script to oracle
-        continue-on-error: false
-        run: |
-          scp -o StrictHostKeyChecking=no \
-            .github/scripts/oracle/upgrade-kms.sh \
-            ec2-user@oracle.netbird.selfhosted:/tmp/upgrade-kms.sh
-
-      - name: Run KMS upgrade on oracle
-        continue-on-error: false
-        env:
-          TAG_ONLY: ${{ steps.pick_tag.outputs.tag_only }}
-        run: |
-          ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-            bash /tmp/upgrade-kms.sh "${TAG_ONLY}"
-
-      - name: Copy smoke test script to oracle
-        continue-on-error: false
-        run: |
-          scp -o StrictHostKeyChecking=no \
-            .github/scripts/oracle/smoke-test-tde.sh \
-            ec2-user@oracle.netbird.selfhosted:/tmp/smoke-test-tde.sh
-
-      - name: Run TDE smoke test on oracle
-        continue-on-error: false
-        env:
-          DEMO_PASS:          ${{ secrets.ORACLE_DEMO_PASS }}
-          TAG_ONLY:           ${{ steps.pick_tag.outputs.tag_only }}
-          ORACLE_WALLET_PASS: ${{ secrets.ORACLE_WALLET_PASS }}
-          COSMIAN_HSM_PIN:    ${{ secrets.COSMIAN_HSM_PIN }}
-        run: |
-          set -euo pipefail
-          ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-            bash /tmp/smoke-test-tde.sh \
-              "${DEMO_PASS}" "${TAG_ONLY}" "${ORACLE_WALLET_PASS}" "${COSMIAN_HSM_PIN}"
-
-      - name: Cleanup smoke test script on oracle
-        if: always()
-        run: |
-          ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-            rm -f /tmp/smoke-test-tde.sh /tmp/upgrade-kms.sh
