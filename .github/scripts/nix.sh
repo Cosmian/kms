@@ -509,6 +509,29 @@ test_command() {
   luks)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
     ;;
+  secret_vault)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_vault.sh"
+    ;;
+  secret_aws)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_aws.sh"
+    for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
+      if [ -z "${!var:-}" ]; then
+        echo "Error: Required environment variable $var is not set" >&2
+        echo "AWS SSM secret backend tests require AWS credentials." >&2
+        exit 1
+      fi
+    done
+    ;;
+  secret_azure)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_azure.sh"
+    for var in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME; do
+      if [ -z "${!var:-}" ]; then
+        echo "Error: Required environment variable $var is not set" >&2
+        echo "Azure KV secret backend tests require Azure credentials." >&2
+        exit 1
+      fi
+    done
+    ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
     ;;
@@ -569,6 +592,20 @@ test_command() {
   if [ "$TEST_TYPE" = "luks" ]; then
     export WITH_LUKS=1
   fi
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  if [ "$TEST_TYPE" = "secret_aws" ]; then
+    export WITH_AWS=1
+  fi
+  # Vault secret backend test: Docker is needed to start the Vault dev container; curl for readiness checks
+  if [ "$TEST_TYPE" = "secret_vault" ]; then
+    export WITH_DOCKER=1
+    export WITH_CURL=1
+  fi
+  # Azure KV secret backend test: curl + python3 are needed for REST API calls and JSON parsing
+  if [ "$TEST_TYPE" = "secret_azure" ]; then
+    export WITH_CURL=1
+    export WITH_PYTHON=1
+  fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
   if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
@@ -604,6 +641,14 @@ test_command() {
         --keep WITH_PYTHON \
         --keep WITH_OPENSSH \
         --keep WITH_LUKS \
+        --keep WITH_AWS \
+        --keep AWS_ACCESS_KEY_ID \
+        --keep AWS_SECRET_ACCESS_KEY \
+        --keep AWS_REGION \
+        --keep AZURE_TENANT_ID \
+        --keep AZURE_CLIENT_ID \
+        --keep AZURE_CLIENT_SECRET \
+        --keep AZURE_KV_NAME \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
