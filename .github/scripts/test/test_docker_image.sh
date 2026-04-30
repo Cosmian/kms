@@ -178,3 +178,36 @@ bash .github/scripts/oracle/set_hsm.sh
 
 docker compose -f "$COMPOSE_FILE" --profile oracle down --remove-orphans || true
 echo "Oracle TDE HSM test completed successfully"
+
+# === Oracle TDE remote upgrade and smoke test ===
+# SSH into the remote Oracle server and verify the new KMS image works end-to-end.
+# Only runs when ORACLE_DEMO_PASS is set (non-fips amd64 CI runs only).
+if [[ -n "${ORACLE_DEMO_PASS:-}" ]]; then
+    echo "Running Oracle TDE remote upgrade and smoke test"
+    TAG_ONLY="${DOCKER_IMAGE_NAME##*:}"
+
+    echo "Copy upgrade script to oracle"
+    scp -o StrictHostKeyChecking=no \
+        .github/scripts/oracle/upgrade-kms.sh \
+        ec2-user@oracle.netbird.selfhosted:/tmp/upgrade-kms.sh
+
+    echo "Run KMS upgrade on oracle"
+    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+        bash /tmp/upgrade-kms.sh "${TAG_ONLY}"
+
+    echo "Copy smoke test script to oracle"
+    scp -o StrictHostKeyChecking=no \
+        .github/scripts/oracle/smoke-test-tde.sh \
+        ec2-user@oracle.netbird.selfhosted:/tmp/smoke-test-tde.sh
+
+    echo "Run TDE smoke test on oracle"
+    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+        bash /tmp/smoke-test-tde.sh \
+            "${ORACLE_DEMO_PASS}" "${TAG_ONLY}" "${ORACLE_WALLET_PASS}" "${COSMIAN_HSM_PIN}"
+
+    echo "Cleanup smoke test script on oracle"
+    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+        rm -f /tmp/smoke-test-tde.sh /tmp/upgrade-kms.sh
+
+    echo "Oracle TDE remote upgrade and smoke test completed successfully"
+fi
