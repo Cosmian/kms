@@ -596,9 +596,10 @@ test_command() {
   if [ "$TEST_TYPE" = "secret_aws" ]; then
     export WITH_AWS=1
   fi
-  # Vault secret backend test: Docker is needed to start the Vault dev container
+  # Vault secret backend test: Docker is needed to start the Vault dev container; curl for readiness checks
   if [ "$TEST_TYPE" = "secret_vault" ]; then
     export WITH_DOCKER=1
+    export WITH_CURL=1
   fi
   # Azure KV secret backend test: curl + python3 are needed for REST API calls and JSON parsing
   if [ "$TEST_TYPE" = "secret_azure" ]; then
