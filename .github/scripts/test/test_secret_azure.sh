@@ -71,20 +71,50 @@ KV_TOKEN=$(get_kv_token)
 # Recover the secret if it is in soft-deleted state (e.g. left over from a previous run
 # on a vault with purge protection enabled). A 404 here is normal and ignored.
 echo "Recovering soft-deleted secret ${SECRET_NAME} if present..."
-curl -s -X POST \
+RECOVER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
   "${KV_BASE_URL}/deletedsecrets/${SECRET_NAME}/recover?api-version=7.4" \
   -H "Authorization: Bearer ${KV_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -o /dev/null || true
-# Brief pause to let the recovery propagate before the PUT
-sleep 3
+  -H "Content-Type: application/json" || true)
+echo "Recover response: HTTP ${RECOVER_STATUS}"
+
+# If recovery was triggered (202), poll until the secret is available or timeout
+if [ "${RECOVER_STATUS}" = "202" ]; then
+  echo "Waiting for recovery to complete..."
+  for i in $(seq 1 30); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "${KV_BASE_URL}/secrets/${SECRET_NAME}?api-version=7.4" \
+      -H "Authorization: Bearer ${KV_TOKEN}" || true)
+    if [ "${STATUS}" = "200" ]; then
+      echo "Secret recovered and accessible (attempt ${i})"
+      break
+    fi
+    if [ "${i}" -eq 30 ]; then
+      echo "WARNING: Secret not accessible after recovery, attempting PUT anyway"
+    fi
+    sleep 2
+  done
+fi
 
 echo "Creating secret ${SECRET_NAME} in vault ${AZURE_KV_NAME}..."
-curl -sf -X PUT \
+PUT_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
   "${KV_BASE_URL}/secrets/${SECRET_NAME}?api-version=7.4" \
   -H "Authorization: Bearer ${KV_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"value\":\"${SECRET_VALUE}\"}"
+  -d "{\"value\":\"${SECRET_VALUE}\"}")
+PUT_STATUS=$(echo "${PUT_RESPONSE}" | tail -1)
+PUT_BODY=$(echo "${PUT_RESPONSE}" | head -n -1)
+if [ "${PUT_STATUS}" -lt 200 ] || [ "${PUT_STATUS}" -ge 300 ]; then
+  echo "ERROR: PUT secret failed (HTTP ${PUT_STATUS}): ${PUT_BODY}" >&2
+  exit 1
+fi
+echo "Secret created (HTTP ${PUT_STATUS})"
+PUT_STATUS=$(echo "${PUT_RESPONSE}" | tail -1)
+PUT_BODY=$(echo "${PUT_RESPONSE}" | head -n -1)
+if [ "${PUT_STATUS}" -lt 200 ] || [ "${PUT_STATUS}" -ge 300 ]; then
+  echo "ERROR: PUT secret failed (HTTP ${PUT_STATUS}): ${PUT_BODY}" >&2
+  exit 1
+fi
+echo "Secret created (HTTP ${PUT_STATUS})"
 
 echo "Building cosmian_kms_server with secret-azure feature..."
 cargo build -p cosmian_kms_server --features secret-azure
