@@ -205,7 +205,7 @@ pub enum CryptographicAlgorithm {
     SLHDSA_SHAKE_192f = 0x0000_0048,
     SLHDSA_SHAKE_256s = 0x0000_0049,
     SLHDSA_SHAKE_256f = 0x0000_004A,
-    // Available slot 0x8880_0001,
+    FPE_FF1 = 0x8880_0001,
     // Available slot 0x8880_0002,
     ConfigurableKEM = 0x8880_0003,
     CoverCrypt = 0x8880_0004,

@@ -2,7 +2,7 @@ import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
@@ -97,8 +97,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             type="info"
                             showIcon
                             closable
-                            className="ml-4 py-0 px-3 text-sm leading-tight"
-                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }}
+                            className="py-0 px-3 text-sm leading-tight"
+                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", marginLeft: "20px" }}
                         />
                     )}
                     <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>
