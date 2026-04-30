@@ -1,16 +1,16 @@
 # Security Policy
 
 - [Security Policy](#security-policy)
-  - [Reporting a Vulnerability](#reporting-a-vulnerability)
-  - [Severity Rating](#severity-rating)
-  - [Known Vulnerabilities](#known-vulnerabilities)
-    - [2026](#2026)
-    - [2025](#2025)
-  - [Summary Table](#summary-table)
-  - [Security Best Practices](#security-best-practices)
-  - [FIPS Compliance](#fips-compliance)
-  - [Security Audits](#security-audits)
-  - [Contact](#contact)
+    - [Reporting a Vulnerability](#reporting-a-vulnerability)
+    - [Severity Rating](#severity-rating)
+    - [Known Vulnerabilities](#known-vulnerabilities)
+        - [2026](#2026)
+        - [2025](#2025)
+    - [Summary Table](#summary-table)
+    - [Security Best Practices](#security-best-practices)
+    - [FIPS Compliance](#fips-compliance)
+    - [Security Audits](#security-audits)
+    - [Contact](#contact)
 
 ---
 

@@ -52,7 +52,10 @@ pub(crate) async fn import(
     user: &str,
     privileged_users: Option<Vec<String>>,
 ) -> KResult<ImportResponse> {
-    trace!("Entering import KMIP operation: uid={}, object_type={}", request.unique_identifier, request.object_type);
+    trace!(
+        "Entering import KMIP operation: uid={}, object_type={}",
+        request.unique_identifier, request.object_type
+    );
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for a unique identifier `[tag1]` will

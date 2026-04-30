@@ -37,7 +37,11 @@ pub(crate) async fn hash_operation(
     request: Hash,
     _user: &str,
 ) -> KResult<HashResponse> {
-    trace!("Hash: algorithm={:?}, data_len={}", request.cryptographic_parameters.hashing_algorithm, request.data.as_ref().map_or(0, Vec::len));
+    trace!(
+        "Hash: algorithm={:?}, data_len={}",
+        request.cryptographic_parameters.hashing_algorithm,
+        request.data.as_ref().map_or(0, Vec::len)
+    );
 
     let algorithm = request
         .cryptographic_parameters

@@ -99,7 +99,10 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
             KmsError::InvalidRequest(format!("Error converting header value to string: {e:?}"))
         })?;
 
-    trace!("[api_token_auth] Authorization header received (length: {} chars)", auth_header.len());
+    trace!(
+        "[api_token_auth] Authorization header received (length: {} chars)",
+        auth_header.len()
+    );
 
     // Support case-insensitive bearer scheme and robust splitting
     let mut parts = auth_header.splitn(2, ' ');
@@ -114,7 +117,10 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
     // Normalize the client token for comparison
     let client_token = token_part.trim().to_lowercase();
 
-    trace!("[api_token_auth] comparing client token ({} chars) with server token", client_token.len());
+    trace!(
+        "[api_token_auth] comparing client token ({} chars) with server token",
+        client_token.len()
+    );
 
     // Compare the client token with the stored token using constant-time comparison
     // to prevent timing side-channel attacks.

@@ -388,7 +388,10 @@ mod tests {
     fn test_otlp_no_params_accepts_any_url() -> KResult<()> {
         // With None otel_params, allow_insecure defaults to false
         let result = KMS::validate_otlp_url("http://localhost:4317", &None);
-        assert!(result.is_err(), "http without otel_params should be rejected");
+        assert!(
+            result.is_err(),
+            "http without otel_params should be rejected"
+        );
         Ok(())
     }
 }

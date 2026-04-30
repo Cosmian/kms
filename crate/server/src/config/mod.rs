@@ -3,8 +3,8 @@ mod params;
 pub mod wizard;
 
 pub use command_line::*;
-pub use params::{KmipPolicyParams, ProxyParams, ServerParams, TlsParams};
 pub(crate) use params::OpenTelemetryConfig;
+pub use params::{KmipPolicyParams, ProxyParams, ServerParams, TlsParams};
 
 #[derive(Debug, Clone)]
 pub struct IdpConfig {

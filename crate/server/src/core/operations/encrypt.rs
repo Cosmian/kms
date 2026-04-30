@@ -494,7 +494,10 @@ fn encrypt_with_symmetric_key(
             }
         });
     if aead.nonce_size() == 0 {
-        trace!("ECB encrypt: plaintext_len={}, padding_method={padding_method:?}", plaintext.len());
+        trace!(
+            "ECB encrypt: plaintext_len={}, padding_method={padding_method:?}",
+            plaintext.len()
+        );
     } else {
         trace!(
             "encrypt: plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}",
@@ -515,7 +518,11 @@ fn encrypt_with_symmetric_key(
     if aead.nonce_size() == 0 {
         trace!("ECB encrypt result: ciphertext_len={}", ciphertext.len());
     } else {
-        trace!("encrypt result: ciphertext_len={}, tag_len={}", ciphertext.len(), tag.len());
+        trace!(
+            "encrypt result: ciphertext_len={}, tag_len={}",
+            ciphertext.len(),
+            tag.len()
+        );
     }
     // Validate and apply AEAD TagLength handling.
     // For AEAD (ChaCha20-Poly1305), KMIP vectors expect an invalid tag length to fail the request
