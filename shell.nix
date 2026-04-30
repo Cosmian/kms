@@ -101,6 +101,22 @@ let
     # For non-FIPS, use OpenSSL 3.6.0 instead of pkgs.openssl (3.3.2)
     openssl = if variant == "fips" then openssl312FipsShared else openssl360NonFips;
   };
+  # pkgs.curl (nixpkgs 24.11, curl 8.11.0) is dynamically linked against OpenSSL ≥3.2.0,
+  # but the shellHook puts our custom OpenSSL (3.1.2 FIPS or 3.6.0 non-FIPS) first in
+  # LD_LIBRARY_PATH. Rebuilding curl against our OpenSSL avoids the
+  # "version OPENSSL_3.2.0 not found" ABI mismatch at runtime.
+  # Exposing .dev / .out on the single-output derivation satisfies any
+  # nixpkgs curl derivation references to openssl.dev.
+  openssl312FipsSharedForCurl = openssl312FipsShared // {
+    dev = openssl312FipsShared;
+    out = openssl312FipsShared;
+  };
+  openssl360NonFipsForCurl = openssl360NonFips // {
+    dev = openssl360NonFips;
+    out = openssl360NonFips;
+  };
+  curlFips = pkgs.curl.override { openssl = openssl312FipsSharedForCurl; };
+  curlNonFips = pkgs.curl.override { openssl = openssl360NonFipsForCurl; };
 in
 pkgs.mkShell {
   buildInputs = [
@@ -127,7 +143,7 @@ pkgs.mkShell {
     else
       [ ]
   )
-  ++ (if withCurl then [ pkgs.curl ] else [ ])
+  ++ (if withCurl then [ (if variant == "fips" then curlFips else curlNonFips) ] else [ ])
   ++ (
     if withXks then
       [
