@@ -95,12 +95,15 @@ pub(super) fn build_secret_backends() -> Vec<Box<dyn SecretBackend>> {
     let mut backends: Vec<Box<dyn SecretBackend>> = Vec::new();
 
     #[cfg(feature = "secret-vault")]
+    #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(vault::VaultBackend::new()));
 
     #[cfg(feature = "secret-aws")]
+    #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(aws::AwsSsmBackend::new()));
 
     #[cfg(feature = "secret-azure")]
+    #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(azure::AzureKvBackend::new()));
 
     backends
@@ -114,7 +117,7 @@ pub(super) fn build_secret_backends() -> Vec<Box<dyn SecretBackend>> {
 mod vault {
     use super::{KResult, KmsError, SecretBackend};
 
-    /// HashiCorp Vault KV-v2 backend.
+    /// `HashiCorp` Vault KV-v2 backend.
     ///
     /// URI format:  `vault://<mount>/<path>#<field>`
     ///   - `mount`  — KV-v2 mount point (e.g. `secret`)
@@ -210,12 +213,15 @@ mod vault {
                     })
             })
             .join()
-            .map_err(|_| {
+            .map_err(|_e| {
                 KmsError::ServerError("Vault secret resolution thread panicked".to_owned())
             })??;
 
-            value["data"]["data"][field]
-                .as_str()
+            value
+                .get("data")
+                .and_then(|d| d.get("data"))
+                .and_then(|d| d.get(field))
+                .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| {
                     KmsError::ServerError(format!(
                         "Field '{field}' not found in Vault secret at {uri}"
@@ -239,7 +245,7 @@ mod aws {
     /// URI format: `aws-ssm://<region>/<parameter-name>`
     ///   - `region`         — AWS region (e.g. `eu-west-1`)
     ///   - `parameter-name` — SSM parameter name, leading `/` included
-    ///                        (e.g. `/kms/prod/db-password`)
+    ///     (e.g. `/kms/prod/db-password`)
     ///
     /// Credentials are resolved via the standard AWS credential chain
     /// (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars, `~/.aws/credentials`,
@@ -312,7 +318,7 @@ mod aws {
                     })
             })
             .join()
-            .map_err(|_| {
+            .map_err(|_e| {
                 KmsError::ServerError("AWS SSM secret resolution thread panicked".to_owned())
             })?
         }
@@ -395,8 +401,7 @@ mod azure {
                     .block_on(async move {
                         // Obtain Azure AD access token via client-credentials flow
                         let token_url = format!(
-                            "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
-                            tenant_id
+                            "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
                         );
                         let auth_client = reqwest::Client::new();
                         let token_resp = auth_client
@@ -429,8 +434,9 @@ mod azure {
                                 ))
                             })?;
 
-                        let token = token_body["access_token"]
-                            .as_str()
+                        let token = token_body
+                            .get("access_token")
+                            .and_then(serde_json::Value::as_str)
                             .ok_or_else(|| {
                                 KmsError::ServerError(
                                     "No access_token in Azure AD token response".to_owned(),
@@ -464,8 +470,8 @@ mod azure {
                             ))
                         })?;
 
-                        body["value"]
-                            .as_str()
+                        body.get("value")
+                            .and_then(serde_json::Value::as_str)
                             .ok_or_else(|| {
                                 KmsError::ServerError(format!(
                                     "Field 'value' not found in Azure Key Vault secret at {uri_owned}"
@@ -475,7 +481,7 @@ mod azure {
                     })
             })
             .join()
-            .map_err(|_| {
+            .map_err(|_e| {
                 KmsError::ServerError("Azure KV secret resolution thread panicked".to_owned())
             })?
         }
@@ -586,16 +592,18 @@ mod tests {
     /// equal `KMS_TEST_VAULT_EXPECTED` (defaults to `"ci-secret-value"`).
     #[cfg(feature = "secret-vault")]
     #[test]
-    #[ignore]
+    #[ignore = "requires a running HashiCorp Vault instance (set KMS_TEST_VAULT_URI)"]
     fn test_secret_vault() {
         use super::vault::VaultBackend;
         let uri = std::env::var("KMS_TEST_VAULT_URI")
-            .unwrap_or_else(|_| "vault://secret/kms-ci/db#password".to_owned());
+            .unwrap_or_else(|_e| "vault://secret/kms-ci/db#password".to_owned());
         let expected = std::env::var("KMS_TEST_VAULT_EXPECTED")
-            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+            .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = VaultBackend::new();
-        let resolved = backend.resolve(&uri).expect("Vault resolution failed");
+        let resolved = backend
+            .resolve(&uri)
+            .unwrap_or_else(|e| panic!("Vault resolution failed: {e}"));
         assert_eq!(
             resolved, expected,
             "Vault secret value mismatch: got '{resolved}', expected '{expected}'"
@@ -609,16 +617,18 @@ mod tests {
     /// to equal `KMS_TEST_AWS_SSM_EXPECTED` (defaults to `"ci-secret-value"`).
     #[cfg(feature = "secret-aws")]
     #[test]
-    #[ignore]
+    #[ignore = "requires AWS SSM access (set KMS_TEST_AWS_SSM_URI)"]
     fn test_secret_aws_ssm() {
         use super::aws::AwsSsmBackend;
         let uri = std::env::var("KMS_TEST_AWS_SSM_URI")
-            .unwrap_or_else(|_| "aws-ssm://eu-west-1/kms/ci/db-password".to_owned());
+            .unwrap_or_else(|_e| "aws-ssm://eu-west-1/kms/ci/db-password".to_owned());
         let expected = std::env::var("KMS_TEST_AWS_SSM_EXPECTED")
-            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+            .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = AwsSsmBackend::new();
-        let resolved = backend.resolve(&uri).expect("AWS SSM resolution failed");
+        let resolved = backend
+            .resolve(&uri)
+            .unwrap_or_else(|e| panic!("AWS SSM resolution failed: {e}"));
         assert_eq!(
             resolved, expected,
             "AWS SSM secret value mismatch: got '{resolved}', expected '{expected}'"
@@ -633,16 +643,18 @@ mod tests {
     /// `"ci-secret-value"`).
     #[cfg(feature = "secret-azure")]
     #[test]
-    #[ignore]
+    #[ignore = "requires Azure Key Vault access (set KMS_TEST_AZURE_KV_URI)"]
     fn test_secret_azure_kv() {
         use super::azure::AzureKvBackend;
         let uri = std::env::var("KMS_TEST_AZURE_KV_URI")
-            .unwrap_or_else(|_| "azure-kv://my-vault/secrets/kms-ci-db-password".to_owned());
+            .unwrap_or_else(|_e| "azure-kv://my-vault/secrets/kms-ci-db-password".to_owned());
         let expected = std::env::var("KMS_TEST_AZURE_KV_EXPECTED")
-            .unwrap_or_else(|_| "ci-secret-value".to_owned());
+            .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = AzureKvBackend::new();
-        let resolved = backend.resolve(&uri).expect("Azure KV resolution failed");
+        let resolved = backend
+            .resolve(&uri)
+            .unwrap_or_else(|e| panic!("Azure KV resolution failed: {e}"));
         assert_eq!(
             resolved, expected,
             "Azure KV secret value mismatch: got '{resolved}', expected '{expected}'"
