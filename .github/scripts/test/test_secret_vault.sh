@@ -51,16 +51,19 @@ docker run -d \
   hashicorp/vault:latest
 
 echo "Waiting for Vault to be ready..."
-for i in $(seq 1 30); do
-  if curl -sf "${VAULT_ADDR}/v1/sys/health" >/dev/null 2>&1; then
-    echo "Vault is ready (attempt ${i})"
+for i in $(seq 1 60); do
+  # Accept any HTTP response (200=active, 429=standby, 501=not init, 503=sealed)
+  # curl without -f so it doesn't fail on non-2xx; we just need the server to respond.
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${VAULT_ADDR}/v1/sys/health" 2>/dev/null || true)
+  if [ "${STATUS}" = "200" ] || [ "${STATUS}" = "429" ]; then
+    echo "Vault is ready (attempt ${i}, status ${STATUS})"
     break
   fi
-  if [ "${i}" -eq 30 ]; then
-    echo "ERROR: Vault did not become ready in time" >&2
+  if [ "${i}" -eq 60 ]; then
+    echo "ERROR: Vault did not become ready in time (last status: ${STATUS})" >&2
     exit 1
   fi
-  sleep 1
+  sleep 2
 done
 
 echo "Enabling KV-v2 secrets engine at mount '${VAULT_MOUNT}'..."

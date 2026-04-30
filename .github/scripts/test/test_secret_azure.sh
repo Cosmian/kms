@@ -68,6 +68,17 @@ trap cleanup EXIT
 echo "Obtaining Azure AD access token..."
 KV_TOKEN=$(get_kv_token)
 
+# Recover the secret if it is in soft-deleted state (e.g. left over from a previous run
+# on a vault with purge protection enabled). A 404 here is normal and ignored.
+echo "Recovering soft-deleted secret ${SECRET_NAME} if present..."
+curl -s -X POST \
+  "${KV_BASE_URL}/deletedsecrets/${SECRET_NAME}/recover?api-version=7.4" \
+  -H "Authorization: Bearer ${KV_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -o /dev/null || true
+# Brief pause to let the recovery propagate before the PUT
+sleep 3
+
 echo "Creating secret ${SECRET_NAME} in vault ${AZURE_KV_NAME}..."
 curl -sf -X PUT \
   "${KV_BASE_URL}/secrets/${SECRET_NAME}?api-version=7.4" \
