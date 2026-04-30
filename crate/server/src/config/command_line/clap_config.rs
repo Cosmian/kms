@@ -231,7 +231,7 @@ fn interpolate_env_vars(content: &str) -> Result<String, String> {
             if var_name.is_empty() {
                 return Err("Empty variable name '${}' in config file".to_owned());
             }
-            let value = std::env::var(&var_name).map_err(|_| {
+            let value = std::env::var(&var_name).map_err(|_e| {
                 format!("Environment variable '{var_name}' referenced in config file is not set")
             })?;
             result.push_str(&value);

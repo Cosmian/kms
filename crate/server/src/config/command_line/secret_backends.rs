@@ -512,7 +512,10 @@ mod tests {
     fn resolves_string_value() {
         let mut v: Value = toml::from_str(r#"password = "echo://my-secret""#).unwrap();
         resolve_secret_uris(&mut v, &echo_backends()).unwrap();
-        assert_eq!(v["password"].as_str().unwrap(), "my-secret");
+        assert_eq!(
+            v.get("password").and_then(|x| x.as_str()).unwrap(),
+            "my-secret"
+        );
     }
 
     #[test]
@@ -526,7 +529,10 @@ mod tests {
         .unwrap();
         resolve_secret_uris(&mut v, &echo_backends()).unwrap();
         assert_eq!(
-            v["db"]["database_url"].as_str().unwrap(),
+            v.get("db")
+                .and_then(|d| d.get("database_url"))
+                .and_then(|x| x.as_str())
+                .unwrap(),
             "pg://user:pass@localhost/kms"
         );
     }
@@ -536,16 +542,16 @@ mod tests {
         let mut v: Value =
             toml::from_str(r#"hsm_password = ["echo://slot1", "echo://slot2"]"#).unwrap();
         resolve_secret_uris(&mut v, &echo_backends()).unwrap();
-        let arr = v["hsm_password"].as_array().unwrap();
-        assert_eq!(arr[0].as_str().unwrap(), "slot1");
-        assert_eq!(arr[1].as_str().unwrap(), "slot2");
+        let arr = v.get("hsm_password").and_then(|x| x.as_array()).unwrap();
+        assert_eq!(arr.first().and_then(|x| x.as_str()).unwrap(), "slot1");
+        assert_eq!(arr.get(1).and_then(|x| x.as_str()).unwrap(), "slot2");
     }
 
     #[test]
     fn leaves_non_matching_strings_unchanged() {
         let mut v: Value = toml::from_str(r#"port = "9998""#).unwrap();
         resolve_secret_uris(&mut v, &echo_backends()).unwrap();
-        assert_eq!(v["port"].as_str().unwrap(), "9998");
+        assert_eq!(v.get("port").and_then(|x| x.as_str()).unwrap(), "9998");
     }
 
     #[test]
@@ -553,7 +559,10 @@ mod tests {
         let mut v: Value = toml::from_str(r#"password = "echo://secret""#).unwrap();
         resolve_secret_uris(&mut v, &[]).unwrap();
         // Unchanged because no backend handles the scheme
-        assert_eq!(v["password"].as_str().unwrap(), "echo://secret");
+        assert_eq!(
+            v.get("password").and_then(|x| x.as_str()).unwrap(),
+            "echo://secret"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
