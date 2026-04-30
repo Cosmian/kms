@@ -1144,6 +1144,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "windows-sys 0.59.0",
  "x509-cert",
  "x509-parser",
  "zeroize",
@@ -1206,6 +1207,32 @@ dependencies = [
  "wasm-bindgen-test",
  "x509-cert",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_cng_ksp"
+version = "5.21.0"
+dependencies = [
+ "bitflags",
+ "ckms",
+ "cosmian_logger",
+ "serial_test",
+ "test_kms_server",
+ "thiserror 2.0.17",
+ "tokio",
+ "uuid",
+ "windows-sys 0.59.0",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_cng_ksp_verify"
+version = "5.21.0"
+dependencies = [
+ "cosmian_logger",
+ "test_kms_server",
+ "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

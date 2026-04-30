@@ -83,6 +83,7 @@ nav:
               - BYOK (Bring Your Own Key): integrations/cloud_providers/azure/byok.md
               - EKM (External Key Management): integrations/cloud_providers/azure/ekm.md
               - Microsoft 365 Double Key Encryption (DKE): integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md
+              - Windows CNG Key Storage Provider (KSP): integrations/cloud_providers/microsoft/windows_cng_ksp.md
           - Google Cloud Platform (GCP):
               - CMEK (Customer Managed Encryption Keys): integrations/cloud_providers/google_gcp/cmek.md
               - CSEK (Customer Supplied Encryption Keys): integrations/cloud_providers/google_gcp/csek.md

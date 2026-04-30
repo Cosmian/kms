@@ -1,0 +1,46 @@
+[package]
+name = "cosmian_kms_cng_ksp"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["cng", "ksp", "windows", "kms", "ncrypt"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Windows CNG Key Storage Provider (KSP) for Cosmian KMS"
+
+[lints]
+workspace = true
+
+# Build a DLL that Windows CNG can load as a Key Storage Provider
+[lib]
+name = "cosmian_kms_cng_ksp"
+crate-type = ["cdylib", "rlib"]
+# doc test linking as a separate binary is extremely slow
+doctest = false
+
+[features]
+non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
+
+[dependencies]
+bitflags = { workspace = true }
+ckms = { path = "../ckms", version = "5.20.1" }
+cosmian_logger = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+uuid = { version = "=1.11.1", features = ["v4"] }
+zeroize = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+] }
+
+[dev-dependencies]
+serial_test = { version = "3.2.0", default-features = true }
+test_kms_server = { path = "../../test_kms_server" }

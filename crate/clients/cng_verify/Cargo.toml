@@ -1,0 +1,35 @@
+[package]
+name = "cosmian_kms_cng_ksp_verify"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["cng", "ksp", "windows", "kms", "verify"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Standalone verification tool for the Cosmian CNG KSP DLL"
+
+[[bin]]
+name = "cosmian_kms_cng_ksp_verify"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+non-fips = ["test_kms_server/non-fips"]
+
+[dependencies]
+cosmian_logger = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+test_kms_server = { path = "../../test_kms_server" }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
