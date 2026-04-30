@@ -484,6 +484,7 @@ port = ${KMS_HTTP_PORT}
 [logging]
 enable_metering = true
 otlp = "${OTEL_EXPORT_OTLP_ENDPOINT}"
+otlp_allow_insecure = true
 
 [db]
 database_type = "sqlite"
