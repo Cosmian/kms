@@ -18,31 +18,37 @@ use cosmian_logger::trace;
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
-// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64 and macOS).
-#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
-#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
-#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 
 // Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
-#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
-use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    config::{OpenTelemetryConfig, ServerParams},
+    core::OtelMetrics,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 /// Macro to instantiate an HSM with support for environment variable override
 /// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
-#[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[allow(unused_macros)]
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
@@ -149,6 +155,27 @@ impl KMS {
         })
     }
 
+    /// Validate that the OTLP URL is not using plaintext HTTP unless explicitly allowed.
+    /// This prevents accidental exposure of telemetry data over unencrypted channels.
+    pub(crate) fn validate_otlp_url(
+        otlp_url: &str,
+        otel_params: &Option<OpenTelemetryConfig>,
+    ) -> KResult<()> {
+        let allow_insecure = otel_params
+            .as_ref()
+            .is_some_and(|otel| otel.otlp_allow_insecure);
+        if otlp_url.starts_with("http://") && !allow_insecure {
+            return Err(KmsError::InvalidRequest(
+                "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
+                 (including encryption operation metadata) over an unencrypted channel. \
+                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
+                 if you accept this risk."
+                    .to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Create OTLP metrics if OTLP logging is configured
     fn create_otel_metrics(server_params: &ServerParams) -> KResult<Option<Arc<OtelMetrics>>> {
         // Only create metrics if OTLP is configured in logging
@@ -158,6 +185,9 @@ impl KMS {
             .as_ref()
             .and_then(|otel| otel.otlp_url.as_ref())
         {
+            // Reject plaintext HTTP unless explicitly allowed
+            Self::validate_otlp_url(otlp_url, &server_params.otel_params)?;
+
             // Create OTLP metrics exporter
             let exporter = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
@@ -210,12 +240,9 @@ impl KMS {
         let hsm: Option<Arc<dyn HSM + Send + Sync>> = if server_params.slot_passwords.is_empty() {
             None
         } else {
-            #[cfg(not(any(
-                all(target_os = "linux", target_arch = "x86_64"),
-                target_os = "macos"
-            )))]
-            kms_bail!("Fatal: HSMs are only supported on Linux x86_64 and macOS");
-            #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            kms_bail!("Fatal: HSMs are only supported on Linux and macOS");
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             {
                 // Attempt reuse first (used by test harness to allow multiple servers sharing one physical HSM).
                 if let Some(existing) = GLOBAL_HSM.get() {
@@ -263,7 +290,7 @@ impl KMS {
                         "Smartcardhsm",
                         server_params.slot_passwords.clone()
                     ),
-                    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+                    #[cfg(any(target_os = "linux", target_os = "macos"))]
                     "other" => instantiate_hsm_with_env!(
                         Softhsm2,
                         "OTHER_HSM_PKCS11_LIB",
@@ -278,5 +305,93 @@ impl KMS {
             }
         };
         Ok(hsm)
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    clippy::unnecessary_wraps,
+    clippy::panic
+)]
+#[allow(clippy::doc_markdown)]
+mod tests {
+    use super::*;
+    use crate::{config::OpenTelemetryConfig, error::KmsError, result::KResult};
+
+    /// Regression test for COSMIAN-2026-004: OTLP plaintext HTTP must be rejected
+    /// unless explicitly allowed via `otlp_allow_insecure`.
+    #[test]
+    fn test_otlp_plaintext_http_rejected() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("http://attacker.example.com:4317".to_owned()),
+            otlp_allow_insecure: false,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("http://attacker.example.com:4317", &otel_params);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            KmsError::InvalidRequest(msg) => {
+                assert!(
+                    msg.contains("plaintext HTTP"),
+                    "Error should mention plaintext HTTP, got: {msg}"
+                );
+                assert!(
+                    msg.contains("otlp-allow-insecure"),
+                    "Error should mention the flag, got: {msg}"
+                );
+            }
+            _ => panic!("Expected InvalidRequest error, got: {err:?}"),
+        }
+        Ok(())
+    }
+
+    /// Regression test: OTLP with https:// should not be rejected.
+    #[test]
+    fn test_otlp_https_accepted() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("https://collector.example.com:4317".to_owned()),
+            otlp_allow_insecure: false,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("https://collector.example.com:4317", &otel_params);
+        assert!(result.is_ok(), "https OTLP should be accepted");
+        Ok(())
+    }
+
+    /// Regression test: OTLP plaintext HTTP is accepted when allow_insecure is true.
+    #[test]
+    fn test_otlp_plaintext_http_accepted_when_allowed() -> KResult<()> {
+        let otel_params = Some(OpenTelemetryConfig {
+            otlp_url: Some("http://localhost:4317".to_owned()),
+            otlp_allow_insecure: true,
+            enable_metering: true,
+            environment: Some("test".to_owned()),
+        });
+
+        let result = KMS::validate_otlp_url("http://localhost:4317", &otel_params);
+        assert!(
+            result.is_ok(),
+            "http OTLP with allow_insecure=true should be accepted"
+        );
+        Ok(())
+    }
+
+    /// Regression test: no OTLP params means no OTLP validation error.
+    #[test]
+    fn test_otlp_no_params_accepts_any_url() -> KResult<()> {
+        // With None otel_params, allow_insecure defaults to false
+        let result = KMS::validate_otlp_url("http://localhost:4317", &None);
+        assert!(
+            result.is_err(),
+            "http without otel_params should be rejected"
+        );
+        Ok(())
     }
 }

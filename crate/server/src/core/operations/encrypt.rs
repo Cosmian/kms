@@ -69,7 +69,11 @@ use crate::{
 const EMPTY_SLICE: &[u8] = &[];
 
 pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
-    trace!("{request}");
+    trace!(
+        "Encrypt: uid={:?}, data_len={}",
+        request.unique_identifier,
+        request.data.as_ref().map_or(0, |d| d.len())
+    );
 
     // We do not (yet) support continuation cases
     let data = request.data.as_ref().ok_or_else(|| {
@@ -490,11 +494,16 @@ fn encrypt_with_symmetric_key(
             }
         });
     if aead.nonce_size() == 0 {
-        trace!("plaintext (ECB): {plaintext:?}, aad: {aad:?}, padding_method: {padding_method:?}");
+        trace!(
+            "ECB encrypt: plaintext_len={}, padding_method={padding_method:?}",
+            plaintext.len()
+        );
     } else {
         trace!(
-            "plaintext: {plaintext:?}, nonce: {nonce:?}, aad: {aad:?}, padding_method: \
-             {padding_method:?}"
+            "encrypt: plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}",
+            plaintext.len(),
+            nonce.len(),
+            aad.len()
         );
     }
     let (ciphertext, tag) = sym_encrypt(
@@ -507,9 +516,13 @@ fn encrypt_with_symmetric_key(
     )?;
 
     if aead.nonce_size() == 0 {
-        trace!("ciphertext (ECB): {ciphertext:?}");
+        trace!("ECB encrypt result: ciphertext_len={}", ciphertext.len());
     } else {
-        trace!("ciphertext: {ciphertext:?}, tag: {tag:?},");
+        trace!(
+            "encrypt result: ciphertext_len={}, tag_len={}",
+            ciphertext.len(),
+            tag.len()
+        );
     }
     // Validate and apply AEAD TagLength handling.
     // For AEAD (ChaCha20-Poly1305), KMIP vectors expect an invalid tag length to fail the request

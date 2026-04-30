@@ -87,6 +87,19 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         .interact()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
+    let otlp_allow_insecure = if otlp.starts_with("http://") {
+        Confirm::with_theme(&theme)
+            .with_prompt(
+                "WARNING: OTLP URL uses plaintext HTTP. \
+                 Allow insecure OTLP connections? (not recommended for production)",
+            )
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?
+    } else {
+        false
+    };
+
     Ok(LoggingConfig {
         rust_log: if rust_log.trim().is_empty() {
             None
@@ -98,6 +111,7 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         } else {
             Some(otlp)
         },
+        otlp_allow_insecure,
         quiet,
         #[cfg(not(target_os = "windows"))]
         log_to_syslog,

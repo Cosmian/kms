@@ -97,7 +97,10 @@ impl UnwrapSecretDataOrKeyAction {
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
         // if the key must be unwrapped, prepare the unwrapping key
         let unwrapping_key = if let Some(b64) = &self.unwrap_key_b64 {
-            trace!("unwrap using a base64 encoded key: {b64}");
+            trace!(
+                "unwrap using a base64 encoded key (length: {} chars)",
+                b64.len()
+            );
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;

@@ -11,7 +11,7 @@ use cosmian_kmip::{
     kmip_2_1::kmip_objects::Object,
     ttlv::{KmipFlavor, to_ttlv},
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace as cache_trace, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
@@ -172,19 +172,32 @@ impl UnwrappedCache {
     }
 
     /// Return the fingerprint of this object.
+    ///
+    /// For key objects (which is the typical case since only wrapped keys reach
+    /// the cache), we serialize only the `KeyBlock` instead of the entire
+    /// `Object`. The `KeyBlock` contains the key material, algorithm,
+    /// format type and wrapping data — all the fields that change when the key
+    /// is modified. This avoids the much more expensive full-Object TTLV
+    /// serialization, significantly reducing CPU usage under concurrent load.
     fn fingerprint(&self, object: &Object) -> DbResult<u64> {
-        to_ttlv(&object)
-            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-            .map_err(KmipError::from)
-            .map_err(DbError::from)
-            .map(|bytes| {
-                // SAFETY: the fingerprint is 64-bit strong, but uses a truly
-                // random secret seed per instance thus making the fingerprint
-                // unguessable which prevents attackers from leveraging
-                // pre-computation to create targeted collisions leading to
-                // undetectable cache corruption.
-                self.seed.hash_one(&bytes)
-            })
+        // Try the fast path: serialize only the KeyBlock.
+        let bytes = if let Ok(key_block) = object.key_block() {
+            cache_trace!("fingerprint: using fast KeyBlock path");
+            to_ttlv(key_block)
+                .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+                .map_err(KmipError::from)
+                .map_err(DbError::from)?
+        } else {
+            // Fallback for non-key objects (certificates, opaque).
+            // In practice this path is not reached because only wrapped
+            // keys are cached, but we keep it for safety.
+            to_ttlv(&object)
+                .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+                .map_err(KmipError::from)
+                .map_err(DbError::from)?
+        };
+
+        Ok(self.seed.hash_one(&bytes))
     }
 
     /// Validate the cache for a given object.
@@ -250,10 +263,10 @@ impl UnwrappedCache {
             },
         );
 
-        self.access_timestamps
-            .write()
-            .await
-            .insert(uid, Instant::now());
+        // Use the mpsc channel for timestamp updates instead of acquiring a
+        // second write lock. This eliminates sequential lock contention under
+        // high concurrency.
+        self.record_access(&uid).await?;
 
         Ok(())
     }

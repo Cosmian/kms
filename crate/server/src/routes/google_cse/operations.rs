@@ -1089,7 +1089,7 @@ async fn cse_wrapped_key_decrypt(
     resource_name: Option<Vec<u8>>,
     kms: &Arc<KMS>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
-    debug!("wrapped_key: {wrapped_key}");
+    trace!("wrapped_key length: {} chars", wrapped_key.len());
     let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
     if len < TAG_LENGTH + NONCE_LENGTH {

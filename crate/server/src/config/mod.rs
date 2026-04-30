@@ -3,6 +3,7 @@ mod params;
 pub mod wizard;
 
 pub use command_line::*;
+pub(crate) use params::OpenTelemetryConfig;
 pub use params::{KmipPolicyParams, ProxyParams, ServerParams, TlsParams};
 
 #[derive(Debug, Clone)]

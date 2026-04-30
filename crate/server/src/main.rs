@@ -62,6 +62,19 @@ async fn run() -> KResult<()> {
 
     let info_only = clap_config.info;
 
+    // Reject plaintext OTLP endpoints unless explicitly allowed
+    if let Some(url) = &clap_config.logging.otlp {
+        if url.starts_with("http://") && !clap_config.logging.otlp_allow_insecure {
+            return Err(cosmian_kms_server::error::KmsError::ServerError(
+                "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
+                 (including encryption operation metadata) over an unencrypted channel. \
+                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
+                 if you accept this risk."
+                    .to_owned(),
+            ));
+        }
+    }
+
     // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_owned(),
@@ -260,6 +273,7 @@ mod tests {
                 enable_metering: false,
                 environment: Some("development".to_owned()),
                 ansi_colors: false,
+                otlp_allow_insecure: false,
             },
             info: false,
             hsm: cosmian_kms_server::config::HsmConfig {

@@ -30,7 +30,7 @@ use crate::{core::KMS, error::KmsError, result::KResult};
 /// - Correlation Value: Optional - Server-defined value for client to return next
 /// - PKCS#11 Output Parameters: Optional - Parameters output from the function
 pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &str) -> KResult<PKCS11Response> {
-    trace!("PKCS11: {}", serde_json::to_string(&request)?);
+    trace!("PKCS11: function={:?}", request.pkcs11_function);
 
     // Get the function to perform (default to `C_Initialize` if not specified)
     let func = request
