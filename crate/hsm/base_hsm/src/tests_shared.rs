@@ -17,7 +17,7 @@ use pkcs11_sys::{
     CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
     CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
 };
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 
 use crate::{
@@ -51,7 +51,7 @@ pub struct HsmTestConfig {
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random data: {e}")))?;
     Ok(bytes)

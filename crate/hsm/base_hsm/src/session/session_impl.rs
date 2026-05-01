@@ -62,7 +62,7 @@ use pkcs11_sys::{
     CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
 };
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -79,7 +79,7 @@ const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)

@@ -39,7 +39,7 @@ use pkcs11_sys::{
     CKM_AES_CBC_PAD, CKM_AES_KEY_GEN, CKR_OK, CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS,
     CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
-use rand::RngCore;
+use rand::Rng;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,

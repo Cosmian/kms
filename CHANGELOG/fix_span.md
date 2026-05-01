@@ -18,6 +18,14 @@
 
 - Reject plaintext HTTP OTLP endpoints by default to prevent encryption query metadata leaking over unencrypted channels. Add `--otlp-allow-insecure` / `KMS_OTLP_ALLOW_INSECURE` flag for explicit opt-in in development environments
 
+### Log sanitization
+
+- Remove sensitive cryptographic material (plaintext, ciphertext, key bytes, HMAC values, hash data) from tracing `span` fields across all KMIP operations (encrypt, decrypt, hash, MAC, import, wrap/unwrap) to prevent accidental exposure in logs
+
+### Vulnerability disclosure
+
+- Rewrite `SECURITY.md` with a comprehensive vulnerability disclosure list (17 entries from version 5.0.0 onward) following OpenSSL-style format with severity ratings, affected ranges, and mitigation guidance
+
 ## Bug Fixes
 
 ### Server concurrency under high load
@@ -35,11 +43,23 @@
 - Implement read/write connection split for SQLite: dedicated writer connection + pool of reader connections (default: 2×CPU cores, capped at 10) leveraging WAL mode concurrent read support
 - Honor the previously ignored `max_connections` parameter for SQLite backends
 
-## Documentation
+## Build
 
-### Security vulnerabilities disclosure
+### Dependency updates
 
-- Rewrite `SECURITY.md` with a comprehensive vulnerability disclosure list (18 entries from version 5.0.0 onward) following OpenSSL-style format with severity ratings, affected ranges, and mitigation guidance
+- Bump `rand` from 0.9 to 0.10 and migrate API: `TryRngCore` → `TryRng`, `OsRng` → `SysRng`, `RngCore` → `Rng`
+- Bump `actix-http` from 3.10 to 3.12
+
+## Testing
+
+### Security non-regression tests
+
+- Add 4 security non-regression tests validating that sensitive data (plaintext, ciphertext, hash data, HMAC values) never appears in tracing span fields during encrypt, decrypt, hash, and MAC operations
+
+### KMIP compliance tables
+
+- Fix KMIP documentation generator to produce markdownlint-compliant output (blank lines after headings and before tables)
+- Update KMIP version-aware operation tables with corrected `N/A` entries for operations not defined in earlier KMIP versions
 
 Closes #902
 Closes #921
